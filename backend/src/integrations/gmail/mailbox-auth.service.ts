@@ -44,7 +44,8 @@ export async function finishMailboxConnection(state: string, code: string) {
   const refreshToken = tokens.refresh_token ? encryptToken(tokens.refresh_token) : existing?.refreshToken;
   if (!refreshToken) throw new AppError('Offline Gmail access is required. Reconnect and approve access.', 400);
   const data = { email: normalizeEmail(info.email), accessToken: encryptToken(tokens.access_token), refreshToken,
-    tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000), scopes: tokens.scope.split(' '), isActive: true, syncError: null };
+    tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000), scopes: tokens.scope.split(' '), isActive: true, syncError: null,
+    syncRequestedAt: new Date(), syncRetryAt: null };
   await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
     create: { tenantId, userId, provider: 'gmail', ...data }, update: data });
   const testOverride = normalizeEmail(info.email) !== normalizeEmail(user.email) ? getMailboxTestOverride(identity) : null;

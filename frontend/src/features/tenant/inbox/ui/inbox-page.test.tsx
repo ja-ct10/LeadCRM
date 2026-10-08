@@ -24,98 +24,71 @@ beforeEach(() => {
   mocks.list.mockResolvedValue({ emails: [email] });
   mocks.sync.mockResolvedValue({ hasMore: false });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-describe('Inbox request recovery', () => {
-  it('waits for search typing to pause and loads each filter only once', async () => {
+
+describe('Persisted scoped Inbox', () => {
+  it('has only the final filters and no categories or title dropdown', async () => {
     render(<InboxPage />); await flush();
-    expect(mocks.list).toHaveBeenCalledTimes(1);
-    fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'quo' } });
-    await advance(200);
-    fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'quotation' } });
-    await advance(399);
-    expect(mocks.list).toHaveBeenCalledTimes(1);
-    await advance(1);
-    expect(mocks.list).toHaveBeenCalledTimes(2);
-    expect(mocks.list.mock.lastCall?.[0].query).toContain('quotation');
+    for (const label of ['Current', 'Primary', 'Promotions', 'Social', 'Updates']) expect(screen.queryByText(label)).toBeNull();
     fireEvent.click(screen.getByLabelText('Filter emails'));
+    expect(screen.getAllByRole('menuitemradio').map(item => item.textContent)).toEqual(['All emails', 'Unread only', 'Sent', 'Scheduled', 'Drafts only']);
     fireEvent.click(screen.getByText('Unread only')); await flush();
-    expect(mocks.list).toHaveBeenCalledTimes(3);
-    expect(mocks.list.mock.lastCall?.[0].query).toContain('is:unread');
+    expect(mocks.list.mock.lastCall?.[0]).toMatchObject({ filter: 'unread', sort: 'newest' });
   });
-  it('keeps loaded mail visible, disables extra requests and automatically recovers', async () => {
+  it('debounces search and sends independent sort and filter values', async () => {
     render(<InboxPage />); await flush();
-    mocks.list.mockRejectedValueOnce(throttle(120));
-    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
-    expect(screen.getByText('Saved customer email')).toBeTruthy();
-    expect(screen.getByRole('status').textContent).toContain('Retrying automatically');
-    expect((screen.getByText('Sync now') as HTMLButtonElement).disabled).toBe(true);
-    expect((screen.getByLabelText('Refresh') as HTMLButtonElement).disabled).toBe(true);
-    await advance(119999);
-    expect(mocks.list).toHaveBeenCalledTimes(2);
+    fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'quo' } }); await advance(200);
+    fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'quotation' } }); await advance(399);
+    expect(mocks.list).toHaveBeenCalledTimes(1); await advance(1);
+    expect(mocks.list.mock.lastCall?.[0].query).toBe('quotation');
+    fireEvent.click(screen.getByLabelText('Sort emails')); fireEvent.click(screen.getByText('Oldest first')); await flush();
+    expect(mocks.list.mock.lastCall?.[0]).toMatchObject({ filter: 'all', sort: 'oldest' });
+  });
+  it('never starts Gmail sync on mount, elapsed time, visibility or remount', async () => {
+    const view = render(<InboxPage />); await flush(); await advance(600000);
+    document.dispatchEvent(new Event('visibilitychange')); await advance(300);
+    view.unmount(); render(<InboxPage />); await flush();
     expect(mocks.sync).not.toHaveBeenCalled();
-    await advance(252);
-    expect(mocks.list).toHaveBeenCalledTimes(3);
-    expect(screen.queryByText(/Gmail updates are paused/)).toBeNull();
-    expect(screen.getByText('Saved customer email')).toBeTruthy();
   });
-  it('shows an honest waiting state for an initial limit, then loads without another click', async () => {
-    mocks.list.mockRejectedValueOnce(throttle());
+  it('refreshes silently from coalesced realtime events', async () => {
+    let events: EventTarget;
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); events = this; } });
     render(<InboxPage />); await flush();
-    expect(screen.getByText('Waiting for Gmail')).toBeTruthy();
-    expect(screen.queryByText('Your inbox is empty')).toBeNull();
-    await advance(60251);
-    expect(screen.getByText('Saved customer email')).toBeTruthy();
-  });
-  it('does not show another category’s emails during the cooldown', async () => {
-    render(<InboxPage />); await flush();
-    mocks.list.mockRejectedValueOnce(throttle());
-    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
-    fireEvent.click(screen.getByText('Promotions')); await flush();
-    expect(screen.queryByText('Saved customer email')).toBeNull();
-    expect(screen.getByText('Waiting for Gmail')).toBeTruthy();
-    expect(mocks.list).toHaveBeenCalledTimes(2);
-    await advance(60251);
-    expect(mocks.list.mock.lastCall?.[0].query).toContain('category:promotions');
-  });
-  it('refreshes once after manual sync and never reloads after a failed sync', async () => {
-    render(<InboxPage />); await flush();
-    fireEvent.click(screen.getByText('Sync now')); await flush();
-    expect(mocks.sync).toHaveBeenCalledTimes(1);
-    expect(mocks.list).toHaveBeenCalledTimes(2);
-    mocks.sync.mockRejectedValueOnce(throttle());
-    fireEvent.click(screen.getByText('Sync now')); await flush();
-    expect(mocks.list).toHaveBeenCalledTimes(2);
-    expect(screen.getByText('Saved customer email')).toBeTruthy();
-  });
-  it('still displays permission failures instead of concealing them as a cooldown', async () => {
-    render(<InboxPage />); await flush();
-    mocks.list.mockRejectedValueOnce(Object.assign(new Error('Reconnect work email'), { status: 403 }));
-    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
-    expect(screen.getByText('Reconnect work email')).toBeTruthy();
-    expect(screen.queryByText('Saved customer email')).toBeNull();
-    expect(screen.queryByText('Waiting for Gmail')).toBeNull();
-  });
-  it('refreshes background updates only when sync processed messages', async () => {
-    mocks.sync.mockResolvedValueOnce({ hasMore: false, processed: 2 }).mockResolvedValue({ hasMore: false, processed: 0 });
-    render(<InboxPage />); await flush();
-    await advance(15001);
-    expect(mocks.sync).toHaveBeenCalledTimes(1);
-    expect(mocks.list).toHaveBeenCalledTimes(2);
-    await advance(300000);
-    expect(mocks.sync).toHaveBeenCalledTimes(2);
-    expect(mocks.list).toHaveBeenCalledTimes(2);
-  });
-  it('does not get stuck loading after Strict Mode effect cleanup', async () => {
-    render(<StrictMode><InboxPage /></StrictMode>); await flush();
-    expect(screen.getByText('Saved customer email')).toBeTruthy();
+    let resolve: (value: unknown) => void;
+    mocks.list.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    events!.dispatchEvent(new Event('mailbox-change')); events!.dispatchEvent(new Event('mailbox-change')); await advance(250);
+    expect(mocks.list).toHaveBeenCalledTimes(2); expect(screen.getByText('Saved customer email')).toBeTruthy();
     expect(screen.queryByText('Loading emails...')).toBeNull();
+    await act(async () => resolve!({ emails: [email, { ...email, id: 'new', subject: 'New customer reply' }] }));
+    expect(screen.getByText('New customer reply')).toBeTruthy(); expect(mocks.sync).not.toHaveBeenCalled();
   });
-  it('cancels automatic recovery when leaving the inbox', async () => {
-    mocks.list.mockRejectedValueOnce(throttle());
-    const view = render(<InboxPage />); await flush();
-    view.unmount();
-    await advance(60251);
-    expect(mocks.list).toHaveBeenCalledTimes(1);
+  it('keeps mail during provider limits and still allows persisted refresh', async () => {
+    render(<InboxPage />); await flush(); mocks.sync.mockRejectedValueOnce(throttle(120));
+    fireEvent.click(screen.getByText('Sync now')); await flush();
+    expect(screen.getByText('Saved customer email')).toBeTruthy();
+    expect((screen.getByText('Sync now') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Refresh') as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
+    expect(mocks.list).toHaveBeenCalledTimes(2);
+  });
+  it('rejects stale responses and deduplicates the same active list request', async () => {
+    render(<InboxPage />); await flush();
+    let resolve: (value: unknown) => void;
+    mocks.list.mockImplementationOnce(() => new Promise(done => { resolve = done; }));
+    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
+    fireEvent.click(screen.getByLabelText('Filter emails')); fireEvent.click(screen.getByText('Sent')); await flush();
+    expect(mocks.list.mock.lastCall?.[0].filter).toBe('sent');
+    await act(async () => resolve!({ emails: [{ ...email, subject: 'Stale response' }] }));
+    expect(screen.queryByText('Stale response')).toBeNull();
+  });
+  it('clears cached rows on an authorization failure', async () => {
+    render(<InboxPage />); await flush(); mocks.list.mockRejectedValueOnce(Object.assign(new Error('Mailbox access unavailable'), { status: 403 }));
+    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
+    expect(screen.queryByText('Saved customer email')).toBeNull(); expect(screen.getByRole('alert').textContent).toContain('Mailbox access');
+  });
+  it('finishes initial load under Strict Mode', async () => {
+    render(<StrictMode><InboxPage /></StrictMode>); await flush();
+    expect(screen.getByText('Saved customer email')).toBeTruthy(); expect(screen.queryByText('Loading emails...')).toBeNull();
   });
 });

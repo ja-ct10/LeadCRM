@@ -2,7 +2,8 @@
 
 import React, { useState } from 'react';
 import { ArrowLeft, Reply, Forward, Trash2, Archive, Loader2, Send } from 'lucide-react';
-import { sendGmailEmail, archiveGmailEmails, trashGmailEmails, type GmailEmail } from '../services/gmail.service';
+import ComposeModal from './compose-modal';
+import { archiveGmailEmails, trashGmailEmails, type GmailEmail } from '../services/gmail.service';
 import { safeMailboxHtml as sanitizeEmailHtml } from '../services/email-html';
 
 
@@ -34,70 +35,18 @@ function formatFullDate(dateStr: string): string {
   });
 }
 
-type ReplyMode = 'none' | 'reply' | 'forward';
-
 export default function EmailDetailView({ email, onBack, onEmailsChanged }: EmailDetailViewProps): React.ReactElement {
-  const [replyMode, setReplyMode] = useState<ReplyMode>('none');
-  const [replyTo, setReplyTo] = useState('');
-  const [replyBody, setReplyBody] = useState('');
-  const [isSending, setIsSending] = useState(false);
+  const [draft, setDraft] = useState<{ to: string; subject: string; body: string; replyToMessageId?: string } | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
-
-  const handleReply = (): void => {
-    setReplyMode('reply');
-    setReplyTo(email.direction === 'outbound' ? extractEmail(email.to[0] ?? '') : extractEmail(email.from));
-    setReplyBody('');
-    setSendError(null);
+  const handleReply = () => setDraft({ to: email.direction === 'outbound' ? extractEmail(email.to[0] ?? '') : extractEmail(email.from), subject: /^re:/i.test(email.subject) ? email.subject : 'Re: ' + email.subject, body: '', replyToMessageId: email.id });
+  const handleForward = () => {
+    const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    setDraft({ to: '', subject: 'Fwd: ' + email.subject, body: '<p><br></p><p>---------- Forwarded message ----------<br>From: ' + escape(email.from) + '<br>Date: ' + escape(formatFullDate(email.date)) + '<br>Subject: ' + escape(email.subject) + '<br>To: ' + escape(email.to.join(', ')) + '</p>' + sanitizeEmailHtml(email.body) });
   };
-
-  const handleForward = (): void => {
-    setReplyMode('forward');
-    setReplyTo('');
-    setReplyBody(`\n\n---------- Forwarded message ----------\nFrom: ${email.from}\nDate: ${formatFullDate(email.date)}\nSubject: ${email.subject}\nTo: ${email.to.join(', ')}\n\n`);
-    setSendError(null);
-  };
-
-  const handleSendReply = async (): Promise<void> => {
-    if (!replyTo.trim()) {
-      setSendError('Please specify a recipient');
-      return;
-    }
-    if (!replyBody.trim() && replyMode === 'reply') {
-      setSendError('Cannot send an empty reply');
-      return;
-    }
-
-    setIsSending(true);
-    setSendError(null);
-
-    try {
-      const subject = replyMode === 'reply'
-        ? (/^re:/i.test(email.subject) ? email.subject : `Re: ${email.subject}`)
-        : `Fwd: ${email.subject}`;
-      const escapedBody = replyBody.trim().replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\n/g, '<br>');
-      await sendGmailEmail(replyTo.trim(), subject, escapedBody + (replyMode === 'forward' ? sanitizeEmailHtml(email.body) : ''), replyMode === 'reply' ? email.id : undefined);
-      setReplyMode('none');
-      setReplyBody('');
-      setReplyTo('');
-      onEmailsChanged();
-    } catch (err) {
-      setSendError(err instanceof Error ? err.message : 'Failed to send');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  const handleCancel = (): void => {
-    setReplyMode('none');
-    setReplyBody('');
-    setReplyTo('');
-    setSendError(null);
-  };
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 min-w-0 flex-col h-full">
       {/* Header bar */}
-      <div className="flex flex-wrap items-center gap-2 px-3 py-3 sm:px-6 border-b border-gray-100 dark:border-white/5 shrink-0">
+      <div className="flex flex-wrap items-center gap-1 px-2 py-2 sm:gap-2 sm:px-6 sm:py-3 border-b border-gray-100 dark:border-white/5 shrink-0">
         <button
           onClick={onBack}
           className="p-2 text-slate-500 hover:text-slate-900 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
@@ -110,7 +59,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
 
         <button
           onClick={handleReply}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/8 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-2 py-2 sm:px-3 rounded-lg border border-gray-200 dark:border-white/8 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
           aria-label="Reply"
         >
           <Reply className="w-3.5 h-3.5" />
@@ -118,7 +67,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
         </button>
         <button
           onClick={handleForward}
-          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-gray-200 dark:border-white/8 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+          className="inline-flex items-center gap-1 px-2 py-2 sm:px-3 rounded-lg border border-gray-200 dark:border-white/8 text-xs font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
           aria-label="Forward"
         >
           <Forward className="w-3.5 h-3.5" />
@@ -142,9 +91,9 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
 
       {/* Email content */}
       <div className="min-w-0 flex-1 overflow-auto break-words px-3 py-5 sm:px-6">
-        {sendError && replyMode === 'none' && <p role="alert" className="mb-3 text-sm text-red-600">{sendError}</p>}
+        {sendError && <p role="alert" className="mb-3 text-sm text-red-600">{sendError}</p>}
         {/* Subject */}
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-4">
+        <h2 className="break-words [overflow-wrap:anywhere] text-base sm:text-lg font-semibold text-slate-900 dark:text-white mb-4">
           {email.subject || '(no subject)'}
         </h2>
 
@@ -166,7 +115,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
                 &lt;{extractEmail(email.from)}&gt;
               </span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex min-w-0 items-center gap-2 mt-0.5 [overflow-wrap:anywhere]">
               <span className="text-xs text-slate-500 dark:text-slate-400">
                 to {email.to.length > 0 ? email.to.join(', ') : 'me'}
               </span>
@@ -179,69 +128,14 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
 
         {/* Email body */}
         <div
-          className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300 text-[13px] leading-relaxed [&_a]:text-blue-500 [&_img]:max-w-full [&_img]:rounded-md"
+          className="prose prose-sm dark:prose-invert min-w-0 max-w-none overflow-x-auto [overflow-wrap:anywhere] [&_pre]:whitespace-pre-wrap [&_table]:max-w-full text-slate-700 dark:text-slate-300 text-[13px] leading-relaxed [&_a]:text-blue-500 [&_img]:max-w-full [&_img]:rounded-md"
           dangerouslySetInnerHTML={{ __html: sanitizeEmailHtml(email.body || '<p style="color:#94a3b8">(No content)</p>') }}
         />
       </div>
 
-      {/* Reply/Forward panel */}
-      {replyMode !== 'none' && (
-        <div className="border-t border-gray-200 dark:border-white/5 px-6 py-4 shrink-0 bg-slate-50/50 dark:bg-white/1">
-          {/* To field with Reply/Forward label inline */}
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-xs font-medium text-slate-500 dark:text-slate-400 shrink-0">
-              {replyMode === 'reply' ? 'Reply to' : 'Forward to'}
-            </span>
-            <input
-              id="reply-to"
-              type="email"
-              value={replyTo}
-              onChange={(e) => setReplyTo(e.target.value)}
-              readOnly={replyMode === 'reply'}
-              placeholder="recipient@email.com"
-              className="min-w-0 flex-1 h-9 px-3 rounded-lg border border-gray-200 dark:border-white/8 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 read-only:bg-slate-100 dark:read-only:bg-slate-800"
-            />
-          </div>
-
-          {/* Body */}
-          <textarea
-            value={replyBody}
-            onChange={(e) => setReplyBody(e.target.value)}
-            placeholder={replyMode === 'reply' ? 'Write your reply...' : 'Add a message (optional)...'}
-            className="w-full h-36 px-3 py-2.5 rounded-lg border border-gray-200 dark:border-white/8 bg-white dark:bg-slate-900 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 resize-y"
-            aria-label={replyMode === 'reply' ? 'Reply body' : 'Forward message'}
-          />
-
-          {/* Error */}
-          {sendError && (
-            <p className="text-xs text-red-500 dark:text-red-400 mt-1">{sendError}</p>
-          )}
-
-          {/* Actions */}
-          <div className="flex items-center gap-2 mt-3">
-            <button
-              onClick={handleSendReply}
-              disabled={isSending}
-              className="inline-flex items-center gap-2 h-8 px-4 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white text-xs font-medium active:scale-95 transition-all cursor-pointer"
-              aria-label={replyMode === 'reply' ? 'Send reply' : 'Send forward'}
-            >
-              {isSending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-              <span>{isSending ? 'Sending...' : 'Send'}</span>
-            </button>
-            <button
-              onClick={handleCancel}
-              className="h-8 px-3 rounded-lg text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              aria-label="Cancel"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Bottom action bar when reply panel is closed */}
-      {replyMode === 'none' && (
-        <div className="flex items-center gap-3 px-6 py-3 border-t border-gray-100 dark:border-white/5 shrink-0">
+      {(
+        <div className="flex items-center gap-2 px-3 py-3 sm:px-6 border-t border-gray-100 dark:border-white/5 shrink-0">
           <button
             onClick={handleReply}
             className="inline-flex items-center gap-2 h-9 px-4 rounded-lg border border-gray-200 dark:border-white/8 text-sm font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
@@ -260,6 +154,7 @@ export default function EmailDetailView({ email, onBack, onEmailsChanged }: Emai
           </button>
         </div>
       )}
+      <ComposeModal isOpen={!!draft} initialDraft={draft} onClose={() => setDraft(null)} onSent={onEmailsChanged} />
     </div>
   );
 }

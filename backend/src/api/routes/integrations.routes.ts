@@ -15,11 +15,13 @@ import {
   sync,
   thread,
   associateDeal,
+  schedule,
 } from '../../integrations/gmail/gmail.controller';
 
 import { workspaceReadyMiddleware } from '../middleware/tenant.middleware';
 import { authorize as requirePermission, authorizeAny } from '../middleware/rbac.middleware';
 import { mailboxPermissions } from '../../integrations/gmail/mailbox-sync.service';
+import { mailboxEvents } from '../../integrations/gmail/mailbox-events';
 
 const router = Router();
 router.get('/gmail/callback', callback);
@@ -30,6 +32,8 @@ router.use('/gmail', authMiddleware, workspaceReadyMiddleware, authorizeAny('lea
   try { await mailboxPermissions(req.user!.tenantId, req.user!.userId, checkOwnership); next(); } catch (error) { next(error); }
 });
 router.post('/gmail/sync', sync);
+router.get('/gmail/events', mailboxEvents);
+router.post('/gmail/scheduled', schedule);
 router.get('/gmail/threads/:threadId', thread);
 router.patch('/gmail/threads/:threadId/deal', requirePermission('deals.edit'), associateDeal);
 

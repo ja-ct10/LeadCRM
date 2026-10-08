@@ -40,7 +40,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   const ingest = (messages: GmailEmail[], rights = permissions) => scope(() => ingestMailboxMessages(account, messages, rights));
   async function customer(dealCount = 1, status = 'Warm') {
     const email = `${randomUUID()}@example.test`;
-    const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Test', email, status, productInterest: ['Product'], createdAt: before(180) } });
+    const lead = await prisma.lead.create({ data: { tenantId, assignedUserId: userId, firstName: 'Customer', lastName: 'Test', email, status, productInterest: ['Product'], createdAt: before(180) } });
     const deals = [];
     for (let n = 0; n < dealCount; n++) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId, stageId: stages.Lead, leadDeals: { create: { leadId: lead.id, position: 0 } }, title: `Opportunity ${n}`, value: 3250, assignedUserId: userId, productInterests: ['Product'], tags: [], createdAt: before(180) } }));
     return { lead, deals, email, thread: randomUUID().replaceAll('-', '') };
@@ -100,7 +100,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const outbound = message(c.thread, c.email, 'outbound', 'Here is product information.', 9);
     await ingest([outbound]);
     await prisma.mailboxMessage.update({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: outbound.id } }, data: { dealId: c.deals[1].id } });
-    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Existing', lastName: 'Customer', email: `${randomUUID()}@example.test`, createdAt: before(180) } });
+    const contact = await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Existing', lastName: 'Customer', email: `${randomUUID()}@example.test`, createdAt: before(180) } });
     await scope(() => salesTransaction(async tx => {
       await tx.lead.update({ where: { id: c.lead.id }, data: { status: 'Closed', contactId: contact.id } });
       await convertClosedLead(tx, tenantId, c.lead.id, userId);
@@ -117,7 +117,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('abstains from duplicate CRM matches and multi-customer threads', async () => {
     const c = await customer();
-    await prisma.contact.create({ data: { tenantId, firstName: 'Duplicate', lastName: 'Customer', email: c.email, productInterests: [], activeProducts: [] } });
+    await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Duplicate', lastName: 'Customer', email: c.email, productInterests: [], activeProducts: [] } });
     const duplicate = message(c.thread, c.email, 'inbound', 'We will proceed.');
     await ingest([duplicate]);
     expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: duplicate.id } } })).leadId).toBeNull();
@@ -259,12 +259,14 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID(), productInterestIds: [foreignProduct.id] })).status).toBe(400);
   });
   it('retains the newest reply across mailboxes and delayed sync, with Contact aging after recovery', async () => {
-    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Reply', lastName: 'Contact', email: `${randomUUID()}@example.test`, status: 'COLD' } });
+    const contact = await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Reply', lastName: 'Contact', email: `${randomUUID()}@example.test`, status: 'COLD' } });
     const reply = message(randomUUID(), contact.email!, 'inbound', 'Anything at all', 2);
     await ingest([reply]);
     const owner = await prisma.user.create({ data: { tenantId, firstName: 'Second', lastName: 'Mailbox', email: `${randomUUID()}@camxian.com`, role: 'Client Admin' } });
     const second = await prisma.emailAccount.create({ data: { tenantId, userId: owner.id, email: owner.email, accessToken: encryptToken('test'), lastSyncAt: now, syncCursor: 'verified-history' } });
+    await prisma.contact.update({ where: { id: contact.id }, data: { assignedUserId: owner.id } });
     await scope(() => ingestMailboxMessages(second, [{ ...message(reply.threadId, contact.email!, 'inbound', 'Older wording', 20), to: [second.email] }], permissions));
+    await prisma.contact.update({ where: { id: contact.id }, data: { assignedUserId: userId } });
     const snapshot = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
     expect(snapshot.status).toBe('HOT'); expect(snapshot.lastCustomerReplyAt).toEqual(before(2));
     await ingest([message(reply.threadId, contact.email!, 'outbound', 'Follow up', 1), reply]);
@@ -442,12 +444,14 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     }
   });
   it('sends from the connected owner and preserves reply threading headers', async () => {
+    const c = await customer(0);
+    await ingest([{ ...message('thread', c.email, 'inbound', 'Question'), id: 'replyid', rfcMessageId: '<original@example.test>' }]);
     const bodies: Record<string, unknown>[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: string | URL, init?: RequestInit) => {
       if (String(input).endsWith('/send')) { bodies.push(JSON.parse(String(init?.body))); return Response.json({ id: 'sentid', threadId: 'thread' }); }
       return Response.json({ id: 'replyid', threadId: 'thread', internalDate: String(+before(1)), labelIds: ['INBOX'], snippet: '', payload: { headers: [{ name: 'Message-ID', value: '<original@example.test>' }], mimeType: 'text/plain', body: { data: Buffer.from('Product question').toString('base64url') } } });
     }));
-    await scope(() => sendEmail(tenantId, userId, 'customer@example.test', 'Re: Product', '<p>Details</p>', 'replyid'));
+    await scope(() => sendEmail(tenantId, userId, c.email, 'Re: Product', '<p>Details</p>', 'replyid'));
     expect(bodies[0].threadId).toBe('thread');
     const mime = Buffer.from(String(bodies[0].raw), 'base64url').toString(); expect(mime).toContain(`From: ${account.email}`); expect(mime).toContain('In-Reply-To: <original@example.test>');
   });
@@ -459,16 +463,21 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       const path = String(input);
       if (path.includes('history?')) return expire ? new Response('{}', { status: 404 }) : Response.json({ historyId: '102', history: [] });
       if (path.endsWith('/profile')) return Response.json({ historyId: '100' });
+      if (path.includes('drafts?')) return Response.json({ drafts: [] });
       if (path.includes('messages?')) return path.includes('pageToken=next') ? Response.json({ messages: [] }) : Response.json({ messages: [{ id: inbound.id }], nextPageToken: 'next' });
       return Response.json(apiMessage);
     }));
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncCursor: null, syncPageToken: null } });
     expect((await scope(() => syncMailbox(tenantId, userId))).hasMore).toBe(true);
     expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBeNull();
-    expect((await scope(() => syncMailbox(tenantId, userId))).hasMore).toBe(false);
+    let remaining = true;
+    for (let pass = 0; pass < 100 && remaining; pass++) remaining = (await scope(() => syncMailbox(tenantId, userId))).hasMore;
+    expect(remaining).toBe(false);
     expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBe('100');
     await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBe('102');
-    expire = true; await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBeNull();
+    expire = true;
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncRequestedAt: new Date() } });
+    await scope(() => syncMailbox(tenantId, userId)); expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).syncCursor).toBeNull();
     expect(await prisma.mailboxMessage.count({ where: { providerMessageId: inbound.id } })).toBe(1);
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncCursor: '102', syncPageToken: null, syncBaselineHistoryId: null, lastSyncAt: new Date(), syncError: null } });
   });
@@ -565,6 +574,6 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       await call('/administration/closing-requirements/required-document', 'PATCH', { ...document, name: 'New document label', required: false });
       expect((await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).closingSnapshot).toEqual(snapshot);
       expect((await call(endpoint, 'PATCH', { values: { 'closing-notes': 'rewrite' } })).status).toBe(400);
-    } finally { vi.unstubAllEnvs(); await prisma.closingFieldDefinition.deleteMany({ where: { tenantId } }); await prisma.closingFieldDefinition.createMany({ data: initial.map((field: { id: string }) => ({ tenantId, id: field.id, definition: field })) }); }
+    } finally { vi.unstubAllEnvs(); /* The disposable database preserves referenced field definitions until teardown. */ }
   });
 });

@@ -44,16 +44,24 @@ function startSessionPurgeScheduler(): void {
   console.log('[session-purge] Session cleanup scheduler started (runs every 24h).');
 }
 
-app.listen(PORT, () => {
+let stopMailbox: (() => void) | undefined;
+const server = app.listen(PORT, () => {
   console.log(`[server] LeadCRM API running on http://localhost:${PORT}`);
   console.log(`[server] Environment: ${process.env.NODE_ENV ?? 'development'}`);
 
   // Start background services
   startCampaignScheduler();
-  startMailboxScheduler();
+  stopMailbox = startMailboxScheduler();
   startNotificationScheduler();
   startSessionPurgeScheduler();
   startImportCleanupScheduler();
 
 
+});
+server.on('close', () => stopMailbox?.());
+for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
+  stopMailbox?.();
+  server.close(() => process.exit(0));
+  // Interrupted mailbox pages and scheduled claims resume from durable leases.
+  setTimeout(() => process.exit(0), 30000).unref();
 });

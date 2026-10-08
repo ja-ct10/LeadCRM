@@ -6,7 +6,11 @@ import { AppError } from '../../shared/errors/app-error';
 import { normalizeEmail } from './engagement-rules';
 import { readAuthUser } from '../../core/auth/auth-user';
 import { isMailboxOwner } from './mailbox-ownership';
-import { readGmailJson } from './gmail-read';
+import { authorizedMailbox, listStoredMailbox, mailboxChanged } from './mailbox-store';
+import { assertStoredMessages, mailboxAddress, messageInScope } from './mailbox-scope';
+import { ingestMailboxMessages } from './mailbox-ingestion.service';
+import { MailboxListOptions } from '@leadcrm/shared';
+import { readGmailJson, writeGmailJson } from './gmail-read';
 import type { MailboxUnreadCount } from '@leadcrm/shared';
 
 
@@ -154,7 +158,8 @@ export async function getSystemAccessToken(): Promise<string | null> {
 
 /**
  * Sends an email via Gmail API using a pre-provided plaintext access token.
- * Used for system-level sending (e.g., auth OTPs) where no userId context exists.
+ * Legacy system-sender helper; the configured From must belong to that mailbox.
+ * Transactional messages use the separate Brevo email service.
  */
 export async function sendEmailWithToken(
   accessToken: string,
@@ -162,7 +167,10 @@ export async function sendEmailWithToken(
   subject: string,
   body: string,
 ): Promise<{ messageId: string; threadId: string }> {
-  const rawMessage = createRawMessage(to, subject, body);
+  const systemSender = process.env.GMAIL_SYSTEM_SENDER_GMAIL_EMAIL?.trim();
+  const from = process.env.SMTP_FROM?.trim()
+    || (systemSender ? `Camxian Technologies <${systemSender}>` : '');
+  const rawMessage = createRawMessage(to, subject, body, from);
 
   const response = await fetch(
     'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
@@ -189,101 +197,35 @@ export async function sendEmailWithToken(
  * Fetches emails from the user's Gmail inbox.
  */
 export async function fetchUnreadCount(tenantId: string, userId: string): Promise<MailboxUnreadCount> {
-  const accessToken = await getValidAccessToken(tenantId, userId);
-  const inbox = await readGmailJson<{ messagesUnread?: number }>(accessToken, 'labels/INBOX?fields=messagesUnread');
-  return { unreadCount: inbox.messagesUnread ?? 0 };
+  return { unreadCount: (await listStoredMailbox(tenantId, userId, { maxResults: 1 })).unreadCount };
 }
-
-export async function fetchEmails(
-  tenantId: string,
-  userId: string,
-  options: { maxResults?: number; query?: string; pageToken?: string } = {},
-): Promise<{ emails: GmailEmail[]; nextPageToken?: string }> {
-  const accessToken = await getValidAccessToken(tenantId, userId);
-  const { maxResults = 20, query = '-in:spam -in:trash -in:drafts', pageToken } = options;
-
-  const params = new URLSearchParams({
-    maxResults: maxResults.toString(),
-    q: query,
-  });
-  if (pageToken) params.set('pageToken', pageToken);
-
-  const isDraftList = /(?:^|\s)in:drafts(?:\s|$)/i.test(query);
-  const listData = await readGmailJson<{
-    messages?: { id: string; threadId: string }[];
-    drafts?: { id: string; message: { id: string; threadId: string } }[];
-    nextPageToken?: string;
-  }>(accessToken, `${isDraftList ? 'drafts' : 'messages'}?${params.toString()}`);
-
-  const items = isDraftList
-    ? (listData.drafts ?? []).map(draft => ({ id: draft.message.id, draftId: draft.id }))
-    : (listData.messages ?? []).map(message => ({ id: message.id, draftId: undefined }));
-  const emails: GmailEmail[] = [];
-  // Keep list loading bounded while the existing sync worker is reading the same mailbox.
-  for (let offset = 0; offset < items.length; offset += 5) {
-    const batch = await Promise.all(items.slice(offset, offset + 5).map(async item => {
-      try { return { ...await fetchMessageDetail(accessToken, item.id), ...(item.draftId ? { draftId: item.draftId } : {}) }; }
-      catch (error) { if (error instanceof AppError && error.statusCode === 404) return null; throw error; }
-    }));
-    for (const email of batch) if (email) emails.push(email);
-  }
-
-  return { emails, nextPageToken: listData.nextPageToken };
-}
-
-/**
- * Fetches a single message's full detail.
- */
+export const fetchEmails = (tenantId: string, userId: string, options: MailboxListOptions = {}) => listStoredMailbox(tenantId, userId, options);
 export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
-  const data = await readGmailJson<GmailApiMessage>(accessToken, `messages/${encodeURIComponent(messageId)}?format=full`);
-
-  return parseGmailMessage(data);
+  return parseGmailMessage(await readGmailJson<GmailApiMessage>(accessToken, 'messages/' + encodeURIComponent(messageId) + '?format=full'));
 }
-
-/**
- * Sends an email via Gmail API.
- */
-export async function sendEmail(
-  tenantId: string,
-  userId: string,
-  to: string | string[],
-  subject: string,
-  body: string,
-  replyToMessageId?: string,
-): Promise<{ messageId: string; threadId: string }> {
+export async function sendEmail(tenantId: string, userId: string, to: string | string[], subject: string, body: string, replyToMessageId?: string, draftId?: string): Promise<{ messageId: string; threadId: string }> {
+  const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
+  if (replyToMessageId) await assertStoredMessages(account, scope, [replyToMessageId]);
+  const reply = replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: replyToMessageId } } }) : null;
+  const recipients = Array.isArray(to) ? to : [to];
+  if (!draftId && !messageInScope({ from: account.email, to: recipients, threadId: reply?.threadId ?? '' }, account.email, scope)) throw new AppError('Choose a recipient in your assigned CRM mailbox scope.', 403);
+  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId }) : null;
   const accessToken = await getValidAccessToken(tenantId, userId);
-  const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
-  const reply = replyToMessageId ? await fetchMessageDetail(accessToken, replyToMessageId) : undefined;
-  const recipients = Array.isArray(to) ? to.join(', ') : to;
-  const rawMessage = createRawMessage(recipients, subject, body, account.email, reply?.rfcMessageId);
-
-  const response = await fetch(
-    'https://gmail.googleapis.com/gmail/v1/users/me/messages/send',
-    {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ raw: rawMessage, ...(reply ? { threadId: reply.threadId } : {}) }),
-    },
-  );
-
-  if (!response.ok) {
-    throw new AppError(`Gmail could not send this message (${response.status}).`, 502);
+  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, reply?.rfcMessageId ?? undefined);
+  const result = await writeGmailJson<{ id: string; threadId: string }>(accessToken, savedDraft ? 'drafts/send' : 'messages/send', 'POST', savedDraft ? { id: savedDraft.draftId } : { raw, ...(reply ? { threadId: reply.threadId } : {}) });
+  try {
+    if (savedDraft) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId: savedDraft.draftId }, data: { labels: ['DELETED'] } });
+    await ingestMailboxMessages(account, [await fetchMessageDetail(accessToken, result.id)], permissions);
+    await mailboxChanged(account.id);
+  } catch {
+    await prisma.emailAccount.updateMany({ where: { id: account.id }, data: { syncRequestedAt: new Date() } }).catch(() => undefined);
   }
-
-  const result = await response.json() as { id: string; threadId: string };
   return { messageId: result.id, threadId: result.threadId };
 }
-
-/**
- * Gets the connection status for a user's Gmail account.
- */
 export async function getConnectionStatus(
   tenantId: string,
   userId: string,
-): Promise<{ isConnected: boolean; email: string | null; connectedAt: string | null; lastSyncAt: string | null }> {
+): Promise<{ isConnected: boolean; email: string | null; connectedAt: string | null; lastSyncAt: string | null; syncError?: string | null; retryAt?: string | null }> {
   const account = await prisma.emailAccount.findUnique({
     where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
   });
@@ -299,6 +241,7 @@ export async function getConnectionStatus(
 
   return {
     isConnected: true,
+    syncError: account.syncError ?? null, retryAt: account.syncRetryAt?.toISOString() ?? null,
     email: account.email,
     connectedAt: account.connectedAt.toISOString(),
     lastSyncAt: account.lastSyncAt?.toISOString() ?? null,
@@ -315,130 +258,64 @@ export async function disconnectAccount(tenantId: string, userId: string): Promi
   });
 }
 
-/**
- * Creates or updates a draft in Gmail.
- */
-export async function saveDraft(
-  tenantId: string,
-  userId: string,
-  to: string,
-  subject: string,
-  body: string,
-  draftId?: string,
-): Promise<{ draftId: string; messageId: string }> {
-  const accessToken = await getValidAccessToken(tenantId, userId);
-  const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
-  const rawMessage = createRawMessage(to, subject, body, account.email);
-
-  const requestBody = { message: { raw: rawMessage } };
-
-  let response: Response;
-
+export async function saveDraft(tenantId: string, userId: string, to: string, subject: string, body: string, draftId?: string, options: { replyToMessageId?: string; messageId?: string } = {}): Promise<{ draftId: string; messageId: string }> {
+  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const recipients = to.split(',').map(value => mailboxAddress(value)).filter((value): value is string => !!value);
+  if (to.trim() && recipients.length !== to.split(',').length) throw new AppError('Enter valid recipient addresses.', 400);
+  if (options.replyToMessageId) await assertStoredMessages(account, scope, [options.replyToMessageId]);
+  let reply = options.replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: options.replyToMessageId } } }) : null;
   if (draftId) {
-    // Update existing draft
-    response = await fetch(
-      `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${draftId}`,
-      {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      },
-    );
-  } else {
-    // Create new draft
-    response = await fetch(
-      'https://gmail.googleapis.com/gmail/v1/users/me/drafts',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody),
-      },
-    );
+    await assertDraftAccess(tenantId, userId, draftId);
+    if (!reply) {
+      const draft = await prisma.mailboxMessage.findFirst({ where: { tenantId, accountId: account.id, draftId, labels: { has: 'DRAFT' } } });
+      if (draft) {
+        const previous = await prisma.mailboxMessage.findFirst({ where: { tenantId, accountId: account.id, threadId: draft.threadId, NOT: { labels: { hasSome: ['DRAFT', 'SPAM', 'TRASH', 'DELETED'] } } }, orderBy: { sentAt: 'desc' } });
+        if (previous) { await assertStoredMessages(account, scope, [previous.providerMessageId]); reply = previous; }
+      }
+    }
   }
-
-  if (!response.ok) {
-    throw new AppError(`Gmail could not save the draft (${response.status}).`, 502);
-  }
-
-  const result = await response.json() as { id: string; message: { id: string } };
+  if (recipients.length && !messageInScope({ from: account.email, to: recipients, threadId: reply?.threadId ?? '' }, account.email, scope)) throw new AppError('Choose a recipient in your assigned CRM mailbox scope.', 403);
+  const accessToken = await getValidAccessToken(tenantId, userId);
+  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, reply?.rfcMessageId ?? undefined, options.messageId);
+  const result = await writeGmailJson<{ id: string; message: { id: string; threadId: string } }>(accessToken, draftId ? 'drafts/' + encodeURIComponent(draftId) : 'drafts', draftId ? 'PUT' : 'POST', { message: { raw, ...(reply ? { threadId: reply.threadId } : {}) } });
+  if (draftId) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId, providerMessageId: { not: result.message.id } }, data: { labels: ['DELETED'] } });
+  const data = { threadId: result.message.threadId, from: account.email, fromAddress: mailboxAddress(account.email)!, recipients,
+    recipientAddresses: recipients, subject, body, snippet: body.replace(/<[^>]*>/g, '').slice(0, 200), labels: ['DRAFT'], direction: 'outbound',
+    sentAt: new Date(), draftId: result.id, crmDraft: true, rfcMessageId: options.messageId };
+  await prisma.mailboxMessage.upsert({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: result.message.id } },
+    create: { ...data, tenantId, accountId: account.id, providerMessageId: result.message.id }, update: data });
+  await mailboxChanged(account.id);
   return { draftId: result.id, messageId: result.message.id };
 }
-
-/**
- * Deletes a draft from Gmail.
- */
-export async function deleteDraft(
-  tenantId: string,
-  userId: string,
-  draftId: string,
-): Promise<void> {
-  const accessToken = await getValidAccessToken(tenantId, userId);
-
-  const response = await fetch(
-    `https://gmail.googleapis.com/gmail/v1/users/me/drafts/${draftId}`,
-    {
-      method: 'DELETE',
-      headers: { Authorization: `Bearer ${accessToken}` },
-    },
-  );
-  if (!response.ok) throw new AppError(`Gmail could not delete the draft (${response.status}).`, 502);
+async function assertDraftAccess(tenantId: string, userId: string, draftId: string) {
+  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const row = await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, tenantId, draftId, labels: { has: 'DRAFT' } } });
+  if (!row) throw new AppError('Draft is outside your assigned CRM mailbox scope.', 404);
+  await assertStoredMessages(account, scope, [row.providerMessageId]);
+  if (await prisma.scheduledMailboxEmail.findFirst({ where: { accountId: account.id, draftId, status: { in: ['pending', 'claimed', 'sending', 'uncertain', 'sent'] } } })) throw new AppError('This draft belongs to a scheduled email.', 409);
+  return account;
 }
-
-/**
- * Moves messages to trash (batch delete).
- */
-export async function trashEmails(
-  tenantId: string,
-  userId: string,
-  messageIds: string[],
-): Promise<{ success: boolean; count: number }> {
-  const accessToken = await getValidAccessToken(tenantId, userId);
-
-  const responses = await Promise.all(
-    messageIds.map((id) =>
-      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/trash`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${accessToken}` },
-      }),
-    ),
-  );
-  if (responses.some(response => !response.ok)) throw new AppError('Some messages could not be moved to trash. Refresh before retrying.', 502);
+export async function deleteDraft(tenantId: string, userId: string, draftId: string): Promise<void> {
+  const account = await assertDraftAccess(tenantId, userId, draftId);
+  await writeGmailJson(await getValidAccessToken(tenantId, userId), 'drafts/' + encodeURIComponent(draftId), 'DELETE');
+  await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId }, data: { labels: ['DELETED'] } });
+  await mailboxChanged(account.id);
+}
+async function modifyEmails(tenantId: string, userId: string, messageIds: string[], trash: boolean) {
+  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  await assertStoredMessages(account, scope, messageIds);
+  const token = await getValidAccessToken(tenantId, userId);
+  for (const id of messageIds) {
+    await writeGmailJson(token, 'messages/' + encodeURIComponent(id) + (trash ? '/trash' : '/modify'), 'POST', trash ? undefined : { removeLabelIds: ['INBOX'] });
+    const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: id } } });
+    await prisma.mailboxMessage.update({ where: { id: row.id }, data: { labels: trash ? [...new Set([...row.labels, 'TRASH'])] : row.labels.filter(label => label !== 'INBOX') } });
+  }
+  await mailboxChanged(account.id);
   return { success: true, count: messageIds.length };
 }
+export const trashEmails = (tenantId: string, userId: string, ids: string[]) => modifyEmails(tenantId, userId, ids, true);
+export const archiveEmails = (tenantId: string, userId: string, ids: string[]) => modifyEmails(tenantId, userId, ids, false);
 
-/**
- * Archives messages (removes INBOX label).
- */
-export async function archiveEmails(
-  tenantId: string,
-  userId: string,
-  messageIds: string[],
-): Promise<{ success: boolean; count: number }> {
-  const accessToken = await getValidAccessToken(tenantId, userId);
-
-  const responses = await Promise.all(
-    messageIds.map((id) =>
-      fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ removeLabelIds: ['INBOX'] }),
-      }),
-    ),
-  );
-  if (responses.some(response => !response.ok)) throw new AppError('Some messages could not be archived. Refresh before retrying.', 502);
-  return { success: true, count: messageIds.length };
-}
-
-// ─── Internal Helpers ───────────────────────────────────
 
 interface GmailPart { mimeType?: string; body?: { data?: string }; parts?: GmailPart[] }
 export interface GmailApiMessage {
@@ -472,7 +349,7 @@ function parseAddressList(value: string): string[] {
 }
 
 export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
-  const headers = data.payload.headers;
+  const headers = data.payload?.headers ?? [];
   const getHeader = (name: string): string =>
     headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
 
@@ -499,7 +376,7 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     subject,
     snippet: data.snippet,
     body,
-    date: new Date(Number(data.internalDate)).toISOString(),
+    date: new Date(Number(data.internalDate) || 0).toISOString(),
     isRead,
     labels: data.labelIds ?? [],
     cc: parseAddressList(getHeader('Cc')),
@@ -509,22 +386,19 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
   };
 }
 
-function createRawMessage(to: string, subject: string, body: string, from?: string, inReplyTo?: string): string {
-  // Gmail API requires a valid RFC 2822 From header — without it the API
-  // returns 400 and the message is never delivered.
-  // Fall back to the system sender Gmail address if no explicit from is provided.
-  const fromAddress = from
-    ?? process.env.SMTP_FROM
-    ?? (process.env.GMAIL_SYSTEM_SENDER_GMAIL_EMAIL
-        ? `LeadCRM <${process.env.GMAIL_SYSTEM_SENDER_GMAIL_EMAIL}>`
-        : 'LeadCRM <noreply@leadcrm.io>');
-  if ([to, subject, fromAddress, inReplyTo ?? ''].some(value => /[\r\n]/.test(value))) throw new AppError('Invalid email header.', 400);
+function createRawMessage(to: string, subject: string, body: string, from: string, inReplyTo?: string, messageId?: string): string {
+  // Inbox sends and drafts pass their connected mailbox explicitly.
+  const fromAddress = from.trim();
+  if (!fromAddress) throw new AppError('Gmail sender is not configured.', 503);
+  if ([to, subject, fromAddress, inReplyTo ?? '', messageId ?? ''].some(value => /[\r\n]/.test(value))) throw new AppError('Invalid email header.', 400);
+  if (!mailboxAddress(fromAddress)) throw new AppError('Invalid Gmail sender address.', 400);
 
   const message = [
     `From: ${fromAddress}`,
     `To: ${to}`,
     `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
     ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+    ...(messageId ? ['Message-ID: ' + messageId] : []),
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',
     '',

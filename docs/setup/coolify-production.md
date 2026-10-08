@@ -62,10 +62,11 @@ and do not prevent the rest of the CRM from starting.
 | GMAIL_CLIENT_ID | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | OAuth client identity, Gmail required | Development client or approved shared client | Preserve Render client |
 | GMAIL_CLIENT_SECRET | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | Secret, Gmail required | Development credentials | Preserve Render credential |
 | GMAIL_REDIRECT_URI | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | Public URL, Gmail required | Local backend callback registered in Google | Verified API `/api/v1/integrations/gmail/callback`; register exact URI in Google |
+| GMAIL_SYNC_INTERVAL_SECONDS | backend/src/integrations/gmail/mailbox-sync.service.ts; config/validate-env.ts | Number, optional; integer 60–3600 | Default 60 | Default 60; one leased incremental sync per mailbox, independent of browser tabs |
 | GMAIL_TEST_MAILBOX_OVERRIDE | backend/src/config/mail.config.ts; integrations/gmail/mailbox-ownership.ts | Private JSON, optional | Exact temporary mailbox exception only | Preserve a deliberate existing exception; expired/invalid JSON grants no access |
 | GMAIL_SYSTEM_SENDER_USER_ID | backend/src/integrations/gmail/gmail.service.ts | Private account identifier, feature required for system sender | Existing connected account if used | Same stored production account |
-| GMAIL_SYSTEM_SENDER_GMAIL_EMAIL | backend/src/integrations/gmail/gmail.service.ts | Sender identity, optional fallback | Connected sender when used | Preserve Render sender |
-| SMTP_FROM | backend/src/integrations/gmail/gmail.service.ts | Sender display fallback, optional | Optional Gmail From fallback | Preserve if configured; does not enable SMTP transport |
+| GMAIL_SYSTEM_SENDER_GMAIL_EMAIL | backend/src/integrations/gmail/gmail.service.ts | Legacy system sender identity, optional | Actual connected sender when used; display name Camxian Technologies | Preserve the authorized mailbox identity; no invented default |
+| SMTP_FROM | backend/src/integrations/gmail/gmail.service.ts | Explicit legacy system sender header, optional | Must belong to the connected system mailbox | Preserve if configured; does not enable SMTP transport. Staff Inbox sends always use their own connected mailbox |
 | TEXTBEE_API_KEY | backend/src/shared/services/sms.service.ts | Secret, SMS feature required | Test sending only when authorized | Exact existing Render key |
 | TEXTBEE_DEVICE_ID | backend/src/shared/services/sms.service.ts; modules/marketing/campaigns/textbee-webhook.ts | Device identifier, optional | Empty uses provider default | Preserve selected production device |
 | TEXTBEE_WEBHOOK_SECRET | backend/src/modules/marketing/campaigns/textbee-webhook.ts | Secret, delivery webhook required | Signed delivery events only | Preserve signature secret; update provider URL; inbound SMS remains disabled |
@@ -94,6 +95,40 @@ or repurposed. Gmail setup-script access/refresh tokens and expiry are not runti
 requirements; connected credentials live encrypted in the database. CRM_*_VERIFY_*
 values belong only to separately invoked migration verification/retirement commands,
 not normal production startup. Test fixtures and disposable scripts are excluded.
+
+The examples retain clearly marked legacy local keys with empty placeholders so
+local environment files can share the same key inventory without discarding old
+credentials. They are not additional hosting requirements. Preserve secret values
+and environment-specific URLs; matching templates does not mean copying secrets
+into examples or copying production resources into development.
+
+## Inbox synchronization without Pub/Sub
+
+The Inbox uses server-owned Gmail History checks. No Google Cloud Pub/Sub topic,
+subscription, service account, IAM grant, push endpoint, or `users.watch` is needed.
+Do not configure `GMAIL_PUBSUB_*` variables. See the
+[Inbox implementation and acceptance report](../inbox-redesign-report.md).
+
+Set `GMAIL_SYNC_INTERVAL_SECONDS=60` in backend runtime configuration. Every ten
+seconds the persistent backend worker discovers due work; an individual mailbox
+with completed history waits at least the configured interval. Continuation pages,
+new connections, assignment changes and explicit Sync now requests can run sooner.
+Database leases prevent replicas from synchronizing the same mailbox concurrently;
+provider cooldowns and persisted retry deadlines take precedence. At normal load,
+new mail appears after the next check plus processing and SSE delivery time. This
+is periodic synchronization, not instantaneous provider push.
+
+The same backend process checks persisted scheduled sends every ten seconds.
+Keep the existing migration-before-start command above. There is no extra cron
+service or separate queue subscription. Startup logs include `[mailbox-worker]`
+with the interval, and each bounded sync reports counts and duration without email
+content. Saved configuration only takes effect after the reviewed code is deployed
+and the service starts with the forward migration applied.
+
+List/search/thread/count endpoints read scoped database rows. The authenticated
+same-origin SSE endpoint observes database revisions; it never requests Gmail.
+Keep response streaming enabled through the proxy. The stream reauthenticates on
+reconnect, and the list stays visible while background updates arrive.
 
 NIXPACKS_NODE_VERSION and RAILPACK_NODE_VERSION are hosting build controls,
 not application runtime configuration. Keep the configured Node version compatible

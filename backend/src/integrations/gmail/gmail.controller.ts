@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { SendMailboxEmailSchema } from '@leadcrm/shared';
+import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema } from '@leadcrm/shared';
+import { scheduleMailboxEmail } from './scheduled-mailbox.service';
 import { fetchEmails, fetchUnreadCount, sendEmail, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
 import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.service';
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
@@ -9,7 +10,6 @@ import { writeAuditLog } from '../../core/audit/audit.service';
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 const messageIdsSchema = z.object({ messageIds: z.array(providerId).min(1).max(100) });
-const listSchema = z.object({ maxResults: z.coerce.number().int().min(1).max(50).optional(), query: z.string().max(1000).optional(), pageToken: z.string().max(2000).optional() });
 
 export async function authorize(req: Request, res: Response, next: NextFunction) {
   try {
@@ -37,7 +37,7 @@ export async function status(req: Request, res: Response, next: NextFunction) {
 export async function listEmails(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, tenantId } = req.user!;
-    const result = await fetchEmails(tenantId, userId, listSchema.parse(req.query));
+    const result = await fetchEmails(tenantId, userId, MailboxListSchema.parse(req.query));
     res.json({ ...result, emails: await decorateEmails(tenantId, userId, result.emails, await mailboxPermissions(tenantId, userId)) });
   } catch (error) { next(error); }
 }
@@ -46,6 +46,9 @@ export async function unreadCount(req: Request, res: Response, next: NextFunctio
 }
 export async function sync(req: Request, res: Response, next: NextFunction) {
   try { res.json(await syncMailbox(req.user!.tenantId, req.user!.userId)); } catch (error) { next(error); }
+}
+export async function schedule(req: Request, res: Response, next: NextFunction) {
+  try { res.status(201).json(await scheduleMailboxEmail(req.user!.tenantId, req.user!.userId, ScheduleMailboxEmailSchema.parse(req.body))); } catch (error) { next(error); }
 }
 export async function thread(req: Request, res: Response, next: NextFunction) {
   try { res.json(await readMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId))); } catch (error) { next(error); }
@@ -57,7 +60,7 @@ export async function send(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, tenantId } = req.user!;
     const data = SendMailboxEmailSchema.parse(req.body);
-    const result = await sendEmail(tenantId, userId, data.to, data.subject, data.body, data.replyToMessageId);
+    const result = await sendEmail(tenantId, userId, data.to, data.subject, data.body, data.replyToMessageId, data.draftId);
     // A sync failure after Gmail accepted the send must not invite a duplicate send.
     let syncPending = false;
     try { await readMailboxThread(tenantId, userId, result.threadId); } catch { syncPending = true; }
@@ -80,8 +83,8 @@ export async function archive(req: Request, res: Response, next: NextFunction) {
 }
 export async function saveDraftHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const data = z.object({ to: z.string().max(998).refine(value => !/[\r\n]/.test(value)), subject: z.string().max(998).refine(value => !/[\r\n]/.test(value)), body: z.string().max(200000), draftId: providerId.optional() }).parse(req.body);
-    res.json({ success: true, ...await saveDraft(req.user!.tenantId, req.user!.userId, data.to, data.subject, data.body, data.draftId) });
+    const data = SaveMailboxDraftSchema.parse(req.body);
+    res.json({ success: true, ...await saveDraft(req.user!.tenantId, req.user!.userId, data.to, data.subject, data.body, data.draftId, { replyToMessageId: data.replyToMessageId }) });
   } catch (error) { next(error); }
 }
 export async function deleteDraftHandler(req: Request, res: Response, next: NextFunction) {

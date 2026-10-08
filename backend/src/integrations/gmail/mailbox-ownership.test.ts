@@ -84,7 +84,7 @@ describe('temporary mailbox ownership exception', () => {
   });
   it('allows active test access and returns only safe status fields', async () => {
     expect(await getValidAccessToken(user.tenantId, user.userId)).toBe('test-token');
-    expect(await getConnectionStatus(user.tenantId, user.userId)).toEqual({ isConnected: true, email: entry.mailboxEmail, connectedAt: account.connectedAt.toISOString(), lastSyncAt: null });
+    expect(await getConnectionStatus(user.tenantId, user.userId)).toEqual({ isConnected: true, email: entry.mailboxEmail, connectedAt: account.connectedAt.toISOString(), lastSyncAt: null, syncError: null, retryAt: null });
   });
   it('blocks expired access before decrypting or refreshing any provider token', async () => {
     vi.setSystemTime(new Date(entry.expiresAt));

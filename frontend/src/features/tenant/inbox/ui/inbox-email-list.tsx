@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Trash2, Archive, Loader2, RefreshCw, MailOpen, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { trashGmailEmails, archiveGmailEmails, GmailEmail } from '../services/gmail.service';
@@ -47,6 +47,8 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
 
+  useEffect(() => { setSelectedIds(previous => new Set([...previous].filter(id => emails.some(email => email.id === id && !email.scheduledStatus)))); }, [emails]);
+  const scheduled = emails.some(email => !!email.scheduledStatus);
   const allSelected = emails.length > 0 && selectedIds.size === emails.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < emails.length;
   const hasSelection = selectedIds.size > 0;
@@ -108,20 +110,8 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
     }
   };
 
-  if (emails.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full px-6 py-16">
-        <div className="flex items-center justify-center w-12 h-12 rounded-xl bg-slate-500/10 border border-slate-500/20 mb-4">
-          <Mail className="w-6 h-6 text-slate-400 dark:text-slate-500" />
-        </div>
-        <p className="text-sm font-medium text-slate-900 dark:text-white mb-1">No emails found</p>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Your inbox is empty</p>
-      </div>
-    );
-  }
-
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {error && <p role="alert" className="p-3 text-sm text-red-600">{error}</p>}
       {/* Toolbar */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-white/[0.05] bg-white dark:bg-transparent shrink-0">
@@ -131,17 +121,13 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
             <input
               type="checkbox"
               checked={allSelected}
+              disabled={scheduled || emails.length === 0}
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleSelectAll}
               className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
               aria-label="Select all emails"
             />
-            <button
-              className="p-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 cursor-pointer"
-              aria-label="Select options"
-            >
-              <ChevronDown className="w-3.5 h-3.5" />
-            </button>
+
           </div>
 
           {/* Refresh — always visible */}
@@ -176,13 +162,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
               >
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               </button>
-              <button
-                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                aria-label="Mark as read"
-                title="Mark as read"
-              >
-                <MailOpen className="w-4 h-4" />
-              </button>
+
             </>
           )}
         </div>
@@ -190,7 +170,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
         {/* Pagination */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500 dark:text-slate-400">
-            {((currentPage - 1) * 30) + 1}–{((currentPage - 1) * 30) + emails.length} of {totalCount}+
+            {emails.length ? `${((currentPage - 1) * 30) + 1}–${((currentPage - 1) * 30) + emails.length}` : '0'}{hasNextPage ? ' +' : ''}
           </span>
           <button
             onClick={onPrevPage}
@@ -215,21 +195,26 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
       {allSelected && (
         <div className="px-4 py-2 text-center text-xs text-slate-600 dark:text-slate-400 bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-white/[0.05] shrink-0">
           All <strong>{emails.length}</strong> conversations on this page are selected.{' '}
-          <button className="text-blue-600 dark:text-blue-400 hover:underline cursor-pointer font-medium">
-            Select all {totalCount} conversations in Primary
-          </button>
+
         </div>
       )}
 
       {/* Email list */}
       <div className="flex-1 overflow-y-auto">
+        {emails.length === 0 && (
+          <div className="flex flex-col items-center justify-center px-6 py-16">
+            <Mail className="mb-4 h-6 w-6 text-slate-400" />
+            <p className="text-sm font-medium text-slate-900 dark:text-white">No emails found</p>
+            <p className="mt-1 text-xs text-slate-500">No messages match this view.</p>
+          </div>
+        )}
         {emails.map((email) => {
           const isSelected = selectedIds.has(email.id);
           return (
             <div
               key={email.id}
               className={cn(
-                'flex items-center gap-0 px-4 py-2 border-b border-gray-50 dark:border-white/[0.03] hover:shadow-sm transition-all',
+                'flex items-center gap-0 px-3 sm:px-5 py-3 border-b border-gray-100 dark:border-white/[0.03] hover:shadow-sm transition-all',
                 !email.isRead && 'bg-white dark:bg-white/[0.03]',
                 email.isRead && 'bg-slate-50/50 dark:bg-transparent',
                 isSelected && 'bg-blue-50 dark:bg-blue-950/30',
@@ -241,6 +226,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                 <input
                   type="checkbox"
                   checked={isSelected}
+                  disabled={!!email.scheduledStatus}
                   onChange={() => toggleSelect(email.id)}
                   className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
                   aria-label={`Select email from ${extractName(email.from)}`}
@@ -250,6 +236,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
               {/* Email content — clickable row */}
               <button
                 onClick={() => onEmailClick(email)}
+                disabled={!!email.scheduledStatus}
                 className="flex-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-y-1 min-w-0 text-left cursor-pointer py-0.5 md:flex"
                 aria-label={`Open email from ${extractName(email.from)}: ${email.subject}`}
               >
@@ -266,10 +253,10 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                 </span>
 
                 {/* Subject + Snippet */}
-                <div className="col-span-2 row-start-2 flex-1 flex items-center gap-1 min-w-0 truncate">
+                <div className="col-span-2 row-start-2 flex-1 flex flex-col items-start gap-0.5 min-w-0 overflow-hidden md:flex-row md:items-center">
                   <span
                     className={cn(
-                      'truncate text-[13px]',
+                      'max-w-full md:max-w-[55%] shrink-0 truncate text-[13px]',
                       !email.isRead
                         ? 'font-bold text-slate-900 dark:text-white'
                         : 'font-normal text-slate-600 dark:text-slate-400',
@@ -277,8 +264,8 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                   >
                     {email.subject || '(no subject)'}
                   </span>
-                  <span className="text-[13px] text-slate-400 dark:text-slate-500 truncate">
-                    — {email.snippet}
+                  <span className="max-w-full text-xs md:text-[13px] text-muted-foreground truncate">
+                    {email.scheduledStatus ? email.scheduledStatus + ' · ' : '— '}{email.snippet}
                   </span>
                 </div>
 
@@ -291,7 +278,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                       : 'text-slate-500 dark:text-slate-500',
                   )}
                 >
-                  {formatDate(email.date)}
+                  {email.scheduledStatus ? new Date(email.date).toLocaleString('en-PH', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) : formatDate(email.date)}
                 </span>
               </button>
             </div>

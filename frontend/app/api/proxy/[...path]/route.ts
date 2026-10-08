@@ -45,6 +45,8 @@ async function proxyRequest(
     'Content-Type': req.headers.get('content-type') ?? 'application/json',
     'Accept': 'application/json',
   };
+  const mailboxStream = req.method === 'GET' && path === '/integrations/gmail/events';
+  if (mailboxStream) headers.Accept = 'text/event-stream';
 
   // Forward the HttpOnly cookie server-side — this is the whole reason the
   // proxy exists. Browsers block third-party cookies on cross-origin fetches,
@@ -78,11 +80,18 @@ async function proxyRequest(
   // Longer cold starts return an explicit retryable error.
   // When the signal fires, fetch throws AbortError, caught below and returned as 503.
   const controller = new AbortController();
+  const abortStream = () => controller.abort();
+  if (mailboxStream) req.signal.addEventListener('abort', abortStream, { once: true });
   const timeoutId = setTimeout(() => controller.abort(), 25000);
 
   try {
     const backendRes = await fetch(url, { method: req.method, headers, body, signal: controller.signal, cache: 'no-store', redirect: 'manual' });
     clearTimeout(timeoutId);
+    if (mailboxStream && backendRes.ok && backendRes.body) {
+      return new NextResponse(backendRes.body, { status: 200, headers: {
+        'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store, no-transform', 'X-Accel-Buffering': 'no',
+      } });
+    }
     const data = await backendRes.arrayBuffer();
 
     const response = new NextResponse(data, {

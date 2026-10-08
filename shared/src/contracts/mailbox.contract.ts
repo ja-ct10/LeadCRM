@@ -18,6 +18,29 @@ export const SendMailboxEmailSchema = z.object({
   subject: header,
   body: z.string().trim().min(1).max(200000),
   replyToMessageId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
+  draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
+}).strict();
+
+export const MAILBOX_FILTERS = ['all', 'unread', 'sent', 'scheduled', 'drafts'] as const;
+export const SaveMailboxDraftSchema = z.object({
+  to: z.string().max(998).refine(value => !/[\r\n]/.test(value)),
+  subject: z.string().max(998).refine(value => !/[\r\n]/.test(value)),
+  body: z.string().max(200000),
+  draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
+  replyToMessageId: SendMailboxEmailSchema.shape.replyToMessageId,
+}).strict();
+export const MailboxListSchema = z.object({
+  filter: z.enum(MAILBOX_FILTERS).default('all'),
+  sort: z.enum(['newest', 'oldest', 'unread']).default('newest'),
+  query: z.string().trim().max(1000).optional(),
+  maxResults: z.coerce.number().int().min(1).max(50).default(30),
+  pageToken: z.string().max(2000).optional(),
+});
+export type MailboxListOptions = z.input<typeof MailboxListSchema>;
+export const ScheduleMailboxEmailSchema = SendMailboxEmailSchema.extend({
+  scheduledAt: z.string().datetime().refine(value => Date.parse(value) > Date.now(), 'Choose a future date and time'),
+  requestId: z.string().uuid(),
+  draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
 }).strict();
 
 export interface MailboxEmail {
@@ -37,6 +60,8 @@ export interface MailboxEmail {
   contactId?: string | null;
   dealId?: string | null;
   needsDealAssociation?: boolean;
+  scheduledStatus?: string;
+  scheduleError?: string | null;
 }
 
 export interface MailboxUnreadCount { unreadCount: number }

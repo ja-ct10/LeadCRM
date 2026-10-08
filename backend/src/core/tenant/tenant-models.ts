@@ -6,6 +6,7 @@ export const tenantChildren: Record<string, { relation: string; model: string }>
  TargetAudienceCondition: { relation: "targetAudience", model: "TargetAudience" },
 };
 tenantModels.add('MailboxMessage');
+tenantModels.add('ScheduledMailboxEmail');
 tenantModels.add('MailboxThreadAssociation');
 tenantModels.add('ClosingFieldDefinition');
 tenantModels.add('CustomFieldValue');

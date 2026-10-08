@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 export type { MailboxEmail as GmailEmail } from '@leadcrm/shared';
-import type { MailboxEmail as GmailEmail, MailboxUnreadCount } from '@leadcrm/shared';
+import type { MailboxEmail as GmailEmail, MailboxUnreadCount, MailboxListOptions } from '@leadcrm/shared';
 
 export const fetchGmailUnreadCount = () => apiClient.get<MailboxUnreadCount>('/integrations/gmail/unread-count');
 
@@ -9,6 +9,8 @@ export interface GmailConnectionStatus {
   email: string | null;
   connectedAt: string | null;
   lastSyncAt: string | null;
+  syncError?: string | null;
+  retryAt?: string | null;
 }
 
 export const syncGmail = () => apiClient.post<{ hasMore: boolean; processed?: number }>('/integrations/gmail/sync', {});
@@ -18,6 +20,7 @@ export const associateThreadDeal = (threadId: string, dealId: string) => apiClie
 interface EmailListResponse {
   emails: GmailEmail[];
   nextPageToken?: string;
+  unreadCount?: number;
 }
 
 interface AuthorizeResponse {
@@ -48,15 +51,16 @@ export async function getGmailStatus(): Promise<GmailConnectionStatus> {
 /**
  * Fetches emails from the connected Gmail inbox.
  */
-export async function fetchGmailEmails(options?: {
-  maxResults?: number;
-  query?: string;
-  pageToken?: string;
-}): Promise<EmailListResponse> {
+export async function fetchGmailEmails(options?: MailboxListOptions, signal?: AbortSignal): Promise<EmailListResponse> {
   return apiClient.get<EmailListResponse>('/integrations/gmail/emails', {
     params: options as Record<string, unknown>,
+    signal,
   });
 }
+
+export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string }) =>
+  apiClient.post<{ id: string; status: string }>('/integrations/gmail/scheduled', data);
+export const deleteGmailDraft = (draftId: string) => apiClient.delete(`/integrations/gmail/drafts/${encodeURIComponent(draftId)}`);
 
 /**
  * Sends an email through the connected Gmail account.
@@ -66,8 +70,9 @@ export async function sendGmailEmail(
   subject: string,
   body: string,
   replyToMessageId?: string,
+  draftId?: string,
 ): Promise<SendEmailResponse> {
-  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId });
+  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId });
 }
 
 /**
@@ -99,6 +104,7 @@ export async function saveGmailDraft(
   subject: string,
   body: string,
   draftId?: string,
+  replyToMessageId?: string,
 ): Promise<{ success: boolean; draftId: string; messageId: string }> {
-  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId });
+  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId });
 }

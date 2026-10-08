@@ -15,6 +15,34 @@ function retryDelay(value: string | null): number {
   return Number.isFinite(seconds) ? Math.max(0, seconds * 1000) : Math.max(0, Date.parse(value) - Date.now()) || 0;
 }
 
+/** Mutations are never automatically replayed: a timeout can follow provider acceptance. */
+export async function writeGmailJson<T>(accessToken: string, path: string, method: 'POST' | 'PUT' | 'DELETE', body?: unknown): Promise<T> {
+  const key = createHash('sha256').update(accessToken).digest('hex');
+  let state = mailboxes.get(key);
+  if (!state) { state = { active: 0, waiting: [], pending: new Map(), retryUntil: 0, throttles: 0, touchedAt: Date.now() }; mailboxes.set(key, state); }
+  if (state && state.retryUntil > Date.now()) throw rateLimitError(state);
+  let response: Response;
+  try {
+    response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/${path}`, {
+      method, headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000),
+    });
+  } catch { throw new AppError('Gmail delivery outcome needs verification before retrying.', 503, 'GMAIL_OUTCOME_UNKNOWN'); }
+  if (response.ok) {
+    if (response.status === 204) return undefined as T;
+    try { return await response.json() as T; } catch { throw new AppError('Gmail delivery outcome needs verification before retrying.', 503, 'GMAIL_OUTCOME_UNKNOWN'); }
+  }
+  const payload = await response.json().catch(() => ({})) as { error?: { errors?: { reason?: string }[] } };
+  const throttled = response.status === 429 || response.status === 403 && payload.error?.errors?.some(error => ['rateLimitExceeded', 'userRateLimitExceeded'].includes(error.reason ?? ''));
+  if (throttled) {
+    const until = Date.now() + Math.max(retryDelay(response.headers.get('retry-after')), 60000) + Math.random() * 1000;
+    if (state) state.retryUntil = Math.max(state.retryUntil, until);
+    throw new AppError('Gmail updates are temporarily paused.', 429, 'GMAIL_RATE_LIMITED', new Date(until).toISOString());
+  }
+  if (response.status >= 500) throw new AppError('Gmail delivery outcome needs verification before retrying.', 503, 'GMAIL_OUTCOME_UNKNOWN');
+  throw new AppError('Gmail could not complete this action. Reconnect if access was revoked.', response.status, 'GMAIL_WRITE_REJECTED');
+}
+
 /** Share the read budget across the inbox, badge, threads and background sync.
  * Store token hashes only. Coalesce concurrent reads; never cache authorization or retry sends.
  */

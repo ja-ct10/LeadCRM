@@ -4,19 +4,20 @@ import Link from 'next/link';
 import { fetchGmailThread, associateThreadDeal, type GmailEmail } from '../services/gmail.service';
 import EmailDetailView from './email-detail-view';
 
-export default function EmailConversationView({ email, onBack, onEmailsChanged }: { email: GmailEmail; onBack: () => void; onEmailsChanged: () => void }) {
+export default function EmailConversationView({ email, revision = 0, onBack, onEmailsChanged }: { email: GmailEmail; revision?: number; onBack: () => void; onEmailsChanged: () => void }) {
   const [messages, setMessages] = useState<GmailEmail[]>([email]), [selected, setSelected] = useState(email.id), [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState<{ id: string; title: string; stage: string }[]>([]), [canAssociate, setCanAssociate] = useState(false), [dealId, setDealId] = useState(''), [associationSaved, setAssociationSaved] = useState(false);
   useEffect(() => {
     let active = true;
-    fetchGmailThread(email.threadId).then(result => { if (active) { setMessages(result.emails); setDeals(result.dealOptions); setCanAssociate(result.canAssociateDeal); } }).catch(error => { if (active) setError(error.message); }).finally(() => { if (active) setLoading(false); });
+    fetchGmailThread(email.threadId).then(result => { if (active) { setMessages(result.emails); setDeals(result.dealOptions); setCanAssociate(result.canAssociateDeal); } }).catch(error => { if (active) { setError(error.message); if ([401, 403, 404, 409].includes(error.status)) onBack(); } }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; };
-  }, [email.threadId]);
-  const current = messages.find(message => message.id === selected) ?? email;
-  return <div className="flex h-full min-w-0 flex-col">
-    <div className="max-h-48 shrink-0 space-y-2 overflow-y-auto border-b p-3 text-xs">
+  }, [email.threadId, revision]);
+  const current = messages.find(message => message.id === selected) ?? messages[0];
+  if (!current) return <button onClick={onBack}>Back to Inbox</button>;
+  return <div className="flex h-full min-h-0 min-w-0 flex-col overflow-y-auto">
+    <div className="max-h-36 sm:max-h-48 shrink-0 space-y-2 overflow-y-auto border-b p-3 text-xs">
       {loading && <p role="status">Loading conversation…</p>}{error && <p role="alert" className="text-red-600">{error}</p>}
-      {messages.length > 1 && <div className="flex flex-wrap gap-2">{messages.map(message => <button key={message.id} onClick={() => setSelected(message.id)} className={`min-h-9 max-w-full truncate rounded border px-2 ${selected === message.id ? 'bg-blue-50 text-blue-700' : ''}`}>{message.direction === 'outbound' ? 'You → customer' : message.from} · {new Date(message.date).toLocaleDateString()}</button>)}</div>}
+      {messages.length > 1 && <div className="flex flex-nowrap gap-2 overflow-x-auto">{messages.map(message => <button key={message.id} onClick={() => setSelected(message.id)} className={`min-h-9 max-w-[240px] shrink-0 truncate rounded border px-2 ${selected === message.id ? 'bg-blue-50 text-blue-700' : ''}`}>{message.direction === 'outbound' ? 'You → customer' : message.from} · {new Date(message.date).toLocaleDateString()}</button>)}</div>}
       <div className="flex flex-wrap gap-3">
         {current.leadId && <Link className="text-blue-600 underline" href={`/crm/leads/${current.leadId}`}>View linked Lead</Link>}
         {current.contactId && <Link className="text-blue-600 underline" href={`/crm/contacts/${current.contactId}`}>View linked Contact</Link>}
@@ -30,6 +31,6 @@ export default function EmailConversationView({ email, onBack, onEmailsChanged }
         {associationSaved && <p className="w-full text-muted-foreground">Association saved for future messages. Earlier status and stage decisions are preserved.</p>}
       </form>}
     </div>
-    <div className="min-h-0 min-w-0 flex-1"><EmailDetailView key={current.id} email={current} onBack={onBack} onEmailsChanged={onEmailsChanged} /></div>
+    <div className="min-h-64 min-w-0 flex-1"><EmailDetailView key={current.id} email={current} onBack={onBack} onEmailsChanged={onEmailsChanged} /></div>
   </div>;
 }

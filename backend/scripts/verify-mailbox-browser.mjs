@@ -1,0 +1,135 @@
+// Local acceptance: real API/database/proxy/SSE, simulated Google provider only.
+// Requires backend build and PLAYWRIGHT_MODULE pointing to installed Playwright.
+import { PGlite } from '@electric-sql/pglite';
+import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
+import { spawn } from 'node:child_process';
+import { createRequire } from 'node:module';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
+import { resolve } from 'node:path';
+import assert from 'node:assert/strict';
+import { replayCrmMigrations } from './replay-crm-migrations.mjs';
+const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/mailbox-browser');
+mkdirSync(output, { recursive: true });
+const db = await PGlite.create(); await replayCrmMigrations(db);
+const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
+const base = 'http://localhost:3018';
+Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, GMAIL_SYNC_INTERVAL_SECONDS: '60' });
+process.env.DIRECT_URL = process.env.DATABASE_URL;
+const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
+Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const prisma = require('../dist/backend/src/config/database.config.js').default;
+const app = require('../dist/backend/src/app.js').default;
+const { tenantContext } = require('../dist/backend/src/core/tenant/tenant-context.js');
+const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
+const { encryptToken } = require('../dist/backend/src/core/encryption/crypto.service.js');
+const { ingestMailboxMessages } = require('../dist/backend/src/integrations/gmail/mailbox-ingestion.service.js');
+const { resolveMailboxScope } = require('../dist/backend/src/integrations/gmail/mailbox-scope.js');
+const { startMailboxScheduler } = require('../dist/backend/src/integrations/gmail/mailbox-sync.service.js');
+const { runScheduledMailboxEmails } = require('../dist/backend/src/integrations/gmail/scheduled-mailbox.service.js');
+const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
+const realFetch = globalThis.fetch, calls = [], messages = new Map(), drafts = new Map();
+let api, frontend, browser, stopWorker, account, history = [], sends = 0;
+const checks = [], pageErrors = [];
+const apiMessage = email => ({ id: email.id, threadId: email.threadId, labelIds: email.labels, snippet: email.snippet, internalDate: String(Date.parse(email.date)), payload: { headers: [{ name: 'From', value: email.from }, { name: 'To', value: email.to.join(', ') }, { name: 'Subject', value: email.subject }, ...(email.rfcMessageId ? [{ name: 'Message-ID', value: email.rfcMessageId }] : [])], mimeType: 'text/html', body: { data: Buffer.from(email.body).toString('base64url') } } });
+globalThis.fetch = async (input, init) => {
+  const url = String(input);
+  if (!url.startsWith('https://gmail.googleapis.com/')) return realFetch(input, init);
+  const path = new URL(url).pathname.split('/me/')[1]; calls.push({ path, method: init?.method ?? 'GET' });
+  if (path === 'history') { const ids = history; history = []; return Response.json({ historyId: '120', history: [{ messagesAdded: ids.map(id => ({ message: { id } })) }] }); }
+  if (path === 'drafts' && init?.method === 'POST' || path.startsWith('drafts/') && init?.method === 'PUT') {
+    const raw = Buffer.from(JSON.parse(init.body).message.raw, 'base64url').toString();
+    const header = name => raw.match(new RegExp('^' + name + ': (.*)$', 'im'))?.[1].trim() ?? '';
+    const id = path === 'drafts' ? 'draft-' + randomUUID() : path.slice(7);
+    const body = raw.split('\r\n\r\n').slice(1).join('\r\n\r\n');
+    const subject = header('Subject').replace(/=\?UTF-8\?B\?(.+)\?=/i, (_, encoded) => Buffer.from(encoded, 'base64').toString());
+    const email = { id: id + '-message', threadId: id, from: account.email, to: header('To').split(',').map(value => value.trim()), subject, body, snippet: 'Scheduled details', date: new Date().toISOString(), labels: ['DRAFT'], rfcMessageId: header('Message-ID') };
+    drafts.set(id, email); messages.set(email.id, email); return Response.json({ id, message: { id: email.id, threadId: email.threadId } });
+  }
+  if (path === 'drafts/send') {
+    const id = JSON.parse(init.body).id, draft = drafts.get(id); assert.ok(draft); sends++;
+    const email = { ...draft, id: 'sent-' + randomUUID(), labels: ['SENT'], date: new Date(Date.now() - 50).toISOString() };
+    messages.set(email.id, email); return Response.json({ id: email.id, threadId: email.threadId });
+  }
+  if (path.startsWith('drafts/') && init?.method !== 'DELETE') return Response.json({ message: apiMessage(drafts.get(path.slice(7))) });
+  if (path.startsWith('messages/') && init?.method === undefined) return Response.json(apiMessage(messages.get(path.slice(9))));
+  if (init?.method === 'DELETE') return new Response(null, { status: 204 });
+  if (path.endsWith('/modify') || path.endsWith('/trash')) return Response.json({});
+  throw new Error('Unexpected provider request: ' + path);
+};
+try {
+  const tenant = await prisma.tenant.create({ data: { name: 'Mailbox Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
+  const user = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Inbox', lastName: 'Tester', email: 'inbox-preview@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+  const { token } = await issueAuthSession(user), scope = fn => tenantContext.run({ tenantId: tenant.id }, fn);
+  account = await prisma.emailAccount.create({ data: { tenantId: tenant.id, userId: user.id, email: user.email, accessToken: encryptToken('preview-only'), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'], syncCursor: '100', lastSyncAt: new Date() } });
+  await prisma.lead.create({ data: { tenantId: tenant.id, assignedUserId: user.id, firstName: 'Doris', lastName: 'Customer', email: 'doris@example.test', productInterest: [] } });
+  const mail = (id, subject, from = 'Doris <doris@example.test>') => ({ id, threadId: id, from, to: [account.email], subject, body: '<p>We have 25 employees and need around 18 phones.</p><p>Please send your recommendation for extensions, call transfer, and an automated greeting.</p><pre>' + 'Long technical details '.repeat(20) + '</pre>', snippet: 'We have 25 employees and need around 18 phones.', labels: ['INBOX', 'UNREAD'], isRead: false, date: new Date(Date.now() - 60000).toISOString() });
+  const seed = [mail('inquiry', 'Re: Thank You for Your Inquiry – IPBX/IP PHONES/PABGM Solutions'), mail('welcome', 'Welcome to LeadCRM', 'Camxian Technologies <info@camxian.com>')];
+  seed.forEach(email => messages.set(email.id, email)); await scope(() => ingestMailboxMessages(account, seed, rights));
+  await prisma.emailAccount.update({ where: { id: account.id }, data: { syncScopeHash: (await resolveMailboxScope(account, rights)).hash } });
+  api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
+  const apiBase = `http://127.0.0.1:${api.address().port}/api/v1`;
+  const log = createWriteStream(resolve(output, 'frontend.log'));
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3018', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', API_URL: apiBase } });
+  frontend.stdout.pipe(log); frontend.stderr.pipe(log);
+  for (let attempt = 0; attempt < 90; attempt++) { try { if ((await realFetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
+  const page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  let browserSyncs = 0; context.on('request', request => { if (request.url().includes('/integrations/gmail/sync')) browserSyncs++; });
+  await page.goto(base + '/inbox'); await page.getByText(seed[0].subject, { exact: true }).waitFor();
+  await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
+  const responsive = async (label, toolbar = false) => {
+    for (const width of [1440, 768, 390, 375, 320]) {
+      await page.setViewportSize({ width, height: 900 }); await page.waitForTimeout(350);
+      const dimensions = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, toolbar: (() => { const bar = document.querySelector('[role="toolbar"][aria-label="Message formatting"]'); if (!bar) return null; return { width: bar.clientWidth, scroll: bar.scrollWidth, positions: [...bar.querySelectorAll('button')].map(el => Math.round(el.getBoundingClientRect().top)), sendBottom: document.querySelector('[aria-label="Send email"]').getBoundingClientRect().bottom }; })() }));
+      assert.ok(dimensions.document <= width + 1, `${label}: page overflow ${JSON.stringify(dimensions)}`);
+      if (toolbar) { assert.equal(new Set(dimensions.toolbar.positions).size, 1); assert.ok(dimensions.toolbar.positions[0] >= dimensions.toolbar.sendBottom); }
+      checks.push({ label, width, ...dimensions }); await page.screenshot({ path: resolve(output, `${label}-${width}.png`) });
+    }
+  };
+  await responsive('inbox');
+  await page.getByLabel('Filter emails').click(); assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['All emails', 'Unread only', 'Sent', 'Scheduled', 'Drafts only']);
+  await page.getByRole('menuitemradio', { name: 'All emails', exact: true }).click();
+  await page.getByText(seed[0].subject, { exact: true }).click(); await page.getByRole('heading', { name: seed[0].subject }).waitFor(); await responsive('conversation');
+  await page.getByRole('button', { name: 'Reply', exact: true }).first().click(); await page.getByLabel('To', { exact: true }).waitFor(); assert.equal(await page.getByLabel('To', { exact: true }).inputValue(), 'doris@example.test');
+  await responsive('composer', true);
+  await page.getByPlaceholder('Subject', { exact: true }).fill('Scheduled acceptance reply');
+  await page.getByLabel('Email body', { exact: true }).fill('Please review our proposed telephone setup.');
+  await page.getByLabel('Schedule send options').click(); await responsive('schedule-picker', true);
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click(); assert.equal(await prisma.scheduledMailboxEmail.count(), 0);
+  await page.getByLabel('Schedule send options').click(); await page.getByRole('button', { name: 'Done', exact: true }).click();
+  await page.getByRole('heading', { name: 'Inbox', exact: true }).waitFor();
+  const scheduled = await prisma.scheduledMailboxEmail.findFirstOrThrow(); assert.equal(scheduled.status, 'pending'); assert.equal(sends, 0);
+  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  await page.reload(); await page.getByText(seed[0].subject, { exact: true }).waitFor();
+  const second = await context.newPage(); await second.goto(base + '/inbox'); await second.getByText(seed[0].subject, { exact: true }).waitFor();
+  for (const target of [page, second]) await target.evaluate(() => { window.mailboxLoadingFlashes = 0; new MutationObserver(() => { if (document.body.textContent.includes('Loading emails...')) window.mailboxLoadingFlashes++; }).observe(document.body, { childList: true, subtree: true }); });
+  assert.equal(browserSyncs, 0); assert.equal(calls.filter(call => call.path === 'history').length, 0);
+  const relevant = mail('new-customer', 'Realtime customer acceptance'), unrelated = mail('new-bank', 'Private unrelated acceptance', 'bank@example.test');
+  messages.set(relevant.id, relevant); messages.set(unrelated.id, unrelated); history = [relevant.id, unrelated.id];
+  await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: new Date(Date.now() - 61000) } });
+  const start = Date.now();
+  stopWorker = startMailboxScheduler();
+  await page.getByText(relevant.subject, { exact: true }).waitFor(); await second.getByText(relevant.subject, { exact: true }).waitFor();
+  assert.equal(await page.getByText(unrelated.subject).count(), 0); assert.equal(await prisma.mailboxMessage.count({ where: { providerMessageId: relevant.id } }), 1);
+  assert.equal(calls.filter(call => call.path === 'history').length, 1); assert.equal(browserSyncs, 0);
+  checks.push({ label: 'server incremental Gmail check through real API, worker, database, proxy and two SSE tabs', elapsedMs: Date.now() - start, providerHistoryCalls: 1, browserSyncs });
+  stopWorker(); stopWorker = undefined;
+  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  await prisma.scheduledMailboxEmail.update({ where: { id: scheduled.id }, data: { scheduledAt: new Date(Date.now() - 1000) } });
+  await runScheduledMailboxEmails(); await runScheduledMailboxEmails(); assert.equal(sends, 1); assert.equal((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: scheduled.id } })).status, 'sent');
+  await page.getByText('No emails found', { exact: true }).waitFor(); await second.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  for (const target of [page, second]) assert.equal(await target.evaluate(() => window.mailboxLoadingFlashes), 0);
+  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Sent', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  checks.push({ label: 'schedule survived browser reload; controlled due time sent once; two-tab Scheduled to Sent SSE transition without loading flashes', sends });
+  await page.screenshot({ path: resolve(output, 'sent-320.png') });
+  assert.deepEqual(pageErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local development server' }, null, 2));
+  console.log(JSON.stringify({ passed: checks.length, output, sends, browserSyncs }));
+} finally {
+  stopWorker?.(); await browser?.close(); frontend?.kill();
+  if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
+  globalThis.fetch = realFetch; await prisma.$disconnect(); await socket.stop(); await db.close();
+}

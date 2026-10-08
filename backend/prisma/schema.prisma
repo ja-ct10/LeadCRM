@@ -1347,7 +1347,15 @@ model EmailAccount {
   syncPageToken String?
   syncBaselineHistoryId String?
   syncError String?
+  syncScopeHash String?
+  syncBatch Json?
+  syncQueryIndex Int @default(0)
+  syncRequestedAt DateTime?
+  syncRetryAt DateTime?
+  syncCheckedAt DateTime?
+  mailboxVersion Int @default(0)
   messages MailboxMessage[]
+  scheduledEmails ScheduledMailboxEmail[]
 
   @@unique([tenantId, userId, provider])
   @@index([tenantId, userId])
@@ -1376,7 +1384,11 @@ model MailboxMessage {
   threadId String
   direction String
   from String
+  fromAddress String @default("")
   recipients String[]
+  recipientAddresses String[] @default([])
+  draftId String?
+  crmDraft Boolean @default(false)
   subject String
   body String @db.Text
   snippet String
@@ -1396,6 +1408,38 @@ model MailboxMessage {
   @@index([tenantId, accountId, threadId, sentAt])
   @@index([tenantId, leadId, sentAt])
   @@index([tenantId, contactId, sentAt])
+  @@index([tenantId, accountId, fromAddress, sentAt])
+  @@index([recipientAddresses], type: Gin)
+}
+
+// A Gmail draft is the delivery payload. Keep accepted/uncertain deliveries durable
+// so a restarted worker never blindly repeats a send.
+model ScheduledMailboxEmail {
+  id String @id @default(uuid())
+  tenantId String
+  accountId String
+  createdById String
+  requestId String
+  draftId String
+  recipients String[]
+  subject String
+  scheduledAt DateTime
+  status String @default("pending")
+  attemptCount Int @default(0)
+  leaseId String?
+  leaseUntil DateTime?
+  retryAt DateTime?
+  providerMessageId String?
+  providerThreadId String?
+  lastError String?
+  sentAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  account EmailAccount @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@unique([accountId, requestId])
+  @@unique([accountId, draftId])
+  @@index([status, scheduledAt, retryAt])
+  @@index([tenantId, accountId, scheduledAt])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
