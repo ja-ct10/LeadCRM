@@ -281,6 +281,6 @@ export function DataErrorState({
   );
 }
 
-export function DataLoadingSpinner({ label = 'Loading...' }: { label?: string }) {
-  return <div role="status" className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-slate-500"><Loader2 aria-hidden="true" size={24} className="text-blue-600 animate-spin motion-reduce:animate-none" />{label}</div>;
+export function DataLoadingSpinner({ label = 'Loading...', hideLabel = false }: { label?: string; hideLabel?: boolean }) {
+  return <div role="status" aria-label={label} className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-slate-500"><Loader2 aria-hidden="true" size={24} className="text-blue-600 animate-spin motion-reduce:animate-none" />{!hideLabel && label}</div>;
 }

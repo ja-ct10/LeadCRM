@@ -60,6 +60,13 @@ export interface FormSubmissionRecord {
   id: string; formId: string; leadId: string | null; contactId: string | null;
   submittedAt: string; publishedVersion: number; publishedConfig: Omit<FormDefinition, 'settings'>;
   values: Record<string, string | boolean | string[]>; tracking: Record<string, string>; notificationStatus: string;
+  productLabels?: Record<string, string>;
+}
+
+/** Product selections were historically stored as arrays or comma-separated IDs. */
+export function getFormProductValues(value: unknown): string[] {
+  return (Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [])
+    .filter((item): item is string => typeof item === 'string').map(item => item.trim()).filter(Boolean);
 }
 export const DEFAULT_DESIGN = FormDesignSchema.parse({});
 export const DEFAULT_SETTINGS = FormSettingsSchema.parse({});

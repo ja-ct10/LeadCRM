@@ -36,6 +36,35 @@ const records = {
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
+
+it.each(['Electric Fence', 'Laptop/Server/Data Cabinets'])('prefills Deal email from the Contact and canonical Product %s', async product => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals,
+    productInterestId: 'product', productInterestRecord: { id: 'product', name: product }, productInterests: ['Outdated legacy label'], title: 'Unrelated title',
+    contactDeals: [{ contact: { id: 'contact', firstName: 'Contact', lastName: 'Customer', email: 'contact+sales@example.test' } }],
+  } } : original(path));
+  render(<CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Compose email to contact+sales@example.test' }));
+  const href = new URL(mocks.push.mock.calls[0][0], 'https://example.test');
+  expect(href.pathname).toBe('/inbox'); expect(href.searchParams.get('to')).toBe('contact+sales@example.test');
+  expect(href.searchParams.get('subject')).toBe(`${product} Inquiry`);
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+
+it('uses the Lead only when no Contact exists, with a safe missing-Product subject', async () => {
+  render(<CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Compose email to lina@example.test' }));
+  const href = new URL(mocks.push.mock.calls[0][0], 'https://example.test');
+  expect(href.searchParams.get('to')).toBe('lina@example.test'); expect(href.searchParams.get('subject')).toBe('Product Inquiry');
+});
+
+it.each(['', 'broken'])('disables an unusable canonical Contact email (%s) without falling back to the Lead or staff', async email => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, contactDeals: [{ contact: { id: 'contact', email } }] } } : original(path));
+  render(<CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} />);
+  const button = await screen.findByRole('button', { name: email ? `Compose email to ${email}` : 'No email address is available for this Deal.' });
+  expect((button as HTMLButtonElement).disabled).toBe(true); fireEvent.click(button); expect(mocks.push).not.toHaveBeenCalled();
+});
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
   mocks.get.mockImplementation(async (path: string) => {
@@ -121,10 +150,11 @@ it('disables invalid Lead email and omits missing phone/address actions', async 
   expect(screen.queryByRole('button', { name: /^Copy (phone|address)/ })).toBeNull();
 });
 
-it.each(['accounts', 'deals'] as const)('does not add person chip actions to %s', async module => {
+it.each(['accounts', 'deals'] as const)('keeps phone and address chip behavior for %s', async module => {
   render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   await screen.findByRole('heading', { level: 1 });
-  expect(screen.queryByRole('button', { name: /^(Compose email to|Copy phone number|Copy address)/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /^(Copy phone number|Copy address)/ })).toBeNull();
+  if (module === 'accounts') expect(screen.queryByRole('button', { name: /^Compose email to/ })).toBeNull();
 });
 
 it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same identity and three tabs on both surfaces', async module => {

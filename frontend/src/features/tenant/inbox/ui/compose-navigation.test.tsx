@@ -47,3 +47,22 @@ it.each(['?to=lina@example.test', '?compose=lead-email&to=broken', '?compose=lea
 it.each(['', 'broken', 'two@example.test,other@example.test', 'a@example.test\nBcc: b@example.test'])('rejects invalid Lead email %s', email => {
   expect(recordEmailComposeHref(email)).toBeNull();
 });
+
+it.each(['Electric Fence', 'Laptop/Server/Data Cabinets', 'Access & Alarm + Security'])('opens an editable Deal draft for %s once without sending', async product => {
+  window.history.replaceState({}, '', recordEmailComposeHref('customer+sales@example.test', `${product} Inquiry`));
+  const view = render(<StrictMode><InboxPage /></StrictMode>);
+  await waitFor(() => expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('customer+sales@example.test'));
+  const subject = screen.getByPlaceholderText('Subject') as HTMLInputElement;
+  expect(subject.value).toBe(`${product} Inquiry`);
+  expect(document.querySelector('[contenteditable="true"]')?.textContent).toBe('');
+  fireEvent.change(subject, { target: { value: 'Updated inquiry' } });
+  expect(subject.value).toBe('Updated inquiry');
+  expect(window.location.search).toBe('');
+  fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
+  expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('');
+  view.unmount(); render(<InboxPage />);
+  await screen.findByRole('button', { name: 'Compose new email' });
+  expect(screen.queryByLabelText('To')).toBeNull();
+  expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+});

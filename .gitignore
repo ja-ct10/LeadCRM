@@ -76,3 +76,4 @@ data/outputs/retired-features-*.json
 
 # Reproducible local UI acceptance screenshots and logs.
 /data/outputs/ui-fixes-browser/
+/data/outputs/product-share-browser/

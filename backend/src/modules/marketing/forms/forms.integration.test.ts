@@ -34,9 +34,9 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
       const product = await prisma.productInterest.create({ data: { tenantId, name, dealValue: 0 } }); productIds[name] = product.id;
     }
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
-    const user = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'forms-admin@camxian.com', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), } });
+    const user = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'forms-admin@camxian.com', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
     userId = user.id; token = (await issueAuthSession(user)).token;
-    const staff = await prisma.user.create({ data: { tenantId, firstName: 'Staff', lastName: 'Test', email: 'forms-staff@camxian.com', role: 'Sales', mustChangePassword: false, emailVerified: new Date(), } });
+    const staff = await prisma.user.create({ data: { tenantId, firstName: 'Staff', lastName: 'Test', email: 'forms-staff@camxian.com', role: 'Sales', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
     denied = (await issueAuthSession(staff)).token;
     server = app.listen(0); await new Promise<void>(r => server.once('listening', r)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
@@ -90,6 +90,24 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect(deals).toHaveLength(2);
     await submit(form.publicId, v);
     expect(await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).toEqual(deals);
+  });
+
+  it('labels paginated submission Products including archived ones without rewriting values or exposing other tenants', async () => {
+    const form = await publish((await draft()).id);
+    await submit(form.publicId);
+    const row = await prisma.formSubmission.findFirstOrThrow({ where: { formId: form.id } });
+    const archived = await prisma.productInterest.create({ data: { tenantId, name: 'Archived historical product', dealValue: 12, active: false } });
+    const foreign = await prisma.productInterest.create({ data: { tenantId: otherTenant, name: 'Private foreign product', dealValue: 20 } });
+    const raw = [productIds['Smart Lock'], archived.id, foreign.id];
+    await prisma.formSubmission.update({ where: { id: row.id }, data: { values: { ...values(), productInterest: raw } } });
+    const result = await scoped(() => service.getSubmissions(form.id, tenantId, { page: 1, limit: 1 }));
+    expect(result.data).toHaveLength(1);
+    expect(result.data[0].productLabels).toEqual({ [raw[0]]: 'Smart Lock', [archived.id]: archived.name });
+    expect((result.data[0].values as any).productInterest).toEqual(raw);
+    expect(((await prisma.formSubmission.findUniqueOrThrow({ where: { id: row.id } })).values as any).productInterest).toEqual(raw);
+    await prisma.formSubmission.update({ where: { id: row.id }, data: { values: { ...values(), productInterest: raw.join(',') } } });
+    expect((await scoped(() => service.getSubmissions(form.id, tenantId, {}))).data[0].productLabels).toEqual(result.data[0].productLabels);
+    await expect(service.getSubmissions(form.id, otherTenant, {})).rejects.toMatchObject({ statusCode: 404 });
   });
   it('reuses contacts and converted lead links', async () => {
     const form = await publish((await draft()).id), v = values();

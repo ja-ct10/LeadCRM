@@ -165,18 +165,55 @@ it('retains entered values and allows retry when saving fails', async () => {
   expect((screen.getByRole('button', { name: 'Save Product' }) as HTMLButtonElement).disabled).toBe(false);
 });
 
-it('loads details and the actual Closed Won lookup with skeletons', async () => {
+it('keeps Product metadata visible while loading the historical Closed Won table with a spinner', async () => {
   render(<ProductsPage />); await screen.findByRole('grid');
   let resolve!: (value: unknown) => void;
   vi.mocked(apiClient.get).mockImplementation((url) => url.includes('/closed-won') ? new Promise(done => { resolve = done; }) : Promise.resolve({ data: product }));
   fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
-  expect(screen.getByRole('status', { name: 'Loading product and Closed Won customers' }).querySelector('.animate-pulse')).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Loading Closed Won' }).querySelector('.animate-spin')).toBeTruthy();
+  expect(screen.getByText('Product Record')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Product details' })).toBeTruthy();
   resolve({ data: [{ id: 'won', title: 'Real won deal', value: 45000, currency: 'PHP', customers: ['Saved Customer'], company: 'Company', assignedAgent: 'Agent', closedAt: '2026-09-30' }], meta: { total: 1 } });
   expect(await screen.findByText('Saved Customer')).toBeTruthy();
-  expect(screen.getByText('Real won deal')).toBeTruthy();
-  expect(screen.getByText('₱45,000.00')).toBeTruthy();
+  expect(screen.queryByText('Real won deal')).toBeNull();
+  expect(screen.queryByText('₱45,000.00')).toBeNull();
+  const table = within(screen.getByRole('region', { name: 'Closed Won table' })).getByRole('grid');
+  expect(table.tagName).toBe('TABLE');
+  expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['Contacts', 'Won', 'Assigned Agent']);
+  expect(within(table).getByText('Company')).toBeTruthy();
+  expect(within(table).getByText('Agent')).toBeTruthy();
+  expect(screen.getByText('1 record')).toBeTruthy();
   expect(apiClient.get).toHaveBeenCalledWith('/administration/product-interests/' + product.id + '/closed-won?page=1&limit=25', expect.anything());
+});
+
+it('refreshes once, retains metadata and pagination, then uses server pages and page sizes', async () => {
+  const won = { id: 'won', title: 'Historical deal', value: 1234.56, currency: 'PHP', customers: ['Customer'], company: null, assignedAgent: null, closedAt: null };
+  render(<ProductsPage />); await screen.findByRole('grid');
+  vi.mocked(apiClient.get).mockImplementation(async url => url.includes('/closed-won') ? { data: [won], meta: { total: 26 } } : { data: product });
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' })); fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
+  await screen.findByText('26 records');
+  const section = screen.getByRole('region', { name: 'Closed Won' });
+  let finish!: (value: unknown) => void;
+  vi.mocked(apiClient.get).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+  const refresh = within(section).getByRole('button', { name: 'Refresh Closed Won' });
+  const before = vi.mocked(apiClient.get).mock.calls.length;
+  fireEvent.click(refresh); fireEvent.click(refresh);
+  expect(apiClient.get).toHaveBeenCalledTimes(before + 1);
+  expect((refresh as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByRole('status', { name: 'Loading Closed Won' }).textContent).toBe('');
+  expect(screen.getAllByText('₱25,000.00').length).toBeGreaterThan(0);
+  expect(within(section).getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+  finish({ data: [won], meta: { total: 26 } });
+  await waitFor(() => expect((refresh as HTMLButtonElement).disabled).toBe(false));
+  expect(within(section).getAllByText('Customer')).toHaveLength(1);
+  vi.mocked(apiClient.get).mockResolvedValue({ data: [won], meta: { total: 26 } });
+  fireEvent.click(within(section).getByRole('button', { name: 'Next page' }));
+  await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining('page=2&limit=25'), expect.anything()));
+  await waitFor(() => expect((refresh as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(within(section).getByRole('button', { name: 'Records per page' }));
+  fireEvent.click(screen.getByRole('option', { name: '10' }));
+  await waitFor(() => expect(apiClient.get).toHaveBeenLastCalledWith(expect.stringContaining('page=1&limit=10'), expect.anything()));
 });
 
 it('opens the existing editor from the icon-only product quick action', async () => {

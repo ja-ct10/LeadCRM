@@ -37,7 +37,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Sales automation test', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other sales tenant', slug: randomUUID() } })).id;
-    const admin = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'admin@camxian.com', role: 'Client Admin', mustChangePassword: false } });
+    const admin = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'admin@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     adminId = admin.id; token = (await issueAuthSession(admin)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Eligible custom sales role' } });
     await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
@@ -48,7 +48,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       if (index === 2) inactiveId = agent.id; else agentIds.push(agent.id);
     }
     agentIds.sort();
-    const denied = await prisma.user.create({ data: { tenantId, firstName: 'No', lastName: 'Permissions', email: 'denied@camxian.com', role: 'Viewer', mustChangePassword: false } });
+    const denied = await prisma.user.create({ data: { tenantId, firstName: 'No', lastName: 'Permissions', email: 'denied@camxian.com', role: 'Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     deniedId = denied.id; deniedToken = (await issueAuthSession(denied)).token;
     await prisma.user.create({ data: { tenantId: otherTenant, firstName: 'Foreign', lastName: 'Agent', email: 'foreign@camxian.com', role: 'Client Admin' } });
     for (const name of FORM_PRODUCT_INTERESTS) {
@@ -296,6 +296,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await prisma.deal.create({ data: { ...baseDeal, stageId: open.id, productInterestIds: [product.id] } });
     await prisma.deal.create({ data: { ...baseDeal, productInterestIds: [], productInterests: [product.name] } });
     const path = '/administration/product-interests/' + product.id;
+    expect((await request('/crm/deals/' + singular.id)).body.data.productInterestRecord).toEqual({ id: product.id, name: product.name });
     expect((await request(path)).body.data).toMatchObject({ id: product.id, dealValue: 99.5, active: true });
     const response = await request(path + '/closed-won');
     expect(response.status, JSON.stringify(response.body)).toBe(200);

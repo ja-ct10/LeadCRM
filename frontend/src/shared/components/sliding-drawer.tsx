@@ -9,6 +9,7 @@ interface SlidingDrawerProps {
   isOpen: boolean;
   onClose: () => void;
   title?: string;
+  eyebrow?: string;
   subtitle?: string;
   children: ReactNode;
   width?: string;
@@ -19,6 +20,7 @@ export function SlidingDrawer({
   isOpen,
   onClose,
   title,
+  eyebrow,
   subtitle,
   children,
   width = 'w-full max-w-lg md:max-w-xl',
@@ -73,6 +75,7 @@ export function SlidingDrawer({
             {/* Drawer Header */}
             <div className={panelHeaderClass + " flex items-center justify-between gap-3"}>
               <div className="min-w-0">
+                {eyebrow && <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>}
                 {title ? (
                   <h2 className={panelTitleClass}>
                     {title}

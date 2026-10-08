@@ -220,7 +220,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
       <div className="pb-6 shrink-0 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 min-w-0">
-            <label htmlFor="role-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role Name *</label>
+            <label htmlFor="role-name" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role Name <span className="text-red-500">*</span></label>
             <input id="role-name" required aria-invalid={!!nameError} aria-describedby={nameError ? "role-name-error" : undefined} maxLength={50} type="text" value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }} placeholder="e.g. Regional Manager" autoFocus
               disabled={isSystemRole || saving}
               className={cn(

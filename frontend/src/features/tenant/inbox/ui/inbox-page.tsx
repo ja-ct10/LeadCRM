@@ -54,7 +54,7 @@ export default function InboxPage(): React.ReactElement {
     // Keep Next's canonical URL in sync so a later render cannot restore the consumed query.
     router.replace(`${request.url.pathname}${request.url.search}${request.url.hash}`, { scroll: false });
     if (!request.to) { toast.error('Please enter a valid email address'); return; }
-    setComposeDraft({ to: request.to, subject: '', body: '' });
+    setComposeDraft({ to: request.to, subject: request.subject, body: '' });
     setIsComposeOpen(true);
   }, [searchParams, router]);
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);

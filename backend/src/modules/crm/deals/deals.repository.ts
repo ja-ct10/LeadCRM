@@ -75,6 +75,7 @@ export async function findDealById(id: string, tenantId: string) {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
       pipeline:     true,
       organization: true,
+      productInterestRecord: { select: { id: true, name: true } },
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
       owner:        { select: { id: true, firstName: true, lastName: true, email: true } },
       leadDeals: {

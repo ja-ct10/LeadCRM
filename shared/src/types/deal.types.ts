@@ -34,6 +34,7 @@ export interface Deal {
   address?: string;
   productInterests?: string[];
   productInterestId?: string;
+  productInterestRecord?: { id: string; name: string } | null;
   order?: number;
   lostReason?: string;
   isArchived?: boolean;

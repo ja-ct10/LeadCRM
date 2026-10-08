@@ -41,7 +41,7 @@ export const formsApi = {
   list: (page = 1) =>
     apiClient.get<FormsListResponse>(`/marketing/forms?page=${page}&limit=100`),
   duplicate: (id: string) => apiClient.post<FormResponse>(`/marketing/forms/${id}/duplicate`, {}),
-  submissions: (id: string, page = 1) => apiClient.get<{ data: import('@leadcrm/shared').FormSubmissionRecord[]; meta: { hasMore: boolean } }>(`/marketing/forms/${id}/submissions?page=${page}&limit=20`),
+  submissions: (id: string, page = 1, signal?: AbortSignal) => apiClient.get<{ data: import('@leadcrm/shared').FormSubmissionRecord[]; meta: { hasMore: boolean } }>(`/marketing/forms/${id}/submissions?page=${page}&limit=20`, { signal }),
 
   /**
    * Fetch a single form by id.

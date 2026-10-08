@@ -271,7 +271,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   if (recordQuery.error || !record) return <div className="space-y-4 p-5"><h2 className="font-semibold">Unable to open {label.toLowerCase()}</h2><p role="alert" className="text-sm text-muted-foreground">{recordQuery.error || 'Record not found or access is unavailable.'}</p><Button variant="outline" onClick={() => void recordQuery.refetch()}>Retry</Button>{onClose && <Button variant="ghost" onClick={onClose}>Close</Button>}</div>;
 
   const title = module === 'deals' ? text(record.title) : module === 'accounts' ? text(record.name) : personName(record);
-  const person = module === 'deals' ? object((record.leadDeals as RecordData[] | undefined)?.[0]?.lead) ?? object((record.contactDeals as RecordData[] | undefined)?.[0]?.contact) : record;
+  const person = module === 'deals' ? object((record.contactDeals as RecordData[] | undefined)?.[0]?.contact) ?? object((record.leadDeals as RecordData[] | undefined)?.[0]?.lead) : record;
   const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
   const owner = personName(object(record.assignedUser)) || personName(object(record.owner));
   const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
@@ -279,7 +279,12 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
   const email = text(person?.email);
   const phone = text(person?.phone);
-  const composeHref = personChipActions ? recordEmailComposeHref(email) : null;
+  const emailChipAction = personChipActions || module === 'deals';
+  // The API projects canonical Product relations into these ID/name arrays.
+  const dealProductIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
+  const dealProductNames = record.productInterests as string[] | undefined;
+  const dealProductName = text(object(record.productInterestRecord)?.name) || (record.productInterestRecord !== null && dealProductIds.length === 1 && dealProductNames?.length === 1 ? dealProductNames[0] : '');
+  const composeHref = emailChipAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined) : null;
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
@@ -393,7 +398,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </div>
         </div>
         <RecordQuickInfo items={[
-          { value: email, icon: Mail, ...(personChipActions ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: `Compose email to ${email}`, disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
+          { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
           { value: phone, icon: Phone, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
           ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
           { value: owner, icon: User, label: 'Agent: ' },

@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
-import { defaultContactForm, FormDefinitionSchema } from '@leadcrm/shared';
+import { defaultContactForm, FormDefinitionSchema, FormFieldSchema, getFormProductValues, ProductInterestIdSchema } from '@leadcrm/shared';
 import type { CreateFormDto, UpdateFormDto } from './forms.dto';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 
@@ -68,5 +68,16 @@ export async function submissions(id: string, tenantId: string, page: number, li
   if (!await prisma.marketingForm.findFirst({ where: { id, tenantId } })) throw new NotFoundError('Form');
   const where = { formId: id, tenantId };
   const [data, total] = await Promise.all([prisma.formSubmission.findMany({ where, skip: (page - 1) * limit, take: limit, orderBy: { submittedAt: 'desc' } }), prisma.formSubmission.count({ where })]);
-  return { data, total };
+  const productIdsFor = (submission: typeof data[number]) => {
+    const config = submission.publishedConfig as { fields?: unknown } | null;
+    const fields = FormFieldSchema.array().safeParse(config?.fields);
+    const values = submission.values as Record<string, unknown>;
+    return fields.success ? fields.data.filter(field => field.mapToField === 'productInterest')
+      .flatMap(field => getFormProductValues(values[field.id])).filter(value => ProductInterestIdSchema.safeParse(value).success) : [];
+  };
+  const ids = [...new Set(data.flatMap(productIdsFor))];
+  // Historical submissions also retain labels for archived Products. Never rewrite values.
+  const products = ids.length ? await prisma.productInterest.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, name: true } }) : [];
+  const labels = new Map(products.map(product => [product.id, product.name]));
+  return { data: data.map(submission => ({ ...submission, productLabels: Object.fromEntries(productIdsFor(submission).filter(id => labels.has(id)).map(id => [id, labels.get(id)!])) })), total };
 }
