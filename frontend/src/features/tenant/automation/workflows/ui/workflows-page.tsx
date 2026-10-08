@@ -82,7 +82,7 @@ export default function WorkflowsPage() {
       cell: (_, workflow) => <div className="flex items-center gap-1">
         <TableIconButton touchFriendly label="View runs" disabled={!canViewRuns} onClick={() => setRuns(workflow)}><Activity size={14} /></TableIconButton>
         {canDuplicate && <TableIconButton touchFriendly label="Duplicate workflow" disabled={busy} onClick={() => duplicateWorkflow(workflow)}><Copy size={14} /></TableIconButton>}
-        {canActivate && <TableIconButton touchFriendly label={workflow.isActive ? 'Pause workflow' : 'Resume workflow'} disabled={busy} onClick={() => toggleWorkflow(workflow)}>{workflow.isActive ? <Pause size={14} /> : <Play size={14} />}</TableIconButton>}
+        {canActivate && <TableIconButton touchFriendly label={workflow.isActive ? 'Pause workflow' : workflow.status === 'PAUSED' ? 'Resume workflow' : 'Activate workflow'} disabled={busy} onClick={() => toggleWorkflow(workflow)}>{workflow.isActive ? <Pause size={14} /> : <Play size={14} />}</TableIconButton>}
       </div> },
   ];
   const tableColumns = useModuleTableColumns('workflows', WORKFLOWS_TABLE_COLUMNS, columns.filter(column => canViewRuns || !['lastRun', 'runs'].includes(column.id)));
@@ -119,7 +119,7 @@ export default function WorkflowsPage() {
             { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setRuns(workflow) },
             ...(canEdit ? [{ id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),
             ...(canDuplicate ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, disabled: busy, onClick: () => duplicateWorkflow(workflow) }] : []),
-            ...(canActivate ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : 'Resume', icon: workflow.isActive ? <Pause size={14} /> : <Play size={14} />, disabled: busy, onClick: () => toggleWorkflow(workflow) }] : []),
+            ...(canActivate ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : workflow.status === 'PAUSED' ? 'Resume' : 'Activate', icon: workflow.isActive ? <Pause size={14} /> : <Play size={14} />, disabled: busy, onClick: () => toggleWorkflow(workflow) }] : []),
             ...(canDelete ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy, onClick: () => setArchiving(workflow) }] : []),
           ]} enableColumnMenu={false} ariaLabel="Workflows table"
           summaryLabel={`${total} total ${total === 1 ? 'record' : 'records'}`} emptyMessage={workflowsError ? 'Unable to load workflows.' : 'No workflows match. Create a workflow or adjust your filters.'} />}

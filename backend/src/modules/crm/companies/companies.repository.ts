@@ -1,3 +1,4 @@
+import { ValidationError } from '../../../shared/errors/http-error';
 import { resolveSalesAgent } from '../leads/lead-automation.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
@@ -81,13 +82,16 @@ export async function createCompany(tenantId: string, dto: CreateCompanyDto, act
 
 export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto, actorId?: string) {
   const previous = await prisma.account.findFirst({ where: { id, tenantId } });
+  if ((dto.productInterestIds !== undefined && dto.productInterests !== undefined) || (dto.activeProductIds !== undefined && dto.activeProducts !== undefined)) throw new ValidationError('Supply Product IDs or legacy names, not both.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
-  normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? [], previous?.productInterestOther);
+  const interestNames = dto.productInterestIds === undefined ? (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? []
+    : (await prisma.productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
+  normalizeProductOther(dto, interestNames, previous?.productInterestOther);
   return salesTransaction(async tx => {
       const current = await tx.account.findFirst({ where: { id, tenantId } });
       if (!current) return null;
-      const relations = dto.productInterests === undefined && dto.activeProducts === undefined ? {} : await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }, current, true);
-      const { customFieldValues, ...data } = dto;
+      const relations = dto.productInterests === undefined && dto.activeProducts === undefined && dto.productInterestIds === undefined && dto.activeProductIds === undefined ? {} : await productRelationData(tx, 'account', tenantId, { ids: dto.productInterestIds, activeIds: dto.activeProductIds, names: dto.productInterests, activeNames: dto.activeProducts }, current, true);
+      const { customFieldValues, productInterestIds: _productIds, activeProductIds: _activeIds, ...data } = dto;
       await saveRecordValues(tx, tenantId, 'accounts', id, customFieldValues, actorId);
       return tx.account.update({ where: { id, tenantId }, data: { ...data, ...relations } as never });
   });

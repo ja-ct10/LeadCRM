@@ -5,6 +5,12 @@ export type { ActionDefinition, TriggerDefinition } from '@leadcrm/shared';
 export interface WorkflowsResponse { success: boolean; data: Workflow[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface WorkflowResponse { success: boolean; data: Workflow; }
 export type WorkflowExecutionsResponse = PaginatedResponse<WorkflowExecutionRun>;
+export function withWorkflowTimeout<T>(request: Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout>;
+  return Promise.race([request, new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('The request timed out. Check your connection and retry.')), 30000);
+  })]).finally(() => clearTimeout(timer));
+}
 export const workflowsApi = {
   duplicate: (id: string) => apiClient.post(`/automation/workflows/${id}/duplicate`, {}),
   nameAvailability: (name: string, excludeId?: string) => apiClient.get<{success:boolean;data:{available:boolean;suggestedName?:string}}>(`/automation/workflow-name-availability?${new URLSearchParams({ name, ...(excludeId ? { excludeId } : {}) })}`),
@@ -26,7 +32,7 @@ export const workflowsApi = {
   toggle: (id: string, isActive: boolean) => apiClient.patch<WorkflowResponse>(`/automation/workflows/${id}/toggle`, { isActive }),
   archive: (id: string) => apiClient.patch<{success:boolean}>(`/automation/workflows/${id}/archive`),
   getExecutions: (id: string, page = 1, limit = 25) => apiClient.get<WorkflowExecutionsResponse>(`/automation/workflows/${id}/executions?page=${page}&limit=${limit}`),
-  test: (id: string, entityId: string) => apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId }),
+  test: (id: string, entityId: string) => withWorkflowTimeout(apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId })),
   getActions: () => apiClient.get<{success:boolean;data:ActionDefinition[]}>('/automation/actions'),
   getTriggers: () => apiClient.get<{success:boolean;data:TriggerDefinition[]}>('/automation/triggers'),
 };
@@ -34,9 +40,12 @@ const metadataRequests = new Map<string, Promise<{ triggers: TriggerDefinition[]
 export function getWorkflowMetadata(scope: string) {
   let request = metadataRequests.get(scope);
   if (!request) {
-    request = Promise.all([workflowsApi.getTriggers(), workflowsApi.getActions()]).then(([triggers, actions]) => ({ triggers: triggers.data, actions: actions.data }));
+    let timer: ReturnType<typeof setTimeout>;
+    request = Promise.race([
+      Promise.all([workflowsApi.getTriggers(), workflowsApi.getActions()]).then(([triggers, actions]) => ({ triggers: triggers.data, actions: actions.data })),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error('Workflow metadata timed out. Retry to reconnect.')), 25000); }),
+    ]).finally(() => { clearTimeout(timer); metadataRequests.delete(scope); });
     metadataRequests.set(scope, request);
-    request.catch(() => metadataRequests.delete(scope));
   }
   return request;
 }

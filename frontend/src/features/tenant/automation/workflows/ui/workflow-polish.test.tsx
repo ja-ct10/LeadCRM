@@ -15,10 +15,10 @@ describe('workflow polish controls', () => {
   it('hides the value control for empty Product Interest and keeps Others a real selection', () => {
     const onChange = vi.fn();
     const trigger = WORKFLOW_TRIGGERS.find(t => t.type === 'lead.updated');
-    const view = render(<ConditionFields options={options} trigger={trigger} value={{ operator: 'AND', conditions: [{ field: 'lead.productInterest', operator: 'is_empty', value: null }] }} onChange={onChange} />);
+    const view = render(<ConditionFields options={options} trigger={trigger} value={{ operator: 'AND', conditions: [{ field: 'lead.productInterestIds', operator: 'is_empty', value: null }] }} onChange={onChange} />);
     expect(screen.queryByLabelText('Condition 1 value')).toBeNull();
-    view.rerender(<ConditionFields options={options} trigger={trigger} value={{ operator: 'AND', conditions: [{ field: 'lead.productInterest', operator: 'contains', value: 'Others' }] }} onChange={onChange} />);
-    expect((screen.getByLabelText('Condition 1 value') as HTMLSelectElement).value).toBe('Others');
+    view.rerender(<ConditionFields options={options} trigger={trigger} value={{ operator: 'AND', conditions: [{ field: 'lead.productInterestIds', operator: 'contains', value: 'others' }] }} onChange={onChange} />);
+    expect((screen.getByLabelText('Condition 1 value') as HTMLSelectElement).value).toBe('others');
   });
   it('keeps historical Deal Product, value and currency out of update actions', () => {
     render(<Editor entity="deal" config={{ field: '', value: '' }} />);
@@ -28,7 +28,7 @@ describe('workflow polish controls', () => {
     expect(WORKFLOW_TRIGGERS.find(t => t.type === 'deal.updated')?.fields.some(f => f.field === 'deal.value')).toBe(true);
   });
   it('allows optional Others details and requires an explicit clear choice', () => {
-    render(<Editor entity="lead" config={{ field: 'productInterest', value: [] }} />);
+    render(<Editor entity="lead" config={{ field: 'productInterestIds', value: [] }} />);
     fireEvent.click(screen.getByLabelText('Others'));
     fireEvent.change(screen.getByLabelText('Specify (optional)'), { target: { value: 'Consulting' } });
     expect(JSON.parse(screen.getByTestId('config').textContent!)).toMatchObject({ value: ['others'], otherDetails: 'Consulting' });

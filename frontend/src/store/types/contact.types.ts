@@ -42,8 +42,6 @@ export interface Contact extends SharedContact {
   customerType?: string;
   customerSince?: string;
   activeProducts?: string[];
-  qualifiedAt?: string;
-  disqualifiedReason?: string;
   callStatus?: string;
   updateStatus?: string;
   contactNumbers?: { id: string; type: string; countryCode?: string; number: string; notes?: string }[];

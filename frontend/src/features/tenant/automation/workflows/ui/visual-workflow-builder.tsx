@@ -760,7 +760,7 @@ export default function WorkflowBuilder({
                 disabled={busy}
                 onClick={() => void submit(false)}
               >
-                {saved.isActive ? 'Save and pause' : 'Save draft'}
+                {saved.isActive ? 'Save and pause' : savedStatus === 'PAUSED' ? 'Save changes' : 'Save draft'}
               </Button>
               {canActivate && (
                 <Button
@@ -841,6 +841,7 @@ export default function WorkflowBuilder({
           </div>
         </div>
       </header>
+      {dirty && savedId && <p className="border-b border-[var(--border)] px-5 py-2 text-sm text-[var(--muted-foreground)]">Testing uses the last saved version of this workflow. Save changes before running the check.</p>}
       {error && (
         <p
           role="alert"

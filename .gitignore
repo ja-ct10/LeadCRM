@@ -85,3 +85,6 @@ data/outputs/retired-features-*.json
 
 # Reproducible local mailbox acceptance evidence and redacted hosting screenshots.
 /data/outputs/mailbox-browser/
+
+# Reproducible Workflow responsive and persistence evidence.
+/data/outputs/workflow-browser/

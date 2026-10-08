@@ -3,7 +3,8 @@ import { z } from 'zod';
 // ── Zod schemas mirroring backend CreateCompanySchema / UpdateCompanySchema ──
 // Backend route POST /crm/accounts validates against CreateCompanySchema from companies.dto.ts.
 
-export const COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'] as const;
+import { COMPANY_SIZE_OPTIONS } from '@leadcrm/shared';
+export { COMPANY_SIZE_OPTIONS } from '@leadcrm/shared';
 
 
 export const CreateAccountSchema = z.object({

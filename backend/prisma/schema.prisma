@@ -504,7 +504,6 @@ model Contact {
   score               Int                  @default(75)
   source              String?
   notes               String?
-  lastContactedAt     DateTime?
   lastStatusChangedAt DateTime?
   lastCustomerReplyAt DateTime? @map("lastMeaningfulInboundAt")
   firstUnansweredOutboundAt DateTime?
@@ -524,8 +523,6 @@ model Contact {
   productInterests    String[]
   lifecycleStage      ContactLifecycleStage @default(LEAD)
   recordType          String?
-  qualifiedAt         DateTime?
-  disqualifiedReason  String?
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   account      Account?      @relation(fields: [accountId], references: [id])
@@ -633,7 +630,6 @@ model Deal {
   title             String
   value             Float?
   currency          String?   @default("PHP")
-  billingFrequency  String? // "monthly" | "one_time" | "annual" | "quarterly"
   priority          Priority  @default(MEDIUM)
   expectedCloseDate DateTime?
   closedAt          DateTime? // stamped when stage.isWon or stage.isLost = true
@@ -883,16 +879,16 @@ model CustomFieldValue {
   value Json
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
-  field ClosingFieldDefinition @relation(fields: [tenantId, fieldId], references: [tenantId, id], onDelete: Restrict)
-  lead Lead? @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  contact Contact? @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  account Account? @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  deal Deal? @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  field ClosingFieldDefinition @relation(fields: [tenantId, fieldId], references: [tenantId, id], onDelete: Restrict, map: "CustomFieldValue_field_fkey")
+  lead Lead? @relation(fields: [leadId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "CustomFieldValue_lead_fkey")
+  contact Contact? @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "CustomFieldValue_contact_fkey")
+  account Account? @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "CustomFieldValue_account_fkey")
+  deal Deal? @relation(fields: [dealId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "CustomFieldValue_deal_fkey")
   @@unique([tenantId, fieldId, leadId])
   @@unique([tenantId, fieldId, contactId])
   @@unique([tenantId, fieldId, accountId])
   @@unique([tenantId, fieldId, dealId])
-  @@index([tenantId, module, leadId, contactId, accountId, dealId])
+  @@index([tenantId, module, leadId, contactId, accountId, dealId], map: "CustomFieldValue_tenantId_module_leadId_contactId_accountId_de_")
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��

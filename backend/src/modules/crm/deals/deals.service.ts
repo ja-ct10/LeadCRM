@@ -9,7 +9,7 @@ import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams, Manua
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireDealCreated, fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { createNotification } from '../../notifications/notifications.service';
-import { recordChanges } from '../record-updates';
+import { recordChanges, customFieldChangeTracker } from '../record-updates';
 import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
 
 /**
@@ -99,6 +99,7 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
   const before = await repo.findDealById(id, tenantId);
   if (!before) throw new NotFoundError('Deal');
+  const withCustomChanges = await customFieldChangeTracker(tenantId, 'deals', id, dto.customFieldValues);
 
   let deal;
   try {
@@ -118,7 +119,7 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
     action: 'deal.updated', entityType: 'Deal', entityId: id,
     before: changedBefore, after: changedAfter,
   });
-  const changes = recordChanges(before, deal);
+  const changes = await withCustomChanges(recordChanges(before, deal));
   if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: deal, changedFields: changes.changedFields, changes });
 
   // Notify the newly assigned user when the deal is reassigned to someone else.
@@ -265,7 +266,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
     isArchived: _a, deletedAt: _d,
     // Exclude relation fields that Prisma won't accept in create
     stage: _stage, pipeline: _pipeline, organization: _org, assignedUser: _au,
-    owner: _owner, leadDeals: _ld, contactDeals: _cd, stageHistories: _sh,
+    owner: _owner, leadDeals: _ld, contactDeals: _cd, stageHistories: _sh, productInterestRecord: _product,
     lead: _lead, contact: _contact, leadId: _leadId, contactId: _contactId,
     ...copyData
   } = source as Record<string, unknown>;

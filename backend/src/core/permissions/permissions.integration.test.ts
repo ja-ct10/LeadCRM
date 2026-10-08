@@ -16,7 +16,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
   let server: Server, base: string, tenantId: string, adminToken: string;
   async function roleUser(name: string, permissions: Array<Record<string, unknown>>) {
     const role = await prisma.roleDefinition.create({ data: { name, tenantId, permissions: { create: permissions.map(p => ({ ...EMPTY_PERMISSION_FLAGS, ...p })) as never } } });
-    const user = await prisma.user.create({ data: { tenantId, role: name, email: `${role.id}@camxian.com`, firstName: name, lastName: 'QA', mustChangePassword: false, userRoles: { create: { roleId: role.id } } } });
+    const user = await prisma.user.create({ data: { tenantId, role: name, email: `${role.id}@camxian.com`, firstName: name, lastName: 'QA', mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
     return { token: (await issueAuthSession(user)).token, user: { userId: user.id, tenantId, role: name }, roleId: role.id };
   }
   async function call(path: string, token: string, method = 'GET', body?: unknown) {
@@ -26,7 +26,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Permission QA', slug: `permission-${Date.now()}`, onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
     await seedSystemRoles(tenantId);
-    const admin = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email: 'permissions-admin@camxian.com', firstName: 'QA', lastName: 'Admin', mustChangePassword: false } });
+    const admin = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email: 'permissions-admin@camxian.com', firstName: 'QA', lastName: 'Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     adminToken = (await issueAuthSession(admin)).token;
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;

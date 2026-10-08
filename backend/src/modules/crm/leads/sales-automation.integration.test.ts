@@ -234,10 +234,10 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
   it('creates, renames and deletes catalog records without changing historical Deals', async () => {
     const endpoint = '/administration/product-interests';
-    const response = await request(endpoint, 'POST', { name: '  New product  ', dealValue: 25000.50 });
+    const response = await request(endpoint, 'POST', { name: '  New product  ', dealValue: 25000 });
     expect(response.status).toBe(200);
     const product = response.body.data.find((p: { name: string }) => p.name === 'New product');
-    expect(product).toMatchObject({ active: true, dealValue: 25000.50 });
+    expect(product).toMatchObject({ active: true, dealValue: 25000 });
     expect(product.createdAt).toBeTruthy(); expect(product.updatedAt).toBeTruthy();
     expect((await request(endpoint, 'POST', { name: 'new PRODUCT', dealValue: 5 })).status).toBe(409);
     for (const body of [{ name: ' ', dealValue: 1 }, { name: 'Bad\u0000Name', dealValue: 1 }, { name: 'Bad', dealValue: '500' }, { name: 'Bad', dealValue: 1.001 }]) {
@@ -247,12 +247,12 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request(endpoint + '/' + randomUUID(), 'PATCH', { name: 'A' })).status).toBe(404);
     const lead = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Snapshot', lastName: 'Test', productInterest: [product.id], value: 1, dealValue: 2 })).body.data;
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
-    expect(deal.value).toBe(25000.50);
+    expect(deal.value).toBe(25000);
     expect((await request('/crm/deals/' + deal.id, 'PUT', { value: 1 })).status).toBe(400);
     expect((await request(endpoint + '/' + product.id, 'PATCH', { name: 'Renamed product', dealValue: 55000 })).status).toBe(200);
     await scope(() => salesTransaction(tx => createProductDeals(tx, tenantId, lead.id, adminId)));
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } } } })).toBe(1);
-    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).value).toBe(25000.50);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).value).toBe(25000);
     const next = (await request('/crm/leads', 'POST', { email: 'fixture@example.test', firstName: 'Future', lastName: 'Test', productInterest: [product.id] })).body.data;
     expect((await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: next.id } } } })).value).toBe(55000);
     expect((await request(endpoint + '/' + product.id, 'DELETE')).status).toBe(200);

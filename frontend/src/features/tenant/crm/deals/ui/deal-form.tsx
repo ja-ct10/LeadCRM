@@ -1,4 +1,5 @@
 'use client';
+import { LEAD_SOURCES } from '@leadcrm/shared';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
@@ -72,11 +73,7 @@ const PRIORITY_OPTIONS: { value: 'LOW' | 'MEDIUM' | 'HIGH'; label: string }[] = 
 
 
 
-const SOURCE_OPTIONS = [
-  'Google Ads', 'Referral', 'Email Campaign', 'Website',
-  'Social Media Advertisement', 'Direct Mail',
-  'Content Marketing', 'Others',
-];
+const SOURCE_OPTIONS = LEAD_SOURCES;
 
 // ── Props ──────────────────────────────────────────────────────────────────
 

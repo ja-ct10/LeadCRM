@@ -4,6 +4,11 @@ import { ValidationError } from '../../../shared/errors/http-error';
 
 type Tx = Prisma.TransactionClient;
 export const configurationKey = (tenantId: string) => ({ tenantId, module: 'closing-requirements', key: 'fields' });
+/** Metadata/validation must not initialize definitions or otherwise write data. */
+export async function readConfiguredFields(tx: Tx, tenantId: string): Promise<ClosingField[]> {
+  const rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  return rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField)).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+}
 export async function readFields(tx: Tx, tenantId: string): Promise<ClosingField[]> {
   let rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
   if (!rows.length) {

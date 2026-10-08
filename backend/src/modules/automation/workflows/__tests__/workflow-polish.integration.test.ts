@@ -12,6 +12,10 @@ import { moveDealStage, updateDeal } from '../../../crm/deals/deals.service';
 import { sendSms } from '../../../../shared/services/sms.service';
 import { getAvailableActions, WORKFLOW_TRIGGERS, type WorkflowDraft } from '@leadcrm/shared';
 import { getTasks } from '../../../operations/tasks/tasks.service';
+import { saveField } from '../../../crm/closing-requirements/closing-requirements.service';
+import { readRecordValues } from '../../../crm/closing-requirements/custom-field-values.repository';
+import { entityContext } from '../workflows.repository';
+import { getWorkflowConditionFields, getWorkflowUpdateFields } from '@leadcrm/shared';
 vi.mock('../../../../shared/services/sms.service', async original => ({ ...await original<typeof import('../../../../shared/services/sms.service')>(), isSmsConfigured: () => true, sendSms: vi.fn(async () => ({ submitted: true, messageId: 'sms-test' })) }));
 vi.mock('../../../../shared/services/email.service', async original => ({ ...await original<typeof import('../../../../shared/services/email.service')>(), sendMail: vi.fn(async () => ({ submitted: true, messageId: 'mail-test' })) }));
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
@@ -41,6 +45,91 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   }, 60000);
   beforeEach(async () => { await scope(() => prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } })); vi.mocked(sendSms).mockClear(); });
   afterAll(async () => { await prisma.$disconnect(); });
+
+  it.each([
+    ['lead', 'leads', 'Text', 'Initial', 'Updated'],
+    ['contact', 'contacts', 'Number', 10, 25],
+    ['account', 'accounts', 'Dropdown', 'First', 'Second'],
+    ['deal', 'deals', 'Date', '2026-10-01', '2026-10-02'],
+  ] as const)('persists and evaluates %s Custom Fields through CRM services without recursive runs', async (entity, module, type, initialValue, nextValue) => {
+    const record = entity === 'lead' ? lead : entity === 'contact' ? contact : entity === 'account' ? account : await newDeal();
+    const field = await scope(() => saveField(tenantId, actor.id, { module, group: module === 'accounts' ? 'Notes' : module === 'deals' ? 'Additional Details' : 'Additional Information', name: `Workflow ${type}`, type, required: false, options: type === 'Dropdown' ? ['First', 'Second'] : [] }));
+    const edit = (patch: any) => scope(() => entity === 'lead' ? updateLead(record.id, tenantId, actor.id, patch) : entity === 'contact' ? updateContact(record.id, tenantId, patch, actor.id) : entity === 'account' ? updateCompany(record.id, tenantId, actor.id, patch) : updateDeal(record.id, tenantId, actor.id, patch));
+    await edit({ customFieldValues: { [field.id]: initialValue } });
+    const workflow = await create({ trigger: `${entity}.updated`, conditions: { operator: 'AND', conditions: [{ field: `${entity}.customFieldValues.${field.id}`, operator: 'equals', value: initialValue }] }, actions: [{ type: 'update_field', config: { field: `customFieldValues.${field.id}`, value: nextValue } }] });
+    await edit({ address: randomUUID() });
+    expect(await scope(() => readRecordValues(prisma, tenantId, module, record.id))).toMatchObject({ [field.id]: nextValue });
+    expect(await runs(workflow.id)).toHaveLength(1);
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    expect((await scope(() => entityContext(entity, record.id, tenantId)))![`${entity}.customFieldValues.${field.id}`]).toBe(nextValue);
+    await edit({ customFieldValues: { [field.id]: nextValue } });
+    expect(await runs(workflow.id)).toHaveLength(1);
+    await scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, false));
+    const saved = await scope(() => workflows.updateWorkflow(workflow.id, tenantId, actor.id, { description: 'Edited while paused' }));
+    expect(saved.status).toBe('PAUSED'); expect(saved.isActive).toBe(false);
+    await scope(() => saveField(tenantId, actor.id, { active: false }, field.id));
+    await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/condition field/);
+    expect(await scope(() => readRecordValues(prisma, tenantId, module, record.id))).toMatchObject({ [field.id]: nextValue });
+    const copy = await scope(() => workflows.duplicateWorkflow(workflow.id, tenantId, actor.id));
+    expect(copy.status).toBe('DRAFT'); expect(copy.isActive).toBe(false); expect(await runs(copy.id)).toHaveLength(0);
+  });
+
+  it.each(['contact', 'account'] as const)('uses normalized Product IDs for %s conditions and updates across rename', async entity => {
+    const record = entity === 'contact' ? contact : account;
+    const edit = (patch: any) => scope(() => entity === 'contact' ? updateContact(record.id, tenantId, patch, actor.id) : updateCompany(record.id, tenantId, actor.id, patch));
+    await edit({ productInterestIds: [] });
+    const product = await prisma.productInterest.create({ data: { tenantId, name: `Product ${randomUUID()}`, dealValue: 100 } });
+    const workflow = await create({ trigger: `${entity}.updated`, conditions: { operator: 'AND', conditions: [{ field: `${entity}.productInterestIds`, operator: 'is_empty', value: null }] }, actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [product.id] } }] });
+    await edit({ address: randomUUID() });
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    await prisma.productInterest.update({ where: { id: product.id }, data: { name: `Renamed ${randomUUID()}` } });
+    const context = await scope(() => entityContext(entity, record.id, tenantId));
+    expect(context![`${entity}.productInterestIds`]).toEqual([product.id]);
+    await expect(create({ trigger: `${entity}.updated`, actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [randomUUID()] } }] })).rejects.toThrow(/available Product/);
+    await scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, false));
+    const clear = await create({ trigger: `${entity}.updated`, actions: [{ type: 'update_field', config: { field: 'productInterestIds', clear: true } }] });
+    await edit({ address: randomUUID() });
+    expect((await runs(clear.id))[0].status).toBe('completed');
+    expect((await scope(() => entityContext(entity, record.id, tenantId)))![`${entity}.productInterestIds`]).toEqual([]);
+  });
+
+  it('evaluates canonical previous/new status and rejects stale or no-op status events', async () => {
+    await scope(() => updateLead(lead.id, tenantId, actor.id, { status: 'Cold' }));
+    const workflow = await create({ trigger: 'lead.status_changed', conditions: { operator: 'AND', conditions: [
+      { field: 'event.previousStatus', operator: 'equals', value: 'Cold' }, { field: 'event.newStatus', operator: 'equals', value: 'Warm' },
+    ] } });
+    await scope(() => updateLead(lead.id, tenantId, actor.id, { status: 'Warm' }));
+    await scope(() => updateLead(lead.id, tenantId, actor.id, { status: 'Warm' }));
+    expect(await runs(workflow.id)).toHaveLength(1);
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    await scope(() => fireWorkflowTrigger({ tenantId, actorId: actor.id, eventId: randomUUID(), triggerType: 'lead.status_changed', entityType: 'lead', entityId: lead.id, context: { 'event.previousStatus': 'Warm', 'event.newStatus': 'Cold', 'lead.status': 'Cold' } }));
+    expect(await runs(workflow.id)).toHaveLength(1);
+  });
+
+  it('records a failed run for a missing actor and ignores metadata-only/retired field updates', async () => {
+    const workflow = await create();
+    const event = { tenantId, triggerType: 'lead.updated', entityType: 'lead', entityId: lead.id, eventId: randomUUID(), context: { 'event.changedFields': ['updatedAt', 'description'] } };
+    await scope(() => fireWorkflowTrigger(event));
+    expect(await runs(workflow.id)).toHaveLength(0);
+    await scope(() => fireWorkflowTrigger({ ...event, context: { 'event.changedFields': ['address'] } }));
+    const [run] = await runs(workflow.id);
+    expect(run.status).toBe('failed'); expect(run.errorMessage).toMatch(/actor/);
+    expect(run.steps.map(step => step.status)).toEqual(['failed', 'skipped']);
+  });
+
+  it('keeps dry run read-only and rejects hidden, foreign-module, and invalid custom values', async () => {
+    const field = await scope(() => saveField(tenantId, actor.id, { module: 'leads', group: 'Additional Information', name: 'Workflow Long Text', type: 'Long Text', required: false }));
+    const workflow = await create({ isActive: false, actions: [{ type: 'update_field', config: { field: `customFieldValues.${field.id}`, value: 'A detailed note' } }] });
+    const before = await Promise.all([prisma.customFieldValue.count({ where: { tenantId } }), prisma.activity.count({ where: { tenantId } }), prisma.auditLog.count({ where: { tenantId } })]);
+    expect((await scope(() => workflows.testWorkflow(workflow.id, tenantId, lead.id, actor.id))).valid).toBe(true);
+    expect(await Promise.all([prisma.customFieldValue.count({ where: { tenantId } }), prisma.activity.count({ where: { tenantId } }), prisma.auditLog.count({ where: { tenantId } })])).toEqual(before);
+    await expect(create({ actions: [{ type: 'update_field', config: { field: `customFieldValues.${field.id}`, value: 42 } }] })).rejects.toThrow();
+    await expect(create({ trigger: 'contact.updated', actions: [{ type: 'update_field', config: { field: `customFieldValues.${field.id}`, value: 'Wrong module' } }] })).rejects.toThrow(/editable/);
+    await scope(() => saveField(tenantId, actor.id, { visibleInForm: false }, field.id));
+    const options = await scope(() => workflows.getOptions(tenantId, actor.id));
+    expect(getWorkflowUpdateFields('lead', options.customFields).some(f => f.customFieldId === field.id)).toBe(false);
+    expect(getWorkflowConditionFields('lead', undefined, options.customFields).some(f => f.customFieldId === field.id)).toBe(false);
+  });
 
   it('advertises four update triggers, Contact labels and SMS but no retired actions', () => {
     expect(WORKFLOW_TRIGGERS.filter(t => t.type.endsWith('.updated')).map(t => t.type)).toEqual(['lead.updated', 'contact.updated', 'deal.updated', 'account.updated']);
@@ -80,8 +169,8 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   it('emits real Lead, Contact, Account, and Deal updates but suppresses no-op saves', async () => {
     const deal = await newDeal();
     for (const [trigger, edit] of [
-      ['lead.updated', () => updateLead(lead.id, tenantId, actor.id, { description: 'Changed lead' })],
-      ['contact.updated', () => updateContact(contact.id, tenantId, { notes: 'Changed contact' }, actor.id)],
+      ['lead.updated', () => updateLead(lead.id, tenantId, actor.id, { address: 'Changed lead' })],
+      ['contact.updated', () => updateContact(contact.id, tenantId, { address: 'Changed contact' }, actor.id)],
       ['account.updated', () => updateCompany(account.id, tenantId, actor.id, { notes: 'Changed account' })],
       ['deal.updated', () => updateDeal(deal.id, tenantId, actor.id, { title: 'Changed deal' })],
     ] as const) {
@@ -106,19 +195,19 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     ]));
   });
   it('treats empty and Others separately and persists optional details through Update Fields', async () => {
-    const workflow = await create({ conditions: { operator: 'AND', conditions: [{ field: 'lead.productInterest', operator: 'is_empty', value: null }] },
-      actions: [{ type: 'update_field', config: { field: 'productInterest', value: [others.id], otherDetails: 'Custom service' } }] });
-    await scope(() => updateLead(lead.id, tenantId, actor.id, { description: randomUUID() }));
+    const workflow = await create({ conditions: { operator: 'AND', conditions: [{ field: 'lead.productInterestIds', operator: 'is_empty', value: null }] },
+      actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id], otherDetails: 'Custom service' } }] });
+    await scope(() => updateLead(lead.id, tenantId, actor.id, { address: randomUUID() }));
     const updated = await scope(() => prisma.lead.findFirstOrThrow({ where: { tenantId, id: lead.id } }));
     expect(updated.productInterest).toEqual(['Others']); expect(updated.productInterestOther).toBe('Custom service');
     expect(await runs(workflow.id)).toHaveLength(1); // own update cannot loop
-    await scope(() => updateLead(lead.id, tenantId, actor.id, { description: randomUUID() }));
+    await scope(() => updateLead(lead.id, tenantId, actor.id, { address: randomUUID() }));
     expect((await runs(workflow.id)).filter(r => r.status === 'completed')).toHaveLength(1);
     await scope(() => updateLead(lead.id, tenantId, actor.id, { productInterest: [] }));
     // The still-active empty-interest workflow intentionally selects Others again.
     await scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, false));
-    const clearing = await create({ actions: [{ type: 'update_field', config: { field: 'productInterest', value: [others.id], otherDetails: 'Saved details', clear: true } }] });
-    await scope(() => updateLead(lead.id, tenantId, actor.id, { description: randomUUID() }));
+    const clearing = await create({ actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [others.id], otherDetails: 'Saved details', clear: true } }] });
+    await scope(() => updateLead(lead.id, tenantId, actor.id, { address: randomUUID() }));
     expect((await runs(clearing.id))[0].status).toBe('completed');
     const empty = await scope(() => prisma.lead.findFirstOrThrow({ where: { tenantId, id: lead.id } }));
     expect(empty.productInterest).toEqual([]); expect(empty.productInterestOther).toBeNull();
@@ -128,7 +217,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     const workflow = await create({ isActive: false, trigger: 'deal.updated', actions: [{ type: 'update_field', config: { field: 'value', value: 4321.5 } }] });
     await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/historical snapshots/);
     // Simulate a workflow already active when the new pricing rule is deployed.
-    await prisma.workflow.update({ where: { id: workflow.id }, data: { isActive: true } });
+    await prisma.workflow.update({ where: { id: workflow.id }, data: { isActive: true, status: 'ACTIVE' } });
     await scope(() => updateDeal(deal.id, tenantId, actor.id, { priority: 'HIGH' }));
     const saved = await scope(() => prisma.deal.findFirstOrThrow({ where: { id: deal.id, tenantId } }));
     expect(saved.value).toBe(deal.value); expect(saved.title).toBe(deal.title); expect(saved.priority).toBe('HIGH');
@@ -137,7 +226,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   });
   it('sends SMS once for an event and reports a missing phone without submission', async () => {
     const workflow = await create({ actions: [{ type: 'send_sms', config: { recipient: 'record', message: 'Hello {{first_name}}' } }] });
-    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), triggerType: 'lead.updated', entityType: 'lead', entityId: lead.id, context: { 'event.changedFields': ['description'] } };
+    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), triggerType: 'lead.updated', entityType: 'lead', entityId: lead.id, context: { 'event.changedFields': ['address'] } };
     await scope(() => fireWorkflowTrigger(event)); await scope(() => fireWorkflowTrigger(event));
     expect(sendSms).toHaveBeenCalledTimes(1); expect((await runs(workflow.id))[0].status).toBe('completed');
     expect(sendSms).toHaveBeenCalledWith('+639171234567', 'Hello Lead');

@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { ValidationError } from '../../../shared/errors/http-error';
 
 type Kind = 'lead' | 'contact' | 'account';
-type Selection = { ids?: string[]; names?: string[]; activeNames?: string[] };
+type Selection = { ids?: string[]; names?: string[]; activeNames?: string[]; activeIds?: string[] };
 type Previous = { id?: string; productInterest?: string[]; productInterestIds?: string[]; productInterests?: string[]; activeProducts?: string[] };
 
 /** Build a single nested write, so the record and its links commit atomically.
@@ -43,7 +43,7 @@ export async function productRelationData(tx: Prisma.TransactionClient, kind: Ki
     entries.set(product.id, entry);
   };
   for (const value of ids ?? names) resolve(value, !!ids, false);
-  for (const value of activeNames) resolve(value, false, true);
+  for (const value of selection.activeIds ?? activeNames) resolve(value, !!selection.activeIds, true);
   const normalized = !unresolvedNames.length && !unresolvedActive.length;
   const links = [...entries.values()];
   // Keep unresolved records on the explicit compatibility branch until staff resolve them.

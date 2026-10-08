@@ -20,10 +20,10 @@ describe.skipIf(!disposable)('Notification HTTP persistence and isolation', () =
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Notifications test', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other notifications test', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
-    const user = await prisma.user.create({ data: { tenantId, email: `notifications-${randomUUID()}@camxian.com`, firstName: 'Notification', lastName: 'Tester', role: 'Viewer', mustChangePassword: false } });
+    const user = await prisma.user.create({ data: { tenantId, email: `notifications-${randomUUID()}@camxian.com`, firstName: 'Notification', lastName: 'Tester', role: 'Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     userId = user.id;
     token = (await issueAuthSession(user)).token;
-    otherUserId = (await prisma.user.create({ data: { tenantId, email: `other-${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'User', role: 'Viewer', mustChangePassword: false } })).id;
+    otherUserId = (await prisma.user.create({ data: { tenantId, email: `other-${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'User', role: 'Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } })).id;
     const foreignUser = await prisma.user.create({ data: { tenantId: otherTenant, email: `foreign-${randomUUID()}@camxian.com`, firstName: 'Foreign', lastName: 'User', role: 'Viewer' } });
     ids = [];
     for (let i = 0; i < 25; i++) ids.push((await prisma.notification.create({ data: { tenantId, userId, type: 'task_overdue', title: `Notification ${i}`, isRead: i >= 22 } })).id);

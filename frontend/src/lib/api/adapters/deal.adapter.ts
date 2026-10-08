@@ -74,7 +74,6 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     title: data.title || 'Untitled Deal',
     value: typeof data.value === 'number' ? data.value : undefined,
     currency: 'PHP', // Default currency as per DTO
-    billingFrequency: data.billingFrequency || undefined,
     priority: toBackendPriority(data.priority),
     expectedCloseDate: toISODatetime(data.expectedCloseDate),
     leadSource: data.leadSource || undefined,
@@ -114,7 +113,6 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
   if (data.priority !== undefined) updateData.priority = toBackendPriority(data.priority);
   if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = toISODatetime(data.expectedCloseDate);
   if (data.leadSource !== undefined) updateData.leadSource = data.leadSource;
-  if (data.billingFrequency !== undefined) updateData.billingFrequency = data.billingFrequency;
 
   // Strip empty strings for optional UUID fields
   const orgId = data.accountId || data.companyId || data.organizationId;
@@ -240,7 +238,6 @@ export function toFrontendDeal(backendDeal: any): any {
     expectedCloseDate: backendDeal.expectedCloseDate || '',
     assignedUserId: backendDeal.assignedUserId || backendDeal.ownerId || '',
     assignedUser: backendDeal.assignedUser || undefined,
-    billingFrequency: backendDeal.billingFrequency || undefined,
     lostReason: backendDeal.lostReason || undefined,
     order: typeof backendDeal.order === 'number' ? backendDeal.order : 0,
     createdAt: backendDeal.createdAt || new Date().toISOString(),

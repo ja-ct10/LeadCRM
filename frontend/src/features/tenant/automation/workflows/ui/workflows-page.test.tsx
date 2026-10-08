@@ -126,7 +126,7 @@ it('quick icons duplicate and toggle the same workflow while showing only the su
   fireEvent.click(screen.getByLabelText('Duplicate workflow'));
   await waitFor(() => expect(workflowsApi.duplicate).toHaveBeenCalledWith('wf1'));
   await waitFor(() => expect((screen.getByLabelText('Pause workflow') as HTMLButtonElement).disabled).toBe(false));
-  vi.mocked(workflowsApi.list).mockResolvedValue({ data: [{ ...workflow, id: 'wf1', isActive: false }], meta: { total: 1 } } as never);
+  vi.mocked(workflowsApi.list).mockResolvedValue({ data: [{ ...workflow, id: 'wf1', isActive: false, status: 'PAUSED' }], meta: { total: 1 } } as never);
   fireEvent.click(screen.getByLabelText('Pause workflow'));
   await waitFor(() => expect(workflowsApi.toggle).toHaveBeenCalledWith('wf1', false));
   await waitFor(() => expect((screen.getByLabelText('Resume workflow') as HTMLButtonElement).disabled).toBe(false));

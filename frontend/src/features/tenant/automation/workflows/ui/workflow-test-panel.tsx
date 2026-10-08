@@ -1,11 +1,12 @@
 'use client';
+import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useEffect, useState } from 'react';
 import type { TriggerDefinition, WorkflowTestResult } from '@leadcrm/shared';
 import { contactsApi } from '@/shared/services/contacts.api';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import { dealsApi } from '@/shared/services/deals.api';
 import { companiesApi } from '@/shared/services/companies.api';
-import { workflowsApi } from '@/shared/services/workflows.api';
+import { workflowsApi, withWorkflowTimeout } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { workflowControl } from './workflow-fields';
@@ -39,14 +40,14 @@ export function WorkflowTestPanel({
     const timer = setTimeout(async () => {
       try {
         const query = { page, limit: 25, search, archived: false };
-        const response =
-          trigger.entity === 'deal'
-            ? await dealsApi.list(query)
+        const request = async () => trigger.entity === 'deal'
+            ? dealsApi.list(query)
             : trigger.entity === 'account'
-              ? await companiesApi.list(query)
+              ? companiesApi.list(query)
             : trigger.entity === 'contact'
-              ? await contactsV2Api.list(query)
-              : await contactsApi.list(query);
+              ? contactsV2Api.list(query)
+              : contactsApi.list(query);
+        const response = await withWorkflowTimeout(request());
         if (cancelled) return;
         setRecords(
           response.data.map((record) => ({
@@ -108,7 +109,7 @@ export function WorkflowTestPanel({
         }}
       />
       {loading ? (
-        <p role="status">Loading records…</p>
+        <TableLoadingState label="Loading records…" />
       ) : (
         <label className="block text-sm">
           Sample record

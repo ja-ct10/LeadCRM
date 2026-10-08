@@ -45,7 +45,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'lead.source', operator: 'contains', value: 'Website' }],
+      conditions: [{ field: 'lead.source', operator: 'equals', value: 'Website' }],
     },
     actions: [
       { type: 'create_task', config: { title: 'Qualify inbound website lead: {{first_name}}', dueDaysFromNow: 1, priority: 'Medium', description: 'Review web form inquiry and verify contact details.' } },
@@ -53,7 +53,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   },
   {
     name: 'Warm Lead Discovery Preparation',
-    description: 'Schedule a discovery task and update notes when a lead becomes Warm.',
+    description: 'Schedule a discovery task when a lead becomes Warm.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -62,7 +62,6 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     },
     actions: [
       { type: 'create_task', config: { title: 'Schedule discovery call with {{first_name}}', dueDaysFromNow: 2, priority: 'High', description: 'Prepare presentation deck and schedule qualification call.' } },
-      { type: 'update_field', config: { field: 'description', value: 'Lead became warm. Prepare a sales discovery call.' } },
     ],
   },
   {
@@ -76,12 +75,11 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     },
     actions: [
       { type: 'create_task', config: { title: 'Review cold lead for future nurture: {{first_name}}', dueDaysFromNow: 14, priority: 'Low', description: 'Revisit engagement history and consider quarterly check-in.' } },
-      { type: 'update_field', config: { field: 'description', value: 'Lead became cold. Scheduled for nurture campaign check.' } },
     ],
   },
   {
     name: 'Closed Lead Milestone',
-    description: 'Update milestone notes when a lead becomes Closed, including after conversion.',
+    description: 'Create a handoff review task when a lead becomes Closed, including after conversion.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -89,7 +87,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'lead.status', operator: 'equals', value: 'Closed' }],
     },
     actions: [
-      { type: 'update_field', config: { field: 'description', value: 'Lead closed. Review the record history and complete any remaining handoff.' } },
+      { type: 'create_task', config: { title: 'Review closed lead handoff', description: 'Review the record history and complete any remaining handoff.', priority: 'Medium', dueDaysFromNow: 1 } },
     ],
   },
   {
@@ -116,12 +114,11 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   // 2. Contact Management
   {
     name: 'Contact Onboarding Handoff',
-    description: 'Create an onboarding task and update notes when a contact is created.',
+    description: 'Create an onboarding task when a contact is created.',
     trigger: 'contact.created',
     isActive: false,
     actions: [
       { type: 'create_task', config: { title: 'Welcome and onboarding setup for {{first_name}}', dueDaysFromNow: 3, priority: 'High', description: 'Send welcome packet and schedule onboarding session.' } },
-      { type: 'update_field', config: { field: 'notes', value: 'New contact created. Initiating standard onboarding checklist.' } },
     ],
   },
   {
@@ -131,7 +128,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'contact.status', operator: 'equals', value: 'HOT' }],
+      conditions: [{ field: 'contact.status', operator: 'equals', value: 'Hot' }],
     },
     actions: [
       { type: 'create_task', config: { title: 'Executive relationship review for {{company}}', dueDaysFromNow: 2, priority: 'High', description: 'Key contact marked HOT. Conduct satisfaction check-in.' } },
@@ -144,11 +141,10 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'contact.status', operator: 'equals', value: 'COLD' }],
+      conditions: [{ field: 'contact.status', operator: 'equals', value: 'Cold' }],
     },
     actions: [
       { type: 'create_task', config: { title: 'Re-engagement outreach for {{company}}', dueDaysFromNow: 1, priority: 'High', description: 'Contact engagement dropped. Reach out to address concerns and offer support.' } },
-      { type: 'update_field', config: { field: 'notes', value: 'Contact marked COLD. Outreach initiated.' } },
     ],
   },
   {
@@ -158,7 +154,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'contact.status', operator: 'equals', value: 'CLOSED' }],
+      conditions: [{ field: 'contact.status', operator: 'equals', value: 'Closed' }],
     },
     actions: [
       { type: 'create_task', config: { title: 'Complete account wrap-up and archive files for {{company}}', dueDaysFromNow: 7, priority: 'Low', description: 'Finalize wrap-up and record contact status closure reason.' } },

@@ -1,5 +1,6 @@
 import {
   workflowOperators,
+  WORKFLOW_MESSAGE_VARIABLES,
   getWorkflowUpdateFields,
   getAvailableActions,
   type ActionDefinition,
@@ -212,9 +213,9 @@ export function conditionSummary(
   options: WorkflowOptions,
 ) {
   const field = trigger?.fields.find((entry) => entry.field === rule.field);
-  const value = field?.type === 'products' ? String(rule.value ?? '') : references(field?.type ?? '', options)
+  const value = references(field?.type ?? '', options)
     ? referenceName(field!.type, rule.value, options)
-    : String(rule.value ?? '');
+    : field?.optionLabels?.[String(rule.value)] ?? (field?.type === 'boolean' ? rule.value ? 'Yes' : 'No' : String(rule.value ?? ''));
   return `${field?.label ?? 'Choose a field'} ${operatorLabels[rule.operator]}${['is_empty', 'is_not_empty'].includes(rule.operator) ? '' : ` ${value || '…'}`}`;
 }
 export function actionSummary(
@@ -240,7 +241,7 @@ export function actionSummary(
         config.templateId
           ? `Template: ${referenceName('template', config.templateId, options)}`
           : String(config.subject || 'Add an email template or message'),
-        `Sender: ${referenceName('user', config.senderUserId, options, 'choose connected Gmail sender')}`,
+        `Sender: ${(options.senders?.find(sender => sender.id === config.senderUserId)?.name ?? 'choose connected Gmail sender')}`,
       ];
     case 'send_sms':
       return [String(config.message || 'Add an SMS message'), `To: ${config.recipient === 'primary_contact' ? 'primary contact' : config.recipient === 'primary_lead' ? 'primary lead' : 'triggering record'}`];
@@ -248,11 +249,14 @@ export function actionSummary(
       return [
         `Move Deal → ${referenceName('stage', config.stageId, options, 'choose a stage')}`,
       ];
-    case 'update_field':
+    case 'update_field': {
+      const field = (['lead', 'contact', 'account', 'deal'] as const).flatMap(entity => getWorkflowUpdateFields(entity, options.customFields)).find(field => field.field === config.field);
+      const value = references(field?.type ?? '', options) ? (Array.isArray(config.value) ? config.value.map(value => referenceName(field!.type, value, options)).join(', ') : referenceName(field!.type, config.value, options)) : field?.optionLabels?.[String(config.value)] ?? String(config.value ?? 'Add a value');
       return [
-        `${config.field === 'value' ? 'Custom Fields / ' : ''}${String(config.field || 'Choose a field')}`,
-        config.clear ? 'Clear this field' : Array.isArray(config.value) ? `${config.value.length} selected` : String(config.value ?? 'Add a value'),
+        field?.label ?? 'Unavailable field',
+        config.clear ? 'Clear this field' : value,
       ];
+    }
     case 'send_campaign':
       return ['Send Campaign is retired. Disable or remove this step before activating.'];
     default:
@@ -283,7 +287,7 @@ export function conditionIssues(
         message = 'Choose Yes or No.';
       else if (field.options && !field.options.includes(String(rule.value)))
         message = 'Choose an available value.';
-      else if (choices && !choices.some((entry) => (field.type === 'products' ? entry.name : entry.id) === rule.value))
+      else if (choices && !choices.some((entry) => entry.id === rule.value))
         message = 'Choose an available record.';
       else if (
         field.type === 'date' &&
@@ -311,8 +315,8 @@ export function actionIssues(
     return ['This action is unavailable for the trigger.'];
   const issues: string[] = [];
   if (action.type === 'update_field') {
-    const field = getWorkflowUpdateFields(entity).find((entry) => entry.field === action.config.field);
-    if (!field) return incomplete && !action.config.field ? [] : ['Choose an available field.'];
+    const field = getWorkflowUpdateFields(entity, options.customFields).find((entry) => entry.field === action.config.field);
+    if (!field) return incomplete ? [] : ['Choose an available field.'];
     if (action.config.clear) return !field.required ? [] : ['This field cannot be cleared.'];
     const value = action.config.value;
     if ((value == null || value === '' || (Array.isArray(value) && !value.length)) && !incomplete)
@@ -324,8 +328,7 @@ export function actionIssues(
     const choices = references(field.type, options);
     if (choices) {
       const selected = Array.isArray(value) ? value : [value];
-      const useNames = field.type === 'products' && (entity === 'contact' || entity === 'account');
-      if (selected.some((selection) => !choices.some((choice) => (useNames ? choice.name : choice.id) === selection))) issues.push('Choose an available selection.');
+      if (selected.some((selection) => !choices.some((choice) => choice.id === selection))) issues.push('Choose an available selection.');
     }
     return issues;
   }
@@ -340,7 +343,7 @@ export function actionIssues(
         issues.push(`${field.label} is required.`);
       continue;
     }
-    const choices = references(field.type, options);
+    const choices = key === 'senderUserId' ? options.senders ?? [] : references(field.type, options);
     if (choices && !choices.some((entry) => entry.id === value))
       issues.push(`${field.label}: choose an available selection.`);
     if (field.options && !field.options.includes(String(value)))
@@ -358,7 +361,7 @@ export function actionIssues(
       typeof value === 'string' &&
       [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].some(
         (match) =>
-          !['first_name', 'last_name', 'email', 'company'].includes(match[1]),
+          !WORKFLOW_MESSAGE_VARIABLES.some(variable => variable.token === match[1]),
       )
     )
       issues.push(

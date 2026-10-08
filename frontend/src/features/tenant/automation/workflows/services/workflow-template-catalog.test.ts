@@ -5,7 +5,7 @@ import { prepareWorkflowRecipe, WORKFLOW_RECIPES, WORKFLOW_STARTER_TEMPLATES } f
 import { templateAvailability, templateConditionLabel, templateSetup } from './workflow-template-catalog';
 const userId = '30000000-0000-4000-8000-000000000001';
 const stageId = '30000000-0000-4000-8000-000000000002';
-const options = { users: [{ id: userId, name: 'Agent' }], pipelines: [{ id: '30000000-0000-4000-8000-000000000003', name: 'Sales', stages: [{ id: stageId, name: 'Qualified' }] }], templates: [], campaigns: [] };
+const options = { senders: [{ id: userId, name: "Sender" }], users: [{ id: userId, name: 'Agent' }], pipelines: [{ id: '30000000-0000-4000-8000-000000000003', name: 'Sales', stages: [{ id: stageId, name: 'Qualified' }] }], templates: [], campaigns: [] };
 describe('complete workflow recipe catalog', () => {
   it('retains the approved starters in display order with stable template URL indexes', () => {
     expect(WORKFLOW_STARTER_TEMPLATES.map(({ index, recipe }) => [index, recipe.name])).toEqual([
@@ -43,7 +43,7 @@ describe('complete workflow recipe catalog', () => {
   it('makes missing references and field replacement visible without claiming readiness', () => {
     const recipe = WORKFLOW_RECIPES.find(recipe => recipe.name === 'Contact Onboarding Handoff')!;
     const trigger = WORKFLOW_TRIGGERS.find(trigger => trigger.type === recipe.trigger)!;
-    expect(templateSetup(recipe, trigger, getAvailableActions()).join(' ')).toContain('field will be replaced');
+    expect(templateSetup({ ...recipe, actions: [{ type: 'update_field', config: { field: 'address', value: 'New address' } }] }, trigger, getAvailableActions()).join(' ')).toContain('field will be replaced');
     expect(templateSetup(WORKFLOW_RECIPES[0], WORKFLOW_TRIGGERS[0], getAvailableActions()).join(' ')).toContain('Choose agent');
     expect(templateConditionLabel({ field: 'deal.hasEverBeenWon', operator: 'equals', value: false }, WORKFLOW_TRIGGERS.find(trigger => trigger.type === 'deal.stage_changed'))).toBe('Has ever reached Won is No');
   });

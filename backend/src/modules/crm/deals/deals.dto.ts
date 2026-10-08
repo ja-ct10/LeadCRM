@@ -17,7 +17,6 @@ export const CreateDealSchema = z.object({
   title:             recordName(255),
   value:             z.number().finite().nonnegative().max(999_999_999_999).optional(),
   currency:          z.string().default('PHP'),
-  billingFrequency:  z.enum(['monthly', 'one_time', 'annual', 'quarterly']).optional(),
   priority:          z.enum(['LOW', 'MEDIUM', 'HIGH']).default('MEDIUM'),
   expectedCloseDate: z.string().datetime().optional(),
   leadSource:        recordText(255).optional(),

@@ -18,7 +18,6 @@ export const CreateDealBatchSchema = z.object({
   accountId: id.optional(), assignedUserId: id.optional(),
   contactIds: z.array(id).max(100).optional(), leadIds: z.array(id).max(100).optional(),
   leadSource: text(255).optional(), industry: DealIndustrySchema.optional(), address: text(10000).optional(),
-  billingFrequency: z.enum(['monthly', 'one_time', 'annual', 'quarterly']).optional(),
   productInterestOther: text(1000).nullable().optional(),
 }).strict();
 export type CreateDealBatchInput = z.input<typeof CreateDealBatchSchema>;

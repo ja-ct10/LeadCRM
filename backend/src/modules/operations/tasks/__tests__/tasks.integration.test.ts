@@ -81,7 +81,7 @@ describe.skipIf(!disposable)(
             email: `tasks-${name}-${stamp}@camxian.com`,
             firstName: name,
             lastName: "Test",
-            mustChangePassword: false,
+            mustChangePassword: false, onboardingCompletedAt: new Date(),
             emailVerified: new Date(),
           },
         });
@@ -213,7 +213,7 @@ describe.skipIf(!disposable)(
           expect(task.relatedRecords).toEqual([]);
           expect(task.dealIds).toEqual([linkedDeal.id]);
         }
-        const viewer = await prisma.user.create({ data: { tenantId, role: 'Task Contact Reader', email: `task-context-${Date.now()}@camxian.com`, firstName: 'Context', lastName: 'Reader', emailVerified: new Date(), mustChangePassword: false } });
+        const viewer = await prisma.user.create({ data: { tenantId, role: 'Task Contact Reader', email: `task-context-${Date.now()}@camxian.com`, firstName: 'Context', lastName: 'Reader', emailVerified: new Date(), mustChangePassword: false, onboardingCompletedAt: new Date() } });
         const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task Contact Reader', permissions: { create: ['tasks', 'contacts'].map(module => ({ module, canView: true })) } } });
         await prisma.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
         const viewerToken = (await issueAuthSession(viewer)).token;

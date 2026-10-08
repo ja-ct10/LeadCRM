@@ -3,6 +3,7 @@ import { z } from 'zod';
 export const CRM_STATUSES = ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'] as const;
 export const LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Organic', 'Others'] as const;
 export const LeadSourceSchema = z.enum(LEAD_SOURCES);
+export const COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'] as const;
 
 /** Keep assignment eligibility consistent between CRM controls and audience validation. */
 export function isAssignableAgent(user: { role?: string | null; status?: string | null }): boolean {

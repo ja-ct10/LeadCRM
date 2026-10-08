@@ -75,7 +75,7 @@ export async function testWorkflow(req: Request, res: Response, next: NextFuncti
       action && typeof action === 'object' && !Array.isArray(action) && action.type === 'move_deal_stage' && action.enabled !== false)) {
       await assertPermissions(req.user!, [workflow.trigger.startsWith('lead.') ? 'leads.view' : 'contacts.view', 'deals.view', 'deals.edit']);
     }
-    res.json({ success: true, data: await service.testWorkflow(String(req.params.id), req.user!.tenantId, req.body.entityId) });
+    res.json({ success: true, data: await service.testWorkflow(String(req.params.id), req.user!.tenantId, req.body.entityId, req.user!.userId) });
   } catch (err) { next(err); }
 }
 

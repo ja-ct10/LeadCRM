@@ -30,7 +30,7 @@ describe.skipIf(!disposable)('workflow names through authenticated HTTP and disp
     foreignTenantId = (await prisma.tenant.create({ data: { name: 'Other workflow names', slug: `other-workflow-names-${stamp}` } })).id;
     const createUser = (label: string, role: string) => prisma.user.create({ data: {
       tenantId, role, email: `workflow-names-${label}-${stamp}@camxian.com`, firstName: label, lastName: 'Test',
-      mustChangePassword: false, emailVerified: new Date(),
+      mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date(),
     } });
     const admin = await createUser('admin', 'Client Admin');
     const viewer = await createUser('viewer', 'Workflow Name Viewer');

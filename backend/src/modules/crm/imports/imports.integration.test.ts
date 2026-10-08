@@ -52,12 +52,12 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     tenantId = tenant.id;
     const user = process.env.CRM_IMPORT_ROLLOUT_TEST
       ? await prisma.user.findUniqueOrThrow({ where: { id: 'import-rollout-actor' } })
-      : await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'CSV', email: 'csv@camxian.com', role: 'Client Admin', mustChangePassword: false } });
+      : await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'CSV', email: 'csv@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     actorId = user.id; token = (await issueAuthSession(user)).token;
-    const viewer = await prisma.user.create({ data: { tenantId, firstName: 'Denied', lastName: 'CSV', email: 'denied-csv@camxian.com', role: 'Viewer', mustChangePassword: false } });
+    const viewer = await prisma.user.create({ data: { tenantId, firstName: 'Denied', lastName: 'CSV', email: 'denied-csv@camxian.com', role: 'Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     denied = (await issueAuthSession(viewer)).token;
     const other = await prisma.tenant.create({ data: { name: 'Other CSV', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } });
-    const otherUser = await prisma.user.create({ data: { tenantId: other.id, firstName: 'Other', lastName: 'Admin', email: 'other-csv@camxian.com', role: 'Client Admin', mustChangePassword: false } });
+    const otherUser = await prisma.user.create({ data: { tenantId: other.id, firstName: 'Other', lastName: 'Admin', email: 'other-csv@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     foreign = (await issueAuthSession(otherUser)).token;
     cctv = (await prisma.productInterest.create({ data: { tenantId, name: 'CCTV Surveillance System', dealValue: 25000 } })).id;
     bio = (await prisma.productInterest.create({ data: { tenantId, name: 'Biometrics', dealValue: 15000 } })).id;

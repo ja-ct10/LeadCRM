@@ -6,7 +6,7 @@ import { NotFoundError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireContactCreated, fireContactStatusChanged, fireContactUpdated } from '../../automation/triggers/triggers.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
-import { recordChanges } from '../record-updates';
+import { recordChanges, customFieldChangeTracker } from '../record-updates';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
@@ -35,13 +35,14 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   await validateLinks(tenantId, dto);
   const before = await repo.findContactById(id, tenantId);
   if (!before) throw new NotFoundError('Contact');
+  const withCustomChanges = await customFieldChangeTracker(tenantId, 'contacts', id, dto.customFieldValues);
   const contact = await repo.updateContact(id, tenantId, dto, actorId);
   if (!contact) throw new NotFoundError('Contact');
   if (actorId) {
     await writeAuditLog({ tenantId, userId: actorId, action: 'contact.updated', entityType: 'Contact', entityId: id });
     if (contact.status !== before.status) await fireContactStatusChanged({ tenantId, actorId, contact, prevStatus: before.status });
   }
-  const changes = recordChanges(before, contact);
+  const changes = await withCustomChanges(recordChanges(before, contact));
   if (changes.changedFields.length) await fireContactUpdated({ tenantId, actorId, record: contact, changedFields: changes.changedFields, changes });
   return { ...contact, status: normalizeCrmStatus(contact.status) };
 }

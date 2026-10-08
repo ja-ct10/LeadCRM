@@ -28,12 +28,12 @@ exports.WorkflowDraftSchema = zod_1.z.object({
     isActive: zod_1.z.boolean().default(false),
 }).strict();
 function workflowOperators(type) {
-    if (type === 'products' || type === 'list')
+    if (['products', 'list', 'contacts', 'leads'].includes(type))
         return ['contains', 'not_contains', 'is_empty', 'is_not_empty'];
     if (type === 'number')
         return ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'];
     if (type === 'date')
-        return ['equals', 'before', 'after'];
+        return ['equals', 'not_equals', 'before', 'after', 'is_empty', 'is_not_empty'];
     if (type !== 'string')
         return type === 'boolean' ? ['equals', 'not_equals'] : ['equals', 'not_equals', 'is_empty', 'is_not_empty'];
     return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];

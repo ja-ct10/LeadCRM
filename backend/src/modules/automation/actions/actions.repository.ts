@@ -17,7 +17,8 @@ export function findTemplate(id: string, tenantId: string) {
 export function findStage(id: string, tenantId: string) {
   return prisma.stage.findFirst({ where: { id, tenantId, pipeline: { tenantId, isArchived: false } } });
 }
-export function findSender(id: string, tenantId: string) {
+export async function findSender(id: string, tenantId: string) {
+  if (!await findUser(id, tenantId)) return null;
   return prisma.emailAccount.findFirst({ where: { userId: id, tenantId, isActive: true, provider: 'gmail' }, select: { email: true } });
 }
 export function createDelivery(data: { tenantId: string; fromEmail: string; toEmail: string; subject: string; leadId?: string; contactId?: string }) {

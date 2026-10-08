@@ -105,14 +105,17 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   const previous = await prisma.contact.findFirst({ where: { id, tenantId } });
+  if (dto.productInterestIds !== undefined && dto.productInterests !== undefined) throw new ValidationError('Supply Product IDs or legacy names, not both.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
-  normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? [], previous?.productInterestOther);
+  const interestNames = dto.productInterestIds === undefined ? (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? []
+    : (await prisma.productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
+  normalizeProductOther(dto, interestNames, previous?.productInterestOther);
   return salesTransaction(async tx => {
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
-    if (dto.productInterests !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] }, current, true));
+    if (dto.productInterests !== undefined || dto.productInterestIds !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined }, current, true));
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
     if (status === 'Closed' && normalizeCrmStatus(current.status) !== 'Closed') await assertClosedStatus(tx, tenantId, { contactId: id });
-    const { customFieldValues, ...data } = dto;
+    const { customFieldValues, productInterestIds: _productIds, ...data } = dto;
     await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({
       where:   { id, tenantId } as never,

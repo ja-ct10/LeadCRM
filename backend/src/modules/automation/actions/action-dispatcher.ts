@@ -1,5 +1,5 @@
 import { resolveDealTargets } from './action-deal-targets';
-import { EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
+import { WORKFLOW_MESSAGE_VARIABLES, EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { sendEmail } from '../../../integrations/gmail/gmail.service';
@@ -71,8 +71,8 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
   } catch (error) { return { success: false, error: safeWorkflowError(error) }; }
 }
 function render(content: string, context: Record<string, unknown>, entity: string, html = true): string {
-  const values: Record<string, unknown> = { first_name: context[`${entity}.firstName`], last_name: context[`${entity}.lastName`],
-    email: context[`${entity}.email`], company: context[`${entity}.company`] ?? context[`${entity}.companyName`] };
+  const values: Record<string, unknown> = Object.fromEntries(WORKFLOW_MESSAGE_VARIABLES.map(variable => [variable.token,
+    variable.fields.map(field => context[`${entity}.${field}`]).find(value => typeof value === 'string' || typeof value === 'number') ?? '']));
   return content.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => (html ? String(values[key] ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!)) : String(values[key] ?? '').replace(/[\x00-\x1f\x7f]/g, ' ')));
 }
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string): Promise<Record<string, unknown>> {

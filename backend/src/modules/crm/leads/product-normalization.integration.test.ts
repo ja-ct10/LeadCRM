@@ -20,7 +20,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const tenant = await prisma.tenant.create({ data: { name: 'Normalization acceptance', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } });
     tenantId = tenant.id;
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
-    const actor = await prisma.user.create({ data: { tenantId, email: 'normalization@camxian.com', firstName: 'Test', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false } });
+    const actor = await prisma.user.create({ data: { tenantId, email: 'normalization@camxian.com', firstName: 'Test', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     actorId = actor.id; token = (await issueAuthSession(actor)).token;
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
@@ -43,7 +43,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(deals.map(d => d.value)).toEqual([25000, 15000]);
     expect((await request(path, 'PATCH', { name: 'CCTV Renamed', dealValue: 30000 })).status).toBe(200);
     expect((await request('/crm/leads/' + lead.body.data.id)).body.data.productInterest).toEqual(['CCTV Renamed', 'Biometrics']);
-    const audience = await tenantContext.run({ tenantId }, () => resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: 'productInterest', operator: 'equals', value: 'CCTV Renamed' }] }));
+    const audience = await tenantContext.run({ tenantId }, () => resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: 'productInterest', operator: 'equals', value: [cctv.id] }] }));
     expect(audience.breakdown.matched).toBe(1);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).value).toBe(25000);
     const next = await request('/crm/deals', 'POST', { title: 'Deal B', pipelineId: deals[0].pipelineId, stageId: deals[0].stageId, productInterestId: cctv.id, value: 1 });

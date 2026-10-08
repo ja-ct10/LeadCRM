@@ -98,11 +98,11 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
 
   it('runs the real lead-created path through cookie-authenticated HTTP with ordered actions and persisted history', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Call lead', dueDaysFromNow: 0 } },
-      { type: 'update_field', config: { field: 'description', value: 'Follow up requested' } }]);
+      { type: 'update_field', config: { field: 'address', value: 'Follow up requested' } }]);
     const response = await call('/crm/leads', 'POST', { firstName: 'Created', lastName: 'Via HTTP', email: 'created@example.test' });
     expect(response.status, JSON.stringify(response.body)).toBe(201);
     const record = await prisma.lead.findUniqueOrThrow({ where: { id: response.body.data.id } });
-    expect(record.assignedUserId).toBe(owner.id); expect(record.description).toBe('Follow up requested');
+    expect(record.assignedUserId).toBe(owner.id); expect(record.address).toBe('Follow up requested');
     const task = await prisma.task.findFirstOrThrow({ where: { leadLinks: { some: { leadId: record.id } } } });
     expect(task.assignedUserId).toBe(owner.id); expect(task.assignedById).toBe(actor.id);
     const history = await runs(workflow.id); expect(history).toHaveLength(1); expect(history[0].status).toBe('completed');
@@ -136,14 +136,15 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const record = await scope(async () => {
       const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', assignedUserId: actor.id };
       if (entity === 'lead') return prisma.lead.create({ data: { ...customer, source: 'Website', status: String(status ?? 'Warm'), productInterest: [] } });
-      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'WARM') as 'HOT', activeProducts: [], productInterests: [] } });
+      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'Warm').toUpperCase() as 'HOT', activeProducts: [], productInterests: [] } });
       return prisma.deal.create({ data: { tenantId, title: 'Catalog opportunity', pipelineId: deal.pipelineId, stageId,
         assignedUserId: actor.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true } });
     });
     const workflow = await create(draft.actions, { ...draft, name: `${draft.name} ${randomUUID()}`, isActive: true });
     vi.mocked(sendEmail).mockImplementation(async () => ({ messageId: randomUUID(), threadId: randomUUID() }));
     const context = entity === 'deal' && draft.trigger !== 'deal.created'
-      ? { 'event.previousStageId': deal.stageId, 'event.newStageId': stageId } : {};
+      ? { 'event.previousStageId': deal.stageId, 'event.newStageId': stageId }
+      : draft.trigger.endsWith('.status_changed') ? { 'event.previousStatus': status === 'Cold' ? 'Warm' : 'Cold', 'event.newStatus': status } : {};
     const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: draft.trigger, context };
     await scope(() => fireWorkflowTrigger(event));
     // Delivery retries cannot duplicate tasks or emails from the same event.
@@ -207,7 +208,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   it('fires Client Profile creation and status changes from the Contact API and keeps tasks linked to Contact', async () => {
     const createdWorkflow = await create([{ type: 'create_task', config: { title: 'Profile created', assignedUserId: actor.id } }], { trigger: 'contact.created' });
     const changedWorkflow = await create([{ type: 'create_task', config: { title: 'Contact warmed', assignedUserId: actor.id } }], {
-      trigger: 'contact.status_changed', conditions: { operator: 'AND', conditions: [{ field: 'contact.status', operator: 'equals', value: 'WARM' }] },
+      trigger: 'contact.status_changed', conditions: { operator: 'AND', conditions: [{ field: 'contact.status', operator: 'equals', value: 'Warm' }] },
     });
     const created = await call('/crm/contacts', 'POST', { firstName: 'Profile', lastName: 'Example', email: 'profile@example.test', status: 'Cold', activeProducts: [], productInterests: [] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
@@ -354,12 +355,12 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     await expect(create([{ type: 'create_task', config: { title: 'Enabled' } }, { type: 'assign_owner', enabled: false, config: { userId: outsider.id } }])).rejects.toThrow('Active workspace user');
   });
   it('keeps Client Profile actions attached to Contact, with the relationship Status unchanged', async () => {
-    const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'update_field', config: { field: 'notes', value: 'Client follow-up' } },
+    const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'update_field', config: { field: 'address', value: 'Client follow-up' } },
       { type: 'create_task', config: { title: 'Call Client Profile', priority: '', dueDaysFromNow: '' } }], { trigger: 'contact.created' });
     await fire('contact', contact);
     expect((await runs(workflow.id))[0].status).toBe('completed');
     const updated = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
-    expect(updated.status).toBe(contact.status); expect(updated.notes).toBe('Client follow-up'); expect(updated.assignedUserId).toBe(owner.id);
+    expect(updated.status).toBe(contact.status); expect(updated.address).toBe('Client follow-up'); expect(updated.assignedUserId).toBe(owner.id);
     const task = await prisma.task.findFirstOrThrow({ where: { contactLinks: { some: { contactId: contact.id } } }, include: { leadLinks: true } });
     expect(task.leadLinks).toEqual([]);
     expect(task.priority).toBe('Medium');
@@ -401,7 +402,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: unassigned.id } })).assignedUserId).toBeNull();
   });
   it('records invalid legacy definitions as failed validation without changing CRM data', async () => {
-    const workflow = await scope(() => prisma.workflow.create({ data: { tenantId, name: 'Legacy', trigger: 'lead.created', isActive: true,
+    const workflow = await scope(() => prisma.workflow.create({ data: { tenantId, name: 'Legacy', trigger: 'lead.created', isActive: true, status: 'ACTIVE',
       actions: [{ type: 'update_field', field: 'status', value: 'HOT' }] } }));
     await fire(); const [run] = await runs(workflow.id);
     expect(run.status).toBe('failed'); expect(run.steps[0].actionType).toBe('validation');

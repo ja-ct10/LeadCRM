@@ -15,6 +15,7 @@ import { contactsApi } from '@/shared/services/contacts.api';
 import { dealsApi } from '@/shared/services/deals.api';
 vi.mock('@/shared/services/workflows.api', () => ({
   workflowsApi: { test: vi.fn(), getExecutions: vi.fn() },
+  withWorkflowTimeout: <T,>(request: Promise<T>) => request,
 }));
 vi.mock('@/shared/services/contacts.api', () => ({
   contactsApi: { list: vi.fn() },

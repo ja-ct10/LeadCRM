@@ -1,4 +1,6 @@
-import { getWorkflowUpdateFields, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { getWorkflowUpdateFields, closingValueError, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { workflowCustomFields } from '../workflows/workflow-fields';
+import { z } from 'zod';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { UpdateContactSchema } from '../../crm/contacts/contacts.dto';
@@ -15,9 +17,13 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
     if (incomplete) return {}; // Preserve old steps in drafts/disabled form for review.
     throw new ValidationError('Deal Product and value are historical snapshots. Disable or remove this action.');
   }
-  const field = getWorkflowUpdateFields(entity).find(f => f.field === config.field);
+  const customFields = String(config.field).startsWith('customFieldValues.') ? await workflowCustomFields(tenantId) : [];
+  const field = getWorkflowUpdateFields(entity, customFields).find(f => f.field === config.field);
   if (!field) {
-    if (incomplete && !config.field) return {};
+    const retired = entity === 'lead' ? ['website', 'description', 'tags', 'productInterest']
+      : entity === 'contact' ? ['jobTitle', 'notes', 'tags', 'productInterests', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason']
+      : entity === 'account' ? ['tags', 'productInterests', 'activeProducts'] : ['description', 'billingFrequency', 'tags'];
+    if (incomplete && (retired.includes(String(config.field)) || /^customFieldValues\.[\w-]+$/.test(String(config.field)) || !config.field)) return {};
     throw new ValidationError('Choose an editable field for this record.');
   }
   let value = config.value;
@@ -29,20 +35,26 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
     if (incomplete) return {};
     throw new ValidationError('Enter a new value or choose Clear this field.');
   }
+  if (field.customFieldId) {
+    const definition = customFields.find(f => f.id === field.customFieldId)!;
+    const error = closingValueError(definition, value);
+    if (error) throw new ValidationError(error);
+    return { customFieldValues: { [field.customFieldId]: value } };
+  }
+  if (field.options && value !== '' && !field.options.includes(String(value))) throw new ValidationError(`Choose a supported ${field.label}.`);
   if (field.type === 'date' && typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
     if (Number.isNaN(Date.parse(value)) || new Date(value).toISOString().slice(0, 10) !== value) throw new ValidationError('Choose a valid date.');
     value = `${value}T00:00:00.000Z`;
   }
-  const input: Record<string, unknown> = { [field.field]: value };
+  const input: Record<string, unknown> = { [entity === 'lead' && field.field === 'productInterestIds' ? 'productInterest' : field.field]: value };
   if (field.type === 'products') {
-    if (!Array.isArray(value) || !value.every(v => typeof v === 'string')) throw new ValidationError('Choose Product Interests from the list.');
-    const useIds = entity === 'lead' || entity === 'deal';
-    const products = await prisma.productInterest.findMany({ where: { tenantId, active: true, ...(useIds ? { id: { in: value } } : { name: { in: value } }) } });
+    if (!Array.isArray(value) || !value.every(v => z.string().uuid().safeParse(v).success)) throw new ValidationError('Choose Product Interests from the list.');
+    const products = await prisma.productInterest.findMany({ where: { tenantId, active: true, id: { in: value } } });
     if (products.length !== new Set(value).size) throw new ValidationError('Choose available Product Interests.');
     const others = products.some(p => p.name.trim().toLowerCase() === 'others');
     if (config.otherDetails !== undefined && (typeof config.otherDetails !== 'string' || config.otherDetails.length > 1000)) throw new ValidationError('Product interest details must be at most 1000 characters.');
     if (!others && config.otherDetails && config.clear !== true) throw new ValidationError('Select Others before specifying another product interest.');
-    input.productInterestOther = others ? String(config.otherDetails ?? '').trim() || null : null;
+    if (field.field !== 'activeProductIds') input.productInterestOther = others ? String(config.otherDetails ?? '').trim() || null : null;
   } else if (config.otherDetails) throw new ValidationError('Additional interest details are only available for Product Interest.');
   const schema = entity === 'lead' ? UpdateContactSchema : entity === 'contact' ? UpdateClientContactSchema : entity === 'account' ? UpdateCompanySchema : UpdateDealSchema;
   const parsed = schema.strict().safeParse(input);

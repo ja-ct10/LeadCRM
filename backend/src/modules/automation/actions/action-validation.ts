@@ -1,6 +1,6 @@
 import { validateDealTargets } from './action-deal-targets';
 import { z } from 'zod';
-import { EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { WORKFLOW_MESSAGE_VARIABLES, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { fieldUpdatePatch } from './action-fields';
 import { smsRecipient, validateSmsRecipientMode } from './action-sms';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
@@ -44,7 +44,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (key === 'title' && (String(value).length > 255 || /[\r\n\t]/.test(String(value)))) throw new ValidationError('Title must be at most 255 characters without control characters.');
     if (['user', 'stage', 'template', 'campaign', 'products'].includes(field.type) && !z.string().uuid().safeParse(value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
     if (key === 'subject' && !EmailSubjectSchema.safeParse(value).success) throw new ValidationError('Email subject must not contain line breaks or control characters.');
-    if (['title', 'description', 'body', 'message'].includes(key)) validateVariables(String(value));
+    if (['title', 'description', 'subject', 'body', 'message'].includes(key)) validateVariables(String(value));
     if (field.options && !field.options.includes(String(value))) throw new ValidationError(`Choose a supported ${field.label.toLowerCase()}.`);
     if (field.type === 'user' && !await repo.findUser(String(value), tenantId)) throw new NotFoundError('Active workspace user');
     if (field.type === 'products' && !await prisma.productInterest.findFirst({ where: { tenantId, id: String(value), active: true } })) throw new NotFoundError('Product Interest');
@@ -99,6 +99,6 @@ export async function validateEmail(action: WorkflowAction, entity: WorkflowEnti
 
 function validateVariables(value: string) {
   for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
-    if (!['first_name', 'last_name', 'email', 'company'].includes(match[1])) throw new ValidationError('Use only the supported message variables.');
+    if (!WORKFLOW_MESSAGE_VARIABLES.some(variable => variable.token === match[1])) throw new ValidationError('Use only the supported message variables.');
   }
 }

@@ -10,7 +10,7 @@ import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, changeCustomerStatus } from '../engagement.service';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import { fireLeadUpdated } from '../../automation/triggers/triggers.service';
-import { recordChanges } from '../record-updates';
+import { recordChanges, customFieldChangeTracker } from '../record-updates';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
@@ -73,6 +73,7 @@ export async function updateContact(
 ) {
   const before = await repo.findContactById(id, tenantId);
   if (!before) throw new NotFoundError('Contact');
+  const withCustomChanges = await customFieldChangeTracker(tenantId, 'leads', id, dto.customFieldValues);
 
   const contact = await repo.updateContact(id, tenantId, dto, userId, before.status);
   if (!contact) throw new NotFoundError('Contact');
@@ -84,7 +85,7 @@ export async function updateContact(
     entityId:   id,
   });
 
-  const changes = recordChanges(before, contact);
+  const changes = await withCustomChanges(recordChanges(before, contact));
   if (changes.changedFields.length) await fireLeadUpdated({ tenantId, actorId: userId, record: contact, changedFields: changes.changedFields, changes });
 
   // This service owns Leads; Contact events belong to contacts-v2.

@@ -2,23 +2,32 @@ import { Prisma } from '@prisma/client';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import type { WorkflowDraft, WorkflowEntity } from '@leadcrm/shared';
+import { getWorkflowConditionFields, CRM_STATUSES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity } from '@leadcrm/shared';
+import { workflowCustomFields } from './workflow-fields';
+import { readRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { cleanWorkflowName, workflowNameKey, WORKFLOW_NAME_CONFLICT } from './workflow-names';
+import { eligibleAgents } from '../../crm/leads/lead-automation.service';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
 
-export async function builderOptions(tenantId: string, marketing: boolean, access = { contacts: false, accounts: false }) {
-  const [users, pipelines, templates, productInterests, accounts, contacts, leads] = await Promise.all([
-    prisma.user.findMany({ where: { tenantId, status: 'ACTIVE', role: { not: 'Client Admin' } }, select: { id: true, firstName: true, lastName: true }, orderBy: { firstName: 'asc' } }),
-    prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { select: { id: true, name: true }, orderBy: { order: 'asc' } } } }),
+export async function builderOptions(tenantId: string, marketing: boolean, access = { contacts: false, accounts: false, leads: false, deals: false, products: false, users: false }) {
+  const [users, pipelines, templates, productInterests, accounts, contacts, leads, senders] = await Promise.all([
+    access.users ? eligibleAgents(prisma, tenantId) : [],
+    access.deals ? prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { select: { id: true, name: true }, orderBy: { order: 'asc' } } } }) : [],
     marketing ? prisma.template.findMany({ where: { tenantId, isArchived: false, type: 'Email' }, select: { id: true, name: true } }) : [],
-    prisma.productInterest.findMany({ where: { tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }),
+    access.products ? prisma.productInterest.findMany({ where: { tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
     access.accounts ? prisma.account.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
     access.contacts ? prisma.contact.findMany({ where: { tenantId, isArchived: false }, select: { id: true, firstName: true, lastName: true } }) : [],
-    access.contacts ? prisma.lead.findMany({ where: { tenantId, isArchived: false }, select: { id: true, firstName: true, lastName: true } }) : [],
+    access.leads ? prisma.lead.findMany({ where: { tenantId, isArchived: false }, select: { id: true, firstName: true, lastName: true } }) : [],
+    marketing && access.users ? connectedSenders(tenantId) : [],
   ]);
   const people = (rows: Array<{ id: string; firstName: string; lastName: string }>) => rows.map(user => ({ id: user.id, name: `${user.firstName} ${user.lastName}` }));
-  return { users: people(users), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
+  return { customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), users: people(users), senders: people(senders), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
+}
+
+async function connectedSenders(tenantId: string) {
+  const accounts = await prisma.emailAccount.findMany({ where: { tenantId, isActive: true, provider: 'gmail' }, select: { userId: true } });
+  return prisma.user.findMany({ where: { tenantId, status: 'ACTIVE', id: { in: accounts.map(account => account.userId) } }, select: { id: true, firstName: true, lastName: true }, orderBy: { firstName: 'asc' } });
 }
 
 export function findWorkflowById(id: string, tenantId: string) {
@@ -90,7 +99,7 @@ export async function updateWorkflow(id: string, tenantId: string, draft: Partia
   } catch (error) { rethrowNameConflict(error); }
 }
 export function activeWorkflows(tenantId: string, trigger: string) {
-  return prisma.workflow.findMany({ where: { tenantId, trigger, isActive: true, isArchived: false } });
+  return prisma.workflow.findMany({ where: { tenantId, trigger, isActive: true, status: 'ACTIVE', isArchived: false } });
 }
 export async function startRun(params: { tenantId: string; workflowId: string; triggerType: string; entityType: string; entityId: string; eventId: string; recordName: string }) {
   try { return await prisma.$transaction(async tx => {
@@ -117,22 +126,40 @@ export function listExecutions(workflowId: string, tenantId: string, page = 1, l
     include: { steps: { orderBy: { stepIndex: 'asc' } }, trigger: { select: { triggerType: true, entityType: true, triggeredAt: true, payload: true } } } });
 }
 export async function entityContext(entity: WorkflowEntity, id: string, tenantId: string): Promise<Record<string, unknown> | null> {
-  const record = entity === 'lead' ? await prisma.lead.findFirst({ where: { id, tenantId, isArchived: false } })
-    : entity === 'contact' ? await prisma.contact.findFirst({ where: { id, tenantId, isArchived: false } })
-    : entity === 'account' ? await prisma.account.findFirst({ where: { id, tenantId, isArchived: false } })
-    : await prisma.deal.findFirst({ where: { id, tenantId, isArchived: false }, include: { stage: true,
-      leadDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }], take: 1 },
-      contactDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }], take: 1 },
+  const where = { id, tenantId, isArchived: false };
+  const record = entity === 'lead' ? await prisma.lead.findFirst({ where, include: { productLinks: true } })
+    : entity === 'contact' ? await prisma.contact.findFirst({ where, include: { productLinks: true } })
+    : entity === 'account' ? await prisma.account.findFirst({ where, include: { productLinks: true } })
+    : await prisma.deal.findFirst({ where, include: { stage: true,
+      leadDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }] },
+      contactDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }] },
     } });
   if (!record) return null;
-  const context = Object.fromEntries(Object.entries(record).filter(([, value]) => value instanceof Date || value === null || Array.isArray(value) && value.every(item => typeof item === 'string') || ['string', 'number', 'boolean'].includes(typeof value))
-    .map(([key, value]) => [`${entity}.${key}`, value instanceof Date ? value.toISOString() : value]));
-  if (entity === 'deal' && 'stage' in record) {
+  // Internal dispatch identity and suppression are deliberately not condition fields.
+  const context: Record<string, unknown> = { [entity + '.id']: record.id };
+  const source = record as unknown as Record<string, unknown>;
+  for (const field of getWorkflowConditionFields(entity)) {
+    const key = field.field.slice(entity.length + 1), value = source[key];
+    context[field.field] = value instanceof Date ? value.toISOString().slice(0, 10) : value;
+  }
+  if ('status' in record) context[entity + '.status'] = CRM_STATUSES.find(status => status.toLowerCase() === record.status.toLowerCase()) ?? record.status;
+  if ('doNotContact' in record) context['contact.doNotContact'] = record.doNotContact;
+  if ('productLinks' in record) {
+    context[entity + '.productInterestIds'] = record.productLinks.filter(link => !('interested' in link) || link.interested).map(link => link.productInterestId).sort();
+    if (entity === 'account') context['account.activeProductIds'] = record.productLinks.filter(link => 'activeProduct' in link && link.activeProduct).map(link => link.productInterestId).sort();
+  }
+  if ('stage' in record) {
+    context['deal.productInterestIds'] = record.productInterestId ? [record.productInterestId] : [];
+    context['deal.leadIds'] = record.leadDeals.map(link => link.leadId);
+    context['deal.contactIds'] = record.contactDeals.map(link => link.contactId);
     context['deal.leadId'] = record.leadDeals[0]?.leadId ?? null;
     context['deal.contactId'] = record.contactDeals[0]?.contactId ?? null;
     context['deal.isQualified'] = !record.stage.isWon && !record.stage.isLost && record.stage.name.trim().toLowerCase() === 'qualified';
     context['deal.hasEverBeenWon'] = record.hasEverBeenWon || !!record.wonConfirmedAt || record.stage.isWon;
   }
+  const definitions = await workflowCustomFields(tenantId);
+  const values = await readRecordValues(prisma, tenantId, WORKFLOW_MODULES[entity], id);
+  for (const field of getWorkflowConditionFields(entity, undefined, definitions).filter(f => f.customFieldId)) context[field.field] = values[field.customFieldId!] ?? null;
   return context;
 }
 export function findActor(id: string, tenantId: string) {

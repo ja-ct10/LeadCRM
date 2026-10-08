@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import type { ClosingField } from './closing-requirements';
 
 export const WorkflowConditionOperatorSchema = z.enum([
   'equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal',
@@ -33,7 +34,9 @@ export const WorkflowDraftSchema = z.object({
 }).strict();
 export type WorkflowDraft = z.infer<typeof WorkflowDraftSchema>;
 export interface WorkflowOptions {
+  customFields?: ClosingField[];
   users: Array<{id:string;name:string}>;
+  senders?: Array<{id:string;name:string}>;
   pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string}>}>;
   templates: Array<{id:string;name:string}>;
   campaigns: Array<{id:string;name:string}>;
@@ -55,11 +58,13 @@ export interface WorkflowTriggerDefinition {
 export interface WorkflowField {
   field: string; label: string; type: 'string' | 'number' | 'boolean' | 'enum' | 'date' | 'user' | 'pipeline' | 'stage' | 'products' | 'account' | 'contacts' | 'leads' | 'list'; options?: string[];
   group?: 'standard' | 'custom'; required?: boolean; nullable?: boolean;
+  customFieldId?: string; multiline?: boolean; maxLength?: number;
+  optionLabels?: Record<string, string>;
 }
 export function workflowOperators(type: WorkflowField['type']): WorkflowConditionOperator[] {
-  if (type === 'products' || type === 'list') return ['contains', 'not_contains', 'is_empty', 'is_not_empty'];
+  if (['products', 'list', 'contacts', 'leads'].includes(type)) return ['contains', 'not_contains', 'is_empty', 'is_not_empty'];
   if (type === 'number') return ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'];
-  if (type === 'date') return ['equals', 'before', 'after'];
+  if (type === 'date') return ['equals', 'not_equals', 'before', 'after', 'is_empty', 'is_not_empty'];
   if (type !== 'string') return type === 'boolean' ? ['equals', 'not_equals'] : ['equals', 'not_equals', 'is_empty', 'is_not_empty'];
   return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
 }

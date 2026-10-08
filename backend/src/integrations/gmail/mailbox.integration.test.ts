@@ -320,7 +320,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const c = await customer(2, 'Cold');
     const product = await prisma.productInterest.create({ data: { tenantId, name: `Workflow product ${randomUUID()}`, dealValue: 100 } });
     await prisma.deal.update({ where: { id: c.deals[1].id }, data: { productInterestId: product.id } });
-    const workflow = await prisma.workflow.create({ data: { tenantId, name: `Reply workflow ${randomUUID()}`, trigger: 'lead.status_changed', isActive: true, activatedById: userId,
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: `Reply workflow ${randomUUID()}`, trigger: 'lead.status_changed', isActive: true, status: 'ACTIVE', activatedById: userId,
       conditions: { operator: 'AND', conditions: [{ field: 'lead.email', operator: 'equals', value: c.email }, { field: 'lead.status', operator: 'equals', value: 'Hot' }] },
       actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted, currentStageId: stages.Lead, productInterestId: product.id } }] } });
     try {

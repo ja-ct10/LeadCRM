@@ -1,4 +1,4 @@
-import type { WorkflowDraft } from '@leadcrm/shared';
+import { getWorkflowConditionFields, getWorkflowUpdateFields, type WorkflowDraft } from '@leadcrm/shared';
 import { findUser } from './actions.repository';
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import type { PermissionKey } from '../../../shared/constants/permissions';
@@ -11,8 +11,19 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
   if (!user || user.role.trim().toLowerCase() === 'guest') throw new AppError('Workflow author is unavailable.', 403);
   const entity = findTrigger(draft.trigger)?.entity;
   const required: PermissionKey[] = ['workflows.activate', entity === 'deal' ? 'deals.view' : entity === 'account' ? 'accounts.view' : entity === 'lead' ? 'leads.view' : 'contacts.view'];
+  const referencePermissions = { user: 'users.view', products: 'products.view', account: 'accounts.view', contacts: 'contacts.view', leads: 'leads.view', stage: 'deals.view', pipeline: 'deals.view' } as const;
+  if (entity) for (const rule of draft.conditions?.conditions ?? []) {
+    const field = getWorkflowConditionFields(entity, draft.trigger).find(field => field.field === rule.field);
+    const permission = field && referencePermissions[field.type as keyof typeof referencePermissions];
+    if (permission) required.push(permission);
+  }
   for (const action of draft.actions) {
     if (action.enabled === false) continue;
+    if (entity && action.type === 'update_field') {
+      const field = getWorkflowUpdateFields(entity).find(field => field.field === action.config.field);
+      const permission = field && referencePermissions[field.type as keyof typeof referencePermissions];
+      if (permission) required.push(permission);
+    }
     // Automated tasks need the same explicit creation and assignment grants.
     if (action.type === 'create_task') required.push('tasks.create', 'tasks.assign');
     if (action.type === 'send_campaign') required.push('campaigns.view', 'campaigns.send');

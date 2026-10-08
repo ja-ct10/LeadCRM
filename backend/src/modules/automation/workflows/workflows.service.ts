@@ -1,3 +1,4 @@
+import { compatibleWorkflow } from './workflow-fields';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { WorkflowDraftSchema, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
 import { assertWorkflowPermissions } from '../actions/action-permissions';
@@ -5,7 +6,7 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
 import * as repo from './workflows.repository';
-import { validateWorkflow, validateWorkflowConditions, validateConditionReferences } from './workflow-validation';
+import { validateWorkflow, validateConditionReferences } from './workflow-validation';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { validateAction } from '../actions/action-validation';
 import { resolveDealTargets } from '../actions/action-deal-targets';
@@ -36,7 +37,7 @@ export async function getOptions(tenantId: string, userId: string) {
   const permissions = await findUserEffectivePermissions(userId, tenantId);
   const admin = user?.role === 'Client Admin';
   const marketing = admin || !!permissions.campaigns?.canView;
-  return repo.builderOptions(tenantId, marketing, { contacts: admin || !!permissions.contacts?.canView, accounts: admin || !!permissions.accounts?.canView });
+  return repo.builderOptions(tenantId, marketing, Object.fromEntries(['contacts', 'accounts', 'leads', 'deals', 'products', 'users'].map(module => [module, admin || !!permissions[module]?.canView])) as { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean });
 }
 
 export async function getWorkflows(tenantId: string, query: Record<string, unknown>) {
@@ -48,7 +49,7 @@ export async function getWorkflowById(id: string, tenantId: string) {
   requireScope(tenantId);
   const workflow = await repo.findWorkflowById(id, tenantId);
   if (!workflow) throw new NotFoundError('Workflow');
-  return workflow;
+  return compatibleWorkflow(workflow, tenantId);
 }
 export async function getWorkflowNameAvailability(tenantId: string, name: unknown, excludeId?: unknown) {
   requireScope(tenantId);
@@ -87,7 +88,7 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   if (existing.isArchived) throw new ValidationError('Archived workflows cannot be edited or activated. Duplicate an available workflow instead.');
   // Pausing must remain possible when a referenced user, template or campaign is no longer valid.
   if (Object.keys(dto).length === 1 && dto.isActive === false) {
-    const workflow = await repo.updateWorkflow(id, tenantId, { isActive: false, status: 'PAUSED' });
+    const workflow = await repo.updateWorkflow(id, tenantId, { isActive: false, status: existing.isActive || existing.status === 'PAUSED' ? 'PAUSED' : 'DRAFT' });
     if (existing.isActive) await writeAuditLog({ tenantId, userId, action: 'workflow.paused', entityType: 'Workflow', entityId: id });
     return workflow;
   }
@@ -99,7 +100,7 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   await validateConditionReferences(draft, tenantId);
   if (!draft.isActive) for (const action of draft.actions) await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
   if (draft.isActive) { await validateWorkflow(draft, tenantId); await assertWorkflowPermissions(draft, tenantId, userId); }
-  const workflow = await repo.updateWorkflow(id, tenantId, { ...sanitizeDraft(draft), status: draft.isActive ? 'ACTIVE' : 'DRAFT', ...(draft.isActive ? { activatedById: userId } : {}) });
+  const workflow = await repo.updateWorkflow(id, tenantId, { ...sanitizeDraft(draft), status: draft.isActive ? 'ACTIVE' : existing.isActive || existing.status === 'PAUSED' ? 'PAUSED' : 'DRAFT', ...(draft.isActive ? { activatedById: userId } : {}) });
   await writeAuditLog({ tenantId, userId, action: existing.isActive !== workflow.isActive ? workflow.isActive ? 'workflow.activated' : 'workflow.paused' : 'workflow.updated', entityType: 'Workflow', entityId: id });
   return workflow;
 }
@@ -125,13 +126,14 @@ export async function getWorkflowExecutionPage(id: string, tenantId: string, pag
   const [data, total] = await Promise.all([repo.listExecutions(id, tenantId, page, limit), repo.countExecutions(id, tenantId)]);
   return paginate(data, total, { page, limit });
 }
-export async function testWorkflow(id: string, tenantId: string, entityId: string): Promise<WorkflowTestResult> {
+export async function testWorkflow(id: string, tenantId: string, entityId: string, userId?: string): Promise<WorkflowTestResult> {
   requireScope(tenantId);
   const existing = await getWorkflowById(id, tenantId);
   const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: false });
   const trigger = findTrigger(draft.trigger);
   if (!trigger) throw new ValidationError('Choose a supported trigger.');
+  if (userId) await assertWorkflowPermissions(draft, tenantId, userId);
   const context = await repo.entityContext(trigger.entity, entityId, tenantId);
   if (!context) throw new NotFoundError('Sample record');
   const conditionContext = { ...context };
@@ -150,12 +152,15 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
       if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = action.config.userId;
       if (action.type === 'update_field') {
         const patch = await fieldUpdatePatch(action, trigger.entity, tenantId);
-        for (const [field, value] of Object.entries(patch)) context[`${trigger.entity}.${field}`] = value;
+        for (const [field, value] of Object.entries(patch)) {
+          if (field === 'customFieldValues') for (const [id, customValue] of Object.entries(value as Record<string, unknown>)) context[`${trigger.entity}.customFieldValues.${id}`] = customValue;
+          else context[`${trigger.entity}.${field === 'productInterest' ? 'productInterestIds' : field}`] = value;
+        }
       }
     }
     catch (error) { actions.push({ type: action.type, valid: false, message: safeWorkflowError(error) }); }
   }
-  validateWorkflowConditions(draft);
+  await validateConditionReferences(draft, tenantId);
   const rules = draft.conditions?.conditions ?? [];
   return { trigger: { type: draft.trigger, matched: true, requiresEvent: !draft.trigger.endsWith('.created') }, conditions: { total: rules.length,
     passed: rules.filter(rule => evaluateRule(rule, conditionContext)).length, matched: !draft.conditions || evaluateCondition(draft.conditions, conditionContext) },
@@ -180,5 +185,9 @@ export async function getExecution(id: string, workflowId: string, tenantId: str
 export async function duplicateWorkflow(id: string, tenantId: string, userId: string) {
   const original = await getWorkflowById(id, tenantId);
   const names = (await repo.workflowNames(tenantId)).map(row => row.name);
-  return createWorkflow(tenantId, userId, { name: suggestWorkflowCopyName(original.name, names), description: original.description, trigger: original.trigger, conditions: original.conditions, actions: original.actions, isActive: false });
+  // Duplication preserves repairable references without activating or copying runs.
+  const draft = parseDraft({ name: suggestWorkflowCopyName(original.name, names), description: original.description, trigger: original.trigger, conditions: original.conditions, actions: original.actions, isActive: false });
+  const copy = await repo.createWorkflow(tenantId, sanitizeDraft(draft));
+  await writeAuditLog({ tenantId, userId, action: 'workflow.duplicated', entityType: 'Workflow', entityId: copy.id, metadata: { sourceId: id } });
+  return copy;
 }
