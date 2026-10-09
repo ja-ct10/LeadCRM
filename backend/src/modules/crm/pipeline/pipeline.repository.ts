@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { SALES_PIPELINE_STAGES } from '@leadcrm/shared';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import prisma from '../../../config/database.config';
@@ -56,6 +57,7 @@ export async function createStage(tenantId: string, dto: CreateStageDto) {
   const pipeline = await prisma.pipeline.findFirst({ where: { id: dto.pipelineId, tenantId } });
   if (!pipeline) return null;
   // tenantId derived from the parent pipeline — never independently settable
+  if (pipeline.name.trim().toLowerCase() === 'sales pipeline') throw new ValidationError('The Sales Pipeline uses its five official stages. Configure their colors instead of adding stages.');
   return prisma.stage.create({ data: { ...dto, tenantId } });
 }
 
@@ -63,6 +65,12 @@ export async function updateStage(id: string, tenantId: string, dto: UpdateStage
   return salesTransaction(async tx => {
     const stage = await tx.stage.findFirst({ where: { id, tenantId } });
     if (!stage) return null;
+    const pipeline = await tx.pipeline.findFirst({ where: { id: stage.pipelineId, tenantId } });
+    if (pipeline?.name.trim().toLowerCase() === 'sales pipeline' &&
+      (dto.name !== undefined && dto.name.trim().toLowerCase() !== stage.name.trim().toLowerCase() || dto.order !== undefined && dto.order !== stage.order ||
+       dto.isWon !== undefined && dto.isWon !== stage.isWon || dto.isLost !== undefined && dto.isLost !== stage.isLost)) {
+      throw new ValidationError('Keep the official Sales Pipeline stage names, order and terminal outcomes. Colors and other stage settings remain configurable.');
+    }
     if (stage.isDefault && stage.name.toLowerCase() === 'lead' && (dto.name !== undefined && dto.name.toLowerCase() !== 'lead' || dto.isWon || dto.isLost)) {
       throw new ValidationError('Keep the starting Lead stage so new opportunities begin at Lead.');
     }
@@ -80,6 +88,8 @@ export async function deleteStage(id: string, tenantId: string) {
       const scope = crmScope(tenantId);
       const stage = await tx.stage.findFirst({ where: { id, ...scope } });
       if (!stage) return null;
+      const pipeline = await tx.pipeline.findFirst({ where: { id: stage.pipelineId, ...scope } });
+      if (pipeline?.name.trim().toLowerCase() === 'sales pipeline' && SALES_PIPELINE_STAGES.some(name => name.toLowerCase() === stage.name.trim().toLowerCase())) throw new ValidationError('The five official Sales Pipeline stages must be retained.');
       if (stage.isDefault || stage.isWon || stage.isLost) throw new ValidationError('The starting, Won, and Lost stages cannot be removed.');
       const deals = await tx.deal.count({ where: { stageId: id, ...scope } });
       const history = await tx.dealStageHistory.count({ where: { ...scope, OR: [{ previousStageId: id }, { newStageId: id }] } });
@@ -99,8 +109,9 @@ export async function reorderStages(pipelineId: string, tenantId: string, stageI
     const scope = crmScope(tenantId);
     const pipeline = await tx.pipeline.findFirst({ where: { id: pipelineId, ...scope } });
     if (!pipeline) return false;
-    const stages = await tx.stage.findMany({ where: { pipelineId, ...scope }, select: { id: true } });
+    const stages = await tx.stage.findMany({ where: { pipelineId, ...scope }, orderBy: [{ order: 'asc' }, { id: 'asc' }], select: { id: true } });
     if (new Set(stageIds).size !== stageIds.length || stages.length !== stageIds.length || stages.some(stage => !stageIds.includes(stage.id))) throw new ValidationError('Reorder must include every stage of this pipeline exactly once.');
+    if (pipeline.name.trim().toLowerCase() === 'sales pipeline' && stages.some((stage, index) => stage.id !== stageIds[index])) throw new ValidationError('Keep the official Sales Pipeline stage order.');
     for (const [index, id] of stageIds.entries()) await tx.stage.update({ where: { id, pipelineId, ...scope }, data: { order: index + 1 } });
     return true;
   });

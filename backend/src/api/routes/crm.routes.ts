@@ -22,6 +22,7 @@ import * as companyController      from '../../modules/crm/companies/companies.c
 import * as dealController         from '../../modules/crm/deals/deals.controller';
 import * as bulkDealsController    from '../../modules/crm/deals/bulk-deals.controller';
 import * as pipelineController     from '../../modules/crm/pipeline/pipeline.controller';
+import { pipelineEvents } from '../../modules/reporting/reports/dashboard.events';
 import * as activityController     from '../../modules/crm/activities/activities.controller';
 import * as duplicateDetectionController from '../../modules/crm/duplicate-detection/duplicate-detection.controller';
 import * as mergeController            from '../../modules/crm/merge/merge.controller';
@@ -52,6 +53,7 @@ router.use(workspaceReadyMiddleware);
 router.use(authorizeArchivedQuery);
 router.use(recordFilesRouter);
 router.use(customFieldsRouter);
+router.get('/pipelines/events', authorize('deals.view'), pipelineEvents);
 
 // ── Duplicate Detection ───────────────────────────────────────────────────
 router.post(  '/duplicate-check',    validate(DuplicateCheckSchema), (req, res, next) => authorizeAll(...req.body.entityTypes.map((type: string) => `${type}s.view` as PermissionKey))(req, res, next), duplicateDetectionController.duplicateCheck);

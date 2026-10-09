@@ -22,10 +22,10 @@ describe.skipIf(!disposable)('custom roles: authenticated HTTP and database pers
     const tenant = await prisma.tenant.create({ data: { name: 'Role test', slug: `roles-${Date.now()}`, onboardingStep: 3, onboardingCompletedAt: new Date() } });
     tenantId = tenant.id;
     otherTenantId = (await prisma.tenant.create({ data: { name: 'Other role test', slug: `roles-other-${Date.now()}`, onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
-    const admin = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email, firstName: 'Role', lastName: 'Admin', mustChangePassword: false, passwordHash: await bcrypt.hash(password, 10) } });
+    const admin = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email, firstName: 'Role', lastName: 'Admin', mustChangePassword: false, onboardingCompletedAt: new Date(), passwordHash: await bcrypt.hash(password, 10) } });
     token = (await issueAuthSession(admin)).token;
-    readerToken = (await issueAuthSession(await prisma.user.create({ data: { tenantId, role: 'Reader', email: `roles-reader-${Date.now()}@camxian.com`, firstName: 'Role', lastName: 'Reader', mustChangePassword: false } }))).token;
-    otherToken = (await issueAuthSession(await prisma.user.create({ data: { tenantId: otherTenantId, role: 'Client Admin', email: `roles-other-${Date.now()}@camxian.com`, firstName: 'Other', lastName: 'Admin', mustChangePassword: false } }))).token;
+    readerToken = (await issueAuthSession(await prisma.user.create({ data: { tenantId, role: 'Reader', email: `roles-reader-${Date.now()}@camxian.com`, firstName: 'Role', lastName: 'Reader', mustChangePassword: false, onboardingCompletedAt: new Date() } }))).token;
+    otherToken = (await issueAuthSession(await prisma.user.create({ data: { tenantId: otherTenantId, role: 'Client Admin', email: `roles-other-${Date.now()}@camxian.com`, firstName: 'Other', lastName: 'Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } }))).token;
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
   });

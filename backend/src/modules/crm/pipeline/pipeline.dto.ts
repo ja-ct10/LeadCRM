@@ -1,5 +1,6 @@
 import { recordName } from '../record-validation';
 import { z } from 'zod';
+import { StageColorSchema } from '@leadcrm/shared';
 
 const id = () => z.string().min(1);
 
@@ -15,7 +16,7 @@ export const CreateStageSchema = z.object({
   name:            recordName(100),
   order:           z.number().int().positive(),
   probability:     z.number().int().min(0).max(100).optional(),
-  color:           z.string().regex(/^#[0-9A-Fa-f]{6}$/).optional(),
+  color:           StageColorSchema.optional(),
   description:     z.string().optional(),
   isWon:           z.boolean().default(false),
   isLost:          z.boolean().default(false),

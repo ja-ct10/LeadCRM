@@ -288,6 +288,8 @@ export function BarChart({ data, children, layout }: BarChartProps) {
 export function AreaChart({ data, children }: BarChartProps) {
   useChartTheme();
   let xDataKey = 'name';
+  let xTickFormatter: XAxisProps['tickFormatter'];
+  let yDomain: YAxisProps['domain'];
   let yTickFormatter: ((v: any) => string) | undefined;
   let tooltipFormatter: TooltipProps['formatter'];
   const areas: AreaProps[] = [];
@@ -295,8 +297,8 @@ export function AreaChart({ data, children }: BarChartProps) {
   React.Children.forEach(children, (child: any) => {
     if (!child) return;
     const t = child.type;
-    if (t === XAxis) xDataKey = child.props.dataKey || 'name';
-    if (t === YAxis) yTickFormatter = child.props.tickFormatter;
+    if (t === XAxis) { xDataKey = child.props.dataKey || 'name'; xTickFormatter = child.props.tickFormatter; }
+    if (t === YAxis) { yTickFormatter = child.props.tickFormatter; yDomain = child.props.domain; }
     if (t === TooltipStub) tooltipFormatter = child.props.formatter;
     if (t === AreaStub) areas.push(child.props);
   });
@@ -331,9 +333,11 @@ export function AreaChart({ data, children }: BarChartProps) {
       tooltip: { ...getTooltipStyle(), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
     },
     scales: {
-      x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
+      x: { ...getAxisDefaults(), grid: { color: 'transparent' }, ticks: { ...getAxisDefaults().ticks, autoSkip: true, maxRotation: 0, maxTicksLimit: 6, callback: value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
       y: {
         ...getAxisDefaults(),
+        ...(typeof yDomain?.[0] === 'number' ? { min: yDomain[0], beginAtZero: yDomain[0] === 0 } : {}),
+        ...(typeof yDomain?.[1] === 'number' ? { max: yDomain[1] } : {}),
         ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
       },
     },

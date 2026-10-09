@@ -659,14 +659,44 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
 
   /** Refresh shared pipeline selectors after a database-backed restore. */
+  const pipelineGeneration = useRef(0);
   const refreshPipelines = async (): Promise<void> => {
     if (USE_MOCK_DATA || !user) return;
     const identity = dataIdentityRef.current;
+    const generation = ++pipelineGeneration.current;
     const result = await pipelineService.getPipelines();
-    if (identity === dataIdentityRef.current) {
+    if (identity === dataIdentityRef.current && generation === pipelineGeneration.current) {
       setPipelines((result.data ?? []).map(toFrontendPipeline).filter(pipeline => !pipeline.isArchived));
     }
   };
+
+  const pipelineRefresh = useRef(refreshPipelines);
+  pipelineRefresh.current = refreshPipelines;
+  const canReadPipelines = userCan('deals', 'canView');
+  useEffect(() => {
+    if (USE_MOCK_DATA || !workspaceReady || !canReadPipelines || !user?.id || typeof EventSource === 'undefined') return;
+    let stopped = false, previous = '', busy = false, queued = false;
+    const refresh = async () => {
+      if (stopped) return;
+      if (busy) { queued = true; return; }
+      busy = true;
+      try { await pipelineRefresh.current(); } catch { /* Reconnection retries authoritative metadata. */ }
+      finally { busy = false; if (queued) { queued = false; void refresh(); } }
+    };
+    const source = new EventSource('/api/proxy/crm/pipelines/events');
+    source.addEventListener('pipeline-change', event => {
+      const revision = (event as MessageEvent<string>).data;
+      if (revision === previous) return;
+      previous = revision;
+      void refresh();
+    });
+    source.addEventListener('open', () => { previous = ''; });
+    source.addEventListener('pipeline-access-changed', () => { setPipelines([]); pipelineGeneration.current++; source.close(); });
+    const wake = () => { if (document.visibilityState !== 'hidden') void refresh(); };
+    window.addEventListener('online', wake); window.addEventListener('focus', wake); document.addEventListener('visibilitychange', wake);
+    const fallback = setInterval(wake, 60000);
+    return () => { stopped = true; source.close(); pipelineGeneration.current++; clearInterval(fallback); window.removeEventListener('online', wake); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
+  }, [dataIdentity, workspaceReady, canReadPipelines, user?.id]);
 
   /** Re-fetch deals from the API and update state */
   const refreshDeals = async (): Promise<void> => {

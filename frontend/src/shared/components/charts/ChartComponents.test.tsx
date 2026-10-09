@@ -19,3 +19,15 @@ it('applies actual monetary formatting to the revenue area tooltip', () => {
   render(<AreaChart data={[{ name: '2020-01-01', revenue: 45000 }]}><XAxis dataKey="name" /><YAxis /><Tooltip formatter={value => `₱${value}`} /><Area dataKey="revenue" name="Revenue" /></AreaChart>);
   expect(captured.line.options.plugins.tooltip.callbacks.label({ dataset: { label: 'Revenue' }, parsed: { y: 45000 } })).toBe('Revenue: ₱45000');
 });
+it('anchors a zero-only revenue period at zero and formats readable calendar ticks', () => {
+  render(<AreaChart data={[{ name: '2020-01-01', revenue: 0 }]}><XAxis dataKey="name" tickFormatter={() => 'Jan 2020'} /><YAxis domain={[0, 'auto']} /><Area dataKey="revenue" /></AreaChart>);
+  expect(captured.line.options.scales.y.min).toBe(0);
+  expect(captured.line.options.scales.y.beginAtZero).toBe(true);
+  expect(captured.line.options.scales.x.ticks.callback(0)).toBe('Jan 2020');
+  expect(captured.line.options.scales.x.ticks.maxRotation).toBe(0);
+});
+it('preserves genuinely negative revenue when a zero minimum was not requested', () => {
+  render(<AreaChart data={[{ name: '2020-01-01', revenue: -100 }]}><XAxis dataKey="name" /><YAxis /><Area dataKey="revenue" /></AreaChart>);
+  expect(captured.line.options.scales.y.min).toBeUndefined();
+  expect(captured.line.data.datasets[0].data).toEqual([-100]);
+});

@@ -62,9 +62,9 @@ it('trims and persists a stage rename through the existing service', async () =>
   mocks.update.mockImplementation(async (id, update) => { stages = stages.map(stage => stage.id === id ? { ...stage, ...update } : stage); });
   await open();
   fireEvent.change(screen.getByDisplayValue('Contacted'), { target: { value: '  Discovery  ' } });
-  fireEvent.click(screen.getAllByRole('button', { name: 'Save name' })[1]);
-  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('s1', { name: 'Discovery' }));
-  await waitFor(() => expect((screen.getAllByRole('button', { name: 'Save name' })[1] as HTMLButtonElement).disabled).toBe(true));
+  fireEvent.click(screen.getAllByRole('button', { name: 'Save Changes' })[1]);
+  await waitFor(() => expect(mocks.update).toHaveBeenCalledWith('s1', { name: 'Discovery', color: '#3B82F6' }));
+  await waitFor(() => expect((screen.getAllByRole('button', { name: 'Save Changes' })[1] as HTMLButtonElement).disabled).toBe(true));
 });
 
 it('requires removal confirmation and surfaces server reference constraints', async () => {
@@ -78,4 +78,34 @@ it('requires removal confirmation and surfaces server reference constraints', as
   fireEvent.click(screen.getByRole('button', { name: 'Remove stage' }));
   expect((await screen.findByRole('alert')).textContent).toContain('referenced');
   expect(mocks.remove).toHaveBeenCalledExactlyOnceWith('s1');
+});
+
+it('validates colors, persists all five colors, and reloads the saved values', async () => {
+  mocks.update.mockImplementation(async (id, update) => { stages = stages.map(stage => stage.id === id ? { ...stage, ...update } : stage); return { data: stages.find(stage => stage.id === id) }; });
+  await open();
+  const input = screen.getByLabelText('Stage Color for Lead');
+  fireEvent.change(input, { target: { value: 'red' } });
+  expect((screen.getAllByRole('button', { name: 'Save Changes' })[0] as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.getByText('Use # followed by six hexadecimal digits.')).toBeTruthy();
+  for (const [index, name] of ['Lead','Contacted','Qualified','Won','Lost'].entries()) {
+    fireEvent.change(screen.getByLabelText(`Stage Color for ${name}`), { target: { value: `#12345${index}` } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save Changes' })[index]);
+    await waitFor(() => expect(mocks.update).toHaveBeenCalledWith(`s${index}`, { name, color: `#12345${index}` }));
+    await waitFor(() => expect((screen.getAllByRole('button', { name: 'Save Changes' })[index] as HTMLButtonElement).disabled).toBe(true));
+  }
+  cleanup(); await open();
+  expect((screen.getByLabelText('Stage Color for Lead') as HTMLInputElement).value).toBe('#123450');
+});
+it('reverts a rejected color save and prevents duplicate requests', async () => {
+  let reject!: (error: Error) => void;
+  mocks.update.mockImplementation(() => new Promise((_resolve, fail) => { reject = fail; }));
+  await open();
+  const input = screen.getByLabelText('Stage Color for Lead') as HTMLInputElement;
+  fireEvent.change(input, { target: { value: '#123456' } });
+  const save = screen.getAllByRole('button', { name: 'Save Changes' })[0];
+  fireEvent.click(save); fireEvent.click(save);
+  expect(mocks.update).toHaveBeenCalledTimes(1);
+  await act(async () => reject(new Error('Color update rejected')));
+  expect((await screen.findByRole('alert')).textContent).toContain('Color update rejected');
+  expect(input.value).toBe('#64748B');
 });

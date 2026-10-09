@@ -14,25 +14,38 @@ import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { pipelinesApi } from '@/shared/services/pipelines.api';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import type { Stage } from '@/store/types';
+import { pipelineStageColor, StageColorSchema } from '@leadcrm/shared';
+import { Input } from '@/shared/components/ui/input';
 
-function SortableStage({ stage, index, name, busy, canEdit, canDelete, onName, onSave, onRemove }: {
+function SortableStage({ stage, index, name, color, busy, canEdit, canDelete, official, onName, onColor, onSave, onRemove }: {
   stage: Stage; index: number; name: string; busy: boolean; canEdit: boolean; canDelete: boolean;
   onName: (name: string) => void; onSave: () => void; onRemove: () => void;
+  color: string; onColor: (color: string) => void;
+  official: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id, disabled: busy || !canEdit });
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({ id: stage.id, disabled: busy || !canEdit || official });
   return <li ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition }}
     className={`relative min-w-0 rounded-xl border border-border bg-card p-3 ${isDragging ? 'z-10 shadow-lg' : ''}`}>
     <label className="mb-1 block text-xs text-muted-foreground" htmlFor={`stage-${stage.id}`}>Stage {index + 1}{stage.isDefault ? ' · Starting stage' : stage.isWon ? ' · Won' : stage.isLost ? ' · Lost' : ''}</label>
     <div className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-1 sm:grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:gap-2">
-      {canEdit ? <Button ref={setActivatorNodeRef} {...attributes} {...listeners} variant="ghost" size="icon" disabled={busy}
+      {canEdit && !official ? <Button ref={setActivatorNodeRef} {...attributes} {...listeners} variant="ghost" size="icon" disabled={busy}
         aria-label={`Drag to reorder stage: ${stage.name}`} title="Drag to reorder stage"
         className={`touch-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}><GripVertical size={16} /></Button> : <span />}
-      <input id={`stage-${stage.id}`} value={name} onChange={event => onName(event.target.value)} maxLength={100} disabled={busy || !canEdit}
+      <input id={`stage-${stage.id}`} value={name} onChange={event => onName(event.target.value)} maxLength={100} disabled={busy || !canEdit || official}
         className="min-h-11 w-full min-w-0 rounded-lg border border-input bg-background px-2 text-sm" />
       {canEdit && <Button size="sm" variant="outline" className="col-start-2 row-start-2 justify-self-start sm:col-start-3 sm:row-start-1"
-        disabled={busy || !name.trim() || name.trim() === stage.name} onClick={onSave}>Save name</Button>}
-      {canDelete && <Button variant="ghost" size="icon" className="col-start-3 row-start-1 text-destructive hover:text-destructive dark:text-destructive dark:hover:text-destructive sm:col-start-4"
+        disabled={busy || !name.trim() || !StageColorSchema.safeParse(color).success || name.trim() === stage.name && color === stage.color} onClick={onSave}>{busy ? 'Saving…' : 'Save Changes'}</Button>}
+      {canDelete && !official && <Button variant="ghost" size="icon" className="col-start-3 row-start-1 text-destructive hover:text-destructive dark:text-destructive dark:hover:text-destructive sm:col-start-4"
         aria-label={`Remove ${stage.name}`} title="Remove stage" disabled={busy || stage.isDefault || stage.isWon || stage.isLost} onClick={onRemove}><Trash2 size={16} /></Button>}
+    </div>
+    <div className="mt-3 space-y-1">
+      <label className="block text-xs text-muted-foreground" htmlFor={`stage-color-${stage.id}`}>Stage Color</label>
+      <div className="flex min-w-0 items-center gap-2">
+        <Input type="color" aria-label={`Pick color for ${stage.name}`} value={StageColorSchema.safeParse(color).success ? color : pipelineStageColor(stage)} onChange={event => onColor(event.target.value)} disabled={busy || !canEdit} className="h-10 w-12 shrink-0 cursor-pointer p-1" />
+        <Input id={`stage-color-${stage.id}`} aria-label={`Stage Color for ${stage.name}`} value={color} onChange={event => onColor(event.target.value)} maxLength={7} disabled={busy || !canEdit} aria-invalid={!StageColorSchema.safeParse(color).success} className="min-w-0 flex-1 font-mono" />
+        <span aria-label={`Color preview for ${stage.name}`} className="h-6 w-6 shrink-0 rounded-full border border-border" style={{ backgroundColor: StageColorSchema.safeParse(color).success ? color : pipelineStageColor(stage) }} />
+      </div>
+      {!StageColorSchema.safeParse(color).success && <p className="text-xs text-destructive">Use # followed by six hexadecimal digits.</p>}
     </div>
   </li>;
 }
@@ -40,6 +53,8 @@ function SortableStage({ stage, index, name, busy, canEdit, canDelete, onName, o
 export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipelineId: string; onClose: () => void; onChanged: () => Promise<void> }) {
   const canEdit = useHasPermission('deals.manage_stages'), canCreate = useHasPermission('deals.manage_stages'), canDelete = useHasPermission('deals.manage_stages');
   const [stages, setStages] = useState<Stage[]>([]), [names, setNames] = useState<Record<string, string>>({});
+  const [colors, setColors] = useState<Record<string, string>>({});
+  const [official, setOfficial] = useState(false);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [name, setName] = useState(''), [removing, setRemoving] = useState<Stage>();
   const pending = useRef(false);
@@ -53,6 +68,10 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
       const original = stages.find(item => item.id === stage.id);
       return [stage.id, original && previous[stage.id] !== original.name ? previous[stage.id] : stage.name];
     })));
+    setColors(previous => Object.fromEntries(ordered.map(stage => {
+      const original = stages.find(item => item.id === stage.id);
+      return [stage.id, original && previous[stage.id] !== pipelineStageColor(original) ? previous[stage.id] : pipelineStageColor(stage)];
+    })));
   };
   useEffect(() => {
     previousFocus.current = document.activeElement as HTMLElement;
@@ -60,7 +79,9 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
     pipelinesApi.get(pipelineId).then(result => {
       if (!active) return;
       const ordered = [...result.data.stages].sort((a, b) => a.order - b.order);
+      setOfficial(result.data.name?.trim().toLowerCase() === 'sales pipeline');
       setStages(ordered); setNames(Object.fromEntries(ordered.map(s => [s.id, s.name])));
+      setColors(Object.fromEntries(ordered.map(s => [s.id, pipelineStageColor(s)])));
     }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; previousFocus.current?.focus(); };
   }, [pipelineId]);
@@ -89,6 +110,21 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
       setError(failure instanceof Error ? failure.message : 'Unable to reorder stages');
     } finally { pending.current = false; setBusy(false); }
   };
+  const save = async (stage: Stage) => {
+    if (pending.current || !StageColorSchema.safeParse(colors[stage.id]).success) return;
+    await mutate(async () => {
+      try {
+        const result = await pipelinesApi.updateStage(stage.id, { name: names[stage.id].trim(), color: colors[stage.id] });
+        const saved = result?.data ?? { ...stage, name: names[stage.id].trim(), color: colors[stage.id] };
+        setNames(previous => ({ ...previous, [stage.id]: saved.name }));
+        setColors(previous => ({ ...previous, [stage.id]: pipelineStageColor(saved) }));
+      } catch (failure) {
+        setNames(previous => ({ ...previous, [stage.id]: stage.name }));
+        setColors(previous => ({ ...previous, [stage.id]: pipelineStageColor(stage) }));
+        throw failure;
+      }
+    });
+  };
   return <Dialog open onOpenChange={open => { if (!open && !pending.current) onClose(); }}>
     <DialogContent aria-label="Manage pipeline stages" className="flex max-h-[90dvh] flex-col overflow-hidden p-0" tabIndex={-1} ref={node => { if (node && !node.contains(document.activeElement)) node.focus(); }} onKeyDown={e => {
       if (e.key !== 'Tab') return;
@@ -104,13 +140,14 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={event => void reorder(event)}>
           <SortableContext items={stages.map(stage => stage.id)} strategy={verticalListSortingStrategy}>
             <ol className="space-y-3">{stages.map((stage, index) => <SortableStage key={stage.id} stage={stage} index={index}
-              name={names[stage.id] ?? ''} busy={busy} canEdit={canEdit} canDelete={canDelete}
+              name={names[stage.id] ?? ''} color={colors[stage.id] ?? pipelineStageColor(stage)} busy={busy} canEdit={canEdit} canDelete={canDelete} official={official}
               onName={value => setNames(previous => ({ ...previous, [stage.id]: value }))}
-              onSave={() => void mutate(() => pipelinesApi.updateStage(stage.id, { name: names[stage.id].trim() }))}
+              onColor={value => setColors(previous => ({ ...previous, [stage.id]: value }))}
+              onSave={() => void save(stage)}
               onRemove={() => { setRemoving(stage); setError(''); }} />)}</ol>
           </SortableContext>
         </DndContext>
-        {canCreate && <form className="space-y-2 border-t border-border pt-3" onSubmit={event => {
+        {canCreate && !official && <form className="space-y-2 border-t border-border pt-3" onSubmit={event => {
           event.preventDefault();
           if (name.trim()) void mutate(async () => { await pipelinesApi.createStage({ pipelineId, name: name.trim(), order: Math.max(0, ...stages.map(stage => stage.order)) + 1 }); setName(''); });
         }}>

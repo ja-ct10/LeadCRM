@@ -5,7 +5,7 @@ import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { fireLeadCreated, fireDealCreated, fireDealUpdated } from '../../automation/triggers/triggers.service';
-import { isAssignableAgent } from '@leadcrm/shared';
+import { isAssignableAgent, SALES_PIPELINE_STAGES, pipelineStageColor } from '@leadcrm/shared';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
 import { productRelationData } from './product-relations';
 
@@ -71,8 +71,8 @@ export async function salesPipeline(tx: Tx, tenantId: string) {
   if (!pipeline) pipeline = await tx.pipeline.create({ data: { ...scope, name: 'Sales Pipeline', type: 'Sales', isDefault: true } });
   let stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   if (!stages.length) {
-    for (const [order, name] of ['Lead', 'Contacted', 'Qualified', 'Closed Won', 'Closed Lost'].entries()) await tx.stage.create({ data: {
-      ...scope, pipelineId: pipeline.id, name, order, isDefault: order === 0, isWon: name === 'Closed Won', isLost: name === 'Closed Lost', probability: name === 'Closed Won' ? 100 : 0, requiredFields: [],
+    for (const [order, name] of SALES_PIPELINE_STAGES.entries()) await tx.stage.create({ data: {
+      ...scope, pipelineId: pipeline.id, name, color: pipelineStageColor({ name }), order, isDefault: order === 0, isWon: name === 'Closed Won', isLost: name === 'Closed Lost', probability: name === 'Closed Won' ? 100 : 0, requiredFields: [],
     } });
     stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   }

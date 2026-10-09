@@ -6,6 +6,19 @@ import { rewriteSetCookie } from '@/lib/auth/cookies';
 
 beforeEach(() => vi.stubEnv('API_URL', 'http://localhost:4000/api/v1'));
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+it('delivers pipeline metadata events before the upstream stream closes', async () => {
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  const bytes = new TextEncoder().encode('event: pipeline-change\ndata: {"metadata":"committed-hash"}\n\n');
+  const body = new ReadableStream<Uint8Array>({ start(source) { controller = source; source.enqueue(bytes); } });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(body, { headers: { 'Content-Type': 'text/event-stream' } })));
+  let response: Response | undefined;
+  const request = GET(new NextRequest('https://app.example.com/api/proxy/crm/pipelines/events'), { params: Promise.resolve({ path: ['crm','pipelines','events'] }) }).then(result => { response = result; });
+  try {
+    await vi.waitFor(() => expect(response).toBeDefined(), { timeout: 1000 });
+    expect(response!.headers.get('x-accel-buffering')).toBe('no');
+    expect(new TextDecoder().decode((await response!.body!.getReader().read()).value)).toContain('committed-hash');
+  } finally { controller!.close(); await request; }
+});
 it('rejects cross-origin security mutations before forwarding', async () => {
   const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
   const req = new NextRequest('https://app.example.com/api/proxy/auth/change-password', { method: 'POST', headers: { origin: 'https://attacker.example', 'sec-fetch-site': 'cross-site' }, body: '{}' });

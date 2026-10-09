@@ -393,15 +393,18 @@ bound to the selected user ID. No reset token is returned to the administrator.
 | `GET` | `/reporting/dashboard/events` | Cookie/Bearer-authorized SSE of committed tenant revisions |
 | `GET` | `/reporting/pipeline-summary` | Compatibility response using current open counts and this-month terminal counts |
 | `GET` | `/reporting/deal-velocity` | Compatibility response using this-month won duration; lost duration unavailable |
-| `GET` | `/reporting/contact-status` | Eligible current Leads by status, authorized assignment scope |
+| `GET` | `/reporting/contact-status` | Eligible organization Leads by status |
 | `GET` | `/reporting/task-completion` | Authorized task totals, pending and overdue counts |
 | `GET` | `/reporting/campaign-summary` | Existing campaign report |
 
 Dashboard queries accept `range=today|last7|last30|thisMonth|lastMonth|last3|last6|thisYear|custom`.
 Default: `thisMonth`. Custom requires inclusive `start` and `end` calendar dates (`YYYY-MM-DD`), ordered and at most 732 days apart.
+`revenueInterval=week|month|year` defaults to month and changes calendar grouping inside that global period.
+`funnelRange=week|month|year|custom` defaults to month and defines an independent creation cohort.
+Custom funnel requests require `funnelStart` and `funnelEnd` (`YYYY-MM-DD`), ordered, historical through Manila today and at most 732 days. Milestones stop at the earlier of generation time and the end of the funnel To day. CSV accepts these same filters and includes the observation cutoff.
 Unknown query fields, including tenant IDs, are rejected. See [Dashboard definitions](dashboard-kpis.md) for Manila boundaries and metric populations.
 
-All Dashboard APIs require `dashboard.view`. Module `canView` grants gate dependent data; staff receive currently assigned records only, and Client Admin receives workspace reporting.
+All Dashboard APIs require `dashboard.view`, the existing organization reporting grant. Module `canView` grants gate dependent data. Client Admin and explicitly authorized staff/custom roles receive tenant-wide analytics. Action Center retains organization scope for Client Admin and permitted assigned action details for others. No role permissions are automatically granted.
 Responses use `Cache-Control: no-store`. The frontend forwards through `/api/proxy` with the existing session cookie.
 SSE emits `dashboard-change` with string counters (`analytics`, `leads`, `actions`, `access`), `dashboard-heartbeat`, `dashboard-unavailable`, or `dashboard-access-changed`.
 Counters contain no CRM record data. The stream checks current session and reporting permissions every three seconds, ends after 45 seconds and advertises a three-second reconnect delay.
@@ -409,6 +412,8 @@ Counters contain no CRM record data. The stream checks current session and repor
 `GET /api/v1/auth/events` provides the same persisted access-revision stream independently of Dashboard permission.
 It emits `authorization-change` (access counter only), `authorization-heartbeat`, `authorization-unavailable`, and `authorization-access-changed`.
 This lets existing frontend permission guards remove revoked modules and restore later grants without a page reload.
+
+`GET /api/v1/crm/pipelines/events` requires `deals.view` and current workspace readiness. It emits `pipeline-change` with a hash of committed tenant stage metadata, `pipeline-heartbeat`, `pipeline-unavailable`, and `pipeline-access-changed`, using the same three-second observation and bounded reconnect lifecycle. The shared Deals provider refreshes stage selectors only when metadata changes, after reconnection or on focus. Stage writes retain `deals.manage_stages` and validate six-digit hexadecimal colors in the existing `color` field. Official Sales Pipeline names/order/outcomes cannot be replaced or removed through stage management.
 The Next proxy forwards both streams without buffering. No additional WebSocket service or browser token storage is required.
 
 ---

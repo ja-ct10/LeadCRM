@@ -23,10 +23,10 @@ export async function getDealVelocity(req: Request, res: Response, next: NextFun
   } catch (err) { next(err); }
 }
 export async function getContactStatusBreakdown(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try { res.json({ success: true, data: await service.getContactStatusBreakdown(req.user!.tenantId, req.user!.role === 'Client Admin' ? undefined : req.user!.userId) }); } catch (err) { next(err); }
+  try { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, data: await service.getContactStatusBreakdown(req.user!.tenantId) }); } catch (err) { next(err); }
 }
 export async function getTaskCompletion(req: Request, res: Response, next: NextFunction): Promise<void> {
-  try { res.json({ success: true, data: await service.getTaskCompletion(req.user!.tenantId, req.user!.role === 'Client Admin' ? undefined : req.user!.userId) }); } catch (err) { next(err); }
+  try { res.setHeader('Cache-Control', 'no-store'); res.json({ success: true, data: await service.getTaskCompletion(req.user!.tenantId) }); } catch (err) { next(err); }
 }
 export async function getCampaignSummary(req: Request, res: Response, next: NextFunction): Promise<void> {
   try { res.json({ success: true, data: await service.getCampaignSummary(req.user!.tenantId) }); } catch (err) { next(err); }

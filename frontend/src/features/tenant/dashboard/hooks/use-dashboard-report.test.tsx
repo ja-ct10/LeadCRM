@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { useDashboard } from './use-dashboard-report';
+import { useDashboard, dashboardQueryString } from './use-dashboard-report';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(), permissions: vi.fn(async () => {}), user: vi.fn(async () => {}), clear: vi.fn(),
@@ -69,4 +69,14 @@ it('isolates identity and filters and prevents a late old request replacing new 
   await act(async () => {});
   expect(hook.result.current.report?.metrics.totalRevenue).toBe(1);
   expect(mocks.get.mock.calls.at(-1)?.[0]).toContain('range=last7'); expect(Feed.instances[0].closed).toBe(true);
+});
+it('preserves independent chart filters in requests and exports without creating another subscription', async () => {
+  const query = { range: 'last7' as const, revenueInterval: 'week' as const, funnelRange: 'custom' as const, funnelStart: '2020-01-01', funnelEnd: '2020-01-10' };
+  expect(dashboardQueryString(query)).toBe('range=last7&revenueInterval=week&funnelRange=custom&funnelStart=2020-01-01&funnelEnd=2020-01-10');
+  const hook = renderHook(({ interval }: { interval: 'week' | 'year' }) => useDashboard({ ...query, revenueInterval: interval }), { initialProps: { interval: 'week' } });
+  await waitFor(() => expect(hook.result.current.report).not.toBeNull());
+  hook.rerender({ interval: 'year' });
+  await waitFor(() => expect(mocks.get.mock.calls.at(-1)?.[0]).toContain('revenueInterval=year'));
+  expect(Feed.instances).toHaveLength(1);
+  expect(mocks.get.mock.calls.at(-1)?.[0]).toContain('funnelEnd=2020-01-10');
 });

@@ -6,7 +6,7 @@ import type { Server } from 'node:http';
 import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
 import { installTenantScoping } from '../../../core/tenant/tenant-prisma';
 import { tenantContext } from '../../../core/tenant/tenant-context';
-import { DashboardQuerySchema, dashboardPeriod, dashboardCsv } from '@leadcrm/shared';
+import { DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, dashboardToday, dashboardCsv } from '@leadcrm/shared';
 
 vi.mock('../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DASHBOARD_TEST_DATABASE_URL! } } }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, base: string;
@@ -78,6 +78,10 @@ describe('authoritative dashboard', () => {
     expect(dashboardPeriod({ range: 'lastMonth' }, new Date('2020-03-01T00:00:00Z'))).toMatchObject({ start: '2020-02-01', end: '2020-02-29' });
     expect(DashboardQuerySchema.safeParse({ range: 'custom', start: '2020-02-30', end: '2020-03-01' }).success).toBe(false);
     expect(() => dashboardPeriod({ range: 'custom', start: '2010-01-01', end: '2020-01-01' })).toThrow();
+    expect(dashboardFunnelPeriod({ range: 'today', funnelRange: 'week' }, now)).toMatchObject({ start: '2020-01-13', end: '2020-01-15' });
+    expect(dashboardFunnelPeriod({ range: 'today', funnelRange: 'year' }, now)).toMatchObject({ start: '2020-01-01', end: '2020-01-15' });
+    expect(dashboardFunnelPeriod({ range: 'today' }, new Date('2020-01-31T16:30:00Z'))).toMatchObject({ start: '2020-02-01', end: '2020-02-01' });
+    expect(() => dashboardFunnelPeriod({ range: 'today', funnelRange: 'custom', funnelStart: '2020-01-01', funnelEnd: '2020-01-16' }, now)).toThrow('historical');
   });
   it('renders an actually empty workspace without fabricated rates or velocity', async () => {
     const result = await report();
@@ -102,8 +106,50 @@ describe('authoritative dashboard', () => {
     expect(result.distribution.reduce((sum, row) => sum + (row.value ?? 0), 0)).toBe(result.metrics.openPipelineValue);
     expect(result.leaderboard[0]).toMatchObject({ id: 'agent', won: 1, revenue: 45000 });
   });
+  it('reconciles multiple agents for admins and authorized custom roles while keeping action details scoped', async () => {
+    const before = await report();
+    await deal('second-agent-open', 'contacted', 2000, { assignedUserId: 'other-agent', ownerId: 'other-agent' });
+    await deal('second-agent-win', 'qualified', 21000, { assignedUserId: 'other-agent', ownerId: 'other-agent' });
+    await close('second-agent-win', 'won');
+    await db.lead.create({ data: { id: 'second-agent-lead', tenantId: 'a', firstName: 'Private', lastName: 'Other action', status: 'Hot', assignedUserId: 'other-agent' } });
+    const [organization, staff] = await Promise.all([report(), scoped(() => dashboard(agent, query, now))]);
+    expect(staff.scope).toBe('organization'); expect(staff.metrics).toEqual(organization.metrics);
+    expect(staff.distribution).toEqual(organization.distribution); expect(staff.trend).toEqual(organization.trend);
+    expect(staff.conversion).toEqual(organization.conversion); expect(staff.leaderboard).toEqual(organization.leaderboard);
+    expect(organization.metrics).toMatchObject({ totalRevenue: before.metrics.totalRevenue! + 21000, activeDeals: before.metrics.activeDeals! + 1,
+      totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue! + 800, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
+    expect(organization.metrics).toMatchObject({ won: 2, lost: 1, winRate: 66.7, averageDealDays: 4 });
+    expect(organization.leaderboard.map(row => row.revenue).sort((a, b) => a - b)).toEqual([21000, 45000]);
+    expect(organization.leaderboard.map(row => row.id).sort()).toEqual(['agent', 'other-agent']);
+    expect(organization.actions.some(row => row.id === 'second-agent-lead')).toBe(true);
+    expect(staff.actions.some(row => row.id === 'second-agent-lead')).toBe(false);
+    await db.deal.updateMany({ where: { id: { in: ['second-agent-open','second-agent-win'] } }, data: { isArchived: true } });
+    await db.lead.update({ where: { id: 'second-agent-lead' }, data: { isArchived: true } });
+  });
+  it('regroups the same global period by actual calendar weeks, months and years', async () => {
+    const reports = [];
+    for (const revenueInterval of ['week','month','year']) reports.push(await scoped(() => dashboard(admin, { ...query, revenueInterval }, now)));
+    expect(reports.map(row => row.trend.length)).toEqual([5,1,1]);
+    expect(reports[0].trend[0]).toMatchObject({ name: '2019-12-30', revenue: 45000, won: 1, lost: 1 });
+    for (const row of reports) {
+      expect(row.metrics).toEqual(reports[0].metrics);
+      expect(row.trend.reduce((sum, bucket) => sum + bucket.revenue, 0)).toBe(row.metrics.totalRevenue);
+      expect(row.period).toMatchObject({ start: query.start, end: query.end });
+    }
+  });
+  it('keeps funnel cohorts independent and excludes milestones after a custom observation cutoff', async () => {
+    await deal('historical-cutoff', 'lead', 100, { createdAt: new Date('2020-01-10T00:00:00Z') });
+    await db.dealStageHistory.create({ data: { tenantId: 'a', dealId: 'historical-cutoff', previousStageId: 'lead', newStageId: 'contacted', movedById: 'admin', movedAt: new Date('2020-01-11T00:00:00Z') } });
+    const historical = await scoped(() => dashboard(admin, { range: 'today', funnelRange: 'custom', funnelStart: '2020-01-10', funnelEnd: '2020-01-10' }, now));
+    expect(historical.conversion!.stages.map(row => row.reached)).toEqual([1,0,0,0,0]);
+    expect(historical.conversion!.period.observationCutoff).toBe('2020-01-10T15:59:59.999Z');
+    const later = await scoped(() => dashboard(admin, { range: 'today', funnelRange: 'custom', funnelStart: '2020-01-10', funnelEnd: '2020-01-11' }, now));
+    expect(later.conversion!.stages.map(row => row.reached)).toEqual([1,1,0,0,0]);
+    expect(later.metrics).toEqual(historical.metrics);
+    await db.deal.update({ where: { id: 'historical-cutoff' }, data: { isArchived: true } });
+  });
   it('handles stage movements, skips, backwards moves, lost reopening, repeated closure and actual future history', async () => {
-    await deal('journey', 'lead', 500);
+    await deal('journey', 'lead', 500, { createdAt: new Date() });
     for (const stageId of ['contacted','qualified','lead','qualified','lost','qualified']) {
       await scoped(() => move('journey', 'a', stageId, 'admin', undefined, undefined, stageId === 'lost' ? 'Deferred' : undefined));
     }
@@ -112,9 +158,9 @@ describe('authoritative dashboard', () => {
     await expect(scoped(() => move('journey', 'a', 'qualified', 'admin'))).rejects.toThrow('won');
     expect(await db.dealStageHistory.count({ where: { dealId: 'journey', newStageId: 'won' } })).toBe(1);
     const result = await scoped(() => dashboard(admin, query));
-    expect(result.conversion!.stages.map(row => row.reached)).toEqual([2,2,4,2,2]);
-    expect(result.conversion!.qualifiedToWon).toBe(50);
-    expect(result.conversion!.qualifiedToLost).toBe(50);
+    expect(result.conversion!.stages.map(row => row.reached)).toEqual([1,1,1,1,1]);
+    expect(result.conversion!.qualifiedToWon).toBe(100);
+    expect(result.conversion!.qualifiedToLost).toBe(100);
     // Lifetime milestones retain the earlier Lost event even after reopening;
     // period outcome metrics use the one current authoritative terminal result.
     expect(result.metrics.activeDeals).toBe(3);
@@ -124,7 +170,7 @@ describe('authoritative dashboard', () => {
     await close('boundary', 'won', new Date('2019-12-31T16:00:00Z'));
     expect((await db.deal.findUniqueOrThrow({ where: { id: 'boundary' } })).closedAt?.toISOString()).toBe('2019-12-31T16:00:00.000Z');
     const result = await report();
-    expect(result.trend[0]).toMatchObject({ name: '2020-01-01', revenue: 250 });
+    expect(result.trend[0]).toMatchObject({ name: '2020-01-01', revenue: 45250 });
     expect(result.trend.reduce((sum, row) => sum + row.revenue, 0)).toBe(result.metrics.totalRevenue);
   });
   it('does not claim missing probabilities or missing monetary values are verified zero', async () => {
@@ -180,6 +226,12 @@ describe('authoritative dashboard', () => {
     const result = await report();
     expect(result.actions[0]).toMatchObject({ id: 'overdue', overdue: true, href: '/operations/taskboard?taskId=overdue' });
     expect(result.actions.map(row => row.id)).not.toContain('done'); expect(result.actions.map(row => row.id)).not.toContain('cancelled');
+    await db.task.createMany({ data: Array.from({ length: 8 }, (_, index) => ({ id: `priority-${index}`, tenantId: 'a', assignedUserId: 'agent', title: `Priority ${index}`,
+      status: 'pending', priority: index === 7 ? 'High' : 'Low', dueDate: new Date(+now + (index === 7 ? 10 : 1) * 86400000) })) });
+    const ordered = (await report()).actions.filter(row => row.kind === 'task');
+    expect(ordered).toHaveLength(6);
+    expect(ordered.slice(0,3).map(row => row.id)).toEqual(['overdue','priority-7','today']);
+    await db.task.updateMany({ where: { id: { startsWith: 'priority-' } }, data: { isArchived: true } });
   });
   it('publishes revision counters only for committed data and covers archive, tasks, roles and tenant isolation', async () => {
     const before = await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId: 'a' } });
@@ -194,8 +246,8 @@ describe('authoritative dashboard', () => {
     expect(await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId: 'b' } })).toEqual(foreignBefore);
   });
   it('enforces staff scope, module restrictions, HTTP auth, exports and cross-tenant requests', async () => {
-    const personal = await scoped(() => dashboard(agent, query, now));
-    expect(personal.scope).toBe('assigned'); expect(personal.metrics.totalRevenue).toBe(250);
+    const organization = await scoped(() => dashboard(agent, query, now));
+    expect(organization.scope).toBe('organization'); expect(organization.metrics).toEqual((await report()).metrics);
     expect((await http('/reporting/dashboard', '')).status).toBe(401);
     expect((await http('/reporting/dashboard?tenantId=b')).status).toBe(400);
     const foreign = await (await http('/reporting/dashboard', foreignToken)).json();
@@ -209,11 +261,67 @@ describe('authoritative dashboard', () => {
     const restricted = await scoped(() => dashboard(agent, query));
     expect(restricted.metrics.totalRevenue).toBeNull(); expect(restricted.trend).toEqual([]); expect(restricted.leaderboard).toEqual([]);
     expect((await http('/reporting/pipeline-summary', agentToken)).status).toBe(403);
+    expect((await http('/crm/pipelines/events', agentToken)).status).toBe(403);
     await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'dashboard' }, data: { canView: false } });
     expect((await http('/reporting/dashboard', agentToken)).status).toBe(403);
     expect((await http('/reporting/dashboard/export', agentToken)).status).toBe(403);
     expect((await http('/reporting/dashboard/events', agentToken)).status).toBe(403);
   });
+  it('validates historical filters server-side and persists each authorized stage color without altering deals or history', async () => {
+    const tomorrow = dashboardToday(new Date(Date.now() + 86400000));
+    expect((await http(`/reporting/dashboard?funnelRange=custom&funnelStart=${tomorrow}&funnelEnd=${tomorrow}`)).status).toBe(400);
+    expect((await http('/reporting/dashboard?funnelRange=custom&funnelStart=2020-01-10&funnelEnd=2020-01-01')).status).toBe(400);
+    expect((await http('/reporting/dashboard?revenueInterval=day')).status).toBe(400);
+    const ids = ['lead','contacted','qualified','won','lost'];
+    const beforeDeals = await db.deal.findMany({ orderBy: { id: 'asc' } });
+    const beforeHistory = await db.dealStageHistory.findMany({ orderBy: { id: 'asc' } });
+    for (const [index, id] of ids.entries()) {
+      const color = `#12345${index}`;
+      expect((await http(`/crm/stages/${id}`, adminToken, 'PUT', { color })).status).toBe(200);
+      const pipeline = await (await http('/crm/pipelines/sales')).json();
+      expect(pipeline.data.stages.find((stage: { id: string }) => stage.id === id).color).toBe(color);
+      expect((await report()).pipeline!.stages.find(stage => stage.id === id)!.color).toBe(color);
+    }
+    expect(await db.deal.findMany({ orderBy: { id: 'asc' } })).toEqual(beforeDeals);
+    expect(await db.dealStageHistory.findMany({ orderBy: { id: 'asc' } })).toEqual(beforeHistory);
+    expect((await http('/crm/stages/lead', adminToken, 'PUT', { color: 'red' })).status).toBe(400);
+    expect((await http('/crm/stages/lead', agentToken, 'PUT', { color: '#123456' })).status).toBe(403);
+    expect((await http('/crm/stages/foreign-lead', adminToken, 'PUT', { color: '#123456' })).status).toBe(404);
+    expect((await http('/crm/stages/lead', adminToken, 'PUT', { name: 'Proposal' })).status).toBe(400);
+    expect((await http('/crm/stages', adminToken, 'POST', { pipelineId: 'sales', name: 'Negotiation', order: 6 })).status).toBe(400);
+    expect((await http('/crm/stages/contacted', adminToken, 'DELETE')).status).toBe(400);
+    expect((await http('/crm/pipelines/sales/stages/reorder', adminToken, 'PATCH', { stageIds: [...ids].reverse() })).status).toBe(400);
+    expect((await db.stage.findMany({ where: { pipelineId: 'sales' }, orderBy: { order: 'asc' } })).map(stage => stage.id)).toEqual(ids);
+  });
+  it('streams tenant stage metadata and revokes it when Deals access is removed', async () => {
+    const { createAuthSessionToken } = await import('../../../core/auth/auth-session');
+    const token = await createAuthSessionToken(await db.user.findUniqueOrThrow({ where: { id: 'other-agent' } }));
+    await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: true } });
+    const controller = new AbortController();
+    try {
+      const response = await fetch(base + '/crm/pipelines/events', { headers: { Authorization: `Bearer ${token}` }, signal: controller.signal });
+      expect(response.status).toBe(200);
+      const reader = response.body!.getReader();
+      const read = async (event: string) => {
+        let buffer = '';
+        for (;;) {
+          const part = await reader.read();
+          if (part.done) throw new Error('Metadata stream ended before event');
+          buffer += new TextDecoder().decode(part.value);
+          const match = buffer.match(new RegExp(`event: ${event}\\ndata: ([^\\n]+)`));
+          if (match) return JSON.parse(match[1]);
+        }
+      };
+      const first = await read('pipeline-change');
+      expect(Object.keys(first)).toEqual(['metadata']); expect(first.metadata).toMatch(/^[0-9a-f]{64}$/);
+      await db.stage.update({ where: { id: 'contacted' }, data: { color: '#ABCDEF' } });
+      const changed = await read('pipeline-change'); expect(changed.metadata).not.toBe(first.metadata);
+      expect(JSON.stringify(changed)).not.toContain('Contacted');
+      await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: false } });
+      expect(await read('pipeline-access-changed')).toEqual({});
+      expect((await http('/crm/pipelines/events', token)).status).toBe(403);
+    } finally { controller.abort(); }
+  }, 20000);
   it('streams committed tenant revisions and rechecks live session authorization', async () => {
     await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'dashboard' }, data: { canView: true } });
     const a = new AbortController(), b = new AbortController();

@@ -1,5 +1,7 @@
 # Dashboard implementation and verification report
 
+Organization scope, stage colors, chart aggregation, funnel periods and current verification are superseded by [the organization reporting refinements report](dashboard-organization-refinements.md). This document retains the earlier implementation evidence; its database ledger and production revision are historical snapshots.
+
 Date: 9 October 2026. This report records verification before publication. **Production readiness is not confirmed by these local checks.** At verification time, the additive migration was not applied to the configured database, and authenticated acceptance of this Dashboard revision through Coolify remained outstanding. No production records, environment files or schemas were modified during local verification.
 
 Release preflight: the phased deployment runner explicitly allows the additive Dashboard migration. All nine rollout tests and the disposable production-shaped migration replay passed. The read-only configured-database plan verified 97 applied migration checksums and selected only `20261115000000_dashboard_revisions`; all three guarded column retirements remain deferred.

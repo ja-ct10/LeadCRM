@@ -11,6 +11,12 @@ export function dashboardQueryString(query: DashboardQuery) {
     if (query.start) params.set('start', query.start);
     if (query.end) params.set('end', query.end);
   }
+  if (query.revenueInterval) params.set('revenueInterval', query.revenueInterval);
+  if (query.funnelRange) params.set('funnelRange', query.funnelRange);
+  if (query.funnelRange === 'custom') {
+    if (query.funnelStart) params.set('funnelStart', query.funnelStart);
+    if (query.funnelEnd) params.set('funnelEnd', query.funnelEnd);
+  }
   return params.toString();
 }
 
@@ -59,6 +65,8 @@ export function useDashboard(query: DashboardQuery) {
       if (generation.current === current) setLoading(false);
     }
   }, [user?.id, key, queryString, resetAccess]);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
   useEffect(() => {
     setState({ key, report: null, error: null });
@@ -71,9 +79,10 @@ export function useDashboard(query: DashboardQuery) {
     let stopped = false, heartbeat = 0;
     let batch: ReturnType<typeof setTimeout> | undefined;
     let accessRevision: string | undefined;
+    let previousRevision = '';
     const schedule = () => {
       if (stopped || batch) return;
-      batch = setTimeout(() => { batch = undefined; if (!stopped) void refresh(); }, 150);
+      batch = setTimeout(() => { batch = undefined; if (!stopped) void refreshRef.current(); }, 150);
     };
     const stream = new EventSource('/api/proxy/reporting/dashboard/events');
     const changed = (event: MessageEvent) => {
@@ -83,14 +92,14 @@ export function useDashboard(query: DashboardQuery) {
         accessRevision = counters.access;
         heartbeat = Date.now();
         setConnection('live');
-        schedule();
+        if (event.data !== previousRevision) { previousRevision = event.data; schedule(); }
       } catch { setConnection('stale'); }
     };
     stream.addEventListener('dashboard-change', changed as EventListener);
     stream.addEventListener('dashboard-heartbeat', () => { heartbeat = Date.now(); setConnection('live'); });
     stream.addEventListener('dashboard-unavailable', () => setConnection('stale'));
     stream.addEventListener('dashboard-access-changed', () => { resetAccess(); setConnection('stale'); stream.close(); schedule(); });
-    stream.onopen = () => { setConnection('connecting'); schedule(); };
+    stream.onopen = () => { previousRevision = ''; setConnection('connecting'); schedule(); };
     stream.onerror = () => { setConnection('stale'); };
     const wake = () => {
       if (document.visibilityState !== 'hidden') { setConnection('connecting'); schedule(); }
@@ -116,6 +125,6 @@ export function useDashboard(query: DashboardQuery) {
       window.removeEventListener('offline', offline);
       document.removeEventListener('visibilitychange', wake);
     };
-  }, [identity, user?.id, refresh, resetAccess]);
+  }, [identity, user?.id, resetAccess]);
   return { report: state.key === key ? state.report : null, error: state.key === key ? state.error : null, loading, connection, refresh };
 }

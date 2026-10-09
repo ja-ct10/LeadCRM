@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { DashboardQuerySchema, dashboardPeriod, type DashboardQuery, type DashboardReport, type DashboardStage } from '@leadcrm/shared';
+import { DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, SALES_PIPELINE_STAGES, type DashboardQuery, type DashboardReport, type DashboardStage } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { findUserEffectivePermissions } from '../../administration/roles/roles.repository';
@@ -17,7 +17,7 @@ export async function dashboardAccess(identity: AuthenticatedUser) {
 }
 
 export function verifyDashboardStages(stages: DashboardStage[]) {
-  const names = ['lead', 'contacted', 'qualified', 'closed won', 'closed lost'];
+  const names = SALES_PIPELINE_STAGES.map(name => name.toLowerCase());
   if (stages.length !== 5 || stages.some((stage, i) => stage.name.trim().toLowerCase() !== names[i] ||
     stage.isWon !== (i === 3) || stage.isLost !== (i === 4))) {
     throw new AppError('The Sales Pipeline must contain Lead, Contacted, Qualified, Closed Won and Closed Lost in the official order. Review its configuration; historical data has not been changed.', 409, 'DASHBOARD_PIPELINE_CONFIGURATION');
@@ -36,20 +36,24 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
   const query: DashboardQuery = parsed.data;
   let period: ReturnType<typeof dashboardPeriod>;
   try { period = dashboardPeriod(query, now); } catch { throw new AppError('Choose a reporting period of at most two years.', 400); }
+  let funnel: ReturnType<typeof dashboardFunnelPeriod>;
+  try { funnel = dashboardFunnelPeriod(query, now); } catch (error) { throw new AppError(error instanceof Error ? error.message : 'Choose a valid historical funnel period.', 400); }
+  const interval = query.revenueInterval ?? 'month';
   const { tenantId, userId } = identity;
   const context = tenantContext.getStore();
   if (context && context.tenantId !== tenantId) throw new AppError('Workspace mismatch', 403);
   const access = await dashboardAccess(identity);
 
   // Only this parameterized, explicitly scoped reporting repository bypasses the
-  // generic raw-query guard. All queries include trusted tenant and owner scope.
+  // generic raw-query guard. Analytics use trusted tenant scope; dashboard.view
+  // is the existing organization reporting grant, with module-level restrictions.
   // RepeatableRead keeps every card, chart and export on the same DB snapshot.
   const report = await prisma.$transaction(async tx => {
     const tenant = await tx.tenant.findUniqueOrThrow({ where: { id: tenantId }, select: { currency: true } });
     const currency = tenant.currency || 'PHP';
     const result: DashboardReport = {
-      generatedAt: now.toISOString(), queryMs: 0, currency, scope: access.admin ? 'organization' : 'assigned',
-      period: { start: period.start, end: period.end, timezone: period.timezone, interval: period.interval },
+      generatedAt: now.toISOString(), queryMs: 0, currency, scope: 'organization',
+      period: { start: period.start, end: period.end, timezone: period.timezone, interval },
       access: { deals: access.deals, leads: access.leads, tasks: access.tasks }, pipeline: null,
       metrics: { totalRevenue: null, forecastedRevenue: null, activeDeals: null, totalLeads: null, won: null, lost: null,
         winRate: null, averageDealDays: null, openPipelineValue: null, forecastMissing: 0, monetaryMissing: 0,
@@ -57,7 +61,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       trend: [], distribution: [], conversion: null, leaderboard: [], actions: [], pendingActions: 0, warnings: [],
     };
     const ownerScope = access.admin ? {} : { assignedUserId: userId };
-    const leadWhere = { tenantId, isArchived: false, deletedAt: null, convertedAt: null, ...ownerScope };
+    const leadWhere = { tenantId, isArchived: false, deletedAt: null, convertedAt: null };
     if (access.leads) result.metrics.totalLeads = await tx.lead.count({ where: leadWhere });
 
     if (access.deals) {
@@ -75,8 +79,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       // UTC casts avoid implicit comparisons in the database session timezone.
       const utc = (date: Date) => Prisma.sql`(${date.toISOString()}::timestamptz AT TIME ZONE 'UTC')`;
       const scope = Prisma.sql`d."tenantId" = ${tenantId} AND d."pipelineId" = ${pipeline.id}
-        AND NOT d."isArchived" AND d."deletedAt" IS NULL
-        ${access.admin ? Prisma.empty : Prisma.sql`AND d."assignedUserId" = ${userId}`}`;
+        AND NOT d."isArchived" AND d."deletedAt" IS NULL`;
       const resolved = Prisma.sql`d."closedAt" >= ${utc(period.from)} AND d."closedAt" < ${utc(period.until)}
         AND d."closedAt" >= d."createdAt" AND d."closedAt" <= ${utc(now)}`;
       const validMoney = Prisma.sql`d.currency = ${currency} AND d.value >= 0 AND d.value::text NOT IN ('NaN','Infinity','-Infinity')`;
@@ -107,10 +110,10 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
         monetaryMissing: totals.monetaryMissing, currencyExcluded: totals.currencyExcluded, closingDateMissing: totals.closingDateMissing,
       });
       result.trend = await raw<DashboardReport['trend']>(Prisma.sql`
-        WITH buckets AS (SELECT generate_series(date_trunc(${period.interval}, ${period.from.toISOString()}::timestamptz AT TIME ZONE 'Asia/Manila'),
-          date_trunc(${period.interval}, (${period.until.toISOString()}::timestamptz - interval '1 millisecond') AT TIME ZONE 'Asia/Manila'),
-          CASE WHEN ${period.interval} = 'month' THEN interval '1 month' ELSE interval '1 day' END) AS bucket),
-        performance AS (SELECT date_trunc(${period.interval}, d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila') AS bucket,
+        WITH buckets AS (SELECT generate_series(date_trunc(${interval}, ${period.from.toISOString()}::timestamptz AT TIME ZONE 'Asia/Manila'),
+          date_trunc(${interval}, (${period.until.toISOString()}::timestamptz - interval '1 millisecond') AT TIME ZONE 'Asia/Manila'),
+          CASE WHEN ${interval} = 'week' THEN interval '1 week' WHEN ${interval} = 'year' THEN interval '1 year' ELSE interval '1 month' END) AS bucket),
+        performance AS (SELECT date_trunc(${interval}, d."closedAt" AT TIME ZONE 'UTC' AT TIME ZONE 'Asia/Manila') AS bucket,
           COALESCE(round(SUM(round(d.value::numeric,2)) FILTER (WHERE d."stageId" = ${won.id} AND ${validMoney}),2),0)::float8 AS revenue,
           COUNT(*) FILTER (WHERE d."stageId" = ${won.id})::int AS won, COUNT(*) FILTER (WHERE d."stageId" = ${lost.id})::int AS lost
           FROM "Deal" d WHERE ${scope} AND ${resolved} AND d."stageId" IN (${won.id}, ${lost.id}) GROUP BY 1)
@@ -126,7 +129,8 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
         return { id: stage.id, name: stage.name, color: stage.color, count: row?.count ?? 0,
           value: row?.missing ? null : row?.value ?? 0, percentage: percent(row?.count ?? 0, totals.active) ?? 0 };
       });
-      const cohort = Prisma.sql`${scope} AND d."createdAt" >= ${utc(period.from)} AND d."createdAt" < ${utc(period.until)} AND d."createdAt" <= ${utc(now)}`;
+      const cutoff = new Date(funnel.observationCutoff);
+      const cohort = Prisma.sql`${scope} AND d."createdAt" >= ${utc(funnel.from)} AND d."createdAt" < ${utc(funnel.until)} AND d."createdAt" <= ${utc(cutoff)}`;
       const history = (await raw<Array<{ cohort: number; missing: number; lead: number; contacted: number; qualified: number; won: number; lost: number;
         leadContacted: number; contactedQualified: number; qualifiedWon: number; qualifiedLost: number }>>(Prisma.sql`
         WITH milestones AS (SELECT d.id,
@@ -134,7 +138,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
           BOOL_OR(h."newStageId" = ${qualified.id}) AS qualified, BOOL_OR(h."newStageId" = ${won.id}) AS won, BOOL_OR(h."newStageId" = ${lost.id}) AS lost,
           COUNT(h.id) AS events, BOOL_OR(h."previousStageId" IS NULL AND h."movedAt" = d."createdAt") AS initial
           FROM "Deal" d LEFT JOIN "DealStageHistory" h ON h."dealId" = d.id AND h."tenantId" = ${tenantId}
-            AND h."movedAt" >= d."createdAt" AND h."movedAt" <= ${utc(now)}
+            AND h."movedAt" >= d."createdAt" AND h."movedAt" <= ${utc(cutoff)}
           WHERE ${cohort} GROUP BY d.id)
         SELECT COUNT(*)::int AS cohort, COUNT(*) FILTER (WHERE events = 0 OR NOT COALESCE(initial,false))::int AS missing,
           COUNT(*) FILTER (WHERE lead)::int AS lead, COUNT(*) FILTER (WHERE contacted)::int AS contacted,
@@ -143,6 +147,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
           COUNT(*) FILTER (WHERE qualified AND won)::int AS "qualifiedWon", COUNT(*) FILTER (WHERE qualified AND lost)::int AS "qualifiedLost"
         FROM milestones`))[0];
       result.conversion = { cohort: history.cohort, missingHistory: history.missing,
+        period: { start: funnel.start, end: funnel.end, timezone: funnel.timezone, range: funnel.range, observationCutoff: funnel.observationCutoff },
         stages: pipeline.stages.map((stage, index) => ({ id: stage.id, name: stage.name, color: stage.color,
           reached: [history.lead, history.contacted, history.qualified, history.won, history.lost][index] })),
         leadToContacted: history.missing ? null : percent(history.leadContacted, history.lead),
@@ -154,9 +159,8 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
         SELECT u.id, u."firstName", u."lastName", COUNT(*)::int AS won, round(SUM(round(d.value::numeric,2)),2)::float8 AS revenue
         FROM "Deal" d JOIN "User" u ON u.id = d."revenueOwnerId" AND u."tenantId" = ${tenantId}
         WHERE ${scope} AND ${resolved} AND d."stageId" = ${won.id} AND ${validMoney} AND d."revenueOwnerEligible" = true
-          ${access.admin ? Prisma.empty : Prisma.sql`AND u.id = ${userId}`}
         GROUP BY u.id, u."firstName", u."lastName" ORDER BY revenue DESC, won DESC, u.id ASC LIMIT 5`);
-      const excluded = await tx.deal.count({ where: { tenantId, isArchived: false, deletedAt: null, ...ownerScope, pipelineId: { not: pipeline.id } } });
+      const excluded = await tx.deal.count({ where: { tenantId, isArchived: false, deletedAt: null, pipelineId: { not: pipeline.id } } });
       if (excluded) result.warnings.push(`${excluded} visible deals outside the authoritative Sales Pipeline are excluded; no records were changed.`);
       if (totals.currencyExcluded) result.warnings.push(`${totals.currencyExcluded} deals have another or unknown currency and are excluded from ${currency} monetary totals.`);
       if (totals.monetaryMissing) result.warnings.push(`${totals.monetaryMissing} deals have missing or invalid amounts; affected monetary totals are unavailable.`);
@@ -164,21 +168,25 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       if (totals.closingDateMissing) result.warnings.push(`${totals.closingDateMissing} closed deals have missing or invalid closing dates and are excluded from period results.`);
       if (totals.attributionMissing) result.warnings.push(`${totals.attributionMissing} period wins lack verified historical agent attribution and are excluded from the leaderboard.`);
       if (history.missing) result.warnings.push(`${history.missing} cohort deals lack a recorded starting milestone. Conversion counts show recorded events only; progression rates are unavailable and historical stages were not inferred.`);
-      if (pipeline.stages.some(stage => !stage.color)) result.warnings.push('Some official stages have no configured color. Open-stage charts use a neutral presentation color until colors are configured in Deals.');
+      if (pipeline.stages.some(stage => !stage.color)) result.warnings.push('Some official stages have no configured color. Suggested defaults are shown until colors are saved in Deals.');
     }
 
     if (access.tasks) {
       const where = { tenantId, isArchived: false, status: { notIn: ['completed', 'cancelled'] }, ...ownerScope };
-      const [count, tasks] = await Promise.all([
-        tx.task.count({ where }), tx.task.findMany({ where, orderBy: [{ dueDate: 'asc' }, { id: 'asc' }], take: 6,
-          select: { id: true, title: true, dueDate: true, priority: true } }),
+      const selection = { orderBy: [{ dueDate: 'asc' as const }, { id: 'asc' as const }], take: 6, select: { id: true, title: true, dueDate: true, priority: true } };
+      const [count, overdue, high, other] = await Promise.all([
+        tx.task.count({ where }),
+        tx.task.findMany({ ...selection, where: { ...where, dueDate: { lt: now } } }),
+        tx.task.findMany({ ...selection, where: { ...where, dueDate: { gte: now }, priority: 'High' } }),
+        tx.task.findMany({ ...selection, where: { ...where, dueDate: { gte: now }, priority: { not: 'High' } } }),
       ]);
+      const tasks = [...overdue, ...high, ...other].slice(0, 6);
       result.pendingActions += count;
       result.actions.push(...tasks.map(task => ({ id: task.id, kind: 'task' as const, title: task.title, priority: task.priority,
         dueDate: task.dueDate.toISOString(), overdue: task.dueDate < now, href: `/operations/taskboard?taskId=${encodeURIComponent(task.id)}` })));
     }
     if (access.leads) {
-      const where = { ...leadWhere, status: 'Hot' };
+      const where = { ...leadWhere, ...ownerScope, status: 'Hot' };
       const [count, leads] = await Promise.all([tx.lead.count({ where }), tx.lead.findMany({ where, take: 3,
         orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }], select: { id: true, firstName: true, lastName: true } })]);
       result.pendingActions += count;
@@ -198,13 +206,15 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
           dueDate: null, overdue: false, href: `/crm/deals/${encodeURIComponent(deal.id)}` })));
       }
     }
-    result.actions.sort((a, b) => Number(b.overdue) - Number(a.overdue) || (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999') || a.id.localeCompare(b.id));
+    const priority = (value: string) => ({ high: 0, medium: 1, low: 2 }[value.toLowerCase()] ?? 3);
+    const kind = (value: string) => ({ task: 0, lead: 1, deal: 2 }[value] ?? 3);
+    result.actions.sort((a, b) => Number(b.overdue) - Number(a.overdue) || kind(a.kind) - kind(b.kind) || priority(a.priority) - priority(b.priority) || (a.dueDate ?? '9999').localeCompare(b.dueDate ?? '9999') || a.id.localeCompare(b.id));
     return result;
   }, { isolationLevel: 'RepeatableRead', timeout: 20000 });
   // Recheck permission after aggregation: a role changed during the snapshot
   // must not release data under a former authorization scope.
   const current = await dashboardAccess(identity);
-  if ((current.admin ? 'organization' : 'assigned') !== report.scope || ['deals','leads','tasks'].some(key => current[key as keyof typeof report.access] !== report.access[key as keyof typeof report.access])) {
+  if (current.admin !== access.admin || ['deals','leads','tasks'].some(key => current[key as keyof typeof report.access] !== report.access[key as keyof typeof report.access])) {
     throw new AppError('Reporting access changed. Please retry.', 403);
   }
   report.queryMs = Math.round((performance.now() - started) * 10) / 10;
