@@ -48,6 +48,7 @@ beforeAll(async () => {
     if (name === '20261031000000_retire_obsolete_infrastructure') await pg.exec('DELETE FROM "EmailVerificationToken"');
     // This in-memory fixture exercises the new code directly, without a hosted deployment.
     if (name === '20261102000000_retire_relationship_compatibility') await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
+    if (name === '20261112000000_retire_lead_nonform_columns') await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
     if (name === cleanupMigration) {
       await pg.query(`UPDATE "User" SET "passwordHash"=$1, "mfaEnabled"=true, "mfaSecretEncrypted"='old-secret', "passwordChangedAt"=NOW() WHERE id='migration-user'`, [hashSync(initialPassword, 4)]);
       await pg.exec(`
@@ -150,6 +151,14 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
     const { issueAuthSession } = await import('../auth-session');
     const readCookie = `leadcrm_token=${(await issueAuthSession(reader)).token}`;
     expect((await call('/crm/accounts', { name: 'Forbidden' }, readCookie)).status).toBe(403);
+  });
+  it('rejects invalid and expired reset links without changing the password', async () => {
+    const before = await db.user.findUniqueOrThrow({ where: { id: userId } });
+    expect((await call('/auth/reset-password', { token: 'missing-reset', password: 'NewPassword2026!' }, '')).status).toBe(400);
+    await db.passwordResetToken.create({ data: { userId, email, token: 'expired-reset', expires: new Date(Date.now() - 60_000) } });
+    expect((await call('/auth/reset-password', { token: 'expired-reset', password: 'NewPassword2026!' }, '')).status).toBe(400);
+    expect(await db.passwordResetToken.findUnique({ where: { token: 'expired-reset' } })).toBeNull();
+    expect((await db.user.findUniqueOrThrow({ where: { id: userId } })).passwordHash).toBe(before.passwordHash);
   });
   it('resets a password with a one-use token, revokes sessions, then supports login and logout', async () => {
     const token = 'a'.repeat(64);

@@ -5,8 +5,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { sendMail, buildPasswordResetEmail } from '../../shared/services/email.service';
 import type { ForgotPasswordDto, ResetPasswordDto } from './auth.dto';
 import { StrongPasswordSchema } from '@leadcrm/shared';
-
-const RESET_TTL_MS = parseInt(process.env.PASSWORD_RESET_TTL_MINUTES ?? '60', 10) * 60 * 1000;
+import { getAuthAppOrigin, getPasswordResetTtlMinutes } from '../../shared/helpers/auth-email-config';
 
 /**
  * Step 1 — Request a password reset.
@@ -23,23 +22,26 @@ export async function requestPasswordReset(dto: ForgotPasswordDto, target?: { us
     return;
   }
 
+  const appOrigin = getAuthAppOrigin();
+  const ttlMinutes = getPasswordResetTtlMinutes();
+
   // Invalidate only this account's previous tokens.
   await prisma.passwordResetToken.deleteMany({ where: { userId: user.id } });
 
   const rawToken = crypto.randomBytes(32).toString('hex');
-  const expires  = new Date(Date.now() + RESET_TTL_MS);
+  const expires  = new Date(Date.now() + ttlMinutes * 60 * 1000);
 
   await prisma.passwordResetToken.create({
     data: { email: user.email, userId: user.id, token: rawToken, expires },
   });
 
-  const appUrl   = process.env.APP_URL ?? 'http://localhost:3000';
-  const resetUrl = `${appUrl}/reset-password?token=${rawToken}`;
+  const resetUrl = new URL('/reset-password', appOrigin);
+  resetUrl.searchParams.set('token', rawToken);
 
   const submission = await sendMail({
     to:      user.email,
     subject: 'Reset your LeadCRM password',
-    html:    buildPasswordResetEmail(resetUrl),
+    html:    buildPasswordResetEmail(resetUrl.href, user.firstName),
     requireDelivery: true,
     category: 'password-reset',
   });

@@ -9,6 +9,7 @@ beforeEach(() => {
   vi.stubGlobal('fetch', fetchMock); fetchMock.mockReset();
   vi.stubEnv('NODE_ENV', 'production'); vi.stubEnv('BREVO_API_KEY', 'xkeysib-test-secret-123456789');
   vi.stubEnv('BREVO_FROM_EMAIL', 'sender@example.com'); vi.stubEnv('BREVO_FROM_NAME', 'Test Sender');
+  vi.stubEnv('APP_URL', 'https://lead-crm.tech');
   fetchMock.mockImplementation(async () => new Response(JSON.stringify({ messageId: '<message-1>' }), { status: 201 }));
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
@@ -61,9 +62,9 @@ describe('existing Brevo transport', () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
   it.each([
-    ['password reset', () => buildPasswordResetEmail('https://example.com/reset')],
+    ['password reset', () => buildPasswordResetEmail('https://lead-crm.tech/reset-password?token=test')],
     ['welcome', () => buildWelcomeEmail('Juan', 'Workspace')],
-    ['administrative reset', () => buildPasswordResetEmail('https://example.com/reset?token=admin')],
+    ['administrative reset', () => buildPasswordResetEmail('https://lead-crm.tech/reset-password?token=admin')],
   ])('preserves the %s builder and transport contract', async (_name, build) => {
     const html = build();
     expect(html).toContain('<html');

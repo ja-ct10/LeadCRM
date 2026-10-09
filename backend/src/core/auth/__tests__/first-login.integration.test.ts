@@ -26,14 +26,14 @@ async function call(path: string, body?: unknown, cookie = adminCookie) {
 }
 function credentialFor(email: string) {
   const args = mail.mock.calls.findLast(([args]) => args.to === email)?.[0];
-  const password = args?.html.match(/font-family:monospace;font-size:18px">([^<]+)</)?.[1];
+  const password = args?.html.match(/Temporary Password:<\/strong><br \/><span[^>]*>([^<]+)<\/span>/)?.[1];
   if (!password) throw new Error('Expected a transient credential in the mocked welcome submission');
   return password as string;
 }
 beforeAll(async () => {
   vi.stubEnv('NODE_ENV', 'test');
   vi.stubEnv('JWT_SECRET', 'disposable-first-login-test-signing-key');
-  vi.stubEnv('APP_URL', 'https://lead-crm-frontend-pi.vercel.app');
+  vi.stubEnv('APP_URL', 'https://lead-crm.tech');
   vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
   vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', testers.map(user => user.email).join(','));
   vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
@@ -44,7 +44,10 @@ beforeAll(async () => {
     INSERT INTO "User" (id,"tenantId",email,"firstName","lastName",role,"mustChangePassword","updatedAt") VALUES
     ('established','existing-tenant','existing@camxian.com','Existing','User','Client Admin',false,NOW()),
     ('pending','existing-tenant','pending@camxian.com','Pending','User','Sales',true,NOW());`);
-  await replayCrmMigrations(pg, undefined, '20261104000000');
+  await replayCrmMigrations(pg, '20261112000000', '20261104000000');
+  // Disposable fixture serves the current Lead contract; production guards stay intact.
+  await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
+  await replayCrmMigrations(pg, undefined, '20261112000000');
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 });
   await socket.start();
   vi.stubEnv('FIRST_LOGIN_TEST_DATABASE_URL', `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`);
