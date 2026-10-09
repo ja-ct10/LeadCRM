@@ -292,10 +292,11 @@ ALLOWED_ORIGINS="http://localhost:3000"
 **Frontend (`frontend/.env.local`):**
 
 ```bash
-# Create frontend/.env.local
-echo "NEXT_PUBLIC_API_URL=http://localhost:4000/api/v1" > frontend/.env.local
-echo "NEXT_PUBLIC_USE_MOCK_DATA=false" >> frontend/.env.local
+# For a new checkout, copy the current frontend environment template
+cp frontend/.env.example frontend/.env.local
 ```
+
+For an existing `frontend/.env.local`, preserve its settings and add `API_URL=http://localhost:4000/api/v1` if missing. This server-only variable is required for the Next.js proxy; the legacy `NEXT_PUBLIC_API_URL` is unused. Production requires the deployed HTTPS backend URL ending in `/api/v1`.
 
 > [!NOTE]
 > Set `NEXT_PUBLIC_USE_MOCK_DATA=false` to connect to the Express API and use the PostgreSQL database (Recommended for full-stack). Set to `true` to run the frontend independently using localStorage data (no backend required).

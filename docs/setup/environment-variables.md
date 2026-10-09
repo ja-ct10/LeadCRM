@@ -21,18 +21,22 @@ Copy from `backend/.env.example`. Required before running the backend.
 
 ## Frontend (`frontend/.env.local`)
 
-Copy from `frontend/.env.local.example`.
+For a new checkout, copy from `frontend/.env.example`. Preserve existing settings when updating an existing `frontend/.env.local`.
 
 | Variable | Required | Description |
 |---|---|---|
-| `NEXT_PUBLIC_APP_URL` | — | Frontend URL. Defaults to `http://localhost:3000`. |
-| `NEXT_PUBLIC_API_URL` | — | Backend API URL. Defaults to `http://localhost:4000/api/v1`. |
+| `API_URL` | ✅ | Server-only backend URL ending in `/api/v1`. Use `http://localhost:4000/api/v1` locally and the deployed HTTPS backend URL in production. Required when Next.js loads its config, including in mock mode. |
+| `NEXT_PUBLIC_USE_MOCK_DATA` | — | Opt-in mock data in development. Set `false` for the live backend. |
+| `NEXT_PUBLIC_USE_MOCK_AUTH` | — | Opt-in mock authentication in development. Set `false` for the live backend. |
+| `NEXT_PUBLIC_FORM_ORIGIN` | — | Optional public Forms origin; defaults to the current browser origin. |
 | `GEMINI_API_KEY` | Optional | For Gemini AI features (future). |
+
+The browser uses same-origin `/api/proxy`; the legacy `NEXT_PUBLIC_API_URL` is unused. If `npm run dev` exits with the `API_URL must be an explicit backend URL` error, add `API_URL=http://localhost:4000/api/v1` to `frontend/.env.local` and restart it. A value in `backend/.env` does not configure the frontend.
 
 ## Security Rules
 
 - Never commit `.env` — it's gitignored via `.env*` pattern
-- Only `.env.example` and `.env.local.example` are committed
+- Only `.env.example` templates are committed
 - `NEXT_PUBLIC_*` prefix exposes values to the browser — never put secrets there
 - `JWT_SECRET` must be at least 32 random characters
 - Rotate any secret immediately if it's accidentally committed
