@@ -3,6 +3,11 @@ import { AppError } from '../../../shared/errors/app-error';
 ﻿import { Request, Response, NextFunction } from 'express';
 import * as service from './campaigns.service';
 import { getOrganizationSettings } from '../../administration/organization-settings/organization-settings.service';
+import { getBrevoSenderIdentity } from '../../../shared/services/email.service';
+
+export function getEmailSettings(_req: Request, res: Response) {
+  res.json({ success: true, data: getBrevoSenderIdentity() });
+}
 
 export async function getSmsSettings(req: Request, res: Response, next: NextFunction) {
   try {

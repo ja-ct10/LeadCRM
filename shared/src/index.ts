@@ -17,6 +17,7 @@ export * from './validation/administration-user.schema';
 export * from './validation/crm-import.schema';
 
 export * from './contracts/campaign-email';
+export * from './contracts/campaign-links';
 export * from './contracts/forms.contract';
 export * from './contracts/archived-data.contract';
 export * from './contracts/list-pagination';

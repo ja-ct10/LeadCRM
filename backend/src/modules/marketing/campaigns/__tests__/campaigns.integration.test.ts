@@ -272,8 +272,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const metrics = await prisma.campaignMetrics.findFirstOrThrow({ where: { campaignId: campaign.id }, orderBy: { snapshotAt: 'desc' } });
     expect(metrics).toMatchObject({ sentCount: 1, deliveredCount: 1, openedCount: 1, clickedCount: 1, bouncedCount: 0, openRate: 100, clickRate: 100, deliveryRate: 100, bounceRate: 0 });
     expect(await prisma.emailEvent.count({ where: { deliveryLogId: log.id } })).toBe(6);
-    await expect(processBrevoEvent({ ...payload, event: 'opened', 'message-id': 'unknown-message' })).rejects.toMatchObject({ statusCode: 503 });
-    await expect(processBrevoEvent({ ...payload, event: 'opened', email: 'other@example.com' })).rejects.toMatchObject({ statusCode: 503 });
+    await expect(processBrevoEvent({ ...payload, event: 'opened', ts_event: started, 'message-id': 'unknown-message' })).rejects.toMatchObject({ statusCode: 503 });
+    await expect(processBrevoEvent({ ...payload, event: 'opened', ts_event: started, email: 'other@example.com' })).rejects.toMatchObject({ statusCode: 503 });
     expect(sendMail).toHaveBeenCalledTimes(1);
   });
   it('bounds concurrency at five and preserves recipient snapshots after CRM deletion', async () => {
@@ -314,21 +314,53 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     await processBrevoEvent(click); await processBrevoEvent(click);
     await processBrevoEvent({ ...click, ts_event: started + 3 });
     await processBrevoEvent({ ...click, link: 'https://camxian.com/security', ts_event: started + 4 });
-    await processBrevoEvent({ ...click, link: 'javascript:alert(1)', ts_event: started + 5 });
+    await expect(processBrevoEvent({ ...click, link: 'javascript:alert(1)', ts_event: started + 5 })).rejects.toThrow('HTTP or HTTPS');
     await processBrevoEvent({ email: logs[1].toEmail, 'message-id': logs[1].brevoMessageId!, event: 'hard_bounce', ts_event: started + 6 });
     const result = await request(`/marketing/campaigns/${campaign.id}/report`);
     expect(result.status).toBe(200);
     expect(result.body.data).toMatchObject({ recipientCount: 2, deliveredCount: 1, bouncedCount: 1, openedCount: 1, clickedCount: 1, targetAudience: { name: 'All Leads & Contacts' } });
     expect(result.body.data.recipients).toHaveLength(2);
-    expect(result.body.data.recipients.find((row: { email: string }) => row.email === logs[0].toEmail)).toMatchObject({ name: expect.any(String), deliveryStatus: 'Delivered', opened: true, clicked: true, lastActivity: new Date((started + 5) * 1000).toISOString() });
+    expect(result.body.data.recipients.find((row: { email: string }) => row.email === logs[0].toEmail)).toMatchObject({ name: expect.any(String), deliveryStatus: 'Delivered', opened: true, clicked: true, lastActivity: new Date((started + 4) * 1000).toISOString() });
+    expect(result.body.data).toMatchObject({ totalClicks: 3, uniqueClicks: 1, ctr: 100, ctor: 100, totalOpens: 1, uniqueOpens: 1 });
     expect(result.body.data.recipients.find((row: { email: string }) => row.email === logs[1].toEmail)).toMatchObject({ deliveryStatus: 'Bounced', opened: false, clicked: false });
     expect(result.body.data.topLinks).toEqual([
-      { url: 'https://camxian.com/cctv', uniqueClicks: 1, totalClicks: 2, clickRate: 50, lastClicked: new Date((started + 3) * 1000).toISOString() },
-      { url: 'https://camxian.com/security', uniqueClicks: 1, totalClicks: 1, clickRate: 50, lastClicked: new Date((started + 4) * 1000).toISOString() },
+      { url: 'https://camxian.com/cctv', uniqueClicks: 1, totalClicks: 2, clickRate: 100, clickShare: 2 / 3 * 100, lastClicked: new Date((started + 3) * 1000).toISOString() },
+      { url: 'https://camxian.com/security', uniqueClicks: 1, totalClicks: 1, clickRate: 100, clickShare: 1 / 3 * 100, lastClicked: new Date((started + 4) * 1000).toISOString() },
     ]);
     expect((await request(`/marketing/campaigns/${campaign.id}/report`, 'GET', undefined, deniedToken)).status).toBe(403);
     const foreign = await scoped(() => createCampaign(otherTenantId, userId, { name: 'Private report', type: 'EMAIL' }), otherTenantId);
     expect((await request(`/marketing/campaigns/${foreign.id}/report`)).status).toBe(404);
+  });
+  it('reports pending and incomplete historical tracking without fabricating totals', async () => {
+    const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'History check', type: 'EMAIL', audienceSource: 'LEADS', subject: 'Hi', body: 'https://camxian.com/' }));
+    expect((await request(`/marketing/campaigns/${campaign.id}/report`)).body.data).toMatchObject({ trackingStatus: 'draft', totalClicks: null, ctr: null, ctor: null });
+    await scoped(() => sendCampaign(campaign.id, tenantId, userId));
+    expect((await request(`/marketing/campaigns/${campaign.id}/report`)).body.data).toMatchObject({ trackingStatus: 'pending', totalClicks: 0, uniqueClicks: 0, totalOpens: 0, uniqueOpens: 0, ctr: null, ctor: null });
+    const log = await prisma.emailDeliveryLog.findFirstOrThrow({ where: { campaignId: campaign.id } });
+    const at = Math.floor(Date.now() / 1000) - 60;
+    await processBrevoEvent({ event: 'delivered', email: log.toEmail, 'message-id': log.brevoMessageId!, ts_event: at });
+    expect((await request(`/marketing/campaigns/${campaign.id}/report`)).body.data).toMatchObject({ deliveredCount: 1, ctr: 0, ctor: null });
+    await scoped(() => prisma.campaignContact.updateMany({ where: { campaignId: campaign.id }, data: { openedAt: new Date(at * 1000), clickedAt: new Date(at * 1000) } }));
+    expect((await request(`/marketing/campaigns/${campaign.id}/report`)).body.data).toMatchObject({ trackingStatus: 'historical_unavailable', totalClicks: null, totalOpens: null, ctr: null, ctor: null, openedCount: 1, clickedCount: 1 });
+  });
+  it('preserves millisecond repeats, deterministic URL ranking, first timestamps and sender permission', async () => {
+    const settings = await request('/marketing/campaigns/email-settings');
+    expect(settings.body.data).toEqual({ senderName: process.env.BREVO_FROM_NAME || 'LeadCRM', senderEmail: 'sender@example.com' });
+    expect(JSON.stringify(settings.body)).not.toContain('xkeysib');
+    const campaign = await draft(); await scoped(() => sendCampaign(campaign.id, tenantId, userId));
+    const log = await prisma.emailDeliveryLog.findFirstOrThrow({ where: { campaignId: campaign.id } });
+    const at = Math.floor(Date.now() / 1000) - 60;
+    const event = { event: 'click', email: log.toEmail, 'message-id': log.brevoMessageId!, ts_event: at, ts_epoch: at * 1000 + 200, link: 'https://camxian.com/z?q=1#part' };
+    await processBrevoEvent(event); await processBrevoEvent(event);
+    await processBrevoEvent({ ...event, ts_epoch: at * 1000 + 100 });
+    await processBrevoEvent({ ...event, link: 'https://camxian.com/a?q=1#part', ts_event: at + 1, ts_epoch: (at + 1) * 1000 });
+    await processBrevoEvent({ ...event, link: 'https://camxian.com/a?q=1#part', ts_event: at + 2, ts_epoch: (at + 2) * 1000 });
+    await expect(processBrevoEvent({ ...event, ts_event: at + 10000 })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(processBrevoEvent({ event: 'click', email: log.toEmail, 'message-id': log.brevoMessageId! })).rejects.toThrow('timestamp');
+    const report = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+    expect(report).toMatchObject({ totalClicks: 4, uniqueClicks: 1, totalOpens: 0, uniqueOpens: 0, ctor: null });
+    expect(report.topLinks.map((link: { url: string; clickShare: number }) => [link.url, link.clickShare])).toEqual([['https://camxian.com/a?q=1#part', 50], ['https://camxian.com/z?q=1#part', 50]]);
+    expect((await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, email: log.toEmail } })).clickedAt).toEqual(new Date(at * 1000 + 100));
   });
   it('authenticates webhooks, deduplicates events and suppresses unsubscribed emails', async () => {
     const campaign = await draft(); await scoped(() => sendCampaign(campaign.id, tenantId, userId));
@@ -578,7 +610,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     await processBrevoEvent({ ...payload, email: logs[1].toEmail, 'message-id': logs[1].brevoMessageId, ts_event: start + 4 });
     const report = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
     expect(report).toMatchObject({ status: 'SENDING', clickedCount: 2, deliveredCount: 0 });
-    expect(report.topLinks).toEqual([{ url: payload.link, uniqueClicks: 2, totalClicks: 4, clickRate: 100, lastClicked: new Date((start + 4) * 1000).toISOString() }]);
+    expect(report.topLinks).toEqual([{ url: payload.link, uniqueClicks: 2, totalClicks: 4, clickRate: 0, clickShare: 100, lastClicked: new Date((start + 4) * 1000).toISOString() }]);
+    expect(report).toMatchObject({ totalClicks: 4, uniqueClicks: 2, totalOpens: 0, uniqueOpens: 0, ctr: null, ctor: null, trackingStatus: 'recorded' });
     expect(report.recipients.find((row: { email: string }) => row.email === logs[0].toEmail).lastActivity).toBe(new Date((start + 3) * 1000).toISOString());
   });
 

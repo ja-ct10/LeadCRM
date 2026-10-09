@@ -19,6 +19,7 @@ import {
   threadTrash,
   associateDeal,
   schedule,
+  attachment,
 } from '../../integrations/gmail/gmail.controller';
 
 import { workspaceReadyMiddleware } from '../middleware/tenant.middleware';
@@ -38,6 +39,7 @@ router.post('/gmail/sync', sync);
 router.get('/gmail/events', mailboxEvents);
 router.post('/gmail/scheduled', schedule);
 router.get('/gmail/threads/:threadId', thread);
+router.get('/gmail/messages/:messageId/attachments/:attachmentId', attachment);
 router.patch('/gmail/threads/:threadId/read-state', threadReadState);
 router.post('/gmail/threads/:threadId/archive', threadArchive);
 router.post('/gmail/threads/:threadId/trash', threadTrash);

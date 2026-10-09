@@ -16,6 +16,7 @@ export interface GmailEmail extends MailboxEmail {
   cc?: string[];
   plainText?: string;
   rfcMessageId?: string;
+  rfcReferences?: string[];
   automated?: boolean;
 }
 

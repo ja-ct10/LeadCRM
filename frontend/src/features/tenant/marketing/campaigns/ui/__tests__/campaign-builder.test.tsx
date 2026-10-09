@@ -7,13 +7,14 @@ import { campaignsApi } from '@/shared/services/campaigns.api';
 import { toast } from 'sonner';
 const access = vi.hoisted(() => ({ denied: new Set<string>() }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key) }));
-vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn() } }));
+vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn() } }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [], meta: { page: 1, limit: 25, total: 2, hasMore: false } };
 const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'ALL' as const, conditions: [] };
 beforeEach(() => {
   access.denied.clear();
+  vi.mocked(campaignsApi.emailSettings).mockResolvedValue({ success: true, data: { senderName: 'Configured test sender', senderEmail: 'sender@example.test' } });
   vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationEmail: 'info@example.test' } });
   vi.clearAllMocks(); vi.mocked(audiencesApi.list).mockResolvedValue({ success: true, data: [audience] });
   vi.mocked(audiencesApi.preview).mockResolvedValue({ success: true, data: counts });
@@ -29,6 +30,40 @@ function fill() {
   fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Hi {{first_name}}' } });
 }
 describe('campaign composer', () => {
+  it('uses one modal preview on small screens, traps focus and preserves form values', async () => {
+    vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
+    try {
+      render(<CampaignBuilder onBack={vi.fn()} />); fill();
+      expect(screen.queryByText('Live Preview')).toBeNull();
+      const opener = screen.getByRole('button', { name: 'Show live preview' }); opener.focus();
+      fireEvent.click(opener);
+      await screen.findByRole('dialog');
+      expect(opener.getAttribute('aria-label')).toBe('Hide live preview');
+      expect(document.querySelectorAll('#campaign-live-preview')).toHaveLength(1);
+      expect(document.body.style.overflow).toBe('hidden');
+      expect(screen.getByRole('dialog').contains(document.activeElement)).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Close preview' }));
+      await waitFor(() => expect(document.body.style.overflow).not.toBe('hidden'));
+      expect(document.activeElement).toBe(opener);
+      expect((screen.getByLabelText(/Campaign Name/) as HTMLInputElement).value).toBe('September Campaign');
+      expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Hi {{first_name}}');
+      fireEvent.click(opener); await screen.findByRole('dialog'); fireEvent.click(opener);
+      await waitFor(() => expect(document.body.style.overflow).not.toBe('hidden'));
+      expect(opener.getAttribute('aria-label')).toBe('Show live preview');
+      expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Hi {{first_name}}');
+      fireEvent.click(opener); await screen.findByRole('dialog'); fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => expect(document.body.style.overflow).not.toBe('hidden'));
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('previews pasted URLs as anchors and preserves the safe draft through reopening', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'draft', name: 'Links', type: 'Email', status: 'Draft', body: 'Hi {{first_name}}\nhttps://camxian.com/products?a=1&b=2', subject: 'Hi' } as never} />);
+    const frame = screen.getByTitle('Email body preview');
+    expect(frame.getAttribute('srcdoc')).toContain('<a href="https://camxian.com/products?a=1&amp;b=2">');
+    expect(frame.getAttribute('srcdoc')).toContain('Hi John<br>');
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
+    await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('draft', expect.objectContaining({ body: 'Hi {{first_name}}\nhttps://camxian.com/products?a=1&amp;b=2' })));
+    expect(campaignsApi.send).not.toHaveBeenCalled();
+  });
   it('uses one panel toggle after Send Now and preserves preview device switching', async () => {
     render(<CampaignBuilder onBack={vi.fn()} />);
     const actions = screen.getByRole('group', { name: 'Campaign actions' });

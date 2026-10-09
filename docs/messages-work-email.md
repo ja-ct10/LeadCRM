@@ -2,7 +2,7 @@
 
 ## Delivery status
 
-The delivery and verification observations dated 2026-10-01 below are historical, not current deployment evidence. Current conversation behavior, mailbox scope, deployment findings and checks are recorded in [Inbox conversation production report](inbox-conversation-production-report.md). The approved reply-recency rules below supersede the original semantic classification and email-driven Deal automation.
+The delivery and verification observations dated 2026-10-01 below are historical, not current deployment evidence. The latest list threading, refresh, unread-count and attachment changes are recorded in [Inbox threading and refresh report](inbox-threading-refresh-report.md). The earlier conversation detail and scope audit is retained in [Inbox conversation production report](inbox-conversation-production-report.md). The approved reply-recency rules below supersede the original semantic classification and email-driven Deal automation.
 
 Implemented on 2026-10-01. The changes extend the existing Gmail integration, CRM status adapter, Deal transitions, activity timeline, permissions, and dialog components. The Render deployment applied `20261018000000_mailbox_engagement` successfully; the frontend and backend were deployed.
 
@@ -51,6 +51,10 @@ Then build/start the frontend and backend using the existing [architecture](ARCH
 The existing Gmail scopes are retained: `gmail.readonly`, `gmail.send`, `gmail.modify`, and `userinfo.email`. Consent must include `gmail.modify` and offline access. Google consent-screen approval and Workspace administrator policies remain external configuration requirements.
 
 ## Conversation sync, ownership, and CRM matching
+
+Normal Inbox, Unread and Sent views return one row per authorized Gmail conversation, grouped by the connected account's provider thread ID. Search matches any eligible message and returns the conversation's latest eligible activity. Subject/sender similarity never merges threads. Header and navigation badges count **conversations containing at least one unread incoming message addressed to the connected mailbox**. Drafts and scheduled delivery entries remain separate editable/queued items, excluded from conversation and unread counts.
+
+Conversation pages use opaque cursors ordered by latest activity and thread ID (unread first when selected). Refresh reads persisted application data with the existing list-area spinner and preserves cached rows on transient failure. Sync now invokes the existing provider worker path. Authenticated SSE and existing fallback reads update conversations without starting another provider sync. Attachments download only after current source-message authorization, with another check after the provider read. Remote images and executable HTML remain blocked.
 
 - Initial sync uses bounded queries for exact fixed senders and current assigned Lead/Contact addresses. Drafts, spam, and trash are excluded from automation.
 - Incremental sync checks History message metadata against current scope before fetching full content. Expired History returns to bounded scoped reconciliation, never an unscoped mailbox rescan. Saved history is retained.

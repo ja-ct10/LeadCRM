@@ -1,16 +1,17 @@
 ﻿'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown, type CampaignEmailSettings } from '@leadcrm/shared';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
-import DOMPurify from 'dompurify';
+import { renderCampaignPreview, sanitizeCampaignBody } from '../services/campaign-html';
+import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Send, Mail, MessageSquare, Plus,
   Wand2, Monitor, Smartphone, Zap, Tags, Loader2,
-  PanelRight,
+  PanelRight, X,
 } from 'lucide-react';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { campaignsApi } from '@/shared/services/campaigns.api';
@@ -49,11 +50,42 @@ export function CampaignBuilder({
   const [emailSubject, setEmailSubject] = useState(initialCampaign?.subject || initialSubject || '');
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('mobile');
   const [showPreview, setShowPreview] = useState(true);
+  const [isDesktop, setIsDesktop] = useState(true);
+  const [mobilePreview, setMobilePreview] = useState(false);
+  const formScrollRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!window.matchMedia) return;
+    const media = window.matchMedia('(min-width: 1024px)');
+    const update = () => { setIsDesktop(media.matches); if (media.matches) setMobilePreview(false); };
+    update(); media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    if (!mobilePreview || isDesktop) return;
+    const form = formScrollRef.current;
+    const top = form?.scrollTop ?? 0;
+    const previous = form?.style.overflow;
+    if (form) form.style.overflow = 'hidden';
+    return () => { if (form) { form.style.overflow = previous ?? ''; form.scrollTop = top; } };
+  }, [mobilePreview, isDesktop]);
   const [showVarDropdown, setShowVarDropdown] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const subjectRef = useRef<HTMLInputElement>(null), bodyRef = useRef<HTMLTextAreaElement>(null);
   const activeField = useRef<'subject' | 'body'>('body');
   const [organizationEmail, setOrganizationEmail] = useState<string | null>(null);
+  const [emailSender, setEmailSender] = useState<CampaignEmailSettings | null>(null);
+  const [previewDark, setPreviewDark] = useState(false);
+  useEffect(() => {
+    const update = () => setPreviewDark(document.querySelector('[data-theme-container]')?.classList.contains('dark') ?? false);
+    update(); window.addEventListener('themechange', update);
+    return () => window.removeEventListener('themechange', update);
+  }, []);
+  useEffect(() => {
+    let cancelled = false;
+    campaignsApi.emailSettings().then(res => { if (!cancelled) setEmailSender(res.data); })
+      .catch(() => { if (!cancelled) setEmailSender(null); });
+    return () => { cancelled = true; };
+  }, []);
   useEffect(() => {
     if (campaignType !== 'SMS') return;
     let cancelled = false;
@@ -104,9 +136,10 @@ export function CampaignBuilder({
     const timer = setTimeout(() => audiencesApi.preview({ ...definition, channel: campaignType === 'SMS' ? 'SMS' : 'EMAIL' }).then(res => { if (!cancelled) setCounts(res.data); }).catch(e => { if (!cancelled) setErrors(prev => ({ ...prev, targetAudienceId: e.message })); }), 400);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [targetAudience, audiences, campaignType]);
-  const getPreviewText = (text: string) => renderEmailVariables(text, { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'HOT', sender_name: 'Configured sender', sender_email: 'sender@example.com' });
+  const previewVariables = { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: emailSender?.senderName || 'Configured sender unavailable', sender_email: emailSender?.senderEmail || 'Sender email unavailable' };
+  const getPreviewText = (text: string) => renderEmailVariables(text, previewVariables);
   const previewSubject = () => getPreviewText(emailSubject) || campaignName || 'Email preview';
-  const previewBody = () => <iframe title="Email body preview" sandbox="" className="w-full h-full min-h-48 border-0" srcDoc={DOMPurify.sanitize(getPreviewText(messageContent).replace(/\n/g, '<br>'))} />;
+  const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><base target="_blank"><style>body{font:14px/1.6 system-ui;margin:0;overflow-wrap:anywhere;color:${previewDark ? '#cbd5e1' : '#334155'}}a{color:${previewDark ? '#60a5fa' : '#2563eb'}}img,table{max-width:100%}</style></head><body>${renderCampaignPreview(messageContent, previewVariables)}</body></html>`} />;
   let smsPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
     smsPreview = buildFinalSms({ body: messageContent, variables: { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' } });
@@ -115,7 +148,7 @@ export function CampaignBuilder({
   async function save(send: boolean) {
     if (requestLock.current || (send ? !maySend : !canWrite)) return;
     const source = ['LEADS', 'CONTACTS', 'ALL'].includes(targetAudience) ? targetAudience : null;
-    const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? DOMPurify.sanitize(messageContent, { FORBID_TAGS: ['form', 'input', 'button', 'svg', 'iframe', 'object', 'embed'] }) : messageContent,
+    const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? sanitizeCampaignBody(messageContent) : messageContent,
       audienceSource: source, targetAudienceId: source ? null : targetAudience || null };
     const parsed = (send ? CampaignSendSchema : CampaignDraftSchema).safeParse(input);
     if (!parsed.success) {
@@ -161,6 +194,85 @@ export function CampaignBuilder({
 
   const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200';
 
+  const preview = (
+        <div id="campaign-live-preview" className="w-full min-w-0 min-h-0 flex-1 lg:flex-none lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
+          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/2 backdrop-blur-lg">
+            <span id="campaign-preview-title" className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Live Preview</span>
+            <div className="flex items-center gap-2">
+              {!isDesktop && <button type="button" aria-label="Close preview" onClick={() => setMobilePreview(false)} className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X size={16} /></button>}
+              <div className="flex gap-0.5 bg-slate-200/80 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/5">
+                <button type="button" onClick={() => setPreviewDevice('desktop')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${previewDevice === 'desktop' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Desktop preview">
+                  <Monitor size={14} />
+                </button>
+                <button type="button" onClick={() => setPreviewDevice('mobile')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${previewDevice === 'mobile' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Mobile preview">
+                  <Smartphone size={14} />
+                </button>
+              </div>
+            </div>
+          </div>
+          <div className="flex-1 min-h-0 flex items-start justify-center p-4 sm:p-6">
+            {previewDevice === 'mobile' ? (
+              <div className="w-70 max-w-full aspect-9/18 max-h-125 border-[6px] border-slate-800 dark:border-slate-600 rounded-[2.5rem] bg-white dark:bg-[#0c0f16] shadow-2xl shadow-black/20 dark:shadow-black/50 overflow-hidden flex flex-col relative">
+                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-xl z-10" />
+                <div className="pt-8 px-3 pb-3 flex-1 flex flex-col overflow-hidden text-xs">
+                  {campaignType === 'SMS' ? (
+                    <div className="flex flex-col h-full min-h-0 overflow-y-auto">
+                      <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 mb-3 font-medium">+639XXXXXXXXX · Today</div>
+                      <div className="bg-emerald-500 text-white p-3 rounded-2xl rounded-tr-sm max-w-[85%] self-end wrap-break-word shadow-sm text-[11px] whitespace-pre-wrap leading-relaxed">
+                        {smsPreview || <span className="italic opacity-60">Your SMS message will appear here...</span>}
+                      </div>
+                      <div className="text-[10px] text-slate-400 text-right mt-1.5 pr-1">Sample preview</div>
+                      <div className="mt-auto pt-4 text-center"><div className="text-[10px] text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div></div>
+                    </div>
+                  ) : (
+                    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#131924] rounded-lg overflow-hidden border border-gray-200/50 dark:border-white/5">
+                      <div className="p-2.5 border-b border-gray-200 dark:border-white/5 bg-white dark:bg-white/3">
+                        <div className="font-semibold text-slate-900 dark:text-white text-[11px] truncate">{previewSubject()}</div>
+                        <div className="text-[9px] text-slate-500 mt-0.5 break-words">From: {emailSender?.senderEmail ? `${emailSender.senderName} <${emailSender.senderEmail}>` : 'Configured sender unavailable'}</div>
+                        <div className="text-[9px] text-slate-500">To: John Doe &lt;jdoe@example.com&gt;</div>
+                      </div>
+                      <div className="p-3 flex-1 overflow-y-auto text-slate-700 dark:text-slate-300 leading-relaxed text-[11px] whitespace-pre-wrap">
+                        {messageContent ? previewBody() : <span className="opacity-50 italic">Your email preview will appear here...</span>}
+                      </div>
+                      <div className="p-2 border-t border-gray-100 dark:border-white/3 text-[9px] text-slate-400 text-center">
+                        Sample preview. Recipient values are personalized on send.
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="w-full max-w-sm bg-white/80 dark:bg-white/2 backdrop-blur-xl border border-gray-200 dark:border-white/5 rounded-xl flex flex-col shadow-xl shadow-black/5 dark:shadow-black/30 overflow-hidden min-h-87.5">
+                {campaignType === 'SMS' ? (
+                  <div className="flex flex-col h-full p-5 justify-center">
+                    <div className="text-xs text-slate-400 dark:text-slate-500 mb-2 text-center">SMS Preview</div>
+                    <div className="bg-emerald-500 text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[80%] self-end wrap-break-word shadow text-sm whitespace-pre-wrap leading-relaxed">
+                      {smsPreview || <span className="italic opacity-60">Message preview...</span>}
+                    </div>
+                    <div className="text-[10px] text-slate-400 text-right mt-2 pr-2">Sample preview · No delivery confirmation</div>
+                    <div className="mt-4 text-center text-xs text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col h-full">
+                    <div className="p-4 border-b border-gray-200 dark:border-white/5 bg-slate-50/80 dark:bg-white/2">
+                      <div className="flex items-center gap-2 text-xs"><span className="text-slate-400 w-14 font-medium">Subject:</span><span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{previewSubject()}</span></div>
+                      <div className="flex items-center gap-2 text-xs mt-1"><span className="text-slate-400 w-14 font-medium">From:</span><span className="min-w-0 break-words text-slate-600 dark:text-slate-400">{emailSender?.senderEmail ? `${emailSender.senderName} <${emailSender.senderEmail}>` : 'Configured sender unavailable'}</span></div>
+                      <div className="flex items-center gap-2 text-xs mt-1"><span className="text-slate-400 w-14 font-medium">To:</span><span className="text-slate-600 dark:text-slate-400">John Doe ({targetAudience})</span></div>
+                    </div>
+                    <div className="p-5 flex-1 overflow-y-auto text-slate-700 dark:text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">
+                      {messageContent ? previewBody() : <p className="opacity-50 italic">Your email preview will appear here...</p>}
+                    </div>
+                    <div className="p-3 border-t border-gray-100 dark:border-white/3 text-[10px] text-slate-400 text-center">
+                      Sample preview. Recipient values are personalized on send.
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+  );
+
   return (
     <div className="w-full min-w-0 h-full flex flex-col">
       {/* Top Bar */}
@@ -182,8 +294,8 @@ export function CampaignBuilder({
             {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             {isSending ? 'Sending...' : 'Send Now'}
           </button>
-          <button type="button" onClick={() => setShowPreview(previous => !previous)}
-            aria-label={showPreview ? 'Hide live preview' : 'Show live preview'} aria-expanded={showPreview} aria-controls="campaign-live-preview"
+          <button type="button" onClick={() => isDesktop ? setShowPreview(previous => !previous) : setMobilePreview(previous => !previous)}
+            aria-label={(isDesktop ? showPreview : mobilePreview) ? 'Hide live preview' : 'Show live preview'} aria-expanded={isDesktop ? showPreview : mobilePreview} aria-controls="campaign-live-preview"
             className="shrink-0 rounded-lg border border-gray-200 dark:border-white/10 p-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
             <PanelRight size={16} aria-hidden="true" />
           </button>
@@ -192,7 +304,7 @@ export function CampaignBuilder({
 
       <FieldError message={errors.form} />
       {/* Split Layout */}
-      <div className="min-h-0 flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
+      <div ref={formScrollRef} className="min-h-0 flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
         {/* Editor */}
         <fieldset disabled={!canWrite || isSending} className="min-w-0 shrink-0 lg:flex-1 lg:overflow-y-auto p-4 sm:p-6 space-y-5 border-b lg:border-b-0 lg:border-r border-gray-200 dark:border-white/5">
           <div className="space-y-4">
@@ -282,84 +394,12 @@ export function CampaignBuilder({
           </div>
         </fieldset>
 
-        {/* The single header control toggles the existing preview at every width. */}
-        {(showPreview) && (
-        <div id="campaign-live-preview" className="w-full min-w-0 lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/2 backdrop-blur-lg">
-            <span className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Live Preview</span>
-            <div className="flex items-center gap-2">
-              <div className="flex gap-0.5 bg-slate-200/80 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/5">
-                <button type="button" onClick={() => setPreviewDevice('desktop')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${previewDevice === 'desktop' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Desktop preview">
-                  <Monitor size={14} />
-                </button>
-                <button type="button" onClick={() => setPreviewDevice('mobile')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${previewDevice === 'mobile' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Mobile preview">
-                  <Smartphone size={14} />
-                </button>
-              </div>
-            </div>
-          </div>
-          <div className="flex-1 flex items-center justify-center p-6">
-            {previewDevice === 'mobile' ? (
-              <div className="w-70 max-w-full aspect-9/18 max-h-125 border-[6px] border-slate-800 dark:border-slate-600 rounded-[2.5rem] bg-white dark:bg-[#0c0f16] shadow-2xl shadow-black/20 dark:shadow-black/50 overflow-hidden flex flex-col relative">
-                <div className="absolute top-2 left-1/2 -translate-x-1/2 w-20 h-4 bg-black rounded-xl z-10" />
-                <div className="pt-8 px-3 pb-3 flex-1 flex flex-col overflow-hidden text-xs">
-                  {campaignType === 'SMS' ? (
-                    <div className="flex flex-col h-full">
-                      <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 mb-3 font-medium">+639XXXXXXXXX · Today</div>
-                      <div className="bg-emerald-500 text-white p-3 rounded-2xl rounded-tr-sm max-w-[85%] self-end wrap-break-word shadow-sm text-[11px] whitespace-pre-wrap leading-relaxed">
-                        {smsPreview || <span className="italic opacity-60">Your SMS message will appear here...</span>}
-                      </div>
-                      <div className="text-[10px] text-slate-400 text-right mt-1.5 pr-1">Sample preview</div>
-                      <div className="mt-auto pt-4 text-center"><div className="text-[10px] text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div></div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col h-full bg-slate-50 dark:bg-[#131924] rounded-lg overflow-hidden border border-gray-200/50 dark:border-white/5">
-                      <div className="p-2.5 border-b border-gray-200 dark:border-white/5 bg-white dark:bg-white/3">
-                        <div className="font-semibold text-slate-900 dark:text-white text-[11px] truncate">{previewSubject()}</div>
-                        <div className="text-[9px] text-slate-500 mt-0.5">From: configured sender</div>
-                        <div className="text-[9px] text-slate-500">To: John Doe &lt;jdoe@example.com&gt;</div>
-                      </div>
-                      <div className="p-3 flex-1 overflow-y-auto text-slate-700 dark:text-slate-300 leading-relaxed text-[11px] whitespace-pre-wrap">
-                        {messageContent ? previewBody() : <span className="opacity-50 italic">Your email preview will appear here...</span>}
-                      </div>
-                      <div className="p-2 border-t border-gray-100 dark:border-white/3 text-[9px] text-slate-400 text-center">
-                        Sample preview. Recipient values are personalized on send.
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="w-full max-w-sm bg-white/80 dark:bg-white/2 backdrop-blur-xl border border-gray-200 dark:border-white/5 rounded-xl flex flex-col shadow-xl shadow-black/5 dark:shadow-black/30 overflow-hidden min-h-87.5">
-                {campaignType === 'SMS' ? (
-                  <div className="flex flex-col h-full p-5 justify-center">
-                    <div className="text-xs text-slate-400 dark:text-slate-500 mb-2 text-center">SMS Preview</div>
-                    <div className="bg-emerald-500 text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[80%] self-end wrap-break-word shadow text-sm whitespace-pre-wrap leading-relaxed">
-                      {smsPreview || <span className="italic opacity-60">Message preview...</span>}
-                    </div>
-                    <div className="text-[10px] text-slate-400 text-right mt-2 pr-2">Sample preview · No delivery confirmation</div>
-                    <div className="mt-4 text-center text-xs text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div>
-                  </div>
-                ) : (
-                  <div className="flex flex-col h-full">
-                    <div className="p-4 border-b border-gray-200 dark:border-white/5 bg-slate-50/80 dark:bg-white/2">
-                      <div className="flex items-center gap-2 text-xs"><span className="text-slate-400 w-14 font-medium">Subject:</span><span className="font-semibold text-slate-800 dark:text-slate-200 truncate">{previewSubject()}</span></div>
-                      <div className="flex items-center gap-2 text-xs mt-1"><span className="text-slate-400 w-14 font-medium">From:</span><span className="text-slate-600 dark:text-slate-400">Configured sender</span></div>
-                      <div className="flex items-center gap-2 text-xs mt-1"><span className="text-slate-400 w-14 font-medium">To:</span><span className="text-slate-600 dark:text-slate-400">John Doe ({targetAudience})</span></div>
-                    </div>
-                    <div className="p-5 flex-1 overflow-y-auto text-slate-700 dark:text-slate-300 text-sm whitespace-pre-wrap leading-relaxed">
-                      {messageContent ? previewBody() : <p className="opacity-50 italic">Your email preview will appear here...</p>}
-                    </div>
-                    <div className="p-3 border-t border-gray-100 dark:border-white/3 text-[10px] text-slate-400 text-center">
-                      Sample preview. Recipient values are personalized on send.
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-        )}
+        {isDesktop ? (showPreview && preview) : <Sheet open={mobilePreview} onOpenChange={setMobilePreview}>
+          <SheetContent showClose={false} trapFocus layerClassName="z-[300]" aria-labelledby="campaign-preview-title"
+            className={`${previewDark ? 'dark theme-dark' : ''} h-dvh max-w-full sm:max-w-105 overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}>
+            {preview}
+          </SheetContent>
+        </Sheet>}
       </div>
       {showAudiencePanel && <AudiencePanel channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
     </div>

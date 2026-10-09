@@ -44,7 +44,7 @@ globalThis.fetch = async (input, init) => {
     const id = path === 'drafts' ? 'draft-' + randomUUID() : path.slice(7);
     const body = raw.split('\r\n\r\n').slice(1).join('\r\n\r\n');
     const subject = header('Subject').replace(/=\?UTF-8\?B\?(.+)\?=/i, (_, encoded) => Buffer.from(encoded, 'base64').toString());
-    const email = { id: id + '-message', threadId: id, from: account.email, to: header('To').split(',').map(value => value.trim()), subject, body, snippet: 'Scheduled details', date: new Date().toISOString(), labels: ['DRAFT'], rfcMessageId: header('Message-ID') };
+    const email = { id: id + '-message', threadId: JSON.parse(init.body).message.threadId ?? id, from: account.email, to: header('To').split(',').map(value => value.trim()), subject, body, snippet: 'Scheduled details', date: new Date().toISOString(), labels: ['DRAFT'], rfcMessageId: header('Message-ID') };
     drafts.set(id, email); messages.set(email.id, email); return Response.json({ id, message: { id: email.id, threadId: email.threadId } });
   }
   if (path === 'drafts/send') {
@@ -74,7 +74,7 @@ try {
   const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const deals = [];
   for (const title of ['Telephone installation', 'Fire detection and alarm system']) deals.push(await prisma.deal.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, stageId: initial.id, title, value: 1000, leadDeals: { create: { leadId: lead.id, position: 0 } }, productInterests: [], tags: [] } }));
-  const mail = (id, subject, from = 'Doris <doris@example.test>') => ({ id, threadId: id, from, to: [account.email], subject, body: '<p>We have 25 employees and need around 18 phones.</p><p>Please send your recommendation for extensions, call transfer, and an automated greeting.</p><pre>' + 'Long technical details '.repeat(20) + '</pre>', snippet: 'We have 25 employees and need around 18 phones.', labels: ['INBOX', 'UNREAD'], isRead: false, date: new Date(Date.now() - 60000).toISOString() });
+  const mail = (id, subject, from = 'Doris <doris@example.test>') => ({ id, threadId: id, from, to: [account.email], subject, body: '<p>We have 25 employees and need around 18 phones.</p><p>Please send your recommendation for extensions, call transfer, and an automated greeting.</p><pre>' + 'Long technical details '.repeat(20) + '</pre>', snippet: 'We have 25 employees and need around 18 phones.', labels: ['INBOX', 'UNREAD'], isRead: false, date: new Date(Date.now() - 60000).toISOString(), rfcMessageId: `<${id}@mailbox-preview.example.test>` });
   const seed = [mail('inquiry', 'Re: Thank You for Your Inquiry – IPBX/IP PHONES/PABGM Solutions'), mail('welcome', 'Welcome to LeadCRM', 'Camxian Technologies <info@camxian.com>')];
   const older = { ...mail('earlier', 'Thank You for Your Inquiry – IPBX/IP PHONES/PABGM Solutions', account.email), threadId: 'inquiry', to: [lead.email], labels: ['SENT'], isRead: true, date: new Date(Date.now() - 120000).toISOString(), body: '<p>Thank you for your inquiry. Please tell us about your requirements.</p>' };
   seed[0].cc = ['Planning Department <planning.and.implementation.team.with.a.long.address@camxian.com>'];
@@ -106,6 +106,33 @@ try {
     }
   };
   await responsive('inbox');
+  assert.equal(await page.getByRole('button', { name: /Open email from/ }).count(), 2);
+  await page.getByLabel('2 messages', { exact: true }).waitFor();
+  // Manual refresh must retain chrome, suppress duplicate requests and restore
+  // cached conversations after a failed read. Provider sync is never invoked.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let releaseRefresh, refreshRequests = 0;
+  await page.route('**/integrations/gmail/emails?**', async route => {
+    refreshRequests++; await new Promise(done => { releaseRefresh = done; }); await route.continue();
+  });
+  await page.getByLabel('Refresh', { exact: true }).click();
+  await page.getByRole('status', { name: 'Loading conversations' }).waitFor();
+  assert.ok(await page.getByRole('toolbar', { name: 'Email list actions' }).isVisible());
+  for (const name of ['Inbox', 'Work email', 'Sync now', 'Disconnect']) assert.ok(await page.getByText(name, { exact: true }).isVisible());
+  assert.ok(await page.getByLabel('Search email', { exact: true }).isVisible());
+  await page.getByLabel('Refresh', { exact: true }).evaluate(button => button.click());
+  assert.equal(refreshRequests, 1);
+  await page.screenshot({ path: resolve(output, 'refresh-spinner-1440.png') });
+  releaseRefresh(); await page.getByRole('status', { name: 'Loading conversations' }).waitFor({ state: 'hidden' });
+  await page.unroute('**/integrations/gmail/emails?**');
+  await page.route('**/integrations/gmail/emails?**', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Controlled refresh failure' }) }));
+  await page.getByLabel('Refresh', { exact: true }).click();
+  await page.getByText('Controlled refresh failure', { exact: true }).waitFor(); await page.getByRole('status', { name: 'Loading conversations' }).waitFor({ state: 'hidden' });
+  assert.equal(await page.getByRole('button', { name: /Open email from/ }).count(), 2);
+  assert.equal(await page.getByText('No emails found', { exact: true }).count(), 0);
+  await page.unroute('**/integrations/gmail/emails?**');
+  await page.getByLabel('Refresh', { exact: true }).click(); await page.getByText('Controlled refresh failure', { exact: true }).waitFor({ state: 'hidden' });
+  checks.push({ label: 'One row per conversation; refresh spinner below visible toolbar; duplicate click suppressed; cached rows restored on failure; successful retry' });
   await page.getByLabel('Filter emails').click(); assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['All emails', 'Unread only', 'Sent', 'Scheduled', 'Drafts only']);
   await page.getByRole('menuitemradio', { name: 'All emails', exact: true }).click();
   await page.getByText(seed[0].subject, { exact: true }).click(); await page.getByRole('heading', { name: older.subject }).waitFor();
@@ -131,7 +158,8 @@ try {
   checks.push({ label: 'Vertical order, keyboard collapse, sanitized expandable quote, persisted read, one read write and Deal association without stage movement' });
   await page.getByRole('button', { name: 'Reply', exact: true }).first().click(); await page.getByLabel('To', { exact: true }).waitFor(); assert.equal(await page.getByLabel('To', { exact: true }).inputValue(), 'doris@example.test');
   await responsive('composer', true);
-  await page.getByPlaceholder('Subject', { exact: true }).fill('Scheduled acceptance reply');
+  const scheduledSubject = seed[0].subject;
+  await page.getByPlaceholder('Subject', { exact: true }).fill(scheduledSubject);
   await page.getByLabel('Email body', { exact: true }).fill('Please review our proposed telephone setup.');
   await page.getByLabel('Schedule send options').click(); await responsive('schedule-picker', true);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click(); assert.equal(await prisma.scheduledMailboxEmail.count(), 0);
@@ -139,27 +167,28 @@ try {
   await page.getByRole('dialog', { name: 'Compose email' }).waitFor({ state: 'hidden' }); await page.getByRole('button', { name: 'Back to inbox' }).click();
   await page.getByRole('heading', { name: 'Inbox', exact: true }).waitFor();
   const scheduled = await prisma.scheduledMailboxEmail.findFirstOrThrow(); assert.equal(scheduled.status, 'pending'); assert.equal(sends, 0);
-  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   await page.reload(); await page.getByText(seed[0].subject, { exact: true }).waitFor();
   const second = await context.newPage(); await second.goto(base + '/inbox'); await second.getByText(seed[0].subject, { exact: true }).waitFor();
   for (const target of [page, second]) await target.evaluate(() => { window.mailboxLoadingFlashes = 0; new MutationObserver(() => { if (document.body.textContent.includes('Loading emails...')) window.mailboxLoadingFlashes++; }).observe(document.body, { childList: true, subtree: true }); });
   assert.equal(browserSyncs, 0); assert.equal(calls.filter(call => call.path === 'history').length, 0);
-  const relevant = mail('new-customer', 'Realtime customer acceptance'), unrelated = mail('new-bank', 'Private unrelated acceptance', 'bank@example.test');
+  const relevant = { ...mail('new-customer', seed[0].subject), threadId: 'inquiry', snippet: 'Realtime customer acceptance' }, unrelated = { ...mail('new-bank', 'Private unrelated acceptance', 'bank@example.test'), threadId: 'inquiry' };
   messages.set(relevant.id, relevant); messages.set(unrelated.id, unrelated); history = [relevant.id, unrelated.id];
   await prisma.emailAccount.update({ where: { id: account.id }, data: { lastSyncAt: new Date(Date.now() - 61000) } });
   const start = Date.now();
   stopWorker = startMailboxScheduler();
-  await page.getByText(relevant.subject, { exact: true }).waitFor(); await second.getByText(relevant.subject, { exact: true }).waitFor();
+  await page.getByText('— Realtime customer acceptance', { exact: true }).waitFor(); await second.getByText('— Realtime customer acceptance', { exact: true }).waitFor();
+  for (const target of [page, second]) { assert.equal(await target.getByRole('button', { name: /Open email from/ }).count(), 2); await target.getByLabel('3 messages', { exact: true }).waitFor(); }
   assert.equal(await page.getByText(unrelated.subject).count(), 0); assert.equal(await prisma.mailboxMessage.count({ where: { providerMessageId: relevant.id } }), 1);
   assert.equal(calls.filter(call => call.path === 'history').length, 1); assert.equal(browserSyncs, 0);
   checks.push({ label: 'server incremental Gmail check through real API, worker, database, proxy and two SSE tabs', elapsedMs: Date.now() - start, providerHistoryCalls: 1, browserSyncs });
   stopWorker(); stopWorker = undefined;
-  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   await prisma.scheduledMailboxEmail.update({ where: { id: scheduled.id }, data: { scheduledAt: new Date(Date.now() - 1000) } });
   await runScheduledMailboxEmails(); await runScheduledMailboxEmails(); assert.equal(sends, 1); assert.equal((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: scheduled.id } })).status, 'sent');
-  await page.getByText('No emails found', { exact: true }).waitFor(); await second.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  await page.getByText('No emails found', { exact: true }).waitFor(); await second.getByLabel('4 messages', { exact: true }).waitFor();
   for (const target of [page, second]) assert.equal(await target.evaluate(() => window.mailboxLoadingFlashes), 0);
-  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Sent', exact: true }).click(); await page.getByText('Scheduled acceptance reply', { exact: true }).waitFor();
+  await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Sent', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   checks.push({ label: 'schedule survived browser reload; controlled due time sent once; two-tab Scheduled to Sent SSE transition without loading flashes', sends });
   await page.screenshot({ path: resolve(output, 'sent-320.png') });
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local development server' }, null, 2));

@@ -47,6 +47,8 @@ export const ScheduleMailboxEmailSchema = SendMailboxEmailSchema.extend({
   draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
 }).strict();
 
+export interface MailboxAttachment { id: string; filename: string; mimeType: string; size: number }
+
 export interface MailboxEmail {
   id: string;
   threadId: string;
@@ -68,6 +70,16 @@ export interface MailboxEmail {
   needsDealAssociation?: boolean;
   scheduledStatus?: string;
   scheduleError?: string | null;
+  /** Present on non-draft list rows; detail still returns individual messages. */
+  messageCount?: number;
+  participants?: string[];
+  attachments?: MailboxAttachment[];
 }
 
-export interface MailboxUnreadCount { unreadCount: number }
+export interface MailboxUnreadCount { unreadCount: number; unreadCountUnit?: 'conversations' }
+
+const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
+export const MailboxBulkActionSchema = z.union([
+  z.object({ threadIds: z.array(providerId).min(1).max(100) }).strict(),
+  z.object({ messageIds: z.array(providerId).min(1).max(100) }).strict(),
+]);

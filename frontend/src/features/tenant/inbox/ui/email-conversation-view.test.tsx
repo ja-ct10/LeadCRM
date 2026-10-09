@@ -2,7 +2,7 @@ import React, { StrictMode } from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import EmailConversationView from './email-conversation-view';
-import { forwardDraft, mailboxDate, replyDraft } from '../services/email-presentation';
+import { forwardDraft, mailboxDate, replyDraft, replyAllDraft } from '../services/email-presentation';
 import type { GmailEmail } from '../services/gmail.service';
 
 const mocks = vi.hoisted(() => ({ thread: vi.fn(), read: vi.fn(), archive: vi.fn(), trash: vi.fn(), associate: vi.fn() }));
@@ -14,6 +14,20 @@ const props = () => ({ email: latest, onBack: vi.fn(), onEmailsChanged: vi.fn() 
 beforeEach(() => { vi.resetAllMocks(); mocks.thread.mockResolvedValue({ emails: [latest, old], dealOptions: [], canAssociateDeal: false }); mocks.read.mockResolvedValue({ success: true }); mocks.archive.mockResolvedValue({ success: true }); mocks.trash.mockResolvedValue({ success: true }); });
 afterEach(cleanup);
 const loaded = () => waitFor(() => expect(screen.queryByText('Loading conversation…')).toBeNull());
+
+it('Reply All excludes the connected mailbox, deduplicates recipients and retains the original reply identity', async () => {
+  expect(replyAllDraft({ ...latest, to: ['staff@camxian.com', 'Other <other@example.test>'], cc: ['OTHER@example.test', 'staff@camxian.com', 'sales@example.test'] }, 'staff@camxian.com')).toMatchObject({ to: 'reply@example.test, other@example.test, sales@example.test', subject: 'Re: Fire Detection Inquiry', body: '', replyToMessageId: latest.id });
+  render(<EmailConversationView {...props()} mailboxEmail="staff@camxian.com" />); await loaded();
+  fireEvent.click(screen.getByRole('button', { name: 'Reply All' }));
+  expect((screen.getByLabelText('To') as HTMLInputElement).value.split(',').map(value => value.trim())).toEqual(['reply@example.test', 'sales@example.test']);
+});
+it('renders attachments as escaped file labels with message-specific authenticated download paths', async () => {
+  mocks.thread.mockResolvedValue({ emails: [{ ...latest, attachments: [{ id: 'file-id', filename: '<script>proposal.pdf', mimeType: 'application/pdf', size: 4 }] }], dealOptions: [], canAssociateDeal: false });
+  render(<EmailConversationView {...props()} />); await loaded();
+  const link = screen.getByRole('link', { name: '<script>proposal.pdf' });
+  expect(link.getAttribute('href')).toBe('/api/proxy/integrations/gmail/messages/latest/attachments/file-id');
+  expect(link.hasAttribute('download')).toBe(true); expect(screen.getByRole('list', { name: 'Message attachments' }).querySelector('script')).toBeNull();
+});
 
 it('renders chronological vertical messages, one subject, latest expanded, older collapsible with accessible controls', async () => {
   render(<EmailConversationView {...props()} />); await loaded();

@@ -153,19 +153,21 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('cancellation wording is still a reply and cannot cancel the customer or Deal', async () => {
     const c = await customer();
+    const historyBefore = await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } });
     await ingest([message(c.thread, c.email, 'inbound', 'Please cancel our order.', 4)]);
     expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed.', 2)]);
     expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
-    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(0);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(historyBefore);
   });
   it('makes message ingestion and activity idempotent, including concurrent repeats', async () => {
     const c = await customer(), inbound = message(c.thread, c.email, 'inbound', 'We want to proceed.');
+    const historyBefore = await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } });
     await Promise.all([ingest([inbound]), ingest([inbound])]); await ingest([inbound]);
     expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, providerMessageId: inbound.id } })).toBe(1);
     expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'email' } })).toBe(1);
     expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'stage_change' } })).toBe(1);
-    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(0);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } })).toBe(historyBefore);
   });
   it('verified history ages customer status without changing manual Deal stages', async () => {
     const c = await customer();
@@ -176,6 +178,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('validates configured requirements, closes after the final save, and preserves related sales data', async () => {
     const c = await customer();
+    const historyBefore = await prisma.dealStageHistory.count({ where: { dealId: c.deals[0].id } });
     expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'] })).status).toBe(400);
     const confirmation = { type: 'Approved Quotation', date: before(1).toISOString().slice(0, 10), note: 'Quote Q-123 approved; sale verified.' };
     expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'], confirmation })).status).toBe(400);
@@ -190,7 +193,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const lead = await read(c.lead.id); expect(lead.status).toBe('Closed');
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: lead.contactId! } })).status).toBe('CLOSED');
     expect((await call(`/crm/deals/${c.deals[0].id}/stage`, 'PATCH', { stageId: stages['Closed Won'], confirmation })).status).toBe(200);
-    expect(await prisma.dealStageHistory.count({ where: { dealId: deal.id } })).toBe(2);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: deal.id } })).toBe(historyBefore + 2);
     expect((await call(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages.Qualified })).status).toBe(400);
   });
   it('manual cancellation closes all open related Deals and writes Contact history atomically', async () => {
@@ -299,7 +302,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Tracking only', type: 'EMAIL' } });
     const log = await prisma.emailDeliveryLog.create({ data: { tenantId, campaignId: campaign.id, leadId: c.lead.id,
       fromEmail: account.email, toEmail: c.email, subject: 'Tracking', status: 'sent', brevoMessageId: randomUUID() } });
-    for (const event of ['delivered', 'opened', 'click']) await processBrevoEvent({ event, email: c.email, 'message-id': log.brevoMessageId });
+    for (const event of ['delivered', 'opened', 'click']) await processBrevoEvent({ event, email: c.email, 'message-id': log.brevoMessageId, ts_event: Math.floor(now.getTime() / 1000) });
     const after = await read(c.lead.id);
     expect(after.status).toBe('Cold'); expect(after.lastCustomerReplyAt).toBeNull();
     expect(after.firstUnansweredOutboundAt).toEqual(baseline.firstUnansweredOutboundAt);
@@ -463,7 +466,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       if (String(input).endsWith('/send')) { bodies.push(JSON.parse(String(init?.body))); return Response.json({ id: 'sentid', threadId: 'thread' }); }
       return Response.json({ id: 'replyid', threadId: 'thread', internalDate: String(+before(1)), labelIds: ['INBOX'], snippet: '', payload: { headers: [{ name: 'Message-ID', value: '<original@example.test>' }], mimeType: 'text/plain', body: { data: Buffer.from('Product question').toString('base64url') } } });
     }));
-    await scope(() => sendEmail(tenantId, userId, c.email, 'Re: Product', '<p>Details</p>', 'replyid'));
+    await scope(() => sendEmail(tenantId, userId, c.email, 'Re: Product inquiry', '<p>Details</p>', 'replyid'));
     expect(bodies[0].threadId).toBe('thread');
     const mime = Buffer.from(String(bodies[0].raw), 'base64url').toString(); expect(mime).toContain(`From: ${account.email}`); expect(mime).toContain('In-Reply-To: <original@example.test>');
   });

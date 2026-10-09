@@ -1,16 +1,16 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { Archive, ArrowLeft, Forward, Loader2, Reply, Trash2 } from 'lucide-react';
+import { Archive, ArrowLeft, Forward, Loader2, Reply, ReplyAll, Trash2 } from 'lucide-react';
 import { fetchGmailThread, associateThreadDeal, setGmailThreadReadState, archiveGmailThread, trashGmailThread, type GmailEmail } from '../services/gmail.service';
-import { forwardDraft, replyDraft, type MailboxComposeDraft } from '../services/email-presentation';
+import { forwardDraft, replyDraft, replyAllDraft, type MailboxComposeDraft } from '../services/email-presentation';
 import type { ApiRequestError } from '@/lib/api/client';
 import EmailDetailView, { mailboxIconButton } from './email-detail-view';
 import ComposeModal from './compose-modal';
 
 const control = 'inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:opacity-50';
-export default function EmailConversationView({ email, revision = 0, retryAt = 0, onBack, onEmailsChanged }: {
-  email: GmailEmail; revision?: number; retryAt?: number; onBack: (error?: string) => void; onEmailsChanged: () => void;
+export default function EmailConversationView({ email, mailboxEmail, revision = 0, retryAt = 0, onBack, onEmailsChanged }: {
+  email: GmailEmail; mailboxEmail?: string; revision?: number; retryAt?: number; onBack: (error?: string) => void; onEmailsChanged: () => void;
 }) {
   const [messages, setMessages] = useState<GmailEmail[]>([email]);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
@@ -33,7 +33,7 @@ export default function EmailConversationView({ email, revision = 0, retryAt = 0
     let active = true;
     fetchGmailThread(email.threadId).then(result => {
       if (!active) return;
-      const ordered = [...result.emails].sort((a, b) => Date.parse(a.date) - Date.parse(b.date));
+      const ordered = [...result.emails].sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id.localeCompare(b.id));
       setMessages(ordered); setDeals(result.dealOptions); setCanAssociate(result.canAssociateDeal); setError('');
       setExpanded(previous => Object.fromEntries(ordered.map((message, index) => [message.id, previous[message.id] ?? (!message.isRead || index === ordered.length - 1)])));
     }).catch(error => { if (active) failure(error); }).finally(() => { if (active) setLoading(false); });
@@ -90,6 +90,7 @@ export default function EmailConversationView({ email, revision = 0, retryAt = 0
       {messages.map((message, index) => <EmailDetailView key={message.id} email={message} expanded={expanded[message.id] ?? index === messages.length - 1} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? index === messages.length - 1) }))} onReply={() => setDraft(replyDraft(message))} onForward={() => setDraft(forwardDraft(message))} disabled={loading || busy || paused} />)}
       {latest && <div className="flex flex-wrap gap-2 px-3 py-5 sm:px-6 sm:pl-[76px]">
         <button type="button" className={control} disabled={loading || busy || paused} onClick={() => setDraft(replyDraft(latest))}><Reply size={16} />Reply</button>
+        {mailboxEmail && <button type="button" className={control} disabled={loading || busy || paused} onClick={() => setDraft(replyAllDraft(latest, mailboxEmail))}><ReplyAll size={16} />Reply All</button>}
         <button type="button" className={control} disabled={loading || busy || paused} onClick={() => setDraft(forwardDraft(latest))}><Forward size={16} />Forward</button>
       </div>}
     </div>

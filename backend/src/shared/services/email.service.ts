@@ -12,6 +12,8 @@
  *   BREVO_FROM_NAME    — display name (optional, defaults to LeadCRM)
  */
 
+import type { CampaignEmailSettings } from '@leadcrm/shared';
+
 export interface SendMailOptions {
   to: string;
   subject: string;
@@ -53,6 +55,10 @@ export function assertBrevoConfigured(): void {
   }
 }
 
+export function getBrevoSenderIdentity(): CampaignEmailSettings {
+  return { senderName: process.env.BREVO_FROM_NAME || 'LeadCRM', senderEmail: process.env.BREVO_FROM_EMAIL || null };
+}
+
 export async function sendMail(options: SendMailOptions): Promise<SendMailResult> {
   if (/[\r\n]/.test(options.subject)) throw new AppError('Invalid email subject.', 400);
   if (process.env.NODE_ENV !== 'production') {
@@ -73,7 +79,7 @@ export async function sendMail(options: SendMailOptions): Promise<SendMailResult
       signal: AbortSignal.timeout(15000),
       headers: { accept: 'application/json', 'api-key': process.env.BREVO_API_KEY!, 'content-type': 'application/json' },
       body: JSON.stringify({
-        sender: { name: process.env.BREVO_FROM_NAME || 'LeadCRM', email: process.env.BREVO_FROM_EMAIL },
+        sender: { name: getBrevoSenderIdentity().senderName, email: getBrevoSenderIdentity().senderEmail },
         to: [{ email: options.to }], subject: options.subject, htmlContent: options.html,
         ...(options.category === 'password-reset' ? { tags: ['leadcrm-password-reset'] } : {}),
       }),

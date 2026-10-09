@@ -84,6 +84,24 @@ export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope):
     ] };
 }
 
+/** SQL counterpart of scopedMessagesWhere for aggregate conversation queries.
+ * Keep the two predicates aligned; integration tests exercise both paths. */
+export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope): Prisma.Sql {
+  const array = (values: string[]) => values.length ? Prisma.sql`ARRAY[${Prisma.join(values)}]::text[]` : Prisma.sql`ARRAY[]::text[]`;
+  const mailbox = mailboxAddress(account.email) ?? '';
+  const continuity = Object.entries(scope.threadRecipients).map(([threadId, addresses]) =>
+    Prisma.sql`(m."threadId" = ${threadId} AND m."recipientAddresses" && ${array(addresses)})`);
+  return Prisma.sql`m."tenantId" = ${account.tenantId} AND m."accountId" = ${account.id}
+    AND EXISTS (SELECT 1 FROM "EmailAccount" a WHERE a.id = m."accountId" AND a."tenantId" = m."tenantId" AND a."userId" = ${account.userId} AND a."isActive")
+    AND NOT (m.labels && ARRAY['SPAM', 'TRASH', 'DELETED']::text[])
+    AND (NOT ('DRAFT' = ANY(m.labels)) OR m."sourceMessageId" IS NULL OR m."sourceMessageId" = ANY(${array(scope.draftSourceIds)}))
+    AND ((m."fromAddress" = ANY(${array([...FIXED_MAILBOX_SENDERS, ...scope.addresses])}) AND m."fromAddress" <> ${mailbox} AND NOT ('DRAFT' = ANY(m.labels)))
+      OR (m."fromAddress" = ${mailbox} AND (m."recipientAddresses" && ${array(scope.addresses)}
+        ${continuity.length ? Prisma.sql`OR ${Prisma.join(continuity, ' OR ')}` : Prisma.empty}
+        OR (m."threadId" = ANY(${array(scope.fixedThreadIds)}) AND m."recipientAddresses" && ${array(FIXED_MAILBOX_SENDERS)})
+        OR ('DRAFT' = ANY(m.labels) AND m."crmDraft" AND cardinality(m."recipientAddresses") = 0))))`;
+}
+
 /** One bounded query per chunk, never an unscoped fallback. Returned pages are
  * persisted and globally sorted by sentAt by the Inbox API. */
 export function mailboxProviderQueries(scope: MailboxScope): string[] {

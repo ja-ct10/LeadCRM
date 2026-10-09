@@ -59,13 +59,16 @@ export interface SheetContentProps extends React.HTMLAttributes<HTMLDivElement> 
   side?: 'top' | 'right' | 'bottom' | 'left';
   showClose?: boolean;
   closeClassName?: string;
+  trapFocus?: boolean;
+  layerClassName?: string;
   children: React.ReactNode;
 }
 
 export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
-  ({ className, children, side = 'right', showClose = true, closeClassName, ...props }, ref) => {
+  ({ className, children, side = 'right', showClose = true, closeClassName, trapFocus = false, layerClassName, ...props }, ref) => {
     const { open, onOpenChange } = useSheet();
     const [mounted, setMounted] = React.useState(false);
+    const panelRef = React.useRef<HTMLDivElement | null>(null);
 
     React.useEffect(() => {
       setMounted(true);
@@ -73,15 +76,36 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
 
     // Prevent body scroll when open
     React.useEffect(() => {
-      if (open) {
-        document.body.style.overflow = 'hidden';
-      } else {
-        document.body.style.overflow = '';
-      }
-      return () => {
-        document.body.style.overflow = '';
-      };
+      if (!open) return;
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => { document.body.style.overflow = previousOverflow; };
     }, [open]);
+
+    React.useEffect(() => {
+      if (!open || !mounted || !trapFocus) return;
+      const previous = document.activeElement as HTMLElement | null;
+      const panel = panelRef.current;
+      const focusable = () => Array.from(panel?.querySelectorAll<HTMLElement>('button:not(:disabled), a[href], input:not(:disabled), [tabindex="0"]') ?? []);
+      (focusable()[0] ?? panel)?.focus({ preventScroll: true });
+      const keydown = (event: KeyboardEvent) => {
+        if (event.key !== 'Tab' || !panel) return;
+        const elements = focusable(), first = elements[0], last = elements[elements.length - 1];
+        if (!first) { event.preventDefault(); panel.focus(); }
+        else if (event.shiftKey && (document.activeElement === first || !panel.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || !panel.contains(document.activeElement))) { event.preventDefault(); first.focus(); }
+      };
+      const focusin = (event: FocusEvent) => {
+        if (panel && !panel.contains(event.target as Node)) (focusable()[0] ?? panel).focus({ preventScroll: true });
+      };
+      document.addEventListener('keydown', keydown);
+      document.addEventListener('focusin', focusin);
+      return () => {
+        document.removeEventListener('keydown', keydown);
+        document.removeEventListener('focusin', focusin);
+        if (previous?.isConnected) previous.focus({ preventScroll: true });
+      };
+    }, [open, mounted, trapFocus]);
 
     // Handle Escape key
     React.useEffect(() => {
@@ -130,7 +154,7 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
     const content = (
       <AnimatePresence>
         {open && (
-          <div className="fixed inset-0 z-50 flex justify-end">
+          <div className={cn('fixed inset-0 z-50 flex justify-end', layerClassName)}>
             {/* Backdrop */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -144,7 +168,12 @@ export const SheetContent = React.forwardRef<HTMLDivElement, SheetContentProps>(
 
             {/* Panel */}
             <motion.div
-              ref={ref}
+              ref={node => {
+                panelRef.current = node;
+                if (typeof ref === 'function') ref(node);
+                else if (ref) ref.current = node;
+              }}
+              tabIndex={trapFocus ? -1 : undefined}
               role="dialog"
               aria-modal="true"
               initial={variants[side].initial}
