@@ -165,7 +165,7 @@ interface DataContextType {
   deleteRole: (id: string) => Promise<void>;
   addUser: (userData: any) => void;
   updateUser: (id: string, updates: Partial<any>) => void;
-  deleteUser: (id: string) => void;
+  deleteUser: (id: string) => Promise<void>;
   restoreRecord: (
     type:
       | "Deal"
@@ -1596,8 +1596,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           `Deactivated and archived team member account: '${original.firstName} ${original.lastName}'.`,
         );
       } catch (err: unknown) {
-        toast.error("Failed to archive user: " + (err instanceof Error ? err.message : "Unknown error"));
         setUsers((prev) => prev.map((u) => (u.id === id ? original : u)));
+        throw new Error("Failed to archive user: " + (err instanceof Error ? err.message : "Unknown error"));
       }
       return;
     }

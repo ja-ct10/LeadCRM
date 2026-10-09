@@ -39,9 +39,9 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
   }, [tenant?.id, retry]);
   useEffect(() => { onBuilderActiveChange?.(!!active); return () => onBuilderActiveChange?.(false); }, [!!active, onBuilderActiveChange]);
   useNotificationRecordLink('formId', (tenant?.id ?? '') + ':' + (user?.id ?? ''), !!tenant && userCan('forms', 'canView'), getFormById, setActive);
-  const mutate = async (work: () => Promise<void>) => {
+  const mutate = async (work: () => Promise<void>, propagateError = false) => {
     if (mutationLock.current) return; mutationLock.current = true; setBusy(true);
-    try { await work(); } catch (err) { toast.error(err instanceof Error ? err.message : 'Unable to save form.'); } finally { mutationLock.current = false; setBusy(false); }
+    try { await work(); } catch (err) { if (propagateError) throw err; toast.error(err instanceof Error ? err.message : 'Unable to save form.'); } finally { mutationLock.current = false; setBusy(false); }
   };
   const update = useCallback((form: FormRecord) => { setForms(items => items.map(f => f.id === form.id ? form : f)); setActive(form); }, []);
   const create = () => void mutate(async () => {
@@ -59,7 +59,7 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
       setForms(items => items.filter(form => form.id !== target.id));
       setDeleteTarget(null);
       toast.success('Form permanently deleted.');
-    });
+    }, true);
   };
   if (active) return <FormBuilderPage key={active.id} form={active} onBack={() => setActive(null)} onFormUpdate={update} />;
   return <div className="space-y-5 min-w-0">

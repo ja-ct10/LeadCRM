@@ -259,7 +259,8 @@ export default function TaskBoard() {
         previous.filter((id) => !result.succeeded.includes(id)),
       );
       setBulkAction(null);
-      setArchiveIds([]);
+      setArchiveIds(operation === "archive" ? result.failed.map(failure => failure.id) : []);
+      if (operation === "archive" && result.failed.length) throw new Error(result.failed.map(failure => failure.error).join(" "));
     } catch (reason) {
       if (started === identity.current)
         setError(
@@ -267,6 +268,7 @@ export default function TaskBoard() {
             ? reason.message
             : "Unable to update selected tasks.",
         );
+      if (operation === "archive") throw reason;
     } finally {
       mutationPending.current = false;
       setBusy(false);
@@ -605,7 +607,7 @@ export default function TaskBoard() {
           if (!open && !busy) setArchiveIds([]);
         }}
         title={archiveIds.length === 1 ? "Archive task?" : "Archive tasks?"}
-        description={`Archive ${archiveIds.length} task(s)? They can be restored from Archived Data.${error ? ` ${error}` : ""}`}
+        description={`Archive ${archiveIds.length} task(s)? They can be restored from Archived Data.`}
         confirmLabel="Archive"
         variant="destructive"
         isLoading={busy}

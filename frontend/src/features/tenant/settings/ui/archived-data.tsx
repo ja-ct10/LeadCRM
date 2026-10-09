@@ -78,7 +78,7 @@ export function ArchivedData(): React.ReactElement {
       setSelectedIds(previous => new Set([...previous].filter(id => !succeeded.has(id))));
       if (succeeded.size) toast.success(pending.bulk ? `${succeeded.size} record${succeeded.size === 1 ? '' : 's'} restored` : `${pending.records[0].type} restored`);
       if (failures.length) toast.error(pending.bulk ? `${failures.length} record${failures.length === 1 ? '' : 's'} could not be restored. ${failures[0]}` : failures[0]);
-      setPending(null);
+      setPending(failures.length ? { ...pending, records: pending.records.filter(record => !succeeded.has(rowId(record))) } : null);
       await refetch();
       if (identityRef.current === restoreIdentity) {
         const refreshes: Promise<void>[] = [];
@@ -87,6 +87,7 @@ export function ArchivedData(): React.ReactElement {
         const results = await Promise.allSettled(refreshes);
         if (results.some(result => result.status === 'rejected')) toast.error('Records restored, but a source module could not refresh. Reload it to see the changes.');
       }
+      if (failures.length) throw new Error(failures[0]);
     } finally { busy.current = false; setRestoring(false); }
   };
 
@@ -145,7 +146,7 @@ export function ArchivedData(): React.ReactElement {
         <ConfirmActionDialog open={pending !== null} onOpenChange={open => { if (!open && !restoring) setPending(null); }}
           title={pending?.bulk ? 'Restore selected records?' : 'Restore record?'}
           description={pending?.bulk ? `This will restore ${pending.records.length} archived records to their original modules.` : 'This record will be restored to its original module.'}
-          confirmLabel="Restore" cancelLabel="Cancel" isLoading={restoring} onConfirm={confirmRestore} />
+          variant="success" confirmLabel="Restore" cancelLabel="Cancel" isLoading={restoring} onConfirm={confirmRestore} />
       </div>
     </>
   );

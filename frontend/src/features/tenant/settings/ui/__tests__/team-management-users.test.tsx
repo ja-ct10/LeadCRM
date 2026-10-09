@@ -9,6 +9,23 @@ vi.mock('@/features/tenant/administration/users/services/users.service', () => (
 import { UsersSubTab } from '../team-management-users';
 beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(cleanup);
+it('retains failed deactivation for retry and lets cancellation end the reassignment flow', async () => {
+  const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
+  mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });
+  mocks.impact.mockResolvedValue({ data: { userId: 'a', total: 0, counts: { leads: 0, contacts: 0, accounts: 0, deals: 0 } } });
+  mocks.deactivate.mockRejectedValue(new Error('Permission denied. Contact your administrator.'));
+  render(<UsersSubTab />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Deactivate' }));
+  expect((await screen.findByRole('alert')).textContent).toContain('Permission denied');
+  expect(screen.getByRole('alertdialog', { name: 'Deactivate this user?' })).toBeTruthy();
+  expect(mocks.deactivate).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+});
+
 it('confirms activation and deactivation, updates the persisted row immediately, and confirms bulk archive', async () => {
   const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
   mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });

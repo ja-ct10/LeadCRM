@@ -60,11 +60,11 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   }, []);
   useEffect(() => { if (!USE_MOCK_DATA) void loadGroups(); }, [loadGroups]);
 
-  const mutate = async (action: () => Promise<void>) => {
+  const mutate = async (action: () => Promise<void>, propagateError = false) => {
     if (busyRef.current) return;
     busyRef.current = true; setBusy(true); setSaveError('');
     try { await action(); }
-    catch (error) { const message = errorMessage(error); setSaveError(message); toast.error(message); }
+    catch (error) { const message = errorMessage(error); setSaveError(message); if (propagateError) throw new Error(message); toast.error(message); }
     finally { busyRef.current = false; setBusy(false); }
   };
   const openModal = (value: typeof modal) => {
@@ -113,7 +113,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         setGroups(previous => previous.filter(row => row.id !== group.id));
         if (activeId === group.id) setActiveId(null);
         close(); toast.success('Group deleted successfully.');
-      }) });
+      }, true) });
   };
   const requestRemove = (member: TenantGroupMember) => {
     if (!active || !canManageMembers) return;
@@ -123,7 +123,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         await groupsApi.removeMember(groupId, member.userId);
         setGroups(previous => previous.map(group => group.id === groupId ? { ...group, members: group.members.filter(row => row.userId !== member.userId) } : group));
         close(); toast.success('Member removed successfully.');
-      }) });
+      }, true) });
   };
   const duplicate = (group: TenantGroup) => mutate(async () => {
     const created = (await groupsApi.create(`${group.name.slice(0, 93)} (Copy)`)).data;

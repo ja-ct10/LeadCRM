@@ -173,8 +173,8 @@ function FileRow({ file, canDelete, onDelete }: FileRowProps): React.ReactElemen
     try {
       await onDelete(file.id);
       toast.success('File deleted');
-    } catch {
-      toast.error('Failed to delete file');
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : 'Failed to delete file. Please try again.');
     } finally {
       setIsDeleting(false);
     }

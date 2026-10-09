@@ -466,9 +466,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
     {lostStage && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void changeStage(lostStage, lostReason); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" onClick={() => setLostStage(undefined)}>Cancel</Button></form></div>}
     {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={refresh} />}
-    <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="default" onConfirm={async () => {
+    <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
       try { await apiClient.patch(`/crm/${module}/${encodeURIComponent(id)}/archive`); toast.success(`${label} archived`); setArchiving(false); if (onClose) onClose(); else router.push(`/crm/${module}`); }
-      catch (error) { toast.error(error instanceof Error ? error.message : 'Failed to archive record'); }
+      catch (error) { throw new Error(error instanceof Error ? error.message : 'Failed to archive record'); }
     }} />
   </div>;
 }

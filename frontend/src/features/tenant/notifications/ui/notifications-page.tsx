@@ -102,6 +102,8 @@ export default function NotificationsPage() {
         if (deleting && await deleteNotifications(deleting.ids)) {
           setSelected(prev => prev.filter(id => !deleting.ids.includes(id)));
           setDeleting(null);
+        } else {
+          throw new Error('Unable to delete notifications. Check your connection and try again.');
         }
       }} />
   </div>;

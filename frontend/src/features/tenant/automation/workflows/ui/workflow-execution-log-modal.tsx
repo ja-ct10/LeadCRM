@@ -56,11 +56,11 @@ export function WorkflowExecutionLogModal({
     return () => { cancelled = true; };
   }, [workflowId, revision]);
   const refresh = () => { setLoading(true); setRunsLoading(canViewRuns); setRevision(value => value + 1); };
-  const mutate = async (action: () => Promise<unknown>, message: string) => {
+  const mutate = async (action: () => Promise<unknown>, message: string, propagateError = false) => {
     if (lock.current) return;
     lock.current = true; setBusy(true);
     try { await action(); setArchiveOpen(false); await onUpdated?.(); refresh(); toast.success(message); }
-    catch (reason) { toast.error(reason instanceof Error ? reason.message : 'Unable to update workflow.'); }
+    catch (reason) { if (propagateError) throw reason; toast.error(reason instanceof Error ? reason.message : 'Unable to update workflow.'); }
     finally { lock.current = false; setBusy(false); }
   };
   const savedStatus = workflow ? workflow.isArchived ? 'Archived' : workflow.status === 'DRAFT' ? 'Draft' : workflow.isActive ? 'Active' : 'Paused' : status;
@@ -92,7 +92,7 @@ export function WorkflowExecutionLogModal({
         {workflow?.description && <p className="px-4 pt-4 text-sm text-muted-foreground [overflow-wrap:anywhere] sm:px-6">{workflow.description}</p>}
         {canViewRuns ? <WorkflowRuns key={workflowId} workflowId={workflowId} layout="panel" refreshVersion={revision} onLoadingChange={setRunsLoading} /> : <p className="p-4 text-sm text-muted-foreground">Run history requires permission to view workflow runs.</p>}
         <ConfirmActionDialog open={archiveOpen} onOpenChange={setArchiveOpen} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" isLoading={busy}
-          onConfirm={() => mutate(() => workflowsApi.archive(workflowId), 'Workflow archived.')} />
+          onConfirm={() => mutate(() => workflowsApi.archive(workflowId), 'Workflow archived.', true)} />
       </SheetContent>
     </Sheet>
   );

@@ -89,11 +89,11 @@ export default function WorkflowsPage() {
       </div> },
   ];
   const tableColumns = useModuleTableColumns('workflows', WORKFLOWS_TABLE_COLUMNS, columns.filter(column => canViewRuns || !['lastRun', 'runs'].includes(column.id)));
-  async function mutate(work: () => Promise<unknown>, message: string) {
+  async function mutate(work: () => Promise<unknown>, message: string, propagateError = false) {
     if (mutationLock.current) return;
     mutationLock.current = true; setBusy(true);
     try { await work(); await refreshWorkflows(); toast.success(message); }
-    catch (failure) { toast.error(failure instanceof Error ? failure.message : 'Unable to complete this action.'); }
+    catch (failure) { if (propagateError) throw failure; toast.error(failure instanceof Error ? failure.message : 'Unable to complete this action.'); }
     finally { mutationLock.current = false; setBusy(false); }
   }
   const duplicateWorkflow = (workflow: Workflow) => void mutate(async () => {
@@ -136,6 +136,6 @@ export default function WorkflowsPage() {
       ]} />
     {createOpen && canCreate && metadata && <WorkflowCreateDialog key={`${tenant?.id}:${user?.id}`} triggers={metadata.triggers} actions={metadata.actions} onClose={() => setCreateOpen(false)} onChoose={index => { router.push(index === undefined ? '/automation/workflows/new' : `/automation/workflows/new?template=${index}`); setCreateOpen(false); }} />}
     {runs && <WorkflowExecutionLogModal key={runs.id} workflowId={runs.id} name={runs.name} status={runs.status === 'DRAFT' ? 'Draft' : runs.isActive ? 'Active' : 'Paused'} onUpdated={refreshWorkflows} onClose={() => setRuns(null)} />}
-    <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.'); }} />
+    <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.', true); }} />
   </div>;
 }

@@ -5,6 +5,7 @@ import { RowActionsMenu, buildDefaultRowActions } from '../row-actions-menu';
 import { LeadsDataGrid } from '@/features/tenant/crm/leads/ui/leads-data-grid';
 import { ContactsDataGrid } from '@/features/tenant/crm/contacts/ui/contacts-data-grid';
 import { AccountsDataGrid } from '@/features/tenant/crm/accounts/ui/accounts-data-grid';
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 let trigger = { top: 100, bottom: 128, left: 50, right: 78 };
 beforeEach(() => {

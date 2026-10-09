@@ -224,7 +224,7 @@ describe('visual workflow editor', () => {
       target: { value: 'lead.created' },
     });
     expect(
-      screen.getByRole('dialog', { name: 'Change workflow record type?' }),
+      screen.getByRole('alertdialog', { name: 'Change workflow record type?' }),
     ).toBeTruthy();
     fireEvent.click(button('Keep current trigger'));
     expect(screen.getByText('Deal Value is greater than 1000')).toBeTruthy();
@@ -238,12 +238,14 @@ describe('visual workflow editor', () => {
     fireEvent.click(button('Save and activate'));
     fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
-      expect(screen.getByRole('alert').textContent).toContain(
+      expect(screen.getByRole('alertdialog').textContent).toContain(
         'Choose an active workspace user.',
       ),
     );
     expect(toast.error).toHaveBeenCalledWith('Choose an active workspace user.');
     expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog')).toBeTruthy();
+    fireEvent.click(button('Keep editing'));
     vi.mocked(workflowsApi.validate).mockResolvedValue({
       success: true,
       data: {
@@ -269,7 +271,7 @@ describe('visual workflow editor', () => {
     });
     fireEvent.click(button('Back to workflows'));
     expect(
-      screen.getByRole('dialog', { name: 'Discard unsaved changes?' }),
+      screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' }),
     ).toBeTruthy();
     fireEvent.click(button('Keep editing'));
     fireEvent.click(button('Save draft'));
@@ -326,7 +328,7 @@ describe('visual workflow editor', () => {
       };
       expect(navigate('replace').defaultPrevented).toBe(false);
       expect(navigate('traverse').defaultPrevented).toBe(true);
-      expect(screen.getByRole('dialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
+      expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
       fireEvent.click(button('Keep editing'));
     } finally {
       Reflect.deleteProperty(window, 'navigation');

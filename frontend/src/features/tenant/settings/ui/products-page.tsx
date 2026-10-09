@@ -153,9 +153,9 @@ export function ProductsPage() {
     try {
       const { succeeded, failed } = await executeSelectedRows(archiveIds, async id => changed(await apiClient.delete<ProductInterestResponse>(`${endpoint}/${id}`)));
       setSelected(previous => new Set([...previous].filter(id => !succeeded.includes(id))));
-      setArchiveIds([]); refresh();
+      setArchiveIds(failed); refresh();
       if (succeeded.length) toast.success(`${succeeded.length} product(s) archived.`);
-      if (failed.length) toast.error(`${failed.length} product(s) could not be archived. Refresh and retry.`);
+      if (failed.length) throw new Error(`${failed.length} product(s) could not be archived. Review your permissions and retry the remaining products.`);
     } finally { lock.current = false; setBusy(false); }
   }
   const columns: DataGridColumnDef<ProductInterest>[] = [
@@ -180,6 +180,6 @@ export function ProductsPage() {
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} eyebrow={panel?.mode === 'view' ? 'Product Record' : undefined} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'}>
       <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-6 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} initialProduct={panel.product!} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
     </SlidingDrawer>
-    <ConfirmActionDialog open={archiveIds.length > 0} onOpenChange={open => { if (!open && !busy) setArchiveIds([]); }} title={archiveIds.length === 1 ? 'Archive this product?' : `Archive ${archiveIds.length} products?`} description="Archived products are removed from new selections. Historical records and Deal values remain unchanged." confirmLabel="Archive" isLoading={busy} onConfirm={archive} />
+    <ConfirmActionDialog open={archiveIds.length > 0} onOpenChange={open => { if (!open && !busy) setArchiveIds([]); }} title={archiveIds.length === 1 ? 'Archive this product?' : `Archive ${archiveIds.length} products?`} description="Archived products are removed from new selections. Historical records and Deal values remain unchanged." confirmLabel="Archive" variant="destructive" isLoading={busy} onConfirm={archive} />
   </div>;
 }

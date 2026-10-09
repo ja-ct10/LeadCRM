@@ -32,6 +32,7 @@ import {
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { workflowsApi } from '@/shared/services/workflows.api';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { WorkflowDialog } from './workflow-dialog';
 import {
   ActionFields,
@@ -425,6 +426,7 @@ export default function WorkflowBuilder({
     if (nameIssue) {
       select('details');
       reportError(nameIssue);
+      if (confirmed) throw new Error(nameIssue);
       return;
     }
     const local = editorIssues(
@@ -437,6 +439,7 @@ export default function WorkflowBuilder({
     if (local.length) {
       select(local[0].step);
       reportError(local[0].message);
+      if (confirmed) throw new Error(local[0].message);
       return;
     }
     const parsed = WorkflowDraftSchema.safeParse({
@@ -444,7 +447,9 @@ export default function WorkflowBuilder({
       isActive: activate,
     });
     if (!parsed.success) {
-      reportError(parsed.error.issues[0]?.message ?? 'Review the workflow.');
+      const issue = parsed.error.issues[0]?.message ?? 'Review the workflow.';
+      reportError(issue);
+      if (confirmed) throw new Error(issue);
       return;
     }
     if (activate && !confirmed) {
@@ -484,6 +489,7 @@ export default function WorkflowBuilder({
       reportError(
         failure instanceof Error ? failure.message : 'Unable to save workflow.',
       );
+      if (confirmed) throw failure;
     } finally {
       operation.current = false;
       setBusy(false);
@@ -1020,65 +1026,22 @@ export default function WorkflowBuilder({
         </WorkflowDialog>
       )}
       {changeTrigger && (
-        <WorkflowDialog
-          title="Change workflow record type?"
-          onClose={() => setChangeTrigger(null)}
-        >
-          <p>
-            This clears {draft.conditions?.conditions.length ?? 0} condition
-            rules and removes{' '}
-            {
-              draft.actions.filter(
-                (action) =>
-                  !definitions
-                    .find((def) => def.type === action.type)
-                    ?.entities.includes(
-                      triggers.find((entry) => entry.type === changeTrigger)!
-                        .entity,
-                    ),
-              ).length
-            }{' '}
-            incompatible actions. Compatible actions are kept. Review their
-            configuration before saving.
-          </p>
-          <Button variant="outline" onClick={() => setChangeTrigger(null)}>
-            Keep current trigger
-          </Button>
-          <Button onClick={() => applyTrigger(changeTrigger)}>
-            Change trigger
-          </Button>
-        </WorkflowDialog>
+        <ConfirmActionDialog open onOpenChange={open => { if (!open) setChangeTrigger(null); }}
+          title="Change workflow record type?" variant="warning" confirmLabel="Change trigger" cancelLabel="Keep current trigger"
+          onConfirm={() => applyTrigger(changeTrigger)}>
+          <p>This clears {draft.conditions?.conditions.length ?? 0} condition rules and removes {draft.actions.filter(action => !definitions.find(def => def.type === action.type)?.entities.includes(triggers.find(entry => entry.type === changeTrigger)!.entity)).length} incompatible actions. Compatible actions are kept. Review their configuration before saving.</p>
+        </ConfirmActionDialog>
       )}
-      {confirmActivation && (
-        <WorkflowDialog title={saved.isActive ? 'Save changes to active workflow?' : 'Activate workflow?'} onClose={() => { if (!busy) setConfirmActivation(false); }}>
-          <p className="text-sm leading-relaxed">{draft.name} will run when {trigger?.label ?? 'its trigger'} occurs and its conditions match. {draft.actions.filter(action => action.enabled !== false).length} enabled action(s) may create tasks, update records, or send messages.</p>
-          <p className="text-sm text-[var(--muted-foreground)]">Review recipients, assigned agents, and field changes before activating. Already dispatched actions cannot be recalled.</p>
-          <div className="flex flex-wrap justify-end gap-2">
-            <Button variant="outline" disabled={busy} onClick={() => setConfirmActivation(false)}>Keep editing</Button>
-            <Button disabled={busy} onClick={() => { setConfirmActivation(false); void submit(true, false, true); }}>Confirm activation</Button>
-          </div>
-        </WorkflowDialog>
-      )}
-      {exit && (
-        <WorkflowDialog
-          title="Discard unsaved changes?"
-          onClose={() => setExit(null)}
-        >
-          <p>Your last saved workflow will be kept.</p>
-          <Button variant="outline" onClick={() => setExit(null)}>
-            Keep editing
-          </Button>
-          <Button
-            onClick={() => {
-              leaving.current = true;
-              setSaved(toDraft(draft));
-              exit();
-            }}
-          >
-            Discard changes
-          </Button>
-        </WorkflowDialog>
-      )}
+      <ConfirmActionDialog open={confirmActivation} onOpenChange={setConfirmActivation}
+        title={saved.isActive ? 'Save changes to active workflow?' : 'Activate workflow?'}
+        description={`${draft.name} will run when ${trigger?.label ?? 'its trigger'} occurs and its conditions match. ${draft.actions.filter(action => action.enabled !== false).length} enabled action(s) may create tasks, update records, or send messages.`}
+        warning="Review recipients, assigned agents, and field changes before activating. Already dispatched actions cannot be recalled."
+        variant="success" confirmLabel="Confirm activation" cancelLabel="Keep editing" isLoading={busy}
+        confirmDisabled={readOnly || !canActivate} onConfirm={() => submit(true, false, true)} />
+      <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) setExit(null); }}
+        title="Discard unsaved changes?" description="Your last saved workflow will be kept."
+        variant="warning" confirmLabel="Discard changes" cancelLabel="Keep editing"
+        onConfirm={() => { leaving.current = true; setSaved(toDraft(draft)); exit?.(); }} />
     </div>
   );
 }

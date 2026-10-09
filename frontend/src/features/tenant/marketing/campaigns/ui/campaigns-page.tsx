@@ -408,10 +408,10 @@ export default function CampaignsPage() {
                   ]} />}
                 <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
                   actions={canDeleteCampaign ? [{ id: 'archive', label: 'Archive', entityName: 'campaign', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, campaignsApi.archive); await refetchCampaigns(); return result; } }] : []} />
-                <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" onConfirm={async () => {
+                <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
                   if (!archiving) return;
                   try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); await refetchCampaigns(); toast.success('Campaign archived.'); }
-                  catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to archive campaign.'); }
+                  catch (e) { throw new Error(e instanceof Error ? e.message : 'Unable to archive campaign.'); }
                 }} />
 
                 <div className="mt-4">

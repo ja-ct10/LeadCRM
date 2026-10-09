@@ -4,6 +4,7 @@ import { cleanup, render, screen } from '@testing-library/react';
 import { LeadsDataGrid } from '../leads-data-grid';
 import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
 import type { Lead } from '@/store/types';
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 

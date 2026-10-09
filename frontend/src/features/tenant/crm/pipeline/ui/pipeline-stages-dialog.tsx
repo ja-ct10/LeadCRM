@@ -8,6 +8,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { toast } from 'sonner';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { Button } from '@/shared/components/ui/button';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { pipelinesApi } from '@/shared/services/pipelines.api';
@@ -63,11 +64,11 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
     }).catch(e => { if (active) setError(e.message); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; previousFocus.current?.focus(); };
   }, [pipelineId]);
-  const mutate = async (operation: () => Promise<unknown>) => {
+  const mutate = async (operation: () => Promise<unknown>, propagateError = false) => {
     if (pending.current) return;
     pending.current = true; setBusy(true); setError('');
     try { await operation(); setRemoving(undefined); await reload(); await onChanged(); toast.success('Pipeline stages updated'); }
-    catch (e) { setError(e instanceof Error ? e.message : 'Unable to update stages'); }
+    catch (e) { if (propagateError) throw e; setError(e instanceof Error ? e.message : 'Unable to update stages'); }
     finally { pending.current = false; setBusy(false); }
   };
   const reorder = async ({ active, over }: DragEndEvent) => {
@@ -99,10 +100,7 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
       <DialogHeader className="shrink-0 border-b border-border p-4 pr-12 sm:p-6 sm:pr-12"><DialogTitle>Manage pipeline stages</DialogTitle><p className="text-sm text-muted-foreground">Sales Pipeline</p></DialogHeader>
       <div className="min-h-0 overflow-y-auto overscroll-contain p-4 sm:p-6">
       {error && <p role="alert" className="my-3 text-sm text-destructive">{error}</p>}
-      {loading ? <div role="status" aria-label="Loading pipeline stages"><DataLoadingSkeleton rowCount={5} columnCount={2} rowHeight={76} /></div> : removing ? <div className="mt-4 space-y-4">
-        <p className="break-words text-sm">Remove “{removing.name}”? This cannot be undone. Stages referenced by Deals, including archived Deals, or stage history cannot be removed.</p>
-        <div className="flex flex-wrap justify-end gap-2"><Button variant="outline" disabled={busy} onClick={() => { setRemoving(undefined); setError(''); }}>Cancel</Button><Button variant="destructive" disabled={busy} onClick={() => void mutate(() => pipelinesApi.deleteStage(removing.id))}>Remove stage</Button></div>
-      </div> : <div className="mt-4 space-y-4">
+      {loading ? <div role="status" aria-label="Loading pipeline stages"><DataLoadingSkeleton rowCount={5} columnCount={2} rowHeight={76} /></div> : <div className="mt-4 space-y-4">
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={event => void reorder(event)}>
           <SortableContext items={stages.map(stage => stage.id)} strategy={verticalListSortingStrategy}>
             <ol className="space-y-3">{stages.map((stage, index) => <SortableStage key={stage.id} stage={stage} index={index}
@@ -125,6 +123,11 @@ export function PipelineStagesDialog({ pipelineId, onClose, onChanged }: { pipel
         {!!error && !stages.length && <Button variant="outline" onClick={() => void mutate(reload)}>Retry</Button>}
       </div>}
       </div>
+      <ConfirmActionDialog open={!!removing} onOpenChange={open => { if (!open) setRemoving(undefined); }}
+        title="Remove stage?" description={`Remove “${removing?.name ?? ''}”? This cannot be undone. Stages referenced by Deals, including archived Deals, or stage history cannot be removed.`}
+        variant="destructive" confirmLabel="Remove stage" isLoading={busy}
+        confirmDisabled={!canDelete || !!removing?.isDefault || !!removing?.isWon || !!removing?.isLost}
+        onConfirm={async () => { if (removing) await mutate(() => pipelinesApi.deleteStage(removing.id), true); }} />
     </DialogContent>
   </Dialog>;
 }

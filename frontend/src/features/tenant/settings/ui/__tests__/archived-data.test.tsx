@@ -69,8 +69,8 @@ it('cancel and Escape do not restore; dialog traps focus and restores it', async
   const button = screen.getAllByRole('button', { name: 'Restore' })[0];
   button.focus(); fireEvent.click(button);
   const dialog = screen.getByRole('alertdialog');
-  const first = within(dialog).getByRole('button', { name: 'Close' });
-  expect(document.activeElement).toBe(first);
+  expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+  within(dialog).getByRole('button', { name: 'Close confirmation' }).focus();
   fireEvent.keyDown(document, { key: 'Tab', shiftKey: true });
   expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Restore' }));
   fireEvent.keyDown(document, { key: 'Escape' });
@@ -115,6 +115,7 @@ it('retains a rejected individual restore and disables forbidden actions', async
   await waitFor(() => expect(state.error).toHaveBeenCalledWith('Permission denied'));
   expect(screen.getByText('Saved Lead')).toBeTruthy();
   expect(state.success).not.toHaveBeenCalled();
+  expect(screen.getByRole('alertdialog').textContent).toContain('Permission denied');
 });
 
 it('clears selection on filter/page changes, uses backend pagination and omits absent timestamps', async () => {

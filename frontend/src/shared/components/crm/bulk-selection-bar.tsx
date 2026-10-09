@@ -39,17 +39,19 @@ export function BulkSelectionBar({ selectedCount, selectedIds, onClearSelection,
   const [busy, setBusy] = useState(false);
   const lock = useRef(false);
   useEffect(() => { if (!selectedCount) setPending(null); }, [selectedCount]);
-  async function execute(action: BulkAction, ids: string[]) {
+  async function execute(action: BulkAction, ids: string[], propagateError = false) {
     if (lock.current) return;
     lock.current = true; setBusy(true);
     try {
       const result = await action.onExecute(ids);
       onRemoveIds?.(result.succeeded);
       if (!result.failed.length) toast.success(`${result.succeeded.length} ${action.entityName ?? 'record'}${result.succeeded.length === 1 ? '' : 's'} ${action.id === 'archive' ? 'archived' : action.id === 'pause' ? 'paused' : 'processed successfully'}.`);
-      else if (!result.succeeded.length) toast.error(`Failed to process ${result.failed.length} record(s).`);
-      else toast.warning(`${result.succeeded.length} succeeded, ${result.failed.length} failed.`);
+      else {
+        if (propagateError) setPending({ action, ids: result.failed });
+        throw new Error(`${result.succeeded.length} succeeded, ${result.failed.length} failed. Review your permissions and retry the remaining records.`);
+      }
       setPending(null);
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to complete this action.'); }
+    } catch (error) { if (propagateError) throw error; toast.error(error instanceof Error ? error.message : 'Unable to complete this action.'); }
     finally { lock.current = false; setBusy(false); }
   }
   return <>
@@ -62,8 +64,8 @@ export function BulkSelectionBar({ selectedCount, selectedIds, onClearSelection,
     </SelectedRowsBar>
     <ConfirmActionDialog open={!!pending && selectedCount > 0} onOpenChange={open => { if (!open && !busy) setPending(null); }}
       title={pending ? `${pending.action.label} ${pending.ids.length} ${pending.action.entityName ?? 'record'}${pending.ids.length === 1 ? '' : 's'}?` : ''}
-      description="Archived records and their history are preserved." confirmLabel={pending?.action.label} isLoading={busy}
-      onConfirm={async () => { if (pending) await execute(pending.action, pending.ids); }} />
+      variant={pending?.action.id === 'pause' ? 'warning' : 'destructive'} description={pending?.action.entityName === 'user' ? 'Archiving deactivates these accounts and revokes access until restored from Archived Data.' : pending?.action.id === 'pause' ? 'Selected workflows will stop running until resumed.' : 'Archived records and their history are preserved.'} confirmLabel={pending?.action.label} isLoading={busy}
+      onConfirm={async () => { if (pending) await execute(pending.action, pending.ids, true); }} />
   </>;
 }
 

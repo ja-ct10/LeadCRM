@@ -1,5 +1,7 @@
 'use client';
 
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import React, { useState } from 'react';
 import { Plus, Search, RefreshCw, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
@@ -20,6 +22,7 @@ type Tab = 'roles' | 'permissions';
 export default function RolesPage(): React.ReactElement {
   const canManage = useHasPermission('roles.edit'), canCreate = useHasPermission('roles.create'), canArchive = useHasPermission('roles.archive');
   const [activeTab, setActiveTab] = useState<Tab>('roles');
+  const { confirm, dialogProps } = useConfirmDialog();
 
   const {
     isLoading, error,
@@ -32,14 +35,18 @@ export default function RolesPage(): React.ReactElement {
     refetch, handleArchive,
   } = useRoles();
 
-  const onArchive = async (role: RoleListItem) => {
-    if (!confirm(`Archive role "${role.name}"? Users assigned to this role will lose its permissions.`)) return;
-    try {
-      await handleArchive(role.id);
-      toast.success(`Role "${role.name}" archived`);
-    } catch (err: unknown) {
-      toast.error(err instanceof Error ? err.message : 'Failed to archive role');
-    }
+  const onArchive = (role: RoleListItem) => {
+    if (!canArchive || role.isSystemRole) return;
+    confirm({
+      title: 'Archive Role?',
+      description: `Archive "${role.name}"? Reassign its users first. Archived roles can be recovered from Archived Data.`,
+      confirmLabel: 'Archive Role',
+      variant: 'destructive',
+      onConfirm: async () => {
+        await handleArchive(role.id);
+        toast.success(`Role "${role.name}" archived`);
+      },
+    });
   };
 
   const tabs: Array<{ id: Tab; label: string }> = [
@@ -140,6 +147,8 @@ export default function RolesPage(): React.ReactElement {
           )}
         </div>
       )}
+
+      <ConfirmActionDialog {...dialogProps} />
 
       {/* Permissions reference tab */}
       {activeTab === 'permissions' && <PermissionsTab />}

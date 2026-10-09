@@ -1,4 +1,5 @@
 "use client";
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { ManilaDateTimePicker } from "@/shared/components/ui/manila-date-time-picker";
 import { taskRecordOptions } from "../task-relations";
 import { useEffect, useId, useRef, useState } from "react";
@@ -206,7 +207,7 @@ export function TaskEditor({
       await deleteTask(task.id);
       onClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Unable to archive task.");
+      throw new Error(e instanceof Error ? e.message : "Unable to archive task. Please try again.");
     } finally {
       setBusy(false);
     }
@@ -503,33 +504,6 @@ export function TaskEditor({
                   {task.isArchived && <div>Archived</div>}
                 </dl>
               )}
-              {confirmArchive && (
-                <div
-                  role="alert"
-                  className="rounded-lg border border-border p-3 text-sm"
-                >
-                  Archive this task? It will leave active views and remain in
-                  the archive.
-                  <div className="mt-3 flex gap-2">
-                    <Button
-                      type="button"
-                      variant="destructive"
-                      disabled={busy}
-                      onClick={() => void archive()}
-                    >
-                      Confirm archive
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      disabled={busy}
-                      onClick={() => setConfirmArchive(false)}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              )}
             </div>
             <footer className={panelFooterClass + " justify-between"}>
               {task && !readOnly && canArchive && !task.isArchived ? (
@@ -564,6 +538,10 @@ export function TaskEditor({
             </footer>
           </form>
         )}
+        <ConfirmActionDialog open={confirmArchive} onOpenChange={setConfirmArchive}
+          title="Archive task?" description="This task will leave active views and can be restored from Archived Data."
+          variant="destructive" confirmLabel="Archive" isLoading={busy}
+          confirmDisabled={!canArchive || readOnly || !!task?.isArchived} onConfirm={archive} />
       </SheetContent>
     </Sheet>
   );

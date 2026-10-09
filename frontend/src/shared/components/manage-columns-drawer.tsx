@@ -21,16 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Switch } from '@/shared/components/ui/switch';
-import {
-  AlertDialog,
-  AlertDialogContent,
-  AlertDialogHeader,
-  AlertDialogFooter,
-  AlertDialogTitle,
-  AlertDialogDescription,
-  AlertDialogAction,
-  AlertDialogCancel,
-} from '@/shared/components/ui/alert-dialog';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { cn } from '@/lib/utils';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
 
@@ -261,7 +252,6 @@ export function ManageColumnsDrawer({
 
   /** Reset to Default: calls resetColumns() → DELETE /api/v1/preferences/columns/:module */
   const handleResetConfirm = useCallback(async () => {
-    setShowResetConfirm(false);
     setResetError(null);
     setSaveState('saving');
     try {
@@ -271,6 +261,7 @@ export function ManageColumnsDrawer({
     } catch {
       setSaveState('idle');
       setResetError('Unable to reset columns. Please try again.');
+      throw new Error('Unable to reset columns. Please try again.');
     }
   }, [onReset]);
 
@@ -465,36 +456,12 @@ export function ManageColumnsDrawer({
           </button>
         </div>
       </div>
-      {/* Reset Confirmation Dialog */}
-      <AlertDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Reset to Default?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This will remove your custom column configuration and revert to the default layout.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowResetConfirm(false)}>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleResetConfirm}>Reset</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-      {/* Close with Unsaved Changes Confirmation */}
-      <AlertDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Discard changes?</AlertDialogTitle>
-            <AlertDialogDescription>
-              You have unsaved changes. Are you sure you want to close without saving?
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setShowCloseConfirm(false)}>Keep editing</AlertDialogCancel>
-            <AlertDialogAction onClick={handleConfirmClose}>Discard</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <ConfirmActionDialog open={showResetConfirm} onOpenChange={setShowResetConfirm}
+        title="Reset to Default?" description="This will remove your custom column configuration and revert to the default layout."
+        confirmLabel="Reset" isLoading={saveState === 'saving'} onConfirm={handleResetConfirm} />
+      <ConfirmActionDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}
+        title="Discard changes?" description="You have unsaved changes. Are you sure you want to close without saving?"
+        variant="warning" confirmLabel="Discard" cancelLabel="Keep editing" onConfirm={handleConfirmClose} />
     </div>
   );
 }

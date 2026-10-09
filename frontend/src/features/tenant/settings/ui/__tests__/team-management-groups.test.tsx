@@ -49,7 +49,7 @@ it('lets other roles view members but hides membership controls', async () => {
 it('requires removal confirmation, traps focus, cancels safely and updates membership/counts after success', async () => {
   mount(); await openGroup(); fireEvent.click(screen.getByRole('button', { name: 'Remove Julie Ann Tiron' }));
   expect(mocks.removeMember).not.toHaveBeenCalled(); const dialog = screen.getByRole('alertdialog'); expect(dialog.textContent).toContain('remove Julie Ann Tiron');
-  const remove = within(dialog).getByRole('button', { name: 'Remove Member' }); remove.focus(); fireEvent.keyDown(document, { key: 'Tab' }); expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close' }));
+  const remove = within(dialog).getByRole('button', { name: 'Remove Member' }); remove.focus(); fireEvent.keyDown(document, { key: 'Tab' }); expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close confirmation' }));
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' })); expect(mocks.removeMember).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Remove Julie Ann Tiron' })); fireEvent.click(screen.getByRole('button', { name: 'Remove Member' }));
   await waitFor(() => expect(mocks.removeMember).toHaveBeenCalledWith('sales', 'julie')); await waitFor(() => expect(screen.queryByText('Julie Ann Tiron')).toBeNull()); expect(mocks.success).toHaveBeenCalledWith('Member removed successfully.');

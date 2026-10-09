@@ -337,16 +337,19 @@ export default function AccountsPage(): React.ReactElement {
     title: 'Archive Account' + (ids.length > 1 ? 's?' : '?'),
     description: `${name} will be removed from active Accounts and moved to Archived Data. You can restore this record later.`,
     confirmLabel: 'Archive',
+    variant: 'destructive',
     onConfirm: async () => {
-      try {
-        await Promise.all(ids.map((id) => handleArchive(id)));
+      const results = await Promise.allSettled(ids.map(id => handleArchive(id)));
+      const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
+      setAccountSelectedIds(previous => new Set([...previous].filter(id => failedIds.includes(id))));
 
-        setAccountSelectedIds(new Set());
-        close();
-        toast.success('Account archived');
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to archive account');
+      if (failedIds.length) {
+        confirmArchive(failedIds, ids.length === 1 ? name : `${failedIds.length} account${failedIds.length === 1 ? '' : 's'}`);
+        const failure = results.find(result => result.status === 'rejected');
+        throw new Error(failure?.status === 'rejected' && failure.reason instanceof Error ? failure.reason.message : 'Unable to archive the remaining records. Please try again.');
       }
+      close();
+      toast.success('Account archived');
     },
   });
 

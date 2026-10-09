@@ -357,16 +357,19 @@ export default function ContactsPage(): React.ReactElement {
     title: 'Archive Contact' + (ids.length > 1 ? 's?' : '?'),
     description: `${name} will be removed from active Contacts and moved to Archived Data. You can restore this record later.`,
     confirmLabel: 'Archive',
+    variant: 'destructive',
     onConfirm: async () => {
-      try {
-        await Promise.all(ids.map((id) => contactsV2Api.archive(id)));
-        await fetchContacts();
-        setContactSelectedIds(new Set());
-        close();
-        toast.success('Contact archived');
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to archive contact');
+      const results = await Promise.allSettled(ids.map(id => contactsV2Api.archive(id)));
+      const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
+      setContactSelectedIds(previous => new Set([...previous].filter(id => failedIds.includes(id))));
+      await fetchContacts();
+      if (failedIds.length) {
+        confirmArchive(failedIds, ids.length === 1 ? name : `${failedIds.length} contact${failedIds.length === 1 ? '' : 's'}`);
+        const failure = results.find(result => result.status === 'rejected');
+        throw new Error(failure?.status === 'rejected' && failure.reason instanceof Error ? failure.reason.message : 'Unable to archive the remaining records. Please try again.');
       }
+      close();
+      toast.success('Contact archived');
     },
   });
 

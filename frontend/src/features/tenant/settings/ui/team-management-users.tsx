@@ -166,7 +166,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       await usersService.archive(confirmArchive.id);
       setConfirmArchive(null); setSelected(new Set()); setReload(value => value + 1);
       toast.success('User archived');
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to archive user.'); }
+    } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to archive user.'); }
     finally { setArchiving(false); }
   };
 
@@ -187,16 +187,16 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         toast.success('User activated.');
       }
       setStatusChangeUser(null); setReassignUser(null); setImpact(null); setReplacement('');
+      return false;
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Unable to reassign CRM records. The user was not deactivated.');
       if (nextStatus === 'inactive') {
-        setStatusChangeUser(null); setReplacement(''); setReload(value => value + 1);
+        setReload(value => value + 1);
         try {
           const refreshed = await usersService.deactivationImpact(statusChangeUser.id);
-          if (!refreshed.data) throw new Error('Ownership counts unavailable.');
-          setImpact(refreshed.data); setReassignUser(statusChangeUser);
-        } catch { setReassignUser(null); setImpact(null); }
+          if (refreshed.data) setImpact(refreshed.data);
+        } catch { /* Keep the last known counts and allow cancellation back to reassignment. */ }
       }
+      throw new Error(error instanceof Error ? error.message : 'Unable to update the account. Review the assigned agent and try again.');
     } finally {
       setChangingStatus(false);
     }
@@ -281,31 +281,18 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         {editingUser && (
           <UserPanel key={`${editingUser.id}:${initiallyEditing}`} initiallyEditing={initiallyEditing} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)} />
         )}
-        {confirmArchive && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4"
-            onClick={() => setConfirmArchive(null)}>
-            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }}
-              transition={{ type: 'spring', damping: 28, stiffness: 260 }}
-              className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.08] rounded-2xl w-full max-w-sm shadow-2xl overflow-hidden"
-              onClick={(e) => e.stopPropagation()}>
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-white/[0.07]">
-                <h3 className="text-sm font-bold text-slate-900 dark:text-white">Archive User</h3>
-                <button onClick={() => setConfirmArchive(null)} className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg cursor-pointer"><X size={16} /></button>
-              </div>
-              <div className="px-6 py-5">
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Archive <span className="font-semibold text-slate-900 dark:text-white">{confirmArchive.firstName} {confirmArchive.lastName}</span>? They will lose access until restored.
-                </p>
-              </div>
-              <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 dark:border-white/[0.07]">
-                <button onClick={() => setConfirmArchive(null)} className="px-4 py-2 text-xs font-semibold text-slate-600 dark:text-slate-400 cursor-pointer">Cancel</button>
-                <button disabled={archiving} onClick={handleArchive} className="px-5 py-2 text-xs font-semibold bg-rose-600 hover:bg-rose-500 text-white rounded-lg cursor-pointer">Archive</button>
-              </div>
-            </motion.div>
-          </motion.div>
-        )}
       </AnimatePresence>
+      <ConfirmActionDialog
+        open={!!confirmArchive}
+        onOpenChange={open => { if (!open) setConfirmArchive(null); }}
+        title="Archive User?"
+        description={`Archive ${confirmArchive?.firstName ?? ''} ${confirmArchive?.lastName ?? ''}? This deactivates their account. They will lose access until restored from Archived Data.`}
+        variant="destructive"
+        confirmLabel="Archive"
+        confirmDisabled={!canArchiveUsers}
+        isLoading={archiving}
+        onConfirm={handleArchive}
+      />
       <ConfirmActionDialog
         open={!!reassignUser && !statusChangeUser}
         onOpenChange={open => { if (!open) { setReassignUser(null); setImpact(null); setReplacement(''); } }}
@@ -313,7 +300,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         description={impact?.total ? `${reassignUser?.firstName} ${reassignUser?.lastName} currently owns CRM records that must be reassigned before the account can be deactivated.` : 'No active CRM records are assigned to this user.'}
         confirmLabel="Continue"
         confirmDisabled={!!impact?.total && !replacement}
-        onConfirm={() => setStatusChangeUser(reassignUser)}
+        onConfirm={() => { setStatusChangeUser(reassignUser); return false; }}
       >
         <dl className="grid grid-cols-2 gap-2 text-sm">{Object.entries(impact?.counts ?? {}).map(([label, count]) => <React.Fragment key={label}><dt className="capitalize">{label}</dt><dd className="text-right">{count}</dd></React.Fragment>)}</dl>
         {!!impact?.total && <div className="space-y-2"><label htmlFor="deactivation-agent" className="text-sm font-medium">Assigned Agent <span className="text-red-500">*</span></label>
@@ -328,7 +315,8 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
           ? `Deactivate ${statusChangeUser.firstName} ${statusChangeUser.lastName}? ${impact?.total ? `${impact.counts.leads} Leads, ${impact.counts.contacts} Contacts, ${impact.counts.accounts} Accounts, and ${impact.counts.deals} Deals will be reassigned to ${allUsers.find(user => user.id === replacement)?.firstName ?? ''} ${allUsers.find(user => user.id === replacement)?.lastName ?? ''}. ` : ''}They will lose access to this workspace.`
           : `Activate ${statusChangeUser?.firstName ?? ''} ${statusChangeUser?.lastName ?? ''}? They will regain access to this workspace.`}
         confirmLabel={statusChangeUser?.status === 'active' ? 'Deactivate' : 'Activate'}
-        variant={statusChangeUser?.status === 'active' ? 'destructive' : 'default'}
+        variant={statusChangeUser?.status === 'active' ? 'warning' : 'success'}
+        confirmDisabled={!canActivateUsers || (statusChangeUser?.status === 'active' && !!impact?.total && !replacement)}
         isLoading={changingStatus}
         onConfirm={handleStatusChange}
       />

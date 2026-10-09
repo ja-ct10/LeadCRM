@@ -51,16 +51,11 @@ import { RoleDefinition } from "@/store/types";
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { Pagination } from '@/shared/components/ui/pagination';
 import { USE_MOCK_DATA } from '@/lib/config';
+import type { ConfirmActionOptions } from '@/shared/components/crm/confirm-action-dialog';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 
 // ─── Confirm dialog state type ───────────────────────────────────────────────
-interface ConfirmDialogState {
-  title: string;
-  description: string;
-  warning: string;
-  confirmLabel: string;
-  onConfirm: () => void | Promise<void>;
-}
+type ConfirmDialogState = ConfirmActionOptions;
 
 // Initial state matching existing database style
 
@@ -522,19 +517,19 @@ export default function UsersPage() {
                           type="button"
                           onClick={() => {
                             setConfirmDialog({
-                              title: 'Delete Role',
-                              description: `Delete the role "${role.name}"?`,
-                              warning: 'Any users assigned this role will lose its permissions.',
-                              confirmLabel: 'Delete Role',
-                              onConfirm: () => {
-                                void deleteRole(role.id)
-                                  .then(() => toast.success(`Role "${role.name}" has been deleted.`))
-                                  .catch(error => toast.error(error instanceof Error ? error.message : "Unable to delete role."));
+                              title: 'Archive Role?',
+                              variant: 'destructive',
+                              description: `Archive the role "${role.name}"? Reassign its users first.`,
+                              warning: 'Archived roles can be restored from Archived Data.',
+                              confirmLabel: 'Archive Role',
+                              onConfirm: async () => {
+                                await deleteRole(role.id);
+                                toast.success(`Role "${role.name}" archived.`);
                               },
                             });
                           }}
                           className="p-2 text-slate-500 dark:text-slate-400 hover:text-red-400 hover:bg-red-400/10 rounded-xl transition-all cursor-pointer"
-                          title="Delete Role"
+                          title="Archive Role"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
@@ -1649,13 +1644,14 @@ export default function UsersPage() {
 
   const handleDeleteUser = (id: string, name: string): void => {
     setConfirmDialog({
-      title: 'Delete User',
-      description: `Remove ${name} from the system?`,
-      warning: 'This will revoke all their access and cannot be undone.',
-      confirmLabel: 'Delete User',
-      onConfirm: () => {
-        deleteUser(id);
-        toast.success(`${name} has been removed.`);
+      title: 'Archive User?',
+      description: `Archive ${name}? This deactivates their account and revokes workspace access.`,
+      warning: 'The account can be restored from Archived Data.',
+      variant: 'destructive',
+      confirmLabel: 'Archive User',
+      onConfirm: async () => {
+        await deleteUser(id);
+        toast.success(`${name} archived.`);
       },
     });
   };
@@ -2093,14 +2089,14 @@ export default function UsersPage() {
                                 <Edit size={16} />
                               </button>
 
-                              {/* Revoke & delete */}
+                              {/* Archive account */}
                               <button
                                 type="button"
                                 onClick={() =>
                                   handleDeleteUser(user.id, user.name)
                                 }
                                 className="p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-500/15 rounded-lg transition-colors cursor-pointer"
-                                title="Purge / Remove Account"
+                                title="Archive Account"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -2964,15 +2960,7 @@ export default function UsersPage() {
         <ConfirmActionDialog
           open={true}
           onOpenChange={(open) => { if (!open) setConfirmDialog(null); }}
-          title={confirmDialog.title}
-          description={confirmDialog.description}
-          warning={confirmDialog.warning}
-          confirmLabel={confirmDialog.confirmLabel}
-          variant="destructive"
-          onConfirm={async () => {
-            await confirmDialog.onConfirm();
-            setConfirmDialog(null);
-          }}
+          {...confirmDialog}
         />
       )}
     </div>

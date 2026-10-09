@@ -409,15 +409,19 @@ export default function LeadsPage(): React.ReactElement {
     title: 'Archive Lead' + (ids.length > 1 ? 's?' : '?'),
     description: `${name} will be removed from active Leads and moved to Archived Data. You can restore this record later.`,
     confirmLabel: 'Archive',
+    variant: 'destructive',
     onConfirm: async () => {
-      try {
-        await Promise.all(ids.map((id) => leadsService.archive(id)));
-        setSelectedIds(new Set()); refetchLeads();
-        close();
-        toast.success('Lead archived');
-      } catch (error) {
-        toast.error(error instanceof Error ? error.message : 'Failed to archive lead');
+      const results = await Promise.allSettled(ids.map(id => leadsService.archive(id)));
+      const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
+      setSelectedIds(previous => new Set([...previous].filter(id => failedIds.includes(id))));
+      refetchLeads();
+      if (failedIds.length) {
+        confirmArchive(failedIds, ids.length === 1 ? name : `${failedIds.length} lead${failedIds.length === 1 ? '' : 's'}`);
+        const failure = results.find(result => result.status === 'rejected');
+        throw new Error(failure?.status === 'rejected' && failure.reason instanceof Error ? failure.reason.message : 'Unable to archive the remaining records. Please try again.');
       }
+      close();
+      toast.success('Lead archived');
     },
   });
 
