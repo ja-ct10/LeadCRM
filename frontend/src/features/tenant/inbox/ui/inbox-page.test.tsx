@@ -72,6 +72,57 @@ describe('Persisted scoped Inbox', () => {
     fireEvent.click(screen.getByLabelText('Refresh')); await flush();
     expect(mocks.list).toHaveBeenCalledTimes(2);
   });
+  it('bounds failed stream retries and cleans up streams and timers on unmount', async () => {
+    const streams: Array<EventTarget & { close: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+    const view = render(<InboxPage />); await flush();
+    expect(streams).toHaveLength(1);
+    streams[0].dispatchEvent(new Event('error')); await flush();
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    await advance(59_999); expect(streams).toHaveLength(1);
+    await advance(1); expect(streams).toHaveLength(2);
+    streams[1].dispatchEvent(new Event('mailbox-change')); await advance(250);
+    expect(mocks.list).toHaveBeenCalledTimes(2);
+    view.unmount(); expect(streams[1].close).toHaveBeenCalledOnce();
+    await advance(180_000); expect(streams).toHaveLength(2);
+    expect(mocks.sync).not.toHaveBeenCalled();
+  });
+  it('preserves the reconnect backoff when a filter change recreates the stream effect', async () => {
+    const streams: Array<EventTarget & { close: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+    render(<InboxPage />); await flush();
+    streams[0].dispatchEvent(new Event('error')); await flush();
+    fireEvent.click(screen.getByLabelText('Filter emails')); fireEvent.click(screen.getByText('Sent')); await flush();
+    expect(streams).toHaveLength(1);
+    await advance(59_999); expect(streams).toHaveLength(1);
+    await advance(1); expect(streams).toHaveLength(2);
+  });
+  it('honors an API cooldown across refresh, sync and realtime connections', async () => {
+    const streams: Array<EventTarget & { close: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+    render(<InboxPage />); await flush();
+    mocks.list.mockRejectedValueOnce(Object.assign(new Error('Too many requests'), { status: 429, retryAt: new Date(Date.now() + 120_000).toISOString() }));
+    fireEvent.click(screen.getByLabelText('Refresh')); await flush();
+    expect(screen.getByText('Saved customer email')).toBeTruthy();
+    expect(streams[0].close).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByLabelText('Refresh')); fireEvent.click(screen.getByText('Sync now'));
+    document.dispatchEvent(new Event('visibilitychange')); await advance(119_999);
+    expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.sync).not.toHaveBeenCalled(); expect(streams).toHaveLength(1);
+    await advance(26); expect(mocks.list).toHaveBeenCalledTimes(3); expect(streams).toHaveLength(2);
+  });
+  it('stops status-request throttling and avoids fallback reads while hidden', async () => {
+    const streams: EventTarget[] = [];
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+    render(<InboxPage />); await flush();
+    mocks.status.mockRejectedValueOnce(Object.assign(new Error('Too many requests'), { status: 429 }));
+    streams[0].dispatchEvent(new Event('mailbox-change')); await advance(250);
+    expect(screen.getByRole('alert').textContent).toContain('Too many requests');
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await advance(180_000);
+    expect(mocks.list).toHaveBeenCalledTimes(2); expect(streams).toHaveLength(1);
+    visibility.mockReturnValue('visible'); document.dispatchEvent(new Event('visibilitychange')); await advance(250);
+    expect(mocks.list).toHaveBeenCalledTimes(3); visibility.mockRestore();
+  });
   it('rejects stale responses and deduplicates the same active list request', async () => {
     render(<InboxPage />); await flush();
     let resolve: (value: unknown) => void;

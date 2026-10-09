@@ -25,7 +25,7 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/administration/roles':         'roles',
   // Settings
   '/settings':                     'settings',
-  '/settings/account':             'account-details',
+  '/settings/account':             'settings',
   '/settings/profile':             'profile-settings',
   '/operations/taskboard':         'tasks',
   '/inbox':                        'inbox',
@@ -53,7 +53,7 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'settings-roles':      '/settings?tab=roles',
   // Settings
   'settings':            '/settings',
-  'account-details':     '/settings/account',
+  'account-details':     '/settings?tab=org-general', // Legacy navigation alias
   'profile-settings':    '/settings/profile',
   'tasks':               '/operations/taskboard',
   'inbox':               '/inbox',

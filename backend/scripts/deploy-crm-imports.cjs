@@ -16,6 +16,7 @@ const expansion = '20261027000000_crm_import_integrity';
 const retirement = '20261028000000_retire_legacy_crm_imports';
 const relationshipExpansion = '20261101000000_expand_canonical_relationships';
 const leadRetirement = '20261112000000_retire_lead_nonform_columns';
+const crmRetirement = '20261110000000_retire_unused_crm_columns';
 const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
 
@@ -32,6 +33,14 @@ async function migrationRecords(db) {
   return present ? db.$queryRawUnsafe('SELECT migration_name, finished_at, rolled_back_at, checksum FROM "_prisma_migrations"') : [];
 }
 
+function verifyAppliedHistory(records, localNames) {
+  for (const row of records.filter(finished)) {
+    if (!localNames.includes(row.migration_name)) fail('APPLIED_MIGRATION_MISSING_FROM_RELEASE');
+    const source = readFileSync(join(root, 'migrations', row.migration_name, 'migration.sql'), 'utf8');
+    if (!checksumMatches(source, row.checksum)) fail('APPLIED_MIGRATION_CHECKSUM_MISMATCH');
+  }
+}
+
 function deploymentTarget(records, localNames) {
   if (records.some(row => !row.finished_at && !row.rolled_back_at)) fail('FAILED_MIGRATION_REQUIRES_RECOVERY');
   if (records.some(row => row.migration_name === retirement && finished(row))) {
@@ -46,23 +55,31 @@ function deploymentTarget(records, localNames) {
 // Keep the separate authenticated retirement gate while deploying current auth.
 function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
-  const excludeLead = localNames.includes(leadRetirement) && !records.some(row => row.migration_name === leadRetirement && finished(row)) ? [leadRetirement] : [];
-  if (target !== relationshipExpansion) return { through: target, exclude: excludeLead };
+  // Keep old serving clients and rollback images compatible. Column retirement
+  // requires its own reviewed release; normal startup only expands the schema.
+  const deferred = [crmRetirement, leadRetirement].filter(name => localNames.includes(name)
+    && !records.some(row => row.migration_name === name && finished(row)));
+  if (target !== relationshipExpansion) return { through: target, exclude: deferred };
   const independent = [
     '20261103000000_reply_engagement_deal_batches',
     '20261104000000_user_first_login_onboarding',
     '20261105000000_module_custom_fields',
     '20261106000000_campaign_sms_snapshots',
+    '20261106000000_scoped_mailbox_delivery',
     '20261107000000_textbee_webhook_receipts',
     '20261108000000_campaign_delivered_status',
     '20261109000000_campaign_final_statuses',
     '20261110000000_preserve_retired_lead_fields',
+    crmRetirement,
     '20261111000000_crm_ownership_safety',
     leadRetirement,
+    '20261113000000_mailbox_message_headers',
+    '20261114000000_notification_delivery',
+    '20261115000000_dashboard_revisions',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
-  return { through: later.sort().at(-1) || target, exclude: [relationshipRetirement, ...excludeLead] };
+  return { through: later.sort().at(-1) || target, exclude: [relationshipRetirement, ...deferred] };
 }
 
 async function recoverRetirement(db) {
@@ -114,13 +131,21 @@ function migrate(through, exclude = []) {
 
 async function main() {
   const mode = process.argv[2];
-  if (!['--deploy', '--expand', '--recover', '--verify', '--retire'].includes(mode)) fail('INVALID_ROLLOUT_MODE');
+  if (!['--deploy', '--plan', '--expand', '--recover', '--verify', '--retire'].includes(mode)) fail('INVALID_ROLLOUT_MODE');
   if (mode === '--expand') { migrate(expansion); return; }
   const db = new PrismaClient({ log: [], datasources: { db: { url: process.env.DIRECT_URL || process.env.DATABASE_URL } } });
   try {
     if (mode === '--recover') { await recoverRetirement(db); return; }
-    if (mode === '--deploy') {
-      const plan = deploymentPlan(await migrationRecords(db), readdirSync(join(root, 'migrations')));
+    if (mode === '--deploy' || mode === '--plan') {
+      const records = await migrationRecords(db), names = readdirSync(join(root, 'migrations'));
+      verifyAppliedHistory(records, names);
+      const plan = deploymentPlan(records, names);
+      if (mode === '--plan') {
+        const pending = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name)
+          && !records.some(row => row.migration_name === name && finished(row))).sort();
+        console.log(JSON.stringify({ ...plan, pending, applied: records.filter(finished).length, checksums: 'verified' }));
+        return;
+      }
       await db.$disconnect();
       migrate(plan.through, plan.exclude);
       if (plan.through === expansion) console.log('CRM import expansion ready. Legacy-table retirement is deferred until deployed API verification.');
@@ -141,7 +166,7 @@ async function main() {
     }
   } finally { await db.$disconnect(); }
 }
-module.exports = { deploymentTarget, deploymentPlan, migrate, recoverRetirement, checksumMatches };
+module.exports = { deploymentTarget, deploymentPlan, migrate, recoverRetirement, checksumMatches, verifyAppliedHistory };
 if (require.main === module) main().catch(error => {
   // Assertion/Prisma payloads can contain historical PII. Report codes only.
   console.error('[crm-import-rollout]', error.code || error.errorCode || error.name, 'Rollout stopped; legacy data has not been discarded by the verifier.');

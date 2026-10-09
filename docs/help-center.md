@@ -207,7 +207,6 @@ The complete article inventory follows.
 | Creating a Form | /help/articles/forms | settings.ts |
 | Form Fields | /help/articles/form-fields | settings.ts |
 | Publishing and Sharing Forms: current limits | /help/articles/form-publishing | settings.ts |
-| Account Details | /help/articles/account-details | settings.ts |
 | Understanding the Audit Trail | /help/articles/audit-trail | settings.ts |
 | Role-Based Access | /help/articles/role-based-access | settings.ts |
 | Why can’t I create a record? | /help/articles/cannot-create-record | troubleshooting.ts |

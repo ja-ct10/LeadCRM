@@ -26,7 +26,6 @@ export const ROUTES = {
   REPORTS: 'reports',
   USERS: 'users',
   SETTINGS: 'settings',
-  ACCOUNT_DETAILS: 'account-details',
   PROFILE_SETTINGS: 'profile-settings',
 
 } as const;

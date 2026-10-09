@@ -18,3 +18,4 @@ tenantModels.add('DealCreationReceipt');
 tenantModels.add('SmsWebhookReceipt');
 tenantModels.add('NotificationEvent');
 tenantModels.add('NotificationDelivery');
+tenantModels.add('DashboardRevision');

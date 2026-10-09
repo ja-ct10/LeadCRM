@@ -243,6 +243,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const accessRefresh = useRef({ refreshUser, refreshPermissions });
+  accessRefresh.current = { refreshUser, refreshPermissions };
+  useEffect(() => {
+    if (USE_MOCK_AUTH || !user?.id || typeof EventSource === 'undefined') return;
+    // Keep observing access when a module guard unmounts the Dashboard. This
+    // allows a later permission grant to restore the module without a reload.
+    const source = new EventSource('/api/proxy/auth/events');
+    let previous: string | undefined;
+    const refresh = () => {
+      clearPageCache();
+      void Promise.allSettled([accessRefresh.current.refreshUser(), accessRefresh.current.refreshPermissions()]);
+    };
+    source.addEventListener('authorization-change', event => {
+      const revision = (event as MessageEvent<string>).data;
+      if (revision === previous) return;
+      if (previous !== undefined) { setPermissions({}); setIsPermissionsLoaded(true); }
+      previous = revision;
+      refresh();
+    });
+    source.addEventListener('open', refresh);
+    source.addEventListener('authorization-access-changed', () => {
+      requestGeneration.current += 1;
+      permissionGeneration.current += 1;
+      activeUserId.current = null;
+      setUser(null); setTenant(null); setPermissions({});
+      clearPageCache(); source.close();
+    });
+    return () => source.close();
+  }, [user?.id, user?.tenantId]);
+
   const login = async (email: string, password?: string): Promise<boolean> => {
     if (USE_MOCK_AUTH) return mockLogin(email);
     const generation = ++requestGeneration.current;

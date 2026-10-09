@@ -384,13 +384,32 @@ bound to the selected user ID. No reset token is returned to the administrator.
 
 ---
 
-## Reporting Endpoints (`/api/v1/reporting/`) — Stub
+## Reporting Endpoints (`/api/v1/reporting/`)
 
 | Method | Path | Description |
 |---|---|---|
-| `GET` | `/reporting/dashboard` | Dashboard metrics |
-| `GET` | `/reporting/contacts` | Contacts report |
-| `GET` | `/reporting/pipeline` | Pipeline report |
+| `GET` | `/reporting/dashboard` | Authorized snapshot of KPIs, charts, conversion, leaderboard and actions |
+| `GET` | `/reporting/dashboard/export` | CSV of the same reporting definitions and scope |
+| `GET` | `/reporting/dashboard/events` | Cookie/Bearer-authorized SSE of committed tenant revisions |
+| `GET` | `/reporting/pipeline-summary` | Compatibility response using current open counts and this-month terminal counts |
+| `GET` | `/reporting/deal-velocity` | Compatibility response using this-month won duration; lost duration unavailable |
+| `GET` | `/reporting/contact-status` | Eligible current Leads by status, authorized assignment scope |
+| `GET` | `/reporting/task-completion` | Authorized task totals, pending and overdue counts |
+| `GET` | `/reporting/campaign-summary` | Existing campaign report |
+
+Dashboard queries accept `range=today|last7|last30|thisMonth|lastMonth|last3|last6|thisYear|custom`.
+Default: `thisMonth`. Custom requires inclusive `start` and `end` calendar dates (`YYYY-MM-DD`), ordered and at most 732 days apart.
+Unknown query fields, including tenant IDs, are rejected. See [Dashboard definitions](dashboard-kpis.md) for Manila boundaries and metric populations.
+
+All Dashboard APIs require `dashboard.view`. Module `canView` grants gate dependent data; staff receive currently assigned records only, and Client Admin receives workspace reporting.
+Responses use `Cache-Control: no-store`. The frontend forwards through `/api/proxy` with the existing session cookie.
+SSE emits `dashboard-change` with string counters (`analytics`, `leads`, `actions`, `access`), `dashboard-heartbeat`, `dashboard-unavailable`, or `dashboard-access-changed`.
+Counters contain no CRM record data. The stream checks current session and reporting permissions every three seconds, ends after 45 seconds and advertises a three-second reconnect delay.
+
+`GET /api/v1/auth/events` provides the same persisted access-revision stream independently of Dashboard permission.
+It emits `authorization-change` (access counter only), `authorization-heartbeat`, `authorization-unavailable`, and `authorization-access-changed`.
+This lets existing frontend permission guards remove revoked modules and restore later grants without a page reload.
+The Next proxy forwards both streams without buffering. No additional WebSocket service or browser token storage is required.
 
 ---
 

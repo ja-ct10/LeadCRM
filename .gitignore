@@ -10,6 +10,7 @@ out/
 
 # Coverage
 coverage/
+/data/outputs/dashboard-verification/
 
 # Environment files
 .env*
@@ -92,3 +93,4 @@ data/outputs/retired-features-*.json
 # Reproducible local Leads acceptance screenshots and logs.
 /data/outputs/lead-polish-browser/
 /data/outputs/notification-verification/
+/data/outputs/organization-settings-browser/

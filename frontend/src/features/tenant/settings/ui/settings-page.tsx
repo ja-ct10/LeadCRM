@@ -5,36 +5,26 @@ import { ProductsPage } from './products-page';
 import { ProductInterestsSettings } from './product-interests-settings';
 
 import React, { useState, useEffect } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { ArchivedData } from './archived-data';
 import { useAuth } from "@/store/AuthContext";
 import {
   Shield,
   Building2,
-  Search,
   Users,
   Save,
   Layout,
-  X,
-  RefreshCw,
   ChevronDown,
-  Receipt,
   Palette,
   Moon,
   Sun,
   Monitor,
-  Info,
   Archive,
-  Camera,
   User,
-  Building,
-  CreditCard,
   Zap,
   Check,
-  Banknote,
-  PhoneCall,
 } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { ACCENT_COLORS, applyAccentColor, ACCENT_KEY } from "@/lib/accent-colors";
@@ -54,7 +44,6 @@ type SettingsTab =
   | 'products'
   | 'custom-fields'
   | 'archived'
-  | 'account-details'
   | 'forms';
 
 interface NavGroup {
@@ -94,19 +83,11 @@ const NAV_GROUPS: NavGroup[] = [
       { id: 'forms', label: 'Forms', icon: Layout },
     ],
   },
-  {
-    label: 'ACCOUNT',
-    items: [
-      { id: 'account-details', label: 'Account Details', icon: Shield },
-    ],
-  },
 
 ];
 
 export default function SettingsPage(): React.ReactElement {
-  const { user, tenant, userCan } = useAuth();
-
-  const isClientAdmin = user?.role === "Client Admin";
+  const { tenant, userCan } = useAuth();
 
   const tabModules: Partial<Record<SettingsTab, string>> = { 'org-general': 'settings', users: 'users', roles: 'roles', products: 'products', 'custom-fields': 'custom_fields', archived: 'archived_data', forms: 'forms' };
   const canAccessTab = (tab: SettingsTab) => tab === 'users' ? userCan('users', 'canView') || userCan('groups', 'canView') : !tabModules[tab] || userCan(tabModules[tab]!, 'canView');
@@ -116,6 +97,7 @@ export default function SettingsPage(): React.ReactElement {
   const [isFormBuilderActive, setIsFormBuilderActive] = useState(false);
   const [isRolesViewActive, setIsRolesViewActive] = useState(false);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const tabFromUrl = searchParams?.get('tab') ?? null;
 
   // Dispatch breadcrumb event to topbar when settings tab changes
@@ -187,41 +169,6 @@ export default function SettingsPage(): React.ReactElement {
   const renderProfileTab = (): React.ReactElement => (
     <div className="space-y-6 w-full max-w-6xl"><ProfileForm />
       <SecuritySettings />
-    </div>
-  );
-
-  // -- Account Details Tab (Admin only) --
-  const renderAccountDetailsTab = (): React.ReactElement => (
-    <div className="w-full max-w-6xl space-y-4">
-      <div className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
-          <Shield className="w-4 h-4 text-[#3B82F6]" /> Account Details
-        </h3>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account Name</p>
-            <p className="text-xs font-semibold text-slate-900 dark:text-white">{tenant?.name || 'N/A'}</p>
-          </div>
-          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Account ID</p>
-            <p className="text-xs font-mono break-all text-slate-700 dark:text-slate-300">{tenant?.id || 'N/A'}</p>
-          </div>
-
-          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Status</p>
-            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-[10px] font-bold rounded-full border border-emerald-500/20">Active</span>
-          </div>
-          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Industry</p>
-            <p className="text-xs font-semibold text-slate-900 dark:text-white">{tenant?.industry || 'Not set'}</p>
-          </div>
-          <div className="p-3 bg-slate-50 dark:bg-[#1B252F] rounded-xl border border-slate-100 dark:border-slate-700/60">
-            <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Domain</p>
-            <p className="text-xs font-semibold text-slate-900 dark:text-white">{tenant?.domain || 'Not configured'}</p>
-          </div>
-        </div>
-      </div>
-
     </div>
   );
 
@@ -400,16 +347,22 @@ export default function SettingsPage(): React.ReactElement {
     'custom-fields': renderCustomFieldsTab,
     'products': () => <ProductsPage key={tenant?.id} />,
     'archived': renderArchivedTab,
-    'account-details': renderAccountDetailsTab,
   };
 
-  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'products', 'archived', 'account-details', 'forms'];
+  const VALID_TABS: SettingsTab[] = ['profile', 'appearance', 'org-general', 'users', 'roles', 'custom-fields', 'products', 'archived', 'forms'];
   useEffect(() => {
+    if (tabFromUrl === 'account-details') {
+      setActiveTab('org-general');
+      const params = new URLSearchParams(searchParams?.toString());
+      params.set('tab', 'org-general');
+      router.replace(`/settings?${params.toString()}`);
+      return;
+    }
     if (tabFromUrl && VALID_TABS.includes(tabFromUrl as SettingsTab)) {
       setActiveTab(tabFromUrl as SettingsTab);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tabFromUrl]);
+  }, [tabFromUrl, router]);
 
   const activeGroup = visibleNavGroups.find((g) => g.items.some((i) => i.id === activeTab));
   const activeItem = activeGroup?.items.find((i) => i.id === activeTab);
@@ -513,7 +466,7 @@ export default function SettingsPage(): React.ReactElement {
         return (
           <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
-              <PageHeader title={activeItem?.label ?? 'Settings'} subtitle={activeItem?.label === 'Account Details' ? 'Manage your account and security information.' : undefined} />
+              <PageHeader title={activeItem?.label ?? 'Settings'} />
             )}
             {!canAccessTab(activeTab) ? <p role="alert">You do not have permission to access this settings section.</p> : activeTab === 'forms'
               ? <FormsTab onBuilderActiveChange={setIsFormBuilderActive} />

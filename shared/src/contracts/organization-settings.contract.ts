@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
+import type { TenantStatus } from '../types/tenant.types';
 
 export const ORGANIZATION_FIELD_LIMITS = { name: 150, industry: 32, email: 254, phone: 24, domain: 253, address: 500 } as const;
 export const ORGANIZATION_FIELD_LIMIT_ERRORS = {
@@ -65,6 +66,7 @@ export const UpdateOrganizationSettingsSchema = z.object({
 export type UpdateOrganizationSettings = z.infer<typeof UpdateOrganizationSettingsSchema>;
 export interface OrganizationSettings {
   id: string;
+  status: TenantStatus;
   name: string;
   industry: string | null;
   email: string | null;

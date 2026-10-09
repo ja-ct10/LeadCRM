@@ -67,7 +67,7 @@ The migration was replayed against a disposable PostgreSQL-compatible PGlite dat
 ## Frontend enforcement
 
 - Sidebar module links and direct routes use the applicable View permissions. Create/import routes additionally check their action. Settings sub-navigation checks each administration/customization permission; users and groups remain independent.
-- Profile Settings, Appearance, and personal Account Details remain accessible to authenticated users without Organization Settings permissions.
+- Profile Settings and Appearance remain accessible to authenticated users without Organization Settings permissions. Organization General and legacy Account Details links require `settings.view`; editing requires `settings.edit`.
 - CRM create, inline edit, archive and import controls use their module grants. Pipeline configuration uses `deals.manage_stages`.
 - Tasks use separate create/edit/complete/assign/archive controls. Completion/reassignment can operate without general editing.
 - Campaign creation, editing, sending, duplication, archiving and reporting are separate. Draft editing does not permit Send. Report-only metrics are hidden without Reports access.

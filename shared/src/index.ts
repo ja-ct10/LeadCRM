@@ -37,3 +37,4 @@ export * from './constants/company-industries';
 
 export * from './contracts/deal-batch';
 export * from './contracts/lead.contract';
+export * from './contracts/dashboard.contract';

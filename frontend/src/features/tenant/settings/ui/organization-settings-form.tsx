@@ -1,10 +1,13 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { Building2, Globe, Mail, Phone, Link, MapPin, Pencil, Save } from 'lucide-react';
+import { Building2, Globe, Mail, Phone, Link, MapPin, Pencil, Save, Copy } from 'lucide-react';
 import { toast } from 'sonner';
 import { UpdateOrganizationSettingsSchema, formatOrganizationPhone, ORGANIZATION_FIELD_LIMIT_ERRORS, ORGANIZATION_FIELD_LIMITS, ORGANIZATION_PHONE_ERROR, COMPANY_INDUSTRIES, type OrganizationSettings } from '@leadcrm/shared';
 import { PageHeader } from '@/shared/components/ui/page-header';
+import { Card } from '@/shared/components/ui/card';
+import { Badge, type BadgeProps } from '@/shared/components/ui/badge';
+import { Button } from '@/shared/components/ui/button';
 import { useAuth } from '@/store/AuthContext';
 import { settingsApiService } from '../services/settings.service';
 
@@ -18,10 +21,19 @@ const toDraft = (settings: OrganizationSettings): Draft => ({
   name: settings.name, industry: settings.industry ?? '', email: settings.email ?? '',
   phone: formatOrganizationPhone(settings.phone ?? ''), domain: settings.domain ?? '', address: settings.address ?? '',
 });
+const accountStatuses: Record<OrganizationSettings['status'], { label: string; variant: BadgeProps['variant'] }> = {
+  SANDBOX: { label: 'Sandbox', variant: 'info' },
+  ACTIVE: { label: 'Active', variant: 'success' },
+  SUSPENDED: { label: 'Suspended', variant: 'warning' },
+  CANCELLED: { label: 'Cancelled', variant: 'secondary' },
+  DELETED: { label: 'Deleted', variant: 'destructive' },
+};
 
 export function OrganizationSettingsForm() {
   const { tenant, userCan, applyOrganizationSettings } = useAuth();
+  const canView = userCan('settings', 'canView');
   const canEdit = userCan('settings', 'canEdit');
+  const [organization, setOrganization] = useState<OrganizationSettings | null>(null);
   const [saved, setSaved] = useState<Draft | null>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [editing, setEditing] = useState(false);
@@ -34,23 +46,34 @@ export function OrganizationSettingsForm() {
 
   useEffect(() => {
     const current = ++generation.current;
-    setFieldErrors({}); setSaved(null); setDraft(null); setEditing(false); setError(null); setSaving(false); busy.current = false;
-    if (tenant?.id) {
-      settingsApiService.getOrganization().then(({ data }) => {
+    const controller = new AbortController();
+    setFieldErrors({}); setOrganization(null); setSaved(null); setDraft(null); setEditing(false); setError(null); setSaving(false); busy.current = false;
+    if (tenant?.id && canView) {
+      settingsApiService.getOrganization(controller.signal).then(({ data }) => {
         if (generation.current !== current) return;
+        if (!data || data.id !== tenant.id) throw new Error('Unable to load organization information for this workspace.');
+        setOrganization(data);
         setSaved(toDraft(data)); setDraft(toDraft(data));
+        applyOrganizationSettings(data);
       }).catch(reason => {
         if (generation.current === current) setError(reason instanceof Error ? reason.message : 'Unable to load organization settings.');
       });
     }
-    return () => { generation.current++; };
-  }, [tenant?.id, reload]);
+    return () => { generation.current++; controller.abort(); };
+  }, [tenant?.id, canView, reload, applyOrganizationSettings]);
+
+  useEffect(() => {
+    // Re-read authoritative profile/status on return without interrupting unsaved edits.
+    const refresh = () => { if (canView && !editing && !busy.current) setReload(value => value + 1); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [canView, editing]);
 
   useEffect(() => { if (!canEdit) { setEditing(false); setDraft(saved); } }, [canEdit, saved]);
 
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!editing || !canEdit || busy.current || !draft) return;
+    if (!editing || !canView || !canEdit || busy.current || !draft) return;
     if (Object.values(fieldErrors).some(Boolean)) return;
     const parsed = UpdateOrganizationSettingsSchema.safeParse(draft);
     if (!parsed.success) {
@@ -63,7 +86,9 @@ export function OrganizationSettingsForm() {
     try {
       const { data } = await settingsApiService.updateOrganization(parsed.data);
       if (generation.current !== current) return;
+      if (!data || data.id !== tenant?.id) throw new Error('Unable to confirm the saved organization information.');
       const persisted = toDraft(data);
+      setOrganization(data);
       setSaved(persisted); setDraft(persisted); setEditing(false);
       applyOrganizationSettings(data);
       toast.success('Organization settings saved successfully');
@@ -78,8 +103,19 @@ export function OrganizationSettingsForm() {
     }
   };
 
+  const copyAccountId = async () => {
+    if (!organization || organization.id !== tenant?.id || !canView) return;
+    try {
+      await navigator.clipboard.writeText(organization.id);
+      toast.success('Account ID copied');
+    } catch {
+      toast.error('Unable to copy Account ID. Please copy it manually.');
+    }
+  };
+
+  if (!canView) return <p role="alert">You do not have permission to access this settings section.</p>;
   if (error) return <div role="alert" className="space-y-3 text-sm"><p>{error}</p><button type="button" onClick={() => setReload(value => value + 1)} className="border rounded-lg px-3 py-2">Retry</button></div>;
-  if (!draft) return <div role="status" aria-label="Loading organization settings" className="w-full max-w-none min-w-0 space-y-6">
+  if (!draft || organization?.id !== tenant?.id) return <div role="status" aria-label="Loading organization settings" className="w-full max-w-none min-w-0 space-y-6">
     <PageHeader title="General" subtitle="Manage your organization's profile and contact details." />
     <section className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
     <div><h3 className="text-sm font-semibold">Organization Details</h3><p className="text-xs text-slate-500 mt-1">Your organization's profile and contact details</p></div>
@@ -90,6 +126,7 @@ export function OrganizationSettingsForm() {
     </section>
   </div>;
 
+  const accountStatus = organization && accountStatuses[organization.status];
   return <form onSubmit={save} noValidate className="w-full max-w-none min-w-0 space-y-6">
     <PageHeader title="General" subtitle="Manage your organization's profile and contact details." />
     <section aria-labelledby="organization-details-title" className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
@@ -148,5 +185,21 @@ export function OrganizationSettingsForm() {
       <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Save size={14} />{saving ? 'Saving…' : 'Save Changes'}</button>
     </div>}
     </section>
+    <Card role="region" aria-labelledby="system-information-title" className="bg-white dark:bg-[#25313D] border-gray-200 dark:border-white/[0.06] shadow-none backdrop-blur-none p-5 space-y-5">
+      <h3 id="system-information-title" className="text-sm font-semibold">System Information</h3>
+      <dl className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="min-w-0 space-y-1.5">
+          <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Account ID</dt>
+          <dd className="flex items-center gap-2 min-w-0">
+            <span className="min-w-0 break-all font-mono text-sm text-slate-900 dark:text-white">{organization?.id}</span>
+            <Button type="button" variant="ghost" size="icon" className="shrink-0 h-8 w-8" aria-label="Copy Account ID" title="Copy Account ID" onClick={copyAccountId}><Copy aria-hidden="true" /></Button>
+          </dd>
+        </div>
+        <div className="space-y-1.5">
+          <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Account Status</dt>
+          <dd>{accountStatus ? <Badge variant={accountStatus.variant} className="rounded-full"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />{accountStatus.label}</Badge> : <span className="text-sm text-slate-500">Unavailable</span>}</dd>
+        </div>
+      </dl>
+    </Card>
   </form>;
 }

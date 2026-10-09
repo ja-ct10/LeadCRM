@@ -29,6 +29,16 @@ beforeEach(() => {
   mocks.signOut.mockResolvedValue({});
   mocks.permissions.mockResolvedValue({ data: { dashboard: { canView: true } } });
 });
+it('synchronizes saved organization metadata and ignores another tenant response', async () => {
+  show(); await waitFor(() => expect(auth.isLoading).toBe(false));
+  await act(async () => { await auth.login(user.email, 'password'); });
+  const saved = { id: 'tenant', status: 'SANDBOX' as const, name: 'Saved workspace', industry: 'Technology', email: 'info@camxian.com', phone: '+63281233488', domain: 'camxian.com', address: 'Manila' };
+  act(() => auth.applyOrganizationSettings(saved));
+  expect(auth.tenant).toMatchObject({ id: 'tenant', name: saved.name, domain: saved.domain });
+  expect(auth.user?.tenantName).toBe(saved.name);
+  act(() => auth.applyOrganizationSettings({ ...saved, id: 'other', name: 'Another tenant' }));
+  expect(auth.tenant?.name).toBe(saved.name); expect(auth.user?.tenantName).toBe(saved.name);
+});
 it('does not let a late restore overwrite a successful login', async () => {
   let restore!: (value: unknown) => void;
   mocks.me.mockReturnValue(new Promise(resolve => { restore = resolve; }));

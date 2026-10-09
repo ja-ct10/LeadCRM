@@ -45,7 +45,7 @@ async function proxyRequest(
     'Content-Type': req.headers.get('content-type') ?? 'application/json',
     'Accept': 'application/json',
   };
-  const mailboxStream = req.method === 'GET' && path === '/integrations/gmail/events';
+  const mailboxStream = req.method === 'GET' && ['/integrations/gmail/events', '/reporting/dashboard/events', '/auth/events'].includes(path);
   if (mailboxStream) headers.Accept = 'text/event-stream';
 
   // Forward the HttpOnly cookie server-side — this is the whole reason the
