@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { notificationDestination } from '../notification-destination';
+import { resolveNotificationDestination } from '../notification-destination';
 import { useNotifications } from '../hooks/use-notifications';
 import { NotificationContent, NotificationEmptyState } from './notification-content';
 import { Button } from '@/shared/components/ui/button';
@@ -18,7 +18,7 @@ interface NotificationsDropdownProps {
 }
 
 export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: NotificationsDropdownProps) {
-  const { notifications, unreadCount, isLoading, isMutating, hasError, refresh, markAsRead, markAllAsRead } = useNotifications();
+  const { notifications, unreadCount, isLoading, isMutating, hasError, refresh, markAsRead, markAllAsRead } = useNotifications('all', { enabled: isOpen, limit: 5 });
   const shouldReduce = useReducedMotion();
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState<{ top: number; left: number; width: number; maxHeight: number }>();
@@ -91,7 +91,7 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
             <button key={notification.id} type="button" disabled={isMutating}
               onClick={async () => {
                 if (!notification.isRead && !await markAsRead(notification.id)) return;
-                const destination = notificationDestination(notification);
+                const destination = await resolveNotificationDestination(notification.id);
                 if (destination) { onClose(); router.push(destination); }
               }}
               className={cn('flex w-full items-start gap-3 px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',

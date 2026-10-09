@@ -1,4 +1,5 @@
 'use client';
+import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 import { useEffect, useRef, useState } from 'react';
@@ -51,6 +52,8 @@ export default function WorkflowsPage() {
   const [archiving, setArchiving] = useState<Workflow | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   useEffect(() => { setSelected(new Set()); setArchiving(null); setRuns(null); }, [tenant?.id, page, pageSize, search, statuses, triggers]);
+  useNotificationRecordLink('workflowId', (tenant?.id ?? '') + ':' + (user?.id ?? ''), canView && canViewRuns,
+    async id => (await workflowsApi.get(id)).data, setRuns);
   const [busy, setBusy] = useState(false);
   const mutationLock = useRef(false);
   useEffect(() => {

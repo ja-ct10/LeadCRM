@@ -23,7 +23,7 @@ interface TopbarProps {
 // -- Component -----------------------------------------------------------------
 
 export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): React.ReactElement {
-  const { unreadCount: notificationCount } = useNotifications();
+  const { unreadCount: notificationCount } = useNotifications('all', { countsOnly: true });
   const { currentPath } = useLayout();
   const { tenant, user } = useAuth();
   const pathname = usePathname();

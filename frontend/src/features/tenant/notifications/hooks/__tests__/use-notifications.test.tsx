@@ -5,7 +5,7 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 
 const mocks = vi.hoisted(() => ({
   auth: { tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Sales Rep' } },
-  list: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), delete: vi.fn(),
+  list: vi.fn(), counts: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), delete: vi.fn(),
 }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
@@ -19,6 +19,7 @@ beforeEach(() => {
   clearPageCache();
   mocks.auth.user.id = 'user-a';
   mocks.list.mockReset().mockImplementation(async ({ page }) => response(page));
+  mocks.counts.mockImplementation(async () => ({ success: true, unreadCount: 30 - read.size, totalCount: 30 }));
   mocks.markRead.mockImplementation(async (id: string) => { read.add(id); return { success: true, totalCount: 30, unreadCount: 30 - read.size }; });
   mocks.markAllRead.mockResolvedValue({ success: true, totalCount: 30, unreadCount: 0 });
   mocks.delete.mockReset();
@@ -97,4 +98,38 @@ it('restores page-one pagination metadata on return navigation', async () => {
   const next = renderHook(useNotifications);
   expect(next.result.current.notifications).toHaveLength(1);
   expect(next.result.current.hasMore).toBe(true);
+});
+
+it('shares a single badge request and does not download feed pages for the bell or a closed dropdown', async () => {
+  mocks.counts.mockClear(); mocks.list.mockClear();
+  const bell = renderHook(() => useNotifications('all', { countsOnly: true }));
+  const otherBell = renderHook(() => useNotifications('all', { countsOnly: true }));
+  renderHook(() => useNotifications('all', { enabled: false, limit: 5 }));
+  await waitFor(() => expect(bell.result.current.unreadCount).toBe(30));
+  expect(otherBell.result.current.unreadCount).toBe(30);
+  expect(mocks.counts).toHaveBeenCalledTimes(1);
+  expect(mocks.list).not.toHaveBeenCalled();
+});
+
+it('does not let a stale response populate another user or tenant scope', async () => {
+  let finish!: (value: unknown) => void;
+  mocks.list.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const hook = renderHook(useNotifications);
+  mocks.auth.user.id = 'user-b';
+  mocks.list.mockResolvedValue({ ...response(1), data: [{ id: 'new-user', isRead: false }] });
+  hook.rerender();
+  await waitFor(() => expect(hook.result.current.notifications[0]?.id).toBe('new-user'));
+  await act(async () => { finish(response(1)); });
+  expect(hook.result.current.notifications.map(n => n.id)).toEqual(['new-user']);
+});
+
+it('blocks concurrent conflicting mutations across mounted views', async () => {
+  const first = renderHook(useNotifications), second = renderHook(useNotifications);
+  await waitFor(() => expect(first.result.current.notifications).toHaveLength(1));
+  let finish!: (value: unknown) => void;
+  mocks.delete.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  let deletion!: Promise<boolean>;
+  act(() => { deletion = first.result.current.deleteNotifications(['n1']); });
+  await act(async () => { expect(await second.result.current.markAsRead('n1')).toBe(false); });
+  await act(async () => { finish({ success: true, totalCount: 29, unreadCount: 29 }); await deletion; });
 });

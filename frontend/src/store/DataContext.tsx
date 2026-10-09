@@ -205,6 +205,13 @@ const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
+// Bootstrap may include modules a staff role cannot view. A denied optional read
+// must not discard the other authorized module results or display a transport error.
+async function optionalModuleRead<T>(request: Promise<T>): Promise<T | null> {
+  try { return await request; }
+  catch (error) { if ((error as ApiRequestError).status === 403) return null; throw error; }
+}
+
 export function DataProvider({ children }: { children: ReactNode }) {
   const [closingDealId, setClosingDealId] = useState<string>();
   const { user, tenant, userCan, isLoading: authLoading, authError } = useAuth();
@@ -344,10 +351,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
         //   🔄 tasks           → task-board, dashboard, RecordPanelWrappers, deals-page
         //   🔄 workflows       → workflows-page, campaign-builder, settings
         const [orgsRes, dealsRes, pipelinesRes, usersRes] = await Promise.all([
-          organizationsService.getAll({ limit: 100 }),
-          pipelineService.getDeals(undefined, 100),
-          pipelineService.getPipelines(),
-          loadShared ? usersService.getDirectory() : Promise.resolve(null),
+          optionalModuleRead(organizationsService.getAll({ limit: 100 })),
+          optionalModuleRead(pipelineService.getDeals(undefined, 100)),
+          optionalModuleRead(pipelineService.getPipelines()),
+          loadShared ? optionalModuleRead(usersService.getDirectory()) : Promise.resolve(null),
         ]);
 
         if (!isCurrent()) return;
@@ -369,7 +376,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         // the dashboard never silently shows empty data without explanation.
         // 403 permission responses are excluded -- those are expected for restricted
         // modules and should not alarm the user with a generic error.
-        if (err instanceof Error && !err.message.includes('403')) {
+        if (err instanceof Error && (err as ApiRequestError).status !== 403) {
           toast.error('Failed to load data. Please refresh the page.');
         }
       }

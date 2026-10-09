@@ -1,3 +1,4 @@
+import { setNotificationActor } from '../../notifications/notification-actor';
 import { cancelOpenDeals } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
@@ -23,7 +24,10 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
   for (let attempt = 0; ; attempt++) {
     const effects: Array<() => Promise<void>> = [];
     let result: T;
-    try { result = await committedEffects.run(effects, () => prisma.$transaction(work, { isolationLevel: 'Serializable', timeout: 20000 })); }
+    try { result = await committedEffects.run(effects, () => prisma.$transaction(async tx => {
+      await setNotificationActor(tx);
+      return work(tx);
+    }, { isolationLevel: 'Serializable', timeout: 20000 })); }
     catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code) && attempt < 4) continue;
       throw error;

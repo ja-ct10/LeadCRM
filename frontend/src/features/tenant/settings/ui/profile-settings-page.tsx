@@ -1,5 +1,6 @@
 'use client';
 
+import { useNotificationPreferences } from '@/features/tenant/notifications/hooks/use-notification-preferences';
 import { SecuritySettings } from './security-settings';
 import { ProfileForm } from './profile-form';
 import React, { useState } from "react";
@@ -72,15 +73,9 @@ export default function ProfileSettingsPage({
   };
 
 
-  // Notification states
-  const [notiEmailLeads, setNotiEmailLeads] = useState(true);
-  const [notiEmailPipeline, setNotiEmailPipeline] = useState(true);
-  const [notiSmsHot, setNotiSmsHot] = useState(false);
-  const [notiPushAll, setNotiPushAll] = useState(true);
-
-  const handleSaveNotifications = () => {
-    toast.success("Notification channels updated.");
-  };
+  const notificationPreferences = useNotificationPreferences();
+  const { leadAssignmentEmail: notiEmailLeads, dailyPipelineBriefing: notiEmailPipeline, urgentHotLeadSms: notiSmsHot, inAppGeneral: notiPushAll } = notificationPreferences.data;
+  const handleSaveNotifications = notificationPreferences.save;
 
   return (
     <div className="max-w-4xl mx-auto p-4 md:p-6 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-300">
@@ -275,7 +270,7 @@ export default function ProfileSettingsPage({
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/[0.06] rounded-2xl p-6 shadow-xs space-y-4">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 dark:text-white">
-                  Push & Email Reminders
+                  Notification Channels
                 </h3>
                 <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
                   Control pipeline summaries, daily lead updates and secure
@@ -291,14 +286,13 @@ export default function ProfileSettingsPage({
                       Lead Assignment Email Alerts
                     </span>
                     <span className="text-[10px] text-slate-400 block max-w-sm mt-0.5">
-                      Notify instantly when a customer profile or organization
-                      is delegated to your pipeline.
+                      Unavailable: Lead assignment email delivery is not implemented.
                     </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setNotiEmailLeads(!notiEmailLeads)}
-                    className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer shrink-0 ${
+                    disabled role="switch" aria-label="Lead Assignment Email Alerts — unavailable" aria-checked={false}
+                    className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
                       notiEmailLeads
                         ? "bg-[#0A6EFF]"
                         : "bg-slate-300 dark:bg-slate-850"
@@ -319,13 +313,12 @@ export default function ProfileSettingsPage({
                       Daily Pipeline Briefing reports
                     </span>
                     <span className="text-[10px] text-slate-400 block max-w-sm mt-0.5">
-                      Send a morning report summing upcoming deal expected close
-                      dates and workflow tasks.
+                      Unavailable: Scheduled daily briefings are not implemented.
                     </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setNotiEmailPipeline(!notiEmailPipeline)}
+                    disabled role="switch" aria-label="Daily Pipeline Briefing reports — unavailable" aria-checked={false}
                     className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer shrink-0 ${
                       notiEmailLeads
                         ? "bg-[#0A6EFF]"
@@ -347,13 +340,12 @@ export default function ProfileSettingsPage({
                       Urgent hot lead SMS notification cascade
                     </span>
                     <span className="text-[10px] text-slate-400 block max-w-sm mt-0.5">
-                      Send an SMS verified notification when a lead changes
-                      status to hot or requires urgent callback.
+                      Unavailable: Staff SMS alerts and consent controls are not configured.
                     </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setNotiSmsHot(!notiSmsHot)}
+                    disabled role="switch" aria-label="Urgent Hot Lead SMS notifications — unavailable" aria-checked={false}
                     className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer shrink-0 ${
                       notiSmsHot
                         ? "bg-[#0A6EFF]"
@@ -372,16 +364,17 @@ export default function ProfileSettingsPage({
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                      In-app general push alerts
+                      In-app general notification alerts
                     </span>
                     <span className="text-[10px] text-slate-400 block max-w-sm mt-0.5">
-                      Enable floating window message logs from teammates and
-                      workspace campaigns.
+                      Show optional operational notifications in the app. Account-integrity alerts remain enabled.
                     </span>
                   </div>
                   <button
                     type="button"
-                    onClick={() => setNotiPushAll(!notiPushAll)}
+                    role="switch" aria-label="In-app general notification alerts" aria-checked={notiPushAll}
+                    disabled={!notificationPreferences.ready || notificationPreferences.loading || notificationPreferences.saving}
+                    onClick={() => notificationPreferences.setInApp(!notiPushAll)}
                     className={`w-11 h-6 rounded-full transition-colors flex items-center p-1 cursor-pointer shrink-0 ${
                       notiPushAll
                         ? "bg-[#0A6EFF]"
@@ -398,15 +391,18 @@ export default function ProfileSettingsPage({
               </div>
             </div>
 
+            {notificationPreferences.loading && <p role="status" className="text-sm text-muted-foreground">Loading notification preferences...</p>}
+            {notificationPreferences.error && <p role="alert" className="text-sm text-red-600">{notificationPreferences.error} <button className="underline" onClick={notificationPreferences.retry}>Reload</button></p>}
             {/* Save button row */}
             <div className="flex justify-end pt-2">
               <button
                 type="button"
-                onClick={handleSaveNotifications}
+                onClick={() => void handleSaveNotifications()}
+                disabled={!notificationPreferences.ready || notificationPreferences.loading || notificationPreferences.saving || !notificationPreferences.dirty}
                 className="flex items-center gap-2 bg-slate-950 hover:bg-slate-900 dark:bg-slate-50 dark:hover:bg-slate-100 text-white dark:text-slate-950 font-bold px-6 py-2.5 rounded-xl text-xs select-none transition-transform hover:scale-[1.02] active:scale-[0.98] shadow-sm cursor-pointer"
               >
                 <Save size={14} />
-                <span>Save Channels</span>
+                <span>{notificationPreferences.saving ? 'Saving...' : !notificationPreferences.ready || notificationPreferences.dirty ? 'Save Channels' : 'Saved'}</span>
               </button>
             </div>
           </div>

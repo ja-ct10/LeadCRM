@@ -78,13 +78,16 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
   it('blocks direct endpoints and generic task/user mutation bypasses', async () => {
     const actor = await roleUser('Restricted QA', []);
     for (const [method,path] of [
-      ['GET','/operations/tasks'], ['GET','/automation/workflows'], ['GET','/marketing/forms'], ['GET','/administration/groups'],
+      ['GET','/operations/tasks'], ['GET','/automation/workflows'], ['GET','/marketing/forms'],
       ['GET','/administration/product-interests'], ['GET','/administration/closing-requirements'], ['GET','/administration/archived-data'],
       ['PATCH','/operations/tasks/missing/complete'], ['PATCH','/automation/workflows/missing/toggle'], ['GET','/automation/workflows/missing/executions'],
       ['PATCH','/marketing/forms/missing/publish'], ['DELETE','/marketing/forms/missing'], ['GET','/marketing/forms/missing/submissions'],
       ['GET','/administration/product-interests/missing/closed-won'], ['PATCH','/administration/archived-data/leads/missing/restore'],
       ['POST','/administration/roles/assign'], ['PUT',`/administration/users/${actor.user.userId}`],
     ]) expect((await call(path, actor.token, method, method === 'GET' ? undefined : {})).status, path).toBe(403);
+    // Group directory visibility is intentionally tenant-wide; membership writes remain restricted.
+    expect((await call('/administration/groups', actor.token)).status).toBe(200);
+    expect((await call('/administration/groups/missing/members', actor.token, 'POST', { userId: actor.user.userId })).status).toBe(403);
     const editor = await roleUser('Task Editor QA', [{ module: 'tasks', canView: true, canCreate: true, canEdit: true }]);
     const task = await call('/operations/tasks', editor.token, 'POST', { title: 'Permission QA', dueDate: '2026-11-01T09:00:00.000Z', assignedUserId: editor.user.userId });
     expect(task.status, JSON.stringify(task.body)).toBe(201);

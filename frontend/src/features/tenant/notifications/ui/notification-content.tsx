@@ -8,9 +8,11 @@ function notificationIcon(type: string) {
     case 'open_rate_update': case 'engagement_alert': return TrendingUp;
     case 'budget_alert': case 'ad_budget_update': return DollarSign;
     case 'scheduled_reminder': return Calendar;
-    case 'new_leads': case 'lead_assigned': case 'deal_assigned': return Users;
+    case 'new_leads': case 'lead_assigned': case 'contact_assigned': case 'account_assigned': case 'deal_assigned': case 'task_assigned': case 'user_created': case 'user_status_changed': return Users;
     case 'listing_expiring': case 'task_due': case 'task_overdue': return Clock;
-    case 'approval_pending': case 'workflow_failed': return AlertCircle;
+    case 'approval_pending': case 'workflow_failed': case 'campaign_failed': case 'form_processing_failed':
+    case 'mailbox_disconnected': case 'mailbox_sync_failed': case 'closing_requirements_needed': return AlertCircle;
+    case 'customer_hot': case 'customer_cold': case 'customer_cancelled': case 'deal_won': case 'deal_lost': case 'deal_progressed': case 'closing_requirements_completed': return TrendingUp;
     default: return Mail;
   }
 }

@@ -66,7 +66,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       email: `workflow-${name}-${stamp}@camxian.com`, firstName: name, lastName: 'Test', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date() } });
     actor = await user('actor'); owner = await user('owner', tenantId, 'Sales'); outsider = await user('outsider', otherTenantId);
     const salesRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales' } });
-    await prisma.rolePermission.createMany({ data: ['leads', 'deals'].map(module => ({ tenantId, roleId: salesRole.id, module, canView: true, canEdit: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'deals', 'tasks'].map(module => ({ tenantId, roleId: salesRole.id, module, canView: true, canEdit: true })) });
     await prisma.userRole.create({ data: { tenantId, userId: owner.id, roleId: salesRole.id } });
     const viewer = await user('viewer', tenantId, 'Workflow Viewer');
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Workflow Viewer', permissions: { create: {

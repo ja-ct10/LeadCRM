@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import prisma from '../../../config/database.config';
@@ -9,12 +9,15 @@ import { saveValues } from '../closing-requirements/closing-requirements.service
 import { moveDealStage } from '../deals/deals.repository';
 import { updateContact as updateLead } from '../contacts/contacts.repository';
 import { ingestMailboxMessages } from '../../../integrations/gmail/mailbox-ingestion.service';
-import { dispatchTenantNotifications, dispatchTaskReminders, deliverEvent } from '../../notifications/notification-events.service';
+import { dispatchTenantNotifications as dispatchBatch, dispatchTaskReminders, deliverEvent } from '../../notifications/notification-events.service';
 import { createNotification } from '../../notifications/notifications.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
+async function dispatchTenantNotifications(tenantId: string, now = new Date()) {
+  for (let batch = 0; batch < 100; batch++) if (!(await dispatchBatch(tenantId, now, 100)).claimed) break;
+}
 describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_completion_test_1')('CRM completion with real database and HTTP', () => {
   let tenantId: string, adminId: string, agentId: string, otherAgentId: string, foreignId: string, token: string, agentToken: string, otherToken: string;
   let pipelineId: string, stages: Record<string, string>, server: Server, base: string;
@@ -39,6 +42,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     tenantId = tenant.id;
     const user = async (name: string, role: string, target = tenantId) => prisma.user.create({ data: { tenantId: target, firstName: name, lastName: 'Test', email: `${name}@camxian.com`, role, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     const admin = await user('admin', 'Client Admin'); adminId = admin.id; token = (await issueAuthSession(admin)).token;
+    const adminRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
+    await prisma.userRole.create({ data: { tenantId, roleId: adminRole.id, userId: adminId } });
     const agent = await user('sales', 'Sales Rep'); agentId = agent.id; agentToken = (await issueAuthSession(agent)).token;
     const other = await user('other', 'Sales Rep'); otherAgentId = other.id; otherToken = (await issueAuthSession(other)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Rep' } });
@@ -157,17 +162,18 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     for (const type of ['deal_won', 'closing_requirements_completed', 'customer_hot']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } })).toBeGreaterThan(0);
     expect(await prisma.notification.count({ where: { tenantId, type: 'customer_cancelled' } })).toBe(0);
     expect(await prisma.notification.count({ where: { tenantId, userId: agentId, type: 'customer_reply' } })).toBeGreaterThan(0);
-    await deliverEvent({ tenantId, eventKey: 'foreign-attempt', type: 'test', title: 'Test', ownerId: foreignId });
+    await deliverEvent({ tenantId, eventKey: 'foreign-attempt', type: 'lead_assigned', title: 'Test', ownerId: foreignId });
     expect(await prisma.notification.count({ where: { tenantId, userId: foreignId } })).toBe(0);
   });
   it('persists read state, counts all unread rows and prevents another user reading or marking the feed', async () => {
-    for (let n = 0; n < 25; n++) await createNotification({ tenantId, userId: agentId, eventKey: `test:${n}`, type: 'test', title: `Notification ${n}` });
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Feed', lastName: 'Fixture', assignedUserId: agentId } });
+    for (let n = 0; n < 25; n++) await createNotification({ tenantId, userId: agentId, eventKey: `test:${n}`, type: 'contact_assigned', title: `Notification ${n}`, entityType: 'Contact', entityId: contact.id });
     const mine = await call('/notifications?limit=2', 'GET', undefined, agentToken);
     expect(mine.body.data).toHaveLength(2); expect(mine.body.unreadCount).toBeGreaterThan(25); expect(mine.body.meta.hasMore).toBe(true);
     const id = mine.body.data[0].id;
     await call(`/notifications/${id}/read`, 'PATCH', undefined, otherToken);
     expect((await prisma.notification.findUniqueOrThrow({ where: { id } })).isRead).toBe(false);
-    const other = await call(`/notifications?userId=${agentId}`, 'GET', undefined, otherToken); expect(other.body.data).toEqual([]);
+    const other = await call(`/notifications?userId=${agentId}`, 'GET', undefined, otherToken); expect(other.status).toBe(400);
     await call(`/notifications/${id}/read`, 'PATCH', undefined, agentToken);
     expect((await call('/notifications?limit=2', 'GET', undefined, agentToken)).body.unreadCount).toBe(mine.body.unreadCount - 1);
     await call('/notifications/read-all', 'PATCH', undefined, agentToken);
@@ -180,8 +186,9 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => dispatchTaskReminders(tenantId, new Date(Date.now() + 7200000)));
     await scope(() => dispatchTaskReminders(tenantId, new Date(Date.now() + 7200000)));
     expect(await prisma.notification.count({ where: { tenantId, entityId: task.id, userId: agentId } })).toBe(3);
-    const failing = vi.spyOn(prisma.notification, 'upsert').mockRejectedValueOnce(new Error('Unavailable'));
-    await expect(createNotification({ tenantId, userId: agentId, eventKey: 'failure', type: 'test', title: 'Test' })).resolves.toBeUndefined(); failing.mockRestore();
+    let fail = true;
+    prisma.$use(async (params, next) => { if (fail && params.model === 'Notification' && params.action === 'create') { fail = false; throw Error('Unavailable'); } return next(params); });
+    await expect(createNotification({ tenantId, userId: agentId, eventKey: 'failure', type: 'task_assigned', title: 'Test', entityType: 'Task', entityId: task.id })).rejects.toThrow('Unavailable');
     expect(await prisma.task.findUnique({ where: { id: task.id } })).not.toBeNull();
   });
   it('orders all requested modules globally before pagination and honors manual sorting', async () => {
@@ -222,11 +229,15 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const trigger = await prisma.workflowTriggerRecord.create({ data: { tenantId, workflowId: workflow.id, triggerType: 'lead.created', entityType: 'Lead', entityId: lead.id } });
     await prisma.workflowExecutionRun.create({ data: { tenantId, workflowId: workflow.id, triggerId: trigger.id, entityType: 'Lead', entityId: lead.id, status: 'failed', completedAt: new Date() } });
     await prisma.campaign.create({ data: { tenantId, name: 'Failed campaign', type: 'EMAIL', failedCount: 1, createdById: agentId } });
-    for (const action of ['user.created', 'user.archived', 'lead.restored', 'form.processing_failed']) await writeAuditLog({ tenantId, userId: adminId, action, entityType: action.split('.')[0] === 'user' ? 'User' : action.startsWith('lead') ? 'Lead' : 'Form', entityId: lead.id });
+    const statusUser = await prisma.user.create({ data: { tenantId, firstName: 'Account', lastName: 'Status', email: randomUUID()+'@camxian.com', role: 'Sales Rep' } });
+    await prisma.user.update({ where: { id: statusUser.id }, data: { status: 'INACTIVE' } });
+    await writeAuditLog({ tenantId, userId: adminId, action: 'lead.restored', entityType: 'Lead', entityId: lead.id });
+    const form = await prisma.marketingForm.create({ data: { tenantId, name: 'Failed form', createdById: adminId } });
+    await writeAuditLog({ tenantId, userId: adminId, action: 'form.processing_failed', entityType: 'Form', entityId: form.id });
     const mailbox = await prisma.emailAccount.update({ where: { tenantId_userId_provider: { tenantId, userId: agentId, provider: 'gmail' } }, data: { isActive: false } });
     await scope(() => dispatchTenantNotifications(tenantId));
     expect(await prisma.notification.count({ where: { userId: otherAgentId, entityId: lead.id, type: 'lead_assigned' } })).toBe(1);
-    for (const type of ['deal_lost', 'workflow_failed', 'campaign_failed', 'user_created', 'user_archived', 'lead_restored', 'form_processing_failed', 'mailbox_disconnected']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } }), type).toBeGreaterThan(0);
+    for (const type of ['deal_lost', 'workflow_failed', 'campaign_failed', 'user_created', 'user_status_changed', 'record_restored', 'form_processing_failed', 'mailbox_disconnected']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } }), type).toBeGreaterThan(0);
     await prisma.emailAccount.update({ where: { id: mailbox.id }, data: { isActive: true, syncError: 'Persistent test error' } });
     await scope(() => dispatchTenantNotifications(tenantId));
     await scope(() => dispatchTenantNotifications(tenantId, new Date(Date.now() + 16 * 60000)));
@@ -237,15 +248,17 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   });
   it('retries failed notification delivery without changing the CRM event or duplicating successful recipients', async () => {
     const at = new Date(Date.now() + 17 * 60000);
-    const audit = await prisma.auditLog.create({ data: { tenantId, userId: adminId, action: 'user.archived', entityType: 'User', entityId: otherAgentId, createdAt: at } });
-    const key = { tenantId, module: 'notifications', key: 'delivery-cursor' };
-    const cursor = await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: key } });
-    const failing = vi.spyOn(prisma.notification, 'upsert').mockRejectedValueOnce(new Error('Unavailable'));
-    await expect(scope(() => dispatchTenantNotifications(tenantId, at))).rejects.toThrow('Unavailable'); failing.mockRestore();
-    expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: key } })).value).toEqual(cursor.value);
-    expect(await prisma.auditLog.findUnique({ where: { id: audit.id } })).not.toBeNull();
+    const isolatedUser = await prisma.user.create({ data: { tenantId, firstName: 'Retry', lastName: 'User', email: randomUUID()+'@camxian.com', role: 'Sales Rep' } });
     await scope(() => dispatchTenantNotifications(tenantId, at));
-    await scope(() => dispatchTenantNotifications(tenantId, at));
-    expect(await prisma.notification.count({ where: { tenantId, userId: adminId, eventKey: `audit:${audit.id}` } })).toBe(1);
+    await prisma.user.update({ where: { id: isolatedUser.id }, data: { status: 'INACTIVE' } });
+    const event = await prisma.notificationEvent.findFirstOrThrow({ where: { tenantId, entityId: isolatedUser.id, type: 'user_status_changed', processedAt: null } });
+    let fail = true;
+    prisma.$use(async (params, next) => { if (fail && params.model === 'Notification' && params.action === 'create') { fail = false; throw Error('Unavailable'); } return next(params); });
+    expect((await scope(() => dispatchBatch(tenantId, at, 100))).failed).toBe(1);
+    expect((await prisma.notificationEvent.findUniqueOrThrow({ where: { id: event.id } })).processedAt).toBeNull();
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: isolatedUser.id } })).status).toBe('INACTIVE');
+    await scope(() => dispatchTenantNotifications(tenantId, new Date(+at + 10000)));
+    await scope(() => dispatchTenantNotifications(tenantId, new Date(+at + 10000)));
+    expect(await prisma.notification.count({ where: { tenantId, userId: adminId, eventKey: event.eventKey } })).toBe(1);
   });
 });

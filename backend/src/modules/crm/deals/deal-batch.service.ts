@@ -6,7 +6,6 @@ import { resolveProducts, salesTransaction, validateSalesOwner } from '../leads/
 import * as repo from './deals.repository';
 import { participantOrder, withDealParticipants } from './deal-participants';
 import { fireDealCreated } from '../../automation/triggers/triggers.service';
-import { createNotification } from '../../notifications/notifications.service';
 
 export async function createDealBatch(tenantId: string, actorId: string, input: unknown) {
   const dto = CreateDealBatchSchema.parse(input);
@@ -48,9 +47,7 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
   // Replaying these stable events is safe even if the first HTTP response was lost.
   for (const deal of result.deals) {
     await fireDealCreated({ tenantId, actorId, deal });
-    if (deal.assignedUserId && deal.assignedUserId !== actorId) await createNotification({ tenantId, userId: deal.assignedUserId,
-      type: 'deal_assigned', title: 'Deal assigned to you', body: `"${deal.title}" has been assigned to you.`,
-      entityType: 'Deal', entityId: deal.id, eventKey: `deal:created:${deal.id}` }).catch(() => {});
+
   }
   return result;
 }

@@ -1,4 +1,5 @@
 'use client';
+import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { CreateButton } from '@/shared/components/ui/button';
 
@@ -7,7 +8,7 @@ import { Plus, Layout, Edit, Copy, Trash2, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAuth } from '@/store/AuthContext';
 import { RowActionsMenu } from '@/shared/components/data-grid/row-actions-menu';
-import { getFormsByTenant, createForm, deleteForm, duplicateForm, unpublishForm } from '../services/forms.service';
+import { getFormsByTenant, getFormById, createForm, deleteForm, duplicateForm, unpublishForm } from '../services/forms.service';
 import type { FormRecord } from '../types/form.types';
 import { Badge } from '@/shared/components/ui/badge';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
@@ -37,6 +38,7 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
     return () => { cancelled = true; };
   }, [tenant?.id, retry]);
   useEffect(() => { onBuilderActiveChange?.(!!active); return () => onBuilderActiveChange?.(false); }, [!!active, onBuilderActiveChange]);
+  useNotificationRecordLink('formId', (tenant?.id ?? '') + ':' + (user?.id ?? ''), !!tenant && userCan('forms', 'canView'), getFormById, setActive);
   const mutate = async (work: () => Promise<void>) => {
     if (mutationLock.current) return; mutationLock.current = true; setBusy(true);
     try { await work(); } catch (err) { toast.error(err instanceof Error ? err.message : 'Unable to save form.'); } finally { mutationLock.current = false; setBusy(false); }

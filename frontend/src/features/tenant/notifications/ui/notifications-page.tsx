@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCheck, ChevronRight, Trash2 } from 'lucide-react';
-import { notificationDestination } from '../notification-destination';
+import { notificationDestination, resolveNotificationDestination } from '../notification-destination';
 import { useNotifications, type NotificationFilter } from '../hooks/use-notifications';
 import { NotificationContent, NotificationEmptyState } from './notification-content';
 import { Button } from '@/shared/components/ui/button';
@@ -27,7 +27,8 @@ export default function NotificationsPage() {
   const [deleting, setDeleting] = useState<{ ids: string[]; bulk: boolean } | null>(null);
   const router = useRouter();
   const visibleSelection = selected.filter(id => notifications.some(n => n.id === id));
-  const allSelected = notifications.length > 0 && visibleSelection.length === notifications.length;
+  const selectable = notifications.slice(0, 500);
+  const allSelected = selectable.length > 0 && selectable.every(n => visibleSelection.includes(n.id));
   const counts = { all: totalCount, unread: unreadCount, read: Math.max(0, totalCount - unreadCount) };
 
   useEffect(() => { setSelected([]); setDeleting(null); }, [scope]);
@@ -64,21 +65,21 @@ export default function NotificationsPage() {
           : <>
             {notifications.length > 0 && <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
               <Checkbox id="select-all-notifications" checked={allSelected} disabled={isMutating}
-                aria-label="Select all notifications shown" aria-checked={visibleSelection.length > 0 && !allSelected ? 'mixed' : allSelected}
+                aria-label={notifications.length > 500 ? 'Select first 500 notifications shown' : 'Select all notifications shown'} aria-checked={visibleSelection.length > 0 && !allSelected ? 'mixed' : allSelected}
                 ref={element => { if (element) element.indeterminate = visibleSelection.length > 0 && !allSelected; }}
-                onCheckedChange={checked => setSelected(checked ? notifications.map(n => n.id) : [])} />
-              <label htmlFor="select-all-notifications" className="cursor-pointer">Select all</label>
+                onCheckedChange={checked => setSelected(checked ? selectable.map(n => n.id) : [])} />
+              <label htmlFor="select-all-notifications" className="cursor-pointer">{notifications.length > 500 ? 'Select first 500 shown' : 'Select all shown'}</label>
             </div>}
             {!notifications.length ? <NotificationEmptyState title={tabs.find(tab => tab.id === filter)?.empty} /> :
               <TooltipProvider><div className="space-y-3">{notifications.map(notification => <div key={notification.id} data-notification-id={notification.id}
                 className={cn('group flex items-start gap-2 rounded-xl border p-3 transition-colors sm:gap-4 sm:p-4',
                   notification.isRead ? 'border-border bg-card' : 'border-blue-200 bg-blue-50/60 dark:border-blue-500/20 dark:bg-blue-500/5')}>
-                <div className="pt-2.5"><Checkbox checked={visibleSelection.includes(notification.id)} disabled={isMutating} aria-label={`Select notification: ${notification.title}`}
+                <div className="pt-2.5"><Checkbox checked={visibleSelection.includes(notification.id)} disabled={isMutating || (visibleSelection.length >= 500 && !visibleSelection.includes(notification.id))} aria-label={`Select notification: ${notification.title}`}
                   onCheckedChange={checked => setSelected(prev => checked ? [...new Set([...prev, notification.id])] : prev.filter(id => id !== notification.id))} /></div>
                 <button type="button" disabled={isMutating} className="flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-4"
                   onClick={async () => {
                     if (!notification.isRead && !await markAsRead(notification.id)) return;
-                    const destination = notificationDestination(notification);
+                    const destination = await resolveNotificationDestination(notification.id);
                     if (destination) router.push(destination);
                   }}>
                   <NotificationContent notification={notification} />

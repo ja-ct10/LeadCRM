@@ -45,6 +45,7 @@ function startSessionPurgeScheduler(): void {
 }
 
 let stopMailbox: (() => void) | undefined;
+let stopNotifications: (() => Promise<void>) | undefined;
 const server = app.listen(PORT, () => {
   console.log(`[server] LeadCRM API running on http://localhost:${PORT}`);
   console.log(`[server] Environment: ${process.env.NODE_ENV ?? 'development'}`);
@@ -52,16 +53,16 @@ const server = app.listen(PORT, () => {
   // Start background services
   startCampaignScheduler();
   stopMailbox = startMailboxScheduler();
-  startNotificationScheduler();
+  if (process.env.NOTIFICATION_WORKER_ENABLED !== 'false') stopNotifications = startNotificationScheduler();
   startSessionPurgeScheduler();
   startImportCleanupScheduler();
 
 
 });
-server.on('close', () => stopMailbox?.());
+server.on('close', () => { stopMailbox?.(); void stopNotifications?.(); });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
   stopMailbox?.();
-  server.close(() => process.exit(0));
+  server.close(() => { void (stopNotifications?.() ?? Promise.resolve()).finally(() => process.exit(0)); });
   // Interrupted mailbox pages and scheduled claims resume from durable leases.
   setTimeout(() => process.exit(0), 30000).unref();
 });

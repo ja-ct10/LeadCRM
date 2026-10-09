@@ -353,7 +353,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   it('saves typed audience values, filters normalized products and reuses Manila calendar days for both record types', async () => {
     await scoped(async () => {
       const product = await prisma.productInterest.create({ data: { tenantId, name: 'Audience catalog test', dealValue: 100 } });
-      const agent = await prisma.user.create({ data: { tenantId, email: `agent-${randomUUID()}@example.test`, firstName: 'Valid', lastName: 'Agent', role: 'Sales', status: 'ACTIVE' } });
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Audience Sales Agent', permissions: { create: ['leads','deals'].map(module => ({ tenantId, module, canView: true, canEdit: true })) } } });
+      const agent = await prisma.user.create({ data: { tenantId, email: `agent-${randomUUID()}@camxian.com`, firstName: 'Valid', lastName: 'Agent', role: role.name, status: 'ACTIVE', userRoles: { create: { tenantId, roleId: role.id } } } });
       const createdAt = new Date('2026-10-06T16:00:00Z');
       const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Typed', lastName: 'Lead', companyName: 'Matching COMPANY', source: 'Website', status: 'Hot', assignedUserId: agent.id, createdAt, email: 'typed-lead@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id } } } });
       const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Typed', lastName: 'Contact', company: 'Matching COMPANY', source: 'Website', status: 'HOT', assignedUserId: agent.id, createdAt, email: 'typed-contact@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id, interested: true } } } });
@@ -377,7 +378,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   });
   it('rejects foreign or nonassignable relations and invalid date ranges', async () => {
     await scoped(async () => {
-      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'ALL', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Assigned Agent');
+      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'ALL', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Choose an active sales agent');
       await expect(previewAudience(tenantId, { source: 'ALL', conditions: [{ field: 'productInterest', operator: 'equals', value: [randomUUID()] }] })).rejects.toThrow('Product Interests');
       await expect(previewAudience(tenantId, { source: 'ALL', conditions: [{ field: 'createdAt', operator: 'between', value: { from: '2026-10-08', to: '2026-10-07' } }] })).rejects.toThrow();
     });

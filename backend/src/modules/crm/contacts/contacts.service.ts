@@ -4,7 +4,6 @@ import { NotFoundError, ValidationError } from '../../../shared/errors/http-erro
 import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema, CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireLeadStatusChanged, fireContactCreated, fireContactStatusChanged, fireContactUpdated, fireDealUpdated } from '../../automation/triggers/triggers.service';
-import { createNotification } from '../../notifications/notifications.service';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, changeCustomerStatus } from '../engagement.service';
@@ -27,22 +26,7 @@ export async function createContact(tenantId: string, userId: string, dto: Creat
   dto = CreateContactSchema.parse(dto);
   const contact = await repo.createContact(tenantId, dto, userId);
 
-  // Notify the assigned user when a lead is directly assigned to them on creation.
-  // Only fires when the creator is NOT the assignee (no self-notification).
-  if ((contact as Record<string, unknown>).assignedUserId &&
-      (contact as Record<string, unknown>).assignedUserId !== userId) {
-    createNotification({
-      tenantId,
-      userId:     String((contact as Record<string, unknown>).assignedUserId),
-      eventKey:   `lead:created:${contact.id}`,
-      type:       'lead_assigned',
-      title:      `New lead assigned to you`,
-      body:       `${(contact as Record<string, unknown>).firstName ?? ''} ${(contact as Record<string, unknown>).lastName ?? ''}`.trim() ||
-                  'A new lead has been assigned to you.',
-      entityType: 'Lead',
-      entityId:   contact.id,
-    }).catch(() => {});
-  }
+  // The Lead transaction captures its assignment in NotificationEvent.
 
   return contact;
 }

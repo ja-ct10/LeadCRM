@@ -8,7 +8,6 @@ import { NotFoundError, ValidationError, ConflictError } from '../../../shared/e
 import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams, ManualCreateDealSchema } from './deals.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireDealCreated, fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
-import { createNotification } from '../../notifications/notifications.service';
 import { recordChanges, customFieldChangeTracker } from '../record-updates';
 import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
 
@@ -78,19 +77,7 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
   // Fire workflow trigger (non-blocking — never fails the request)
   await fireDealCreated({ tenantId, actorId: userId, deal });
 
-  // Notify the assigned user that a deal has been assigned to them.
-  // Only fires when the creator is NOT the assignee (no self-notification).
-  if (deal.assignedUserId && deal.assignedUserId !== userId) {
-    createNotification({
-      tenantId,
-      userId:     deal.assignedUserId,
-      type:       'deal_assigned',
-      title:      `Deal assigned to you`,
-      body:       `"${deal.title}" has been assigned to you.`,
-      entityType: 'Deal',
-      entityId:   deal.id,
-    }).catch(() => {});
-  }
+  // Assignment events commit with the Deal through the notification outbox.
 
   return deal;
 }
@@ -122,23 +109,7 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   const changes = await withCustomChanges(recordChanges(before, deal));
   if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: deal, changedFields: changes.changedFields, changes });
 
-  // Notify the newly assigned user when the deal is reassigned to someone else.
-  // Before: dto.assignedUserId differs from the previous owner AND is not the actor.
-  if (
-    dto.assignedUserId &&
-    dto.assignedUserId !== before.assignedUserId &&
-    dto.assignedUserId !== userId
-  ) {
-    createNotification({
-      tenantId,
-      userId:     dto.assignedUserId,
-      type:       'deal_assigned',
-      title:      `Deal assigned to you`,
-      body:       `"${deal.title}" has been assigned to you.`,
-      entityType: 'Deal',
-      entityId:   id,
-    }).catch(() => {});
-  }
+  // Assignment events commit with the Deal through the notification outbox.
 
   return deal;
 }

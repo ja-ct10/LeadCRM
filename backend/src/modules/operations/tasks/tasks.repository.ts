@@ -1,3 +1,4 @@
+import { setNotificationActor } from '../../notifications/notification-actor';
 import { Prisma } from "@prisma/client";
 import {
   TaskQuery,
@@ -92,7 +93,10 @@ export async function withTaskTransaction<T>(
   work: (client: TaskClient) => Promise<T>,
 ): Promise<T> {
   try {
-    return await prisma.$transaction(work, {
+    return await prisma.$transaction(async tx => {
+      await setNotificationActor(tx);
+      return work(tx);
+    }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   } catch (error) {

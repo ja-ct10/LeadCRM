@@ -5,12 +5,12 @@ import NotificationsPage from './notifications-page';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { toast } from 'sonner';
 
-const mocks = vi.hoisted(() => ({ list: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), delete: vi.fn(), push: vi.fn() }));
+const mocks = vi.hoisted(() => ({ list: vi.fn(), counts: vi.fn(), destination: vi.fn(), markRead: vi.fn(), markAllRead: vi.fn(), delete: vi.fn(), push: vi.fn() }));
 vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: mocks }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user' } }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 vi.mock('motion/react', () => ({ motion: {
   div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} />,
   span: ({ initial, animate, exit, transition, ...props }: any) => <span {...props} />,
@@ -26,6 +26,8 @@ beforeEach(() => {
     return { ...counts(), data, meta: { total: data.length, page: 1, limit: 20, hasMore: false } };
   });
   mocks.delete.mockImplementation(async (ids: string[]) => { records = records.filter(n => !ids.includes(n.id)); return counts(); });
+  mocks.counts.mockImplementation(async () => counts());
+  mocks.destination.mockResolvedValue({ success: true, destination: null });
   mocks.markRead.mockImplementation(async (id: string) => { records = records.map(n => n.id === id ? { ...n, isRead: true } : n); return counts(); });
   mocks.markAllRead.mockImplementation(async () => { records = records.map(n => ({ ...n, isRead: true })); return counts(); });
 });

@@ -1,4 +1,5 @@
 'use client';
+import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { panelBodyClass, panelFooterClass, panelInputClass, panelLabelClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import DOMPurify from 'dompurify';
@@ -152,6 +153,9 @@ export default function CampaignsPage() {
   const smsTemplates = templates.filter(t => t.type === 'SMS');
 
   const filteredCampaigns = campaigns;
+  useNotificationRecordLink('campaignId', user?.id ?? '', !!user,
+    async id => (await campaignsApi.get(id)).data,
+    campaign => { if (canViewReports && campaign.status.toLowerCase() !== 'draft') setSelectedCampaignForReport(campaign); else { setEditingCampaign(campaign); setShowBuilder(true); } });
   const viewCampaign = (campaign: Campaign) => {
     if (campaign.status.toLowerCase() === 'draft' || !canViewReports) { setEditingCampaign(campaign); setShowBuilder(true); }
     else if (canViewReports) setSelectedCampaignForReport(campaign);

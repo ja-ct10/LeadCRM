@@ -1,10 +1,11 @@
 'use client';
+import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mail, Check, Filter, ArrowDownAZ, Loader2, Pencil, Search } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { getGmailStatus, fetchGmailEmails, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
+import { getGmailStatus, fetchGmailEmails, fetchGmailThread, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
 import InboxCurrentEmpty from './inbox-current-empty';
 import InboxEmailList from './inbox-email-list';
 import EmailConversationView from './email-conversation-view';
@@ -46,6 +47,8 @@ export default function InboxPage(): React.ReactElement {
   }, [searchParams, router]);
 
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
+  useNotificationRecordLink('threadId', connectionStatus?.email ?? '', !!connectionStatus?.isConnected,
+    async id => { const response = await fetchGmailThread(id); const latest = response.emails[response.emails.length - 1]; if (!latest) throw new Error('Unavailable'); return latest; }, setSelectedEmail);
   const [revision, setRevision] = useState(0);
   const [nextPageToken, setNextPageToken] = useState<string>();
   const [page, setPage] = useState(1);

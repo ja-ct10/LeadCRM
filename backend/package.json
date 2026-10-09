@@ -6,6 +6,7 @@
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "prisma generate && tsc && node -e \"require('fs').copyFileSync('start.js','dist/start.js')\"",
     "start": "node dist/start.js",
+    "start:notifications": "node dist/start.js --notifications-worker",
     "lint": "tsc --noEmit",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",

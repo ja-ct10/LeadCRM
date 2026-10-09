@@ -128,6 +128,8 @@ model Tenant {
   wfExecutionRuns    WorkflowExecutionRun[]
   wfExecutionSteps   WorkflowExecutionStep[]
   notifications      Notification[]
+  notificationEvents NotificationEvent[]
+  notificationDeliveries NotificationDelivery[]
   closingFieldDefinitions ClosingFieldDefinition[]
   auditLogs          AuditLog[]
   emailDeliveryLogs  EmailDeliveryLog[]
@@ -189,6 +191,7 @@ model User {
   completedTasks       Task[]             @relation("TaskCompletedBy")
   activitiesCreated    Activity[]
   notifications        Notification[]
+  notificationDeliveries NotificationDelivery[]
   auditLogs            AuditLog[]
   userPreferences      UserPreference[]
   crmImportJobs CrmImportJob[]
@@ -756,6 +759,7 @@ model DealStageHistory {
 // TASK
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Task {
+  notificationVersion Int @default(0)
   id             String    @id @default(uuid())
   tenantId       String
   assignedUserId String
@@ -844,10 +848,53 @@ model Notification {
   tenant Tenant @relation(fields: [tenantId], references: [id])
   user   User   @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
+  occurredAt DateTime?
+
   @@index([userId, tenantId, isRead])
   @@index([tenantId, createdAt])
   @@index([tenantId])
   @@unique([tenantId, userId, eventKey])
+  @@index([tenantId, userId, createdAt, id])
+  @@index([tenantId, userId, isRead, createdAt, id])
+}
+
+// Transactional outbox. Triggers capture minimal structured business facts,
+// never provider credentials, message bodies, or user-supplied destinations.
+model NotificationEvent {
+  id String @id @default(uuid())
+  tenantId String
+  eventKey String
+  type String
+  entityType String
+  entityId String
+  ownerId String?
+  actorId String?
+  admins Boolean @default(false)
+  payload Json @default("{}")
+  occurredAt DateTime @default(now())
+  createdAt DateTime @default(now())
+  availableAt DateTime @default(now())
+  attempts Int @default(0)
+  leaseToken String?
+  leaseUntil DateTime?
+  processedAt DateTime?
+  lastError String?
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  @@unique([tenantId, eventKey])
+  @@index([tenantId, processedAt, availableAt, id])
+  @@index([processedAt, availableAt, tenantId])
+}
+
+// Independent of visible notifications; deleting one never deletes its identity.
+model NotificationDelivery {
+  tenantId String
+  userId String
+  eventKey String
+  outcome String @default("delivered")
+  createdAt DateTime @default(now())
+  tenant Tenant @relation(fields: [tenantId], references: [id])
+  user User @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  @@id([tenantId, userId, eventKey])
 }
 
 model ClosingFieldDefinition {
@@ -947,6 +994,7 @@ model Campaign {
   type             CampaignType
   status           CampaignStatus @default(DRAFT)
   submissionStartedAt DateTime?
+  notificationRunVersion Int @default(0)
   submissionFinishedAt DateTime?
   subject          String?
   body             String? // inline body override when no template selected
@@ -1321,6 +1369,8 @@ model PasswordResetToken {
 // Each user can connect ONE Gmail account per tenant.
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model EmailAccount {
+  notificationIncidentId String?
+  notificationFailedAt DateTime?
   id             String    @id @default(uuid())
   tenantId       String
   userId         String
