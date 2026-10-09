@@ -130,6 +130,17 @@ same-origin SSE endpoint observes database revisions; it never requests Gmail.
 Keep response streaming enabled through the proxy. The stream reauthenticates on
 reconnect, and the list stays visible while background updates arrive.
 
+Dashboard also streams `/api/proxy/reporting/dashboard/events` and
+`/api/proxy/auth/events`. Preserve `text/event-stream`, `Cache-Control: no-store,
+no-transform`, and `X-Accel-Buffering: no`; disable response buffering and keep
+proxy idle timeouts above the 45-second stream lifetime (heartbeats every three
+seconds). Native reconnect retrieves committed database revisions; no sticky
+sessions or additional WebSocket host is required. Deploy the additive
+`20261115000000_dashboard_revisions` migration before starting this Dashboard
+revision. Use the existing deployment runner and record its ledger result.
+Verify two authenticated users, permission revocation/restoration and recovery
+through the deployed proxy before claiming live Dashboard readiness.
+
 NIXPACKS_NODE_VERSION and RAILPACK_NODE_VERSION are hosting build controls,
 not application runtime configuration. Keep the configured Node version compatible
 with the root package.json engines and pinned package manager.

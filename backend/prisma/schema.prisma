@@ -80,6 +80,7 @@ enum CampaignStatus {
 // TENANT
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Tenant {
+  dashboardRevision DashboardRevision?
   dealCreationReceipts DealCreationReceipt[]
   crmImportUploads CrmImportUpload[]
   productInterestRecords ProductInterest[]
@@ -142,6 +143,16 @@ model Tenant {
   marketingForms     MarketingForm[]
 }
 
+// Committed revision counters; no record payloads or second notification queue.
+model DashboardRevision {
+  tenantId String @id
+  analytics BigInt @default(0)
+  leads BigInt @default(0)
+  actions BigInt @default(0)
+  access BigInt @default(0)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+}
+
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // USER
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
@@ -183,6 +194,7 @@ model User {
 
   assignedDeals        Deal[]             @relation("AssignedDeals")
   ownedDeals           Deal[]             @relation("OwnedDeals")
+  revenueDeals         Deal[]             @relation("RevenueOwner")
   leadDealsAdded       LeadDeal[]
   contactDealsAdded   ContactDeal[]
   dealStageHistories   DealStageHistory[]
@@ -627,6 +639,8 @@ model Deal {
   accountId         String?
   assignedUserId    String?
   ownerId           String? // original deal owner (immutable)
+  revenueOwnerId String? // agent captured at first won closure; legacy unknown stays null
+  revenueOwnerEligible Boolean? // sales eligibility captured at closure, including later deactivation
   title             String
   value             Float?
   currency          String?   @default("PHP")
@@ -659,6 +673,7 @@ model Deal {
   organization   Account?           @relation(fields: [accountId], references: [id])
   assignedUser   User?              @relation("AssignedDeals", fields: [assignedUserId], references: [id])
   owner          User?              @relation("OwnedDeals", fields: [ownerId], references: [id])
+  revenueOwner User? @relation("RevenueOwner", fields: [revenueOwnerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   leadDeals      LeadDeal[]
   contactDeals   ContactDeal[]
   stageHistories DealStageHistory[]

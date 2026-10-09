@@ -10,6 +10,7 @@ out/
 
 # Coverage
 coverage/
+/data/outputs/dashboard-verification/
 
 # Environment files
 .env*

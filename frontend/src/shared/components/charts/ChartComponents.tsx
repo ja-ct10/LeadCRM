@@ -40,6 +40,15 @@ function isDarkMode() {
   return container ? container.classList.contains('dark') : false;
 }
 
+const subscribeTheme = (changed: () => void) => {
+  const listener = () => queueMicrotask(changed); // Read after the scoped container applies its theme.
+  window.addEventListener('themechange', listener);
+  return () => window.removeEventListener('themechange', listener);
+};
+function useChartTheme() {
+  return React.useSyncExternalStore(subscribeTheme, isDarkMode, () => false);
+}
+
 function getTooltipStyle() {
   const dark = isDarkMode();
   return {
@@ -57,7 +66,7 @@ function getTooltipStyle() {
 function getAxisDefaults() {
   const dark = isDarkMode();
   return {
-    ticks: { color: dark ? '#64748b' : '#94a3b8', font: { size: 12 } },
+    ticks: { color: dark ? '#94a3b8' : '#475569', font: { size: 12 } },
     grid: { color: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' },
   };
 }
@@ -123,6 +132,7 @@ interface PieProps {
 interface CellProps { fill?: string; stroke?: string; }
 interface XAxisProps { 
   dataKey?: string; 
+  tickFormatter?: (v: unknown) => string;
   stroke?: string; 
   fontSize?: number; 
   tickLine?: boolean; 
@@ -210,17 +220,22 @@ export function ResponsiveContainer({
 // ─────────────────────────────────────────────────────────────
 // BarChart
 // ─────────────────────────────────────────────────────────────
-export function BarChart({ data, children }: BarChartProps) {
+export function BarChart({ data, children, layout }: BarChartProps) {
+  const dark = useChartTheme();
   let xDataKey = 'name';
   let yTickFormatter: ((v: any) => string) | undefined;
+  let xTickFormatter: ((v: any) => string) | undefined;
+  let tooltipFormatter: TooltipProps['formatter'];
+  const horizontal = layout === 'vertical';
   const bars: BarProps[] = [];
   let showLegend = false;
 
   React.Children.forEach(children, (child: any) => {
     if (!child) return;
     const t = child.type;
-    if (t === XAxis) xDataKey = child.props.dataKey || 'name';
-    if (t === YAxis) yTickFormatter = child.props.tickFormatter;
+    if (t === XAxis) { if (!horizontal) xDataKey = child.props.dataKey || 'name'; xTickFormatter = child.props.tickFormatter; }
+    if (t === YAxis) { if (horizontal) xDataKey = child.props.dataKey || 'name'; yTickFormatter = child.props.tickFormatter; }
+    if (t === TooltipStub) tooltipFormatter = child.props.formatter;
     if (t === BarStub) bars.push(child.props);
     if (t === LegendStub) showLegend = true;
   });
@@ -240,19 +255,22 @@ export function BarChart({ data, children }: BarChartProps) {
   });
 
   const options: ChartOptions<'bar'> = {
+    indexAxis: horizontal ? 'y' : 'x',
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: showLegend
-        ? { labels: { color: '#94a3b8', boxWidth: 12 } }
+        ? { labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12 } }
         : { display: false },
-      tooltip: { ...getTooltipStyle() },
+      tooltip: { ...getTooltipStyle(), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(horizontal ? context.parsed.x : context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
     },
     scales: {
-      x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
+      x: { ...getAxisDefaults(), grid: { color: 'transparent' }, ...(horizontal ? { beginAtZero: true, ticks: { ...getAxisDefaults().ticks, callback: xTickFormatter } } : {}) },
       y: {
         ...getAxisDefaults(),
-        ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
+        ...(horizontal ? {} : { beginAtZero: true }),
+        ticks: { ...getAxisDefaults().ticks, ...(horizontal ? {} : { precision: 0 }),
+          callback: yTickFormatter || (horizontal ? (value => labels[Number(value)] ?? '') : ((v: any) => v)) },
       },
     },
   };
@@ -268,8 +286,10 @@ export function BarChart({ data, children }: BarChartProps) {
 // AreaChart
 // ─────────────────────────────────────────────────────────────
 export function AreaChart({ data, children }: BarChartProps) {
+  useChartTheme();
   let xDataKey = 'name';
   let yTickFormatter: ((v: any) => string) | undefined;
+  let tooltipFormatter: TooltipProps['formatter'];
   const areas: AreaProps[] = [];
 
   React.Children.forEach(children, (child: any) => {
@@ -277,6 +297,7 @@ export function AreaChart({ data, children }: BarChartProps) {
     const t = child.type;
     if (t === XAxis) xDataKey = child.props.dataKey || 'name';
     if (t === YAxis) yTickFormatter = child.props.tickFormatter;
+    if (t === TooltipStub) tooltipFormatter = child.props.formatter;
     if (t === AreaStub) areas.push(child.props);
   });
 
@@ -298,7 +319,7 @@ export function AreaChart({ data, children }: BarChartProps) {
       return gradient;
     },
     tension: 0.4,
-    pointRadius: 0,
+    pointRadius: data.length === 1 ? 4 : 0,
     pointHoverRadius: 6,
   }));
 
@@ -307,7 +328,7 @@ export function AreaChart({ data, children }: BarChartProps) {
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      tooltip: { ...getTooltipStyle() },
+      tooltip: { ...getTooltipStyle(), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
     },
     scales: {
       x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
@@ -329,6 +350,7 @@ export function AreaChart({ data, children }: BarChartProps) {
 // LineChart
 // ─────────────────────────────────────────────────────────────
 export function LineChart({ data, children }: BarChartProps) {
+  const dark = useChartTheme();
   let xDataKey = 'name';
   let yTickFormatter: ((v: any) => string) | undefined;
   const lines: LineItemProps[] = [];
@@ -360,7 +382,7 @@ export function LineChart({ data, children }: BarChartProps) {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
-      legend: showLegend ? { labels: { color: '#94a3b8', boxWidth: 12 } } : { display: false },
+      legend: showLegend ? { labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12 } } : { display: false },
       tooltip: { ...getTooltipStyle() },
     },
     scales: {
@@ -383,6 +405,7 @@ export function LineChart({ data, children }: BarChartProps) {
 // PieChart
 // ─────────────────────────────────────────────────────────────
 export function PieChart({ children }: PieChartProps) {
+  const dark = useChartTheme();
   let pieProps: PieProps | null = null;
   let showLegend = false;
 
@@ -432,7 +455,7 @@ export function PieChart({ children }: PieChartProps) {
       : '0%',
     plugins: {
       legend: showLegend
-        ? { position: 'bottom', labels: { color: '#94a3b8', boxWidth: 12, padding: 16 } }
+        ? { position: 'bottom', labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12, padding: 16 } }
         : { display: false },
       tooltip: { ...getTooltipStyle() },
     },
