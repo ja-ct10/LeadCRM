@@ -132,6 +132,7 @@ it("preserves a failed contact draft and selects the saved response only after a
     target: { value: "Person" },
   });
   fireEvent.change(screen.getByLabelText(/email/i), { target: { value: 'task-contact@example.test' } });
+  await waitFor(() => expect((screen.getByRole('button', { name: /create contact/i }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole("button", { name: /create contact/i }));
   expect((await screen.findByRole("alert")).textContent).toBe(
     "Contact save failed",

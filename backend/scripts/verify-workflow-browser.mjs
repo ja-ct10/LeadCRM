@@ -62,11 +62,15 @@ try {
   await page.route('**/api/proxy/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
+    const localUrl = `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`;
+    const headers = { ...request.headers(), authorization: `Bearer ${token}` };
+    // Keep the real auth event stream open; APIRequestContext buffers response bodies.
+    if (url.pathname === '/api/proxy/auth/events') return route.continue({ url: localUrl, headers });
     if (failWorkflowRead && request.method() === 'GET' && url.pathname.endsWith('/automation/workflows/' + saved.lead.id)) {
       return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Acceptance: Workflow temporarily unavailable' } }) });
     }
     try {
-      const response = await page.request.fetch(`http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`, { method: request.method(), headers: { ...request.headers(), authorization: `Bearer ${token}` }, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 });
+      const response = await page.request.fetch(localUrl, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 });
       await route.fulfill({ response });
     } catch (error) {
       if (!closing) transportErrors.push(`${request.method()} ${url.pathname}: ${String(error).split('\n')[0]}`);
@@ -122,6 +126,7 @@ try {
   }
   await page.goto(base + '/automation/workflows');
   await page.getByRole('grid').waitFor();
+  await page.getByLabel('Resume workflow', { exact: true }).waitFor();
   assert.equal(await page.getByLabel('Resume workflow', { exact: true }).count(), 1);
   assert.equal(await page.getByLabel('Activate workflow', { exact: true }).count(), 3); record('List distinguishes Draft activation from Paused resume');
   await page.goto(base + '/automation/workflows/new');

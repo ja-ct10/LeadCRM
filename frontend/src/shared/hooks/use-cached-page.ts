@@ -92,11 +92,14 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
   }, [enabled, intervalMs, pauseWhenHidden, refetch]);
 
   useEffect(() => {
-    if (!enabled || !revalidateOnInvalidation) return;
+    if (!enabled) return;
     return subscribePageCacheInvalidation((changedModule, changedTenant) => {
-      if (changedModule === module && (!changedTenant || changedTenant === tenantId)) void refetch();
+      if (changedModule === '*') {
+        setState({ key, data: undefined, fetching: true, error: null });
+        void refetch();
+      } else if (revalidateOnInvalidation && changedModule === module && (!changedTenant || changedTenant === tenantId)) void refetch();
     });
-  }, [enabled, revalidateOnInvalidation, module, tenantId, refetch]);
+  }, [enabled, revalidateOnInvalidation, module, tenantId, key, refetch]);
 
   const data = enabled ? (state.key === key ? state.data : cached?.data) : undefined;
   const fetching = enabled && (state.key === key ? state.fetching : true);

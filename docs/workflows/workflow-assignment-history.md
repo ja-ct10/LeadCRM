@@ -83,12 +83,12 @@ Apply the additive migration before running the updated backend. Verification he
 
 | Area | Test type | Required behavior |
 | --- | --- | --- |
-| Contracts and rotation | Unit | Legacy normalization, invalid IDs/strategies, serialized conflict retries, dry-run immutability, independent cursor keys |
+| Contracts and selection | Unit | Legacy normalization, required settings, timezone/overnight shifts, workload/capacity, sticky completion, serialized conflict retries, dry-run immutability |
 | Assignment execution | Integration with full migration replay | User/Role/Group, one owner, current-owner projection, task-only staff, dynamic membership, admin exclusion, tenant isolation, RBAC denial, duplicate event suppression |
 | Definition history | Integration | Execution changes increment versions, lifecycle changes do not, old snapshots remain stable, archived workflows cannot reactivate |
 | Migration | Disposable PostgreSQL via PGlite | Preserve legacy JSON/null history; reject duplicate steps and foreign authors; rollback without loss |
 | Builder and runs | Component | Canonical saves, task-specific choices, unavailable references, purpose-specific counts, summaries and historical versions |
-| Browser | Built app with disposable API/database | Keyboard-only group selection, real save/dry-run, run history after editing; 320/375/390/768/1024/1440 px overflow checks |
+| Browser | Built app with disposable API/database | Each method saves, reloads, previews and executes; keyboard group selection, historical snapshots, real auth stream; 320/375/390/768/1024/1440 px overflow checks |
 
 Useful commands from the repository root:
 
@@ -98,6 +98,7 @@ npm run build
 npm --prefix frontend run test -- src/features/tenant/automation/workflows --maxWorkers=2
 npm --prefix backend run test -- src/tests/migrations/workflow-assignment-history.test.ts src/modules/automation/workflows/__tests__/workflow-assignment.test.ts
 node backend/scripts/test-workflow-polish.mjs src/modules/automation/workflows/__tests__/workflow-assignment.integration.test.ts
+node backend/scripts/test-workflow-polish.mjs src/modules/automation/workflows/__tests__/workflow-strategies.integration.test.ts
 node backend/scripts/verify-workflow-browser.mjs <installed-playwright-package>
 ```
 
@@ -105,10 +106,11 @@ Production builds require an HTTPS `API_URL` ending in `/api/v1`; local validati
 
 ## Verified results — 2026-10-09
 
-- 224 distinct automated tests passed across the affected Workflow suites: 111 frontend component/service tests, 86 backend integration tests, and 27 backend unit/migration tests. Changed cases were rerun after corrections, including malformed legacy assignees, replacement of unsupported historical actions, and truthful failed-assignment labels.
-- All three workspaces passed `npm run lint` and production builds. The frontend also passed a direct, fresh build after the final shared-contract and history changes.
-- All 54 built-app browser checks passed against a disposable API/database. Coverage includes keyboard group selection, persisted canonical targets, dry-run immutability, original run snapshots after editing, and layouts at 320, 375, 390, 768, 1024 and 1440 pixels. No page or transport errors were recorded.
-- The 320px assignment and history screenshots were visually reviewed; the controls and expanded snapshot fit the viewport without horizontal page overflow.
+- 269 distinct Workflow tests passed: 113 frontend component/service tests, 97 backend integration tests, and 59 backend unit/migration tests. Coverage includes all assignment methods, availability, capacity, concurrent reservations, sticky completion/failure, tenant isolation, RBAC and immutable previews.
+- Another 106 cache/auth/dashboard/task regression tests and nine deployment rollout checks passed. Auth event refreshes now notify mounted cached pages to discard old data and restart requests; signed-out and revoked scopes remain protected. Deal history assertions distinguish the initial stage entry introduced by the latest main branch from actual transitions.
+- All three workspaces passed `npm run lint` and production builds. The frontend also passed a fresh production build after the auth/cache integration fix.
+- All 71 built-app browser checks passed against a disposable API/database. Coverage includes all five new methods saving, reloading, previewing and executing through real domain services, keyboard group selection, immutable history, real auth event streaming and layouts at 320, 375, 390, 768, 1024 and 1440 pixels. No page or transport errors were recorded.
+- Availability at 320px and capacity at 1440px were visually reviewed; the controls fit their panels. The earlier assignment/history screenshots were also reviewed.
 - `git diff --check` passed. The configured CRM database was not changed; apply the additive migration before starting the updated backend.
 
 The browser script writes its local evidence to `data/outputs/workflow-browser/results.json` and screenshots in the same ignored output directory.
