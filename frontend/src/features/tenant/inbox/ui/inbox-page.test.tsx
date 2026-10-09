@@ -28,6 +28,67 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 
 describe('Persisted scoped Inbox', () => {
+  it.each([false, true])('shows the list spinner during manual refresh and preserves the page chrome (failure=%s)', async fails => {
+    mocks.list.mockResolvedValueOnce({ emails: [email], unreadCount: 1 });
+    render(<InboxPage />); await flush();
+    let resolve: (value: unknown) => void, reject: (error: Error) => void;
+    mocks.list.mockImplementationOnce(() => new Promise((done, fail) => { resolve = done; reject = fail; }));
+    fireEvent.click(screen.getByLabelText('Refresh')); fireEvent.click(screen.getByLabelText('Refresh')); await flush();
+    const spinner = screen.getByRole('status', { name: 'Loading conversations' });
+    expect(spinner.closest('[data-mailbox-list]')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Inbox' })).toBeTruthy();
+    for (const label of ['Work email', 'Sync now', 'Disconnect', '1 unread conversation']) expect(screen.getByText(label)).toBeTruthy();
+    for (const label of ['Search email', 'Filter emails', 'Sort emails', 'Email list actions']) expect(screen.getByLabelText(label)).toBeTruthy();
+    expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.sync).not.toHaveBeenCalled();
+    await act(async () => { if (fails) reject!(new Error('Refresh failed')); else resolve!({ emails: [{ ...email, snippet: 'Updated preview' }], unreadCount: 1 }); });
+    expect(screen.queryByRole('status', { name: 'Loading conversations' })).toBeNull();
+    expect(screen.getByText('Saved customer email')).toBeTruthy(); expect(screen.queryByText('No emails found')).toBeNull();
+    if (fails) { expect(screen.getByRole('alert').textContent).toContain('Refresh failed'); fireEvent.click(screen.getByLabelText('Refresh')); await flush(); expect(mocks.list).toHaveBeenCalledTimes(3); }
+    else expect(screen.getByText('— Updated preview')).toBeTruthy();
+  });
+  it('keeps the toolbar on initial list load and avoids an empty-state claim on first-load failure', async () => {
+    let reject: (error: Error) => void;
+    mocks.list.mockImplementationOnce(() => new Promise((_done, fail) => { reject = fail; }));
+    render(<InboxPage />); await flush();
+    expect(screen.getByRole('toolbar', { name: 'Email list actions' })).toBeTruthy();
+    expect(screen.getByRole('status', { name: 'Loading conversations' })).toBeTruthy();
+    await act(async () => reject!(new Error('List unavailable')));
+    expect(screen.queryByText('No emails found')).toBeNull(); expect(screen.getByRole('alert').textContent).toContain('List unavailable');
+  });
+  it('preserves opaque conversation cursors for next and previous pages', async () => {
+    mocks.list.mockResolvedValueOnce({ emails: [email], nextPageToken: 'cursor-2' })
+      .mockResolvedValueOnce({ emails: [{ ...email, id: 'm2', threadId: 't2' }], nextPageToken: 'cursor-3' })
+      .mockResolvedValueOnce({ emails: [{ ...email, id: 'm3', threadId: 't3' }] });
+    render(<InboxPage />); await flush();
+    fireEvent.click(screen.getByLabelText('Next page')); await flush();
+    expect(mocks.list.mock.lastCall?.[0].pageToken).toBe('cursor-2');
+    fireEvent.click(screen.getByLabelText('Next page')); await flush();
+    expect(mocks.list.mock.lastCall?.[0].pageToken).toBe('cursor-3');
+    fireEvent.click(screen.getByLabelText('Previous page')); await flush();
+    expect(mocks.list.mock.lastCall?.[0].pageToken).toBe('cursor-2');
+  });
+  it('keeps Sync now feedback independent and prevents Refresh/Disconnect while provider sync runs', async () => {
+    let reject: (error: Error) => void;
+    mocks.sync.mockImplementationOnce(() => new Promise((_done, fail) => { reject = fail; }));
+    render(<InboxPage />); await flush();
+    fireEvent.click(screen.getByText('Sync now')); fireEvent.click(screen.getByText('Sync now')); await flush();
+    expect(mocks.sync).toHaveBeenCalledTimes(1); expect(screen.getByText('Saved customer email')).toBeTruthy();
+    expect((screen.getByLabelText('Refresh') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByText('Disconnect') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => reject!(new Error('Provider sync failed')));
+    expect(screen.getByText('Provider sync failed')).toBeTruthy(); expect(screen.getByText('Saved customer email')).toBeTruthy();
+    expect((screen.getByLabelText('Refresh') as HTMLButtonElement).disabled).toBe(false);
+  });
+  it('resets an expired assignment cursor to the first authorized page', async () => {
+    mocks.list.mockResolvedValueOnce({ emails: [email], nextPageToken: 'old-scope-cursor' })
+      .mockRejectedValueOnce(Object.assign(new Error('Page changed'), { status: 400, code: 'MAILBOX_PAGE_CHANGED' }))
+      .mockResolvedValueOnce({ emails: [{ ...email, subject: 'Current assigned conversation' }] });
+    render(<InboxPage />); await flush();
+    fireEvent.click(screen.getByLabelText('Next page')); await flush();
+    expect(mocks.list.mock.lastCall?.[0].pageToken).toBeUndefined();
+    expect(screen.getByText('Current assigned conversation')).toBeTruthy(); expect(screen.queryByText('Saved customer email')).toBeNull();
+    expect((screen.getByLabelText('Previous page') as HTMLButtonElement).disabled).toBe(true);
+  });
   it('has only the final filters and no categories or title dropdown', async () => {
     render(<InboxPage />); await flush();
     for (const label of ['Current', 'Primary', 'Promotions', 'Social', 'Updates']) expect(screen.queryByText(label)).toBeNull();

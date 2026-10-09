@@ -94,3 +94,4 @@ data/outputs/retired-features-*.json
 /data/outputs/lead-polish-browser/
 /data/outputs/notification-verification/
 /data/outputs/organization-settings-browser/
+/data/outputs/campaign-clicks/

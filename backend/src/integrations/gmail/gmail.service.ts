@@ -13,6 +13,7 @@ import { ingestMailboxMessages } from './mailbox-ingestion.service';
 import { MailboxListOptions } from '@leadcrm/shared';
 import { readGmailJson, writeGmailJson } from './gmail-read';
 import type { MailboxUnreadCount } from '@leadcrm/shared';
+import { countUnreadConversations } from './mailbox-conversations';
 
 
 
@@ -198,7 +199,8 @@ export async function sendEmailWithToken(
  * Fetches emails from the user's Gmail inbox.
  */
 export async function fetchUnreadCount(tenantId: string, userId: string): Promise<MailboxUnreadCount> {
-  return { unreadCount: (await listStoredMailbox(tenantId, userId, { maxResults: 1 })).unreadCount };
+  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  return { unreadCount: await countUnreadConversations(account, scope), unreadCountUnit: 'conversations' };
 }
 export const fetchEmails = (tenantId: string, userId: string, options: MailboxListOptions = {}) => listStoredMailbox(tenantId, userId, options);
 export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
@@ -211,9 +213,11 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   const reply = replyToMessageId ? await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: replyToMessageId } } }) : null;
   const recipients = Array.isArray(to) ? to : [to];
   if (!draftId) await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId);
+  if (!draftId && reply) assertReplySubject(subject, reply.subject);
   const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId, forwardSourceMessageId }) : null;
   const accessToken = await getValidAccessToken(tenantId, userId);
-  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, reply?.rfcMessageId ?? undefined);
+  const headers = reply && !savedDraft ? await verifiedReplyHeaders(accessToken, reply) : undefined;
+  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, headers?.rfcMessageId, undefined, headers?.rfcReferences);
   const result = await writeGmailJson<{ id: string; threadId: string }>(accessToken, savedDraft ? 'drafts/send' : 'messages/send', 'POST', savedDraft ? { id: savedDraft.draftId } : { raw, ...(reply ? { threadId: reply.threadId } : {}) });
   try {
     if (savedDraft) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId: savedDraft.draftId }, data: { labels: ['DELETED'] } });
@@ -284,8 +288,10 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
     }
   }
   await assertMailboxRecipients(account, scope, permissions, recipients, reply?.threadId);
+  if (reply) assertReplySubject(subject, reply.subject);
   const accessToken = await getValidAccessToken(tenantId, userId);
-  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, reply?.rfcMessageId ?? undefined, options.messageId);
+  const headers = reply ? await verifiedReplyHeaders(accessToken, reply) : undefined;
+  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, headers?.rfcMessageId, options.messageId, headers?.rfcReferences);
   const result = await writeGmailJson<{ id: string; message: { id: string; threadId: string } }>(accessToken, draftId ? 'drafts/' + encodeURIComponent(draftId) : 'drafts', draftId ? 'PUT' : 'POST', { message: { raw, ...(reply ? { threadId: reply.threadId } : {}) } });
   if (draftId) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId, providerMessageId: { not: result.message.id } }, data: { labels: ['DELETED'] } });
   const data = { threadId: result.message.threadId, from: account.email, fromAddress: mailboxAddress(account.email)!, recipients,
@@ -327,7 +333,7 @@ export const trashEmails = (tenantId: string, userId: string, ids: string[]) => 
 export const archiveEmails = (tenantId: string, userId: string, ids: string[]) => modifyEmails(tenantId, userId, ids, false);
 
 
-interface GmailPart { mimeType?: string; body?: { data?: string }; parts?: GmailPart[] }
+interface GmailPart { filename?: string; mimeType?: string; body?: { data?: string; attachmentId?: string; size?: number }; parts?: GmailPart[] }
 export interface GmailApiMessage {
   id: string;
   threadId: string;
@@ -394,11 +400,32 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     replyToAddress: parseAddressList(getHeader('Reply-To')).length === 1 ? mailboxAddress(getHeader('Reply-To')) ?? null : null,
     plainText: plainText || undefined,
     rfcMessageId: getHeader('Message-ID'),
+    rfcReferences: /[\r\n]/.test(getHeader('References')) ? [] : [...new Set((getHeader('References').match(/<[^\s<>]+>/g) ?? []).filter(id => id.length <= 500))],
+    attachments: parts.filter(part => part.filename && part.body?.attachmentId).map(part => ({ id: part.body!.attachmentId!, filename: part.filename!, mimeType: part.mimeType ?? 'application/octet-stream', size: part.body?.size ?? 0 })),
     automated: /^(?:mailer-daemon|postmaster)@/i.test(normalizeEmail(from)) || getHeader('Return-Path').trim() === '<>' || parts.some(part => /message\/(?:delivery-status|disposition-notification)/i.test(part.mimeType ?? '')) || /multipart\/report/i.test(data.payload.mimeType ?? '') || (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),
   };
 }
 
-function createRawMessage(to: string, subject: string, body: string, from: string, inReplyTo?: string, messageId?: string): string {
+async function verifiedReplyHeaders(accessToken: string, source: { providerMessageId: string; threadId: string; rfcMessageId: string | null; rfcReferences: string[] }) {
+  let rfcMessageId = source.rfcMessageId, rfcReferences = source.rfcReferences;
+  if (!rfcMessageId) {
+    // Legacy rows may lack RFC headers. Recover only this already-authorized
+    // source's metadata, never infer relationships from its subject/participants.
+    const message = await readGmailJson<GmailApiMessage>(accessToken, `messages/${encodeURIComponent(source.providerMessageId)}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References`);
+    if (message.threadId !== source.threadId) throw new AppError('Conversation changed. Refresh before replying.', 409);
+    const parsed = parseGmailMessage(message);
+    rfcMessageId = parsed.rfcMessageId ?? null; rfcReferences = parsed.rfcReferences ?? [];
+  }
+  if (!rfcMessageId || !/^<[^\s<>]+>$/.test(rfcMessageId)) throw new AppError('The original email reply headers are unavailable. Sync your mailbox before replying.', 409);
+  return { rfcMessageId, rfcReferences };
+}
+
+function assertReplySubject(subject: string, original: string) {
+  const base = (value: string) => value.trim().replace(/^(?:re:\s*)+/i, '');
+  if (base(subject) !== base(original)) throw new AppError('Keep the conversation subject when replying. Use Compose for a new subject.', 400, 'MAILBOX_REPLY_SUBJECT_CHANGED');
+}
+
+function createRawMessage(to: string, subject: string, body: string, from: string, inReplyTo?: string, messageId?: string, references: string[] = []): string {
   // Inbox sends and drafts pass their connected mailbox explicitly.
   const fromAddress = from.trim();
   if (!fromAddress) throw new AppError('Gmail sender is not configured.', 503);
@@ -409,7 +436,7 @@ function createRawMessage(to: string, subject: string, body: string, from: strin
     `From: ${fromAddress}`,
     `To: ${to}`,
     `Subject: =?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`,
-    ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${inReplyTo}`] : []),
+    ...(inReplyTo ? [`In-Reply-To: ${inReplyTo}`, `References: ${[...new Set([...references.filter(id => /^<[^\s<>]{1,498}>$/.test(id)), inReplyTo])].join('\r\n ')}`] : []),
     ...(messageId ? ['Message-ID: ' + messageId] : []),
     'MIME-Version: 1.0',
     'Content-Type: text/html; charset=utf-8',

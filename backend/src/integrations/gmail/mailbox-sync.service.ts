@@ -34,11 +34,12 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
   return { leadsView, contactsView, leadsEdit: await allowed('leads.edit'), contactsEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
 }
 
-export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions) {
+export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string) {
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account) return emails;
   const scope = await resolveMailboxScope(account, permissions);
-  const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } } });
+  if (expectedScopeHash && expectedScopeHash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
+  const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } }, select: { providerMessageId: true, direction: true, leadId: true, contactId: true, dealId: true, needsDealAssociation: true } });
   return emails.map(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
     ...email, direction: row?.direction ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,
@@ -53,10 +54,10 @@ export async function readMailboxThread(tenantId: string, userId: string, thread
   const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account.isActive) throw new AppError('Connect your mailbox first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
-  const saved = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId, NOT: { labels: { has: 'DRAFT' } } }] }, orderBy: [{ sentAt: 'asc' }, { id: 'asc' }] });
+  const saved = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId, NOT: { labels: { has: 'DRAFT' } } }] }, orderBy: [{ sentAt: 'asc' }, { providerMessageId: 'asc' }] });
   if (!saved.length) throw new AppError('Conversation is outside your assigned CRM mailbox scope.', 404);
   const emails = saved.map(storedEmail);
-  const decorated = await decorateEmails(tenantId, userId, emails, permissions);
+  const decorated = await decorateEmails(tenantId, userId, emails, permissions, scope.hash);
   const latest = decorated[decorated.length - 1];
   const link: CustomerLink | undefined = latest?.leadId ? { leadId: latest.leadId } : latest?.contactId ? { contactId: latest.contactId } : undefined;
   const deals = link && permissions.dealsView ? await prisma.deal.findMany({ where: { ...customerDealWhere(tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true, title: true, stage: { select: { name: true } } } }) : [];

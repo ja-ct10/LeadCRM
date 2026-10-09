@@ -4,6 +4,30 @@ import { renderCampaignMessage, sanitizeCampaignHtml } from '../campaign-content
 import { classifyRecipients } from '../audiences.service';
 
 describe('campaign validation and rendering', () => {
+  it.each([
+    'https://camxian.com/', 'http://sub.camxian.com/products',
+    'https://camxian.com/products?id=123&filter=a%20b#inquiry',
+    'https://camxian.com/contact#inquiry', 'https://camxian.com/a_(b)',
+  ])('generates a real anchor for %s without changing its destination', url => {
+    const message = renderCampaignMessage('Test', `Before (${url}).\nAfter {{first_name}}`, { first_name: 'John' });
+    expect(message.html).toContain(`<a href="${url.replaceAll('&', '&amp;')}">${url.replaceAll('&', '&amp;')}</a>`);
+    expect(message.html).toContain(').<br>After John');
+  });
+  it('preserves existing anchors, entities, variables and line breaks through a saved draft', () => {
+    const draft = sanitizeCampaignHtml('Hi {{first_name}}\n<a href="https://camxian.com/?a=1&amp;b=2">Visit https://camxian.com/</a>\nhttps://camxian.com/?a=1&b=2');
+    const message = renderCampaignMessage('Test', draft, { first_name: 'A & B' });
+    expect(message.html.match(/<a(?: |>)/g)).toHaveLength(2);
+    expect(message.html).toContain('Hi A &amp; B<br>');
+    expect(message.html).toContain('href="https://camxian.com/?a=1&amp;b=2"');
+    expect(message.html).not.toContain('&amp;amp;');
+    expect(message.html).toContain('Visit https://camxian.com/</a>');
+  });
+  it('escapes text injection and ignores unsafe schemes while linkifying sanitized text', () => {
+    const message = renderCampaignMessage('Test', '<img src="https://camxian.com/image" onerror="bad()"><a href="javascript:alert(1)">Unsafe</a>\nhttps://camxian.com/?x=%3Cscript%3E', {});
+    expect(message.html).not.toMatch(/onerror|javascript:/);
+    expect(message.html.match(/<a(?: |>)/g)).toHaveLength(2);
+    expect(message.html).toContain('href="https://camxian.com/?x=%3Cscript%3E"');
+  });
   it('removes executable HTML, forms, SVG and unsafe links', () => {
     const html = sanitizeCampaignHtml('<p onclick="bad()">Hi</p><script>bad()</script><svg onload="bad()"></svg><iframe src="x"></iframe><object>x</object><embed src="x"><form><input></form><a href="javascript:bad()">Click</a><img src="x" onerror="bad()">');
     expect(html).not.toMatch(/script|iframe|object|embed|form|input|onclick|onerror|svg|javascript:/i);

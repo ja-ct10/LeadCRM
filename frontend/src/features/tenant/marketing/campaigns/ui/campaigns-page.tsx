@@ -166,9 +166,9 @@ export default function CampaignsPage() {
     { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} /> },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
     { id: 'submitted', header: 'Submitted', accessor: row => row.sentCount, width: 120 },
-    { id: 'opened', header: 'Opened', accessor: row => row.openedCount ?? 0, width: 110 },
-    { id: 'clicked', header: 'Clicked', accessor: row => row.clickedCount ?? 0, width: 110 },
-    { id: 'engagement', header: 'Engagement', accessor: row => `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130 },
+    { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique opened recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },
+    { id: 'clicked', header: 'Clicked', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique clicking recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0}</span> },
+    { id: 'engagement', header: 'Engagement', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130, cell: (_, row) => <span title="Unique opens / email submissions">{row.type.toUpperCase() === 'SMS' ? '—' : `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`}</span> },
     { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 180 },
   ];
   const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted', 'opened', 'clicked', 'engagement'].includes(column.id)));
@@ -233,21 +233,21 @@ export default function CampaignsPage() {
         </div>
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Opened</span>
+          <span title="Unique opened recipients summed across email campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Opened</span>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-base font-bold text-slate-900 dark:text-white">{totalOpened.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Clicked</span>
+          <span title="Unique clicking recipients summed across email campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Clicked</span>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="text-base font-bold text-slate-900 dark:text-white">{totalClicked.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Avg Open Rate</span>
+          <span title="Weighted rate: unique opens / email submissions" className="text-slate-500 dark:text-slate-400 font-medium">Avg Open Rate</span>
           <div className="flex items-center gap-2 mt-1">
             <span className="text-base font-bold text-slate-900 dark:text-white">{avgOpenRate.toFixed(1)}%</span>
             <div className="w-12 bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">

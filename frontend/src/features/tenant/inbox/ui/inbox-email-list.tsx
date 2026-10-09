@@ -1,15 +1,17 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { Mail, Trash2, Archive, Loader2, RefreshCw, MailOpen, ChevronLeft, ChevronRight, ChevronDown } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Mail, Trash2, Archive, Loader2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { mailboxDate } from '../services/email-presentation';
-import { trashGmailEmails, archiveGmailEmails, GmailEmail } from '../services/gmail.service';
+import { trashGmailConversations, archiveGmailConversations, GmailEmail } from '../services/gmail.service';
 
 interface InboxEmailListProps {
   emails: GmailEmail[];
   onEmailsChanged: () => void | Promise<void>;
   refreshDisabled?: boolean;
+  loading?: boolean;
+  hasLoadError?: boolean;
   totalCount: number;
   onEmailClick: (email: GmailEmail) => void;
   currentPage?: number;
@@ -25,16 +27,21 @@ function extractName(from: string): string {
   return match ? match[1].trim() : from.split('@')[0];
 }
 
-export default function InboxEmailList({ emails, onEmailsChanged, refreshDisabled = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
+const rowId = (email: GmailEmail) => email.messageCount ? email.threadId : email.id;
+const eligible = (email: GmailEmail) => !email.scheduledStatus && !email.labels.includes('DRAFT');
+
+export default function InboxEmailList({ emails, onEmailsChanged, refreshDisabled = false, loading = false, hasLoadError = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const refreshPending = useRef(false), mutationPending = useRef(false);
 
-  useEffect(() => { setSelectedIds(previous => new Set([...previous].filter(id => emails.some(email => email.id === id && !email.scheduledStatus)))); }, [emails]);
-  const scheduled = emails.some(email => !!email.scheduledStatus);
-  const allSelected = emails.length > 0 && selectedIds.size === emails.length;
+  useEffect(() => { setSelectedIds(previous => new Set([...previous].filter(id => emails.some(email => rowId(email) === id && eligible(email))))); }, [emails]);
+  const selectable = emails.filter(eligible);
+  const busy = loading || isRefreshing || isDeleting || isArchiving;
+  const allSelected = selectable.length > 0 && selectedIds.size === selectable.length;
   const someSelected = selectedIds.size > 0 && selectedIds.size < emails.length;
   const hasSelection = selectedIds.size > 0;
 
@@ -42,7 +49,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
     if (allSelected) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(emails.map((e) => e.id)));
+      setSelectedIds(new Set(selectable.map(rowId)));
     }
   };
 
@@ -59,39 +66,46 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
   };
 
   const handleDelete = async (): Promise<void> => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || mutationPending.current || busy || refreshDisabled) return;
+    mutationPending.current = true; setError('');
     setIsDeleting(true);
     try {
-      await trashGmailEmails(Array.from(selectedIds));
+      await trashGmailConversations(Array.from(selectedIds));
       setSelectedIds(new Set());
-      onEmailsChanged();
+      await onEmailsChanged();
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to move emails to trash.');
     } finally {
       setIsDeleting(false);
+      mutationPending.current = false;
     }
   };
 
   const handleArchive = async (): Promise<void> => {
-    if (selectedIds.size === 0) return;
+    if (selectedIds.size === 0 || mutationPending.current || busy || refreshDisabled) return;
+    mutationPending.current = true; setError('');
     setIsArchiving(true);
     try {
-      await archiveGmailEmails(Array.from(selectedIds));
+      await archiveGmailConversations(Array.from(selectedIds));
       setSelectedIds(new Set());
-      onEmailsChanged();
+      await onEmailsChanged();
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Unable to archive emails.');
     } finally {
       setIsArchiving(false);
+      mutationPending.current = false;
     }
   };
 
   const handleRefresh = async (): Promise<void> => {
-    setIsRefreshing(true);
+    if (refreshPending.current || busy || refreshDisabled) return;
+    refreshPending.current = true; setIsRefreshing(true); setError('');
     try {
       await onEmailsChanged();
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Unable to refresh conversations. Try again.');
     } finally {
-      setIsRefreshing(false);
+      refreshPending.current = false; setIsRefreshing(false);
     }
   };
 
@@ -99,14 +113,14 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       {error && <p role="alert" className="p-3 text-sm text-red-600">{error}</p>}
       {/* Toolbar */}
-      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-white/[0.05] bg-white dark:bg-transparent shrink-0">
+      <div role="toolbar" aria-label="Email list actions" className="flex items-center justify-between px-4 py-2 border-b border-gray-100 dark:border-white/[0.05] bg-white dark:bg-transparent shrink-0">
         <div className="flex items-center gap-1">
           {/* Select all with dropdown */}
           <div className="flex items-center">
             <input
               type="checkbox"
               checked={allSelected}
-              disabled={scheduled || emails.length === 0}
+              disabled={busy || refreshDisabled || selectable.length === 0}
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleSelectAll}
               className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
@@ -118,7 +132,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
           {/* Refresh — always visible */}
           <button
             onClick={handleRefresh}
-            disabled={refreshDisabled || isRefreshing}
+            disabled={refreshDisabled || busy}
             className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             aria-label="Refresh"
             title="Refresh"
@@ -131,7 +145,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
             <>
               <button
                 onClick={handleArchive}
-                disabled={isArchiving}
+                disabled={refreshDisabled || busy}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
                 aria-label="Archive"
                 title="Archive"
@@ -140,7 +154,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
               </button>
               <button
                 onClick={handleDelete}
-                disabled={isDeleting}
+                disabled={refreshDisabled || busy}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
                 aria-label="Delete"
                 title="Delete"
@@ -159,7 +173,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
           </span>
           <button
             onClick={onPrevPage}
-            disabled={currentPage <= 1 || refreshDisabled}
+            disabled={currentPage <= 1 || refreshDisabled || busy}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             aria-label="Previous page"
           >
@@ -167,7 +181,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
           </button>
           <button
             onClick={onNextPage}
-            disabled={!hasNextPage || refreshDisabled}
+            disabled={!hasNextPage || refreshDisabled || busy}
             className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
             aria-label="Next page"
           >
@@ -185,8 +199,9 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
       )}
 
       {/* Email list */}
-      <div className="flex-1 overflow-y-auto">
-        {emails.length === 0 && (
+      <div aria-busy={loading || isRefreshing} data-mailbox-list className="min-h-0 flex-1 overflow-y-auto">
+        {loading || isRefreshing ? <div role="status" aria-label="Loading conversations" className="flex min-h-64 h-full items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : <>
+        {emails.length === 0 && !hasLoadError && !error && (
           <div className="flex flex-col items-center justify-center px-6 py-16">
             <Mail className="mb-4 h-6 w-6 text-slate-400" />
             <p className="text-sm font-medium text-slate-900 dark:text-white">No emails found</p>
@@ -194,10 +209,10 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
           </div>
         )}
         {emails.map((email) => {
-          const isSelected = selectedIds.has(email.id);
+          const isSelected = selectedIds.has(rowId(email));
           return (
             <div
-              key={email.id}
+              key={rowId(email)}
               className={cn(
                 'flex items-center gap-0 px-3 sm:px-5 py-3 border-b border-gray-100 dark:border-white/[0.03] hover:shadow-sm transition-all',
                 !email.isRead && 'bg-white dark:bg-white/[0.03]',
@@ -211,8 +226,8 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                 <input
                   type="checkbox"
                   checked={isSelected}
-                  disabled={!!email.scheduledStatus}
-                  onChange={() => toggleSelect(email.id)}
+                  disabled={!eligible(email) || refreshDisabled || busy}
+                  onChange={() => toggleSelect(rowId(email))}
                   className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
                   aria-label={`Select email from ${extractName(email.from)}`}
                 />
@@ -234,7 +249,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                       : 'font-normal text-slate-700 dark:text-slate-400',
                   )}
                 >
-                  {email.direction === 'outbound' ? `You → ${extractName(email.to[0] ?? '')}` : extractName(email.from)}
+                  {email.participants?.length ? email.participants.join(', ') : email.direction === 'outbound' ? `You → ${extractName(email.to[0] ?? '')}` : extractName(email.from)}{(email.messageCount ?? 0) > 1 && <span aria-label={`${email.messageCount} messages`}> ({email.messageCount})</span>}
                 </span>
 
                 {/* Subject + Snippet */}
@@ -269,6 +284,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
             </div>
           );
         })}
+        </>}
       </div>
     </div>
   );

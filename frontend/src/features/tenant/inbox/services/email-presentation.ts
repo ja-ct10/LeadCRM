@@ -18,6 +18,17 @@ export type MailboxComposeDraft = { to: string; subject: string; body: string; r
 export function replyDraft(email: GmailEmail): MailboxComposeDraft {
   return { to: email.direction === 'outbound' ? emailAddress(email.to[0] ?? '') : email.replyToAddress || emailAddress(email.from), subject: /^\s*re:/i.test(email.subject) ? email.subject : `Re: ${email.subject}`, body: '', replyToMessageId: email.id };
 }
+export function replyAllDraft(email: GmailEmail, mailbox: string): MailboxComposeDraft {
+  const draft = replyDraft(email);
+  const addresses = [draft.to, ...email.to, ...(email.cc ?? [])].map(emailAddress);
+  const seen = new Set<string>([mailbox.trim().toLowerCase()]);
+  const recipients = addresses.filter(address => {
+    const key = address.toLowerCase();
+    if (!key || seen.has(key)) return false;
+    seen.add(key); return true;
+  });
+  return { ...draft, to: recipients.join(', ') };
+}
 export function forwardDraft(email: GmailEmail): MailboxComposeDraft {
   const escape = (value: string) => value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   return { to: '', subject: /^\s*fwd:/i.test(email.subject) ? email.subject : `Fwd: ${email.subject}`, forwardSourceMessageId: email.id,

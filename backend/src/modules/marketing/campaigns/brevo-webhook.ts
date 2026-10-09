@@ -6,6 +6,7 @@ import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
 import { recalculateCampaignDelivery } from './campaign-delivery-status';
+import { campaignLinkDestination } from '@leadcrm/shared';
 
 export const BrevoEventSchema = z.object({
   event: z.enum(['request', 'delivered', 'opened', 'unique_opened', 'click', 'soft_bounce', 'hard_bounce', 'blocked', 'spam', 'unsubscribed', 'invalid_email', 'error', 'deferred']),
@@ -17,6 +18,13 @@ export const BrevoEventSchema = z.object({
   tags: z.array(z.string()).optional(),
   // Older Brevo payloads serialize the tags array as a JSON string.
   tag: z.string().optional(),
+}).superRefine((event, ctx) => {
+  if (['click', 'opened', 'unique_opened'].includes(event.event) && event.ts_epoch == null && event.ts_event == null && event.ts == null) {
+    ctx.addIssue({ code: 'custom', path: ['ts_event'], message: 'Engagement events require a provider timestamp.' });
+  }
+  if (event.event === 'click' && event.link && !campaignLinkDestination(event.link)) {
+    ctx.addIssue({ code: 'custom', path: ['link'], message: 'Click destination must be an HTTP or HTTPS URL.' });
+  }
 });
 
 export function brevoEventTime(event: z.infer<typeof BrevoEventSchema>) {
@@ -25,7 +33,8 @@ export function brevoEventTime(event: z.infer<typeof BrevoEventSchema>) {
   // Some payloads reuse the send epoch. Prefer event time in that case, while
   // retaining millisecond precision for genuinely separate same-second clicks.
   const time = seconds == null ? epoch : epoch != null && Math.floor(epoch / 1000) === seconds ? epoch : seconds * 1000;
-  return new Date(time != null && time <= Date.now() + 300_000 ? time : Date.now());
+  if (time != null && (!Number.isFinite(time) || time > Date.now() + 300_000 || time > 8.64e15)) throw new AppError('Invalid provider event timestamp.', 400);
+  return new Date(time ?? Date.now());
 }
 export function verifyWebhookAuthorization(header?: string) {
   const token = process.env.BREVO_WEBHOOK_TOKEN;
@@ -61,7 +70,7 @@ export async function processBrevoEvent(input: unknown) {
       // Include both provider timestamps: ts_epoch can refer to the original send.
       const repeatable = type === 'click' || type === 'opened';
       const eventKey = repeatable
-        ? `${log.id}:${type}:${createHash('sha256').update(JSON.stringify([event.link ?? '', event.ts_epoch ?? null, event.ts_event ?? event.ts ?? null])).digest('hex')}`
+        ? `${log.id}:${type}:v2:${createHash('sha256').update(JSON.stringify([event.link ?? '', event.ts_epoch ?? null, event.ts_event ?? event.ts ?? null])).digest('hex')}`
         : legacyKey;
       // Recognize retries of receipts saved before the expanded event key.
       if (repeatable && await tx.emailEvent.findFirst({ where: { ...scope, deliveryLogId: log.id, providerEventKey: legacyKey,
@@ -78,15 +87,15 @@ export async function processBrevoEvent(input: unknown) {
       await tx.campaignContact.updateMany({ where: { ...scope, campaignId: log.campaignId!, messageId: log.brevoMessageId }, data: { status,
         ...(type === 'request' ? { sentAt: current.sentAt ?? at } : {}),
         ...(type === 'delivered' ? { deliveredAt: at } : {}),
-        ...(type === 'opened' ? { openedAt: current.openedAt ?? at } : {}),
-        ...(type === 'click' ? { clickedAt: current.clickedAt ?? at } : {}),
+        ...(type === 'opened' ? { openedAt: current.openedAt && current.openedAt < at ? current.openedAt : at } : {}),
+        ...(type === 'click' ? { clickedAt: current.clickedAt && current.clickedAt < at ? current.clickedAt : at } : {}),
         ...(bounced ? { bouncedAt: at, ...(blocked ? { failureReason: type.toUpperCase() } : {}) } : {}),
         ...(type === 'error' ? { failureReason: 'ERROR' } : {}),
         ...(type === 'unsubscribe' ? { unsubscribed: true } : {}),
       } });
       await tx.emailDeliveryLog.update({ where: { id: log.id, ...scope }, data: { status,
         ...(type === 'request' ? { sentAt: current.sentAt ?? at } : {}),
-        ...(type === 'opened' ? { openedAt: current.openedAt ?? at } : {}), ...(type === 'click' ? { clickedAt: current.clickedAt ?? at } : {}),
+        ...(type === 'opened' ? { openedAt: current.openedAt && current.openedAt < at ? current.openedAt : at } : {}), ...(type === 'click' ? { clickedAt: current.clickedAt && current.clickedAt < at ? current.clickedAt : at } : {}),
         ...(bounced ? { bouncedAt: at } : {}),
       } });
       await recalculateCampaignDelivery(tx, log.campaignId!, log.tenantId);

@@ -28,6 +28,8 @@ export default function InboxPage(): React.ReactElement {
   const [emails, setEmails] = useState<GmailEmail[]>([]), [unreadCount, setUnreadCount] = useState<number>();
   const [isLoadingStatus, setIsLoadingStatus] = useState(true), [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false), [syncing, setSyncing] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const disconnectPending = useRef(false);
   const [error, setError] = useState(''), [syncError, setSyncError] = useState('');
   const [menu, setMenu] = useState<'filter' | 'sort' | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -53,6 +55,7 @@ export default function InboxPage(): React.ReactElement {
   const [nextPageToken, setNextPageToken] = useState<string>();
   const [page, setPage] = useState(1);
   const pageRef = useRef(1), tokenRef = useRef<string | undefined>(undefined);
+  const pageTokens = useRef<Array<string | undefined>>([undefined]);
   const loaded = useRef(false), syncPending = useRef(false);
   const request = useRef<{ key: string; controller: AbortController; promise: Promise<void> } | null>(null);
   const requestId = useRef(0);
@@ -98,11 +101,21 @@ export default function InboxPage(): React.ReactElement {
     setRefreshing(true); if (!loaded.current) setInitialLoading(true);
     const promise = (async () => {
       try {
-        const result = await fetchGmailEmails({ filter, sort, query: debouncedSearch.trim(), maxResults: 30, pageToken }, controller.signal);
+        const options = { filter, sort, query: debouncedSearch.trim(), maxResults: 30, pageToken };
+        let currentToken = pageToken, currentPage = targetPage;
+        const result = await fetchGmailEmails(options, controller.signal).catch(async error => {
+          if (!pageToken || (error as ApiRequestError).code !== 'MAILBOX_PAGE_CHANGED' || controller.signal.aborted || id !== requestId.current) throw error;
+          // A cursor from revoked assignments is no longer valid cached data.
+          setEmails([]); setSelectedEmail(null); setInitialLoading(true);
+          currentToken = undefined; currentPage = 1;
+          return fetchGmailEmails({ ...options, pageToken: undefined }, controller.signal);
+        });
         if (controller.signal.aborted || id !== requestId.current) return;
         setEmails(result.emails); setUnreadCount(result.unreadCount); setNextPageToken(result.nextPageToken); setError('');
         if (result.unreadCount !== undefined) window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: result.unreadCount }));
-        loaded.current = true; pageRef.current = targetPage; tokenRef.current = pageToken; setPage(targetPage);
+        loaded.current = true; pageRef.current = currentPage; tokenRef.current = currentToken; setPage(currentPage);
+        if (currentPage === 1) pageTokens.current = [undefined];
+        pageTokens.current[currentPage - 1] = currentToken;
       } catch (error) {
         if (controller.signal.aborted || id !== requestId.current) return;
         const apiError = error as ApiRequestError;
@@ -193,17 +206,30 @@ export default function InboxPage(): React.ReactElement {
   }, [apiCooldownUntil, connectionStatus?.isConnected, loadEmails, applyApiCooldown]);
 
   const sync = async () => {
-    if (syncPending.current || retryAt > Date.now() || Date.now() < cooldownRef.current) return;
+    if (syncPending.current || disconnectPending.current || refreshing || retryAt > Date.now() || Date.now() < cooldownRef.current) return;
     syncPending.current = true; setSyncing(true); setSyncError('');
     try {
       const result = await syncGmail();
-      setSyncError(result.hasMore ? 'Email updates are continuing in the background.' : '');
+      setRetryAt(Date.parse(result.retryAt ?? '') || 0);
+      setSyncError(result.retryAt ? 'Gmail updates are temporarily paused. Saved emails remain available.' : result.hasMore ? 'Email updates are continuing in the background.' : '');
       await loadEmails(tokenRef.current, pageRef.current);
     } catch (error) {
       applyApiCooldown(error as ApiRequestError);
       setSyncError((error as ApiRequestError).code === 'GMAIL_RATE_LIMITED' ? 'Gmail updates are temporarily paused. Saved emails remain available.' : error instanceof Error ? error.message : 'Email updates are delayed.');
       setRetryAt(Date.parse((error as ApiRequestError).retryAt ?? '') || 0);
     } finally { syncPending.current = false; setSyncing(false); }
+  };
+  const disconnect = async () => {
+    if (disconnectPending.current || syncPending.current || refreshing) return;
+    disconnectPending.current = true; setDisconnecting(true);
+    try {
+      await disconnectGmail();
+      request.current?.controller.abort(); request.current = null; requestId.current++;
+      setConnectionStatus(null); setEmails([]); setUnreadCount(undefined); setSelectedEmail(null);
+      loaded.current = false;
+      window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: 0 }));
+    } catch (error) { setError(error instanceof Error ? error.message : 'Unable to disconnect your mailbox.'); }
+    finally { disconnectPending.current = false; setDisconnecting(false); }
   };
   const openEmail = (email: GmailEmail) => {
     if (email.scheduledStatus) return;
@@ -212,15 +238,15 @@ export default function InboxPage(): React.ReactElement {
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
   if (selectedEmail) return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card">
-    <EmailConversationView key={selectedEmail.threadId} email={selectedEmail} revision={revision} retryAt={retryAt} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => { void loadEmails(tokenRef.current, pageRef.current); setRevision(value => value + 1); }} />
+    <EmailConversationView key={selectedEmail.threadId} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => { void loadEmails(tokenRef.current, pageRef.current); setRevision(value => value + 1); }} />
   </motion.div>;
   return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col gap-4 pb-16">
-    <header><h1 className="font-display text-2xl font-bold tracking-tight">Inbox</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'message' : 'messages'}</p>}</header>
+    <header><h1 className="font-display text-2xl font-bold tracking-tight">Inbox</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}</p>}</header>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-border bg-card">
       {connectionStatus?.isConnected && <>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-4 sm:px-5">
           <div className="flex min-w-0 items-center gap-3"><span className="shrink-0 rounded-full bg-[var(--color-brand-light)] p-2 text-[var(--primary)]"><Mail size={18} /></span><div className="min-w-0"><p className="text-sm font-semibold">Work email</p><p className="break-all text-xs text-muted-foreground">{connectionStatus.email}</p></div></div>
-          <div className="flex items-center gap-2"><button className={control} disabled={syncing || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void sync()}>{syncing && <Loader2 size={14} className="animate-spin" />}Sync now</button><button className={control} onClick={() => void disconnectGmail().then(() => { setConnectionStatus(null); setEmails([]); setUnreadCount(undefined); }).catch(error => setError(error.message))}>Disconnect</button></div>
+          <div className="flex items-center gap-2"><button className={control} disabled={syncing || refreshing || disconnecting || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void sync()}>{syncing && <Loader2 size={14} className="animate-spin" />}Sync now</button><button className={control} disabled={syncing || refreshing || disconnecting} onClick={() => void disconnect()}>{disconnecting && <Loader2 size={14} className="animate-spin" />}Disconnect</button></div>
         </div>
         <div ref={menuRef} className="flex flex-wrap items-center gap-2 border-b border-border p-3 sm:px-5" onKeyDown={event => { if (event.key === 'Escape') setMenu(null); }}>
           <label className="flex min-h-10 min-w-0 basis-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 sm:flex-1 sm:basis-auto"><Search size={16} className="shrink-0 text-muted-foreground" /><input aria-label="Search email" placeholder="Search email..." value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none" /></label>
@@ -230,7 +256,7 @@ export default function InboxPage(): React.ReactElement {
       </>}
       {syncError && <p role="status" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{syncError}</p>}
       {error && <p role="alert" className="px-4 py-3 text-sm text-red-600">{error}</p>}
-      {isLoadingStatus || connectionStatus?.isConnected && initialLoading ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} onEmailClick={openEmail} refreshDisabled={refreshing} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(page > 2 ? String((page - 2) * 30) : undefined, Math.max(1, page - 1))} />}
+      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
     <ComposeModal isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />

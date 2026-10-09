@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, ChevronDown, Copy, Filter, Link2, Mail, Send, Target, Users } from 'lucide-react';
+import { Check, Copy, Download, Link2, Mail, Send, Target, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CampaignClickedLink, CampaignRecipient } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
@@ -9,17 +9,19 @@ import { campaignsApi, type CampaignReportResponse } from '@/shared/services/cam
 import { Card } from '@/shared/components/ui/card';
 import { Badge } from '@/shared/components/ui/badge';
 import { Button } from '@/shared/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/components/ui/dropdown-menu';
 import { RecordBackButton } from '@/shared/components/crm/record-back-button';
+import { FilterButton } from '@/shared/components/crm/filter-button';
+import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/module-filter-rail';
 import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
 import { AvatarCell } from '@/shared/components/crm/avatar-cell';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { CampaignStatusBadge, formatCampaignStatus } from './campaign-status-badge';
+import { campaignReportCsv } from '../services/campaign-report-export';
 
-const recipientFilters = ['All recipients', 'Delivered', 'Bounced', 'Opened', 'Clicked', 'Submitted', 'Sent', 'Failed', 'Pending'] as const;
-type RecipientFilter = typeof recipientFilters[number];
+const deliveryFilters = ['Delivered', 'Bounced', 'Submitted', 'Sent', 'Failed', 'Pending'];
+const engagementFilters = ['Opened', 'Clicked'];
 const engagement = (value: boolean, label: string) => <span aria-label={value ? label : `Not ${label.toLowerCase()}`}>
   {value ? <Check size={16} className="text-emerald-600" aria-hidden="true" /> : <span className="text-slate-400" aria-hidden="true">—</span>}
 </span>;
@@ -39,13 +41,13 @@ const recipientColumns: DataGridColumnDef<CampaignRecipient>[] = [
     }}><Copy size={14} /></Button> },
 ];
 const linkColumns: DataGridColumnDef<CampaignClickedLink>[] = [
-  { id: 'url', header: 'Link', accessor: row => row.url, width: 380, cell: (_, row) =>
-    <a href={/^https?:\/\//i.test(row.url) ? row.url : undefined} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 text-blue-600 hover:underline">
+  { id: 'url', header: 'Link URL', accessor: row => row.url, width: 380, cell: (_, row) =>
+    <a href={/^https?:\/\//i.test(row.url) ? row.url : undefined} title={row.url} aria-label={row.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 text-blue-600 hover:underline">
       <Link2 size={16} className="shrink-0" aria-hidden="true" /><span className="truncate">{row.url}</span>
     </a> },
   { id: 'total', header: 'Total Clicks', accessor: row => row.totalClicks, width: 130 },
-  { id: 'rate', header: 'Click Rate', accessor: row => `${Math.round(row.clickRate)}%`, width: 110 },
-  { id: 'last', header: 'Last Clicked', accessor: row => formatDateTime(row.lastClicked), width: 220 },
+  { id: 'unique', header: 'Unique Clicks', accessor: row => row.uniqueClicks, width: 130 },
+  { id: 'share', header: 'Click Share', accessor: row => row.clickShare == null ? 'Unavailable' : `${row.clickShare.toFixed(1)}%`, width: 130 },
 ];
 
 export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; onBack: () => void }) {
@@ -53,7 +55,11 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState<RecipientFilter>('All recipients');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filterSearch, setFilterSearch] = useState('');
+  const [deliveryFilter, setDeliveryFilter] = useState<string[]>([]);
+  const [engagementFilter, setEngagementFilter] = useState<string[]>([]);
+  const [showAllLinks, setShowAllLinks] = useState(false);
   const request = useRef(0);
   const inFlight = useRef(false);
   const activeRequest = useRef<AbortController | null>(null);
@@ -75,17 +81,22 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     }
   }, [campaign.id]);
   useEffect(() => {
-    setReport(null); setSearch(''); setFilter('All recipients');
+    setReport(null); setSearch(''); setShowFilters(false); setFilterSearch('');
+    setDeliveryFilter([]); setEngagementFilter([]); setShowAllLinks(false);
     inFlight.current = false;
     void fetchReport();
     const refresh = () => { if (!document.hidden) void fetchReport(true); };
     const interval = setInterval(refresh, 2500);
     document.addEventListener('visibilitychange', refresh);
+    window.addEventListener('online', refresh);
+    window.addEventListener('focus', refresh);
     return () => {
       request.current++;
       activeRequest.current?.abort();
       clearInterval(interval);
       document.removeEventListener('visibilitychange', refresh);
+      window.removeEventListener('online', refresh);
+      window.removeEventListener('focus', refresh);
     };
   }, [fetchReport]);
 
@@ -93,15 +104,26 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const visibleRecipients = useMemo(() => recipients.filter(row => {
     const query = search.trim().toLowerCase();
     return `${row.name} ${row.email || ''} ${row.phone || ''}`.toLowerCase().includes(query) &&
-      (filter === 'All recipients' || (filter === 'Opened' ? row.opened : filter === 'Clicked' ? row.clicked : row.deliveryStatus === filter));
-  }), [recipients, search, filter]);
+      (!deliveryFilter.length || deliveryFilter.includes(row.deliveryStatus)) &&
+      (!engagementFilter.length || engagementFilter.some(value => value === 'Opened' ? row.opened : row.clicked));
+  }), [recipients, search, deliveryFilter, engagementFilter]);
   const current = report ?? campaign;
   const status = formatCampaignStatus(current.status);
   const isSms = current.type.toUpperCase() === 'SMS';
   const columns: DataGridColumnDef<CampaignRecipient>[] = isSms ? recipientColumns.filter(c => !['opened', 'clicked'].includes(c.id)).map(c => c.id === 'email' ? { ...c, id: 'phone', header: 'Phone', accessor: row => row.phone || '—' } : c.id === 'actions' ? { ...c, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.phone} aria-label={`Copy phone for ${row.name}`} title="Copy phone" onClick={async () => { try { await navigator.clipboard.writeText(row.phone || ''); toast.success('Phone copied.'); } catch { toast.error('Unable to copy phone.'); } }}><Copy size={14} /></Button> } : c) : recipientColumns;
-  const filters = isSms ? recipientFilters.filter(f => !['Bounced', 'Opened', 'Clicked'].includes(f)) : recipientFilters;
+  const filterGroups: FilterGroup[] = [{ id: 'delivery', label: 'Delivery Status', items:
+    deliveryFilters.filter(value => !isSms || value !== 'Bounced').map(value => ({ id: value, label: value,
+      count: recipients.filter(row => row.deliveryStatus === value).length, isChecked: deliveryFilter.includes(value) })) },
+    ...(!isSms ? [{ id: 'engagement', label: 'Engagement', items: engagementFilters.map(value => ({ id: value, label: value,
+      count: recipients.filter(row => value === 'Opened' ? row.opened : row.clicked).length, isChecked: engagementFilter.includes(value) })) }] : [])];
+  const toggleFilter = (group: string, value: string) => {
+    const update = group === 'delivery' ? setDeliveryFilter : setEngagementFilter;
+    update(current => current.includes(value) ? current.filter(item => item !== value) : [...current, value]);
+  };
   const initialLoading = loading && !report;
   const count = report?.recipientCount ?? 0;
+  const available = (value: number | null | undefined) => value == null ? 'Unavailable' : value;
+  const rate = (value: number | null | undefined) => value == null ? 'Unavailable' : `${value.toFixed(1)}%`;
   const metrics: { label: string; value: number | string }[] = isSms ? [
     { label: 'Recipients', value: count }, { label: 'Submitted', value: report?.sentCount ?? 0 },
     { label: 'Sent', value: recipients.filter(r => ['Sent', 'Delivered'].includes(r.deliveryStatus)).length },
@@ -110,16 +132,35 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   ] : [
     { label: 'Recipients', value: count },
     { label: 'Delivered', value: report?.deliveredCount ?? 0 },
-    { label: 'Opened', value: report?.openedCount ?? 0 },
-    { label: 'Clicked', value: report?.clickedCount ?? 0 },
+    { label: 'Submitted', value: report?.sentCount ?? 0 },
+    { label: 'Unique Opens', value: available(report?.uniqueOpens) },
+    { label: 'Total Opens', value: available(report?.totalOpens) },
+    { label: 'Unique Clicks', value: available(report?.uniqueClicks) },
+    { label: 'Total Clicks', value: available(report?.totalClicks) },
+    { label: 'CTR', value: rate(report?.ctr) },
+    { label: 'CTOR', value: rate(report?.ctor) },
     { label: 'Bounced', value: report?.bouncedCount ?? 0 },
   ];
+  const trackingMessage = report?.trackingStatus === 'draft' ? 'Save and send this draft to begin tracking.'
+    : report?.trackingStatus === 'not_sent' ? 'This campaign has not been submitted.'
+    : report?.trackingStatus === 'no_links' ? 'This campaign contains no trackable HTTP or HTTPS links.'
+    : report?.trackingStatus === 'historical_unavailable' ? 'Historical tracking records are incomplete. Total counts and rates are unavailable.'
+    : report?.trackingStatus === 'pending' ? 'No links have been clicked yet. Awaiting verified provider clicks; Brevo tracking settings must be enabled.'
+    : (report?.totalClicks ?? 0) > 0 ? 'Clicks were recorded, but their destination URLs are unavailable.'
+    : 'No links have been clicked yet.';
+  function exportReport() {
+    if (!report || error) return;
+    const filter = [deliveryFilter.length ? `Delivery: ${deliveryFilter.join(' or ')}` : '',
+      engagementFilter.length ? `Engagement: ${engagementFilter.join(' or ')}` : ''].filter(Boolean).join('; ') || 'All recipients';
+    const url = URL.createObjectURL(new Blob([campaignReportCsv(report, visibleRecipients, { search, filter })], { type: 'text/csv;charset=utf-8' }));
+    const link = document.createElement('a'); link.href = url; link.download = 'campaign-report.csv'; link.click(); URL.revokeObjectURL(url);
+  }
   const details = [
     { label: 'Type', value: current.type === 'Sms' ? 'SMS' : current.type, icon: Mail },
     { label: 'Status', value: status, icon: Check },
     { label: 'Target Segment', value: current.targetAudience, icon: Target },
     { label: 'Recipients', value: `${count} recipient${count === 1 ? '' : 's'}`, icon: Users },
-    { label: isSms ? 'Submitted' : 'Sent', value: formatDateTime(current.sentAt), icon: Send },
+    { label: 'Submitted', value: formatDateTime(current.sentAt), icon: Send },
   ];
 
   return <div className="w-full min-w-0 space-y-6">
@@ -131,6 +172,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       </div>
       <h1 className="break-words text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{current.name} Report</h1>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Performance overview and recipient activity</p>
+      <Button variant="outline" size="sm" className="mt-3" onClick={exportReport} disabled={!report || !!error || loading}><Download size={14} />Export report</Button>
     </header>
     {error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-300">
       <span className="min-w-0 flex-1">{error}{report && ' Previously loaded data is shown.'}</span>
@@ -142,10 +184,11 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{metric.label}</h2>
           {initialLoading ? <div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /> :
             <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-2xl font-semibold text-slate-900 dark:text-white">{metric.value.toLocaleString()}</span>
-              {index > 0 && typeof metric.value === 'number' && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
+              {isSms && index > 0 && typeof metric.value === 'number' && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
             </div>}
         </Card>)}
       </section>
+      {!isSms && <p className="text-xs text-slate-500 dark:text-slate-400">CTR = unique clicking recipients / delivered recipients. CTOR = unique clicking recipients / unique opened recipients. Counts are provider-reported activity and may include automated clicks. Email-client privacy features affect opens; a click does not create an open.</p>}
       <section aria-labelledby="campaign-details-title">
         <h2 id="campaign-details-title" className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Campaign details</h2>
         <Card className="rounded-lg shadow-none overflow-hidden">
@@ -162,17 +205,23 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
         <div><h2 id="recipients-title" className="text-sm font-semibold text-slate-900 dark:text-white">Recipient performance</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{initialLoading ? 'Recipient activity' : `${visibleRecipients.length} of ${recipients.length} recipients`}</p></div>
         <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={loading} onRefresh={() => void fetchReport()}
-          filter={<DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" aria-label="Filter recipients"><Filter size={13} />{filter === 'All recipients' ? 'Filter' : filter}<ChevronDown size={13} /></Button></DropdownMenuTrigger>
-            <DropdownMenuContent align="start" aria-label="Recipient status filters">{filters.map(option => <DropdownMenuItem key={option} role="menuitemradio" aria-checked={filter === option} onSelect={() => setFilter(option)}>{option}{filter === option && <Check size={14} className="ml-auto" />}</DropdownMenuItem>)}</DropdownMenuContent>
-          </DropdownMenu>} />
-        <DataGrid ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
-          emptyMessage={recipients.length ? 'No recipients match your search and filter.' : 'No recipients yet.'} />
+          filter={<FilterButton title="recipients" open={showFilters} active={!!(deliveryFilter.length || engagementFilter.length)} onClick={() => setShowFilters(value => !value)} />} />
+        <div className="flex min-w-0 items-start gap-3">
+          <ModuleFilterRail showFilters={showFilters} filterGroups={filterGroups} onToggleFilters={() => setShowFilters(false)}
+            filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} onFilterToggle={toggleFilter} totalRecords={recipients.length}
+            onClearFilters={() => { setDeliveryFilter([]); setEngagementFilter([]); setFilterSearch(''); setSearch(''); }} />
+          <div className="min-w-0 flex-1">
+            <DataGrid ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
+              emptyMessage={recipients.length ? 'No recipients match your search and filter.' : 'No recipients yet.'} />
+          </div>
+        </div>
       </section>
       {!isSms && <section aria-labelledby="top-links-title" className="min-w-0 space-y-3">
-        <div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top links clicked</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Links that generated engagement from this campaign</p></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top Links Clicked</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Original destinations · Click share is a percentage of recorded campaign clicks</p></div>
+          {(report?.topLinks.length ?? 0) > 5 && <Button variant="outline" size="sm" onClick={() => setShowAllLinks(value => !value)}>{showAllLinks ? 'Show Top Five' : 'Show All'}</Button>}</div>
         {initialLoading ? <div aria-hidden="true"><DataLoadingSkeleton rowCount={1} columnCount={4} /></div> : report?.topLinks.length ?
-          <DataGrid ariaLabel="Top links clicked table" columns={linkColumns} data={report.topLinks} getRowId={row => row.url} height="auto" /> :
-          <Card className="rounded-lg p-4 shadow-none text-xs text-slate-500 dark:text-slate-400">No clicked links recorded for this campaign.</Card>}
+          <DataGrid ariaLabel="Top links clicked table" columns={linkColumns} data={showAllLinks ? report.topLinks : report.topLinks.slice(0, 5)} getRowId={row => row.url} height="auto" /> :
+          <Card className="rounded-lg p-4 shadow-none text-xs text-slate-500 dark:text-slate-400">{trackingMessage}</Card>}
       </section>}
     </>}
   </div>;

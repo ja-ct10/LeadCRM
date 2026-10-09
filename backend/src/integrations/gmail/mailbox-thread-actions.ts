@@ -8,9 +8,13 @@ import { writeGmailJson } from './gmail-read';
 /** Resolve message IDs server-side. Never mutate the provider thread wholesale:
  * it can also contain drafts or correspondence outside current CRM scope. */
 export async function mutateMailboxThread(tenantId: string, userId: string, threadId: string, action: 'read' | 'unread' | 'archive' | 'trash') {
+  return mutateMailboxThreads(tenantId, userId, [threadId], action);
+}
+
+export async function mutateMailboxThreads(tenantId: string, userId: string, threadIds: string[], action: 'read' | 'unread' | 'archive' | 'trash') {
   const { account, scope } = await authorizedMailbox(tenantId, userId);
-  const rows = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId, NOT: { labels: { has: 'DRAFT' } } }] } });
-  if (!rows.length) throw new AppError('Conversation is no longer available in your assigned CRM mailbox scope.', 404);
+  const rows = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId: { in: threadIds }, NOT: { labels: { has: 'DRAFT' } } }] }, select: { id: true, threadId: true, providerMessageId: true, labels: true } });
+  if (new Set(rows.map(row => row.threadId)).size !== new Set(threadIds).size) throw new AppError('Conversation is no longer available in your assigned CRM mailbox scope.', 404);
   const changed = rows.filter(row => action === 'read' ? row.labels.includes('UNREAD') : action === 'unread' ? !row.labels.includes('UNREAD') : action === 'archive' ? row.labels.includes('INBOX') : true);
   if (!changed.length) return { success: true, count: 0 };
   const token = await getValidAccessToken(tenantId, userId);

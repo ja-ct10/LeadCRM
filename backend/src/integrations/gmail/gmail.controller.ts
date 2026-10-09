@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema } from '@leadcrm/shared';
-import { mutateMailboxThread } from './mailbox-thread-actions';
+import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema, MailboxBulkActionSchema } from '@leadcrm/shared';
+import { mutateMailboxThread, mutateMailboxThreads } from './mailbox-thread-actions';
 import { sendMailboxEmail } from './mailbox-send.service';
 import { scheduleMailboxEmail } from './scheduled-mailbox.service';
 import { fetchEmails, fetchUnreadCount, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
@@ -9,9 +9,9 @@ import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
+import { readMailboxAttachment } from './mailbox-attachments';
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
-const messageIdsSchema = z.object({ messageIds: z.array(providerId).min(1).max(100) });
 
 export async function authorize(req: Request, res: Response, next: NextFunction) {
   try {
@@ -39,8 +39,8 @@ export async function status(req: Request, res: Response, next: NextFunction) {
 export async function listEmails(req: Request, res: Response, next: NextFunction) {
   try {
     const { userId, tenantId } = req.user!;
-    const result = await fetchEmails(tenantId, userId, MailboxListSchema.parse(req.query));
-    res.json({ ...result, emails: await decorateEmails(tenantId, userId, result.emails, await mailboxPermissions(tenantId, userId)) });
+    const { scopeHash, ...result } = await fetchEmails(tenantId, userId, MailboxListSchema.parse(req.query));
+    res.json({ ...result, emails: await decorateEmails(tenantId, userId, result.emails, await mailboxPermissions(tenantId, userId), scopeHash) });
   } catch (error) { next(error); }
 }
 export async function unreadCount(req: Request, res: Response, next: NextFunction) {
@@ -54,6 +54,15 @@ export async function schedule(req: Request, res: Response, next: NextFunction) 
 }
 export async function thread(req: Request, res: Response, next: NextFunction) {
   try { res.json(await readMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId))); } catch (error) { next(error); }
+}
+export async function attachment(req: Request, res: Response, next: NextFunction) {
+  try {
+    const file = await readMailboxAttachment(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId), z.string().regex(/^[a-zA-Z0-9_-]+$/).max(2000).parse(req.params.attachmentId));
+    const filename = file.filename.replace(/[\r\n/\\]/g, '_').slice(0, 1000) || 'attachment';
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, char => '%' + char.charCodeAt(0).toString(16))}`);
+    res.send(file.data);
+  } catch (error) { next(error); }
 }
 export async function threadReadState(req: Request, res: Response, next: NextFunction) {
   try { const { isRead } = MailboxReadStateSchema.parse(req.body); res.json(await mutateMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), isRead ? 'read' : 'unread')); } catch (error) { next(error); }
@@ -87,10 +96,10 @@ export async function disconnect(req: Request, res: Response, next: NextFunction
   } catch (error) { next(error); }
 }
 export async function trash(req: Request, res: Response, next: NextFunction) {
-  try { res.json(await trashEmails(req.user!.tenantId, req.user!.userId, messageIdsSchema.parse(req.body).messageIds)); } catch (error) { next(error); }
+  try { const data = MailboxBulkActionSchema.parse(req.body); res.json(await ('threadIds' in data ? mutateMailboxThreads(req.user!.tenantId, req.user!.userId, data.threadIds, 'trash') : trashEmails(req.user!.tenantId, req.user!.userId, data.messageIds))); } catch (error) { next(error); }
 }
 export async function archive(req: Request, res: Response, next: NextFunction) {
-  try { res.json(await archiveEmails(req.user!.tenantId, req.user!.userId, messageIdsSchema.parse(req.body).messageIds)); } catch (error) { next(error); }
+  try { const data = MailboxBulkActionSchema.parse(req.body); res.json(await ('threadIds' in data ? mutateMailboxThreads(req.user!.tenantId, req.user!.userId, data.threadIds, 'archive') : archiveEmails(req.user!.tenantId, req.user!.userId, data.messageIds))); } catch (error) { next(error); }
 }
 export async function saveDraftHandler(req: Request, res: Response, next: NextFunction) {
   try {

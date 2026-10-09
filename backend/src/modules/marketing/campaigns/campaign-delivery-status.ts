@@ -68,8 +68,8 @@ export async function recalculateCampaignDelivery(tx: Prisma.TransactionClient, 
   } });
   await tx.campaignMetrics.create({ data: { ...where, sentCount: submitted, deliveredCount: delivered,
     openedCount: opened, clickedCount: clicked, bouncedCount: bounced,
-    openRate: submitted ? opened / submitted * 100 : 0,
-    clickRate: submitted ? clicked / submitted * 100 : 0,
+    openRate: delivered ? opened / delivered * 100 : 0,
+    clickRate: delivered ? clicked / delivered * 100 : 0,
     deliveryRate: submitted ? delivered / submitted * 100 : 0,
     bounceRate: submitted ? bounced / submitted * 100 : 0,
   } });

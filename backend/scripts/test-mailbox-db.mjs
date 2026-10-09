@@ -8,7 +8,10 @@ import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const root = resolve(import.meta.dirname, '..');
 let failed = false;
 // PGlite has one SQL session; isolated Vitest processes must not reuse it.
-for (const file of ['engagement-rules.test.ts', 'mailbox.integration.test.ts', 'scoped-mailbox.integration.test.ts']) {
+const files = ['engagement-rules.test.ts', 'mailbox.integration.test.ts', 'scoped-mailbox.integration.test.ts'];
+const requested = process.argv.slice(2);
+if (requested.some(file => !files.includes(file))) throw new Error('Select an existing mailbox test file.');
+for (const file of requested.length ? requested : files) {
 const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
