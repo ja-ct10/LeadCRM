@@ -18,3 +18,8 @@ export function sanitizeCampaignBody(body: string): string {
 export function renderCampaignPreview(body: string, variables: EmailVariables): string {
   return linkifyCampaignHtml(sanitizeCampaignBody(renderEmailVariables(body, variables, true)));
 }
+
+/** Persist the anchors that the preview shows so every sender receives HTML links. */
+export function prepareCampaignBody(body: string): string {
+  return linkifyCampaignHtml(sanitizeCampaignBody(body));
+}

@@ -1,9 +1,19 @@
 import { describe, expect, it } from 'vitest';
 import { CampaignDraftSchema, CampaignSendSchema, CreateAudienceSchema, renderEmailVariables } from '@leadcrm/shared';
-import { renderCampaignMessage, sanitizeCampaignHtml } from '../campaign-content';
+import { prepareCampaignHtml, renderCampaignMessage, sanitizeCampaignHtml } from '../campaign-content';
 import { classifyRecipients } from '../audiences.service';
 
 describe('campaign validation and rendering', () => {
+  it('persists the screenshot URL as an anchor and keeps it intact across draft edits and sending', () => {
+    const body = 'hi click this link if you have any inquiries of our products:\nhttps://camxian.com/product-services/';
+    const prepared = prepareCampaignHtml(body);
+    expect(prepared).toBe('hi click this link if you have any inquiries of our products:<br><a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>');
+    const edited = prepareCampaignHtml(prepared);
+    const message = renderCampaignMessage('Welcome {{first_name}}', edited, { first_name: 'Shaun' });
+    expect(message.subject).toBe('Welcome Shaun');
+    expect(message.html).toContain('<a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>');
+    expect(message.html.match(/<a(?: |>)/g)).toHaveLength(1);
+  });
   it.each([
     'https://camxian.com/', 'http://sub.camxian.com/products',
     'https://camxian.com/products?id=123&filter=a%20b#inquiry',

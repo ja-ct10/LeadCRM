@@ -87,6 +87,30 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const reloaded = await request(`/marketing/campaigns/${campaign.id}`);
     expect(reloaded.status).toBe(200); expect(reloaded.body.data.status).toBe('SENDING'); expect(reloaded.body.data.deliveredCount).toBe(0);
   });
+  it('persists pasted URLs and sends real anchors in the Brevo htmlContent payload', async () => {
+    const transport = await vi.importActual<typeof import('../../../../shared/services/email.service')>('../../../../shared/services/email.service');
+    vi.mocked(sendMail).mockImplementation(transport.sendMail);
+    const nativeFetch = globalThis.fetch;
+    const payloads: { htmlContent: string }[] = [];
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
+      if (input !== 'https://api.brevo.com/v3/smtp/email') return nativeFetch(input, init);
+      payloads.push(JSON.parse(String(init?.body)));
+      return new Response(JSON.stringify({ messageId: `<${randomUUID()}@brevo.test>` }), { status: 201 });
+    });
+    try {
+      const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'Pasted URL', type: 'EMAIL', targetAudienceId: audienceId, subject: 'Welcome {{first_name}}', body: 'hi click this link if you have any inquiries of our products:\nhttps://camxian.com/product-services/' }));
+      expect(campaign.body).toContain('<a href="https://camxian.com/product-services/">');
+      await scoped(() => updateCampaign(campaign.id, tenantId, userId, { body: campaign.body + '\nhttps://camxian.com/?a=1&b=2#contact' }));
+      await scoped(() => sendCampaign(campaign.id, tenantId, userId));
+      expect(payloads).toHaveLength(2);
+      for (const payload of payloads) {
+        expect(payload.htmlContent).toContain('<a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>');
+        expect(payload.htmlContent).toContain('<a href="https://camxian.com/?a=1&amp;b=2#contact">');
+        expect(payload.htmlContent.match(/<a(?: |>)/g)).toHaveLength(2);
+        expect(payload.htmlContent).not.toContain('&amp;amp;');
+      }
+    } finally { fetchSpy.mockRestore(); }
+  });
   it('returns 202 before provider completion and persists results after the HTTP request closes', async () => {
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
@@ -342,6 +366,10 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect((await request(`/marketing/campaigns/${campaign.id}/report`)).body.data).toMatchObject({ deliveredCount: 1, ctr: 0, ctor: null });
     await scoped(() => prisma.campaignContact.updateMany({ where: { campaignId: campaign.id }, data: { openedAt: new Date(at * 1000), clickedAt: new Date(at * 1000) } }));
     expect((await request(`/marketing/campaigns/${campaign.id}/report`)).body.data).toMatchObject({ trackingStatus: 'historical_unavailable', totalClicks: null, totalOpens: null, ctr: null, ctor: null, openedCount: 1, clickedCount: 1 });
+    await scoped(() => prisma.emailEvent.create({ data: { tenantId, deliveryLogId: log.id, eventType: 'click', url: 'https://camxian.com/product-services/', providerEventKey: `${log.id}:click:legacy`, createdAt: new Date(at * 1000) } }));
+    const historical = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+    expect(historical).toMatchObject({ openedCount: 1, clickedCount: 1, totalClicks: null });
+    expect(historical.topLinks).toEqual([expect.objectContaining({ url: 'https://camxian.com/product-services/', uniqueClicks: 1 })]);
   });
   it('preserves millisecond repeats, deterministic URL ranking, first timestamps and sender permission', async () => {
     const settings = await request('/marketing/campaigns/email-settings');
@@ -613,6 +641,11 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(report.topLinks).toEqual([{ url: payload.link, uniqueClicks: 2, totalClicks: 4, clickRate: 0, clickShare: 100, lastClicked: new Date((start + 4) * 1000).toISOString() }]);
     expect(report).toMatchObject({ totalClicks: 4, uniqueClicks: 2, totalOpens: 0, uniqueOpens: 0, ctr: null, ctor: null, trackingStatus: 'recorded' });
     expect(report.recipients.find((row: { email: string }) => row.email === logs[0].toEmail).lastActivity).toBe(new Date((start + 3) * 1000).toISOString());
+    // One recipient repeating another link must not outrank two recipients.
+    for (let i = 5; i < 10; i++) await processBrevoEvent({ ...payload, link: 'https://camxian.com/repeated', ts_event: start + i });
+    const ranked = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+    expect(ranked.clickedCount).toBe(2);
+    expect(ranked.topLinks.map((link: { url: string; uniqueClicks: number }) => [link.url, link.uniqueClicks])).toEqual([[payload.link, 2], ['https://camxian.com/repeated', 1]]);
   });
 
   it('seeds six persisted sample templates idempotently while preserving edited and archived templates', async () => {

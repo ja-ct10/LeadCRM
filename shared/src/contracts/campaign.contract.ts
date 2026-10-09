@@ -49,7 +49,9 @@ export interface CampaignRecipient {
 
 export interface CampaignClickedLink {
   url: string;
+  /** Recipient count shown as Total Clicks in the report. */
   uniqueClicks: number;
+  /** Retained provider event count for API compatibility. */
   totalClicks: number;
   clickRate: number;
   clickShare: number;
@@ -62,6 +64,7 @@ export interface CampaignReportResponse extends CampaignDetailResponse {
     bouncedCount: number;
     recipients: CampaignRecipient[];
     topLinks: CampaignClickedLink[];
+    /** Provider event totals; the report uses Campaign.clickedCount for recipients. */
     totalClicks: number | null;
     uniqueClicks: number | null;
     totalOpens: number | null;

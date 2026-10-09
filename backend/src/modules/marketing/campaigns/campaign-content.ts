@@ -9,10 +9,13 @@ export function sanitizeCampaignHtml(body: string): string {
     allowedSchemes: ['https', 'http', 'mailto'], allowProtocolRelative: false,
   }).trim();
 }
+export function prepareCampaignHtml(body: string): string {
+  return linkifyCampaignHtml(sanitizeCampaignHtml(body));
+}
 export function renderCampaignMessage(subject: string, body: string, values: EmailVariables) {
   const renderedSubject = EmailSubjectSchema.parse(renderEmailVariables(subject, values));
   if (!renderedSubject) throw new AppError('Personalized subject is empty.', 400);
-  const html = linkifyCampaignHtml(sanitizeCampaignHtml(renderEmailVariables(body, values, true)));
+  const html = prepareCampaignHtml(renderEmailVariables(body, values, true));
   if (!sanitizeHtml(html, { allowedTags: [], allowedAttributes: {} }).trim()) throw new AppError('Body must contain message text.', 400);
   return { subject: renderedSubject, html };
 }

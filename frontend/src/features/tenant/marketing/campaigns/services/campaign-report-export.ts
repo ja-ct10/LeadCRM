@@ -16,14 +16,14 @@ export function campaignReportCsv(report: CampaignReportResponse['data'], recipi
     ['Campaign', report.name], ['Metrics scope', 'Entire campaign'],
     ['Recipient search', scope.search], ['Recipient filter', scope.filter],
     ['Activity timestamps', 'UTC ISO 8601'], ['Provider events updated at', report.trackingUpdatedAt],
-    ['Submitted', report.sentCount], ['Delivered', report.deliveredCount],
+    ['Recipients', report.recipientCount], ['Delivered', report.deliveredCount], ['Submitted', report.sentCount],
   ];
-  if (!sms) rows.push(['Total Opens', report.totalOpens], ['Unique Opens', report.uniqueOpens], ['Total Clicks', report.totalClicks], ['Unique Clicks', report.uniqueClicks], ['CTR (%)', report.ctr], ['CTOR (%)', report.ctor], ['Tracking state', report.trackingStatus]);
+  if (!sms) rows.push(['Opened', report.openedCount], ['Total Clicks', report.clickedCount], ['Bounced', report.bouncedCount]);
   rows.push([], ['Recipient', sms ? 'Phone' : 'Email', 'Delivery Status', ...(sms ? [] : ['Opened', 'Clicked']), 'Last Activity (UTC)']);
   for (const row of recipients) rows.push([row.name, sms ? row.phone : row.email, row.deliveryStatus, ...(sms ? [] : [row.opened, row.clicked]), row.lastActivity]);
   if (!sms) {
-    rows.push([], ['Original Link URL', 'Link Total Clicks', 'Link Unique Clicks', 'Link Click Share (%)']);
-    for (const link of report.topLinks) rows.push([link.url, link.totalClicks, link.uniqueClicks, link.clickShare]);
+    rows.push([], ['Original Link URL', 'Total Clicks']);
+    for (const link of report.topLinks) rows.push([link.url, link.uniqueClicks]);
   }
   return '\uFEFF' + rows.map(row => row.map(cell).join(',')).join('\r\n');
 }

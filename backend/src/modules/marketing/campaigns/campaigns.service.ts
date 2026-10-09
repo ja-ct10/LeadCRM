@@ -10,7 +10,7 @@ import { getPaginationParams, paginate } from '../../../shared/helpers/paginatio
 import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissionError } from '../../../shared/services/email.service';
 import { sendSms, assertSmsConfigured, getSmsSenderEmail, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { audienceDefinition, campaignScope, resolveAudience } from './audiences.service';
-import { sanitizeCampaignHtml, renderCampaignMessage } from './campaign-content';
+import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
 import { findCampaignReport } from './campaigns.repository';
 import { recalculateCampaignDelivery, recipientDeliveryFailed } from './campaign-delivery-status';
 import type { CampaignRecipient, CampaignClickedLink } from '@leadcrm/shared';
@@ -62,7 +62,8 @@ export async function getCampaignReport(id: string, tenantId: string) {
         : campaign.type === 'SMS' && (recipient.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(recipient.failureReason ?? '')) ? 'Pending'
         : recipient.sentAt && (campaign.type !== 'EMAIL' || recipient.submittedAt || confirmedSentIds.has(recipient.messageId)) ? 'Sent'
         : recipient.submittedAt || (campaign.type === 'EMAIL' && recipient.sentAt) ? 'Submitted' : 'Pending',
-      opened: campaign.type !== 'SMS' && !!recipient.openedAt, clicked: campaign.type !== 'SMS' && !!recipient.clickedAt,
+      opened: campaign.type !== 'SMS' && (!!recipient.openedAt || openingRecipients.has((recipient.email ?? '').toLowerCase())),
+      clicked: campaign.type !== 'SMS' && (!!recipient.clickedAt || clickingRecipients.has((recipient.email ?? '').toLowerCase())),
       lastActivity: last ? new Date(last).toISOString() : null, failureReason: recipient.failureReason,
     };
   });
@@ -73,7 +74,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
     clickRate: deliveredCount ? link.emails.size / deliveredCount * 100 : 0,
     clickShare: totalClicks ? link.total / totalClicks * 100 : 0,
     lastClicked: new Date(link.last).toISOString(),
-  })).sort((a, b) => b.totalClicks - a.totalClicks || b.uniqueClicks - a.uniqueClicks || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
+  })).sort((a, b) => b.uniqueClicks - a.uniqueClicks || b.totalClicks - a.totalClicks || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   // Recipient timestamps retain historical unique evidence even if event history
   // predates repeatable receipts. Never fabricate historical total event counts.
   for (const row of eligible) {
@@ -88,7 +89,9 @@ export async function getCampaignReport(id: string, tenantId: string) {
     : totalClicks > 0 ? 'recorded' as const
     : !campaignHtmlLinks(sanitizeCampaignHtml(campaign.body ?? '')).length ? 'no_links' as const : 'pending' as const;
   const measurable = campaign.type !== 'SMS' && !['draft', 'not_sent', 'historical_unavailable'].includes(trackingStatus);
-  return { ...campaign, recipients, topLinks: measurable ? topLinks : [], sendResult: campaignSendResult(campaign),
+  // Historical receipts still prove which recipients clicked each destination,
+  // even when repeatable event totals cannot be reconstructed.
+  return { ...campaign, recipients, topLinks, sendResult: campaignSendResult(campaign),
     deliveredCount,
     bouncedCount: recipients.filter(row => row.deliveryStatus === 'Bounced').length,
     openedCount: openingRecipients.size, clickedCount: clickingRecipients.size,
@@ -137,7 +140,7 @@ async function validateReferences(tenantId: string, dto: ReturnType<typeof Campa
 export async function createCampaign(tenantId: string, userId: string, input: unknown) {
   const dto = CreateCampaignDraftSchema.parse(input);
   await validateReferences(tenantId, dto);
-  const campaign = await prisma.campaign.create({ data: { ...dto, body: dto.body === undefined ? undefined : dto.type === 'SMS' ? dto.body : sanitizeCampaignHtml(dto.body), ...campaignScope(tenantId), createdById: userId } });
+  const campaign = await prisma.campaign.create({ data: { ...dto, body: dto.body === undefined ? undefined : dto.type === 'SMS' ? dto.body : prepareCampaignHtml(dto.body), ...campaignScope(tenantId), createdById: userId } });
   await writeAuditLog({ tenantId, userId, action: 'campaign.created', entityType: 'Campaign', entityId: campaign.id });
   return campaign;
 }
@@ -145,7 +148,7 @@ export async function updateCampaign(id: string, tenantId: string, userId: strin
   const dto = CampaignDraftSchema.partial().parse(input);
   const existing = await getCampaignById(id, tenantId);
   await validateReferences(tenantId, CampaignDraftSchema.parse({ name: existing.name, type: existing.type, audienceSource: existing.audienceSource, targetAudienceId: existing.targetAudienceId, emailTemplateId: existing.emailTemplateId, smsTemplateId: existing.smsTemplateId, ...dto }));
-  const changed = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: 'DRAFT', isArchived: false }, data: { ...dto, body: dto.body === undefined ? undefined : (dto.type ?? existing.type) === 'SMS' ? dto.body : sanitizeCampaignHtml(dto.body) } });
+  const changed = await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), status: 'DRAFT', isArchived: false }, data: { ...dto, body: dto.body === undefined ? undefined : (dto.type ?? existing.type) === 'SMS' ? dto.body : prepareCampaignHtml(dto.body) } });
   if (!changed.count) throw new AppError('Only draft campaigns can be edited.', 409);
   await writeAuditLog({ tenantId, userId, action: 'campaign.updated', entityType: 'Campaign', entityId: id });
   return getCampaignById(id, tenantId);

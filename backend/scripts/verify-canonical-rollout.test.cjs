@@ -50,7 +50,7 @@ test('the complete release history deploys additive changes while all pending co
   assert.deepEqual(plan.exclude, [relationship, crm, lead]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
-    '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_notification_delivery',
+    '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_mailbox_thread_metadata', '20261114000000_notification_delivery',
     '20261115000000_dashboard_revisions', '20261115000000_workflow_assignment_history']) {
     assert.ok(selected.includes(name), name);
   }
