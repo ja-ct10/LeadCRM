@@ -74,6 +74,7 @@ function deploymentPlan(records, localNames) {
     '20261111000000_crm_ownership_safety',
     leadRetirement,
     '20261113000000_mailbox_message_headers',
+    '20261114000000_mailbox_thread_metadata',
     '20261114000000_notification_delivery',
     '20261115000000_dashboard_revisions',
     '20261115000000_workflow_assignment_history',

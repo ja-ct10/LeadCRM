@@ -18,7 +18,9 @@ export interface Campaign {
   recipientCount: number;
   failedCount: number;
   sentCount: number;
+  /** Distinct recipients with persisted provider open evidence. */
   openedCount: number;
+  /** Distinct recipients with persisted provider click evidence. */
   clickedCount: number;
   engagement: number;
   scheduledFor?: string;

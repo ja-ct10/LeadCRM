@@ -61,8 +61,15 @@ describe('campaign composer', () => {
     expect(frame.getAttribute('srcdoc')).toContain('<a href="https://camxian.com/products?a=1&amp;b=2">');
     expect(frame.getAttribute('srcdoc')).toContain('Hi John<br>');
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
-    await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('draft', expect.objectContaining({ body: 'Hi {{first_name}}\nhttps://camxian.com/products?a=1&amp;b=2' })));
+    await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('draft', expect.objectContaining({ body: 'Hi {{first_name}}<br><a href="https://camxian.com/products?a=1&amp;b=2">https://camxian.com/products?a=1&amp;b=2</a>' })));
     expect(campaignsApi.send).not.toHaveBeenCalled();
+  });
+  it('saves the pasted product-services URL as an anchor before Send Now', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} />); fill();
+    fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'hi click this link if you have any inquiries of our products:\nhttps://camxian.com/product-services/' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
+    await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
+    expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ body: 'hi click this link if you have any inquiries of our products:<br><a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>' }));
   });
   it('uses one panel toggle after Send Now and preserves preview device switching', async () => {
     render(<CampaignBuilder onBack={vi.fn()} />);

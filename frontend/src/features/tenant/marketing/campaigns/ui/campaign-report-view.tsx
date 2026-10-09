@@ -14,7 +14,7 @@ import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/module-filter-rail';
 import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
 import { AvatarCell } from '@/shared/components/crm/avatar-cell';
-import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
+import { DataLoadingSkeleton, DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { CampaignStatusBadge, formatCampaignStatus } from './campaign-status-badge';
@@ -45,9 +45,7 @@ const linkColumns: DataGridColumnDef<CampaignClickedLink>[] = [
     <a href={/^https?:\/\//i.test(row.url) ? row.url : undefined} title={row.url} aria-label={row.url} target="_blank" rel="noopener noreferrer" className="flex min-w-0 items-center gap-2 text-blue-600 hover:underline">
       <Link2 size={16} className="shrink-0" aria-hidden="true" /><span className="truncate">{row.url}</span>
     </a> },
-  { id: 'total', header: 'Total Clicks', accessor: row => row.totalClicks, width: 130 },
-  { id: 'unique', header: 'Unique Clicks', accessor: row => row.uniqueClicks, width: 130 },
-  { id: 'share', header: 'Click Share', accessor: row => row.clickShare == null ? 'Unavailable' : `${row.clickShare.toFixed(1)}%`, width: 130 },
+  { id: 'total', header: 'Total Clicks', accessor: row => row.uniqueClicks, width: 150 },
 ];
 
 export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; onBack: () => void }) {
@@ -64,7 +62,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const inFlight = useRef(false);
   const activeRequest = useRef<AbortController | null>(null);
   const fetchReport = useCallback(async (background = false) => {
-    if (inFlight.current) return;
+    if (inFlight.current) { if (!background) setLoading(true); return; }
     inFlight.current = true;
     const sequence = ++request.current;
     const controller = new AbortController();
@@ -122,8 +120,6 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   };
   const initialLoading = loading && !report;
   const count = report?.recipientCount ?? 0;
-  const available = (value: number | null | undefined) => value == null ? 'Unavailable' : value;
-  const rate = (value: number | null | undefined) => value == null ? 'Unavailable' : `${value.toFixed(1)}%`;
   const metrics: { label: string; value: number | string }[] = isSms ? [
     { label: 'Recipients', value: count }, { label: 'Submitted', value: report?.sentCount ?? 0 },
     { label: 'Sent', value: recipients.filter(r => ['Sent', 'Delivered'].includes(r.deliveryStatus)).length },
@@ -133,20 +129,14 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     { label: 'Recipients', value: count },
     { label: 'Delivered', value: report?.deliveredCount ?? 0 },
     { label: 'Submitted', value: report?.sentCount ?? 0 },
-    { label: 'Unique Opens', value: available(report?.uniqueOpens) },
-    { label: 'Total Opens', value: available(report?.totalOpens) },
-    { label: 'Unique Clicks', value: available(report?.uniqueClicks) },
-    { label: 'Total Clicks', value: available(report?.totalClicks) },
-    { label: 'CTR', value: rate(report?.ctr) },
-    { label: 'CTOR', value: rate(report?.ctor) },
+    { label: 'Opened', value: report?.openedCount ?? 0 },
+    { label: 'Total Clicks', value: report?.clickedCount ?? 0 },
     { label: 'Bounced', value: report?.bouncedCount ?? 0 },
   ];
   const trackingMessage = report?.trackingStatus === 'draft' ? 'Save and send this draft to begin tracking.'
     : report?.trackingStatus === 'not_sent' ? 'This campaign has not been submitted.'
     : report?.trackingStatus === 'no_links' ? 'This campaign contains no trackable HTTP or HTTPS links.'
-    : report?.trackingStatus === 'historical_unavailable' ? 'Historical tracking records are incomplete. Total counts and rates are unavailable.'
-    : report?.trackingStatus === 'pending' ? 'No links have been clicked yet. Awaiting verified provider clicks; Brevo tracking settings must be enabled.'
-    : (report?.totalClicks ?? 0) > 0 ? 'Clicks were recorded, but their destination URLs are unavailable.'
+    : (report?.clickedCount ?? 0) > 0 ? 'Clicks were recorded, but their destination URLs are unavailable.'
     : 'No links have been clicked yet.';
   function exportReport() {
     if (!report || error) return;
@@ -170,16 +160,21 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
         <Badge className="uppercase">{current.type} campaign</Badge>
         <CampaignStatusBadge status={current.status} />
       </div>
-      <h1 className="break-words text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{current.name} Report</h1>
-      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Performance overview and recipient activity</p>
-      <Button variant="outline" size="sm" className="mt-3" onClick={exportReport} disabled={!report || !!error || loading}><Download size={14} />Export report</Button>
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="break-words text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{current.name} Report</h1>
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Performance overview and recipient activity</p>
+        </div>
+        <Button variant="outline" size="sm" className="w-8 shrink-0 px-0 sm:w-auto sm:px-3" aria-label="Export report" title="Export report"
+          onClick={exportReport} disabled={!report || !!error || loading}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">Export report</span></Button>
+      </div>
     </header>
     {error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-300">
       <span className="min-w-0 flex-1">{error}{report && ' Previously loaded data is shown.'}</span>
       <Button variant="outline" onClick={() => void fetchReport()} disabled={loading}>Retry</Button>
     </div>}
     {(report || initialLoading) && <>
-      <section aria-label="Campaign metrics" aria-busy={initialLoading} className="grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-3">
+      <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-5' : 'xl:grid-cols-6'} gap-3`}>
         {metrics.map((metric, index) => <Card key={metric.label} className="min-w-0 rounded-lg p-4 shadow-sm">
           <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{metric.label}</h2>
           {initialLoading ? <div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /> :
@@ -188,7 +183,6 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
             </div>}
         </Card>)}
       </section>
-      {!isSms && <p className="text-xs text-slate-500 dark:text-slate-400">CTR = unique clicking recipients / delivered recipients. CTOR = unique clicking recipients / unique opened recipients. Counts are provider-reported activity and may include automated clicks. Email-client privacy features affect opens; a click does not create an open.</p>}
       <section aria-labelledby="campaign-details-title">
         <h2 id="campaign-details-title" className="mb-3 text-sm font-semibold text-slate-900 dark:text-white">Campaign details</h2>
         <Card className="rounded-lg shadow-none overflow-hidden">
@@ -204,22 +198,25 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       <section aria-labelledby="recipients-title" className="min-w-0 space-y-3" aria-busy={loading}>
         <div><h2 id="recipients-title" className="text-sm font-semibold text-slate-900 dark:text-white">Recipient performance</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{initialLoading ? 'Recipient activity' : `${visibleRecipients.length} of ${recipients.length} recipients`}</p></div>
-        <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={loading} onRefresh={() => void fetchReport()}
+        <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={loading} onRefresh={() => fetchReport()}
           filter={<FilterButton title="recipients" open={showFilters} active={!!(deliveryFilter.length || engagementFilter.length)} onClick={() => setShowFilters(value => !value)} />} />
         <div className="flex min-w-0 items-start gap-3">
           <ModuleFilterRail showFilters={showFilters} filterGroups={filterGroups} onToggleFilters={() => setShowFilters(false)}
             filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} onFilterToggle={toggleFilter} totalRecords={recipients.length}
             onClearFilters={() => { setDeliveryFilter([]); setEngagementFilter([]); setFilterSearch(''); setSearch(''); }} />
-          <div className="min-w-0 flex-1">
+          <div className="relative min-w-0 flex-1">
             <DataGrid ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
               emptyMessage={recipients.length ? 'No recipients match your search and filter.' : 'No recipients yet.'} />
+            {loading && !initialLoading && <div className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-xl bg-background/90">
+              <DataLoadingSpinner label="Refreshing recipients" hideLabel />
+            </div>}
           </div>
         </div>
       </section>
       {!isSms && <section aria-labelledby="top-links-title" className="min-w-0 space-y-3">
-        <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top Links Clicked</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Original destinations · Click share is a percentage of recorded campaign clicks</p></div>
+        <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top Clicked Links</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Each recipient counts once per link.</p></div>
           {(report?.topLinks.length ?? 0) > 5 && <Button variant="outline" size="sm" onClick={() => setShowAllLinks(value => !value)}>{showAllLinks ? 'Show Top Five' : 'Show All'}</Button>}</div>
-        {initialLoading ? <div aria-hidden="true"><DataLoadingSkeleton rowCount={1} columnCount={4} /></div> : report?.topLinks.length ?
+        {initialLoading ? <div aria-hidden="true"><DataLoadingSkeleton rowCount={1} columnCount={2} /></div> : report?.topLinks.length ?
           <DataGrid ariaLabel="Top links clicked table" columns={linkColumns} data={showAllLinks ? report.topLinks : report.topLinks.slice(0, 5)} getRowId={row => row.url} height="auto" /> :
           <Card className="rounded-lg p-4 shadow-none text-xs text-slate-500 dark:text-slate-400">{trackingMessage}</Card>}
       </section>}

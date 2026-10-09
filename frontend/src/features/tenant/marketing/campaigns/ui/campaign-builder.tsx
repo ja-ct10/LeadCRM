@@ -5,7 +5,7 @@ import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderE
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
-import { renderCampaignPreview, sanitizeCampaignBody } from '../services/campaign-html';
+import { renderCampaignPreview, prepareCampaignBody } from '../services/campaign-html';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { toast } from 'sonner';
 import {
@@ -148,7 +148,7 @@ export function CampaignBuilder({
   async function save(send: boolean) {
     if (requestLock.current || (send ? !maySend : !canWrite)) return;
     const source = ['LEADS', 'CONTACTS', 'ALL'].includes(targetAudience) ? targetAudience : null;
-    const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? sanitizeCampaignBody(messageContent) : messageContent,
+    const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? prepareCampaignBody(messageContent) : messageContent,
       audienceSource: source, targetAudienceId: source ? null : targetAudience || null };
     const parsed = (send ? CampaignSendSchema : CampaignDraftSchema).safeParse(input);
     if (!parsed.success) {

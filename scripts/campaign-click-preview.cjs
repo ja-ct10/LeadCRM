@@ -15,6 +15,7 @@ const server = http.createServer(async (req, res) => {
   else if (p === '/marketing/campaigns') { data = req.method === 'POST' ? { ...campaign, ...body, id: 'saved', status: 'DRAFT' } : [campaign]; meta.total = 1; }
   else if (p === '/marketing/campaigns/metrics') data = { activeCampaigns: 0, sent: 1, emailSent: 1, opened: 1, clicked: 1 };
   else if (p === '/marketing/campaigns/report/report') {
+    if (process.env.CAMPAIGN_PREVIEW_REPORT_DELAY_MS) await new Promise(resolve => setTimeout(resolve, Math.min(5000, Math.max(0, Number(process.env.CAMPAIGN_PREVIEW_REPORT_DELAY_MS) || 0))));
     const statePath = path.join(out, 'state.json');
     const total = fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath)).totalClicks : 21;
     data = { ...campaign, deliveredCount: 1, bouncedCount: 0, uniqueOpens: 1, totalOpens: 2, uniqueClicks: 1, totalClicks: total, ctr: 100, ctor: 100, trackingStatus: 'recorded', trackingUpdatedAt: '2026-10-09T07:10:00Z',
