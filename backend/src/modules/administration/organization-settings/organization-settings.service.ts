@@ -5,7 +5,7 @@ import { buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
 
 const select = {
-  id: true, name: true, industry: true, email: true, phone: true, domain: true, address: true,
+  id: true, status: true, name: true, industry: true, email: true, phone: true, domain: true, address: true,
 } satisfies Prisma.TenantSelect;
 
 export async function getOrganizationSettings(tenantId: string) {

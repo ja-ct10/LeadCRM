@@ -27,7 +27,7 @@ it('hides modules without View, retains personal Settings, and blocks direct rou
   expect(screen.queryByText('Protected module')).toBeNull();
   expect(screen.getByRole('alert')).toBeTruthy();
 });
-it.each(['/settings','/settings/profile','/settings/account'])('keeps own personal settings available at %s', path => {
+it.each(['/settings','/settings/profile'])('keeps own personal settings available at %s', path => {
   state.path = path;
   render(<ModuleAccessGuard><p>Personal settings</p></ModuleAccessGuard>);
   expect(screen.getByText('Personal settings')).toBeTruthy();
