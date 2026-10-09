@@ -63,6 +63,7 @@ interface Props {
   initial: WorkflowDraft;
   workflowId?: string;
   initialStatus?: Workflow['status'];
+  initialVersion?: number;
   triggers: TriggerDefinition[];
   actions: ActionDefinition[];
   options?: WorkflowOptions;
@@ -83,6 +84,7 @@ export default function WorkflowBuilder({
   initial,
   workflowId,
   initialStatus,
+  initialVersion,
   triggers,
   actions: definitions,
   options = emptyOptions,
@@ -104,6 +106,7 @@ export default function WorkflowBuilder({
   const [savedStatus, setSavedStatus] = useState(
     initialStatus ?? (initial.isActive ? 'ACTIVE' : 'DRAFT'),
   );
+  const [savedVersion, setSavedVersion] = useState(initialVersion);
   const [nameCheck, setNameCheck] = useState<{ name: string; available?: boolean; failed?: boolean } | null>(null);
   const [selected, setSelected] = useState<StepSelection | null>(
     initial.name ? null : 'details',
@@ -464,7 +467,7 @@ export default function WorkflowBuilder({
         const paused = !persisted.isActive && (result?.status === 'PAUSED' || saved.isActive || savedStatus === 'PAUSED');
         setSaved(persisted);
         setSavedStatus(result?.status ?? (persisted.isActive ? 'ACTIVE' : paused ? 'PAUSED' : 'DRAFT'));
-        if (result) setSavedId(result.id);
+        if (result) { setSavedId(result.id); setSavedVersion(result.version); }
         setHistory({
           present: { ...document, draft: persisted },
           past: [],
@@ -724,7 +727,7 @@ export default function WorkflowBuilder({
                   ? 'Active'
                   : savedStatus === 'PAUSED'
                     ? 'Paused'
-                    : 'Draft'}{' '}
+                    : 'Draft'}{savedVersion ? ` · v${savedVersion}` : ''}{' '}
                 ·{' '}
                 {dirty
                   ? 'Unsaved changes'

@@ -23,6 +23,64 @@ export const WorkflowActionSchema = z.object({
 }).strict();
 export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;
 export type WorkflowActionType = WorkflowAction['type'];
+export const WORKFLOW_ASSIGNMENT_METHODS = {
+  round_robin: 'Round-robin', least_workload: 'Least workload', random: 'Random',
+  availability: 'Availability-based', capacity: 'Capacity-based', sticky: 'Previous assignee / Sticky assignment',
+} as const;
+export const WorkflowAssignmentStrategySchema = z.enum(['round_robin', 'least_workload', 'random', 'availability', 'capacity', 'sticky']);
+export type WorkflowAssignmentStrategy = z.infer<typeof WorkflowAssignmentStrategySchema>;
+const assignmentDays = z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(days => new Set(days).size === days.length, 'Choose each day only once.');
+const assignmentTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid time.');
+const assignmentSchedule = z.object({ days: assignmentDays, start: assignmentTime, end: assignmentTime }).strict()
+  .refine(schedule => schedule.start !== schedule.end, 'Shift start and end must differ.');
+export const WorkflowAvailabilitySchema = z.object({
+  timeZone: z.string().min(1).max(100).refine(value => { try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; } }, 'Choose a valid IANA timezone.'),
+  schedule: assignmentSchedule,
+  members: z.array(z.object({ userId: z.string().uuid(), unavailable: z.boolean(), schedule: assignmentSchedule.optional() }).strict()).max(200)
+    .refine(members => new Set(members.map(member => member.userId)).size === members.length, 'Duplicate member availability.'),
+}).strict();
+export type WorkflowAvailability = z.infer<typeof WorkflowAvailabilitySchema>;
+export const WorkflowCapacitySchema = z.object({
+  maxPerMember: z.number().int().min(1).max(10000),
+  members: z.array(z.object({ userId: z.string().uuid(), limit: z.number().int().min(1).max(10000) }).strict()).max(200)
+    .refine(members => new Set(members.map(member => member.userId)).size === members.length, 'Duplicate member capacity.'),
+}).strict();
+const poolAssignment = {
+  id: z.string().uuid(), strategy: WorkflowAssignmentStrategySchema,
+  availability: WorkflowAvailabilitySchema.optional(), capacity: WorkflowCapacitySchema.optional(),
+  sticky: z.object({ fallback: z.enum(['round_robin', 'least_workload', 'random']), preferCurrentOwner: z.boolean() }).strict().optional(),
+};
+export const WorkflowAssignmentTargetSchema = z.discriminatedUnion('type', [
+  z.object({ type: z.literal('record_owner') }).strict(),
+  z.object({ type: z.literal('user'), id: z.string().uuid() }).strict(),
+  z.object({ type: z.literal('role'), ...poolAssignment }).strict(),
+  z.object({ type: z.literal('group'), ...poolAssignment }).strict(),
+]).superRefine((target, ctx) => {
+  if (target.type !== 'role' && target.type !== 'group') return;
+  if (target.strategy === 'availability' && !target.availability) ctx.addIssue({ code: 'custom', path: ['availability'], message: 'Configure an availability schedule.' });
+  if (target.strategy === 'capacity' && !target.capacity) ctx.addIssue({ code: 'custom', path: ['capacity'], message: 'Configure a capacity limit.' });
+  if (target.strategy !== 'sticky' && target.sticky) ctx.addIssue({ code: 'custom', path: ['sticky'], message: 'Sticky settings require the sticky assignment method.' });
+});
+export type WorkflowAssignmentTarget = z.infer<typeof WorkflowAssignmentTargetSchema>;
+export type WorkflowAssignmentPurpose = 'crm_owner' | 'task_assignee';
+export interface WorkflowAssignmentPoolOption {
+  id: string; name: string; memberCount: number;
+  eligibleMemberCounts: Record<WorkflowAssignmentPurpose, number>;
+  members?: Array<{ id: string; name: string; purposes: WorkflowAssignmentPurpose[] }>;
+}
+/** Read old definitions without rewriting stored workflows or hiding invalid new targets. */
+export function workflowAssignmentTarget(action: WorkflowAction): unknown {
+  if (action.config.assignmentTarget !== undefined) return action.config.assignmentTarget;
+  const id = action.config[action.type === 'create_task' ? 'assignedUserId' : 'userId'];
+  return id !== undefined && id !== '' ? { type: 'user', id } : action.type === 'create_task' ? { type: 'record_owner' } : undefined;
+}
+export function normalizeWorkflowAssignment(action: WorkflowAction): WorkflowAction {
+  if (!['create_task', 'assign_owner'].includes(action.type)) return action;
+  const target = workflowAssignmentTarget(action);
+  const config = { ...action.config };
+  delete config[action.type === 'create_task' ? 'assignedUserId' : 'userId'];
+  return { ...action, config: { ...config, ...(target === undefined ? {} : { assignmentTarget: target }) } };
+}
 export type WorkflowEntity = 'lead' | 'contact' | 'deal' | 'account';
 export const WorkflowDraftSchema = z.object({
   name: z.string().regex(/^[^\x00-\x1f\x7f]*$/, 'Control characters are not allowed.').trim().min(1, 'Workflow name is required.').max(255),
@@ -36,6 +94,9 @@ export type WorkflowDraft = z.infer<typeof WorkflowDraftSchema>;
 export interface WorkflowOptions {
   customFields?: ClosingField[];
   users: Array<{id:string;name:string}>;
+  taskAssignees?: Array<{id:string;name:string}>;
+  roles?: WorkflowAssignmentPoolOption[];
+  groups?: WorkflowAssignmentPoolOption[];
   senders?: Array<{id:string;name:string}>;
   pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string}>}>;
   templates: Array<{id:string;name:string}>;
@@ -48,6 +109,7 @@ export interface WorkflowOptions {
 }
 export interface Workflow extends WorkflowDraft {
   id: string; tenantId: string;
+  version?: number;
   isArchived: boolean; createdAt: string; updatedAt: string; lastRunAt?: string | null;
   status?: 'DRAFT' | 'ACTIVE' | 'PAUSED'; totalRuns?: number; successfulRuns?: number; failedRuns?: number;
 }
@@ -83,12 +145,14 @@ export interface WorkflowExecutionRun {
   id: string; tenantId: string; workflowId: string; triggerId: string; entityType: string; entityId: string;
   status: 'running' | 'completed' | 'failed' | 'skipped'; startedAt: string; completedAt?: string | null;
   errorMessage?: string | null; steps: WorkflowExecutionStep[];
+  workflowVersion?: number | null;
+  definitionSnapshot?: WorkflowDraft | null;
   trigger: { triggerType: string; entityType: string; triggeredAt: string; payload?: { recordName?: string } | null };
 }
 export interface WorkflowTestResult {
   trigger: { matched: boolean; type: string; requiresEvent?: boolean };
   conditions: { passed: number; total: number; matched: boolean };
-  actions: Array<{ type: string; valid: boolean; message: string }>;
+  actions: Array<{ type: string; valid: boolean; message: string; assignment?: { resolvedUserId: string; resolvedUserName: string; candidateCount: number; strategy?: string; reason?: string; workload?: number; capacityLimit?: number } }>;
   valid: boolean;
 }
 export interface WorkflowNameAvailability { available: boolean; suggestedName?: string }

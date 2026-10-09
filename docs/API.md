@@ -272,11 +272,20 @@ See the [workflow production report](workflows/workflow-production-report.md#c-a
 | `GET` | `/automation/workflows/:id/executions` | Execution history with `page` (default 1), `limit` (default 25, max 100), and shared `meta: {total, page, limit, hasMore}` |
 | `GET` | `/automation/workflows/:id/executions/:executionId` | Execution detail |
 | `POST` | `/automation/workflows/:id/test` | Read-only sample validation |
-| `GET` | `/automation/workflow-options` | Scoped users, pipelines, stages, templates and campaigns |
+| `GET` | `/automation/workflow-options` | Permission-scoped CRM owners, task assignees, assignment roles/groups, pipelines, stages and templates |
 | `GET` | `/automation/triggers` | Supported event and condition metadata |
 | `GET` | `/automation/actions` | Supported action metadata |
 
 Duplicate uses `POST /automation/workflows/:id/duplicate` to create an inactive draft copy. Removal uses archive; there is no workflow DELETE endpoint.
+
+Assignment configuration and versioned execution history are documented in
+[Workflow assignment and history](workflows/workflow-assignment-history.md).
+Role/Group assignment methods include round-robin, least workload, random,
+availability-based, capacity-based and sticky assignment. Availability schedules,
+capacity limits and member overrides are saved in `config.assignmentTarget`.
+The shared contract validates these settings; workflow options include eligible
+pool members for configuring overrides. Dry tests return the selection reason
+and applicable workload/limit without reserving work or changing assignment state.
 
 ---
 

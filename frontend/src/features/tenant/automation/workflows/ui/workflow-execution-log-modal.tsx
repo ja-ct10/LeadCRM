@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import type { Workflow, WorkflowExecutionRun } from '@leadcrm/shared';
-import { WORKFLOW_TRIGGERS } from '@leadcrm/shared';
+import { WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared';
 import { workflowActionLabel } from '../services/workflow-editor';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
@@ -70,7 +70,7 @@ export function WorkflowExecutionLogModal({
       <SheetContent showClose={false} aria-label={`Workflow details — ${workflow?.name ?? name}`} className={panelSurfaceClass}>
         <header className={panelHeaderClass + ' flex flex-wrap items-start gap-2'}>
           <div className="min-w-0 flex-1">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Workflow details{savedStatus ? ` · ${savedStatus}` : ''}</p>
+            <p className="mb-1 text-xs font-medium text-muted-foreground">Workflow details{savedStatus ? ` · ${savedStatus}` : ''}{workflow?.version ? ` · v${workflow.version}` : ''}</p>
             <h2 className={panelTitleClass}>{workflow?.name ?? name}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -169,6 +169,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                 <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
                   <span className={'rounded-full px-2.5 py-1 text-xs font-semibold capitalize ' + runStatusClass(run.status)}>{run.status}</span>
                   <span className="text-slate-600 dark:text-slate-300">{new Date(run.startedAt).toLocaleString()} · {run.entityType}</span>
+                  {run.workflowVersion != null && <span className="text-xs text-muted-foreground">v{run.workflowVersion}</span>}
                 </span>
               </summary>
               <div className="space-y-3 border-t border-slate-100 p-4 dark:border-white/5">
@@ -183,11 +184,21 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                     : 'In progress or interrupted — review before replay'}
                 </p>
                 {run.errorMessage && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{run.errorMessage}</p>}
+                {run.definitionSnapshot ? <details className="min-w-0 text-sm">
+                  <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">Definition used in this run{run.workflowVersion != null ? ` · v${run.workflowVersion}` : ''}</summary>
+                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800">{JSON.stringify(run.definitionSnapshot, null, 2)}</pre>
+                </details> : <p className="text-xs text-muted-foreground">Definition snapshot unavailable for this older run.</p>}
                 <ol className="space-y-2">
                   {run.steps.map((step) => (
                     <li key={step.id} className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm dark:border-white/10 dark:bg-slate-800/50">
                       {step.stepIndex + 1}. {workflowActionLabel(step.actionType)} —{' '}
                       {step.status}
+                      {typeof step.output?.resolvedUserId === 'string' && <p className="mt-1 text-xs text-muted-foreground">
+                        {step.status === 'failed' ? 'Selected assignee:' : 'Assigned to'} {typeof step.output.resolvedUserName === 'string' ? step.output.resolvedUserName : step.output.resolvedUserId}
+                        {typeof step.output.strategy === 'string' && Object.entries(WORKFLOW_ASSIGNMENT_METHODS).some(([method]) => method === step.output!.strategy) && ` · ${String(step.output.assignmentTargetName ?? step.output.assignmentTargetType)} · ${Object.entries(WORKFLOW_ASSIGNMENT_METHODS).find(([method]) => method === step.output!.strategy)?.[1]}`}
+                      </p>}
+                      {typeof step.output?.resolvedUserId === 'string' && typeof step.output.reason === 'string' && <p className="mt-1 text-xs text-muted-foreground">{step.output.reason}</p>}
+                      {typeof step.output?.workload === 'number' && <p className="mt-1 text-xs text-muted-foreground">Workload before assignment: {step.output.workload}{typeof step.output.capacityLimit === 'number' ? ` / ${step.output.capacityLimit}` : ''}</p>}
                       {step.output?.reason === 'Action disabled' && (
                         <p className="text-sm text-[var(--muted-foreground)]">
                           Action disabled

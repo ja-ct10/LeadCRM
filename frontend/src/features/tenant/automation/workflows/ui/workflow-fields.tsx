@@ -13,6 +13,7 @@ import { getWorkflowUpdateFields, workflowOperators, WORKFLOW_MESSAGE_VARIABLES 
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { operatorLabels, references, retiredActionLabels } from '../services/workflow-editor';
+import { WorkflowAssignmentFields } from './workflow-assignment-fields';
 export const workflowControl =
   'w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-sm text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 export const emptyOptions: WorkflowOptions = {
@@ -295,6 +296,7 @@ export function ActionFields({
   return (
     <div className="space-y-4 text-sm">
       <p className="text-[var(--muted-foreground)]">{definition?.description}</p>
+      {['create_task', 'assign_owner'].includes(action.type) && <WorkflowAssignmentFields action={action} entity={entity} options={options} className={workflowControl} onChange={onChange} />}
       {action.type === 'send_sms' && options.smsConfigured === false && <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">SMS is not configured. You can save this draft and connect SMS before activating it.</p>}
       {action.type === 'move_deal_stage' && (
         <label className="block space-y-1">
@@ -320,6 +322,7 @@ export function ActionFields({
         </label>
       )}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
+        if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) return null;
         if (action.type === 'move_deal_stage' && entity === 'deal' && ['targetMode', 'productInterestId', 'currentStageId'].includes(key)) return null;
         let choices = key === 'senderUserId' ? options.senders ?? [] :
           references(field.type, options) ??

@@ -49,6 +49,8 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
     if (visited.has(workflow.id)) continue;
     await chain.run(new Set([...visited, workflow.id]), async () => {
       const run = await repo.startRun({ tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType,
+        workflowVersion: workflow.version, definitionSnapshot: { name: workflow.name, description: workflow.description, trigger: workflow.trigger,
+          conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive },
         entityType: trigger.entity, entityId: params.entityId, eventId, recordName: String(context[`${trigger.entity}.title`] ?? context[`${trigger.entity}.name`] ?? `${context[`${trigger.entity}.firstName`] ?? ''} ${context[`${trigger.entity}.lastName`] ?? ''}`).trim().slice(0, 255) });
       if (!run) return;
       let status = 'completed';
@@ -88,7 +90,7 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
-          const result = freshContext ? await dispatchAction(action, freshContext, params.tenantId, workflow.activatedById)
+          const result = freshContext ? await dispatchAction(action, freshContext, params.tenantId, workflow.activatedById, { workflowId: workflow.id, actionIndex: index })
             : { success: false, error: 'The triggering record is no longer available.' };
           await repo.finishExecutionStep(step.id, params.tenantId, { status: result.success ? 'success' : 'failed', output: result.output, error: result.error });
           pendingStepId = undefined;

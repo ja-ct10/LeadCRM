@@ -134,6 +134,91 @@ try {
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await page.getByRole('button', { name: /Configure action: 1. Update Fields/ }).waitFor();
   record('Failed Workflow load shows an error and Retry recovers the saved builder');
+
+  const taskRole = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Workflow task specialists', permissions: { create: { module: 'tasks', canView: true } } } });
+  const specialist = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Ana', lastName: 'Specialist', email: 'workflow-specialist@camxian.com', role: taskRole.name,
+    userRoles: { create: { roleId: taskRole.id } } } });
+  const pool = await prisma.tenantGroup.create({ data: { tenantId: tenant.id, name: 'Customer Follow-up and Technical Support Team', members: { create: [{ userId: specialist.id }, { userId: admin.id }] } } });
+  const assignment = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: 'Assignment browser acceptance', trigger: 'lead.created', isActive: false,
+    actions: [{ type: 'create_task', config: { title: 'Follow up with lead' } }] }));
+  await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
+  await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
+  const assignTo = page.getByLabel('Assign to', { exact: true });
+  await assignTo.focus(); await page.keyboard.press('End'); await page.keyboard.press('Enter');
+  assert.equal(await assignTo.inputValue(), 'group');
+  const groupControl = page.getByLabel('Assignment group', { exact: true });
+  await groupControl.focus(); await page.keyboard.press('End'); await page.keyboard.press('Enter');
+  assert.equal(await groupControl.inputValue(), pool.id);
+  await page.getByText('2 members · 1 eligible', { exact: true }).waitFor();
+  record('Keyboard-only group selection shows eligibility and excludes Client Admin from the pool');
+  await responsive('assignment-group');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await page.getByText('Draft saved. This workflow is inactive.', { exact: true }).waitFor();
+  const assignedDraft = await prisma.workflow.findUniqueOrThrow({ where: { id: assignment.id } });
+  assert.deepEqual(assignedDraft.actions[0].config.assignmentTarget, { type: 'group', id: pool.id, strategy: 'round_robin' });
+  assert.equal(assignedDraft.version, 2);
+  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+  await page.getByRole('button', { name: 'Run check', exact: true }).click();
+  await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
+  assert.equal(await prisma.tenantPreference.count({ where: { tenantId: tenant.id, module: 'workflow-assignment' } }), 0);
+  assert.equal(await prisma.task.count({ where: { tenantId: tenant.id } }), 0);
+  record('Group dry-run previews a Task specialist without writing Tasks or assignment rotation');
+
+  await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
+  const { fireWorkflowTrigger } = require('../dist/backend/src/modules/automation/workflows/workflow.engine.js');
+  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
+  await scope(() => workflows.updateWorkflow(assignment.id, tenant.id, admin.id, { actions: [{ type: 'create_task', config: { title: 'Revised follow-up', assignmentTarget: { type: 'group', id: pool.id, strategy: 'round_robin' } } }] }));
+  await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
+  await page.getByRole('button', { name: 'Activity', exact: true }).click();
+  await page.getByText('Definition used in this run · v2', { exact: true }).waitFor({ state: 'attached' });
+  await page.locator('details').first().locator('summary').first().click();
+  await page.getByText('Assigned to Ana Specialist', { exact: false }).waitFor();
+  await page.getByText('Definition used in this run · v2', { exact: true }).click();
+  assert.match(await page.locator('pre').innerText(), /Follow up with lead/);
+  assert.doesNotMatch(await page.locator('pre').innerText(), /Revised follow-up/);
+  await responsive('assignment-history');
+  record('Run history retains the executed version, definition and concrete assignee after edits');
+  await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));
+  for (const method of ['least_workload', 'random', 'availability', 'capacity', 'sticky']) {
+    await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
+    await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
+    await page.getByLabel('Assignment method', { exact: true }).selectOption(method);
+    if (method === 'availability') {
+      await page.getByLabel('Assignment timezone', { exact: true }).fill('UTC');
+      const hour = new Date().getUTCHours();
+      await page.getByLabel('Default shift start', { exact: true }).fill(`${String((hour + 23) % 24).padStart(2, '0')}:00`);
+      await page.getByLabel('Default shift end', { exact: true }).fill(`${String((hour + 1) % 24).padStart(2, '0')}:00`);
+      for (const day of ['Sat', 'Sun']) await page.getByLabel('Default shift ' + day, { exact: true }).check();
+      await page.getByText('Member settings (1)', { exact: true }).click();
+      await page.getByLabel('Ana Specialist custom shift', { exact: true }).check();
+    }
+    if (method === 'capacity') {
+      await page.getByLabel('Default capacity limit', { exact: true }).fill('100');
+      await page.getByText('Member settings (1)', { exact: true }).click();
+      await page.getByLabel('Ana Specialist capacity limit', { exact: true }).fill('50');
+    }
+    if (method === 'sticky') await page.getByLabel('Sticky fallback method', { exact: true }).selectOption('least_workload');
+    if (method === 'capacity' || method === 'availability') await responsive('assignment-' + method);
+    await page.getByRole('button', { name: 'Save changes', exact: true }).click();
+    await page.getByText('Changes saved. This workflow is paused.', { exact: true }).waitFor();
+    const definition = await prisma.workflow.findUniqueOrThrow({ where: { id: assignment.id } });
+    assert.equal(definition.actions[0].config.assignmentTarget.strategy, method);
+    await page.reload();
+    await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
+    assert.equal(await page.getByLabel('Assignment method', { exact: true }).inputValue(), method);
+    await page.getByRole('button', { name: 'Test', exact: true }).click();
+    await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+    await page.getByRole('button', { name: 'Run check', exact: true }).click();
+    await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
+    await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
+    await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
+    const history = await scope(() => workflows.getWorkflowExecutions(assignment.id, tenant.id));
+    assert.equal(history[0].status, 'completed');
+    assert.equal(history[0].steps[0].output.strategy, method);
+    await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));
+    record(method + ' config saves, reloads, previews and executes through real domain services');
+  }
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors }, null, 2));
   console.log('Browser acceptance passed: ' + checks.length + ' checks.');

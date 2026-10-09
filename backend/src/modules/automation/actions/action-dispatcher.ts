@@ -4,7 +4,8 @@ import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { sendEmail } from '../../../integrations/gmail/gmail.service';
 import * as repo from './actions.repository';
-import { actionEntity, actionUser, validateAction } from './action-validation';
+import { actionEntity, validateAction } from './action-validation';
+import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, completeWorkflowAssignment, assignmentOutput } from '../assignment/workflow-assignment.service';
 import { createTask } from '../../operations/tasks/tasks.service';
 import { sendSms } from '../../../shared/services/sms.service';
 import { smsRecipient } from './action-sms';
@@ -21,19 +22,26 @@ type ActionResult = { success: boolean; output?: Record<string, unknown>; error?
 export function safeWorkflowError(error: unknown): string {
   return error instanceof AppError ? error.message : 'The action could not complete. Check the record and integration, then try again.';
 }
-export async function dispatchAction(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, actorId: string): Promise<ActionResult> {
+export async function dispatchAction(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, actorId: string, execution?: { workflowId: string; actionIndex: number }): Promise<ActionResult> {
+  let assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>> | undefined;
+  let assignmentCommitted = false;
   try {
     const entity = actionEntity(context);
     await validateAction(action, entity, tenantId, context);
     const config = action.config;
     const entityId = String(context[`${entity}.id`]);
+    assignment = ['create_task', 'assign_owner'].includes(action.type) ? await resolveWorkflowAssignee({
+      tenantId, target: parseAssignment(action), purpose: assignmentPurpose(action),
+      recordOwnerId: context[`${entity}.assignedUserId`] as string | undefined, entity, entityId, ...execution,
+    }) : undefined;
     if (action.type === 'create_task') {
       const task = await createTask(tenantId, actorId, { title: render(String(config.title).trim(), context, entity, false), description: config.description ? render(String(config.description).trim(), context, entity, false) : undefined,
         priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
         dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
-        assignedUserId: actionUser(config, 'assignedUserId', entity, context),
+        assignedUserId: assignment!.resolvedUserId,
         ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) });
-      return { success: true, output: { taskId: task.id } };
+      assignmentCommitted = true;
+      return { success: true, output: { taskId: task.id, ...assignmentOutput(assignment!) } };
     }
     if (action.type === 'send_sms') {
       const recipient = await smsRecipient(action, entity, tenantId, context);
@@ -55,7 +63,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
       return { success: true, output: { matchedDealIds: ids, movedDealIds, stageId: config.stageId, unchanged: !movedDealIds.length, ...(ids.length ? {} : { reason: 'No related Deals matched.' }) } };
     }
     if (!['assign_owner', 'update_field'].includes(action.type)) throw new ValidationError('This action is no longer available.');
-    const update = action.type === 'assign_owner' ? { assignedUserId: String(config.userId) } : await fieldUpdatePatch(action, entity, tenantId);
+    const update = action.type === 'assign_owner' ? { assignedUserId: assignment!.resolvedUserId } : await fieldUpdatePatch(action, entity, tenantId);
     if (entity === 'deal') {
       await updateDeal(entityId, tenantId, actorId, update);
     } else if (entity === 'lead') {
@@ -65,10 +73,12 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     } else {
       await updateCompany(entityId, tenantId, actorId, update);
     }
+    assignmentCommitted = action.type === 'assign_owner';
     await createActivity(tenantId, actorId, { type: 'workflow', title: action.type === 'assign_owner' ? 'Workflow assigned agent' : 'Workflow updated record fields',
       ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) });
-    return { success: true, output: { entityId, updatedFields: Object.keys(update) } };
-  } catch (error) { return { success: false, error: safeWorkflowError(error) }; }
+    return { success: true, output: { entityId, updatedFields: Object.keys(update), ...(assignment ? assignmentOutput(assignment) : {}) } };
+  } catch (error) { return { success: false, error: safeWorkflowError(error), ...(assignment ? { output: assignmentOutput(assignment) } : {}) }; }
+  finally { if (assignment) await completeWorkflowAssignment(tenantId, assignment, assignmentCommitted); }
 }
 function render(content: string, context: Record<string, unknown>, entity: string, html = true): string {
   const values: Record<string, unknown> = Object.fromEntries(WORKFLOW_MESSAGE_VARIABLES.map(variable => [variable.token,

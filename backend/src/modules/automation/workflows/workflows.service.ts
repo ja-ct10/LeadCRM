@@ -1,7 +1,8 @@
 import { compatibleWorkflow } from './workflow-fields';
 import { tenantContext } from '../../../core/tenant/tenant-context';
-import { WorkflowDraftSchema, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
-import { assertWorkflowPermissions } from '../actions/action-permissions';
+import { WorkflowDraftSchema, normalizeWorkflowAssignment, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
+import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, assignmentOutput } from '../assignment/workflow-assignment.service';
+import { assertWorkflowPermissions, assertAssignmentReferencePermissions } from '../actions/action-permissions';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
@@ -18,9 +19,10 @@ import { findUser } from '../actions/actions.repository';
 import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
 import { z } from 'zod';
 import { workflowNameKey, suggestWorkflowCopyName } from './workflow-names';
+import { workflowDefinitionChanged } from './workflow-version';
 
 function sanitizeDraft(draft: WorkflowDraft): WorkflowDraft {
-  return { ...draft, actions: draft.actions.map(action => ({ ...action, config: Object.fromEntries(
+  return { ...draft, actions: draft.actions.map(normalizeWorkflowAssignment).map(action => ({ ...action, config: Object.fromEntries(
     Object.entries(action.config).map(([key, value]) => [key, typeof value !== 'string' ? value
       : action.type === 'send_email' && key === 'body' ? sanitizeCampaignHtml(value.trim()) : value.trim()]),
   ) })) };
@@ -37,7 +39,7 @@ export async function getOptions(tenantId: string, userId: string) {
   const permissions = await findUserEffectivePermissions(userId, tenantId);
   const admin = user?.role === 'Client Admin';
   const marketing = admin || !!permissions.campaigns?.canView;
-  return repo.builderOptions(tenantId, marketing, Object.fromEntries(['contacts', 'accounts', 'leads', 'deals', 'products', 'users'].map(module => [module, admin || !!permissions[module]?.canView])) as { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean });
+  return repo.builderOptions(tenantId, marketing, Object.fromEntries(['contacts', 'accounts', 'leads', 'deals', 'products', 'users', 'roles', 'groups'].map(module => [module, admin || !!permissions[module]?.canView])) as { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles: boolean; groups: boolean });
 }
 
 export async function getWorkflows(tenantId: string, query: Record<string, unknown>) {
@@ -74,6 +76,7 @@ function parseDraft(value: unknown): WorkflowDraft {
 export async function createWorkflow(tenantId: string, userId: string, dto: unknown) {
   requireScope(tenantId);
   const draft = parseDraft(dto);
+  await assertAssignmentReferencePermissions(draft, tenantId, userId);
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   await validateConditionReferences(draft, tenantId);
   if (!draft.isActive) for (const action of draft.actions) await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
@@ -96,11 +99,13 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   if (!updates.success) throw new ValidationError('Use the supported workflow fields.');
   const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: existing.isActive, ...updates.data });
+  await assertAssignmentReferencePermissions(draft, tenantId, userId);
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   await validateConditionReferences(draft, tenantId);
   if (!draft.isActive) for (const action of draft.actions) await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
   if (draft.isActive) { await validateWorkflow(draft, tenantId); await assertWorkflowPermissions(draft, tenantId, userId); }
-  const workflow = await repo.updateWorkflow(id, tenantId, { ...sanitizeDraft(draft), status: draft.isActive ? 'ACTIVE' : existing.isActive || existing.status === 'PAUSED' ? 'PAUSED' : 'DRAFT', ...(draft.isActive ? { activatedById: userId } : {}) });
+  const sanitized = sanitizeDraft(draft);
+  const workflow = await repo.updateWorkflow(id, tenantId, { ...sanitized, status: draft.isActive ? 'ACTIVE' : existing.isActive || existing.status === 'PAUSED' ? 'PAUSED' : 'DRAFT', ...(draft.isActive ? { activatedById: userId } : {}) }, workflowDefinitionChanged(existing, sanitized));
   await writeAuditLog({ tenantId, userId, action: existing.isActive !== workflow.isActive ? workflow.isActive ? 'workflow.activated' : 'workflow.paused' : 'workflow.updated', entityType: 'Workflow', entityId: id });
   return workflow;
 }
@@ -138,18 +143,28 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
   if (!context) throw new NotFoundError('Sample record');
   const conditionContext = { ...context };
   const actions: WorkflowTestResult['actions'] = [];
-  for (const action of draft.actions) {
+  const previewLoads = new Map<string, number>();
+  for (const [actionIndex, action] of draft.actions.entries()) {
     if (action.enabled === false) {
       actions.push({ type: action.type, valid: true, message: 'Disabled. This action will be skipped.' });
       continue;
     }
     try { await validateAction(action, trigger.entity, tenantId, context);
+      const resolvedAssignment = ['create_task', 'assign_owner'].includes(action.type) ? await resolveWorkflowAssignee({
+        tenantId, workflowId: id, actionIndex, target: parseAssignment(action), purpose: assignmentPurpose(action),
+        recordOwnerId: context[`${trigger.entity}.assignedUserId`] as string | undefined, entity: trigger.entity, entityId, dryRun: true, previewLoads,
+      }) : undefined;
+      const assignment = resolvedAssignment ? assignmentOutput(resolvedAssignment) : undefined;
       const targets = action.type === 'move_deal_stage' ? await resolveDealTargets(action, trigger.entity, tenantId, context) : undefined;
-      actions.push({ type: action.type, valid: true,
-        message: targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
+      actions.push({ type: action.type, valid: true, ...(assignment ? { assignment } : {}),
+        message: assignment ? `Would assign ${assignment.resolvedUserName} (${assignment.candidateCount} eligible). ${assignment.reason}.${assignment.workload !== undefined ? ` Active workload: ${assignment.workload}${assignment.capacityLimit !== undefined ? ` / ${assignment.capacityLimit}` : ''}.` : ''} No records or assignment state changed.` : targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
           : action.type === 'send_email' ? 'Recipient resolved; template and sender available. No email sent.' : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
-      if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = action.config.userId;
+      if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = assignment!.resolvedUserId;
+      if (action.type === 'create_task' && assignment) {
+        const key = `task:${assignment.resolvedUserId}`;
+        previewLoads.set(key, (previewLoads.get(key) ?? 0) + 1);
+      }
       if (action.type === 'update_field') {
         const patch = await fieldUpdatePatch(action, trigger.entity, tenantId);
         for (const [field, value] of Object.entries(patch)) {
@@ -170,6 +185,7 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
 export async function validateDraft(tenantId: string, userId: string, input: unknown) {
   requireScope(tenantId);
   const draft = parseDraft(input);
+  await assertAssignmentReferencePermissions(draft, tenantId, userId);
   await validateWorkflow(draft, tenantId);
   await assertWorkflowPermissions(draft, tenantId, userId);
   return { valid: true, message: 'Trigger, conditions, action configuration, permissions and references are valid. No actions were executed.' };

@@ -355,7 +355,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(await prisma.task.count({ where: { dealLinks: { some: { dealId: duplicateId } }, title: 'Duplicated deal follow-up' } })).toBe(1);
   });
   it('does not accept foreign references even in disabled steps', async () => {
-    await expect(create([{ type: 'create_task', config: { title: 'Enabled' } }, { type: 'assign_owner', enabled: false, config: { userId: outsider.id } }])).rejects.toThrow('Active workspace user');
+    await expect(create([{ type: 'create_task', config: { title: 'Enabled' } }, { type: 'assign_owner', enabled: false, config: { userId: outsider.id } }])).rejects.toThrow('active sales agent');
   });
   it('keeps Client Profile actions attached to Contact, with the relationship Status unchanged', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'update_field', config: { field: 'address', value: 'Client follow-up' } },
@@ -419,7 +419,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     ], { isActive: false });
     const result = await scope(() => workflows.testWorkflow(workflow.id, tenantId, record.id));
     expect(result.valid).toBe(false);
-    expect(result.actions[1].message).toContain('Choose an agent');
+    expect(result.actions[1].message).toContain('Assign an agent to the triggering record');
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: record.id } })).assignedUserId).toBe(owner.id);
     expect(await runs(workflow.id)).toHaveLength(0);
   });
