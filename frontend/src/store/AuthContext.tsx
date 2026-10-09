@@ -252,7 +252,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const source = new EventSource('/api/proxy/auth/events');
     let previous: string | undefined;
     const refresh = () => {
-      clearPageCache();
+      clearPageCache(true);
       void Promise.allSettled([accessRefresh.current.refreshUser(), accessRefresh.current.refreshPermissions()]);
     };
     source.addEventListener('authorization-change', event => {

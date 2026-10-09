@@ -76,6 +76,7 @@ function deploymentPlan(records, localNames) {
     '20261113000000_mailbox_message_headers',
     '20261114000000_notification_delivery',
     '20261115000000_dashboard_revisions',
+    '20261115000000_workflow_assignment_history',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

@@ -209,6 +209,7 @@ model User {
   crmImportJobs CrmImportJob[]
   groupMemberships TenantGroupMember[]
   marketingForms   MarketingForm[]
+  activatedWorkflows Workflow[] @relation("WorkflowActivator")
 
   @@unique([tenantId, email])
   @@index([tenantId, status])
@@ -1201,6 +1202,7 @@ model Template {
 // conditions and actions stored as typed JSON (never eval()'d)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Workflow {
+  version     Int      @default(1)
   status      String   @default("DRAFT")
   activatedById String?
   id          String   @id @default(uuid())
@@ -1217,6 +1219,7 @@ model Workflow {
 
   tenant         Tenant                  @relation(fields: [tenantId], references: [id])
   triggerRecords WorkflowTriggerRecord[]
+  activatedBy    User? @relation("WorkflowActivator", fields: [activatedById, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@index([tenantId, isActive])
   @@index([tenantId])
@@ -1248,6 +1251,8 @@ model WorkflowTriggerRecord {
 }
 
 model WorkflowExecutionRun {
+  workflowVersion Int?
+  definitionSnapshot Json?
   id           String    @id @default(uuid())
   tenantId     String
   workflowId   String
@@ -1285,6 +1290,7 @@ model WorkflowExecutionStep {
   execution WorkflowExecutionRun @relation(fields: [executionId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
   @@index([executionId])
+  @@unique([executionId, stepIndex])
   @@index([tenantId])
 }
 

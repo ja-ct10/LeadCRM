@@ -11,6 +11,7 @@ import {
 import {
   WORKFLOW_TRIGGERS,
   getAvailableActions,
+  normalizeWorkflowAssignment,
   type WorkflowDraft,
 } from '@leadcrm/shared';
 import WorkflowBuilder from './visual-workflow-builder';
@@ -156,8 +157,8 @@ describe('visual workflow editor', () => {
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
           actions: [
-            { type: 'create_task', config: { title: 'Prepare proposal' } },
-            initial.actions[0],
+            { type: 'create_task', config: { title: 'Prepare proposal', assignmentTarget: { type: 'record_owner' } } },
+            normalizeWorkflowAssignment(initial.actions[0]),
             { type: 'create_notification', config: { title: 'Notify owner' } },
           ],
         }),
@@ -188,11 +189,11 @@ describe('visual workflow editor', () => {
       expect(save).toHaveBeenCalledWith(
         expect.objectContaining({
           actions: [
-            initial.actions[0],
+            normalizeWorkflowAssignment(initial.actions[0]),
             {
               type: 'create_task',
               enabled: false,
-              config: { title: 'Later task' },
+              config: { title: 'Later task', assignmentTarget: { type: 'record_owner' } },
             },
           ],
         }),

@@ -7,12 +7,12 @@ import { workflowCustomFields } from './workflow-fields';
 import { readRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { cleanWorkflowName, workflowNameKey, WORKFLOW_NAME_CONFLICT } from './workflow-names';
-import { eligibleAgents } from '../../crm/leads/lead-automation.service';
+import { assignmentOptions } from '../assignment/workflow-assignment.repository';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
 
-export async function builderOptions(tenantId: string, marketing: boolean, access = { contacts: false, accounts: false, leads: false, deals: false, products: false, users: false }) {
-  const [users, pipelines, templates, productInterests, accounts, contacts, leads, senders] = await Promise.all([
-    access.users ? eligibleAgents(prisma, tenantId) : [],
+export async function builderOptions(tenantId: string, marketing: boolean, access: { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles?: boolean; groups?: boolean } = { contacts: false, accounts: false, leads: false, deals: false, products: false, users: false }) {
+  const [assignments, pipelines, templates, productInterests, accounts, contacts, leads, senders] = await Promise.all([
+    access.users || access.roles || access.groups ? assignmentOptions(prisma, tenantId, { users: access.users, roles: !!access.roles, groups: !!access.groups }) : { users: [], taskAssignees: [], roles: [], groups: [] },
     access.deals ? prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { select: { id: true, name: true }, orderBy: { order: 'asc' } } } }) : [],
     marketing ? prisma.template.findMany({ where: { tenantId, isArchived: false, type: 'Email' }, select: { id: true, name: true } }) : [],
     access.products ? prisma.productInterest.findMany({ where: { tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
@@ -22,7 +22,7 @@ export async function builderOptions(tenantId: string, marketing: boolean, acces
     marketing && access.users ? connectedSenders(tenantId) : [],
   ]);
   const people = (rows: Array<{ id: string; firstName: string; lastName: string }>) => rows.map(user => ({ id: user.id, name: `${user.firstName} ${user.lastName}` }));
-  return { customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), users: people(users), senders: people(senders), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
+  return { customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), ...assignments, senders: people(senders), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
 }
 
 async function connectedSenders(tenantId: string) {
@@ -89,23 +89,24 @@ export async function createWorkflow(tenantId: string, draft: WorkflowDraft, act
       actions: draft.actions as Prisma.InputJsonValue } });
   } catch (error) { rethrowNameConflict(error); }
 }
-export async function updateWorkflow(id: string, tenantId: string, draft: Partial<WorkflowDraft> & { isArchived?: boolean; status?: string; activatedById?: string }) {
+export async function updateWorkflow(id: string, tenantId: string, draft: Partial<WorkflowDraft> & { isArchived?: boolean; status?: string; activatedById?: string }, definitionChanged = false) {
   if (draft.name !== undefined) {
     draft = { ...draft, name: cleanWorkflowName(draft.name) };
     await assertNameAvailable(tenantId, draft.name!, id);
   }
   try {
-    return await prisma.workflow.update({ where: { id, tenantId }, data: workflowData(draft) });
+    return await prisma.workflow.update({ where: { id, tenantId }, data: { ...workflowData(draft), ...(definitionChanged ? { version: { increment: 1 } } : {}) } });
   } catch (error) { rethrowNameConflict(error); }
 }
 export function activeWorkflows(tenantId: string, trigger: string) {
   return prisma.workflow.findMany({ where: { tenantId, trigger, isActive: true, status: 'ACTIVE', isArchived: false } });
 }
-export async function startRun(params: { tenantId: string; workflowId: string; triggerType: string; entityType: string; entityId: string; eventId: string; recordName: string }) {
+export async function startRun(params: { tenantId: string; workflowId: string; triggerType: string; entityType: string; entityId: string; eventId: string; recordName: string; workflowVersion: number; definitionSnapshot: Prisma.InputJsonValue }) {
   try { return await prisma.$transaction(async tx => {
     const trigger = await tx.workflowTriggerRecord.create({ data: { tenantId: params.tenantId, workflowId: params.workflowId, triggerType: params.triggerType, entityType: params.entityType, entityId: params.entityId, eventId: params.eventId, payload: { recordName: params.recordName } } });
     return tx.workflowExecutionRun.create({ data: { tenantId: params.tenantId, workflowId: params.workflowId,
-      triggerId: trigger.id, entityType: params.entityType, entityId: params.entityId } });
+      triggerId: trigger.id, entityType: params.entityType, entityId: params.entityId,
+      workflowVersion: params.workflowVersion, definitionSnapshot: params.definitionSnapshot } });
   }); } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') return null;
     throw error;

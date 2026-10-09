@@ -3,6 +3,7 @@ import {
   WORKFLOW_MESSAGE_VARIABLES,
   getWorkflowUpdateFields,
   getAvailableActions,
+  normalizeWorkflowAssignment,
   type ActionDefinition,
   type TriggerDefinition,
   type WorkflowAction,
@@ -10,6 +11,7 @@ import {
   type WorkflowDraft,
   type WorkflowOptions,
 } from '@leadcrm/shared';
+import { assignmentIssues, assignmentSummary } from './workflow-assignment';
 
 export type StepSelection =
   | 'details'
@@ -69,7 +71,7 @@ export function toDraft(value: WorkflowDraft): WorkflowDraft {
     description: value.description,
     trigger: value.trigger,
     conditions: value.conditions,
-    actions: value.actions,
+    actions: value.actions.map(normalizeWorkflowAssignment),
     isActive: value.isActive,
   };
 }
@@ -227,14 +229,14 @@ export function actionSummary(
     case 'create_task':
       return [
         String(config.title || 'Add a task title'),
-        `Assigned to ${referenceName('user', config.assignedUserId, options, 'current record agent')}`,
+        `Assigned to ${assignmentSummary(action, options)}`,
         `Due in ${config.dueDaysFromNow === '' || config.dueDaysFromNow == null ? 3 : config.dueDaysFromNow} day(s) · ${config.priority || 'Medium'} priority`,
       ];
     case 'create_notification':
       return ['Notifications are automatic. Disable or remove this retired step before activating.'];
     case 'assign_owner':
       return [
-        `Assign to ${referenceName('user', config.userId, options, 'an agent')}`,
+        `Assign to ${assignmentSummary(action, options)}`,
       ];
     case 'send_email':
       return [
@@ -314,6 +316,7 @@ export function actionIssues(
   if (!definition || !entity || !definition.entities.includes(entity))
     return ['This action is unavailable for the trigger.'];
   const issues: string[] = [];
+  if (['create_task', 'assign_owner'].includes(action.type)) issues.push(...assignmentIssues(action, options, incomplete));
   if (action.type === 'update_field') {
     const field = getWorkflowUpdateFields(entity, options.customFields).find((entry) => entry.field === action.config.field);
     if (!field) return incomplete ? [] : ['Choose an available field.'];
@@ -333,6 +336,7 @@ export function actionIssues(
     return issues;
   }
   for (const [key, field] of Object.entries(definition.configSchema)) {
+    if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) continue;
     const value = action.config[key];
     if (
       value == null ||

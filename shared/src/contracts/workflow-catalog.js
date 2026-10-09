@@ -125,6 +125,7 @@ function getAvailableActions() {
         { type: 'create_task', label: 'Create Task', description: 'Create a linked follow-up task.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
                 title: { type: 'string', label: 'Task title', required: true }, description: { type: 'string', label: 'Description', required: false },
                 assignedUserId: { type: 'user', label: 'Assign to (defaults to assigned agent)', required: false },
+                assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
                 dueDaysFromNow: { type: 'number', label: 'Due in days', required: false }, priority: { type: 'select', label: 'Priority', required: false, options: ['Low', 'Medium', 'High'] },
             } },
         { type: 'send_email', label: 'Send Email', description: 'Send a template through a connected Gmail account.', entities: ['lead', 'contact'], configSchema: {
@@ -136,7 +137,8 @@ function getAvailableActions() {
                 message: { type: 'string', label: 'SMS message', required: true },
             } },
         { type: 'assign_owner', label: 'Assign Agent', description: 'Assign the record to an eligible workspace agent.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
-                userId: { type: 'user', label: 'Agent', required: true },
+                userId: { type: 'user', label: 'Agent', required: false },
+                assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
             } },
         { type: 'update_field', label: 'Update Fields', description: 'Update an editable record field.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
                 field: { type: 'field', label: 'Field', required: true }, value: { type: 'value', label: 'New value', required: false },

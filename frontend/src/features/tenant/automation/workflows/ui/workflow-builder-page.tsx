@@ -31,6 +31,7 @@ export default function WorkflowBuilderPage() {
     triggers: TriggerDefinition[];
     actions: ActionDefinition[];
     initialStatus?: Workflow['status'];
+    initialVersion?: number;
   } | null>(null);
   const [error, setError] = useState(''),
     [retry, setRetry] = useState(0);
@@ -86,6 +87,7 @@ export default function WorkflowBuilderPage() {
         setLoaded({
           initial,
           initialStatus: saved?.status,
+          initialVersion: saved?.version,
           options: options.data,
           ...metadata,
           triggers: metadata.triggers.map(trigger => ({ ...trigger, fields: getWorkflowConditionFields(trigger.entity, trigger.type, options.data.customFields) })),

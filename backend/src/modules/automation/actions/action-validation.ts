@@ -4,7 +4,7 @@ import { WORKFLOW_MESSAGE_VARIABLES, EmailSubjectSchema, type WorkflowAction, ty
 import { fieldUpdatePatch } from './action-fields';
 import { smsRecipient, validateSmsRecipientMode } from './action-sms';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
-import { validateSalesOwner } from '../../crm/leads/lead-automation.service';
+import { validateAssignment } from '../assignment/workflow-assignment.service';
 import prisma from '../../../config/database.config';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import { getAvailableActions } from './actions.service';
@@ -15,9 +15,6 @@ export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   const matches = (['lead', 'contact', 'deal', 'account'] as const).filter(entity => typeof context[`${entity}.id`] === 'string');
   if (matches.length !== 1) throw new ValidationError('Choose one triggering CRM record.');
   return matches[0];
-}
-export function actionUser(config: Record<string, unknown>, key: string, entity: WorkflowEntity, context?: Record<string, unknown>): string {
-  return String(config[key] || context?.[`${entity}.assignedUserId`] || '');
 }
 export async function validateAction(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>, incomplete = false): Promise<void> {
   if (['send_campaign', 'create_notification'].includes(action.type)) {
@@ -35,6 +32,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   }
   for (const [key, field] of Object.entries(definition.configSchema)) {
     const value = action.config[key];
+    if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) continue;
     if (!incomplete && action.enabled !== false && field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
     if (value === undefined || value === '') continue;
     if (field.type === 'number') {
@@ -52,16 +50,11 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (field.type === 'template' && !await repo.findTemplate(String(value), tenantId)) throw new NotFoundError('Email template');
     if (field.type === 'campaign' && !await repo.findCampaign(String(value), tenantId)) throw new NotFoundError('Campaign');
   }
+  if (['create_task', 'assign_owner'].includes(action.type)) await validateAssignment(action, entity, tenantId, context, incomplete || action.enabled === false);
   // Disabled steps retain safe configuration and scoped references, but need no delivery readiness.
   if (action.enabled === false) return;
   if (incomplete && Object.entries(definition.configSchema).some(([key, field]) => field.required && !action.config[key])) return;
   if (incomplete && action.type === 'send_email' && !action.config.templateId && (!action.config.subject || !action.config.body)) return;
-  if (context && ['create_task', 'create_notification'].includes(action.type)) {
-    const key = action.type === 'create_task' ? 'assignedUserId' : 'userId';
-    const userId = actionUser(action.config, key, entity, context);
-    if (!userId) throw new ValidationError('Choose an agent or assign an agent to the triggering record.');
-    if (!await repo.findUser(userId, tenantId)) throw new NotFoundError('Active workspace user');
-  }
   if (action.type === 'move_deal_stage') {
     const stage = await repo.findStage(String(action.config.stageId), tenantId);
     if (!stage) throw new NotFoundError('Stage');
@@ -73,7 +66,6 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     }
   }
   if (action.type === 'send_email') await validateEmail(action, entity, tenantId, context);
-  if (action.type === 'assign_owner') await validateSalesOwner(prisma, tenantId, String(action.config.userId));
   if (action.type === 'send_sms') {
     validateSmsRecipientMode(action.config.recipient, entity);
     if (String(action.config.message ?? '').length > 1600) throw new ValidationError('SMS message must be at most 1600 characters.');

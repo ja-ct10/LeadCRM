@@ -1,6 +1,8 @@
 import {
   getWorkflowUpdateFields,
   workflowOperators,
+  workflowAssignmentTarget,
+  WorkflowAssignmentTargetSchema,
   type ActionDefinition,
   type TriggerDefinition,
   type WorkflowDraft,
@@ -49,7 +51,8 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
       }
     }
     if (action.type === 'send_email') notes.push('Review the email message and connect the selected sender to Gmail before activating.');
-    if (action.type === 'create_task' && !action.config.assignedUserId) {
+    if (action.type === 'assign_owner' && !WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action)).success) notes.push('Choose agent, role or group in the builder.');
+    if (action.type === 'create_task' && WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action)).data?.type === 'record_owner') {
       notes.push('Tasks use the record’s assigned agent. Assign an agent to the record or choose a task assignee in the builder.');
     }
     if (action.type === 'update_field') {

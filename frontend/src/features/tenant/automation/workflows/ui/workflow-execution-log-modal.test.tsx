@@ -17,6 +17,27 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 const mount = (close = vi.fn(), updated = vi.fn()) => render(<WorkflowExecutionLogModal workflowId="wf" name="Follow up" status="Active" onClose={close} onUpdated={updated} />);
 const settled = () => waitFor(() => expect((screen.getByLabelText('Refresh workflow activity') as HTMLButtonElement).disabled).toBe(false));
+it('shows the executed version, snapshot and resolved assignee independently of the current definition', async () => {
+  vi.mocked(workflowsApi.get).mockResolvedValue({ data: { ...workflow, version: 4 } } as never);
+  vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run, workflowVersion: 2,
+    definitionSnapshot: { name: 'Original follow-up', trigger: 'lead.created', actions: [{ type: 'create_task', config: { title: 'Old title' } }] },
+    steps: [{ ...run.steps[0], output: { resolvedUserId: 'user', resolvedUserName: 'Ana', assignmentTargetName: 'Sales team', strategy: 'round_robin' } }],
+  }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
+  mount(); await settled();
+  expect(screen.getByText('Workflow details · Active · v4')).toBeTruthy();
+  expect(screen.getByText('Definition used in this run · v2')).toBeTruthy();
+  expect(screen.getByText(/Assigned to Ana · Sales team · Round-robin/)).toBeTruthy();
+  expect(screen.getByText(/Original follow-up/).textContent).toContain('Old title');
+});
+it('does not claim a completed assignment when the action failed after resolving a user', async () => {
+  vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run, status: 'failed',
+    steps: [{ ...run.steps[0], status: 'failed', error: 'Unable to create task.', output: { resolvedUserId: 'user', resolvedUserName: 'Ana' } }],
+  }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
+  mount(); await settled();
+  expect(screen.getByText('Selected assignee: Ana')).toBeTruthy();
+  expect(screen.queryByText(/Assigned to Ana/)).toBeNull();
+  expect(screen.getByText('Unable to create task.')).toBeTruthy();
+});
 it('uses shared pagination, hides it while loading, and refreshes definition plus current run page', async () => {
   const close = vi.fn(); mount(close);
   expect(screen.getByRole('status', { name: 'Loading workflow runs' })).toBeTruthy();
