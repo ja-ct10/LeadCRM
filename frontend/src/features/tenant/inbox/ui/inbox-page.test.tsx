@@ -87,6 +87,16 @@ describe('Persisted scoped Inbox', () => {
     await advance(180_000); expect(streams).toHaveLength(2);
     expect(mocks.sync).not.toHaveBeenCalled();
   });
+  it('preserves the reconnect backoff when a filter change recreates the stream effect', async () => {
+    const streams: Array<EventTarget & { close: ReturnType<typeof vi.fn> }> = [];
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });
+    render(<InboxPage />); await flush();
+    streams[0].dispatchEvent(new Event('error')); await flush();
+    fireEvent.click(screen.getByLabelText('Filter emails')); fireEvent.click(screen.getByText('Sent')); await flush();
+    expect(streams).toHaveLength(1);
+    await advance(59_999); expect(streams).toHaveLength(1);
+    await advance(1); expect(streams).toHaveLength(2);
+  });
   it('honors an API cooldown across refresh, sync and realtime connections', async () => {
     const streams: Array<EventTarget & { close: ReturnType<typeof vi.fn> }> = [];
     vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } });

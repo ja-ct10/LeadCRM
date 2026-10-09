@@ -60,6 +60,7 @@ export default function InboxPage(): React.ReactElement {
   const [retryAt, setRetryAt] = useState(0);
   const [apiCooldownUntil, setApiCooldownUntil] = useState(0);
   const cooldownRef = useRef(0);
+  const reconnectAfterRef = useRef(0);
   const applyApiCooldown = useCallback((error: ApiRequestError) => {
     // Provider throttling pauses synchronization only; persisted mail stays usable.
     if (error.status !== 429 || error.code === 'GMAIL_RATE_LIMITED') return;
@@ -149,16 +150,15 @@ export default function InboxPage(): React.ReactElement {
     // Do not let EventSource's automatic 3-second retry loop hammer the API.
     let events: EventSource | null = null;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
-    let reconnectAfter = 0;
     const connect = () => {
-      if (!active || events || document.visibilityState === 'hidden' || Date.now() < cooldownRef.current || Date.now() < reconnectAfter || typeof EventSource === 'undefined') return;
+      if (!active || events || document.visibilityState === 'hidden' || Date.now() < cooldownRef.current || Date.now() < reconnectAfterRef.current || typeof EventSource === 'undefined') return;
       events = new EventSource('/api/proxy/integrations/gmail/events');
       events.addEventListener('mailbox-change', refresh);
       events.addEventListener('mailbox-access-changed', () => { setEmails([]); setSelectedEmail(null); refresh(); });
       events.addEventListener('error', () => {
         events?.close();
         events = null;
-        reconnectAfter = Date.now() + 60_000;
+        reconnectAfterRef.current = Date.now() + 60_000;
         reconnect = setTimeout(() => { refresh(); connect(); }, 60_000);
       });
     };
