@@ -9,6 +9,7 @@ import * as service from './forms.service';
 import { getPublicForm, submitPublicForm } from './public-forms.service';
 import app from '../../../app';
 import { FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
+import { ensureSalesGroup } from '../../administration/groups/sales-group';
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_forms_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
@@ -215,6 +216,63 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect(r.status).toBe(200); expect(r.body.data).not.toHaveProperty('tenantId'); expect(r.body.data).not.toHaveProperty('settings');
     const bad = await request('/public/forms/' + f.publicId + '/submissions', 'POST', { version: 1, values: { ...values(), firstName: ' ' } }, '');
     expect(bad.status).toBe(400); expect(bad.body.fieldErrors.firstName).toBeTruthy();
+  });
+  it('rotates only eligible Sales members, preserves request idempotency and inquiry/Deal ownership', async () => {
+    const group = await scoped(() => prisma.$transaction(tx => ensureSalesGroup(tx, tenantId), { isolationLevel: 'Serializable' }));
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Form eligible agent' } });
+    await prisma.rolePermission.createMany({ data: ['leads', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true })) });
+    const makeAgent = (prefix: string, status: 'ACTIVE' | 'INACTIVE' = 'ACTIVE') => prisma.user.create({ data: { id: prefix + randomUUID(), tenantId,
+      email: randomUUID() + '@camxian.com', firstName: prefix, lastName: 'Agent', role: role.name, status,
+      userRoles: { create: { roleId: role.id } } } });
+    const a = await makeAgent('a-'), b = await makeAgent('b-'), outside = await makeAgent('0-'), inactive = await makeAgent('c-', 'INACTIVE');
+    await prisma.tenantGroupMember.createMany({ data: [a, b, inactive].map(user => ({ tenantId, groupId: group.id, userId: user.id })) });
+    const f = await publish((await draft()).id), first = values(), requestId = randomUUID();
+    const cursor = { tenantId, module: 'form-lead-assignment', key: `sales:${group.id}` };
+    const savedLead = (email: string) => prisma.lead.findFirstOrThrow({ where: { tenantId, email } });
+    await submitPublicForm(f.publicId, { version: 1, values: first, requestId });
+    expect((await savedLead(first.email)).assignedUserId).toBe(a.id);
+    const beforeRetry = await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } });
+    await submitPublicForm(f.publicId, { version: 1, values: first, requestId });
+    expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } })).value).toBe(beforeRetry.value);
+    expect(await prisma.formSubmission.count({ where: { formId: f.id, requestKey: requestId } })).toBe(1);
+    const rejected = values(); rejectSubmissionEmail = rejected.email;
+    try { await expect(submit(f.publicId, rejected)).rejects.toThrow('Simulated submission persistence failure'); }
+    finally { rejectSubmissionEmail = ''; }
+    expect(await prisma.lead.count({ where: { tenantId, email: rejected.email } })).toBe(0);
+    expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } })).value).toBe(beforeRetry.value);
+    // Display name is editable; routing follows SALES, never the label.
+    await prisma.tenantGroup.update({ where: { id: group.id }, data: { name: 'Revenue team' } });
+    const second = values(); await submit(f.publicId, second);
+    const third = values(); await submit(f.publicId, third);
+    expect((await savedLead(second.email)).assignedUserId).toBe(b.id);
+    expect((await savedLead(third.email)).assignedUserId).toBe(a.id);
+    const simultaneous = [values(), values()];
+    await Promise.all(simultaneous.map(value => submitPublicForm(f.publicId, { version: 1, values: value, requestId: randomUUID() })));
+    expect(new Set(await Promise.all(simultaneous.map(async value => (await savedLead(value.email)).assignedUserId)))).toEqual(new Set([a.id, b.id]));
+    for (const value of [first, second, third, ...simultaneous]) {
+      const lead = await savedLead(value.email);
+      expect(lead.assignedUserId).not.toBe(outside.id); expect(lead.assignedUserId).not.toBe(inactive.id);
+      const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId: lead.id } } } });
+      expect(deals).toHaveLength(1); expect(deals[0].assignedUserId).toBe(lead.assignedUserId);
+    }
+    const beforeReturn = (await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } })).value;
+    await submit(f.publicId, first);
+    expect((await savedLead(first.email)).assignedUserId).toBe(a.id);
+    const customerValues = values();
+    const customer = await prisma.contact.create({ data: { tenantId, firstName: 'Returning', lastName: 'Customer', email: customerValues.email, assignedUserId: outside.id } });
+    await submit(f.publicId, customerValues);
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: customer.id } })).assignedUserId).toBe(outside.id);
+    expect((await prisma.deal.findMany({ where: { tenantId, contactDeals: { some: { tenantId, contactId: customer.id } } } }))[0].assignedUserId).toBe(outside.id);
+    expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } })).value).toBe(beforeReturn);
+    // Provisioning repeats preserve ID, name and manually-managed memberships.
+    expect((await scoped(() => prisma.$transaction(tx => ensureSalesGroup(tx, tenantId)))).id).toBe(group.id);
+    expect(await prisma.tenantGroupMember.count({ where: { tenantId, groupId: group.id } })).toBe(3);
+    await prisma.tenantGroupMember.deleteMany({ where: { tenantId, groupId: group.id } });
+    const empty = values(); await submit(f.publicId, empty);
+    const unassigned = await savedLead(empty.email); expect(unassigned.assignedUserId).toBeNull();
+    expect((await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId: unassigned.id } } } }))[0].assignedUserId).toBeNull();
+    expect(await prisma.activity.count({ where: { tenantId, leadId: unassigned.id, type: 'assignment', title: 'Lead awaiting assignment' } })).toBe(1);
+    expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursor } })).value).toBe(beforeReturn);
   });
   it('rate limits anonymous submissions with 429', async () => {
     let status = 0;

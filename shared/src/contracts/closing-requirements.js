@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CLOSING_FILE_MAX_BYTES = exports.DEFAULT_CLOSING_FIELDS = exports.ClosingValuesPatchSchema = exports.normalizeCustomField = exports.isClosedWonField = exports.CustomFieldValuesSchema = exports.ClosingFieldInputSchema = exports.customFieldNameKey = exports.customFieldGroupOptions = exports.CUSTOM_FIELD_BUILT_IN_GROUPS = exports.CLOSED_WON_GROUP = exports.CUSTOM_FIELD_MODULE_LABELS = exports.CUSTOM_FIELD_MODULES = exports.CLOSING_FIELD_TYPES = void 0;
+exports.CLOSING_FILE_MAX_BYTES = exports.DEFAULT_CLOSING_FIELDS = exports.ClosingValuesPatchSchema = exports.normalizeCustomField = exports.isSystemClosingField = exports.isClosedWonField = exports.CustomFieldValuesSchema = exports.ClosingFieldInputSchema = exports.customFieldNameKey = exports.customFieldGroupOptions = exports.CUSTOM_FIELD_BUILT_IN_GROUPS = exports.CLOSED_WON_GROUP_ID = exports.CLOSED_WON_GROUP = exports.CUSTOM_FIELD_MODULE_LABELS = exports.CUSTOM_FIELD_MODULES = exports.CLOSING_FIELD_TYPES = void 0;
 exports.closingValueError = closingValueError;
 const zod_1 = require("zod");
 const record_experience_1 = require("./record-experience");
@@ -9,6 +9,7 @@ exports.CLOSING_FIELD_TYPES = ['Text', 'Long Text', 'Number', 'Date', 'Dropdown'
 exports.CUSTOM_FIELD_MODULES = ['leads', 'contacts', 'accounts', 'deals'];
 exports.CUSTOM_FIELD_MODULE_LABELS = { leads: 'Leads', contacts: 'Contacts', accounts: 'Accounts', deals: 'Deals' };
 exports.CLOSED_WON_GROUP = 'Closed Won Requirements';
+exports.CLOSED_WON_GROUP_ID = 'deals:closing-evidence';
 exports.CUSTOM_FIELD_BUILT_IN_GROUPS = {
     leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information'],
     contacts: ['Basic Information', 'Status & Classification', 'Relationships', 'Additional Information'],
@@ -26,7 +27,9 @@ exports.ClosingFieldInputSchema = zod_1.z.object({
     appliesTo: zod_1.z.literal('Closed Won Requirements').optional(),
     module: zod_1.z.enum(exports.CUSTOM_FIELD_MODULES).default('deals'),
     group: zod_1.z.string().trim().min(1, 'Group / Section is required.').max(100).default(exports.CLOSED_WON_GROUP),
+    groupId: zod_1.z.string().min(1).max(100).optional(),
     visibleInForm: zod_1.z.boolean().default(true),
+    visibleInDetails: zod_1.z.boolean().default(true),
     order: zod_1.z.number().int().min(0).max(100000).default(0),
     required: zod_1.z.boolean(),
     active: zod_1.z.boolean().default(true),
@@ -38,10 +41,12 @@ exports.ClosingFieldInputSchema = zod_1.z.object({
     }
 });
 exports.CustomFieldValuesSchema = zod_1.z.record(zod_1.z.string().min(1).max(100), zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.number().finite(), zod_1.z.null()])).refine(v => Object.keys(v).length <= 100, 'Supply at most 100 field values.');
-const isClosedWonField = (field) => field.module === 'deals' && (0, exports.customFieldNameKey)(field.group) === (0, exports.customFieldNameKey)(exports.CLOSED_WON_GROUP);
+const isClosedWonField = (field) => field.module === 'deals' && (field.groupId ? field.groupId === exports.CLOSED_WON_GROUP_ID : (0, exports.customFieldNameKey)(field.group) === (0, exports.customFieldNameKey)(exports.CLOSED_WON_GROUP));
 exports.isClosedWonField = isClosedWonField;
+const isSystemClosingField = (field) => (0, exports.isClosedWonField)(field) && exports.DEFAULT_CLOSING_FIELDS.some(seeded => seeded.id === field.id);
+exports.isSystemClosingField = isSystemClosingField;
 /** Legacy definitions/snapshots retain their IDs and original context. */
-const normalizeCustomField = (field) => ({ ...field, module: field.module ?? 'deals', group: field.group ?? exports.CLOSED_WON_GROUP, visibleInForm: field.visibleInForm ?? true, order: field.order ?? 0 });
+const normalizeCustomField = (field) => ({ ...field, module: field.module ?? 'deals', group: field.group ?? exports.CLOSED_WON_GROUP, groupId: field.groupId ?? ((0, exports.isClosedWonField)({ ...field, module: field.module ?? 'deals', group: field.group ?? exports.CLOSED_WON_GROUP }) ? exports.CLOSED_WON_GROUP_ID : undefined), visibleInForm: field.visibleInForm ?? true, visibleInDetails: field.visibleInDetails ?? true, order: field.order ?? 0 });
 exports.normalizeCustomField = normalizeCustomField;
 exports.ClosingValuesPatchSchema = zod_1.z.object({ values: zod_1.z.record(zod_1.z.string().min(1).max(100), zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.number().finite(), zod_1.z.null()])).refine(v => Object.keys(v).length > 0 && Object.keys(v).length <= 100, 'Supply 1–100 field values.') }).strict();
 exports.DEFAULT_CLOSING_FIELDS = [
@@ -50,7 +55,7 @@ exports.DEFAULT_CLOSING_FIELDS = [
     { id: 'reference-number', name: 'Reference Number', type: 'Text', required: false },
     { id: 'required-document', name: 'Required Document', type: 'File Upload', required: false },
     { id: 'closing-notes', name: 'Closing Notes', type: 'Long Text', required: false },
-].map((field, order) => ({ options: [], description: '', active: true, module: 'deals', group: exports.CLOSED_WON_GROUP, visibleInForm: true, order, version: 1, ...field }));
+].map((field, order) => ({ options: [], description: '', active: true, module: 'deals', group: exports.CLOSED_WON_GROUP, groupId: exports.CLOSED_WON_GROUP_ID, visibleInForm: true, visibleInDetails: true, order, version: 1, ...field }));
 /** File IDs are checked against tenant/Deal-owned persistent records by the backend. */
 function closingValueError(field, value) {
     const empty = value == null || typeof value === 'string' && !value.trim();

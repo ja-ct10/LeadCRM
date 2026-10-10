@@ -20,7 +20,7 @@ import { sendMail, EmailSubmissionError } from '../../../../shared/services/emai
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../../core/auth/auth-session';
-import { createCampaign, getCampaignById, sendCampaign, updateCampaign, archiveCampaign } from '../campaigns.service';
+import { createCampaign, getCampaignById, sendCampaign, updateCampaign, archiveCampaign, scheduleCampaign, cancelCampaignSchedule, dispatchDueCampaigns, startCampaignScheduleScheduler, duplicateCampaign } from '../campaigns.service';
 import { recoverCampaignSubmissions, interruptCampaignSubmission } from '../campaign-submission-recovery';
 import { createAudience, getAudiences, resolveAudience } from '../audiences.service';
 import { createTemplate, getTemplates } from '../../templates/templates.service';
@@ -34,6 +34,12 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   let server: Server, base: string, token: string, deniedToken: string;
   const scoped = <T>(work: () => T, tenant = tenantId) => tenantContext.run({ tenantId: tenant }, work);
   const draft = () => scoped(() => createCampaign(tenantId, userId, { name: 'September Campaign', type: 'EMAIL', subject: 'Hello {{first_name}}', body: '<p>Hi {{first_name}}, welcome to Camxian Technologies.</p>', targetAudienceId: audienceId }));
+  async function scheduleDraft() {
+    const company = `Schedule ${randomUUID()}`;
+    await prisma.contact.createMany({ data: [0, 1].map(index => ({ tenantId, firstName: `Scheduled${index}`, lastName: 'Fixture', email: `scheduled-${randomUUID()}@example.test`, company })) });
+    const audience = await createAudience(tenantId, { name: company, source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: company }] });
+    return createCampaign(tenantId, userId, { name: company, type: 'EMAIL', subject: 'Hi {{first_name}}', body: 'Hello {{firstName}}', targetAudienceId: audience.id });
+  }
   async function request(path: string, method = 'GET', body?: unknown, auth = token) {
     const result = await fetch(base + path, { method, headers: { Authorization: `Bearer ${auth}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: result.status, body: await result.json() };
@@ -52,7 +58,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       productId = (await prisma.productInterest.create({ data: { tenantId, name: 'CRM', dealValue: 100 } })).id;
       await prisma.lead.create({ data: { tenantId, firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan.customer@example.com', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: productId } } } });
       await prisma.contact.create({ data: { tenantId, firstName: 'Maria', lastName: 'Santos', email: 'maria.customer@example.com', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: productId, interested: true } } } });
-      audienceId = (await createAudience(tenantId, { name: 'All Leads & Contacts', source: 'ALL', conditions: [] })).id;
+      await prisma.contact.create({ data: { tenantId, firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan.customer@example.com', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: productId, interested: true } } } });
+      audienceId = (await createAudience(tenantId, { name: 'All Contacts', source: 'CONTACTS', conditions: [] })).id;
     });
     await prisma.lead.create({ data: { tenantId: otherTenantId, firstName: 'Other', lastName: 'Tenant', email: 'other@example.com', productInterest: [] } });
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
@@ -75,14 +82,14 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await createTemplate(tenantId, userId, { name: 'Greeting', type: 'Email', subject: 'Hi', content: '<p>Safe</p><script>bad()</script>' });
       expect((await getTemplates(tenantId, {})).data[0].content).toBe('<p>Safe</p>');
       expect((await getAudiences(tenantId)).some(a => a.id === audienceId)).toBe(true);
-      expect((await resolveAudience(tenantId, { source: 'ALL', conditions: [] })).breakdown.eligible).toBe(2);
+      expect((await resolveAudience(tenantId, { source: 'CONTACTS', conditions: [] })).breakdown.eligible).toBe(2);
       const result = await sendCampaign(campaign.id, tenantId, userId);
       expect(result).toMatchObject({ eligibleRecipients: 2, submittedRecipients: 2, failedRecipients: 0, status: 'SENDING' });
       expect(vi.mocked(sendMail).mock.calls.map(([m]) => m.subject).sort()).toEqual(['Hello Juan', 'Hello Maria']);
       expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'submitted', sentAt: null, messageId: { not: null } } })).toBe(2);
       expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id, brevoMessageId: { not: null } } })).toBe(2);
       const recipients = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } });
-      expect(recipients.find(r => r.email === 'juan.customer@example.com')).toMatchObject({ leadId: expect.any(String), contactId: null });
+      expect(recipients.find(r => r.email === 'juan.customer@example.com')).toMatchObject({ contactId: expect.any(String), leadId: null });
       expect(recipients.find(r => r.email === 'maria.customer@example.com')).toMatchObject({ leadId: null, contactId: expect.any(String) });
     });
     const reloaded = await request(`/marketing/campaigns/${campaign.id}`);
@@ -127,7 +134,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     } finally { release(); }
     await vi.waitFor(async () => {
       expect((await request(`/marketing/campaigns/${campaign.id}`)).body.data).toMatchObject({ status: 'SENDING', sentCount: 2, failedCount: 0 });
-    });
+    }, { timeout: 10000 });
     expect(sendMail).toHaveBeenCalledTimes(2);
   });
   it('excludes a staff contact and a case-insensitive duplicate', async () => {
@@ -135,7 +142,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       const staff = await prisma.contact.create({ data: { tenantId, firstName: 'Staff', lastName: 'Contact', email: ` SEEDER-${tenantId}@camxian.com ` } });
       const duplicate = await prisma.contact.create({ data: { tenantId, firstName: 'Duplicate', lastName: 'Juan', email: 'JUAN.CUSTOMER@example.com' } });
       try {
-        const resolved = await resolveAudience(tenantId, { source: 'ALL', conditions: [] });
+        const resolved = await resolveAudience(tenantId, { source: 'CONTACTS', conditions: [] });
         expect(resolved.breakdown).toMatchObject({ eligible: 2, staffEmail: 1, duplicateEmail: 1 });
         const campaign = await draft(); await sendCampaign(campaign.id, tenantId, userId);
         expect(sendMail).toHaveBeenCalledTimes(2);
@@ -176,7 +183,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(invalid.status).toBe(400);
     expect(invalid.body).toMatchObject({ success: false, error: expect.stringContaining('tenantId'), fieldErrors: {} });
     expect(await prisma.campaign.count({ where: { tenantId, name: 'Bad' } })).toBe(0);
-    const foreignAudience = await scoped(() => createAudience(otherTenantId, { name: 'Foreign', source: 'ALL', conditions: [] }), otherTenantId);
+    const foreignAudience = await scoped(() => createAudience(otherTenantId, { name: 'Foreign', source: 'CONTACTS', conditions: [] }), otherTenantId);
     expect((await request('/marketing/campaigns', 'POST', { name: 'Bad', type: 'EMAIL', targetAudienceId: foreignAudience.id })).status).toBe(404);
   });
   it('records partial failures without treating acceptance as delivery or permitting resend', async () => {
@@ -326,8 +333,8 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   });
   it('uses real AND conditions and validates cross-tenant template references', async () => {
     await scoped(async () => {
-      expect((await resolveAudience(tenantId, { source: 'ALL', conditions: [{ field: 'productInterest', operator: 'equals', value: [productId] }, { field: 'createdAt', operator: 'gte', value: '2020-01-01' }] })).breakdown.eligible).toBe(2);
-      await expect(createAudience(tenantId, { name: 'Unsafe', source: 'ALL', conditions: [{ field: 'passwordHash', operator: 'contains', value: 'x' }] })).rejects.toThrow();
+      expect((await resolveAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: 'productInterest', operator: 'equals', value: [productId] }, { field: 'createdAt', operator: 'gte', value: '2020-01-01' }] })).breakdown.eligible).toBe(2);
+      await expect(createAudience(tenantId, { name: 'Unsafe', source: 'CONTACTS', conditions: [{ field: 'passwordHash', operator: 'contains', value: 'x' }] })).rejects.toThrow();
     });
     const foreign = await scoped(() => createTemplate(otherTenantId, userId, { name: 'Foreign', type: 'Email', subject: 'Hi', content: 'Hello' }), otherTenantId);
     await expect(scoped(() => createCampaign(tenantId, userId, { name: 'Invalid', type: 'EMAIL', emailTemplateId: foreign.id }))).rejects.toMatchObject({ statusCode: 404 });
@@ -348,7 +355,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     await processBrevoEvent({ email: logs[1].toEmail, 'message-id': logs[1].brevoMessageId!, event: 'hard_bounce', ts_event: started + 6 });
     const result = await request(`/marketing/campaigns/${campaign.id}/report`);
     expect(result.status).toBe(200);
-    expect(result.body.data).toMatchObject({ recipientCount: 2, deliveredCount: 1, bouncedCount: 1, openedCount: 1, clickedCount: 1, targetAudience: { name: 'All Leads & Contacts' } });
+    expect(result.body.data).toMatchObject({ recipientCount: 2, deliveredCount: 1, bouncedCount: 1, openedCount: 1, clickedCount: 1, targetAudience: { name: 'All Contacts' } });
     expect(result.body.data.recipients).toHaveLength(2);
     expect(result.body.data.recipients.find((row: { email: string }) => row.email === logs[0].toEmail)).toMatchObject({ name: expect.any(String), deliveryStatus: 'Delivered', opened: true, clicked: true, lastActivity: new Date((started + 4) * 1000).toISOString() });
     expect(result.body.data).toMatchObject({ totalClicks: 3, uniqueClicks: 1, ctr: 100, ctor: 100, totalOpens: 1, uniqueOpens: 1 });
@@ -413,7 +420,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const reloaded = await scoped(() => getCampaignById(campaign.id, tenantId));
     expect(reloaded).toMatchObject({ openedCount: 1, clickedCount: 1, deliveredCount: 1 });
     expect(await prisma.emailEvent.count({ where: { deliveryLogId: log.id, eventType: 'opened' } })).toBe(1);
-    expect((await scoped(() => resolveAudience(tenantId, { source: 'ALL', conditions: [] }))).breakdown.unsubscribed).toBe(1);
+    expect((await scoped(() => resolveAudience(tenantId, { source: 'CONTACTS', conditions: [] }))).breakdown.unsubscribed).toBe(1);
     await expect(processBrevoEvent({ ...payload, 'message-id': 'unknown' })).rejects.toMatchObject({ statusCode: 503 });
   });
   it('saves typed audience values, filters normalized products and reuses Manila calendar days for both record types', async () => {
@@ -424,7 +431,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       const createdAt = new Date('2026-10-06T16:00:00Z');
       const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Typed', lastName: 'Lead', companyName: 'Matching COMPANY', source: 'Website', status: 'Hot', assignedUserId: agent.id, createdAt, email: 'typed-lead@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id } } } });
       const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Typed', lastName: 'Contact', company: 'Matching COMPANY', source: 'Website', status: 'HOT', assignedUserId: agent.id, createdAt, email: 'typed-contact@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id, interested: true } } } });
-      const definition = { source: 'ALL', conditions: [
+      const definition = { source: 'CONTACTS', conditions: [
         { field: 'status', operator: 'equals', value: 'Hot' }, { field: 'source', operator: 'equals', value: 'Website' },
         { field: 'company', operator: 'equals', value: 'Matching COMPANY' }, { field: 'productInterest', operator: 'equals', value: [product.id] },
         { field: 'assignedUserId', operator: 'equals', value: agent.id }, { field: 'createdAt', operator: 'between', value: { from: '2026-10-07', to: '2026-10-07' } },
@@ -432,34 +439,35 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       const audience = await createAudience(tenantId, { name: 'Typed audience', ...definition });
       expect((await getAudiences(tenantId)).find(a => a.id === audience.id)?.conditions).toEqual(audience.conditions);
       const preview = await previewAudience(tenantId, { ...definition, limit: 1 });
-      expect(preview).toMatchObject({ eligible: 2, recipients: [{ id: contact.id, recordType: 'Contact' }], meta: { total: 2, limit: 1, hasMore: true } });
-      expect((await previewAudience(tenantId, { ...definition, page: 2, limit: 1 })).recipients[0].id).toBe(lead.id);
+      expect(preview).toMatchObject({ eligible: 1, recipients: [{ id: contact.id, recordType: 'Contact' }], meta: { total: 1, limit: 1, hasMore: false } });
+      expect((await previewAudience(tenantId, { ...definition, page: 2, limit: 1 })).recipients).toHaveLength(0);
       for (const source of ['LEADS', 'CONTACTS']) expect((await previewAudience(tenantId, { ...definition, source })).eligible).toBe(1);
       const notEquals = { ...definition, conditions: [{ field: 'company', operator: 'not_equals', value: 'matching company' }] };
       expect((await previewAudience(tenantId, notEquals)).recipients.some(r => [lead.id, contact.id].includes(r.id))).toBe(false);
       await prisma.lead.update({ where: { id: lead.id }, data: { createdAt: new Date('2026-10-07T16:00:00Z') } });
-      expect((await previewAudience(tenantId, definition)).eligible).toBe(1);
+      expect((await previewAudience(tenantId, { ...definition, source: 'LEADS' })).eligible).toBe(0);
       await prisma.lead.delete({ where: { id: lead.id } }); await prisma.contact.delete({ where: { id: contact.id } });
     });
   });
   it('rejects foreign or nonassignable relations and invalid date ranges', async () => {
     await scoped(async () => {
-      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'ALL', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Choose an active sales agent');
-      await expect(previewAudience(tenantId, { source: 'ALL', conditions: [{ field: 'productInterest', operator: 'equals', value: [randomUUID()] }] })).rejects.toThrow('Product Interests');
-      await expect(previewAudience(tenantId, { source: 'ALL', conditions: [{ field: 'createdAt', operator: 'between', value: { from: '2026-10-08', to: '2026-10-07' } }] })).rejects.toThrow();
+      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'CONTACTS', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Choose an active sales agent');
+      await expect(previewAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: 'productInterest', operator: 'equals', value: [randomUUID()] }] })).rejects.toThrow('Product Interests');
+      await expect(previewAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: 'createdAt', operator: 'between', value: { from: '2026-10-08', to: '2026-10-07' } }] })).rejects.toThrow();
     });
   });
-  it('SMS eligibility uses normalized phones, Contact priority and do-not-contact suppression without requiring email', async () => {
+  it('SMS eligibility uses one source and Contact opt-outs suppress the same Lead phone', async () => {
     await scoped(async () => {
       const contact = await prisma.contact.create({ data: { tenantId, firstName: 'SMS', lastName: 'Contact', phone: '+639171234567', email: null } });
       const duplicate = await prisma.lead.create({ data: { tenantId, firstName: 'SMS', lastName: 'Duplicate', phone: '09171234567', email: null } });
       const bad = await prisma.lead.create({ data: { tenantId, firstName: 'SMS', lastName: 'Invalid', phone: '123' } });
       try {
-        const result = await previewAudience(tenantId, { source: 'ALL', conditions: [], channel: 'SMS' });
-        expect(result).toMatchObject({ eligible: 1, duplicatePhone: 1, invalidPhone: 1 });
+        const result = await previewAudience(tenantId, { source: 'CONTACTS', conditions: [], channel: 'SMS' });
+        expect(result).toMatchObject({ eligible: 1, duplicatePhone: 0, invalidPhone: 0 });
         expect(result.recipients[0]).toMatchObject({ id: contact.id, phone: '+639171234567', email: null });
         await prisma.contact.update({ where: { id: contact.id }, data: { doNotContact: true } });
-        expect((await previewAudience(tenantId, { source: 'ALL', conditions: [], channel: 'SMS' })).eligible).toBe(0);
+        expect((await previewAudience(tenantId, { source: 'CONTACTS', conditions: [], channel: 'SMS' })).eligible).toBe(0);
+        expect((await previewAudience(tenantId, { source: 'LEADS', conditions: [], channel: 'SMS' })).doNotContact).toBe(1);
       } finally { await prisma.lead.deleteMany({ where: { id: { in: [duplicate.id, bad.id] } } }); await prisma.contact.delete({ where: { id: contact.id } }); }
     });
   });
@@ -550,7 +558,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     });
   });
   it.each(['EMAIL', 'SMS'] as const)('%s persists the complete delivery matrix and filters canonical statuses', async type => {
-    for (const removed of ['ACTIVE', 'SCHEDULED', 'PAUSED', 'COMPLETED']) expect((await request(`/marketing/campaigns?status=${removed}`)).status).toBe(400);
+    for (const removed of ['ACTIVE', 'PAUSED', 'COMPLETED']) expect((await request(`/marketing/campaigns?status=${removed}`)).status).toBe(400);
     const campaign = await scoped(() => prisma.campaign.create({ data: { tenantId, name: `${type} matrix ${randomUUID()}`, type } }));
     const read = async () => (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
     expect((await read()).status).toBe('DRAFT');
@@ -674,7 +682,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', email: 'linked-company@external.test', company: 'Old scalar', accountId: account.id } });
     });
     await scoped(() => prisma.lead.create({ data: { tenantId: otherTenantId, firstName: 'Other', lastName: 'Tenant', companyName: 'Foreign Company' } }), otherTenantId);
-    const all = await request('/marketing/audiences/companies?source=ALL');
+    const all = await request('/marketing/audiences/companies?source=CONTACTS');
     expect(all.status).toBe(200);
     expect(all.body.data.filter((value: string) => value.toLowerCase() === 'mcdonalds')).toHaveLength(1);
     expect(all.body.data).not.toContain('Foreign Company');
@@ -684,11 +692,11 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const leads = await request('/marketing/audiences/companies?source=LEADS');
     expect(leads.body.data).toContain('McDonalds'); expect(leads.body.data).not.toContain('Contact Only');
     expect((await request('/marketing/audiences/companies?source=CONTACTS')).body.data).toContain('Contact Only');
-    const definition = { source: 'ALL', conditions: [{ field: 'company', operator: 'equals', value: 'McDonalds' }] };
+    const definition = { source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: 'McDonalds' }] };
     const preview = await request('/marketing/audiences/preview', 'POST', definition);
-    expect(preview.status).toBe(200); expect(preview.body.data.matched).toBe(2);
+    expect(preview.status).toBe(200); expect(preview.body.data.matched).toBe(1);
     expect((await request('/marketing/audiences', 'POST', { name: 'Company audience', ...definition })).status).toBe(201);
-    expect((await request('/marketing/audiences', 'POST', { name: 'Invalid company', source: 'ALL', conditions: [{ field: 'company', operator: 'equals', value: 'Invented' }] })).status).toBe(400);
+    expect((await request('/marketing/audiences', 'POST', { name: 'Unmatched company', source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: 'Invented' }] })).status).toBe(201);
     expect((await request('/marketing/audiences/companies', 'GET', undefined, deniedToken)).status).toBe(403);
   });
   it('rejects new Multi campaigns while preserving historical reads', async () => {
@@ -758,6 +766,226 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(saved).toMatchObject({ status: 'INTERRUPTED', sentCount: 0, failedCount: 0 });
     expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'pending', failureReason: 'PROVIDER_SUBMISSION_UNCONFIRMED' } })).toBe(2);
     expect(sendMail).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps legacy mixed history readable while rejecting preview/send/reuse until a source is chosen', async () => {
+    await scoped(async () => {
+      const legacyAudience = await prisma.targetAudience.create({ data: { tenantId, name: 'Mixed legacy', source: 'ALL' } });
+      const legacy = await prisma.campaign.create({ data: { tenantId, name: 'Mixed legacy draft', type: 'EMAIL', targetAudienceId: legacyAudience.id, subject: 'Hi', body: 'Hello', createdById: userId } });
+      expect((await getAudiences(tenantId)).find(audience => audience.id === legacyAudience.id)).toMatchObject({ source: 'ALL', repairReason: expect.any(String) });
+      expect(await getCampaignById(legacy.id, tenantId)).toMatchObject({ targetAudienceId: legacyAudience.id });
+      await expect(sendCampaign(legacy.id, tenantId, userId)).rejects.toThrow('legacy mixed');
+      await expect(duplicateCampaign(legacy.id, tenantId, userId)).rejects.toThrow('Select a Lead or Contact');
+      const copy = await duplicateCampaign(legacy.id, tenantId, userId, { audienceSource: 'LEADS' });
+      expect(copy).toMatchObject({ status: 'DRAFT', audienceSource: 'LEADS', targetAudienceId: null });
+      await expect(resolveAudience(tenantId, { source: 'ALL', conditions: [] })).rejects.toThrow();
+    });
+    expect(sendMail).not.toHaveBeenCalled();
+  });
+  it('snapshots approved rules/content but reevaluates recipients, preserves sender/identity evidence, and dispatches once with two runners', async () => {
+    await scoped(async () => {
+      const campaign = await scheduleDraft(), scheduledFor = new Date(Date.now() + 60000).toISOString();
+      await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor });
+      await expect(updateCampaign(campaign.id, tenantId, userId, { body: 'Unexpected edit' })).rejects.toMatchObject({ statusCode: 409 });
+      await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toMatchObject({ statusCode: 409 });
+      await prisma.targetAudience.update({ where: { id: campaign.targetAudienceId! }, data: { source: 'LEADS' } });
+      try {
+        const results = await Promise.all([dispatchDueCampaigns(new Date(Date.now() + 120000)), dispatchDueCampaigns(new Date(Date.now() + 120000))]);
+        expect(results.reduce((sum, result) => sum + result, 0)).toBe(1);
+        await vi.waitFor(async () => expect((await getCampaignById(campaign.id, tenantId)).submissionFinishedAt).not.toBeNull());
+        expect(sendMail).toHaveBeenCalledTimes(2);
+        const recipients = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id }, orderBy: { email: 'asc' } });
+        expect(recipients.every(recipient => recipient.contactId && !recipient.leadId)).toBe(true);
+        expect(recipients[0].personalization).toMatchObject({ first_name: expect.any(String), sender_email: 'sender@example.com' });
+        const originalName = (recipients[0].personalization as { first_name: string }).first_name;
+        await prisma.contact.update({ where: { id: recipients[0].contactId! }, data: { firstName: 'Changed after submission' } });
+        const report = (await request(`/marketing/campaigns/${campaign.id}/report`)).body.data;
+        expect(report.recipients.find((recipient: { id: string }) => recipient.id === recipients[0].id).name).toContain(originalName);
+        await prisma.contact.update({ where: { id: recipients[0].contactId! }, data: { firstName: originalName } });
+        expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      } finally { await prisma.targetAudience.update({ where: { id: campaign.targetAudienceId! }, data: { source: 'CONTACTS' } }); }
+    });
+  });
+  it('reschedules UTC due instants, cancellation and archiving clear only unclaimed schedules', async () => {
+    await scoped(async () => {
+      const campaign = await scheduleDraft();
+      await expect(scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: '2020-01-01T10:00:00+08:00' })).rejects.toThrow();
+      await expect(scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString(), timezone: 'UTC' })).rejects.toThrow();
+      const first = await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      const later = new Date(Date.now() + 3600000).toISOString();
+      const changed = await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: later });
+      expect(changed.scheduledFor!.toISOString()).toBe(later);
+      expect(changed.scheduleConfig).toEqual(first.scheduleConfig);
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(await cancelCampaignSchedule(campaign.id, tenantId, userId)).toMatchObject({ status: 'DRAFT', scheduledFor: null, scheduledById: null, scheduleConfig: null });
+      await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: later });
+      await archiveCampaign(campaign.id, tenantId, userId);
+      expect(await getCampaignById(campaign.id, tenantId)).toMatchObject({ status: 'DRAFT', isArchived: true, scheduledFor: null, scheduleConfig: null });
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  });
+  it('records definite scheduled preflight failure without retrying or sending when quota is exhausted', async () => {
+    await scoped(async () => {
+      const campaign = await scheduleDraft();
+      await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      vi.stubEnv('BREVO_DAILY_EMAIL_LIMIT', '1');
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(await getCampaignById(campaign.id, tenantId)).toMatchObject({ status: 'DRAFT', scheduledFor: null, submissionStartedAt: null, scheduleConfig: { scheduleFailureReason: expect.stringContaining('allowance') } });
+      expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id } })).toBe(0);
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  it('allows only one winner when cancellation races the due-time claim', async () => {
+    await scoped(async () => {
+      const campaign = await scheduleDraft();
+      await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      const [cancelled, claimed] = await Promise.allSettled([cancelCampaignSchedule(campaign.id, tenantId, userId), dispatchDueCampaigns(new Date(Date.now() + 120000))]);
+      expect(claimed.status).toBe('fulfilled');
+      if (cancelled.status === 'fulfilled') {
+        expect(claimed).toMatchObject({ value: 0 });
+        expect(await getCampaignById(campaign.id, tenantId)).toMatchObject({ status: 'DRAFT', submissionStartedAt: null });
+        expect(sendMail).not.toHaveBeenCalled();
+      } else {
+        expect(cancelled.reason).toMatchObject({ statusCode: 409 });
+        expect(claimed).toMatchObject({ value: 1 });
+        await vi.waitFor(async () => expect((await getCampaignById(campaign.id, tenantId)).submissionFinishedAt).not.toBeNull());
+        expect(sendMail).toHaveBeenCalledTimes(2);
+      }
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+    });
+  });
+
+  it('discovers a persisted due SMS schedule on worker startup without a browser and never dispatches it twice', async () => {
+    await scoped(async () => {
+      const company = randomUUID(), phone = '+639171234599';
+      await prisma.contact.create({ data: { tenantId, firstName: 'Startup', lastName: 'SMS', company, phone } });
+      const audience = await createAudience(tenantId, { name: company, source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: company }] });
+      const campaign = await createCampaign(tenantId, userId, { name: company, type: 'SMS', targetAudienceId: audience.id, body: 'Hello {{firstName}}' });
+      await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      // An existing persisted schedule has become due while the worker was stopped.
+      await prisma.campaign.update({ where: { id: campaign.id }, data: { scheduledFor: new Date(Date.now() - 1000) } });
+      const stop = startCampaignScheduleScheduler();
+      try {
+        await vi.waitFor(async () => expect((await getCampaignById(campaign.id, tenantId)).submissionFinishedAt).not.toBeNull(), { timeout: 10000 });
+      } finally { await stop(); }
+      expect(sendSms).toHaveBeenCalledOnce();
+      expect(vi.mocked(sendSms).mock.calls[0]).toEqual([phone, expect.stringContaining('Hello Startup')]);
+      expect(await dispatchDueCampaigns()).toBe(0);
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  it('rechecks current actor status and send permission before a scheduled claim', async () => {
+    await scoped(async () => {
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: `Campaign sender ${randomUUID()}` } });
+      const permission = await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'campaigns', canView: true, canSend: true } });
+      const actor = await prisma.user.create({ data: { tenantId, role: role.name, email: `${randomUUID()}@camxian.com`, firstName: 'Scheduling', lastName: 'Actor', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date(), userRoles: { create: { tenantId, roleId: role.id } } } });
+      const denied = await scheduleDraft();
+      await scheduleCampaign(denied.id, tenantId, actor.id, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      await prisma.rolePermission.update({ where: { id: permission.id }, data: { canSend: false } });
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(await getCampaignById(denied.id, tenantId)).toMatchObject({ status: 'DRAFT', scheduledFor: null, scheduleConfig: { scheduleFailureReason: 'Access denied' } });
+      await prisma.rolePermission.update({ where: { id: permission.id }, data: { canSend: true } });
+      const disabled = await scheduleDraft();
+      await scheduleCampaign(disabled.id, tenantId, actor.id, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      await prisma.user.update({ where: { id: actor.id }, data: { status: 'INACTIVE' } });
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(await getCampaignById(disabled.id, tenantId)).toMatchObject({ status: 'DRAFT', scheduledFor: null, scheduleConfig: { scheduleFailureReason: expect.stringContaining('access') } });
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  it('uses current converted and opted-out eligibility at due time and never retries a zero-recipient failure', async () => {
+    await scoped(async () => {
+      const company = randomUUID();
+      const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Later', lastName: 'Converted', email: `${randomUUID()}@example.test`, companyName: company } });
+      const audience = await createAudience(tenantId, { name: company, source: 'LEADS', conditions: [{ field: 'companyName', operator: 'equals', value: company }] });
+      const campaign = await createCampaign(tenantId, userId, { name: company, type: 'EMAIL', subject: 'Hi', body: 'Hello', targetAudienceId: audience.id });
+      await scheduleCampaign(campaign.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      await prisma.lead.update({ where: { id: lead.id }, data: { convertedAt: new Date(), status: 'Converted' } });
+      const optedOut = await scheduleDraft();
+      const conditions = await prisma.targetAudienceCondition.findMany({ where: { targetAudienceId: optedOut.targetAudienceId! } });
+      await prisma.contact.updateMany({ where: { tenantId, company: JSON.parse(conditions[0].value) }, data: { doNotContact: true } });
+      await scheduleCampaign(optedOut.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      for (const id of [campaign.id, optedOut.id]) {
+        expect(await getCampaignById(id, tenantId)).toMatchObject({ status: 'DRAFT', submissionStartedAt: null, scheduleConfig: { scheduleFailureReason: expect.stringContaining('No eligible') } });
+        expect(await prisma.campaignContact.count({ where: { campaignId: id } })).toBe(0);
+      }
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  it('freezes effective template content at schedule time and fails disabled catalog variables before sending', async () => {
+    await scoped(async () => {
+      const fixture = await scheduleDraft();
+      const template = await createTemplate(tenantId, userId, { name: randomUUID(), type: 'Email', subject: 'Approved {{first_name}}', content: '<p>Approved content</p>' });
+      await updateCampaign(fixture.id, tenantId, userId, { subject: '', body: '', emailTemplateId: template.id });
+      await scheduleCampaign(fixture.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      await prisma.template.update({ where: { id: template.id }, data: { subject: 'Changed', content: 'Changed', isArchived: true } });
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(1);
+      await vi.waitFor(async () => expect((await getCampaignById(fixture.id, tenantId)).submissionFinishedAt).not.toBeNull());
+      expect(vi.mocked(sendMail).mock.calls.every(([message]) => message.subject.startsWith('Approved ') && message.html.includes('Approved content'))).toBe(true);
+      vi.mocked(sendMail).mockClear();
+      const fieldId = randomUUID(), key = `customFieldValues.${fieldId}`;
+      const definition = { id: fieldId, name: 'Hidden capacity', module: 'contacts', group: 'Contact Details', type: 'Number', required: false, active: true, visibleInForm: false, visibleInDetails: true, order: 0, options: [], version: 1 };
+      await prisma.closingFieldDefinition.create({ data: { tenantId, id: fieldId, definition } });
+      const blocked = await scheduleDraft();
+      await updateCampaign(blocked.id, tenantId, userId, { subject: `Value {{${key}}}` });
+      await scheduleCampaign(blocked.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: fieldId } }, data: { definition: { ...definition, active: false } } });
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+      expect(await getCampaignById(blocked.id, tenantId)).toMatchObject({ status: 'DRAFT', submissionStartedAt: null, scheduleConfig: { scheduleFailureReason: expect.stringContaining('variables') } });
+      expect(sendMail).not.toHaveBeenCalled();
+    });
+  });
+
+  it('matches typed hidden custom fields with zero, missing values and AND/OR using one source', async () => {
+    await scoped(async () => {
+      const fieldId = randomUUID(), key = `customFieldValues.${fieldId}`, company = randomUUID();
+      await prisma.closingFieldDefinition.create({ data: { tenantId, id: fieldId, definition: { id: fieldId, name: 'Capacity', module: 'leads', group: 'Contact Details', type: 'Number', required: false, active: true, visibleInForm: false, visibleInDetails: true, order: 0, options: [], version: 1 } } });
+      const leads = await Promise.all(['One', 'Two', 'Missing'].map(firstName => prisma.lead.create({ data: { tenantId, firstName, lastName: 'Typed', companyName: company, email: `${randomUUID()}@example.test` } })));
+      await prisma.customFieldValue.createMany({ data: leads.slice(0, 2).map((lead, index) => ({ tenantId, fieldId, module: 'leads', leadId: lead.id, value: index })) });
+      const conditions = [{ field: key, operator: 'gte', value: 0 }, { field: 'firstName', operator: 'equals', value: 'One' }];
+      expect((await resolveAudience(tenantId, { source: 'LEADS', matchMode: 'AND', conditions })).records.filter(record => leads.some(lead => lead.id === record.leadId))).toHaveLength(1);
+      expect((await resolveAudience(tenantId, { source: 'LEADS', matchMode: 'OR', conditions })).records.filter(record => leads.some(lead => lead.id === record.leadId))).toHaveLength(2);
+      expect((await resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: key, operator: 'is_not_empty', value: null }] })).records.some(record => record.leadId === leads[0].id)).toBe(true);
+      expect((await resolveAudience(tenantId, { source: 'LEADS', matchMode: 'OR', conditions: [] })).breakdown.matched).toBeGreaterThanOrEqual(3);
+      await expect(resolveAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: key, operator: 'gte', value: 0 }] })).rejects.toThrow('unavailable');
+      await expect(resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: 'jobTitle', operator: 'equals', value: 'Manager' }] })).rejects.toThrow('unavailable');
+      const campaign = await createCampaign(tenantId, userId, { name: 'Hidden number variable', type: 'EMAIL', audienceSource: 'LEADS', subject: 'Value {{' + key + '}}', body: 'Hello {{firstName}}' });
+      await sendCampaign(campaign.id, tenantId, userId);
+      expect(vi.mocked(sendMail).mock.calls.find(([message]) => message.to === leads[0].email)?.[0].subject).toBe('Value 0');
+      await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: fieldId } }, data: { definition: { id: fieldId, name: 'Renamed Capacity', module: 'leads', group: 'Contact Details', type: 'Number', required: false, active: true, visibleInForm: false, visibleInDetails: true, order: 0, options: [], version: 2 } } });
+      expect((await resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: key, operator: 'equals', value: 0 }] })).records.some(record => record.leadId === leads[0].id)).toBe(true);
+    });
+  });
+
+  it('projects readable native references, ordered products, date/missing custom values and private-file presence from the same catalog', async () => {
+    await scoped(async () => {
+      const account = await prisma.account.create({ data: { tenantId, name: 'Readable account' } });
+      const first = await prisma.productInterest.create({ data: { tenantId, name: 'First ordered product', dealValue: 0 } });
+      const second = await prisma.productInterest.create({ data: { tenantId, name: 'Second ordered product', dealValue: 0 } });
+      const dateId = randomUUID(), fileId = randomUUID(), textId = randomUUID();
+      for (const [id, name, type] of [[dateId, 'Review date', 'Date'], [fileId, 'Private attachment', 'File Upload'], [textId, 'Missing text', 'Text']]) {
+        await prisma.closingFieldDefinition.create({ data: { tenantId, id, definition: { id, name, module: 'contacts', group: 'Contact Details', type, required: false, active: true, visibleInForm: false, visibleInDetails: true, order: 0, options: [], version: 1 } } });
+      }
+      const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Projected', lastName: 'Record', email: `${randomUUID()}@example.test`, company: 'Legacy scalar', accountId: account.id, assignedUserId: userId, productsNormalized: true, productLinks: { create: [{ tenantId, productInterestId: second.id, interested: true, activeProduct: true, position: 2 }, { tenantId, productInterestId: first.id, interested: true, activeProduct: false, position: 1 }] } } });
+      await prisma.customFieldValue.createMany({ data: [{ tenantId, fieldId: dateId, module: 'contacts', contactId: contact.id, value: '2026-10-11' }, { tenantId, fieldId: fileId, module: 'contacts', contactId: contact.id, value: randomUUID() }] });
+      const definition = { source: 'CONTACTS', conditions: [{ field: 'email', operator: 'equals', value: contact.email! }, { field: `customFieldValues.${dateId}`, operator: 'between', value: { from: '2026-10-10', to: '2026-10-12' } }, { field: `customFieldValues.${fileId}`, operator: 'is_not_empty', value: null }] };
+      const resolved = await resolveAudience(tenantId, definition);
+      expect(resolved.breakdown.eligible).toBe(1);
+      expect(resolved.records[0].personalization).toMatchObject({ accountId: 'Readable account', assignedUserId: 'Seeder Admin', company: 'Readable account', productInterestIds: 'First ordered product, Second ordered product', activeProductIds: 'Second ordered product', [`customFieldValues.${dateId}`]: '2026-10-11', [`customFieldValues.${textId}`]: '' });
+      expect(resolved.records[0].personalization).not.toHaveProperty(`customFieldValues.${fileId}`);
+      await expect(resolveAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: `customFieldValues.${fileId}`, operator: 'equals', value: randomUUID() }] })).rejects.toThrow('supported operator');
+      const invalid = await createCampaign(tenantId, userId, { name: 'Private-file token blocked', type: 'EMAIL', audienceSource: 'CONTACTS', subject: `File {{customFieldValues.${fileId}}}`, body: 'Hello' });
+      await expect(sendCampaign(invalid.id, tenantId, userId)).rejects.toThrow('variables');
+      expect(sendMail).not.toHaveBeenCalled();
+      expect((await request('/marketing/audiences/fields?source=CONTACTS')).body.data.find((field: { technicalKey: string }) => field.technicalKey === `customFieldValues.${fileId}`)).toMatchObject({ conditionAvailable: true, personalizationAvailable: false, unavailableReason: expect.stringContaining('Private files') });
+    });
   });
 
 });

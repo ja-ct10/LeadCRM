@@ -1,5 +1,5 @@
 import { normalizeCrmStatus } from '@leadcrm/shared';
-import {taskAssociationWhere} from "../../operations/tasks/tasks.repository";
+import {taskAssociationWhere, taskContextWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
 import { withEmailContent } from '../activities/activities.repository';
@@ -9,7 +9,7 @@ const DEFAULT_LIMIT = 10;
 /**
  * Get relationships for a Lead record.
  */
-export async function getLeadRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
+export async function getLeadRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false, page = 1) {
   const lead = await prisma.lead.findFirst({
     where: { id, tenantId, isArchived: false, deletedAt: null },
     select: { id: true, contactId: true, accountId: true },
@@ -33,9 +33,10 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
       : null,
     // Deals via junction
     prisma.leadDeal.findMany({
-      where: { leadId: id, tenantId },
-      take: limit,
-      orderBy: { addedAt: 'desc' },
+      where: { leadId: id, tenantId, deal: { isArchived: false, deletedAt: null } },
+      skip: (page - 1) * limit,
+      take: limit + 1,
+      orderBy: [{ addedAt: 'desc' }, { dealId: 'desc' }],
       include: {
         deal: {
           select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
@@ -46,8 +47,8 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
     prisma.activity.findMany({
       where: { leadId: id, tenantId },
       take: limit,
-      orderBy: { createdAt: 'desc' },
-        select: { id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
@@ -61,7 +62,8 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
   return {
     contact,
     account,
-    deals: leadDeals.map((ld) => ld.deal),
+    deals: leadDeals.slice(0, limit).map((ld) => ld.deal),
+    hasMoreDeals: leadDeals.length > limit,
     activities,
     tasks,
   };
@@ -70,7 +72,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
 /**
  * Get relationships for a Contact record.
  */
-export async function getContactRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
+export async function getContactRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false, page = 1) {
   const contact = await prisma.contact.findFirst({
     where: { id, tenantId },
     select: { id: true, accountId: true },
@@ -83,7 +85,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
   const [sourceLead, account, contactDeals, activities, tasks] = await Promise.all([
     // Source lead (lead that was converted into this contact)
     prisma.lead.findFirst({
-      where: { contactId: id, tenantId },
+      where: { contactId: id, tenantId, convertedAt: { not: null } },
       select: { id: true, firstName: true, lastName: true, email: true, status: true, source: true },
     }),
     // Linked company (canonical Account)
@@ -94,26 +96,25 @@ export async function getContactRelationships(id: string, tenantId: string, limi
         })
       : null,
     // Deals via junction
-    prisma.contactDeal.findMany({
-      where: { contactId: id, tenantId },
-      take: limit,
-      orderBy: { addedAt: 'desc' },
-      include: {
-        deal: {
-          select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
-        },
-      },
+    prisma.deal.findMany({
+      where: { tenantId, isArchived: false, deletedAt: null, OR: [
+        { contactDeals: { some: { tenantId, contactId: id } } },
+        { leadDeals: { some: { tenantId, lead: { tenantId, contactId: id, convertedAt: { not: null } } } } },
+      ] },
+      skip: (page - 1) * limit, take: limit + 1,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
     }),
     // Recent activities
     prisma.activity.findMany({
       where: { tenantId, OR: [{ contactId: id }, { lead: { tenantId, contactId: id, convertedAt: { not: null } } }] },
       take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
-      where: { tenantId, isArchived: false, ...taskAssociationWhere("contact",id,tenantId) },
+      where: { tenantId, isArchived: false, ...taskContextWhere("contact",id,tenantId) },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
@@ -123,7 +124,8 @@ export async function getContactRelationships(id: string, tenantId: string, limi
   return {
     sourceLead,
     account,
-    deals: contactDeals.map((cd) => cd.deal),
+    deals: contactDeals.slice(0, limit),
+    hasMoreDeals: contactDeals.length > limit,
     activities: (await withEmailContent(tenantId, activities)).map(activity => {
       // Normalize historical enum labels only in system-generated status events.
       const match = activity.type === 'stage_change' && /^Status changed from (HOT|WARM|COLD|CLOSED|CANCELLED) to (HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
@@ -136,7 +138,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
 /**
  * Get relationships for an Account record.
  */
-export async function getAccountRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT) {
+export async function getAccountRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, page = 1) {
   const account = await prisma.account.findFirst({
     where: { id, tenantId, isArchived: false },
     select: { id: true },
@@ -159,25 +161,25 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
     }),
     prisma.deal.findMany({
       where: { accountId: id, tenantId, isArchived: false },
-      take: limit,
-      orderBy: { createdAt: 'desc' },
+      skip: (page - 1) * limit, take: limit + 1,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
     }),
     prisma.activity.findMany({
       where: { accountId: id, tenantId },
       take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, type: true, title: true, createdAt: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true },
     }),
   ]);
 
-  return { leads, contacts, deals, activities };
+  return { leads, contacts, deals: deals.slice(0, limit), hasMoreDeals: deals.length > limit, activities };
 }
 
 /**
  * Get relationships for a Deal record.
  */
-export async function getDealRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false) {
+export async function getDealRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, includeTasks = false, page = 1) {
   const deal = await prisma.deal.findFirst({
     where: { id, tenantId },
     select: { id: true, accountId: true },
@@ -216,8 +218,8 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     prisma.activity.findMany({
       where: { dealId: id, tenantId },
       take: limit,
-      orderBy: { createdAt: 'desc' },
-      select: { id: true, type: true, title: true, createdAt: true },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({

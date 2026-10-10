@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateActivityDto, UpdateActivityDto } from './activities.dto';
+import { AppError } from '../../../shared/errors/app-error';
 
 // ─── Shared include ───────────────────────────────────────────────────────────
 
@@ -50,7 +51,16 @@ export async function findAllActivities(
   if (query.taskId)    where.taskId    = String(query.taskId);
 
   // ── Type filter ─────────────────────────────────────────────────────────────
-  if (query.type) where.type = String(query.type);
+  if (query.type) where.type = { in: String(query.type).split(',') };
+  if (query.search && String(query.search).trim()) {
+    const contains = String(query.search).trim();
+    where.AND = [{ OR: [
+      { title: { contains, mode: 'insensitive' } },
+      { description: { contains, mode: 'insensitive' } },
+      { createdBy: { firstName: { contains, mode: 'insensitive' } } },
+      { createdBy: { lastName: { contains, mode: 'insensitive' } } },
+    ] }];
+  }
 
   // ── User filter ─────────────────────────────────────────────────────────────
   if (query.createdById) where.createdById = String(query.createdById);
@@ -67,18 +77,33 @@ export async function findAllActivities(
     };
   }
 
-  const [data, total] = await Promise.all([
+  const totalWhere = { ...where };
+  if (query.cursor) {
+    try {
+      const cursor = JSON.parse(Buffer.from(String(query.cursor), 'base64url').toString('utf8')) as { createdAt?: unknown; id?: unknown };
+      if (!cursor || typeof cursor.id !== 'string' || !cursor.id || cursor.id.length > 128 || typeof cursor.createdAt !== 'string') throw new Error('cursor');
+      const date = new Date(cursor.createdAt);
+      if (!Number.isFinite(date.getTime())) throw new Error('cursor');
+      where.AND = [...(Array.isArray(where.AND) ? where.AND : []), { OR: [
+        { createdAt: { lt: date } }, { createdAt: date, id: { lt: cursor.id } },
+      ] }];
+    } catch { throw new AppError('Invalid activity cursor', 400); }
+  }
+  const [rows, total] = await Promise.all([
     prisma.activity.findMany({
       where,
-      skip,
-      take:     limit,
-      orderBy:  { createdAt: 'desc' },
+      skip: query.cursor ? 0 : skip,
+      take:     limit + 1,
+      orderBy:  [{ createdAt: 'desc' }, { id: 'desc' }],
       include:  ACTIVITY_INCLUDE,
     }),
-    prisma.activity.count({ where }),
+    prisma.activity.count({ where: totalWhere }),
   ]);
 
-  return { data: await withEmailContent(tenantId, data), total, page, limit };
+  const data = rows.slice(0, limit);
+  const last = data.at(-1);
+  const nextCursor = rows.length > limit && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id })).toString('base64url') : null;
+  return { data: await withEmailContent(tenantId, data), total, page, limit, nextCursor };
 }
 
 /** Resolve provider content on read, including older email activities, without copying bodies into history. */

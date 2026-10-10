@@ -2,6 +2,8 @@
 
 Scope: Leads, Contacts, Accounts, and Deals. Screenshots were used as visual references; the written request defined the work.
 
+This report records the earlier panel polish. Current field groups, Notes/Tasks/Timeline, paginated conversion history and silent synchronization are described in [CRM record views](crm-record-detail-ui.md); those behaviors supersede the older Activity/Details descriptions below.
+
 ## Implemented behavior
 
 | Area | Changes |

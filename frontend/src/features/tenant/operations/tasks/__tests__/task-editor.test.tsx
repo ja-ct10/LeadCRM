@@ -63,6 +63,14 @@ it('labels the existing task assignee Assigned Agent in the detail panel', () =>
   expect(screen.getByRole('button', { name: 'Assigned Agent *' })).toBeTruthy();
   expect(screen.queryByText('Task owner')).toBeNull();
 });
+it('shows original Task Owner separately from the Assigned Agent and records unknown historical ownership honestly', () => {
+  const view = render(<TaskEditor task={{ ...task, createdBy: { id: 'creator', firstName: 'Original', lastName: 'Creator' } }} readOnly onClose={vi.fn()} />);
+  expect(screen.getByText('Task Owner (Created by):')).toBeTruthy();
+  expect(screen.getByText('Original Creator')).toBeTruthy();
+  view.unmount();
+  render(<TaskEditor task={task} readOnly onClose={vi.fn()} />);
+  expect(screen.getByText('Not recorded')).toBeTruthy();
+});
 it("uses the Philippine calendar minimum and does not show a timezone label", () => {
   render(<TaskEditor onClose={vi.fn()} />);
   fireEvent.click(screen.getByLabelText("Due date and time *"));

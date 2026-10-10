@@ -64,6 +64,7 @@ enum CampaignType {
 }
 
 enum CampaignStatus {
+  SCHEDULED
   SENDING
   INTERRUPTED
   SENT
@@ -151,6 +152,7 @@ model DashboardRevision {
   leads BigInt @default(0)
   actions BigInt @default(0)
   access BigInt @default(0)
+  content BigInt @default(0)
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 }
 
@@ -199,6 +201,7 @@ model User {
   contactDealsAdded   ContactDeal[]
   dealStageHistories   DealStageHistory[]
   assignedTasks        Task[]             @relation("AssignedTasks")
+  createdTasks         Task[]             @relation("CreatedTasks")
   tasksAssignedByMe    Task[]             @relation("TaskAssignedBy")
   completedTasks       Task[]             @relation("TaskCompletedBy")
   activitiesCreated    Activity[]
@@ -328,6 +331,7 @@ model TenantGroup {
   id        String   @id @default(uuid())
   tenantId  String
   name      String
+  systemKey String?
   createdAt DateTime @default(now())
   updatedAt DateTime @default(now()) @updatedAt
 
@@ -335,6 +339,7 @@ model TenantGroup {
   members TenantGroupMember[]
 
   @@index([tenantId])
+  @@unique([tenantId, systemKey])
 
   @@unique([id, tenantId])
 }
@@ -779,6 +784,7 @@ model Task {
   id             String    @id @default(uuid())
   tenantId       String
   assignedUserId String
+  createdById    String?
   assignedById   String?
   completedById  String?
   title          String
@@ -794,6 +800,7 @@ model Task {
 
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
   assignedUser User       @relation("AssignedTasks", fields: [assignedUserId], references: [id])
+  createdBy    User?      @relation("CreatedTasks", fields: [createdById, tenantId], references: [id, tenantId], onDelete: Restrict)
   assignedBy   User?      @relation("TaskAssignedBy", fields: [assignedById], references: [id])
   completedBy  User?      @relation("TaskCompletedBy", fields: [completedById], references: [id])
   activities   Activity[]
@@ -958,6 +965,7 @@ model CustomFieldValue {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model TargetAudience {
   source String @default("CONTACTS")
+  matchMode String @default("AND")
   id          String   @id @default(uuid())
   tenantId    String
   name        String
@@ -1022,6 +1030,8 @@ model Campaign {
   clickedCount     Int            @default(0)
   engagement       Float          @default(0)
   scheduledFor     DateTime?
+  scheduledById    String?
+  scheduleConfig   Json?
   sentAt           DateTime?
   isArchived       Boolean        @default(false)
   createdAt        DateTime       @default(now())
@@ -1037,6 +1047,7 @@ model Campaign {
 
   @@index([tenantId, status])
   @@index([submissionFinishedAt, submissionLeaseUntil])
+  @@index([status, scheduledFor])
   @@index([tenantId, isArchived])
   @@index([tenantId])
 }

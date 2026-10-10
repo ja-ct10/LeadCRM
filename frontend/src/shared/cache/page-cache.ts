@@ -78,6 +78,42 @@ export function subscribePageCacheInvalidation(listener: (module: string, tenant
   return () => { invalidationListeners.delete(listener); };
 }
 const moduleVersions = new Map<string, number>();
+const inFlight = new Map<string, { controller: AbortController; promise: Promise<unknown>; readers: number; valid: () => boolean }>();
+
+/** Share a scoped read. A reader leaving does not abort another reader's request. */
+export function requestPageCache<T>(module: string, tenantId: string, params: Record<string, unknown>, fetchFn: (signal: AbortSignal) => Promise<T>, signal: AbortSignal): Promise<T> {
+  const key = buildCacheKey(module, tenantId, params);
+  let pending = inFlight.get(key);
+  if (pending && (!pending.valid() || pending.controller.signal.aborted)) {
+    pending.controller.abort(); inFlight.delete(key); pending = undefined;
+  }
+  if (!pending) {
+    const controller = new AbortController();
+    const valid = createPageCacheGuard(module);
+    const entry = { controller, valid, readers: 0, promise: Promise.resolve(undefined) as Promise<unknown> };
+    entry.promise = fetchFn(controller.signal).then(data => {
+      if (!valid() || controller.signal.aborted) throw new DOMException('Obsolete request', 'AbortError');
+      setPageCache(module, tenantId, params, data);
+      return data;
+    }).finally(() => { if (inFlight.get(key) === entry) inFlight.delete(key); });
+    inFlight.set(key, entry); pending = entry;
+  }
+  const shared = pending;
+  shared.readers++;
+  return new Promise<T>((resolve, reject) => {
+    let released = false;
+    const release = () => {
+      if (released) return; released = true;
+      signal.removeEventListener('abort', abort);
+      shared.readers--;
+      queueMicrotask(() => { if (shared.readers === 0 && inFlight.get(key) === shared) shared.controller.abort(); });
+    };
+    const abort = () => { release(); reject(new DOMException('Aborted', 'AbortError')); };
+    if (signal.aborted) { abort(); return; }
+    signal.addEventListener('abort', abort, { once: true });
+    shared.promise.then(data => { if (!released) { release(); resolve(data as T); } }, error => { if (!released) { release(); reject(error); } });
+  });
+}
 
 /** Reject responses started before logout or a mutation invalidated this module. */
 export function createPageCacheGuard(module: string): () => boolean {
@@ -85,6 +121,9 @@ export function createPageCacheGuard(module: string): () => boolean {
   const version = moduleVersions.get(module) ?? 0;
   return () => generation === startedGeneration && (moduleVersions.get(module) ?? 0) === version;
 }
+
+/** Authorization/logout clears also invalidate retained pagination data in mounted readers. */
+export function getPageCacheGeneration(): number { return generation; }
 
 // ── Deterministic recursive serializer ───────────────────────────────────────
 // Handles nested objects (e.g. FilterCondition[]) without ambiguity.
@@ -190,6 +229,8 @@ export function invalidatePageCache(module: string, tenantId?: string, notify = 
  */
 export function clearPageCache(notify = false): void {
   generation++;
+  inFlight.forEach(request => request.controller.abort());
+  inFlight.clear();
   moduleVersions.clear();
   pageCache.clear();
   if (notify) invalidationListeners.forEach(listener => listener('*'));

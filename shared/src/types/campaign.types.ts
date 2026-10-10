@@ -1,5 +1,5 @@
 export type CampaignType = 'EMAIL' | 'SMS' | 'MULTI_CHANNEL';
-export type CampaignStatus = 'DRAFT' | 'SENDING' | 'INTERRUPTED' | 'SENT' | 'PARTIALLY_SENT' | 'DELIVERED' | 'FAILED';
+export type CampaignStatus = 'DRAFT' | 'SCHEDULED' | 'SENDING' | 'INTERRUPTED' | 'SENT' | 'PARTIALLY_SENT' | 'DELIVERED' | 'FAILED';
 
 export interface Campaign {
   id: string;
@@ -24,7 +24,9 @@ export interface Campaign {
   /** Distinct recipients with persisted provider click evidence. */
   clickedCount: number;
   engagement: number;
-  scheduledFor?: string;
+  scheduledFor?: string | null;
+  scheduledById?: string | null;
+  scheduleConfig?: import('../contracts/campaign-email').CampaignScheduleConfig | null;
   sentAt?: string;
   isArchived: boolean;
   createdAt: string;
@@ -36,9 +38,8 @@ export interface CreateCampaignInput {
   type: CampaignType;
   subject?: string;
   body?: string;
-  audienceSource?: "LEADS" | "CONTACTS" | "ALL" | null;
+  audienceSource?: "LEADS" | "CONTACTS" | null;
   targetAudienceId?: string | null;
   emailTemplateId?: string | null;
   smsTemplateId?: string | null;
-  scheduledFor?: string;
 }

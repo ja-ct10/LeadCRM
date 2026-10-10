@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
-import { customFieldGroupOptions, ClosingFieldInputSchema, ClosingValuesPatchSchema, customFieldNameKey, isClosedWonField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
+import { ClosingFieldInputSchema, ClosingValuesPatchSchema, customFieldNameKey, getCrmFieldCatalog, isClosedWonField, isSystemClosingField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { readFields, readClosingFields, validateValues } from './closing-requirements.repository';
 import { persistValues } from './custom-field-values.repository';
@@ -9,6 +9,7 @@ import { NotFoundError, ValidationError } from '../../../shared/errors/http-erro
 import { fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { recordChanges } from '../record-updates';
 import { isDeepStrictEqual } from 'node:util';
+import { readFieldLayout } from './field-layout.service';
 
 export const listFields = (tenantId: string) => salesTransaction(tx => readFields(tx, tenantId));
 export async function saveField(tenantId: string, actorId: string, input: unknown, id?: string) {
@@ -19,26 +20,69 @@ export async function saveField(tenantId: string, actorId: string, input: unknow
     const patch = input as Record<string, unknown>;
     let definitionInput = input;
     if (previous) {
-      const { id: _id, version: _version, ...definition } = previous;
+      const { id: _id, version: _version, deletedAt: _deletedAt, deletedById: _deletedById, ...definition } = previous;
       definitionInput = { ...definition, ...patch };
+      if (patch.group !== undefined && patch.groupId === undefined) delete (definitionInput as Record<string, unknown>).groupId;
     }
     const field = ClosingFieldInputSchema.parse(definitionInput);
     if (!id && fields.filter(f => f.module === field.module).length >= 100) throw new ValidationError('Maximum 100 custom fields per module.');
-    const groups = customFieldGroupOptions(field.module, previous);
-    field.group = groups.find(group => customFieldNameKey(group) === customFieldNameKey(field.group)) ?? field.group;
-    if (!groups.includes(field.group)) throw new ValidationError('Select a section for this module.');
+    const layout = await readFieldLayout(tx, tenantId, field.module, fields);
+    const group = field.groupId ? layout.groups.find(group => group.id === field.groupId) : layout.groups.find(group => customFieldNameKey(group.label) === customFieldNameKey(field.group));
+    if (!group) throw new ValidationError('Select a section for this module.');
+    field.group = group.label; field.groupId = group.id;
     if (fields.some(f => f.id !== id && f.module === field.module && customFieldNameKey(f.group) === customFieldNameKey(field.group) && customFieldNameKey(f.name) === customFieldNameKey(field.name))) throw new ValidationError('Field names must be unique within this module and group.');
     // Keep IDs and types stable so existing values cannot change meaning after an edit.
     if (previous && previous.type !== field.type) throw new ValidationError('Field type cannot be changed. Add a new field instead.');
     if (previous && previous.module !== field.module) throw new ValidationError('Module cannot be changed. Add a new field instead.');
     if (previous && isClosedWonField(previous) !== isClosedWonField(field)) throw new ValidationError('Fields cannot move into or out of the Closed Won workflow. Add a new field in that context instead.');
-    if (!previous) field.order = Math.max(-1, ...fields.filter(f => f.module === field.module).map(f => f.order)) + 1;
+    if (field.required && !field.visibleInForm && !isClosedWonField(field)) throw new ValidationError('Turn off Required before hiding this field from forms.');
+    if (previous?.type === 'Dropdown') {
+      const removed = previous.options.filter(option => !field.options.includes(option));
+      if (removed.length && await tx.customFieldValue.count({ where: { tenantId, fieldId: previous.id, OR: removed.map(value => ({ value: { equals: value } })) } })) throw new ValidationError('An option is used by saved records. Retain that option to preserve their values.');
+    }
+    if (!previous) field.order = Math.max(-1, ...getCrmFieldCatalog(field.module, fields, layout).filter(f => f.groupId === field.groupId).map(f => f.order)) + 1;
     const saved: ClosingField = { ...field, id: id ?? randomUUID(), version: (previous?.version ?? 0) + 1 };
     const definition = saved as unknown as Prisma.InputJsonValue;
     if (previous) await tx.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: saved.id } }, data: { definition } });
     else await tx.closingFieldDefinition.create({ data: { tenantId, id: saved.id, definition } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: previous ? 'closing_field.updated' : 'closing_field.created', entityType: 'ClosingField', entityId: saved.id, changeset: { before: previous ?? null, after: saved } as unknown as Prisma.InputJsonValue } });
     return saved;
+  });
+}
+
+/** Match immutable IDs/technical tokens only, never mutable labels. */
+export function referencesCustomField(value: unknown, id: string): boolean {
+  if (typeof value === 'string') {
+    const matchesKey = (key: string) => key === `customFieldValues.${id}` || key.endsWith(`.customFieldValues.${id}`);
+    return value === id || matchesKey(value) || [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].some(match => matchesKey(match[1].trim()));
+  }
+  if (Array.isArray(value)) return value.some(item => referencesCustomField(item, id));
+  return !!value && typeof value === 'object' && Object.entries(value).some(([key, item]) => key === id || key === `customFieldValues.${id}` || referencesCustomField(item, id));
+}
+export async function deleteField(tenantId: string, actorId: string, id: string) {
+  return salesTransaction(async tx => {
+    const fields = await readFields(tx, tenantId), field = fields.find(field => field.id === id);
+    if (!field) throw new NotFoundError('Custom field');
+    if (isSystemClosingField(field)) throw new ValidationError('System fields cannot be deleted.');
+    const [workflows, forms, audiences, templates, campaigns] = await Promise.all([
+      tx.workflow.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, conditions: true, actions: true } }),
+      tx.marketingForm.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, fields: true, publishedConfig: true } }),
+      tx.targetAudience.findMany({ where: { tenantId }, include: { conditions: true } }),
+      tx.template.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, subject: true, content: true } }),
+      tx.campaign.findMany({ where: { tenantId, isArchived: false, status: { in: ['DRAFT', 'SCHEDULED'] as never[] } } }),
+    ]);
+    const affected = [
+      ...workflows.filter(row => referencesCustomField([row.conditions, row.actions], id)).map(row => `Workflow “${row.name}” (${row.id})`),
+      ...forms.filter(row => referencesCustomField([row.fields, row.publishedConfig], id)).map(row => `Form “${row.name}” (${row.id})`),
+      ...audiences.filter(row => referencesCustomField(row.conditions, id)).map(row => `Audience “${row.name}” (${row.id})`),
+      ...templates.filter(row => referencesCustomField([row.subject, row.content], id)).map(row => `Template “${row.name}” (${row.id})`),
+      ...campaigns.filter(row => referencesCustomField(row, id)).map(row => `Campaign “${row.name}” (${row.id})`),
+    ];
+    if (affected.length) throw new ValidationError(`Repair these references before deleting this field: ${affected.join('; ')}.`);
+    const retired: ClosingField = { ...field, active: false, deletedAt: new Date().toISOString(), deletedById: actorId, version: field.version + 1 };
+    await tx.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id } }, data: { definition: retired as unknown as Prisma.InputJsonValue } });
+    await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'custom_field.deleted', entityType: 'ClosingField', entityId: id, changeset: { before: field, after: retired } as unknown as Prisma.InputJsonValue } });
+    return { id, deletedAt: retired.deletedAt };
   });
 }
 

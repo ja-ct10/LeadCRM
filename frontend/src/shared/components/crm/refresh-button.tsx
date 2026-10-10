@@ -5,15 +5,15 @@ import { RefreshCw } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
 /** Refresh control extracted from the Leads workspace toolbar. */
-export function RefreshButton({ onClick, disabled, refreshing, label = 'Refresh' }: {
-  onClick: () => void | Promise<unknown>; disabled?: boolean; refreshing?: boolean; label?: string;
+export function RefreshButton({ onClick, disabled, refreshing, silent = false, label = 'Refresh' }: {
+  onClick: () => void | Promise<unknown>; disabled?: boolean; refreshing?: boolean; silent?: boolean; label?: string;
 }) {
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
   const refresh = async () => {
     if (pending.current || disabled || refreshing) return;
-    pending.current = true; setBusy(true);
-    try { await onClick(); } finally { pending.current = false; setBusy(false); }
+    pending.current = true; if (!silent) setBusy(true);
+    try { await onClick(); } finally { pending.current = false; if (!silent) setBusy(false); }
   };
   return <TooltipProvider><Tooltip><TooltipTrigger asChild>
     <button type="button" onClick={() => void refresh()} disabled={disabled || refreshing || busy} aria-label={label} title={label}

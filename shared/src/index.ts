@@ -30,6 +30,7 @@ export * from './contracts/lead-created.contract';
 export * from './validation/crm-email';
 export * from './contracts/mailbox.contract';
 export * from './contracts/closing-requirements';
+export * from './contracts/field-catalog';
 export * from './contracts/notifications';
 
 export * from './contracts/module-table-columns';
@@ -41,3 +42,4 @@ export * from './contracts/lead.contract';
 export * from './contracts/dashboard.contract';
 export * from './contracts/pipeline-stage.contract';
 export * from './contracts/workspace-access';
+export * from './contracts/campaign-fields';

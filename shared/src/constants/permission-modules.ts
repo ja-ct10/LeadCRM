@@ -182,12 +182,13 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
   },
   {
     "key": "custom_fields",
-    "label": "Custom Fields",
+    "label": "Customize Fields",
     "actions": [
       "canView",
       "canCreate",
       "canEdit",
-      "canDisable"
+      "canDisable",
+      "canDelete"
     ]
   },
   {
@@ -252,7 +253,7 @@ export const PERMISSION_GROUPS = [
   { id: 'workflows', label: 'Workflows', modules: ["workflows"], description: '' },
   { id: 'forms', label: 'Forms', modules: ["forms"], description: '' },
   { id: 'products', label: 'Products', modules: ["products"], description: '' },
-  { id: 'custom_fields', label: 'Custom Fields', modules: ["custom_fields"], description: '' },
+  { id: 'custom_fields', label: 'Customize Fields', modules: ["custom_fields"], description: '' },
   { id: 'archived_data', label: 'Archived Data', modules: ["archived_data"], description: '' },
   { id: 'users', label: 'Team Management', modules: ["users","groups"], description: '' },
   { id: 'roles', label: 'Roles & Permissions', modules: ["roles"], description: '' },

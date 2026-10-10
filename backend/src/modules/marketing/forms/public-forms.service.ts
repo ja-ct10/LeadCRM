@@ -115,7 +115,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             const names = (mapped.fullName || '').split(/\s+/);
             const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
               email, phone, companyName: mapped.companyName || null, address: mapped.address || null,
-              productInterestIds: selectedProducts, source: 'Website' }, live.createdById);
+              productInterestIds: selectedProducts, source: 'Website' }, live.createdById, 'public-form');
             leadId = created.id;
           }
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,

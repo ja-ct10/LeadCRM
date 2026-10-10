@@ -117,6 +117,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   };
   const requestDelete = (group: TenantGroup) => {
     if (!canDelete) return;
+    if (group.isDefault) { toast.error('The default Sales group cannot be deleted.'); return; }
     if (group.members.length) { toast.error('Remove all members from this group before deleting it.'); return; }
     confirm({ title: 'Delete group?', description: 'Are you sure you want to delete this group? This action cannot be undone.',
       confirmLabel: 'Delete Group', variant: 'destructive', onConfirm: () => mutate(async () => {
@@ -168,7 +169,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
           {canManage && <Button variant="ghost" size="icon" title="Edit group" aria-label="Edit group" onClick={() => openModal('rename')}><Edit2 size={16} /></Button>}
           {(canCreate || canDelete) && <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Group actions" title="Group actions"><MoreHorizontal size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent>
             {canCreate && <DropdownMenuItem disabled={busy || (!canManageMembers && !!active.members.length)} onSelect={() => void duplicate(active)}><Copy size={14} />Duplicate</DropdownMenuItem>}
-            {canDelete && <DropdownMenuItem destructive onSelect={() => requestDelete(active)}><Trash2 size={14} />Delete Group</DropdownMenuItem>}
+            {canDelete && <DropdownMenuItem destructive disabled={active.isDefault} onSelect={() => requestDelete(active)}><Trash2 size={14} />Delete Group</DropdownMenuItem>}
           </DropdownMenuContent></DropdownMenu>}
         </div>
       </div>
@@ -183,9 +184,9 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         {visibleGroups.map(group => <div key={group.id} className="flex min-w-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 last:border-0 px-3 py-2">
           <button aria-label={`Open ${group.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => { setActiveId(group.id); setMemberSearch(''); }}>
             <span className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-2 text-blue-500"><Users size={16} /></span>
-            <span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{group.name}</span><span className="text-xs text-slate-500">{group.members.length} member{group.members.length === 1 ? '' : 's'}</span></span>
+            <span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{group.name}{group.isDefault && <span className="ml-2 text-xs font-normal text-muted-foreground">Default</span>}</span><span className="text-xs text-slate-500">{group.members.length} member{group.members.length === 1 ? '' : 's'}</span></span>
           </button>
-          {canDelete && <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Delete ${group.name}`} title={group.members.length ? 'Remove all members from this group before deleting it.' : 'Delete group'} disabled={busy} onClick={() => requestDelete(group)}><Trash2 size={14} /></Button>}
+          {canDelete && <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Delete ${group.name}`} title={group.isDefault ? 'The default Sales group cannot be deleted.' : group.members.length ? 'Remove all members from this group before deleting it.' : 'Delete group'} disabled={busy || group.isDefault} onClick={() => requestDelete(group)}><Trash2 size={14} /></Button>}
         </div>)}
         {!visibleGroups.length && <div className="p-8 text-center text-sm text-slate-500"><Users size={28} className="mx-auto mb-3" /><p>{groups.length ? 'No groups match your search.' : 'No groups yet.'}</p>{!groups.length && canCreate && <Button size="sm" className="mt-3" onClick={() => openModal('create')}><Plus size={14} />Create Group</Button>}</div>}
       </Card>}

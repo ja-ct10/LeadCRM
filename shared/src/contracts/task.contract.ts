@@ -166,6 +166,7 @@ export interface TaskRecord extends TaskAssociations {
   createdAt: string;
   updatedAt?: string;
   assignedUserId: string;
+  createdById?: string | null;
   assignedById?: string | null;
   completedById?: string | null;
   completedAt?: string | null;
@@ -179,6 +180,7 @@ export interface TaskRecord extends TaskAssociations {
   deals?: { id: string; title: string }[];
   accounts?: { id: string; name: string }[];
   assignedUser?: TaskPerson | null;
+  createdBy?: TaskPerson | null;
   assignedByUser?: TaskPerson | null;
   completedBy?: TaskPerson | null;
   account?: { id: string; name: string } | null;
@@ -281,6 +283,7 @@ export const TASK_COLUMN_DEFINITIONS: ColumnDefinition[] = [
       "deal",
       "account",
       "assignedUser",
+      "createdBy",
       "createdAt",
       "completedAt",
     ] as const
@@ -294,7 +297,8 @@ export const TASK_COLUMN_DEFINITIONS: ColumnDefinition[] = [
       contact: "Contact",
       deal: "Deal",
       account: "Account",
-      assignedUser: "Task owner",
+      assignedUser: "Assigned Agent",
+      createdBy: "Task Owner (Created by)",
       createdAt: "Created",
       completedAt: "Completed",
     }[id],

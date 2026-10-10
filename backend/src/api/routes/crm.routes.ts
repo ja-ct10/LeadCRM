@@ -22,7 +22,7 @@ import * as companyController      from '../../modules/crm/companies/companies.c
 import * as dealController         from '../../modules/crm/deals/deals.controller';
 import * as bulkDealsController    from '../../modules/crm/deals/bulk-deals.controller';
 import * as pipelineController     from '../../modules/crm/pipeline/pipeline.controller';
-import { pipelineEvents } from '../../modules/reporting/reports/dashboard.events';
+import { pipelineEvents, recordEvents } from '../../modules/reporting/reports/dashboard.events';
 import * as activityController     from '../../modules/crm/activities/activities.controller';
 import * as duplicateDetectionController from '../../modules/crm/duplicate-detection/duplicate-detection.controller';
 import * as mergeController            from '../../modules/crm/merge/merge.controller';
@@ -54,6 +54,7 @@ router.use(authorizeArchivedQuery);
 router.use(recordFilesRouter);
 router.use(customFieldsRouter);
 router.get('/pipelines/events', authorize('deals.view'), pipelineEvents);
+router.get('/record-events', recordEvents);
 
 // ── Duplicate Detection ───────────────────────────────────────────────────
 router.post(  '/duplicate-check',    validate(DuplicateCheckSchema), (req, res, next) => authorizeAll(...req.body.entityTypes.map((type: string) => `${type}s.view` as PermissionKey))(req, res, next), duplicateDetectionController.duplicateCheck);
@@ -173,6 +174,13 @@ async function authorizeActivity(req: import('express').Request, _res: import('e
     // A normal Lead endpoint cannot reveal an archived Lead's activity by ID.
     const leadIds = [...new Set([input.leadId, (existing as { leadId?: string }).leadId].filter(Boolean).map(String))];
     if (leadIds.length && await prisma.lead.count({ where: { tenantId: req.user!.tenantId, id: { in: leadIds }, isArchived: false, deletedAt: null } }) !== leadIds.length) throw new NotFoundError('Active Lead');
+    for (const key of ['contactId', 'accountId', 'dealId', 'taskId'] as const) {
+      const ids = [...new Set([input[key], (existing as Record<string, unknown>)[key]].filter(Boolean).map(String))];
+      if (!ids.length) continue;
+      const where = { tenantId: req.user!.tenantId, id: { in: ids }, isArchived: false };
+      const count = key === 'contactId' ? await prisma.contact.count({ where }) : key === 'accountId' ? await prisma.account.count({ where }) : key === 'dealId' ? await prisma.deal.count({ where }) : await prisma.task.count({ where });
+      if (count !== ids.length) throw new NotFoundError('Active related record');
+    }
     next();
   } catch (error) { next(error); }
 }

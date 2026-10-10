@@ -25,7 +25,8 @@ import { ActionableEmptyState } from '@/shared/components/actionable-empty-state
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useRouter } from 'next/navigation';
-import { contactsV2Api, type ContactV2Query, type ContactsV2Response } from '@/shared/services/contacts-v2.api';
+import { contactDisplay, contactsV2Api, type ContactV2Query, type ContactsV2Response } from '@/shared/services/contacts-v2.api';
+import { apiClient } from '@/lib/api/client';
 import { CRM_STATUSES, normalizeCrmStatus, type FilterCondition } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 // ── Contacts Page ─────────────────────────────────────────────────────────────
@@ -101,16 +102,20 @@ export default function ContactsPage(): React.ReactElement {
     page: currentPage, limit: pageSize, search: debouncedSearch,
     sort: sort ? `${sort.field}:${sort.direction}` : undefined, filters: serverFilters,
   };
-  const { data: response, refetch: fetchContacts, error: contactsError, isInitialLoad, isRefreshing } = useCachedPage<ContactsV2Response>({
+  const { data: cachedResponse, refetch: fetchContacts, error: contactsError, isInitialLoad, isRefreshing } = useCachedPage<ContactsV2Response | Contact>({
     module: 'contacts', revalidateOnInvalidation: true,
+    intervalMs: highlightId ? undefined : 60_000,
     params: highlightId ? { recordId: highlightId } : { ...query },
-    intervalMs: 60_000,
     fetchFn: async signal => {
       if (!highlightId) return contactsV2Api.list(query, signal);
-      const contact = (await contactsV2Api.get(highlightId, signal)).data;
-      return { success: true, data: [contact], meta: { total: 1, page: 1, limit: pageSize, hasMore: false } };
+      return (await apiClient.get<{ data: Contact }>(`/crm/contacts/${encodeURIComponent(highlightId)}`, { signal })).data;
     },
   });
+  // The selected Contact shares the raw record cache with its drawer/full page.
+  // Display aliases and pagination belong to the list, outside that cache entry.
+  const response: ContactsV2Response | undefined = highlightId ? cachedResponse && {
+    success: true, data: [contactDisplay(cachedResponse as Contact)], meta: { total: 1, page: 1, limit: pageSize, hasMore: false },
+  } : cachedResponse as ContactsV2Response | undefined;
   const filteredContacts = response?.data ?? [];
   const paginatedContacts = filteredContacts;
   const serverTotal = response?.meta.total ?? 0;

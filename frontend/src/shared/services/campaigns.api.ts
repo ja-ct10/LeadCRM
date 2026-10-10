@@ -26,7 +26,7 @@ function normalize(c: ApiCampaign & { targetAudience?: { name: string }; deliver
 export const campaignsApi = {
   emailSettings: () => apiClient.get<{ success: boolean; data: CampaignEmailSettings }>('/marketing/campaigns/email-settings'),
   smsSettings: () => apiClient.get<{ success: boolean; data: { organizationEmail: string | null } }>('/marketing/campaigns/sms-settings'),
-  duplicate: (id: string) => apiClient.post('/marketing/campaigns/' + id + '/duplicate', {}),
+  duplicate: (id: string, audienceSource?: 'LEADS' | 'CONTACTS') => apiClient.post('/marketing/campaigns/' + id + '/duplicate', audienceSource ? { audienceSource } : {}),
   report: async (id: string, signal?: AbortSignal): Promise<CampaignReportResponse> => {
     const res = await apiClient.get<ApiCampaignReportResponse>('/marketing/campaigns/' + id + '/report', { signal });
     return { ...res, data: { ...res.data, ...normalize(res.data) } };
@@ -48,6 +48,8 @@ export const campaignsApi = {
     return { ...res, data: normalize(res.data) };
   },
   send: (id: string) => apiClient.patch<{ success: boolean; data: CampaignSendResult }>(`/marketing/campaigns/${id}/send`),
+  schedule: async (id: string, scheduledFor: string): Promise<CampaignResponse> => { const res = await apiClient.patch<{ success: boolean; data: ApiCampaign }>(`/marketing/campaigns/${id}/schedule`, { scheduledFor }); return { ...res, data: normalize(res.data) }; },
+  cancelSchedule: async (id: string): Promise<CampaignResponse> => { const res = await apiClient.delete<{ success: boolean; data: ApiCampaign }>(`/marketing/campaigns/${id}/schedule`); return { ...res, data: normalize(res.data) }; },
   metrics: () => apiClient.get<{ success: boolean; data: CampaignMetricsSummary }>('/marketing/campaigns/metrics'),
   archive: (id: string) => apiClient.patch<{ success: boolean }>(`/marketing/campaigns/${id}/archive`),
 };

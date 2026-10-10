@@ -1,4 +1,5 @@
 'use client';
+import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
@@ -149,12 +150,13 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="flex h-full min-h-0 flex-col" noValidate>
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
+        <ConfiguredFormLayout form={customFields} module="accounts">
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
 
           {/* Account Name (required) */}
-          <FieldWrap label="Account Name *" htmlFor={`${fieldId}-name`} error={errors.name?.message}>
+          <FieldWrap fieldKey="name" label="Account Name *" htmlFor={`${fieldId}-name`} error={errors.name?.message}>
             <div className="relative">
               <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
               <input
@@ -170,7 +172,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
 
           {/* Industry & Size */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="Industry" htmlFor={`${fieldId}-industry`} error={errors.industry?.message}>
+            <FieldWrap fieldKey="industry" label="Industry" htmlFor={`${fieldId}-industry`} error={errors.industry?.message}>
               <div className="relative">
                 <select
                   {...register('industry')}
@@ -187,7 +189,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap label="Size" htmlFor={`${fieldId}-size`} error={errors.size?.message}>
+            <FieldWrap fieldKey="size" label="Size" htmlFor={`${fieldId}-size`} error={errors.size?.message}>
               <div className="relative">
                 <select
                   {...register('size')}
@@ -208,7 +210,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
 
           {/* Website */}
           <div>
-            <FieldWrap label="Website" htmlFor={`${fieldId}-website`} error={errors.website?.message}>
+            <FieldWrap fieldKey="website" label="Website" htmlFor={`${fieldId}-website`} error={errors.website?.message}>
               <div className="relative">
                 <Globe className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
@@ -230,7 +232,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         <div className="space-y-4">
           <SectionHeader num={2} title="Address" />
 
-          <FieldWrap label="Street Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
+          <FieldWrap fieldKey="address" label="Street Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
@@ -246,7 +248,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           </FieldWrap>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FieldWrap label="City" htmlFor={`${fieldId}-city`} error={errors.city?.message}>
+            <FieldWrap fieldKey="city" label="City" htmlFor={`${fieldId}-city`} error={errors.city?.message}>
               <input
                 {...register('city')}
                 id={`${fieldId}-city`}
@@ -256,7 +258,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 placeholder="Makati City"
               />
             </FieldWrap>
-            <FieldWrap label="Province" htmlFor={`${fieldId}-province`} error={errors.province?.message}>
+            <FieldWrap fieldKey="province" label="Province" htmlFor={`${fieldId}-province`} error={errors.province?.message}>
               <input
                 {...register('province')}
                 id={`${fieldId}-province`}
@@ -266,7 +268,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 placeholder="Metro Manila"
               />
             </FieldWrap>
-            <FieldWrap label="Country" htmlFor={`${fieldId}-country`} error={errors.country?.message}>
+            <FieldWrap fieldKey="country" label="Country" htmlFor={`${fieldId}-country`} error={errors.country?.message}>
               <input
                 value="Philippines" readOnly
                 id={`${fieldId}-country`}
@@ -285,7 +287,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           <SectionHeader num={3} title="Relationships" />
 
           {/* Assigned User */}
-          <FieldWrap label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
+          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
             <div className="relative">
               <select
                 {...register('assignedUserId')}
@@ -312,13 +314,13 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           <SectionHeader num={4} title="Products & Interests" />
 
           {/* Product Interests (multi-select chips) */}
-          <FieldWrap label="Product Interest">
+          <FieldWrap fieldKey="productInterestIds" label="Product Interest">
 <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterests', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
 {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
 </FieldWrap>
 
           {/* Active Products (multi-select chips) */}
-          {isEdit && <FieldWrap label="Active Products">
+          {isEdit && <FieldWrap fieldKey="activeProductIds" label="Active Products">
             <div className="space-y-2">
               {/* Selected chips */}
               {selectedActiveProducts.length > 0 && (
@@ -371,7 +373,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         <div className="space-y-4">
           <SectionHeader num={5} title="Notes" />
 
-          <FieldWrap label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
+          <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
             <textarea
               {...register('notes')}
               id={`${fieldId}-notes`}
@@ -383,7 +385,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
             />
           </FieldWrap>
 
-          {isEdit && <FieldWrap label="Internal Notes" htmlFor={`${fieldId}-internalNotes`} error={errors.internalNotes?.message}>
+          {isEdit && <FieldWrap fieldKey="internalNotes" label="Internal Notes" htmlFor={`${fieldId}-internalNotes`} error={errors.internalNotes?.message}>
             <textarea
               {...register('internalNotes')}
               id={`${fieldId}-internalNotes`}
@@ -397,6 +399,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           <CustomFieldGroup form={customFields} group="Notes" />
         </div>
         <CustomFieldExtraGroups form={customFields} startNumber={6} />
+        </ConfiguredFormLayout>
       </div>
 
       {/* Sticky Footer */}
@@ -451,7 +454,7 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 

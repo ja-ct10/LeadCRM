@@ -17,7 +17,6 @@ function useCount(module: ModuleId, enabled: boolean) {
     module: `counts-${module}`,
     params: {},
     revalidateOnInvalidation: true,
-    intervalMs: 5 * 60_000,
     disabled: USE_MOCK_DATA || !enabled,
     fetchFn: async (signal) => {
       if (module === 'contacts') return (await contactsV2Api.list({ page: 1, limit: 1 }, signal)).meta.total;

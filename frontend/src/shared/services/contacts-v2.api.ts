@@ -44,7 +44,7 @@ export function toContactWrite(data: Partial<Contact>): Record<string, unknown> 
   };
 }
 
-function contactDisplay(data: Contact): Contact {
+export function contactDisplay(data: Contact): Contact {
   const contact = data as Contact & { company?: string };
   return { ...contact, companyName: contact.company ?? contact.companyName,
     leadSource: contact.source ?? contact.leadSource, organizationId: contact.accountId ?? contact.organizationId };

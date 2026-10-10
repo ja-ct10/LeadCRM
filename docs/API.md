@@ -89,6 +89,18 @@ All require an authenticated session and completed per-user onboarding. Deal acc
 For Lead, Contact, and Account archive/restore endpoints, permissions, archived
 queries, and migration requirements, see [CRM archive verification](crm-archive-verification.md).
 
+### Record history and synchronization
+
+Contextual `GET /crm/activities` reads accept `leadId`, `contactId`, `accountId`, `dealId` or `taskId` and require the matching view permissions. Target records must be active and belong to the session tenant. The existing `type` filter accepts a comma-separated list; `search` matches title, description and author names. `limit` bounds each page and `cursor` is the opaque `nextCursor` returned by the previous page. Rows have stable `createdAt DESC, id DESC` ordering and author projections; the response includes `total`, `nextCursor` and compatibility `meta`. Invalid cursors return 400. Contact reads include converted source-Lead history without copying rows. Unscoped reads retain the existing requirement for all activity-linked module view permissions.
+
+`POST /crm/activities` preserves the existing note input contract and requires the target record's edit permission. Notes are trimmed/nonempty, saved as `type: "note"`, and retain the authenticated author. Existing scalar record notes are separate historical values.
+
+`GET /crm/{leads|contacts|accounts}/:id/relationships?page=1&limit=50` includes `hasMoreDeals`. Contact Deals include direct and converted-source associations once per original Deal ID. Each related collection remains filtered by its module view permission. Contextual Contact Task lists/counts include direct and converted-source associations; mutation/merge predicates retain direct-link semantics.
+
+`GET /crm/record-events` is an authenticated SSE stream for users with at least one CRM/Task view permission. It emits only the tenant CRM `content` revision counter and periodically rechecks access. Committed CRM, Activity, Task, file, field and relationship changes increment the counter; rolled-back writes do not. The browser proxy permits this path as SSE.
+
+For field catalog/layout/group APIs and dependency-checked custom retirement, see [Customize Fields](custom-fields.md). Task responses expose nullable immutable `createdById`/`createdBy`; writes derive the creator from the session and reject client ownership edits. `assignedUserId` and `assignedById` retain their existing meanings. See [Task assignment](workflows/task-assignment.md).
+
 ### Contacts
 
 | Method | Path | Description | Permission |

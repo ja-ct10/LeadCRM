@@ -128,21 +128,13 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
     setRevision((value) => value + 1);
   }, []);
   useEffect(() => {
-    const visible = () => {
-      if (document.visibilityState === "visible") refreshTasks();
-    };
+    let queued: ReturnType<typeof setTimeout> | undefined;
     const unsubscribe = subscribePageCacheInvalidation((module) => {
-      if (["*", "activities", "leads", "contacts", "accounts", "deals"].includes(module)) refreshTasks();
+      if (["*", "activities", "tasks", "leads", "contacts", "accounts", "deals"].includes(module)) {
+        clearTimeout(queued); queued = setTimeout(refreshTasks, 0);
+      }
     });
-    const timer = window.setInterval(visible, 60000);
-    window.addEventListener("focus", visible);
-    document.addEventListener("visibilitychange", visible);
-    return () => {
-      unsubscribe();
-      window.clearInterval(timer);
-      window.removeEventListener("focus", visible);
-      document.removeEventListener("visibilitychange", visible);
-    };
+    return () => { unsubscribe(); clearTimeout(queued); };
   }, [refreshTasks]);
   const queryTasks = useCallback(
     (query: TaskListQuery = {}) => {

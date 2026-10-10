@@ -50,7 +50,7 @@ import { usersService } from "@/features/tenant/administration/users/services/us
 import { rolesApi } from '@/shared/services/roles.api';
 import { rolesService, toSettingsRole, toSettingsPermissions, toPermissionRows } from '@/features/tenant/administration/roles/services/roles.service';
 import { USE_MOCK_DATA } from "@/lib/config";
-import { invalidatePageCache } from "@/shared/cache/page-cache";
+import { clearPageCache, invalidatePageCache } from "@/shared/cache/page-cache";
 import { leadsService as contactsService } from "@/features/tenant/crm/leads/services/leads.service";
 import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
@@ -673,6 +673,29 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const pipelineRefresh = useRef(refreshPipelines);
   pipelineRefresh.current = refreshPipelines;
   const canReadPipelines = userCan('deals', 'canView');
+  const canReadCrm = ['leads', 'contacts', 'accounts', 'deals', 'tasks'].some(module => userCan(module, 'canView'));
+  useEffect(() => {
+    if (USE_MOCK_DATA || !workspaceReady || !canReadCrm || !tenant?.id || typeof EventSource === 'undefined') return;
+    let previous = '', queued: ReturnType<typeof setTimeout> | undefined;
+    const reconcile = () => {
+      if (document.visibilityState === 'hidden') return;
+      clearTimeout(queued);
+      queued = setTimeout(() => {
+        ['leads','contacts','accounts','deals','activities','tasks','settings','field-layout',
+          'counts-leads','counts-contacts','counts-accounts','counts-deals'].forEach(module => invalidatePageCache(module, tenant.id));
+      }, 100);
+    };
+    const source = new EventSource('/api/proxy/crm/record-events');
+    source.addEventListener('crm-change', event => {
+      const revision = (event as MessageEvent<string>).data;
+      if (revision === previous) return;
+      previous = revision; reconcile();
+    });
+    source.addEventListener('open', () => { previous = ''; });
+    source.addEventListener('crm-access-changed', () => { clearPageCache(true); source.close(); });
+    window.addEventListener('online', reconcile); window.addEventListener('focus', reconcile); document.addEventListener('visibilitychange', reconcile);
+    return () => { clearTimeout(queued); source.close(); window.removeEventListener('online', reconcile); window.removeEventListener('focus', reconcile); document.removeEventListener('visibilitychange', reconcile); };
+  }, [dataIdentity, workspaceReady, canReadCrm, tenant?.id]);
   useEffect(() => {
     if (USE_MOCK_DATA || !workspaceReady || !canReadPipelines || !user?.id || typeof EventSource === 'undefined') return;
     let stopped = false, previous = '', busy = false, queued = false;
@@ -1343,16 +1366,17 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const now = new Date().toISOString();
     const created: Task = USE_MOCK_DATA ? {
       ...dto, ...taskAssociationPatch(dto), description: dto.description ?? '', id: uuid(), tenantId: tenant.id, createdAt: now,
+      createdById: user.id, createdBy: { id: user.id, firstName: user.firstName, lastName: user.lastName },
       assignedById: user.id, completedAt: dto.status === 'completed' ? now : null,
       completedById: dto.status === 'completed' ? user.id : null,
     } : (await tasksApi.create(dto)).data;
     if (identity !== dataIdentityRef.current) return;
     setTasks(previous => {
-      const next = [created, ...previous];
+      const next = [created, ...previous.filter(task => task.id !== created.id)];
       if (USE_MOCK_DATA) localStorage.setItem('leadcrm_tasks', JSON.stringify(next));
       return next;
     });
-    taskQueries.refreshTasks();
+    if (USE_MOCK_DATA) taskQueries.refreshTasks();
   };
 
   const updateTask = async (id: string, updates: Partial<Task>): Promise<void> => {
@@ -1372,7 +1396,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (USE_MOCK_DATA) localStorage.setItem('leadcrm_tasks', JSON.stringify(next));
       return next;
     });
-    taskQueries.refreshTasks();
+    if (USE_MOCK_DATA) taskQueries.refreshTasks();
   };
 
   const deleteTask = async (id: string): Promise<void> => {
@@ -1384,15 +1408,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
       if (USE_MOCK_DATA) localStorage.setItem('leadcrm_tasks', JSON.stringify(next));
       return next;
     });
-    taskQueries.refreshTasks();
+    if (USE_MOCK_DATA) taskQueries.refreshTasks();
   };
 
   const bulkTasks = async (input: TaskBulkInput): Promise<TaskBulkResult> => {
     const dto = TaskBulkSchema.parse(input);
-    const identity = dataIdentityRef.current;
     if (!USE_MOCK_DATA) {
       const result = (await tasksApi.bulk(dto)).data;
-      if (identity === dataIdentityRef.current) taskQueries.refreshTasks();
       return result;
     }
     const result: TaskBulkResult = { succeeded: [], failed: [] };
@@ -1434,7 +1456,9 @@ export function DataProvider({ children }: { children: ReactNode }) {
   };
   const addCampaign: DataContextType['addCampaign'] = async (data) => {
     if (!tenant) throw new Error('Select a workspace first.');
-    const created = (await campaignsApi.create({ name: data.name, type: data.type === 'Email' ? 'EMAIL' : data.type === 'Sms' ? 'SMS' : 'MULTI_CHANNEL', subject: data.subject, body: data.body, audienceSource: data.audienceSource, targetAudienceId: data.targetAudienceId })).data;
+    const audienceSource = data.audienceSource;
+    if (audienceSource === 'ALL') throw new Error('Select Leads or Contacts before creating this campaign.');
+    const created = (await campaignsApi.create({ name: data.name, type: data.type === 'Email' ? 'EMAIL' : data.type === 'Sms' ? 'SMS' : 'MULTI_CHANNEL', subject: data.subject, body: data.body, audienceSource, targetAudienceId: data.targetAudienceId })).data;
     setCampaigns(prev => [created, ...prev]);
     invalidatePageCache('campaigns', tenant.id);
   };

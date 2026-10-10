@@ -14,7 +14,7 @@ import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/module-filter-rail';
 import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
 import { AvatarCell } from '@/shared/components/crm/avatar-cell';
-import { DataLoadingSkeleton, DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
+import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { CampaignStatusBadge, formatCampaignStatus } from './campaign-status-badge';
@@ -73,7 +73,10 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       const result = await campaignsApi.report(campaign.id, controller.signal);
       if (sequence === request.current) setReport(result.data);
     } catch (failure) {
-      if (sequence === request.current) setError(failure instanceof Error ? failure.message : 'Unable to load campaign report. Please try again.');
+      if (sequence === request.current) {
+        if ([401, 403, 404].includes((failure as { status?: number })?.status || 0)) setReport(null);
+        setError(failure instanceof Error ? failure.message : 'Unable to load campaign report. Please try again.');
+      }
     } finally {
       if (sequence === request.current) { inFlight.current = false; setLoading(false); }
     }
@@ -151,6 +154,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     { label: 'Target Segment', value: current.targetAudience, icon: Target },
     { label: 'Recipients', value: `${count} recipient${count === 1 ? '' : 's'}`, icon: Users },
     { label: 'Submitted', value: formatDateTime(current.sentAt), icon: Send },
+    ...(current.scheduledFor ? [{ label: 'Scheduled (Asia/Manila)', value: new Date(current.scheduledFor).toLocaleString('en-PH', { timeZone: 'Asia/Manila' }), icon: Send }] : []),
   ];
 
   return <div className="w-full min-w-0 space-y-6">
@@ -166,13 +170,14 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Performance overview and recipient activity</p>
         </div>
         <Button variant="outline" size="sm" className="w-8 shrink-0 px-0 sm:w-auto sm:px-3" aria-label="Export report" title="Export report"
-          onClick={exportReport} disabled={!report || !!error || loading}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">Export report</span></Button>
+          onClick={exportReport} disabled={!report || !!error}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">Export report</span></Button>
       </div>
     </header>
     {error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-300">
       <span className="min-w-0 flex-1">{error}{report && ' Previously loaded data is shown.'}</span>
       <Button variant="outline" onClick={() => void fetchReport()} disabled={loading}>Retry</Button>
     </div>}
+    {current.scheduleConfig?.scheduleFailureReason && <p role="status" className="rounded border border-amber-300 p-3 text-sm">Schedule failed: {current.scheduleConfig.scheduleFailureReason}</p>}
     {current.submissionInterruptedAt && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-200">Submission was interrupted. Recipients marked as not sent were never submitted. Unconfirmed recipients may have been accepted. Review recipient failure reasons and provider history before sending again; no recipients were automatically retried.</div>}
     {(report || initialLoading) && <>
       <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-5' : 'xl:grid-cols-6'} gap-3`}>
@@ -196,10 +201,10 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
             </dl>}
         </Card>
       </section>
-      <section aria-labelledby="recipients-title" className="min-w-0 space-y-3" aria-busy={loading}>
+      <section aria-labelledby="recipients-title" className="min-w-0 space-y-3" aria-busy={initialLoading}>
         <div><h2 id="recipients-title" className="text-sm font-semibold text-slate-900 dark:text-white">Recipient performance</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{initialLoading ? 'Recipient activity' : `${visibleRecipients.length} of ${recipients.length} recipients`}</p></div>
-        <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={loading} onRefresh={() => fetchReport()}
+        <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={initialLoading} silentRefresh onRefresh={() => fetchReport()}
           filter={<FilterButton title="recipients" open={showFilters} active={!!(deliveryFilter.length || engagementFilter.length)} onClick={() => setShowFilters(value => !value)} />} />
         <div className="flex min-w-0 items-start gap-3">
           <ModuleFilterRail showFilters={showFilters} filterGroups={filterGroups} onToggleFilters={() => setShowFilters(false)}
@@ -208,9 +213,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           <div className="relative min-w-0 flex-1">
             <DataGrid ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
               emptyMessage={recipients.length ? 'No recipients match your search and filter.' : 'No recipients yet.'} />
-            {loading && !initialLoading && <div className="absolute inset-0 z-30 flex items-center justify-center overflow-hidden rounded-xl bg-background/90">
-              <DataLoadingSpinner label="Refreshing recipients" hideLabel />
-            </div>}
+
           </div>
         </div>
       </section>

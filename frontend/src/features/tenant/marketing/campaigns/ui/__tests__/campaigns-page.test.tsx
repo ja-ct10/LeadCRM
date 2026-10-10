@@ -66,5 +66,5 @@ it.each(['initial', 'refreshing'] as const)('keeps the campaign controls visible
 it('offers persisted outcome statuses including interrupted submissions and Email/SMS types', () => {
   render(<CampaignsPage />); fireEvent.click(screen.getByLabelText('Filter campaigns'));
   const filters = screen.getAllByRole('checkbox').filter(el => !el.getAttribute('aria-label')?.startsWith('Select'));
-  expect([...new Set(filters.map(el => el.closest('label')?.textContent))]).toEqual(['Sent', 'Partially Sent', 'Interrupted', 'Delivered', 'Failed', 'Draft', 'Email', 'SMS']);
+  expect([...new Set(filters.map(el => el.closest('label')?.textContent))]).toEqual(['Sent', 'Partially Sent', 'Interrupted', 'Delivered', 'Failed', 'Draft', 'Scheduled', 'Email', 'SMS']);
 });

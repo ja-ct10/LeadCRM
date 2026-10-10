@@ -5,7 +5,7 @@ import { conversionFixture } from './conversion-fixture';
 vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.CONVERSION_TEST_DATABASE_URL! } } }) }));
 vi.mock('../../../automation/triggers/triggers.service', () => ({ fireLeadUpdated: vi.fn(), fireLeadStatusChanged: vi.fn(), fireContactCreated: vi.fn(), fireContactUpdated: vi.fn(), fireContactStatusChanged: vi.fn(), fireDealUpdated: vi.fn() }));
 let fixture: Awaited<ReturnType<typeof conversionFixture>>;
-beforeAll(async () => { fixture = await conversionFixture(); }, 60000);
+beforeAll(async () => { fixture = await conversionFixture(); }, 180000);
 afterAll(async () => { await fixture?.close(); });
 it('retries reuse the converted identity and preserve original Deal and conversion history', async () => {
   const { lead, deal } = await fixture.inquiry('Repeat customer');
@@ -17,6 +17,30 @@ it('retries reuse the converted identity and preserve original Deal and conversi
   expect(await fixture.db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toEqual(original);
   expect(await fixture.db.auditLog.count({ where: { action: 'lead.converted', entityId: lead.id } })).toBe(1);
   expect(await fixture.db.contactDeal.count({ where: { dealId: deal.id } })).toBe(1);
+});
+it('keeps authored Lead history and open/completed Task responsibility visible once after conversion and retry', async () => {
+  const { lead, deal } = await fixture.inquiry('Continuity customer');
+  const stamp = new Date('2026-01-01T02:00:00Z');
+  const note = await fixture.db.activity.create({ data: { tenantId: 'conversion', leadId: lead.id, createdById: 'actor', type: 'note', title: 'Original customer note', createdAt: stamp } });
+  const tasks = await Promise.all(['pending', 'completed'].map(status => fixture.db.task.create({ data: {
+    tenantId: 'conversion', title: `Original ${status} task`, status, dueDate: stamp, createdById: 'actor', assignedUserId: 'actor', assignedById: 'actor',
+    leadLinks: { create: { leadId: lead.id, position: 0 } },
+  } })));
+  const result = await fixture.convert(lead.id);
+  await fixture.db.taskContact.create({ data: { tenantId: 'conversion', taskId: tasks[0].id, contactId: result.contact.id, position: 0 } });
+  await fixture.convert(lead.id);
+  const { findAllActivities } = await import('../../activities/activities.repository');
+  const history = await findAllActivities('conversion', { contactId: result.contact.id, type: 'note', limit: 100 });
+  expect(history.data.filter(row => row.id === note.id)).toHaveLength(1);
+  expect(history.data.find(row => row.id === note.id)).toMatchObject({ leadId: lead.id, contactId: null, createdById: 'actor', createdAt: stamp });
+  const { getTasks } = await import('../../../operations/tasks/tasks.service');
+  const { tenantContext } = await import('../../../../core/tenant/tenant-context');
+  const contextual = await tenantContext.run({ tenantId: 'conversion' }, () => getTasks('conversion', { contactId: result.contact.id, limit: 100 }));
+  expect(contextual.data.map(row => row.id).sort()).toEqual(tasks.map(row => row.id).sort());
+  expect(contextual.data.every(row => row.createdById === 'actor' && row.assignedUserId === 'actor')).toBe(true);
+  expect(await fixture.db.activity.count({ where: { id: note.id } })).toBe(1);
+  expect(await fixture.db.task.count({ where: { id: { in: tasks.map(row => row.id) } } })).toBe(2);
+  expect(await fixture.db.contactDeal.count({ where: { contactId: result.contact.id, dealId: deal.id } })).toBe(1);
 });
 it('rejects unsupported conversion options before changing any record', async () => {
   const { lead } = await fixture.inquiry('Options');

@@ -2,6 +2,23 @@
 
 ## Implementation
 
+New public-form Leads use the protected default Sales Team Group. Its internal
+`SALES` key keeps routing stable when its display name changes. Bootstrap/seed
+paths provision the group idempotently without enrolling users by role; the
+forward migration reuses a single existing case-insensitive Sales group and keeps
+its ID/members. Ambiguous legacy Sales groups stop migration for explicit repair.
+The default group cannot be deleted, including through direct API requests.
+
+The assignment pool is current Sales membership intersected with active agents
+eligible under existing Lead/Deal permissions. IDs rotate in a stable order through
+the separate `form-lead-assignment` / `sales:<groupId>` TenantPreference cursor.
+Cursor, Lead, generated Product Deals and submission commit in the same serializable
+sales transaction. Request-ID retries consume one turn once. An empty pool saves
+the valid inquiry as Unassigned and records the assignment outcome. Returning
+Leads/Contacts keep their agent, and generated Deals inherit that agent. Manual
+Lead creation, imports, Account assignment and explicit Workflow actions keep
+their existing policies.
+
 Forms remain under **Settings → Connect → Forms**. Both existing Forms entry points
 use one implementation. Creating a form persists a separate seven-field Contact Us
 template, with the requested twelve Product Interest options. CRM product columns
@@ -37,6 +54,10 @@ panel. File Upload is disabled and rejected by the server pending secure storage
   access. Unpublishing retains history. Confirmed permanent deletion removes the
   form and its submission history in one transaction, preserving linked Leads and
   Contacts. No schema change is required for deletion.
+- Protected Sales/Task creator migration:
+  `backend/prisma/migrations/20261121000000_task_creator_sales_group/migration.sql`.
+  Apply after the earlier migration history; it rejects ambiguous Sales labels
+  before changing data and preserves existing group memberships.
 
 Before deploying the backend, use the intended database environment and run:
 

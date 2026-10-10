@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const GroupNameSchema = z.string().trim().min(1, 'Name is required.').max(100, 'Name must be 100 characters or fewer.');
-export const CreateGroupSchema = z.object({ name: GroupNameSchema });
+export const CreateGroupSchema = z.object({ name: GroupNameSchema }).strict();
 export const UpdateGroupSchema = CreateGroupSchema;
 
 export interface TenantGroupMember {
@@ -14,6 +14,7 @@ export interface TenantGroup {
   id: string;
   tenantId: string;
   name: string;
+  isDefault?: boolean;
   members: TenantGroupMember[];
   createdAt: string;
   updatedAt: string;

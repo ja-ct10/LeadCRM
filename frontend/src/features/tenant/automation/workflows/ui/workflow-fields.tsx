@@ -9,8 +9,9 @@ import type {
   TriggerDefinition,
   WorkflowEntity,
 } from '@leadcrm/shared';
-import { getWorkflowUpdateFields, workflowOperators, WORKFLOW_MESSAGE_VARIABLES } from '@leadcrm/shared';
+import { getWorkflowUpdateFields, WORKFLOW_MODULES, workflowOperators, WORKFLOW_MESSAGE_VARIABLES } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
+import { ConditionFieldSelect, ConditionOperatorSelect, ConditionScalarInput } from '@/shared/components/condition-controls';
 import { Input } from '@/shared/components/ui/input';
 import { operatorLabels, references, retiredActionLabels } from '../services/workflow-editor';
 import { WorkflowAssignmentFields } from './workflow-assignment-fields';
@@ -28,7 +29,7 @@ function UpdateFieldFields({ action, options, entity, onChange }: {
   action: WorkflowAction; options: WorkflowOptions; entity?: WorkflowEntity;
   onChange: (config: Record<string, unknown>) => void;
 }) {
-  const fields = entity ? getWorkflowUpdateFields(entity, options.customFields) : [];
+  const fields = entity ? getWorkflowUpdateFields(entity, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[entity]]) : [];
   const field = fields.find((entry) => entry.field === action.config.field);
   const [group, setGroup] = useState<'standard' | 'custom'>(field?.group === 'custom' ? 'custom' : 'standard');
   const selectedGroup = field?.group ?? group;
@@ -137,50 +138,14 @@ export function ConditionFields({
             </div>
             <label className="block">
               <span>Field <span className="text-red-500" aria-hidden="true">*</span></span>
-              <select
-                aria-label={`Condition ${index + 1} field`}
-                aria-required="true"
-                className={workflowControl}
-                value={rule.field}
-                onChange={(event) => {
-                  const next = trigger?.fields.find(
-                    (field) => field.field === event.target.value,
-                  );
-                  update({
-                    field: event.target.value,
-                    operator: workflowOperators(next?.type ?? 'string')[0],
-                    value:
-                      next?.type === 'number'
-                        ? 0
-                        : next?.type === 'boolean'
-                          ? false
-                          : '',
-                  });
-                }}
-              >
-                <option value="">Choose a field</option>
-                {rule.field && !field && <option value={rule.field}>Unavailable field — repair required</option>}
-                {(['standard', 'custom'] as const).map(group => <optgroup key={group} label={group === 'custom' ? 'Custom Fields' : 'Standard Fields'}>{trigger?.fields.filter(field => (field.group ?? 'standard') === group).map(field => <option key={field.field} value={field.field}>{field.label}</option>)}</optgroup>)}
-              </select>
+              <ConditionFieldSelect label={`Condition ${index + 1} field`} className={workflowControl} value={rule.field} fields={(trigger?.fields ?? []).map(field => ({ key: field.field, label: field.label, group: field.group === 'custom' ? 'Custom Fields' : 'Standard Fields' }))} onChange={key => {
+                const next = trigger?.fields.find(field => field.field === key);
+                update({ field: key, operator: workflowOperators(next?.type ?? 'string')[0], value: next?.type === 'number' ? 0 : next?.type === 'boolean' ? false : '' });
+              }} />
             </label>
             <label className="block">
               Operator
-              <select
-                aria-label={`Condition ${index + 1} operator`}
-                className={workflowControl}
-                value={rule.operator}
-                onChange={(event) =>
-                  update({
-                    operator: event.target.value as typeof rule.operator,
-                  })
-                }
-              >
-                {workflowOperators(field?.type ?? 'string').map((operator) => (
-                  <option key={operator} value={operator}>
-                    {operatorLabels[operator]}
-                  </option>
-                ))}
-              </select>
+              <ConditionOperatorSelect label={`Condition ${index + 1} operator`} className={workflowControl} value={rule.operator} operators={workflowOperators(field?.type ?? 'string').map(key => ({ key, label: operatorLabels[key] }))} onChange={operator => update({ operator: operator as typeof rule.operator })} />
             </label>
             {!['is_empty', 'is_not_empty'].includes(rule.operator) && (
               <label className="block">
@@ -215,27 +180,7 @@ export function ConditionFields({
                     ))}
                   </select>
                 ) : field?.multiline ? <textarea aria-label={`Condition ${index + 1} value`} aria-required="true" className={workflowControl} rows={4} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
-                  <Input
-                    aria-label={`Condition ${index + 1} value`}
-                    aria-required="true"
-                    type={
-                      field?.type === 'number'
-                        ? 'number'
-                        : field?.type === 'date'
-                          ? 'date'
-                          : 'text'
-                    }
-                    maxLength={field?.maxLength ?? 1000}
-                    value={String(rule.value ?? '')}
-                    onChange={(event) =>
-                      update({
-                        value:
-                          field?.type === 'number' && event.target.value !== ''
-                            ? Number(event.target.value)
-                            : event.target.value,
-                      })
-                    }
-                  />
+                  <ConditionScalarInput aria-label={`Condition ${index + 1} value`} aria-required="true" className={workflowControl} type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'} maxLength={field?.maxLength ?? 1000} value={rule.value} onValueChange={value => update({ value })} />
                 )}
               </label>
             )}

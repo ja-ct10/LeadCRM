@@ -17,7 +17,7 @@ export async function getLeadRelationships(req: Request, res: Response, next: Ne
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getLeadRelationships(id, tenantId, limit, await mayReadTasks(req));
+    const data = await relationshipsService.getLeadRelationships(id, tenantId, limit, await mayReadTasks(req), Math.max(1, Math.trunc(Number(req.query.page) || 1)));
     res.json({ success: true, data: await filterRelationships(req, data) });
   } catch (err) {
     next(err);
@@ -33,7 +33,7 @@ export async function getContactRelationships(req: Request, res: Response, next:
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getContactRelationships(id, tenantId, limit, await mayReadTasks(req));
+    const data = await relationshipsService.getContactRelationships(id, tenantId, limit, await mayReadTasks(req), Math.max(1, Math.trunc(Number(req.query.page) || 1)));
     res.json({ success: true, data: await filterRelationships(req, data) });
   } catch (err) {
     next(err);
@@ -49,7 +49,7 @@ export async function getAccountRelationships(req: Request, res: Response, next:
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getAccountRelationships(id, tenantId, limit);
+    const data = await relationshipsService.getAccountRelationships(id, tenantId, limit, Math.max(1, Math.trunc(Number(req.query.page) || 1)));
     res.json({ success: true, data: await filterRelationships(req, data) });
   } catch (err) {
     next(err);
@@ -65,7 +65,7 @@ export async function getDealRelationships(req: Request, res: Response, next: Ne
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getDealRelationships(id, tenantId, limit, await mayReadTasks(req));
+    const data = await relationshipsService.getDealRelationships(id, tenantId, limit, await mayReadTasks(req), Math.max(1, Math.trunc(Number(req.query.page) || 1)));
     res.json({ success: true, data: await filterRelationships(req, data) });
   } catch (err) {
     next(err);
@@ -78,7 +78,7 @@ async function filterRelationships(req: Request, data: object) {
   for (const [key, module] of Object.entries(modules)) {
     if (!(key in result)) continue;
     try { await assertPermissions(req.user!, [`${module}.view`]); }
-    catch (error) { if (!(error instanceof AppError) || error.statusCode !== 403) throw error; result[key] = Array.isArray(result[key]) ? [] : null; }
+    catch (error) { if (!(error instanceof AppError) || error.statusCode !== 403) throw error; result[key] = Array.isArray(result[key]) ? [] : null; if (key === 'deals') result.hasMoreDeals = false; }
   }
   return result;
 }

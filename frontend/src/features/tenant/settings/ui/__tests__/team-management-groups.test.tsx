@@ -69,6 +69,14 @@ it('blocks nonempty deletion and confirms empty deletion with the requested toas
   view.unmount(); mocks.getAll.mockResolvedValue({ data: [group(false)] }); mount(); await screen.findByText('Sales'); fireEvent.click(screen.getByRole('button', { name: 'Delete Sales' })); expect(mocks.remove).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Delete Group' })); await screen.findByText('No groups yet.'); expect(mocks.success).toHaveBeenCalledWith('Group deleted successfully.');
 });
+it('disables deletion of the default Sales group even when empty', async () => {
+  mocks.getAll.mockResolvedValue({ data: [{ ...group(false), isDefault: true }] });
+  mount();
+  expect((await screen.findByRole('button', { name: 'Delete Sales' })).hasAttribute('disabled')).toBe(true);
+  expect(screen.getByText('Default')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Delete Sales' }));
+  expect(mocks.remove).not.toHaveBeenCalled();
+});
 it('preserves meaningful API failures and allows retry', async () => {
   mocks.getAll.mockRejectedValueOnce(new Error('Groups unavailable')); mount(); expect(await screen.findByRole('alert')).toBeTruthy(); fireEvent.click(screen.getByRole('button', { name: 'Retry' })); await screen.findByText('Sales');
   fireEvent.click(screen.getByRole('button', { name: 'New Group' })); mocks.create.mockRejectedValueOnce(new Error('Duplicate group name')); fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Sales' } }); fireEvent.click(screen.getByRole('button', { name: 'Create Group' }));

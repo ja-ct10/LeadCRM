@@ -114,7 +114,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <ForecastBar deals={visible} pipelines={pipeline ? [pipeline] : []} tenant={tenant} />
         {(query.error || pipelineError) && <p role="alert" className="rounded border border-red-200 p-3 text-sm text-red-600">{query.error || pipelineError}</p>}
-        {(query.isInitialLoad || query.isRefreshing || refreshing || !pipeline && !pipelineError) && !USE_MOCK_DATA ? <KanbanBoardSkeleton /> : pipeline ? <div className="flex min-h-[440px] min-w-0 flex-1 overflow-hidden"><PipelineKanbanBoard pipeline={pipeline} deals={visible} users={users} canCreate={canCreate} canEdit={canEdit && !moving} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
+        {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError) ? <KanbanBoardSkeleton /> : pipeline ? <div className="flex min-h-[440px] min-w-0 flex-1 overflow-hidden"><PipelineKanbanBoard pipeline={pipeline} deals={visible} users={users} canCreate={canCreate} canEdit={canEdit && !moving} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
       </div>
     </div>
     {manageStages && pipeline && <PipelineStagesDialog pipelineId={pipeline.id} onClose={() => setManageStages(false)} onChanged={async () => { await refreshPipelines(); await query.refetch(); }} />}

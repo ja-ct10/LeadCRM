@@ -98,6 +98,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Compare effective grants, rather than object order or absent false flags.
+const permissionIdentity = (value: ResolvedPermissions) => JSON.stringify(Object.keys(value).sort().map(module => [module, Object.entries(value[module] ?? {}).filter(([, granted]) => granted === true).map(([action]) => action).sort()]).filter(([, actions]) => actions.length));
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser]       = useState<User | null>(null);
   const [tenant, setTenant]   = useState<Tenant | null>(null);
@@ -109,6 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const requestGeneration = useRef(0);
   const permissionGeneration = useRef(0);
   const activeUserId = useRef<string | null>(null);
+  const authenticatedIdentity = useRef<string | null>(null);
+  const appliedPermissions = useRef<string | null>(null);
   activeUserId.current = user?.id ?? null;
 
   const applyOrganizationSettings = useCallback((settings: import('@leadcrm/shared').OrganizationSettings) => {
@@ -121,6 +126,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
+    const identity = JSON.stringify([apiUser.id, apiUser.tenantId, apiUser.role, apiUser.status, apiUser.tenantStatus, apiUser.mustChangePassword]);
+    if (authenticatedIdentity.current !== null && authenticatedIdentity.current !== identity) {
+      permissionGeneration.current += 1;
+      appliedPermissions.current = null;
+      setPermissions({});
+      setIsPermissionsLoaded(false);
+      clearPageCache(true);
+    }
+    authenticatedIdentity.current = identity;
     requestGeneration.current += 1;
     activeUserId.current = apiUser.id;
     setUser({
@@ -188,16 +202,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await rolesApi.getUserPermissions(id);
       if (activeUserId.current === id && permissionGeneration.current === generation) {
-        setPermissions(response.data ?? {});
+        const next = response.data ?? {}, identity = permissionIdentity(next);
+        if (appliedPermissions.current !== null && appliedPermissions.current !== identity) clearPageCache(true);
+        appliedPermissions.current = identity;
+        setPermissions(next);
         setIsPermissionsLoaded(true);
       }
-    } catch {
+    } catch (error) {
       if (activeUserId.current === id && permissionGeneration.current === generation) {
+        const denied = isNoSessionError(error) || typeof error === 'object' && error !== null && 'status' in error && (error.status === 403 || error.status === 404);
+        if (appliedPermissions.current !== null && !denied) return;
+        if (appliedPermissions.current !== null) clearPageCache(true);
+        appliedPermissions.current = null;
         setPermissions({});
         setIsPermissionsLoaded(true);
       }
     }
-  }, [user?.id, user?.role, user?.tenantId, isLoading, authError]);
+  }, [user?.id, user?.role, user?.tenantId, user?.status, tenant?.status, isLoading, authError]);
 
   useEffect(() => {
     setPermissions({});
@@ -232,11 +253,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error) {
       if (generation === requestGeneration.current) {
         if (isNoSessionError(error)) {
+          authenticatedIdentity.current = null;
+          appliedPermissions.current = null;
+          clearPageCache(true);
           setUser(null);
           setTenant(null);
           setPermissions({});
-        } else {
-          setAuthError(error instanceof Error ? error.message : 'Unable to refresh your session');
         }
       }
       throw error;
@@ -262,7 +284,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const source = new EventSource('/api/proxy/auth/events');
     let previous: string | undefined;
     const refresh = () => {
-      clearPageCache(true);
       void Promise.allSettled([accessRefresh.current.refreshUser(), accessRefresh.current.refreshPermissions()]);
     };
     source.addEventListener('authorization-change', event => {
@@ -279,6 +300,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       requestGeneration.current += 1;
       permissionGeneration.current += 1;
       activeUserId.current = null;
+      authenticatedIdentity.current = null;
+      appliedPermissions.current = null;
       setUser(null); setTenant(null); setPermissions({});
       clearPageCache(); source.close();
     });
@@ -347,6 +370,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(null);
     setAuthError(null);
     activeUserId.current = null;
+    authenticatedIdentity.current = null;
+    appliedPermissions.current = null;
     permissionGeneration.current += 1;
     setPermissions({});
     setIsPermissionsLoaded(true);

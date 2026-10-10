@@ -165,6 +165,8 @@ export function TaskTable({
         return relations(task, id);
       case "assignedUser":
         return person(task.assignedUser) ?? "—";
+      case "createdBy":
+        return person(task.createdBy) ?? "Not recorded";
       case "createdAt":
         return <span title={formatDateTime(task.createdAt, { seconds: true })}>{formatDateTime(task.createdAt, { seconds: true })}</span>;
       case "completedAt":

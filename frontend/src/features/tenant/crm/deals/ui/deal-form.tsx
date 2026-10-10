@@ -1,5 +1,6 @@
 'use client';
 import { LEAD_SOURCES } from '@leadcrm/shared';
+import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
@@ -250,13 +251,14 @@ export function DealForm({
     >
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
+        <ConfiguredFormLayout form={customFields} module="deals">
         {/* Section 1: Pipeline & Stage (Create mode only — edit does not change pipeline/stage here) */}
         {isCreateMode && (
           <div className="space-y-4">
             <SectionHeader num={1} title="Pipeline & Stage" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div><span className="block text-xs text-muted-foreground">Pipeline</span><p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} /></div>
-              <div><span className="block text-xs text-muted-foreground">Starting Stage</span><p className="py-2 text-sm">Lead</p><input type="hidden" {...register('stageId')} />{errors.stageId && <p role="alert">{errors.stageId.message}</p>}</div>
+              <div data-crm-field-key="pipelineId"><span className="block text-xs text-muted-foreground">Pipeline</span><p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} /></div>
+              <div data-crm-field-key="stageId"><span className="block text-xs text-muted-foreground">Starting Stage</span><p className="py-2 text-sm">Lead</p><input type="hidden" {...register('stageId')} />{errors.stageId && <p role="alert">{errors.stageId.message}</p>}</div>
             </div>
           </div>
         )}
@@ -264,7 +266,7 @@ export function DealForm({
         {/* Section 2: Deal Information */}
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 2 : 1} title="Deal Information" />
-          <FieldWrap label="Title *" htmlFor={`${fieldId}-title`} error={errors.title?.message}>
+          <FieldWrap fieldKey="title" label="Title *" htmlFor={`${fieldId}-title`} error={errors.title?.message}>
             <input
               {...register('title')}
               id={`${fieldId}-title`}
@@ -274,7 +276,7 @@ export function DealForm({
               placeholder="Enter deal title"
             />
           </FieldWrap>
-          <FieldWrap error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
+          <FieldWrap fieldKey="productInterestIds" error={errors.productInterests?.message || productsError} label="Product Interests" htmlFor={`${fieldId}-product-interest`}>
             <Controller
               name="productInterests"
               control={control}
@@ -288,9 +290,9 @@ export function DealForm({
             <p className="font-semibold">{selectedProducts.length} {selectedProducts.length === 1 ? 'Deal' : 'Deals'} will be created</p>
             <ul className="mt-2 space-y-2">{selectedProducts.map(product => <li key={product.id} className="flex min-w-0 flex-wrap justify-between gap-2"><span className="min-w-0 [overflow-wrap:anywhere]">{product.name}</span><span>{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(product.dealValue)}</span></li>)}</ul>
             <p className="mt-2 text-xs text-muted-foreground">Each Deal keeps its own Product value. Multiple Deal titles include the Product name.</p>
-          </div> : <FieldWrap label="Value" htmlFor={`${fieldId}-value`}><input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(initialData?.value ?? 0)} className={inputCls} /></FieldWrap>}
+          </div> : <FieldWrap fieldKey="value" label="Value" htmlFor={`${fieldId}-value`}><input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(initialData?.value ?? 0)} className={inputCls} /></FieldWrap>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
+            <FieldWrap fieldKey="priority" label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
               <div className="relative">
                 <select {...register('priority')}
                 id={`${fieldId}-priority`}
@@ -303,7 +305,7 @@ export function DealForm({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap htmlFor={`${fieldId}-expectedCloseDate`} error={errors.expectedCloseDate?.message} label="Expected Close Date">
+            <FieldWrap fieldKey="expectedCloseDate" htmlFor={`${fieldId}-expectedCloseDate`} error={errors.expectedCloseDate?.message} label="Expected Close Date">
               <input type="date" {...register('expectedCloseDate')}
                 id={`${fieldId}-expectedCloseDate`}
                 aria-invalid={!!errors.expectedCloseDate}
@@ -316,7 +318,7 @@ export function DealForm({
         {/* Section 3: Relationships */}
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 3 : 2} title="Relationships" />
-          <Controller
+          <div data-crm-field-key="accountId"><Controller
             name="organizationId"
             control={control}
             render={({ field }) => (
@@ -326,7 +328,7 @@ export function DealForm({
                 error={errors.organizationId?.message}
               />
             )}
-          />
+          /></div>
           <Controller
             name="contactIds"
             control={control}
@@ -348,7 +350,7 @@ export function DealForm({
               />
             )}
           />
-          <FieldWrap label="Assigned User">
+          <FieldWrap fieldKey="assignedUserId" label="Assigned User">
             <Controller
               name="assignedUserId"
               control={control}
@@ -371,7 +373,7 @@ export function DealForm({
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 4 : 3} title="Additional Details" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap htmlFor={`${fieldId}-leadSource`} error={errors.leadSource?.message} label="Lead Source">
+            <FieldWrap fieldKey="leadSource" htmlFor={`${fieldId}-leadSource`} error={errors.leadSource?.message} label="Lead Source">
               <div className="relative">
                 <select {...register('leadSource')}
                 id={`${fieldId}-leadSource`}
@@ -385,11 +387,11 @@ export function DealForm({
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap htmlFor={`${fieldId}-industry`} error={errors.industry?.message} label="Industry">
+            <FieldWrap fieldKey="industry" htmlFor={`${fieldId}-industry`} error={errors.industry?.message} label="Industry">
               {isCreateMode ? <select {...register('industry')} id={`${fieldId}-industry`} className={selectCls}><option value="">Select industry...</option>{COMPANY_INDUSTRIES.map(industry => <option key={industry} value={industry}>{industry}</option>)}</select> : <input {...register('industry')} id={`${fieldId}-industry`} className={inputCls} />}
             </FieldWrap>
           </div>
-          <FieldWrap htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Address">
+          <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Address">
             <textarea
               {...register('address')}
               id={`${fieldId}-address`}
@@ -404,6 +406,7 @@ export function DealForm({
           <CustomFieldGroup form={customFields} group="Additional Details" />
         </div>
         <CustomFieldExtraGroups form={customFields} startNumber={isCreateMode ? 5 : 4} />
+        </ConfiguredFormLayout>
       </div>
 
       {submitError && <p role="alert" className="px-4 py-2 text-sm text-destructive [overflow-wrap:anywhere]">{submitError}</p>}
@@ -456,7 +459,7 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 

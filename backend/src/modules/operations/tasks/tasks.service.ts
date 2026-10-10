@@ -105,6 +105,7 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     completedById: task.completedById,
     assignedUserId: task.assignedUserId,
     assignedById: task.assignedById,
+    createdById: task.createdById ?? null,
     isArchived: task.isArchived,
     leadId: lead?.id ?? null,
     contactId: contact?.id ?? null,
@@ -128,6 +129,7 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
       .map(({ account: { id, name } }) => ({ id, name })),
     account: account?.tenantId === task.tenantId ? { id: account.id, name: account.name } : null,
     assignedUser: person(task.assignedUser),
+    createdBy: person(task.createdBy),
     assignedByUser: person(task.assignedBy),
     completedBy: person(task.completedBy),
     lead: linkedPerson(lead),
@@ -187,6 +189,7 @@ async function validateReferences(
 }
 function auditState(task: repo.TaskRow) {
   return {
+    createdById: task.createdById,
     ...storedLinks(task),
     title: task.title,
     description: task.description,
@@ -221,6 +224,7 @@ export async function createTask(
       {
         ...data,
         tenantId,
+        createdById: userId,
         assignedById: userId,
         ...(dto.status === "completed"
           ? { completedAt: new Date(), completedById: userId }

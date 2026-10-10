@@ -55,6 +55,7 @@ export const taskInclude = {
     },
   },
   assignedUser: { select: person },
+  createdBy: { select: person },
   assignedBy: { select: person },
   completedBy: { select: person },
 } satisfies Prisma.TaskInclude;
@@ -143,7 +144,7 @@ export function taskWhere(
     });
   for (const kind of ["lead", "contact", "deal", "account"] as const) {
     const id = query[`${kind}Id`];
-    if (id) AND.push(taskAssociationWhere(kind, id, tenantId));
+    if (id) AND.push(taskContextWhere(kind, id, tenantId));
   }
   return {
     tenantId,
@@ -352,6 +353,20 @@ export function taskAssociationWhere(
   tenantId: string,
 ): Prisma.TaskWhereInput {
   return { [`${kind}Links`]: { some: { [`${kind}Id`]: id, tenantId } } };
+}
+
+/** Read-only context. Conversion does not create or move a direct TaskContact link. */
+export function taskContextWhere(
+  kind: TaskLinkKind,
+  id: string,
+  tenantId: string,
+): Prisma.TaskWhereInput {
+  const direct = taskAssociationWhere(kind, id, tenantId);
+  if (kind !== "contact") return direct;
+  return { OR: [direct, { leadLinks: { some: {
+    tenantId,
+    lead: { tenantId, contactId: id, convertedAt: { not: null } },
+  } } }] };
 }
 export async function replaceTaskLinks(
   task: { id: string; tenantId: string },

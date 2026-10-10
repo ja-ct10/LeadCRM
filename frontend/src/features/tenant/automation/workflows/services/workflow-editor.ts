@@ -2,6 +2,7 @@ import {
   workflowOperators,
   missingWorkflowConditionValues,
   WORKFLOW_MESSAGE_VARIABLES,
+  WORKFLOW_MODULES,
   getWorkflowUpdateFields,
   getAvailableActions,
   normalizeWorkflowAssignment,
@@ -254,7 +255,7 @@ export function actionSummary(
         `Move Deal → ${referenceName('stage', config.stageId, options, 'choose a stage')}`,
       ];
     case 'update_field': {
-      const field = (['lead', 'contact', 'account', 'deal'] as const).flatMap(entity => getWorkflowUpdateFields(entity, options.customFields)).find(field => field.field === config.field);
+      const field = (['lead', 'contact', 'account', 'deal'] as const).flatMap(entity => getWorkflowUpdateFields(entity, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[entity]])).find(field => field.field === config.field);
       const value = references(field?.type ?? '', options) ? (Array.isArray(config.value) ? config.value.map(value => referenceName(field!.type, value, options)).join(', ') : referenceName(field!.type, config.value, options)) : field?.optionLabels?.[String(config.value)] ?? String(config.value ?? 'Add a value');
       return [
         field?.label ?? 'Unavailable field',
@@ -320,7 +321,7 @@ export function actionIssues(
   const issues: string[] = [];
   if (['create_task', 'assign_owner'].includes(action.type)) issues.push(...assignmentIssues(action, options, incomplete));
   if (action.type === 'update_field') {
-    const field = getWorkflowUpdateFields(entity, options.customFields).find((entry) => entry.field === action.config.field);
+    const field = getWorkflowUpdateFields(entity, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[entity]]).find((entry) => entry.field === action.config.field);
     if (!field) return incomplete ? [] : ['Choose an available field.'];
     if (action.config.clear) return !field.required ? [] : ['This field cannot be cleared.'];
     const value = action.config.value;

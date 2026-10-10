@@ -5,6 +5,8 @@ import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
+import { ensureSalesGroup } from './sales-group';
+import { deleteEmptyGroup } from './groups.repository';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|campaign_test_\d+)$/.test(url.pathname);
@@ -75,4 +77,17 @@ it.skipIf(!disposable)('allows group viewers to view group members but reserves 
   expect((await request(`/${id}/members/${userId}`, 'DELETE', undefined, deniedToken)).status).toBe(403);
   expect((await request(`/${id}/members/${userId}`, 'DELETE')).status).toBe(200);
   expect((await request(`/${id}`, 'DELETE')).status).toBe(200);
+});
+
+it.skipIf(!disposable)('provisions a stable protected Sales group, retains memberships and routes independently of its editable name', async () => {
+  const group = await scoped(() => prisma.$transaction(tx => ensureSalesGroup(tx, tenantId), { isolationLevel: 'Serializable' }));
+  expect((await request('')).body.data.find((row: { id: string }) => row.id === group.id)).toMatchObject({ isDefault: true });
+  expect((await request(`/${group.id}`, 'DELETE')).status).toBe(409);
+  expect(await scoped(() => deleteEmptyGroup(group.id, tenantId))).toMatchObject({ count: 0 });
+  expect((await request(`/${group.id}/members`, 'POST', { userId })).status).toBe(200);
+  expect((await request(`/${group.id}`, 'PUT', { name: 'Revenue', systemKey: null })).status).toBe(400);
+  expect((await request(`/${group.id}`, 'PUT', { name: 'Revenue' })).body.data).toMatchObject({ id: group.id, name: 'Revenue', isDefault: true });
+  const provisioned = await scoped(() => prisma.$transaction(tx => ensureSalesGroup(tx, tenantId)));
+  expect(provisioned).toMatchObject({ id: group.id, name: 'Revenue', systemKey: 'SALES' });
+  expect(await prisma.tenantGroupMember.count({ where: { groupId: group.id, tenantId } })).toBe(1);
 });

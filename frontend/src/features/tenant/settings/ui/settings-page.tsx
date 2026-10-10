@@ -74,7 +74,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'CUSTOMIZATION',
     items: [
-      { id: 'custom-fields', label: 'Custom Fields', icon: Zap },
+      { id: 'custom-fields', label: 'Customize Fields', icon: Zap },
       { id: 'products', label: 'Products', icon: Zap },
       { id: 'archived', label: 'Archived Data', icon: Archive },
     ],

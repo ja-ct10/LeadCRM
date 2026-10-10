@@ -40,7 +40,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const id = created.body.data.id;
     expect((await call(`/crm/leads/${id}/custom-fields`)).body.data.values[budget.id]).toBe(25000);
     expect((await call(`/crm/leads/${id}`, 'PUT', { customFieldValues: { [budget.id]: 30000 } })).status).toBe(200);
-    expect((await call(`/administration/closing-requirements/${budget.id}`, 'PATCH', { visibleInForm: false })).status).toBe(200);
+    expect((await call(`/administration/closing-requirements/${budget.id}`, 'PATCH', { visibleInForm: false })).status).toBe(400);
+    expect((await call(`/administration/closing-requirements/${budget.id}`, 'PATCH', { required: false, visibleInForm: false })).status).toBe(200);
     expect((await call('/crm/leads', 'POST', person())).status).toBe(201);
     expect((await call(`/crm/leads/${id}`, 'PUT', { customFieldValues: {} })).status).toBe(200);
     const hidden = (await call(`/crm/leads/${id}/custom-fields`)).body.data;
@@ -80,12 +81,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const created = await call('/crm/accounts', 'POST', { name: 'Office', customFieldValues: { [number.id]: 8, [date.id]: '2026-10-07', [choice.id]: 'Gold', [long.id]: 'x'.repeat(1500) } });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
-    await call(`/administration/closing-requirements/${choice.id}`, 'PATCH', { options: ['Silver'] });
+    expect((await call(`/administration/closing-requirements/${choice.id}`, 'PATCH', { options: ['Silver'] })).status).toBe(400);
     expect((await call(`/crm/accounts/${id}`, 'PUT', { customFieldValues: { [number.id]: 12 } })).status).toBe(200);
     const values = (await call(`/crm/accounts/${id}/custom-fields`)).body.data.values;
     expect(values[number.id]).toBe(12); expect(values[date.id]).toBe('2026-10-07');
     expect(values[choice.id]).toBe('Gold');
-    expect((await call(`/crm/accounts/${id}`, 'PUT', { customFieldValues: { [choice.id]: 'Gold' } })).status).toBe(400);
+    expect((await call(`/crm/accounts/${id}`, 'PUT', { customFieldValues: { [choice.id]: 'Gold' } })).status).toBe(200);
     await call(`/crm/accounts/${id}/archive`, 'PATCH');
     expect((await call(`/crm/accounts/${id}/custom-fields`)).body.data.values[number.id]).toBe(12);
   });
@@ -190,11 +191,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
   });
   it('preserves legacy groups on edit but prevents creating arbitrary or mismatched groups', async () => {
     const existing = await field('contacts', 'Legacy note');
-    await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: existing.id } }, data: { definition: { ...existing, group: 'Legacy Section' } } });
+    await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: existing.id } }, data: { definition: { ...existing, groupId: undefined, group: 'Legacy Section' } } });
+    await prisma.tenantPreference.deleteMany({ where: { tenantId, module: 'contacts', key: 'field-layout' } });
     expect((await call(`/administration/closing-requirements/${existing.id}`, 'PATCH', { name: 'Renamed legacy' })).status).toBe(200);
     const list = (await call('/administration/closing-requirements')).body.data as ClosingField[];
     expect(list.find(f => f.id === existing.id)?.group).toBe('Legacy Section');
-    for (const group of ['Legacy Section', 'Closed Won Requirements', 'New arbitrary section']) {
+    for (const group of ['Closed Won Requirements', 'New arbitrary section']) {
       expect((await call('/administration/closing-requirements', 'POST', { module: 'contacts', group, name: 'Invalid group', type: 'Text', required: false })).status).toBe(400);
     }
   });
@@ -213,6 +215,51 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     expect(new Set([first.body.data.assignedUserId, second.body.data.assignedUserId])).toEqual(new Set(agents));
     expect(first.body.data.assignedUserId).not.toBe(actorId);
     expect((await call(`/crm/accounts/${first.body.data.id}`)).body.data.assignedUserId).toBe(first.body.data.assignedUserId);
+  });
+
+  it('persists field sections and technical identities through rename, ordering, safe moves and independent Details hiding', async () => {
+    const initial = (await call('/administration/closing-requirements/layout/leads')).body.data;
+    const added = await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'add', label: ' Project information ' });
+    expect(added.status).toBe(200);
+    const group = added.body.data.layout.groups.find((group: { label: string }) => group.label === 'Project information');
+    const budget = await field('leads', 'Budget', { group: group.label, groupId: group.id, type: 'Number' });
+    const created = await call('/crm/leads', 'POST', { ...person(), customFieldValues: { [budget.id]: 0 } });
+    expect(created.status).toBe(201); const id = created.body.data.id;
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'rename', groupId: group.id, label: 'Site information' })).status).toBe(200);
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'moveGroup', groupId: group.id, direction: 'up' })).status).toBe(200);
+    expect((await call(`/administration/closing-requirements/${budget.id}`, 'PATCH', { name: 'Project value', visibleInDetails: false })).status).toBe(200);
+    const reloaded = (await call(`/crm/leads/${id}/custom-fields`)).body.data;
+    expect(reloaded.values[budget.id]).toBe(0);
+    expect(reloaded.fields.find((field: ClosingField) => field.id === budget.id)).toMatchObject({ name: 'Project value', groupId: group.id, group: 'Site information', visibleInDetails: false, visibleInForm: true });
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'field', technicalKey: 'email', visibleInForm: false })).status).toBe(400);
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'delete', groupId: group.id })).status).toBe(400);
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'delete', groupId: group.id, moveToGroupId: initial.layout.groups[0].id })).status).toBe(200);
+    expect((await call(`/crm/leads/${id}/custom-fields`)).body.data.values[budget.id]).toBe(0);
+  });
+
+  it('requires Delete permission and blocks immutable dependencies before retirement without purging values', async () => {
+    const budget = await field('leads', 'Budget', { type: 'Number' });
+    const created = await call('/crm/leads', 'POST', { ...person(), customFieldValues: { [budget.id]: 1200 } });
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Budget routing', trigger: 'lead.created', actions: [], conditions: { operator: 'AND', conditions: [{ field: `lead.customFieldValues.${budget.id}`, operator: 'greater_than', value: 100 }] } } });
+    const referenced = await call(`/administration/closing-requirements/${budget.id}`, 'DELETE');
+    expect(referenced.status).toBe(400); expect(referenced.body.message ?? referenced.body.error).toContain('Budget routing');
+    await prisma.workflow.update({ where: { id: workflow.id }, data: { conditions: { operator: 'AND', conditions: [] } } });
+    const template = await prisma.template.create({ data: { tenantId, name: 'Budget email', type: 'Email', content: `Budget: {{ \n customFieldValues.${budget.id}\t }}` } });
+    expect((await call(`/administration/closing-requirements/${budget.id}`, 'DELETE')).status).toBe(400);
+    await prisma.template.update({ where: { id: template.id }, data: { content: 'Repaired content' } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Field editor' } });
+    await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'custom_fields', canView: true, canEdit: true } });
+    const editor = await prisma.user.create({ data: { tenantId, firstName: 'Field', lastName: 'Editor', email: `${randomUUID()}@camxian.com`, role: role.name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId: editor.id } });
+    const editorToken = (await issueAuthSession(editor)).token;
+    expect((await call(`/administration/closing-requirements/${budget.id}`, 'DELETE', undefined, editorToken)).status).toBe(403);
+    expect((await call('/administration/closing-requirements/confirmation-type', 'DELETE')).status).toBe(400);
+    expect((await call(`/administration/closing-requirements/${budget.id}`, 'DELETE')).status).toBe(200);
+    expect((await call('/administration/closing-requirements')).body.data.some((field: ClosingField) => field.id === budget.id)).toBe(false);
+    const history = (await call(`/crm/leads/${created.body.data.id}/custom-fields`)).body.data;
+    expect(history.values[budget.id]).toBe(1200); expect(history.fields.find((field: ClosingField) => field.id === budget.id).deletedAt).toBeTruthy();
+    expect(await prisma.closingFieldDefinition.count({ where: { tenantId, id: budget.id } })).toBe(1);
+    expect(await prisma.customFieldValue.count({ where: { tenantId, fieldId: budget.id } })).toBe(1);
   });
 
 });

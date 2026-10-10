@@ -1,76 +1,49 @@
-# Lead, Contact and Account record views
+# CRM record views
 
-Implemented on September 28, 2026 using the supplied screenshots as layout references and LeadCRM's existing components and CSS tokens.
+The Lead, Contact, Account and Deal drawers and full pages share `CrmRecordView`. Routes remain thin; existing record actions, Files, real Task/Deal creation and governed closing requirements use their domain services.
 
-## Scope and behavior
+## Details and field configuration
 
-The existing LeadPanel, ContactPanel and AccountPanel entry points now render one shared record view inside the existing Sheet. Their full-page routes render the same view without a Sheet. Table layouts, the Deal panel, backend services, database schema and permission middleware were not redesigned.
+[Customize Fields](custom-fields.md) configures module-specific labels, visibility, groups and ordering using stable system keys and custom field IDs. Details combines native and custom fields in the same saved sections. Staff forms retain their existing input controls and validation while using the same layout. Hidden values remain stored; closing evidence is enforced independently of Details visibility.
 
-The shared view includes an initials/company avatar, record-type and available source badges, status control, close control, open-full-page link, wrapping information chips and the existing viewport-aware portal dropdown. Empty email, phone, location and representative chips are omitted. Accounts omit retired classification fields; Lead-only fields are not fabricated for Accounts.
+Lead conversion references remain stored, while the former Converted contact section is omitted. Lead and Contact headers use the existing Inbox shortcut. Deal relationships display Lead/Contact and Account separately under their respective view permissions.
 
-Activity, Details and Files use the existing segmented Tabs primitives. Arrow keys, Home and End navigate the tabs. Detail sections have keyboard-accessible collapse controls with `aria-expanded` and `aria-controls`. Icon-only controls have labels and native title tooltips.
+## Notes, Tasks and Activity Timeline
 
-| Module | Details sections |
+Activity contains Notes, Tasks and Activity Timeline in that order on all eight surfaces. Saving a note creates one authored `Activity.type=note` for the current record; legacy scalar notes/description are preserved. The draft clears only after success. Save is disabled while pending, and failures retain the draft. Tasks uses the existing real Task editor and contextual list. Historical Timeline keeps filters, search and email-thread grouping; its filters do not affect Notes or Tasks.
+
+Notes and Timeline independently request cursor pages from `GET /crm/activities`. Ordering is `createdAt DESC, id DESC`; Load more fetches older server rows. Contact history reads direct rows and source-Lead rows through the same-tenant conversion relationship. Contact contextual Tasks similarly include direct and inherited associations once per original Task ID, without rewriting links or responsibility. Related Deals use server pages beyond the first 50. See [Task assignment](workflows/task-assignment.md) for Task Owner and Assigned Agent.
+
+## Silent synchronization
+
+The existing scoped cache owns one in-flight read per tenant/user/module/query. Parsed authoritative mutation results update the record cache; coalesced invalidation reconciles active lists and related data. Loaded views remain mounted during background reads, preserving tabs, filters, drafts and scroll. Transient failures retain usable authorized data with retry feedback; authoritative 403/404 and authentication loss clear protected data. Requests and retained history are discarded on identity/cache-generation changes.
+
+One authenticated `/crm/record-events` listener uses `DashboardRevision.content`. Forward-migration triggers increment the tenant counter with committed record, activity, Task, field, file and relationship mutations. Only counters are streamed. Reconnect, focus and online reconciliation use the same cache path; duplicate CRM/Task timers were removed. Existing Auth, Pipeline, Dashboard, Mailbox streams and Campaign status polling remain specialized.
+
+## API and rollout
+
+See [API reference](API.md#record-history-and-synchronization), [Customize Fields](custom-fields.md), and [forward rollout](../README.md#forward-rollout). No Notes table, new cache library, provider sender or replacement form engine was introduced. New database transitions are additive Task creator/Sales metadata, Campaign scheduling, and CRM content revisions.
+
+## Implementation baseline and validation
+
+Implementation started on feature branch `codex/implementation-plan` at current `main` SHA `61f78c39f7dccfa2676a8705d9b6ea2106a1be49`, matching the supplied plan's reviewed baseline. Existing canonical junctions, conversion identity/retry, real Tasks/Files, Inbox routing and Campaign delivery/recovery were retained. Work was divided across field configuration/Details, Task/Sales/Form assignment, Campaign audience/scheduling, and shared record history/cache integration.
+
+Focused tests cover server history beyond 100 events and 50 Deals, inherited/direct deduplication, trimmed authored notes and tenant/RBAC rejection, transaction rollback/revisions, cache concurrency/stale responses/access loss, and shared drawer/page behavior. Isolated migration/HTTP tests use disposable PGlite databases; Campaign providers are mocked.
+
+| Focused verification | Passed checks |
 | --- | --- |
-| Leads | About, Tasks, Deals, Converted contact, Company / Organization |
-| Contacts | About, Tasks, Deals, Account / Company, source lead when returned by the existing relationship API |
-| Accounts | About, Contacts, Deals, Tasks |
+| Shared record panels/pages, Timeline, activities, relationships and cache | 91 tests across five frontend suites |
+| Custom-field and closing UI, including transient errors and cleared data | 20 tests across two frontend suites |
+| Field layout service / isolated custom-field API / Customize Fields UI | 7 / 11 / 10 tests |
+| Record history API, pagination, tenant/RBAC, revision rollback and SSE | 5 integration tests |
+| Conversion continuity, preservation and retry | 7 integration/property tests |
+| Task service and creator/Sales forward migrations | 22 tests |
+| Isolated Forms / Tasks / protected Groups API | 20 / 19 / 5 integration tests |
+| Task editor and Groups UI / cache, history and Task data | 27 / 42 frontend tests |
+| Auth lifecycle and Timeline, including reconnect, transient failures and revocation | 19 frontend tests |
+| Campaign audience, personalization, scheduling and mocked delivery | 59 backend tests; 52 frontend tests plus one failed-schedule source-change regression |
+| Campaign forward migration on empty and representative existing data | 2 tests |
+| Rollout guards / historical migration scripts | 9 / 3 tests |
+| Final production browser acceptance with disposable PGlite database and mocked providers | 61 checks: 48 responsive, 8 surface semantics, 5 pagination/synchronization/revocation; zero page, transport or API 5xx errors |
 
-About uses label/value rows and chips for product interests. Custom fields are rendered only if actual values are supplied; there are no persisted custom fields in the current models, so the old hardcoded sample field and unsaved field editors were removed from these panels.
-
-Edit, status changes, archive confirmation, Lead conversion and deal creation use existing forms and endpoints. Contact edits map the reused form's fields to the Contact model (`company`, `source`, `productInterests`) and its enum statuses. Task rows, overdue indicators, editing, creation, refresh and pagination remain in RelatedTasks/TaskEditor. Its saved summary supplies the Tasks heading count.
-
-Full pages display CRM > Leads/Contacts/Accounts > record name. Existing route resolution already maps nested record URLs to the correct sidebar module; its regression tests were run without changing navigation code.
-
-## Shared components
-
-- Created `CrmRecordView`, `CrmRecordPanel`, `RecordSection`, `RecordQuickInfo`, `RecordRows` and `RelatedRecords` in `frontend/src/shared/components/crm/crm-record-view.tsx`.
-- Reused Sheet/SheetContent, Tabs, Button, DropdownMenu, RecordTimelineTab, RelatedTasks, TaskEditor, InlineDealForm, the three record edit forms, ConvertLeadDialog and ConfirmActionDialog.
-- Reused the tenant/user/environment-scoped `useCachedPage` cache, `useRecordActivities`, `apiClient`, permission hooks and Sonner feedback.
-- Added optional compact timeline presentation, optional task-count reporting and optional deal-form error handling. Existing consumers retain their default behavior.
-
-## Existing APIs reused
-
-All paths below are relative to the existing API proxy/base URL.
-
-- `GET /crm/{leads|contacts|accounts}/:id` for canonical record data.
-- `GET /crm/{leads|contacts|accounts}/:id/relationships?limit=50` for related records. Lead and Account relationships load after first opening Details; Contact history reuses this response without another relationships request.
-- `GET /crm/activities` through the existing contextual reader for Lead and Account history.
-- `POST /crm/activities` through the existing Account activity composer.
-- Existing task list, summary and mutation APIs through RelatedTasks/TaskEditor.
-- `PUT /crm/{leads|contacts|accounts}/:id`, existing archive PATCH endpoints, `POST /crm/leads/:id/convert`, and `POST /crm/deals` for authorized actions.
-
-No endpoints, storage provider, database migrations or shared API contracts were added. Production data does not come from localStorage. The existing explicit mock-data mode is retained for record display; live-only archive/conversion/deal actions are not exposed for mock records.
-
-Record identity includes the user and active CRM environment. Changing the selected record remounts its UI state, while the cache keys isolate fetched data. Switching tabs preserves mounted activity/details content after loading. Record and relationship failures have visible retry states; failed requests are not displayed as zero-result relationships.
-
-## Verification
-
-- `npm --prefix frontend run lint`: passed (`tsc --noEmit`).
-- `npm --prefix frontend run test -- src/shared/components/crm src/lib/route-map.test.ts`: passed, 64 tests in 8 files.
-- `git diff --check`: passed.
-- `npm --prefix frontend run build`: passed, including type validation and generation of 189 static pages. The first sandboxed attempt failed with Windows `EPERM` while resolving the inferred workspace root; the approved retry outside the sandbox completed successfully. Next.js still reports the pre-existing multiple-lockfile workspace warning and missing backend configuration warning.
-- Browser checks used the actual shared components, existing CSS and temporary isolated test fixtures. All three drawer and full-page layouts were checked at 320, 375, 768 and 1366 pixels. Long names, email and address values wrapped with no measured horizontal overflow. Dropdown bounds stayed inside the viewport; a 375 × 480 short-screen check also passed. Details, Files, task summaries and section controls were inspected. The temporary fixture preview and its server were removed afterward.
-- Regression coverage includes shared content on both surfaces, relationship request reuse, tab switching, denied permissions, record/relationship errors, stale-record prevention, Contact save payloads and keyboard tab navigation. Existing Deal panel tests also passed.
-
-## Current limits
-
-- The local app's auth request could not reach a configured backend. Live database reads, successful mutations and authenticated end-to-end navigation were not browser-verified; fixtures do not establish backend integration success.
-- The current schema and routes have no record attachment storage or upload API for these three models. Files displays “No files attached.” without a fake upload control or browser-local file store.
-- Persisted custom-field definitions/values are unavailable for these models. No sample custom fields or unsaved mutation controls are shown.
-- The existing production activity composer supports Account links but does not support Lead/Contact logging. Those records show actual history without a logging action.
-- Existing relationship responses are capped at 50 records and lack total counts/pagination. Capped collection badges are omitted rather than presented as totals. Activity filters search the recent history returned by the existing reader (50 for Contacts, up to 100 for Leads/Accounts). No new history or relationship pagination engine was introduced.
-
-## Files changed
-
-- `frontend/src/shared/components/crm/crm-record-view.tsx`
-- `frontend/src/shared/components/crm/RecordPanelWrappers.tsx`
-- `frontend/src/shared/components/crm/record-timeline-tab.tsx`
-- `frontend/src/shared/components/crm/inline-deal-form.tsx`
-- `frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx`
-- `frontend/src/features/tenant/crm/leads/ui/lead-detail-page.tsx`
-- `frontend/src/features/tenant/crm/contacts/ui/contact-detail-page.tsx`
-- `frontend/src/features/tenant/crm/contacts/ui/contact-form.tsx`
-- `frontend/src/features/tenant/crm/accounts/ui/account-detail-page.tsx`
-- `frontend/src/features/tenant/operations/tasks/ui/related-tasks.tsx`
-- `docs/crm-record-detail-ui.md`
+Some suites overlap; these counts should not be added into a unique-test total. The final implementation report records the completed workspace lint/build and browser results. No production migration, deployment, merge or real Email/SMS send is part of this work.

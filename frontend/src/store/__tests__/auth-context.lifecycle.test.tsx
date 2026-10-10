@@ -11,6 +11,7 @@ vi.mock('@/shared/services/roles.api', () => ({
 }));
 vi.mock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [] }));
 import { AuthProvider, useAuth } from '../AuthContext';
+import { clearPageCache, getPageCacheGeneration, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
 let auth: ReturnType<typeof useAuth>;
 const user = {
   id: 'user', tenantId: 'tenant', role: 'Sales', firstName: 'Alice', lastName: 'Owner',
@@ -114,5 +115,80 @@ it('preserves an allowed editor during Group revision refresh and removes it whe
   expect(screen.getByDisplayValue('Unsaved assignment workflow')).toBe(editor);
   mocks.permissions.mockResolvedValueOnce({ data: {} });
   await act(async () => { AccessEvents.current.emit('3'); });
+  expect(screen.queryByLabelText('Workflow draft')).toBeNull();
+});
+
+it('keeps loaded data and drafts through authorization reconnects and membership-only revisions, evicting on grant changes', async () => {
+  class AccessEvents {
+    static current: AccessEvents;
+    listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+    constructor() { AccessEvents.current = this; }
+    addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]); }
+    close() {}
+    emit(type: string, revision = '') { for (const listener of this.listeners.get(type) ?? []) listener(new MessageEvent(type, { data: revision })); }
+  }
+  vi.stubGlobal('EventSource', AccessEvents);
+  clearPageCache();
+  const grants = { workflows: { canView: true } };
+  mocks.me.mockResolvedValue({ data: { user } }); mocks.permissions.mockResolvedValue({ data: grants });
+  render(<AuthProvider><Probe /><PermissionEditor /></AuthProvider>);
+  const editor = await screen.findByLabelText('Workflow draft');
+  fireEvent.change(editor, { target: { value: 'Reconnect draft' } });
+  setPageCache('leads', 'tenant', { recordId: 'lead' }, { private: 'Loaded record' });
+  const generation = getPageCacheGeneration();
+  await act(async () => { AccessEvents.current.emit('open'); AccessEvents.current.emit('authorization-change', '1'); });
+  expect(getPageCacheGeneration()).toBe(generation); expect(getPageCacheSize()).toBe(1);
+  expect(screen.getByDisplayValue('Reconnect draft')).toBe(editor);
+  mocks.permissions.mockResolvedValue({ data: { workflows: { canEdit: false, canView: true }, tasks: { canView: false } } });
+  await act(async () => { AccessEvents.current.emit('open'); AccessEvents.current.emit('authorization-change', '2'); });
+  expect(getPageCacheGeneration()).toBe(generation); expect(getPageCacheSize()).toBe(1);
+  expect(screen.getByDisplayValue('Reconnect draft')).toBe(editor);
+  mocks.permissions.mockResolvedValue({ data: {} });
+  await act(async () => { AccessEvents.current.emit('authorization-change', '3'); });
+  expect(getPageCacheGeneration()).toBeGreaterThan(generation); expect(getPageCacheSize()).toBe(0);
+  expect(screen.queryByLabelText('Workflow draft')).toBeNull();
+});
+
+it('clears previous-role grants immediately and reloads permissions after a same-user role refresh', async () => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  mocks.permissions.mockResolvedValue({ data: { workflows: { canView: true } } });
+  render(<AuthProvider><Probe /><PermissionEditor /></AuthProvider>);
+  await screen.findByLabelText('Workflow draft');
+  let finish!: (value: unknown) => void;
+  mocks.permissions.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  let oldRequest!: Promise<void>;
+  act(() => { oldRequest = auth.refreshPermissions(); });
+  mocks.permissions.mockResolvedValue({ data: {} });
+  mocks.me.mockResolvedValueOnce({ data: { user: { ...user, role: 'Restricted' } } });
+  await act(async () => { await auth.refreshUser(); });
+  expect(screen.queryByLabelText('Workflow draft')).toBeNull();
+  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  expect(auth.permissions).toEqual({});
+  await act(async () => { finish({ data: { workflows: { canView: true } } }); await oldRequest; });
+  expect(auth.permissions).toEqual({});
+  expect(screen.queryByLabelText('Workflow draft')).toBeNull();
+});
+
+it('retains a loaded authorized view on a transient background session refresh failure', async () => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  mocks.permissions.mockResolvedValue({ data: { workflows: { canView: true } } });
+  render(<AuthProvider><Probe /><PermissionEditor /></AuthProvider>);
+  const editor = await screen.findByLabelText('Workflow draft');
+  fireEvent.change(editor, { target: { value: 'Offline draft' } });
+  const generation = getPageCacheGeneration();
+  mocks.me.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+  await act(async () => { await expect(auth.refreshUser()).rejects.toThrow('Failed to fetch'); });
+  expect(auth.user?.id).toBe(user.id); expect(auth.authError).toBeNull();
+  expect(auth.userCan('workflows', 'canView')).toBe(true);
+  expect(getPageCacheGeneration()).toBe(generation);
+  expect(screen.getByDisplayValue('Offline draft')).toBe(editor);
+  mocks.permissions.mockRejectedValueOnce(Object.assign(new Error('Service unavailable'), { status: 503 }));
+  await act(async () => { await auth.refreshPermissions(); });
+  expect(auth.userCan('workflows', 'canView')).toBe(true);
+  expect(getPageCacheGeneration()).toBe(generation);
+  expect(screen.getByDisplayValue('Offline draft')).toBe(editor);
+  mocks.permissions.mockRejectedValueOnce(Object.assign(new Error('Access denied'), { status: 403 }));
+  await act(async () => { await auth.refreshPermissions(); });
+  expect(auth.userCan('workflows', 'canView')).toBe(false);
   expect(screen.queryByLabelText('Workflow draft')).toBeNull();
 });

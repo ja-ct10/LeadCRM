@@ -11,12 +11,12 @@ The codebase is a Turborepo monorepo with Next.js, Express, TypeScript, PostgreS
 | Dashboard and Reports | `/dashboard`, `/reporting` | The same authorized server aggregates, date definitions, revision events, and CSV export |
 | Leads, Contacts, Accounts | `/crm/leads`, `/crm/contacts`, `/crm/accounts` | Customer relationships, conversions, imports, files, Product Interests, and related Deals/Tasks |
 | Deals and Pipeline | `/crm/deals`, `/crm/pipeline` | Product price snapshots, ordered associations, governed stage transitions, and activity |
-| Tasks | `/operations/taskboard` | CRM associations, assignment, completion, archive, and Manila calendar dates |
+| Tasks | `/operations/taskboard` | Immutable creator, current Assigned Agent, contextual CRM associations, completion, archive, and Manila calendar dates |
 | Workflows | `/automation/workflows` | Saved triggers/conditions/actions, role and Group assignment pools, execution history |
 | Forms | `/marketing/forms` | Published guest forms at `/forms/:publicId`, validated submissions, CRM capture |
-| Campaigns | `/marketing/campaigns` | Audiences, templates, Brevo email, TextBee SMS, provider status/webhooks |
+| Campaigns | `/marketing/campaigns` | Single-source audiences, field personalization, Send Now/Schedule Once, Brevo email, TextBee SMS, provider status/webhooks |
 | Inbox | `/inbox` | Scoped Gmail history, drafts, replies, scheduled message review/cancellation, CRM relationships |
-| Settings and team administration | `/settings` | Profile, users, Groups, roles, Products, Custom Fields, Archived Data, organization settings |
+| Settings and team administration | `/settings` | Profile, users, Groups, roles, Products, Customize Fields, Archived Data, organization settings |
 | Notifications and Help | `/notifications`, `/help` | Permission-aware destinations, personal notification preferences, product guidance |
 
 Public signup, a separate platform portal, SaaS billing, service orders, technician dispatch, asset inventory, and customer invoicing are retired. Historical documents are background; the current route registrations and shared contracts define supported functionality.
@@ -26,6 +26,8 @@ Public signup, a separate platform portal, SaaS billing, service orders, technic
 Group membership has one source of truth: `TenantGroupMember`. User administration accepts `groupIds`; User and auth responses expose `groups: [{ id, name }]`. Client Admin manages memberships in the user form or existing Groups screen. Profile displays memberships read-only. Workflows use these same Groups for assignment; roles continue to control permissions.
 
 The forward migration preserves existing memberships and turns each nonempty legacy Department into a Group in the same tenant, reusing an existing case-insensitive name match before dropping the retired column. Multiple memberships remain supported.
+
+The protected default Sales Group has stable key `SALES`; renaming its display label preserves routing. Membership remains administrator-managed. New public-form Leads rotate only among its eligible members, with a transactionally persisted cursor and request-ID retries consuming one turn. Returning records retain their agent. See [Forms verification](docs/forms-production-report.md).
 
 ## Local development
 
@@ -57,10 +59,17 @@ Stop old backend processes, then apply the existing migration history and these 
 2. `20261117000000_campaign_submission_recovery`: durable submission leases/attempt markers and `INTERRUPTED` status.
 3. `20261118000000_group_revisions`: Group changes join the existing authenticated access-revision stream.
 4. `20261119000000_notification_utc_timestamps`: consistent UTC defaults for new notification/outbox records; historical timestamps remain preserved.
+5. `20261120000000_password_recovery_security`: protected password-recovery token storage.
+6. `20261121000000_mailbox_reply_header`: nullable provider reply metadata.
+7. `20261121000000_task_creator_sales_group`: immutable nullable Task creator, reliable audit backfill and protected Sales Group provisioning. Resolve ambiguous case-insensitive legacy Sales names before rollout; this migration refuses to silently merge them.
+8. `20261123000000_campaign_schedule`: Scheduled status, approved schedule configuration/actor, and audience match mode (AND by default).
+9. `20261124000000_crm_content_revisions`: committed CRM-content revision counter/triggers and stable Activity cursor index.
 
 Follow `npm --prefix backend run db:deploy` and the existing [normalization rollout](docs/csv-import-normalization.md) and [relationship retirement](docs/database/normalization-report.md) prerequisites. Regenerate Prisma/build, then start the updated backend and verify authentication, membership visibility, assignment options, reporting, and recovery. Do not run old backend binaries after the Department column is removed.
 
 An interrupted Campaign preserves uncertain provider outcomes for review and does not automatically resend them. Scheduled Inbox cancellation competes atomically with the worker; delivery already in progress cannot be cancelled as though it were unsent.
+
+Campaign Schedule Once uses Asia/Manila input and UTC storage. Due dispatch resumes from persisted schedules after restart, rechecks current eligibility/authorization, and reuses the existing sender. Unclaimed cancellation/rescheduling competes atomically with dispatch. No exact-second execution is promised while the backend is offline.
 
 ## Documentation
 
@@ -70,5 +79,6 @@ An interrupted Campaign preserves uncertain provider outcomes for review and doe
 - [Authentication and onboarding](docs/authentication.md), [security cleanup](docs/security-cleanup-mfa.md)
 - [Dashboard definitions](docs/dashboard-kpis.md), [database normalization](docs/database/normalization-report.md)
 - [CRM imports](docs/csv-import-normalization.md), [Product normalization](docs/product-normalization-report.md), [Custom Fields](docs/custom-fields.md)
+- [Shared CRM record views, history and synchronization](docs/crm-record-detail-ui.md)
 - [Forms verification](docs/forms-production-report.md), [Campaign email delivery](docs/campaign-email-delivery.md)
 - [Engagement and Deal creation](docs/engagement-deal-creation.md), [Workflow assignment/history](docs/workflows/workflow-assignment-history.md)

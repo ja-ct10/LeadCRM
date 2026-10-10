@@ -15,6 +15,7 @@
  */
 
 'use client';
+import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
 import {
@@ -189,6 +190,8 @@ export function AccountsDataGrid({
 
   // ─── Stable Callbacks ────────────────────────────────────────────────
 
+  const configuredColumns = useConfiguredCrmColumns('accounts', gridColumns);
+
   const getRowId = useCallback((account: Account) => account.id, []);
 
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
@@ -211,7 +214,7 @@ export function AccountsDataGrid({
 
   return (
     <DataGrid<Account>
-      columns={gridColumns}
+      columns={configuredColumns}
       data={accounts}
       getRowId={getRowId}
       height="auto"

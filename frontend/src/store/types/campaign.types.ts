@@ -6,7 +6,7 @@ export interface Campaign {
   name: string;
   description?: string;
   type: 'Email' | 'Sms' | 'Multi-Channel';
-  status: 'Draft' | 'sending' | 'interrupted' | 'sent' | 'partially_sent' | 'delivered' | 'failed';
+  status: 'Draft' | 'scheduled' | 'sending' | 'interrupted' | 'sent' | 'partially_sent' | 'delivered' | 'failed';
   submissionStartedAt?: string | null;
   submissionFinishedAt?: string | null;
   submissionInterruptedAt?: string | null;
@@ -26,6 +26,9 @@ export interface Campaign {
   engagement: number;
   createdAt: string;
   sentAt?: string | null;
+  scheduledFor?: string | null;
+  scheduledById?: string | null;
+  scheduleConfig?: import('@leadcrm/shared').CampaignScheduleConfig | null;
   isArchived?: boolean;
 }
 
