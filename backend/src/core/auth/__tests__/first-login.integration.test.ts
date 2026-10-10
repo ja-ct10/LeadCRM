@@ -222,8 +222,9 @@ describe.sequential('first login with real sessions and migrated disposable Post
   it('password recovery establishes a strong password but does not bypass onboarding', async () => {
     const target = await db.user.findFirstOrThrow({ where: { tenantId, email: 'not-submitted@camxian.com' } });
     expect((await call('/auth/forgot-password', { email: target.email }, '')).status).toBe(200);
-    const reset = await db.passwordResetToken.findFirstOrThrow({ where: { userId: target.id } });
-    expect((await call('/auth/reset-password', { token: reset.token, password: 'Recovered1!' }, '')).status).toBe(200);
+    const token = mail.mock.calls.findLast(([args]) => args.to === target.email)?.[0].html.match(/reset-password\?token=([a-f0-9]{64})/)?.[1];
+    expect(token).toBeTruthy();
+    expect((await call('/auth/reset-password', { token, password: 'Recovered1!' }, '')).status).toBe(200);
     const auth = await call('/auth/login', { email: target.email, password: 'Recovered1!' }, '');
     expect(auth.body.data.user).toMatchObject({ mustChangePassword: false, onboardingCompletedAt: null });
     expect((await call('/crm/leads', undefined, auth.cookie)).body.error.code).toBe('ONBOARDING_REQUIRED');

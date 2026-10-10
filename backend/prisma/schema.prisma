@@ -1376,11 +1376,13 @@ model PasswordResetToken {
   userId    String?
   id        String   @id @default(uuid())
   email     String
-  token     String   @unique
+  token     String   @unique // SHA-256 of the link token; never the bearer secret
+  submissionStatus String @default("LEGACY") // LEGACY|PENDING|ACCEPTED|UNCONFIRMED
   expires   DateTime
   createdAt DateTime @default(now())
 
   @@unique([email, token])
+  @@index([userId, createdAt])
 }
 
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��

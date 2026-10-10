@@ -19,15 +19,17 @@ export function errorMiddleware(
   const prismaCode = errAsUnknown.code as string | undefined;
   const prismaMeta = errAsUnknown.meta as Record<string, unknown> | undefined;
   const importRequest = /\/crm\/(leads|contacts|accounts|deals)\/imports(?:\/|$)/.test(req.path);
+  const recoveryRequest = /\/auth\/(forgot-password|reset-password)(?:\/|$)/.test(req.path);
+  const sensitiveRequest = importRequest || recoveryRequest;
 
   console.error('[Error]', {
     name: err.name,
-    message: importRequest ? 'CRM import request failed' : err.message,
+    message: importRequest ? 'CRM import request failed' : recoveryRequest ? 'Password recovery request failed' : err.message,
     ...(prismaCode !== undefined && { code: prismaCode }),
-    ...(!importRequest && prismaMeta !== undefined && { meta: prismaMeta }),
+    ...(!sensitiveRequest && prismaMeta !== undefined && { meta: prismaMeta }),
     path: req.path,
     method: req.method,
-    stack: !importRequest && process.env.NODE_ENV === 'development' ? err.stack : undefined,
+    stack: !sensitiveRequest && process.env.NODE_ENV === 'development' ? err.stack : undefined,
   });
 
   if (err instanceof AppError) {

@@ -7,6 +7,8 @@ import { resolve } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { hashSync } from 'bcryptjs';
 import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
+import { createHash } from 'node:crypto';
+const hashResetToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
 vi.mock('../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.SECURITY_TEST_DATABASE_URL! } } }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, http: Server, url: string;
@@ -157,14 +159,14 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
   it('rejects invalid and expired reset links without changing the password', async () => {
     const before = await db.user.findUniqueOrThrow({ where: { id: userId } });
     expect((await call('/auth/reset-password', { token: 'missing-reset', password: 'NewPassword2026!' }, '')).status).toBe(400);
-    await db.passwordResetToken.create({ data: { userId, email, token: 'expired-reset', expires: new Date(Date.now() - 60_000) } });
+    await db.passwordResetToken.create({ data: { userId, email, token: hashResetToken('expired-reset'), expires: new Date(Date.now() - 60_000) } });
     expect((await call('/auth/reset-password', { token: 'expired-reset', password: 'NewPassword2026!' }, '')).status).toBe(400);
-    expect(await db.passwordResetToken.findUnique({ where: { token: 'expired-reset' } })).toBeNull();
+    expect(await db.passwordResetToken.findUnique({ where: { token: hashResetToken('expired-reset') } })).toBeNull();
     expect((await db.user.findUniqueOrThrow({ where: { id: userId } })).passwordHash).toBe(before.passwordHash);
   });
   it('resets a password with a one-use token, revokes sessions, then supports login and logout', async () => {
     const token = 'a'.repeat(64);
-    await db.passwordResetToken.create({ data: { userId, email, token, expires: new Date(Date.now() + 60_000) } });
+    await db.passwordResetToken.create({ data: { userId, email, token: hashResetToken(token), expires: new Date(Date.now() + 60_000) } });
     const password = 'ResetPassword2026!';
     expect((await call('/auth/reset-password', { token, password }, '')).status).toBe(200);
     expect((await call('/auth/me')).status).toBe(401);

@@ -1,7 +1,7 @@
 'use client';
 
 import { normalizeMockUser } from './auth-state';
-import type { AuthUser } from '@leadcrm/shared';
+import type { AuthUser, PasswordRecoveryResponse } from '@leadcrm/shared';
 import React, {
   createContext, useContext, useState, useEffect,
   useCallback, useRef, ReactNode,
@@ -84,7 +84,7 @@ interface AuthContextType {
   applyAuthUser: (user: AuthUser, expectedUserId?: string) => void;
   login: (email: string, password?: string) => Promise<boolean>;
   logout: () => Promise<void>;
-  requestPasswordReset: (email: string) => Promise<boolean>;
+  requestPasswordReset: (email: string) => Promise<PasswordRecoveryResponse>;
   confirmPasswordReset: (token: string, password: string) => Promise<boolean>;
   switchRole: (role: string) => void;
   updateProfile: (profileData: import('@leadcrm/shared').UpdateSelfProfile) => Promise<void>;
@@ -363,21 +363,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   // ── Password reset ─────────────────────────────────────────────────
-  const requestPasswordReset = async (email: string): Promise<boolean> => {
+  const requestPasswordReset = async (email: string): Promise<PasswordRecoveryResponse> => {
     if (USE_MOCK_AUTH) {
-      // Mock: always succeed silently
-      return true;
+      return { success: true, message: 'Mock recovery request.', expiresInMinutes: 60, resendAfterSeconds: 60 };
     }
-    try {
-      await authApi.forgotPassword(email);
-      return true;
-    } catch (err: unknown) {
-      if (process.env.NODE_ENV !== 'production') {
-        // eslint-disable-next-line no-console
-        console.error('[AuthContext] requestPasswordReset failed:', err instanceof Error ? err.message : err);
-      }
-      return false;
-    }
+    // Preserve structured errors and retry guidance for the existing form/toast.
+    return authApi.forgotPassword(email);
   };
 
   const confirmPasswordReset = async (token: string, password: string): Promise<boolean> => {

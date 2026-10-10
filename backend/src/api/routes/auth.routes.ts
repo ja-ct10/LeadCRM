@@ -3,7 +3,7 @@ import { tenantMiddleware } from '../middleware/tenant.middleware';
 import { patchProfile, uploadAvatar, getAvatar } from '../../core/auth/profile.controller';
 import { Router, raw } from 'express';
 import { AppError } from '../../shared/errors/app-error';
-import { authRateLimiter, passwordResetRateLimiter } from '../middleware/rate-limit.middleware';
+import { authRateLimiter, passwordResetRateLimiter, passwordRecoveryAddressRateLimiter } from '../middleware/rate-limit.middleware';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { validate } from '../middleware/validate.middleware';
 import { LoginSchema, ForgotPasswordSchema, ResetPasswordSchema } from '../../core/auth/auth.dto';
@@ -25,7 +25,7 @@ router.post('/login', authRateLimiter, validate(LoginSchema), authController.log
 router.post('/logout', authController.logout);
 router.get('/me', authMiddleware, authController.me);
 router.get('/events', authMiddleware, tenantMiddleware, authorizationEvents);
-router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), authController.forgotPassword);
+router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), passwordRecoveryAddressRateLimiter, authController.forgotPassword);
 router.post('/reset-password', passwordResetRateLimiter, validate(ResetPasswordSchema), authController.resetPassword);
 router.post('/change-password', authRateLimiter, authMiddleware, validate(PasswordChangeRequestSchema), changePasswordController);
 router.get('/onboarding/status', authMiddleware, authController.getOnboardingStatus);

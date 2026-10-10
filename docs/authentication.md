@@ -68,6 +68,12 @@ Set `APP_URL=https://lead-crm-frontend-pi.vercel.app` for the requested welcome 
 
 ## Recovery and account provisioning
 
+Public password recovery uses the owner's explicitly approved account-existence disclosure policy: an unknown normalized email returns HTTP 404 with `ACCOUNT_NOT_FOUND` and “No account exists with this email address.” This is an intentional enumeration tradeoff, approved on October 10, 2026. Ineligible or ambiguous existing identities retain neutral responses; public callers cannot select a tenant. See the [recovery audit, approval, test results and deployment requirements](password-recovery-verification.md).
+
+Recovery shares login's trimmed, case-insensitive identity lookup and the current employee/workspace/account access policies. Issued tokens are stored as SHA-256 hashes. Resend uses the same endpoint, rate limits and durable submission state; an uncertain provider submission is retained without automatic retry until its original expiry. The confirmation page displays the backend lifetime and acknowledges a recovery request without claiming inbox delivery.
+
+Deploy migration `20261120000000_password_recovery_security` with the matching backend/frontend release. Stop old backend processes before hashing existing token rows; old binaries cannot read the new storage format. The migration preserves token identity, account binding and expiration, and the normal guarded deployment path continues to defer unrelated column retirements.
+
 Tenant user accounts are provisioned by administrators through Team Management. The tenant-invitation flow and its token-based acceptance endpoint have been retired. Provisioned passwords are temporary when required, and users can establish their password through authenticated password change or password recovery.
 
 Public signup, Google account sign-in, OTP, email-verification sessions, company setup, and old onboarding progress endpoints are disabled. Retired authentication bridge routes are unavailable. Gmail OAuth remains a separate CRM email integration and is not affected by the LeadCRM test-account exception: each tester must connect their mailbox through Google's real OAuth authorization and grant the requested Gmail scopes.

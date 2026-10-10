@@ -1,4 +1,6 @@
 import { StrongPasswordSchema } from '@leadcrm/shared';
+export { ForgotPasswordSchema } from '@leadcrm/shared';
+import { ForgotPasswordSchema } from '@leadcrm/shared';
 import { z } from 'zod';
 
 export const LoginSchema = z.object({
@@ -12,10 +14,6 @@ export const RefreshSchema = z.object({
 
 export type LoginDto = z.infer<typeof LoginSchema>;
 
-
-export const ForgotPasswordSchema = z.object({
-  email: z.string().email('Valid email required'),
-});
 
 export const ResetPasswordSchema = z.object({
   token: z.string().min(1, 'Reset token is required'),

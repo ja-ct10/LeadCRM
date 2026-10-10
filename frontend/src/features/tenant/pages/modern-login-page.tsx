@@ -1,58 +1,19 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
-import { StrongPasswordSchema } from '@leadcrm/shared';
+import { StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, type PasswordRecoveryResponse } from '@leadcrm/shared';
+import type { ApiRequestError } from '@/lib/api/client';
 import { CamxianBrandPanel } from './camxian-brand-panel';
 
 const loginSchema = z.object({
   email: z.string().email('Invalid email address'),
   password: z.string().min(1, 'Password is required').max(72, 'Password is too long'),
 });
-
-interface ResendPasswordButtonProps {
-  forgotEmail: string;
-  requestPasswordReset: (email: string) => Promise<boolean>;
-}
-
-function ResendPasswordButton({ forgotEmail, requestPasswordReset }: ResendPasswordButtonProps): React.ReactElement {
-  const [isSending, setIsSending] = useState(false);
-
-  const handleResend = async () => {
-    if (isSending) return;
-    setIsSending(true);
-    try {
-      const ok = await requestPasswordReset(forgotEmail);
-      if (ok) {
-        toast.success('Password reset link resent.');
-      } else {
-        toast.error('Failed to resend. Please try again.');
-      }
-    } catch {
-      toast.error('Failed to resend. Please try again.');
-    } finally {
-      setIsSending(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center justify-center gap-1.5 text-sm">
-      <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
-      <button
-        type="button"
-        onClick={handleResend}
-        disabled={isSending}
-        className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors disabled:opacity-50"
-      >
-        {isSending ? 'Sending...' : 'Resend link'}
-      </button>
-    </div>
-  );
-}
 
 interface ModernLoginPageProps {
   onNavigate: (path: string) => void;
@@ -70,6 +31,17 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
   const [authView, setAuthView] = useState<'login' | 'forgot' | 'forgot-sent' | 'reset'>('login');
   const [forgotEmail, setForgotEmail] = useState('');
+  const [recovery, setRecovery] = useState<PasswordRecoveryResponse | null>(null);
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const recoveryPending = useRef(false);
+  const [retryAt, setRetryAt] = useState(0);
+  const [now, setNow] = useState(Date.now());
+  const retrySeconds = Math.max(0, Math.ceil((retryAt - now) / 1000));
+  useEffect(() => {
+    if (!retryAt) return;
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [retryAt]);
   const [resetToken, setResetToken] = useState('');
   const [resetPassword, setResetPassword] = useState('');
   const [resetConfirm, setResetConfirm] = useState('');
@@ -138,19 +110,44 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
     }
   };
 
-  const handleForgotPassword = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const submitRecovery = async (resend = false) => {
+    if (recoveryPending.current || retryAt > Date.now()) return;
     setError('');
-    if (!forgotEmail) {
-      toast.error('Please enter your email address.');
+    const parsed = ForgotPasswordSchema.safeParse({ email: forgotEmail });
+    if (!parsed.success) {
+      toast.error(parsed.error.issues[0]?.message ?? 'Valid email required');
       return;
     }
-    const ok = await requestPasswordReset(forgotEmail);
-    if (ok) {
+    recoveryPending.current = true;
+    setForgotBusy(true);
+    try {
+      const response = await requestPasswordReset(parsed.data.email);
+      if (!response?.success || !Number.isSafeInteger(response.expiresInMinutes) || response.expiresInMinutes <= 0 ||
+          !Number.isSafeInteger(response.resendAfterSeconds) || response.resendAfterSeconds < 0) throw new Error(PASSWORD_RECOVERY_SEND_ERROR);
+      setForgotEmail(parsed.data.email);
+      setRecovery(response);
+      setNow(Date.now());
+      setRetryAt(Date.now() + response.resendAfterSeconds * 1000);
       setAuthView('forgot-sent');
-    } else {
-      toast.error('Something went wrong. Please try again.');
+      if (resend) toast.success('Password reset email requested.');
+    } catch (caught) {
+      const failure = caught as ApiRequestError;
+      if (failure?.retryAt) { setNow(Date.now()); setRetryAt(Date.parse(failure.retryAt)); }
+      if (failure?.code === 'ACCOUNT_NOT_FOUND') {
+        setAuthView('forgot');
+        setRecovery(null);
+        toast.error('No account exists with this email address.');
+      } else {
+        toast.error(failure instanceof Error ? failure.message : PASSWORD_RECOVERY_SEND_ERROR);
+      }
+    } finally {
+      recoveryPending.current = false;
+      setForgotBusy(false);
     }
+  };
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await submitRecovery();
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -326,10 +323,10 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
             {/* Center content */}
             <div className="space-y-6">
               <h1 className="font-display text-4xl font-bold leading-tight">
-                Email Sent Successfully
+                Password reset email requested
               </h1>
               <p className="text-blue-100 text-lg max-w-md">
-                Check your inbox and spam folder for the password reset link. It expires in 60 minutes.
+                If your account is eligible, check your inbox and spam folder for the password reset link.
               </p>
             </div>
           </div>
@@ -347,15 +344,21 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 Check your email
               </h2>
               <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
-                If <span className="text-slate-700 dark:text-slate-300 font-semibold">{forgotEmail}</span> is registered,
+                If <span className="text-slate-700 dark:text-slate-300 font-semibold">{forgotEmail}</span> is eligible for recovery,
                 you'll receive a password reset link shortly.
               </p>
               <p className="text-slate-400 dark:text-slate-500 text-xs mt-2">
-                Link expires in <span className="font-semibold text-slate-600 dark:text-slate-300">60 minutes</span>
+                Any issued link expires after <span className="font-semibold text-slate-600 dark:text-slate-300">{recovery?.expiresInMinutes} minutes</span>
               </p>
             </div>
 
-            <ResendPasswordButton forgotEmail={forgotEmail} requestPasswordReset={requestPasswordReset} />
+            <div className="flex items-center justify-center gap-1.5 text-sm">
+              <span className="text-slate-500 dark:text-slate-400">Didn&apos;t receive it?</span>
+              <button type="button" onClick={() => void submitRecovery(true)} disabled={forgotBusy || retrySeconds > 0}
+                className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-medium transition-colors disabled:opacity-50">
+                {forgotBusy ? 'Sending...' : retrySeconds > 0 ? `Resend in ${retrySeconds}s` : 'Resend link'}
+              </button>
+            </div>
 
             <button
               onClick={() => setAuthView('login')}
@@ -443,6 +446,9 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                   type="email"
                   value={forgotEmail}
                   onChange={(e) => setForgotEmail(e.target.value)}
+                  disabled={forgotBusy}
+                  maxLength={254}
+                  autoComplete="email"
                   className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
                   required
                   placeholder="name@email.com"
@@ -451,9 +457,10 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
               </div>
               <button
                 type="submit"
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
+                disabled={forgotBusy || retrySeconds > 0}
+                className="disabled:opacity-50 disabled:cursor-not-allowed w-full h-11 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-semibold transition-colors active:scale-95"
               >
-                Send Reset Link
+                {forgotBusy ? 'Sending...' : retrySeconds > 0 ? `Try again in ${retrySeconds}s` : 'Send Reset Link'}
               </button>
             </form>
           </div>

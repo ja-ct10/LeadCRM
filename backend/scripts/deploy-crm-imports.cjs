@@ -84,6 +84,9 @@ function deploymentPlan(records, localNames) {
     '20261117000000_campaign_submission_recovery',
     '20261118000000_group_revisions',
     '20261119000000_notification_utc_timestamps',
+    // Preserves existing recovery links by hashing stored secrets. Coordinate
+    // with the auth release; old binaries must stop before token storage changes.
+    '20261120000000_password_recovery_security',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

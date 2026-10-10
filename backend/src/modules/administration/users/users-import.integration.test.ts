@@ -98,13 +98,14 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     expect((await call(`/administration/users/${userId}/password-reset`, 'POST', {}, readerToken)).status).toBe(403);
     expect((await call(`/administration/users/${userId}/password-reset`, 'POST', {}, '')).status).toBe(401);
     const result = await call(`/administration/users/${userId}/password-reset`, 'POST', { email: 'arbitrary@example.com' });
-    expect(result).toEqual({ status: 202, body: { success: true, message: 'Password reset email sent.' } });
+    expect(result).toEqual({ status: 202, body: { success: true, message: 'Password reset email requested.' } });
     expect(mail.send.mock.lastCall?.[0].to).toBe('juan@camxian.com');
     const reset = await prisma.passwordResetToken.findFirstOrThrow({ where: { userId } });
     expect(reset.email).toBe('juan@camxian.com');
     expect(await prisma.passwordResetToken.count({ where: { userId: otherUserId } })).toBe(0);
     const otherBefore = await prisma.user.findUniqueOrThrow({ where: { id: otherUserId } });
-    expect((await call('/auth/reset-password', 'POST', { token: reset.token, password: 'Local-test-only-42!Secure' }, '')).status).toBe(200);
+    const token = mail.send.mock.lastCall?.[0].html.match(/reset-password\?token=([a-f0-9]{64})/)?.[1];
+    expect((await call('/auth/reset-password', 'POST', { token, password: 'Local-test-only-42!Secure' }, '')).status).toBe(200);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: userId } })).mustChangePassword).toBe(false);
     expect((await prisma.user.findUniqueOrThrow({ where: { id: otherUserId } })).passwordHash).toBe(otherBefore.passwordHash);
     expect(await prisma.passwordResetToken.count({ where: { token: reset.token } })).toBe(0);

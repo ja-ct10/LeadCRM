@@ -61,7 +61,7 @@ export async function bulkUpdate(req: Request, res: Response, next: NextFunction
 export async function sendPasswordReset(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     await service.sendPasswordReset(String(req.params.id), req.user!.tenantId, req.user!.userId);
-    res.status(202).json({ success: true, message: 'Password reset email sent.' });
+    res.status(202).json({ success: true, message: 'Password reset email requested.' });
   } catch (err) { next(err); }
 }
 

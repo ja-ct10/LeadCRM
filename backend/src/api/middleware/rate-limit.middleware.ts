@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { createHash } from 'crypto';
 
 // In development, use very high limits to avoid blocking local testing
 const isDev = process.env.NODE_ENV !== 'production';
@@ -30,4 +31,17 @@ export const passwordResetRateLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many password reset requests — try again in an hour.' },
+});
+
+// Runs after validation/normalization. Keys never contain an address or tenant ID.
+export const passwordRecoveryAddressRateLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  max: isDev ? 10000 : 3,
+  keyGenerator: req => createHash('sha256').update(req.body.email).digest('hex'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (_req, res) => {
+    console.warn('[PasswordRecovery]', { event: 'address_rate_limited' });
+    res.status(429).json({ success: false, error: { code: 'PASSWORD_RECOVERY_RATE_LIMITED', message: 'Too many password reset requests — try again in an hour.' } });
+  },
 });

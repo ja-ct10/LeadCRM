@@ -15,6 +15,15 @@ function respond(error: Error) {
 }
 afterEach(() => vi.restoreAllMocks());
 
+it.each(['forgot-password', 'reset-password'])('redacts recovery %s operational errors and metadata', endpoint => {
+  const log = vi.spyOn(console, 'error').mockImplementation(() => {});
+  const response = { status: vi.fn().mockReturnThis(), json: vi.fn() };
+  errorMiddleware(Object.assign(new Error('token-and-password-secret'), { meta: { token: 'secret' } }),
+    { path: `/api/v1/auth/${endpoint}`, method: 'POST' } as Request, response as unknown as Response, vi.fn());
+  expect(JSON.stringify(log.mock.calls)).not.toContain('secret');
+  expect(JSON.stringify(response.json.mock.calls)).not.toContain('secret');
+});
+
 describe('validation errors across module formats', () => {
   it.each([['ESM', z], ['CommonJS', commonJsZod.z]] as const)('returns 400 and field errors for %s schemas', (_format, validator) => {
     const result = validator.object({ name: validator.string().min(1) }).strict().safeParse({ name: '', tenantId: 'forbidden' });

@@ -31,7 +31,7 @@ export const authApi = {
     apiClient.get<AuthResponse>('/auth/me'),
 
   forgotPassword: (email: string) =>
-    apiClient.post<{ success: boolean; message: string }>('/auth/forgot-password', { email }),
+    apiClient.post<import('@leadcrm/shared').PasswordRecoveryResponse>('/auth/forgot-password', { email }),
 
   resetPassword: (token: string, password: string) =>
     apiClient.post<{ success: boolean; message: string }>('/auth/reset-password', { token, password }),

@@ -127,7 +127,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
   const resetPassword = async () => {
     if (!saved || locked.current) return;
     locked.current = true; setBusy(true);
-    try { await usersService.sendPasswordReset(saved.id); toast.success('Password reset email sent.'); }
+    try { await usersService.sendPasswordReset(saved.id); toast.success('Password reset email requested.'); }
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to send recovery email.'); }
     finally { locked.current = false; setBusy(false); }
   };

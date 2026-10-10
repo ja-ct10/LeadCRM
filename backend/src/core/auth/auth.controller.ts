@@ -101,9 +101,8 @@ export async function forgotPassword(req: Request, res: Response, next: NextFunc
       res.status(400).json({ success: false, error: parsed.error.errors[0]?.message ?? 'Invalid input' });
       return;
     }
-    await requestPasswordReset(parsed.data);
-    // Always return success — never reveal whether the email exists
-    res.json({ success: true, message: 'If that email is registered, a reset link has been sent.' });
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(await requestPasswordReset(parsed.data));
   } catch (err) {
     next(err);
   }
