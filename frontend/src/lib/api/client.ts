@@ -86,8 +86,8 @@ async function request<T>(
     throw error;
   }
 
-  if (method !== 'GET') invalidateApiPageCache(path);
   const data = await res.json() as T;
+  if (method !== 'GET') invalidateApiPageCache(path);
   return data;
 }
 

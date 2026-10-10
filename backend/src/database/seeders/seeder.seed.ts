@@ -7,6 +7,7 @@ import { Role } from '../../shared/constants/roles';
 import { seedSystemRoles } from './roles.seed';
 import { seedDefaultPipeline } from './pipeline.seed';
 import { tenantContext } from '../../core/tenant/tenant-context';
+import { ensureSalesGroup } from '../../modules/administration/groups/sales-group';
 
 /** Non-destructive bootstrap: repeat runs preserve passwords, roles and CRM records. */
 async function main() {
@@ -17,6 +18,7 @@ async function main() {
     if (existing.tenant.slug !== slug || existing.role !== Role.CLIENT_ADMIN || existing.status !== 'ACTIVE') {
       throw new Error('Seed identity already exists with different ownership or access. Resolve it through account administration.');
     }
+    await tenantContext.run({ tenantId: existing.tenantId }, () => prisma.$transaction(tx => ensureSalesGroup(tx, existing.tenantId), { isolationLevel: 'Serializable' }));
     console.log(`Seed account already exists: ${email}. Password and data are unchanged.`);
     return;
   }

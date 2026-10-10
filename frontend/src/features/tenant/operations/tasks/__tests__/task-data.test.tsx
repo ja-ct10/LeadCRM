@@ -1,5 +1,5 @@
 import React from "react";
-import { act, cleanup, renderHook } from "@testing-library/react";
+import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   CreateTaskSchema,
@@ -153,10 +153,19 @@ describe("Task query owner", () => {
     for (const module of ['leads', 'contacts', 'accounts', 'deals']) {
       const previous = result.current.tasksRevision;
       act(() => invalidatePageCache(module, 'tenant'));
-      expect(result.current.tasksRevision).toBe(previous + 1);
+      await waitFor(() => expect(result.current.tasksRevision).toBe(previous + 1));
       await result.current.queryTasks({});
     }
     expect(api.list).toHaveBeenCalledTimes(5);
+  });
+  it('coalesces repeated CRM and Task invalidations into one query refresh', async () => {
+    const { result } = renderHook(() => useTaskQueries('tenant:user', [], false));
+    act(() => {
+      invalidatePageCache('activities', 'tenant');
+      invalidatePageCache('tasks', 'tenant');
+      invalidatePageCache('contacts', 'tenant');
+    });
+    await waitFor(() => expect(result.current.tasksRevision).toBe(1));
   });
 });
 

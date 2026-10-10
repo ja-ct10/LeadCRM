@@ -172,6 +172,7 @@ exports.TASK_COLUMN_DEFINITIONS = [
         "deal",
         "account",
         "assignedUser",
+        "createdBy",
         "createdAt",
         "completedAt",
     ].map((id, index) => ({
@@ -184,7 +185,8 @@ exports.TASK_COLUMN_DEFINITIONS = [
             contact: "Contact",
             deal: "Deal",
             account: "Account",
-            assignedUser: "Task owner",
+            assignedUser: "Assigned Agent",
+            createdBy: "Task Owner (Created by)",
             createdAt: "Created",
             completedAt: "Completed",
         }[id],

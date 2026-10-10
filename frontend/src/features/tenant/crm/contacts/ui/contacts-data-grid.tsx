@@ -15,6 +15,7 @@
  */
 
 'use client';
+import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
 import { CrmStatusIndicator } from '@/shared/components/crm/crm-status';
@@ -193,6 +194,8 @@ export function ContactsDataGrid({
 
   // ─── Stable Callbacks ────────────────────────────────────────────────
 
+  const configuredColumns = useConfiguredCrmColumns('contacts', gridColumns);
+
   const getRowId = useCallback((contact: Contact) => contact.id, []);
 
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
@@ -215,7 +218,7 @@ export function ContactsDataGrid({
 
   return (
     <DataGrid<Contact>
-      columns={gridColumns}
+      columns={configuredColumns}
       data={contacts}
       getRowId={getRowId}
       height="auto"

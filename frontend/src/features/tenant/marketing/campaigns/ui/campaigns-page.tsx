@@ -11,7 +11,8 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCampaignsData } from '../hooks/use-campaigns-data';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { templatesApi } from '@/shared/services/templates.api';
-import { EMAIL_VARIABLE_TOKENS, MarketingTemplateSchema, renderEmailVariables } from '@leadcrm/shared';
+import { CampaignVariablePicker, useCampaignFields, campaignSampleValues } from './campaign-variable-picker';
+import { MarketingTemplateSchema, renderEmailVariables } from '@leadcrm/shared';
 import { FieldError } from './audience-panel';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
@@ -95,12 +96,14 @@ export default function CampaignsPage() {
   const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', content: '', category: 'Marketing' });
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
+  const [templateSource, setTemplateSource] = useState<'LEADS' | 'CONTACTS'>('LEADS');
+  const { fields: templateFields } = useCampaignFields(isTemplateModalOpen || previewTemplate ? templateSource : undefined);
   const [showVarDropdown, setShowVarDropdown] = useState(false);
 
 
   useEffect(() => { setShowBuilder(false); setEditingCampaign(undefined); setSelectedCampaignForReport(null); setIsTemplateModalOpen(false); setPreviewTemplate(null); setNewTemplate({ name: '', subject: '', content: '', category: 'Marketing' }); }, [user?.tenantId]);
 
-  const getPreviewText = (text: string) => renderEmailVariables(text, { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: 'Configured sender', sender_email: 'sender@example.com', contact_number: '+639123456789', status: 'HOT' });
+  const getPreviewText = (text: string) => renderEmailVariables(text, { ...campaignSampleValues(templateFields), first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: 'Configured sender', sender_email: 'sender@example.com', contact_number: '+639123456789', status: 'HOT' });
   // ── KPI computations (real data, no hardcoded numbers) ─────────────────────
   const activeCampaignCount = metrics.activeCampaigns;
   const totalMessagesSent = metrics.sent;
@@ -114,11 +117,13 @@ export default function CampaignsPage() {
   const canDuplicateCampaign = useHasPermission('campaigns.duplicate'), canViewReports = useHasPermission('campaigns.view_reports');
   const canSendCampaign = useHasPermission('campaigns.send');
 
-  const handleDuplicate = async (camp: Campaign) => {
+  const [repairDuplicate, setRepairDuplicate] = useState<Campaign | null>(null);
+  const handleDuplicate = async (camp: Campaign, source?: 'LEADS' | 'CONTACTS') => {
     try {
-      await campaignsApi.duplicate(camp.id);
+      if (source) await campaignsApi.duplicate(camp.id, source); else await campaignsApi.duplicate(camp.id);
+      setRepairDuplicate(null);
       refetchCampaigns(); toast.success('Draft copy created.');
-    } catch (e) { toast.error(e instanceof Error ? e.message : 'Could not duplicate campaign.'); }
+    } catch (e) { if (e instanceof Error && e.message.includes('legacy mixed')) setRepairDuplicate(camp); else toast.error(e instanceof Error ? e.message : 'Could not duplicate campaign.'); }
   };
   const handleSaveTemplate = async () => {
     if (templateLock.current) return;
@@ -157,9 +162,9 @@ export default function CampaignsPage() {
   const filteredCampaigns = campaigns;
   useNotificationRecordLink('campaignId', user?.id ?? '', !!user,
     async id => (await campaignsApi.get(id)).data,
-    campaign => { if (canViewReports && campaign.status.toLowerCase() !== 'draft') setSelectedCampaignForReport(campaign); else { setEditingCampaign(campaign); setShowBuilder(true); } });
+    campaign => { if (canViewReports && !['draft', 'scheduled'].includes(campaign.status.toLowerCase())) setSelectedCampaignForReport(campaign); else { setEditingCampaign(campaign); setShowBuilder(true); } });
   const viewCampaign = (campaign: Campaign) => {
-    if (campaign.status.toLowerCase() === 'draft' || !canViewReports) { setEditingCampaign(campaign); setShowBuilder(true); }
+    if (['draft', 'scheduled'].includes(campaign.status.toLowerCase()) || !canViewReports) { setEditingCampaign(campaign); setShowBuilder(true); }
     else if (canViewReports) setSelectedCampaignForReport(campaign);
   };
   const campaignColumns: DataGridColumnDef<Campaign>[] = [
@@ -351,7 +356,7 @@ export default function CampaignsPage() {
         {tableColumns.drawer}
         <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
           filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
-          refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} />
+          refreshing={isInitialLoad} silentRefresh onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} />
       </>}
 
       {/* Tab Content */}
@@ -386,6 +391,7 @@ export default function CampaignsPage() {
                       { id: 'delivered', label: 'Delivered' },
                       { id: 'failed', label: 'Failed' },
                       { id: 'draft', label: 'Draft' },
+                      { id: 'scheduled', label: 'Scheduled' },
                     ].map(item => ({ ...item, isChecked: statusFilter.includes(item.id) }))
                   },
                   {
@@ -411,6 +417,7 @@ export default function CampaignsPage() {
                   ]} />}
                 <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
                   actions={canDeleteCampaign ? [{ id: 'archive', label: 'Archive', entityName: 'campaign', destructive: true, onExecute: async ids => { const result = await executeSelectedRows(ids, campaignsApi.archive); await refetchCampaigns(); return result; } }] : []} />
+                <Dialog open={!!repairDuplicate} onOpenChange={open => { if (!open) setRepairDuplicate(null); }}><DialogContent aria-label="Repair legacy campaign source"><h2 className="text-lg font-semibold">Choose the copy’s source</h2><p className="text-sm">This legacy campaign mixed Leads and Contacts. Select one source for its new draft.</p><div className="flex gap-2"><button className="rounded border px-3 py-2" onClick={() => repairDuplicate && void handleDuplicate(repairDuplicate, 'LEADS')}>Leads</button><button className="rounded border px-3 py-2" onClick={() => repairDuplicate && void handleDuplicate(repairDuplicate, 'CONTACTS')}>Contacts</button></div></DialogContent></Dialog>
                 <ConfirmActionDialog open={!!archiving} onOpenChange={open => { if (!open) setArchiving(null); }} title="Archive this campaign?" description="Campaign history and status are preserved." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
                   if (!archiving) return;
                   try { await campaignsApi.archive(archiving.id); setArchiving(null); setSelected(new Set()); await refetchCampaigns(); toast.success('Campaign archived.'); }
@@ -422,7 +429,7 @@ export default function CampaignsPage() {
                     currentPage={currentPage}
                     pageSize={pageSize}
                     totalRecords={totalItems}
-                    loading={isInitialLoad} refreshing={isRefreshing} disabled={isInitialLoad || isRefreshing}
+                    loading={isInitialLoad} disabled={isInitialLoad}
                     onPageChange={goToPage}
                     onPageSizeChange={setPageSize}
                   />
@@ -582,6 +589,7 @@ export default function CampaignsPage() {
               <FieldError message={templateErrors.subject} />
             </div>
           )}
+          <label className={panelLabelClass}>Field filter<select aria-label="Template field source" className={panelInputClass} value={templateSource} onChange={event => setTemplateSource(event.target.value as 'LEADS' | 'CONTACTS')}><option value="LEADS">Lead fields</option><option value="CONTACTS">Contact fields</option></select></label>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
               <label htmlFor="template-content" className={panelLabelClass}>Message Content <span className="text-red-500">*</span></label>
@@ -594,20 +602,8 @@ export default function CampaignsPage() {
                   <Wand2 size={14} /> Insert Variable
                 </button>
                 {showVarDropdown && (
-                  <div className="absolute right-0 bottom-full mb-1 w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
-                    {EMAIL_VARIABLE_TOKENS.map(v => (
-                      <button
-                        key={v}
-                        type="button"
-                        onClick={() => {
-                          setNewTemplate({ ...newTemplate, content: newTemplate.content + v });
-                          setShowVarDropdown(false);
-                        }}
-                        className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors duration-150 cursor-pointer"
-                      >
-                        {v}
-                      </button>
-                    ))}
+                  <div className="absolute right-0 bottom-full mb-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                    <CampaignVariablePicker fields={templateFields} onInsert={token => { setNewTemplate(previous => ({ ...previous, content: previous.content + token })); setShowVarDropdown(false); }} />
                   </div>
                 )}
               </div>

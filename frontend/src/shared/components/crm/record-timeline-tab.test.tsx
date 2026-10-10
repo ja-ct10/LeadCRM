@@ -1,83 +1,74 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const mocks = vi.hoisted(() => ({ canCreate: true, create: vi.fn(), onCreated: vi.fn() }));
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+const mocks = vi.hoisted(() => ({ canEdit: true, actor: 'actor', create: vi.fn(), onCreated: vi.fn(), loadMore: vi.fn() }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.canCreate }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' } }) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.canEdit }));
+vi.mock('@/shared/hooks/use-record-activities', () => ({ useRecordActivities: () => ({ activities: [], error: null, isInitialLoad: false, loadMore: mocks.loadMore }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: mocks.actor } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ addActivity: vi.fn() }) }));
 vi.mock('@/features/tenant/crm/activities/services/activities.service', () => ({ activitiesService: { create: mocks.create } }));
 import { RecordTimelineTab } from './record-timeline-tab';
-beforeEach(() => { vi.resetAllMocks(); mocks.canCreate = true; });
+import { clearPageCache } from '@/shared/cache/page-cache';
+const note = { id: 'saved', type: 'note', title: 'Follow-up note', createdAt: '2026-10-01T10:00:00Z', createdBy: { id: 'actor', firstName: 'Author', lastName: 'Test', email: 'author@example.test' } };
+beforeEach(() => { vi.resetAllMocks(); mocks.canEdit = true; mocks.actor = 'actor'; });
 afterEach(cleanup);
-it('saves one activity with the supported record link and refreshes after success', async () => {
-  mocks.create.mockResolvedValue({ data: { id: 'saved' } });
-  render(<RecordTimelineTab activities={[]} module="deals" recordId="deal-1" onActivityCreated={mocks.onCreated} />);
-  fireEvent.change(screen.getByLabelText('Activity description'), { target: { value: 'Follow-up note' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save Note' }));
-  await waitFor(() => expect(mocks.onCreated).toHaveBeenCalledOnce());
-  expect(mocks.create).toHaveBeenCalledExactlyOnceWith({ type: 'note', title: 'Follow-up note', dealId: 'deal-1' });
+it.each([['leads','leadId'],['contacts','contactId'],['accounts','accountId'],['deals','dealId']] as const)('saves one trimmed %s note, applies server identity and clears only after success', async (module,key) => {
+  mocks.create.mockResolvedValue({ data: note });
+  render(<RecordTimelineTab activities={[]} module={module} recordId="record" onActivityCreated={mocks.onCreated} />);
+  fireEvent.change(screen.getByLabelText('Note'), { target: { value: '  Follow-up note  ' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+  await waitFor(() => expect(mocks.onCreated).toHaveBeenCalledExactlyOnceWith(note));
+  expect(mocks.create).toHaveBeenCalledExactlyOnceWith({ type: 'note', title: 'Follow-up note', [key]: 'record' });
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('');
+  expect(within(screen.getByRole('region', { name: 'Notes' })).getAllByText('Follow-up note')).toHaveLength(1);
 });
-it('retains the draft when persistence fails', async () => {
-  mocks.create.mockRejectedValue(new Error('Offline'));
-  render(<RecordTimelineTab activities={[]} module="accounts" recordId="account-1" onActivityCreated={mocks.onCreated} />);
-  fireEvent.change(screen.getByLabelText('Activity description'), { target: { value: 'Unsaved note' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save Note' }));
-  await waitFor(() => expect(screen.getByRole('button', { name: 'Save Note' }).hasAttribute('disabled')).toBe(false));
-  expect((screen.getByLabelText('Activity description') as HTMLTextAreaElement).value).toBe('Unsaved note');
-  expect(mocks.onCreated).not.toHaveBeenCalled();
+it('keeps a failed draft and excludes duplicate clicks while saving', async () => {
+  let reject!: (error: Error) => void;
+  mocks.create.mockReturnValue(new Promise((_,fail) => { reject = fail; }));
+  render(<RecordTimelineTab activities={[]} module="deals" recordId="deal" />);
+  fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Unsaved note' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Saving…' }));
+  expect(mocks.create).toHaveBeenCalledOnce();
+  reject(new Error('Offline'));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Save note' }).hasAttribute('disabled')).toBe(false));
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Unsaved note');
 });
-it('does not offer mutations without the existing create permission', () => {
-  mocks.canCreate = false;
-  render(<RecordTimelineTab activities={[]} module="deals" recordId="deal-1" />);
-  expect(screen.queryByLabelText('Activity description')).toBeNull();
-});
-it.each(['leads', 'contacts'] as const)('creates live %s activities linked to their record', async module => {
-  render(<RecordTimelineTab activities={[]} module={module} recordId="record-1" />);
-  expect(screen.getByLabelText('Activity description')).toBeTruthy();
-  mocks.create.mockResolvedValue({ data: { id: 'saved' } });
-  fireEvent.change(screen.getByLabelText('Activity description'), { target: { value: 'Record update' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save Note' }));
-  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith({ type: 'note', title: 'Record update', [module === 'leads' ? 'leadId' : 'contactId']: 'record-1' }));
-});
-
-it.each(['leads', 'contacts', 'accounts'] as const)('%s exposes only Activity filters and keeps the existing task view inside Activity', module => {
-  render(<RecordTimelineTab activities={[]} module={module} recordId="record-1" tasks={<div>Related task records</div>} />);
-  const filterButtons = screen.getAllByRole('button').filter(button => ['All', 'Emails', 'Tasks', 'Status', 'Notes', 'Calls & Emails', 'Calls'].includes(button.textContent ?? ''));
-  expect(filterButtons.map(button => button.textContent)).toEqual(['All', 'Emails', 'Tasks', 'Status']);
-  expect(screen.getByText('Related task records')).toBeTruthy();
+it('keeps Notes and actual Tasks before Timeline independent of filters', () => {
+  const onFiltersChange = vi.fn();
+  render(<RecordTimelineTab activities={[note, { id: 'call', type: 'call', title: 'Historical call', createdAt: note.createdAt }]} notes={[note]} tasks={<section aria-label="Tasks">Actual Task</section>} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
+  expect(screen.getAllByRole('region').map(region => region.getAttribute('aria-label'))).toEqual(['Notes','Tasks','Activity Timeline']);
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
-  expect(screen.queryByText('Related task records')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Tasks' }));
-  expect(screen.getByText('Related task records')).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: 'Notes' })).getByText(note.title)).toBeTruthy();
+  expect(screen.getByText('Actual Task')).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: 'Activity Timeline' })).queryByText(note.title)).toBeNull();
+  expect(onFiltersChange).toHaveBeenCalledWith({ type: 'email', search: undefined });
+  expect(screen.queryByText('Quick Log')).toBeNull(); expect(screen.queryByText('Log an activity')).toBeNull();
 });
-
-it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('filters %s by email, task, status, and all activity', module => {
-  const activities = [
-    { id: 'email', type: 'email', title: 'Sent welcome email', createdAt: '2026-09-01T10:00:00.000Z' },
-    { id: 'note', type: 'note', title: 'Internal note', createdAt: '2026-09-01T10:01:00.000Z' },
-    { id: 'call', type: 'call', title: 'Called prospect', createdAt: '2026-09-01T10:02:00.000Z' },
-    { id: 'task', type: 'task', title: 'Follow up task activity', createdAt: '2026-09-01T10:03:00.000Z' },
-    { id: 'status', type: 'stage_change', title: 'Status changed to Hot', createdAt: '2026-09-01T10:04:00.000Z' },
-  ];
-  render(<RecordTimelineTab activities={activities} module={module} recordId="record-1" />);
-  expect(screen.getByText('Internal note')).toBeTruthy();
-  fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
-  expect(screen.getAllByText('Sent welcome email').length).toBeGreaterThan(0);
-  expect(screen.queryByText('Called prospect')).toBeNull();
-  expect(screen.queryByText('Internal note')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Tasks' }));
-  expect(screen.getByText('Follow up task activity')).toBeTruthy();
-  expect(screen.queryByText('Sent welcome email')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'Status' }));
-  expect(screen.getByText('Status changed to Hot')).toBeTruthy();
-  expect(screen.queryByText('Follow up task activity')).toBeNull();
-  fireEvent.click(screen.getByRole('button', { name: 'All' }));
-  for (const title of ['Internal note', 'Follow up task activity', 'Status changed to Hot']) expect(screen.getByText(title)).toBeTruthy();
+it('loads older Notes and Timeline from their separate readers', () => {
+  const olderNotes = vi.fn(), olderEvents = vi.fn();
+  render(<RecordTimelineTab activities={[]} notes={[]} module="contacts" recordId="contact" hasMore hasMoreNotes onLoadMore={olderEvents} onLoadMoreNotes={olderNotes} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Load older notes' })); fireEvent.click(screen.getByRole('button', { name: 'Load older activity' }));
+  expect(olderNotes).toHaveBeenCalledOnce(); expect(olderEvents).toHaveBeenCalledOnce();
 });
-
-it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('removes the %s Call quick action while preserving historical calls', module => {
-  render(<RecordTimelineTab activities={[{ id: 'call', type: 'call', title: 'Historical call', createdAt: '2026-10-01T10:00:00Z' }]} module={module} recordId="record" />);
-  expect(screen.queryByRole('button', { name: /^Call$/ })).toBeNull();
-  expect(screen.getByText('Historical call')).toBeTruthy();
+it('withholds the note editor without record edit permission', () => {
+  mocks.canEdit = false;
+  render(<RecordTimelineTab activities={[]} module="accounts" recordId="account" />);
+  expect(screen.queryByLabelText('Note')).toBeNull();
+});
+it('discards local saved notes after cache clearing, preserves a same-user draft and clears it on identity change', async () => {
+  mocks.create.mockResolvedValue({ data: note });
+  const view = render(<RecordTimelineTab activities={[]} module="leads" recordId="record" />);
+  fireEvent.change(screen.getByLabelText('Note'), { target: { value: note.title } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
+  await waitFor(() => expect(within(screen.getByRole('region', { name: 'Notes' })).getByText(note.title)).toBeTruthy());
+  fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Private draft' } });
+  clearPageCache();
+  view.rerender(<RecordTimelineTab activities={[]} module="leads" recordId="record" />);
+  expect(screen.queryByText(note.title)).toBeNull();
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Private draft');
+  mocks.actor = 'other-user';
+  view.rerender(<RecordTimelineTab activities={[]} module="leads" recordId="record" />);
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('');
 });

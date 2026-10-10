@@ -1,5 +1,6 @@
 'use client';
 import { CreateLeadSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
+import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { CrmEmailSchema } from '@leadcrm/shared';
@@ -203,11 +204,12 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
+        <ConfiguredFormLayout form={customFields} module="leads">
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
+            <FieldWrap fieldKey="firstName" label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
               <input
                 {...register('firstName')} maxLength={100} required aria-required="true"
                 id={`${fieldId}-firstName`}
@@ -217,7 +219,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 placeholder="Enter first name"
               />
             </FieldWrap>
-            <FieldWrap label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
+            <FieldWrap fieldKey="lastName" label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
               <input
                 {...register('lastName')} maxLength={100} required aria-required="true"
                 id={`${fieldId}-lastName`}
@@ -229,7 +231,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             </FieldWrap>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
+            <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
@@ -243,7 +245,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 />
               </div>
             </FieldWrap>
-            <FieldWrap label="Phone">
+            <FieldWrap fieldKey="phone" label="Phone">
               <PhilippinePhoneInput
                 value={phoneLocal}
                 onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); }}
@@ -251,7 +253,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </FieldWrap>
           </div>
-          <FieldWrap htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message} label="Company Name">
+          <FieldWrap fieldKey="companyName" htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message} label="Company Name">
             <input
               {...register('companyName')} maxLength={2000}
               id={`${fieldId}-companyName`}
@@ -277,7 +279,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         <div className="space-y-4">
           <SectionHeader num={2} title="Status & Interest" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap htmlFor={`${fieldId}-status`} error={errors.status?.message} label="Status">
+            <FieldWrap fieldKey="status" htmlFor={`${fieldId}-status`} error={errors.status?.message} label="Status">
               <div className="relative">
                 <select
                   {...register('status')}
@@ -293,7 +295,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap label="Product Interest">
+            <FieldWrap fieldKey="productInterestIds" label="Product Interest">
 <ProductInterestSelect products={productRecords} values={selectedProducts} onChange={setSelectedProducts} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
 {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
 </FieldWrap>
@@ -304,7 +306,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         {/* Section 3: Organization */}
         <div className="space-y-4">
           <SectionHeader num={3} title="Organization" />
-          <FieldWrap label="Account">
+          <FieldWrap fieldKey="accountId" label="Account">
             <Controller
               name="accountId"
               control={control}
@@ -326,7 +328,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         <div className="space-y-4">
           <SectionHeader num={4} title="Additional Information" />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap htmlFor={`${fieldId}-source`} error={errors.source?.message} label="Lead Source">
+            <FieldWrap fieldKey="source" htmlFor={`${fieldId}-source`} error={errors.source?.message} label="Lead Source">
               <div className="relative">
                 <select
                   {...register('source')}
@@ -343,7 +345,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
             </FieldWrap>
-            <FieldWrap htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message} label="Assigned Agent">
+            <FieldWrap fieldKey="assignedUserId" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message} label="Assigned Agent">
               <Controller
                 name="assignedUserId"
                 control={control}
@@ -364,7 +366,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </FieldWrap>
           </div>
-          <FieldWrap htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Full Address">
+          <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Full Address">
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
@@ -386,6 +388,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
           <CustomFieldGroup form={customFields} group="Additional Information" />
         </div>
         <CustomFieldExtraGroups form={customFields} startNumber={5} />
+        </ConfiguredFormLayout>
 
       </div>{/* end scrollable body */}
 
@@ -424,7 +427,7 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   );
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 

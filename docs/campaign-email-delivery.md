@@ -1,6 +1,6 @@
 # Campaign email delivery
 
-Implemented for the existing Campaigns module on 2026-09-24. This describes the implementation and validation performed locally; it is not a production deployment or confirmation of live Brevo delivery.
+Implemented for the existing Campaigns module, including single-source field audiences and Schedule Once. This describes local implementation and validation; it is not a production deployment or confirmation of live provider delivery.
 
 ## Existing transport reused
 
@@ -12,24 +12,28 @@ Regression coverage includes registration verification, OTP, password reset, adm
 
 ## API map
 
-Every marketing endpoint below retains authentication, tenant and active-environment context, workspace readiness checks, and the listed RBAC permission. Browser paths go through the existing same-origin `/api/proxy` transport. Controller and service names are qualified by their source file stem; files live under `backend/src/modules/marketing/`.
+Every marketing endpoint below retains authentication, tenant context, workspace readiness checks, and the listed RBAC permission. Browser paths go through the existing same-origin `/api/proxy` transport. Controller and service names are qualified by their source file stem; files live under `backend/src/modules/marketing/`.
 
 | Method | Full backend path | Frontend function | Controller | Service | Permission |
 | --- | --- | --- | --- | --- | --- |
 | GET | `/api/v1/marketing/campaigns` | `campaignsApi.list` | `campaigns.controller.getCampaigns` | `campaigns.service.getCampaigns` | `campaigns.view` |
 | GET | `/api/v1/marketing/campaigns/:id` | `campaignsApi.get` | `campaigns.controller.getCampaignById` | `campaigns.service.getCampaignById` | `campaigns.view` |
-| GET | `/api/v1/marketing/campaigns/metrics` | `campaignsApi.metrics` | `campaigns.controller.getCampaignMetrics` | `campaigns.service.getCampaignMetrics` | `campaigns.view` |
+| GET | `/api/v1/marketing/campaigns/metrics` | `campaignsApi.metrics` | `campaigns.controller.getCampaignMetrics` | `campaigns.service.getCampaignMetrics` | `campaigns.view_reports` |
 | POST | `/api/v1/marketing/campaigns` | `campaignsApi.create` | `campaigns.controller.createCampaign` | `campaigns.service.createCampaign` | `campaigns.create` |
 | PUT | `/api/v1/marketing/campaigns/:id` | `campaignsApi.update` | `campaigns.controller.updateCampaign` | `campaigns.service.updateCampaign` | `campaigns.edit` |
 | PATCH | `/api/v1/marketing/campaigns/:id/send` | `campaignsApi.send` | `campaigns.controller.sendCampaign` | `campaigns.service.queueCampaign` → `prepareCampaign` → `deliverPrepared` → shared `sendMail` | `campaigns.send` |
-| PATCH | `/api/v1/marketing/campaigns/:id/archive` | `campaignsApi.archive` | `campaigns.controller.archiveCampaign` | `campaigns.service.archiveCampaign` | `campaigns.delete` |
+| PATCH | `/api/v1/marketing/campaigns/:id/schedule` | `campaignsApi.schedule` | `campaigns.controller.scheduleCampaign` | `campaigns.service.scheduleCampaign` | `campaigns.send` |
+| DELETE | `/api/v1/marketing/campaigns/:id/schedule` | `campaignsApi.cancelSchedule` | `campaigns.controller.cancelCampaignSchedule` | `campaigns.service.cancelCampaignSchedule` | `campaigns.send` |
+| PATCH | `/api/v1/marketing/campaigns/:id/archive` | `campaignsApi.archive` | `campaigns.controller.archiveCampaign` | `campaigns.service.archiveCampaign` | `campaigns.archive` |
 | GET | `/api/v1/marketing/templates` | `templatesApi.list` | `templates.controller.getTemplates` | `templates.service.getTemplates` | `campaigns.view` |
 | GET | `/api/v1/marketing/templates/:id` | `templatesApi.get` | `templates.controller.getTemplateById` | `templates.service.getTemplateById` | `campaigns.view` |
 | POST | `/api/v1/marketing/templates` | `templatesApi.create` | `templates.controller.createTemplate` | `templates.service.createTemplate` | `campaigns.create` |
 | PUT | `/api/v1/marketing/templates/:id` | `templatesApi.update` | `templates.controller.updateTemplate` | `templates.service.updateTemplate` | `campaigns.edit` |
-| PATCH | `/api/v1/marketing/templates/:id/archive` | `templatesApi.archive` | `templates.controller.archiveTemplate` | `templates.service.archiveTemplate` | `campaigns.delete` |
+| PATCH | `/api/v1/marketing/templates/:id/archive` | `templatesApi.archive` | `templates.controller.archiveTemplate` | `templates.service.archiveTemplate` | `campaigns.archive` |
 | GET | `/api/v1/marketing/audiences` | `audiencesApi.list` | `audiences.controller.getAudiences` | `audiences.service.getAudiences` | `campaigns.view` |
 | POST | `/api/v1/marketing/audiences` | `audiencesApi.create` | `audiences.controller.createAudience` | `audiences.service.createAudience` | `campaigns.create` |
+| PUT | `/api/v1/marketing/audiences/:id` | `audiencesApi.update` | `audiences.controller.updateAudience` | `audiences.service.updateAudience` | `campaigns.edit` |
+| GET | `/api/v1/marketing/audiences/fields?source=LEADS` | `audiencesApi.fields` | `audiences.controller.audienceFields` | `audiences.service.audienceFields` | `campaigns.view` |
 | POST | `/api/v1/marketing/audiences/preview` | `audiencesApi.preview` | `audiences.controller.previewAudience` | `audiences.service.resolveAudience` | `campaigns.view` |
 | POST | `/api/v1/webhooks/brevo` | None; Brevo calls it | `brevo-webhook.brevoWebhookRouter` | `brevo-webhook.processBrevoEvent` | Valid configured Bearer token; production HTTPS |
 
@@ -43,27 +47,41 @@ The composer polls GET by ID every two seconds, for up to five minutes, to displ
 
 ## Database and sending behavior
 
-- `Campaign` stores the draft content, selected source/audience, creator, status, eligible recipient count and submission counts. Only DRAFT records may be edited or claimed for sending. Campaigns already sending cannot be archived.
-- `TargetAudience` and `TargetAudienceCondition` persist source and AND conditions. `Template` persists reusable subjects and sanitized content. Campaigns, audiences, templates and delivery results have no browser-storage persistence path.
-- `CampaignContact` stores eligible and excluded CRM records, normalized email, minimal personalization, CRM reference, delivery status, exclusion/failure reason and Brevo message ID. Optional CRM references use `ON DELETE SET NULL` so deleting the CRM record preserves the snapshot.
+- `Campaign` stores draft content, selected source/audience, creator, status, eligible recipient count and submission counts. Only DRAFT records may be edited or submitted through Send Now. The scheduler claims SCHEDULED records through the same sender. Campaigns with an unfinished submission cannot be archived.
+- `TargetAudience` and `TargetAudienceCondition` persist one source, at most 20 flat typed conditions and AND/OR match mode. Omitted/legacy match mode remains AND. `Template` persists reusable subjects and sanitized content. Campaigns, audiences, templates and delivery results have no browser-storage persistence path.
+- `CampaignContact` stores eligible and excluded CRM records, normalized email/phone, resolved field values and sender context in personalization, CRM reference, delivery status, exclusion/failure reason and provider message ID. Reports prefer submitted identity snapshots over current CRM names. Optional CRM references use `ON DELETE SET NULL` so deleting a CRM record preserves the snapshot.
 - `EmailDeliveryLog` stores pending and resulting submissions with `brevoMessageId`. `EmailEvent` stores deduplicated provider event types; `CampaignMetrics` stores real aggregate snapshots. Audit entries record create/update/archive, submission totals and detected interruptions.
 - A transaction claims `DRAFT → SENDING`, checks the entire audience allowance, and commits all snapshots before any provider call. A second claim returns 409. Validation or allowance failures roll the transaction back to DRAFT without sending.
-- Provider calls run in groups of at most five. All accepted requests finish as SENT, accepted/rejected mixtures as PARTIALLY_SENT, and all rejected requests as FAILED. Any unconfirmed request leaves the campaign PAUSED for review, with that recipient pending rather than failed. These statuses cannot be reset through the draft update API. Accepted and unconfirmed attempts are never automatically resent.
+- Provider calls run in groups of at most five, with current scheduling/sending actor access checked before each batch. Submissions and delivery remain separate: webhook evidence determines SENT/PARTIALLY_SENT/DELIVERED; explicit rejected requests are failed. Unconfirmed attempts remain pending for review. Durable submission leases and interrupted recovery retain accepted and uncertain attempts without automatic resend. These statuses cannot be reset through the draft update API.
 - `CampaignEmailQuota` reserves the entire eligible count per UTC date, shared across tenants and environments using the backend's Brevo account. `BREVO_DAILY_EMAIL_LIMIT` defaults to 300. Concurrent sends cannot overbook the same allowance. Reservations conservatively include pending, failed and uncertain attempts for that day; authentication emails are excluded. This is a campaign allowance, **not an exact remaining Brevo account quota**. Brevo remains authoritative and may reject requests because other account emails consumed its quota.
 
 The migration is `backend/prisma/migrations/20260924110000_campaign_brevo_delivery/migration.sql`. It adds the fields, statuses, message/event uniqueness constraints and quota table described above. Apply it before running the new backend.
 
 ## Audience resolution and safety
 
-Sources are All Leads, All Contacts, All Leads & Contacts, or a saved audience. The backend resolves recipients itself and accepts no browser-provided recipient list. It constructs Prisma predicates from a static switch over validated fields: status, source, company, product interest, assigned agent ID and created date. Supported operators are field-specific; empty conditions explicitly mean all records from the source.
+New sources are LEADS or CONTACTS, either directly or through a saved audience; those two inputs are mutually exclusive. Saved audiences determine their source. Legacy ALL history remains readable, but preview, duplication, sending and scheduling require explicit source repair. One invalid legacy item does not prevent the audience list loading.
 
-Tenant and environment are always taken from authenticated context. Campaign, template and audience references are checked within that scope. User emails for the tenant are loaded solely as an exclusion set; Users are never a recipient source. Emails are trimmed and lowercased for validation, snapshot storage and comparison, without rewriting the CRM record. Eligible Contacts take priority over duplicate Leads. Staff matches receive `STAFF_EMAIL`.
+The backend resolves recipients itself and accepts no browser-provided recipient list. Its approved field catalog is the same catalog used by Customize Fields and Workflows, including active custom fields hidden from forms. Native technical keys and `customFieldValues.<fieldId>` remain stable when labels change. Text, dropdown, number, date, supported references and product lists use field-specific operators; ordinary private files permit only empty/not-empty checks. Unknown, disabled, foreign-module or incompatible fields/operators fail validation. AND combines every flat rule; OR combines any rule. With no rules, either mode includes the chosen source. Product equals matches ANY selected product; not-equals matches NONE.
 
-Missing/invalid email, archived or inactive CRM records, Contact do-not-contact, previous unsubscribes, hard bounces, blocked/spam/invalid-address events and Sandbox exclusions are excluded. Opt-outs also suppress an equivalent email on a Lead. Preview returns actual counts for matched, eligible, missingEmail, invalidEmail, duplicateEmail, staffEmail, unsubscribed, blocked, inactive and sandboxBlocked; it does not expose a recipient list.
+Audience preview and submission share the server resolver. It reads records in stable 250-record batches with their custom values, account/assigned-agent display names and ordered product links; there are no per-recipient field/reference reads. Preview returns counts and a server-paginated eligible recipient list. Recipient revalidation preserves converted/inactive exclusion, opt-outs, staff exclusion, normalization and deduplication.
 
-CRM SANDBOX campaigns always require an explicit `BREVO_SANDBOX_EMAILS` allowlist, including when Node runs with `NODE_ENV=production`. Empty or absent allowlists allow zero Sandbox recipients. Existing nonproduction transport allowlist behavior also applies.
+Tenant scope is taken from authenticated context. Campaign, template, audience and reference values are checked within that scope. User emails for the tenant are loaded as an exclusion set; Users are never a recipient source. Emails are trimmed and lowercased for validation, snapshot storage and comparison, without rewriting CRM records. Deduplication applies within the selected source. Staff matches receive `STAFF_EMAIL`.
 
-Frontend and backend share `shared/src/contracts/campaign-email.ts`: strict payload schemas, Unicode names with length/control-character validation, subjects trimmed with a 200-character maximum and no CR/LF, and one canonical registry for the seven existing variables. Templates, composer controls, previews and backend rendering use this registry. Unknown variables resolve to empty strings; arbitrary object properties and expressions cannot resolve. Recipient values are HTML-escaped before insertion.
+Missing/invalid email, archived/inactive/converted records, Contact do-not-contact, previous unsubscribes, hard bounces, blocked/spam/invalid-address events and configured recipient restrictions are excluded. Opt-outs also suppress an equivalent email on a Lead. SMS adds normalized phone, invalid/missing phone, phone deduplication and do-not-contact counts.
+
+Existing nonproduction `BREVO_SANDBOX_EMAILS` restrictions remain: a configured allowlist limits eligible recipients and the transport enforces its restrictions independently. The worker uses the same resolver and transport as Send Now.
+
+Frontend and backend share strict payload schemas, Unicode names with length/control-character validation and subjects trimmed with a 200-character maximum and no CR/LF. The seven existing variable aliases remain available alongside approved native/custom field tokens. Searchable pickers group fields under their configured labels; template source filtering affects the editor only. Supported account/agent references resolve to readable names, products retain their ordered names, missing values render blank and numeric zero remains zero. Private file IDs/links cannot be personalized. Unknown/unavailable tokens block submission preflight; arbitrary object properties and expressions cannot resolve. Recipient values are HTML-escaped before insertion, subjects are validated after rendering and SMS length is checked after personalization and the system footer.
+
+## Schedule Once
+
+The composer offers Send Now or Schedule Once. Date/time inputs are explicitly Asia/Manila, converted to a UTC instant for existing `scheduledFor`. PATCH schedule accepts only `{ "scheduledFor": "<future ISO instant with offset>" }`; client-provided actor, rules, timezone or recurrence are rejected. Initial scheduling requires an unstarted Draft and derives the actor from the session. It copies effective subject/body from the selected template when needed and stores approved source/matchMode/conditions plus the fixed timezone in `scheduleConfig`. Recipients are evaluated at dispatch time. Editing or archiving a saved audience/template later cannot alter approved content/rules.
+
+SCHEDULED content is read-only. Reschedule changes due time and the validated actor while preserving approval. Cancel returns an unclaimed schedule to Draft and clears due time/actor/configuration. To edit content/rules, cancel, edit and schedule again. Archive also cancels an unclaimed schedule atomically. Schedule, reschedule and cancel require `campaigns.send`; content editing keeps `campaigns.edit`.
+
+The backend starts bounded due discovery at startup and every 30 seconds, selecting at most 25 schedules per pass. No browser is required. Conditional claims match expected status, due time, scheduling actor and revision; two workers, cancellation and rescheduling have one winner. Send Now only claims Draft. Before claiming, the worker checks current actor/workspace permission, active approved fields, provider configuration, current recipient eligibility and quota, then enters the existing snapshot/lease/provider sender path. Permission loss, unavailable field/token, zero eligible recipients or exhausted quota return an unclaimed schedule to Draft with a persistent `scheduleFailureReason`, displayed in details. They are not automatically retried. Transient database failures leave the due schedule pending. Shutdown stops discovery and preserves unclaimed schedules for restart; submission uncertainty retains the existing manual-review recovery behavior.
+
+Apply `20261123000000_campaign_schedule` after prior migrations and before starting this backend. It adds SCHEDULED, default-AND audience semantics, scheduling actor/configuration and the due-time index. It does not activate legacy Draft timestamps, rewrite historical timestamps or replay past campaigns. Existing Campaign list/report polling continues; populated refreshes preserve rows, filters and controls without refresh-only spinners or disabling.
 
 Backend HTML uses `sanitize-html` before storage and after personalization. It permits a restricted set of formatting/link/image tags and URL schemes; executable elements, SVG, event handlers and unsafe URLs are stripped. Frontend HTML uses DOMPurify and a sandboxed preview iframe. Required input errors are shown below the relevant field, one message per field. Transport errors retain the saved draft and editor content.
 

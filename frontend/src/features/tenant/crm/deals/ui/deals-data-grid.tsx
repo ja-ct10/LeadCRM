@@ -7,6 +7,7 @@
  */
 
 'use client';
+import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
 import type { Deal } from '@/store/types';
@@ -203,6 +204,8 @@ export function DealsDataGrid({
 
   // ─── Stable Callbacks ────────────────────────────────────────────────
 
+  const configuredColumns = useConfiguredCrmColumns('deals', gridColumns);
+
   const getRowId = useCallback((deal: Deal) => deal.id, []);
 
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
@@ -221,7 +224,7 @@ export function DealsDataGrid({
 
   return (
     <DataGrid<Deal>
-      columns={gridColumns}
+      columns={configuredColumns}
       data={deals}
       highlightRowId={highlightRowId}
       getRowId={getRowId}

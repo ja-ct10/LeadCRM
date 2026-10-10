@@ -1,19 +1,24 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { campaignFields } from '@leadcrm/shared';
 import { CampaignBuilder } from '../campaign-builder';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { toast } from 'sonner';
 const access = vi.hoisted(() => ({ denied: new Set<string>() }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'builder-user', tenantId: 'builder-tenant', role: 'Client Admin' }, tenant: { id: 'builder-tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key) }));
-vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn() } }));
-vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
+vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn(), schedule: vi.fn(), cancelSchedule: vi.fn() } }));
+vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { fields: vi.fn(), companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
 const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [], meta: { page: 1, limit: 25, total: 2, hasMore: false } };
-const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'ALL' as const, conditions: [] };
+const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'LEADS' as const, conditions: [] };
 beforeEach(() => {
   access.denied.clear();
+  vi.mocked(audiencesApi.fields).mockImplementation(async source => ({ success: true, data: campaignFields(source) }));
+  vi.mocked(campaignsApi.schedule).mockResolvedValue({ success: true, data: { id: 'saved-id', status: 'scheduled' } as never });
+  vi.mocked(campaignsApi.cancelSchedule).mockResolvedValue({ success: true, data: { id: 'saved-id', status: 'Draft' } as never });
   vi.mocked(campaignsApi.emailSettings).mockResolvedValue({ success: true, data: { senderName: 'Configured test sender', senderEmail: 'sender@example.test' } });
   vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationEmail: 'info@example.test' } });
   vi.clearAllMocks(); vi.mocked(audiencesApi.list).mockResolvedValue({ success: true, data: [audience] });
@@ -25,7 +30,7 @@ beforeEach(() => {
 afterEach(cleanup);
 function fill() {
   fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'September Campaign' } });
-  fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
+  fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
   fireEvent.change(screen.getByLabelText(/Subject Line/), { target: { value: 'Hello {{first_name}}' } });
   fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Hi {{first_name}}' } });
 }
@@ -96,7 +101,7 @@ describe('campaign composer', () => {
   });
   it('lets an explicitly authorized sender send a saved draft without editing it', async () => {
     access.denied.add('campaigns.edit'); access.denied.add('campaigns.create');
-    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Existing', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'ALL' } as never} />);
+    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Existing', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'LEADS' } as never} />);
     expect((screen.getByRole('button', { name: 'Save Draft' }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByLabelText(/Campaign Name/).closest('fieldset')?.disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Send Now' }));
@@ -115,7 +120,7 @@ describe('campaign composer', () => {
   it('saves a database draft with its selected audience and content without sending', async () => {
     render(<CampaignBuilder onBack={vi.fn()} />); fill();
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
-    await waitFor(() => expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'September Campaign', audienceSource: 'ALL', body: 'Hi {{first_name}}', subject: 'Hello {{first_name}}' })));
+    await waitFor(() => expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'September Campaign', audienceSource: 'LEADS', body: 'Hi {{first_name}}', subject: 'Hello {{first_name}}' })));
     expect(campaignsApi.send).not.toHaveBeenCalled();
   });
   it('prevents double clicks and reports submitted counts, not delivery', async () => {
@@ -178,7 +183,7 @@ describe('campaign composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Create Audience' }));
     await screen.findByRole('option', { name: 'New audience' });
     expect((screen.getByLabelText(/Target Audience/) as HTMLSelectElement).value).toBe(audience.id);
-    expect(audiencesApi.create).toHaveBeenCalledWith({ name: 'New audience', source: 'ALL', conditions: [] });
+    expect(audiencesApi.create).toHaveBeenCalledWith({ name: 'New audience', source: 'LEADS', matchMode: 'AND', conditions: [] });
   });
   it('inserts variables at Subject and Body selections and exposes the same chips as draggable text', async () => {
     render(<CampaignBuilder onBack={vi.fn()} />);
@@ -201,7 +206,7 @@ describe('campaign composer', () => {
     vi.mocked(campaignsApi.smsSettings).mockRejectedValueOnce(new Error('Settings unavailable'));
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{first_name}}, your proposal is ready." />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS campaign' } });
-    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'ALL' } });
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
     await screen.findByText(/For inquiries regarding our products and services, contact Camxian Technologies:\s*\+63 \(28\) 462-3488 or go to the official website\.\s*This is a no-reply message\./s);
     expect(screen.queryByLabelText(/Subject Line/)).toBeNull();
     await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ channel: 'SMS' })));
@@ -209,4 +214,33 @@ describe('campaign composer', () => {
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
     expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: 'Hi {{first_name}}, your proposal is ready.' }));
   });
+  it('schedules once using an explicit Manila date converted to UTC and does not call Send Now', async () => {
+    const onBack = vi.fn(); render(<CampaignBuilder onBack={onBack} />); fill();
+    fireEvent.change(screen.getByLabelText('Delivery'), { target: { value: 'schedule' } });
+    fireEvent.change(screen.getByLabelText('Schedule Once (Asia/Manila)'), { target: { value: '2099-10-11T10:30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Schedule Once' }));
+    await waitFor(() => expect(campaignsApi.schedule).toHaveBeenCalledWith('saved-id', '2099-10-11T02:30:00.000Z'));
+    expect(campaignsApi.send).not.toHaveBeenCalled(); expect(onBack).toHaveBeenCalledOnce();
+  });
+  it('cancels an unclaimed saved schedule before editing, with Send Now and draft inputs disabled', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Scheduled', type: 'Email', status: 'scheduled', subject: 'Hi', body: 'Hello', audienceSource: 'LEADS', scheduledFor: '2099-10-11T02:30:00.000Z' } as never} />);
+    expect((screen.getByRole('button', { name: 'Schedule Once' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Save Draft' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel schedule' }));
+    await waitFor(() => expect(campaignsApi.cancelSchedule).toHaveBeenCalledWith('saved-id'));
+    expect(campaignsApi.update).not.toHaveBeenCalled();
+  });
+
+  it('uses the newly selected source catalog after a failed schedule returns to Draft', async () => {
+    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Repair schedule', type: 'Email', status: 'Draft', subject: 'Hi', body: 'Hello {{jobTitle}}', audienceSource: 'LEADS', scheduleConfig: { source: 'LEADS', matchMode: 'AND', conditions: [], timezone: 'Asia/Manila', scheduleFailureReason: 'No eligible recipients.' } } as never} />);
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'CONTACTS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    expect(await screen.findByRole('button', { name: /Job Title.*jobTitle/ })).toBeTruthy();
+    expect(screen.queryByText(/Repair unavailable variables for this source/)).toBeNull();
+    const frame = screen.getByTitle('Email body preview');
+    expect(frame.getAttribute('srcdoc')).toContain('Hello Example Job Title');
+    await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ source: 'CONTACTS' })));
+    expect(screen.getByText('Schedule failed: No eligible recipients.')).toBeTruthy();
+  });
+
 });

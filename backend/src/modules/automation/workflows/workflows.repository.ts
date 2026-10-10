@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import { getWorkflowConditionFields, CRM_STATUSES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity } from '@leadcrm/shared';
+import { getWorkflowConditionFields, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
 import { workflowCustomFields } from './workflow-fields';
 import { readRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -22,7 +22,10 @@ export async function builderOptions(tenantId: string, marketing: boolean, acces
     marketing && access.users ? connectedSenders(tenantId) : [],
   ]);
   const people = (rows: Array<{ id: string; firstName: string; lastName: string }>) => rows.map(user => ({ id: user.id, name: `${user.firstName} ${user.lastName}` }));
-  return { customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), ...assignments, senders: people(senders), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
+  const preferences = await prisma.tenantPreference.findMany({ where: { tenantId, key: 'field-layout', module: { in: CUSTOM_FIELD_MODULES.filter(module => access[module]) } } });
+  const fieldLayouts: Partial<Record<typeof CUSTOM_FIELD_MODULES[number], FieldLayout>> = {};
+  for (const preference of preferences) { const parsed = FieldLayoutSchema.safeParse(preference.value); if (parsed.success) fieldLayouts[parsed.data.module] = parsed.data; }
+  return { fieldLayouts, customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), ...assignments, senders: people(senders), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
 }
 
 async function connectedSenders(tenantId: string) {

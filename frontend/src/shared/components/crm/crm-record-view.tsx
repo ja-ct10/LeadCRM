@@ -1,11 +1,11 @@
 'use client';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldDetails } from './record-custom-fields';
+import { useFieldLayout } from '@/shared/hooks/use-field-layout';
 import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { useEffect, useId, useState } from 'react';
 import { DealClosingRequirements } from './deal-closing-requirements';
-import { invalidatePageCache } from '@/shared/cache/page-cache';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
@@ -17,7 +17,8 @@ import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import type { Lead, Contact } from '@/store/types';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
-import { useRecordActivities, type TimelineActivity } from '@/shared/hooks/use-record-activities';
+import { useRecordRelationships } from '@/shared/hooks/use-record-relationships';
+import { useRecordActivities, type RecordActivityFilters, type TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { Button } from '@/shared/components/ui/button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -26,7 +27,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import { RecordTimelineTab } from './record-timeline-tab';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
-import { CRM_STATUSES, normalizeCrmStatus } from '@leadcrm/shared';
+import { CLOSED_WON_GROUP_ID, CRM_STATUSES, getCrmFieldCatalog, normalizeCrmStatus } from '@leadcrm/shared';
 import type { RecordFileMetadata } from '@leadcrm/shared';
 import { RecordFilesTab } from './record-files-tab';
 import { ConfirmActionDialog } from './confirm-action-dialog';
@@ -46,6 +47,7 @@ import { copyTextWithFeedback } from '@/shared/utils/clipboard';
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type RecordData = Record<string, unknown>;
 interface Relationships {
+  hasMoreDeals?: boolean;
   account?: RecordData | null;
   contact?: RecordData | null;
   sourceLead?: RecordData | null;
@@ -76,6 +78,7 @@ function RecordQuickInfo({ items, actions }: { items: { value: string; icon: Luc
 
 // ── InlineEditRows — click-to-edit About section ─────────────────────────────
 interface InlineRowDef {
+  technicalKey?: string;
   label: string;
   value: unknown;
   apiField?: string;
@@ -177,6 +180,7 @@ function RelatedRecords({ records, module, empty }: { records: RecordData[]; mod
 /** The drawer and route render this same record reader, actions and content. */
 export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean }) {
   const router = useRouter();
+  const fieldLayout = useFieldLayout(module);
   const { user, tenant } = useAuth();
   const data = useData();
   const canEdit = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : module === 'leads' ? 'leads.edit' : 'contacts.edit');
@@ -185,6 +189,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const canCreateDeal = useHasPermission('deals.create');
   const canReadDeals = useHasPermission('deals.view');
   const canReadContacts = useHasPermission('contacts.view');
+  const canReadLeads = useHasPermission('leads.view');
   const canReadAccounts = useHasPermission('accounts.view');
   const [tab, setTab] = useState(focusClosing ? 'details' : 'activity');
   const [closingAttention, setClosingAttention] = useState(focusClosing);
@@ -199,11 +204,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const [savingField, setSavingField] = useState<string | null>(null);
   const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, revalidateOnInvalidation: true,
     fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { signal })).data });
-  // Contacts' timeline is already included in this endpoint; avoid a second read.
-  const relatedQuery = useCachedPage<Relationships>({ module, params: { recordId: id, relationships: true }, revalidateOnInvalidation: true,
-    disabled: module === 'deals' || USE_MOCK_DATA || (!detailsVisited && module !== 'contacts') || !recordQuery.data || !!recordQuery.error,
-    fetchFn: async signal => (await apiClient.get<{ data: Relationships }>(`/crm/${module}/${encodeURIComponent(id)}/relationships?limit=50`, { signal })).data });
-  const timeline = useRecordActivities(module, id, !!recordQuery.data && !recordQuery.error || USE_MOCK_DATA, module === 'contacts' ? relatedQuery.data?.activities ?? [] : undefined);
+  const [activityFilters, setActivityFilters] = useState<RecordActivityFilters>({});
+  const relatedQuery = useRecordRelationships<Relationships>(module, id, module === 'deals' || USE_MOCK_DATA || !detailsVisited || !recordQuery.data);
+  const timeline = useRecordActivities(module, id, !!recordQuery.data || USE_MOCK_DATA, undefined, activityFilters);
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
@@ -226,7 +229,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
 
   const relationships = relatedQuery.data;
   const label = labels[module];
-  const refresh = () => { void recordQuery.refetch(); if (module !== 'deals') void relatedQuery.refetch(); void timeline.refetch(); };
   const edit = () => {
     setTab('details'); setDetailsVisited(true);
   };
@@ -238,8 +240,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         if (module === 'accounts') await data.updateOrganization(id, payload);
         else if (module === 'deals') await data.updateDeal(id, payload);
         else await data.updateContact(id, payload);
-      } else await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, payload);
-      refresh();
+      } else { const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, payload); if (response.data) recordQuery.setData(response.data); }
       toast.success(`${label} updated`);
     } catch (error) { toast.error(error instanceof Error ? error.message : `Failed to update ${label.toLowerCase()}`); }
     finally { setSaving(false); }
@@ -257,9 +258,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const trimmed = typeof value === 'string' ? value.trim() : value;
         if (apiField === 'email' && (module === 'leads' || module === 'contacts')) CrmEmailSchema.parse(trimmed);
         const normalized = apiField === 'website' && module === 'accounts' && typeof trimmed === 'string' && trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
-        await apiClient.put(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
+        const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
+        if (response.data) recordQuery.setData(response.data);
       }
-      refresh();
       toast.success('Field updated');
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'Failed to update field');
@@ -270,7 +271,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   };
 
   if (recordQuery.isInitialLoad) return <div role="status" aria-label={`Loading ${label.toLowerCase()}`} className="relative space-y-4 p-4 animate-pulse">{onClose && <Button variant="ghost" size="icon" className="absolute right-3 top-3" onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}<div className="h-12 w-12 rounded-xl bg-muted" /><div className="h-5 w-2/3 rounded bg-muted" /><div className="h-9 rounded-xl bg-muted" /><div className="h-44 rounded-xl bg-muted" /></div>;
-  if (recordQuery.error || !record) return <div className="space-y-4 p-5"><h2 className="font-semibold">Unable to open {label.toLowerCase()}</h2><p role="alert" className="text-sm text-muted-foreground">{recordQuery.error || 'Record not found or access is unavailable.'}</p><Button variant="outline" onClick={() => void recordQuery.refetch()}>Retry</Button>{onClose && <Button variant="ghost" onClick={onClose}>Close</Button>}</div>;
+  if (!record) return <div className="space-y-4 p-5"><h2 className="font-semibold">Unable to open {label.toLowerCase()}</h2><p role="alert" className="text-sm text-muted-foreground">{recordQuery.error || 'Record not found or access is unavailable.'}</p><Button variant="outline" onClick={() => void recordQuery.refetch()}>Retry</Button>{onClose && <Button variant="ghost" onClick={onClose}>Close</Button>}</div>;
 
   const title = module === 'deals' ? text(record.title) : module === 'accounts' ? text(record.name) : personName(record);
   const person = module === 'deals' ? object((record.contactDeals as RecordData[] | undefined)?.[0]?.contact) ?? object((record.leadDeals as RecordData[] | undefined)?.[0]?.lead) : record;
@@ -294,7 +295,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const dealStages = data.pipelines.find(p => p.id === record.pipelineId)?.stages ?? [];
   const changeStage = async (stageId: string, reason?: string) => {
     setSaving(true);
-    try { await data.moveDealStage(id, stageId, undefined, reason); setLostStage(undefined); refresh(); }
+    try { await data.moveDealStage(id, stageId, undefined, reason); setLostStage(undefined); }
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); }
     finally { setSaving(false); }
   };
@@ -307,23 +308,21 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
-  const productRow: InlineRowDef = { label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
+  const productRow: InlineRowDef = { technicalKey: 'productInterestIds', label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
   const aboutRows: InlineRowDef[] = module === 'deals' ? [
     { label: 'Deal title', value: title, apiField: 'title' },
-    { label: 'Deal value', value: subtitle.split(' · ')[0] },
+    { technicalKey: 'value', label: 'Deal value', value: subtitle.split(' · ')[0] },
     productRow,
     { label: 'Priority', value: record.priority, apiField: 'priority', type: 'select', options: ['LOW', 'MEDIUM', 'HIGH'] },
     { label: 'Expected close date', value: text(record.expectedCloseDate).slice(0, 10), apiField: 'expectedCloseDate', type: 'date' },
-    { label: 'Pipeline', value: object(record.pipeline)?.name },
-    { label: 'Stage', value: statusLabel },
+    { technicalKey: 'pipelineId', label: 'Pipeline', value: object(record.pipeline)?.name },
+    { technicalKey: 'stageId', label: 'Stage', value: statusLabel },
+    ...(canReadAccounts ? [{ technicalKey: 'accountId', label: 'Account', value: object(record.organization)?.name ?? object(record.account)?.name }] : []),
     { label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
-    { label: 'Account', value: record.accountId, displayValue: company, apiField: 'accountId', type: 'accounts' },
-    { label: 'Contacts', value: (record.contactDeals as RecordData[] | undefined)?.map(link => text(object(link.contact)?.id)) ?? [], displayValue: (record.contactDeals as RecordData[] | undefined)?.map(link => personName(object(link.contact))) ?? [], apiField: 'contactIds', type: 'contacts' },
-    { label: 'Leads', value: (record.leadDeals as RecordData[] | undefined)?.map(link => text(object(link.lead)?.id)) ?? [], displayValue: (record.leadDeals as RecordData[] | undefined)?.map(link => personName(object(link.lead))) ?? [], apiField: 'leadIds', type: 'leads' },
     { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
     { label: 'Industry', value: record.industry, apiField: 'industry' },
     { label: 'Address', value: record.address, apiField: 'address' },
-    { label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
+    { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ] : [
     ...(module === 'accounts' ? [
       { label: 'Account name', value: record.name, apiField: 'name', required: true, maxLength: 255 },
@@ -332,6 +331,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       { label: 'Website', value: record.website, apiField: 'website', type: 'url' as const },
       { label: 'City', value: record.city, apiField: 'city' },
       { label: 'Province', value: record.province, apiField: 'province' },
+      { label: 'Country', value: record.country, apiField: 'country' },
     ] : [
       { label: 'First name', value: record.firstName, apiField: 'firstName', required: true },
       { label: 'Last name', value: record.lastName, apiField: 'lastName', required: true },
@@ -339,20 +339,26 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const },
       { label: 'Company', value: module === 'leads' ? record.companyName : record.company, apiField: module === 'leads' ? 'companyName' : 'company' },
       ...(module === 'contacts' ? [{ label: 'Job title', value: record.jobTitle, apiField: 'jobTitle' }] : []),
+      ...(canReadAccounts ? [{ technicalKey: 'accountId', label: 'Account', value: object(record.account)?.name ?? object(record.organization)?.name }] : []),
       { label: 'Source', value: source, apiField: 'source' },
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
     productRow,
+    ...(module === 'contacts' || module === 'accounts' ? [{ technicalKey: 'activeProductIds', label: 'Active Products', value: record.activeProducts }] : []),
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
-    { label: 'Assigned Agent', value: owner },
+    { technicalKey: 'assignedUserId', label: 'Assigned Agent', value: owner },
     ...(module === 'leads' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
+    ...(module === 'accounts' ? [{ label: 'Internal Notes', value: record.internalNotes, apiField: 'internalNotes', type: 'textarea' as const }] : []),
+    { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ];
+  const catalog = fieldLayout.data?.fields ?? getCrmFieldCatalog(module, [], fieldLayout.layout);
+  const configuredRows = aboutRows.map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
 
   const customFields = object(record.customFields);
   const deals = relationships?.deals ?? [];
   const links = module === 'deals' ? { dealId: id } : module === 'leads' ? { leadId: id } : module === 'contacts' ? { contactId: id } : { accountId: id };
-  const activityLoading = module === 'contacts' ? relatedQuery.isInitialLoad : timeline.isInitialLoad;
-  const activityError = module === 'contacts' ? relatedQuery.error : timeline.error;
+  const activityLoading = timeline.isInitialLoad;
+  const activityError = timeline.error;
   const formRecord = { ...record, companyName: company, leadSource: source, organizationId: record.accountId, productInterests: record.productInterest ?? record.productInterests, status: statusLabel };
   const website = text(record.website);
   const websiteHref = website && !/^[a-z][a-z0-9+.-]*:/i.test(website) ? `https://${website}` : /^https?:\/\//i.test(website) ? website : undefined;
@@ -394,7 +400,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </div>
           <div className={cn('ml-[52px] flex min-w-0 max-w-[calc(100%-52px)] items-center gap-1.5 [&>div]:min-w-0 @min-[400px]:ml-0', onClose ? '@min-[400px]:pr-11' : '@min-[400px]:pr-9')}>
             {manageMenu}
-            {module === 'deals' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open messages" title="Open messages" onClick={() => router.push('/inbox')}><Inbox size={16} /></Button></TooltipTrigger><TooltipContent>Open messages</TooltipContent></Tooltip></TooltipProvider>}
+            {module !== 'accounts' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open messages" title="Open messages" onClick={() => router.push('/inbox')}><Inbox size={16} /></Button></TooltipTrigger><TooltipContent>Open messages</TooltipContent></Tooltip></TooltipProvider>}
             {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
@@ -416,7 +422,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           const next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (current + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
           tabs[next].focus(); tabs[next].click();
         }}><TabsList className="grid w-full grid-cols-3 gap-1 overflow-visible bg-muted/70">
-          <TabsTrigger value="activity" badge={!activityLoading && !activityError && timeline.activities.length < (module === 'contacts' ? 50 : 100) ? timeline.activities.length : undefined} className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center [&>span]:gap-1">Activity</TabsTrigger>
+          <TabsTrigger value="activity" badge={timeline.total} className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center [&>span]:gap-1">Activity</TabsTrigger>
           <TabsTrigger value="details" badge={rows.filter(([, value]) => present(value)).length} className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center [&>span]:gap-1">Details</TabsTrigger>
           <TabsTrigger value="files" className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center">Files</TabsTrigger>
         </TabsList></div>
@@ -425,41 +431,43 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       <div data-record-scroll className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain', onClose ? 'bg-white dark:bg-slate-900' : 'bg-muted/20')}>
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
-            <RecordTimelineTab compact activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} onActivityCreated={refresh}
+            <RecordTimelineTab compact activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters}
               tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
-            {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} onSaved={() => { for (const key of ['deals', 'leads', 'contacts', 'accounts', 'activities']) invalidatePageCache(key, tenant?.id || user?.tenantId || ''); refresh(); }} />}
-            <RecordSection title="About">
-              <InlineEditRows rows={aboutRows} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} />
-            </RecordSection>
+            {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
+            {!USE_MOCK_DATA && <RecordCustomFieldDetails module={module} recordId={id} canEdit={canEdit} editorOnly />}
+            {[...fieldLayout.layout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => <RecordSection key={group.id} title={group.label}>
+              {catalog.filter(field => field.groupId === group.id && field.visibleInDetails).map(field => {
+                if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldDetails key={field.technicalKey} module={module} recordId={id} fieldId={field.customFieldId} embedded />;
+                const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
+                return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
+              })}
+            </RecordSection>)}
             {detailsVisited && relatedQuery.isInitialLoad && <p role="status" className="animate-pulse p-3 text-sm text-muted-foreground">Loading related records…</p>}
             {relatedQuery.error && <div role="alert" className="rounded-xl border border-border p-3 text-sm"><p>{relatedQuery.error}</p><Button variant="ghost" size="sm" onClick={() => void relatedQuery.refetch()}>Retry related records</Button></div>}
-            {module === 'deals' && <RecordSection title="Associations">{canReadContacts && <><RelatedRecords records={(record.leadDeals as RecordData[] | undefined)?.map(link => object(link.lead)!).filter(Boolean) ?? []} module="leads" empty="No originating Lead." /><RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." /></>}{canReadAccounts && record.organization != null && <RelatedRecords records={[object(record.organization)!]} module="accounts" empty="" />}</RecordSection>}
+            {module === 'deals' && <><RecordSection title="Lead/Contact">{canReadLeads && <RelatedRecords records={(record.leadDeals as RecordData[] | undefined)?.map(link => object(link.lead)!).filter(Boolean) ?? []} module="leads" empty="No originating Lead." />}{canReadContacts && <RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." />}</RecordSection>{canReadAccounts && <RecordSection title="Account"><RelatedRecords records={object(record.organization) || object(record.account) ? [object(record.organization) ?? object(record.account)!] : []} module="accounts" empty="No Account linked yet." /></RecordSection>}</>}
             {relationships && <>
               {module === 'accounts' && canReadContacts && <RecordSection title="Contacts" count={(relationships.contacts?.length ?? 0) < 50 ? relationships.contacts?.length : undefined}><RelatedRecords records={relationships.contacts ?? []} module="contacts" empty="No contacts linked to this account." /></RecordSection>}
               {module !== 'deals' && canReadDeals && <RecordSection title="Deals" count={deals.length < 50 ? deals.length : undefined} actions={canCreateDeal && !USE_MOCK_DATA && <Button variant="ghost" size="sm" className="min-h-9 gap-1 text-xs text-[var(--primary)]" onClick={() => setCreatingDeal(true)}><Plus size={13} />Create deal</Button>}>
                 <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
-                {deals.length === 50 && <p className="px-3 pb-3 text-xs text-muted-foreground">Showing the latest 50 linked deals.</p>}
+                {relationships.hasMoreDeals && <Button variant="ghost" size="sm" onClick={relatedQuery.loadMore} disabled={relatedQuery.isRefreshing}>Load older deals</Button>}
                 {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
                   await apiClient.post('/crm/deals', { customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
-                  setCreatingDeal(false); void relatedQuery.refetch();
+                  setCreatingDeal(false);
                 }} /></div>}
               </RecordSection>}
-              {module === 'leads' && canReadContacts && <RecordSection title="Converted contact" count={relationships.contact ? 1 : 0}><RelatedRecords records={relationships.contact ? [relationships.contact] : []} module="contacts" empty="Not yet converted to a contact." /></RecordSection>}
               {module !== 'accounts' && canReadAccounts && <RecordSection title={module === 'leads' ? 'Company / Organization' : 'Account / Company'} count={relationships.account ? 1 : 0}><RelatedRecords records={relationships.account ? [relationships.account] : []} module="accounts" empty="No parent company assigned." /></RecordSection>}
-              {module === 'contacts' && relationships.sourceLead && canReadContacts && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
+              {module === 'contacts' && relationships.sourceLead && canReadLeads && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
             </>}
 
-            {!USE_MOCK_DATA && <RecordCustomFieldDetails module={module} recordId={id} canEdit={canEdit} />}
-            {customFields && Object.keys(customFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(customFields).length}><RecordRows rows={Object.entries(customFields)} /></RecordSection>}
+            {USE_MOCK_DATA && customFields && Object.keys(customFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(customFields).length}><RecordRows rows={Object.entries(customFields)} /></RecordSection>}
           </div></TabsContent>
           <TabsContent value="files" className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordFilesTab files={filesQuery.data ?? []} loading={filesQuery.isInitialLoad} error={filesQuery.error} onRetry={() => void filesQuery.refetch()}
               onUpload={canEdit && !USE_MOCK_DATA ? async file => {
                 const query = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
                 await apiClient.upload(`/crm/${module}/${encodeURIComponent(id)}/files?${query}`, new Blob([file], { type: 'application/octet-stream' }));
-                await filesQuery.refetch(); refresh();
               } : undefined} />
           </TabsContent>
         </div>
@@ -474,7 +482,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         </form>
       </DialogContent>
     </Dialog>
-    {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={refresh} />}
+    {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={() => setConverting(false)} />}
     <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
       try { await apiClient.patch(`/crm/${module}/${encodeURIComponent(id)}/archive`); toast.success(`${label} archived`); setArchiving(false); if (onClose) onClose(); else router.push(`/crm/${module}`); }
       catch (error) { throw new Error(error instanceof Error ? error.message : 'Failed to archive record'); }

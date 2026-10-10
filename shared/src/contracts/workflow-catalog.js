@@ -27,7 +27,7 @@ function getWorkflowCustomFields(entity, definitions = []) {
     }));
 }
 /** Explicit module contract. Database properties never become builder fields implicitly. */
-function getWorkflowUpdateFields(entity, customFields = []) {
+function getWorkflowUpdateFields(entity, customFields = [], layout) {
     const assignment = { field: 'assignedUserId', label: 'Assigned Agent', type: 'user', nullable: true };
     const account = { field: 'accountId', label: 'Account', type: 'account', nullable: true };
     const product = { field: 'productInterestIds', label: 'Product Interest', type: 'products' };
@@ -52,10 +52,11 @@ function getWorkflowUpdateFields(entity, customFields = []) {
             { ...choice('status', 'Status', record_experience_1.CRM_STATUSES), required: true }, product, account,
             choice('source', entity === 'lead' ? 'Lead Source' : 'Source', record_experience_1.LEAD_SOURCES), assignment, text('address', 'Full Address'),
         ];
-    return [...standard, ...getWorkflowCustomFields(entity, customFields)];
+    return [...standard.map(field => ({ ...field, label: layout?.fields[field.field]?.label ?? field.label })), ...getWorkflowCustomFields(entity, customFields)];
 }
-function getWorkflowConditionFields(entity, trigger, customFields = []) {
-    const definitions = getWorkflowUpdateFields(entity, customFields).map(f => ({ ...f, field: entity + '.' + f.field }));
+function getWorkflowConditionFields(entity, trigger, customFields = [], layout) {
+    // Presentation visibility governs editing; active hidden values remain readable.
+    const definitions = getWorkflowUpdateFields(entity, customFields.map(field => ({ ...field, visibleInForm: true })), layout).map(f => ({ ...f, field: entity + '.' + f.field }));
     if (entity === 'deal')
         definitions.push({ field: 'deal.value', label: 'Deal Value', type: 'number' }, { field: 'deal.productInterestIds', label: 'Product Interest', type: 'products' }, { field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' }, { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' }, { field: 'deal.wonHistoryVerified', label: 'Stage history verified', type: 'boolean' });
     if (trigger === 'deal.stage_changed')

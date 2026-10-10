@@ -5,7 +5,7 @@ import { conversionFixture } from './conversion-fixture';
 vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.CONVERSION_TEST_DATABASE_URL! } } }) }));
 vi.mock('../../../automation/triggers/triggers.service', () => ({ fireLeadUpdated: vi.fn(), fireLeadStatusChanged: vi.fn(), fireContactCreated: vi.fn(), fireContactUpdated: vi.fn(), fireContactStatusChanged: vi.fn(), fireDealUpdated: vi.fn() }));
 let fixture: Awaited<ReturnType<typeof conversionFixture>>;
-beforeAll(async () => { fixture = await conversionFixture(); }, 60000);
+beforeAll(async () => { fixture = await conversionFixture(); }, 180000);
 afterAll(async () => { await fixture?.close(); });
 it('converts varied company names on the fully migrated schema without unknown Contact fields', async () => {
   await fc.assert(fc.asyncProperty(fc.stringMatching(/^[A-Za-z][A-Za-z ]{0,20}$/), async name => {

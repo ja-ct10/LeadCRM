@@ -132,8 +132,8 @@ describe('campaign report', () => {
     let resolve!: (value: never) => void;
     vi.mocked(campaignsApi.report).mockReturnValueOnce(new Promise(done => { resolve = done; }));
     const refresh = screen.getByRole('button', { name: 'Refresh' }); fireEvent.click(refresh); fireEvent.click(refresh);
-    expect(screen.getByText('Doris Testing')).toBeTruthy(); expect(campaignsApi.report).toHaveBeenCalledTimes(2); expect((refresh as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByRole('status', { name: 'Refreshing recipients' }).querySelector('.animate-spin')).toBeTruthy();
+    expect(screen.getByText('Doris Testing')).toBeTruthy(); expect(campaignsApi.report).toHaveBeenCalledTimes(2); expect((refresh as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole('status', { name: 'Refreshing recipients' })).toBeNull();
     const next = response(); next.data.recipients = recipients.slice(1); next.data.recipientCount = 3;
     await act(async () => resolve(next as never)); expect(screen.queryByText('Doris Testing')).toBeNull(); expect(screen.getByText('3 of 3 recipients')).toBeTruthy();
     expect(screen.queryByRole('status', { name: 'Refreshing recipients' })).toBeNull();
@@ -181,7 +181,7 @@ describe('campaign report', () => {
     expect(screen.queryByRole('status', { name: 'Loading data' })).toBeNull();
     expect(screen.queryByRole('status', { name: 'Refreshing recipients' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-    expect(screen.getByRole('status', { name: 'Refreshing recipients' })).toBeTruthy();
+    expect(screen.queryByRole('status', { name: 'Refreshing recipients' })).toBeNull();
     await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
     expect(campaignsApi.report).toHaveBeenCalledTimes(2);
     const updated = { ...response().data, type, status: 'delivered' };

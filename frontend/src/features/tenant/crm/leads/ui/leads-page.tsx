@@ -464,8 +464,8 @@ export default function LeadsPage(): React.ReactElement {
         onViewModeChange={setViewMode}
         onRefresh={refetchLeads}
         refreshDisabled={isLeadsInitialLoad || isLeadsRefreshing}
-        loading={(activeView === 'list' || activeView === 'table') && (isLeadsInitialLoad || isLeadsRefreshing || isColumnsLoading)}
-        loadingLabel={isLeadsInitialLoad || isLeadsRefreshing ? 'Loading leads...' : 'Loading columns...'}
+        loading={(activeView === 'list' || activeView === 'table') && (isLeadsInitialLoad || isColumnsLoading)}
+        loadingLabel={isLeadsInitialLoad ? 'Loading leads...' : 'Loading columns...'}
         onManageColumns={() => setIsManageColumnsOpen(true)}
         onResetColumns={() => {
           resetColumns();

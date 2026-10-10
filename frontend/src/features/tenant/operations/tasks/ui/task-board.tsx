@@ -172,7 +172,7 @@ export default function TaskBoard() {
             setOwnerError(
               reason instanceof Error
                 ? reason.message
-                : "Unable to load task owners.",
+                : "Unable to load assigned agents.",
             );
         });
     }, 250);
@@ -311,11 +311,11 @@ export default function TaskBoard() {
     },
     {
       id: "assignedUserId",
-      label: "Task owner",
+      label: "Assigned Agent",
       isExpanded: true,
       items: owners.map((value) => ({
         id: value.id,
-        label: `Owner: ${value.label}`,
+        label: `Assigned Agent: ${value.label}`,
         isChecked: filters.assignedUserId === value.id,
       })),
     },

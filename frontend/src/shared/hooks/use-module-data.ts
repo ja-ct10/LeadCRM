@@ -17,7 +17,7 @@ interface UseModuleDataParams {
 
 const EMPTY_DATA: Record<string, unknown>[] = [];
 
-/** Cache the response and its pagination metadata under the exact API query. */
+/** List queries cache their response; selected records share the drawer's raw-record cache. */
 export function useModuleData({ moduleId, page, pageSize, sort, filter, search, recordId, disabled }: UseModuleDataParams) {
   const params: Record<string, unknown> = { page: String(page), pageSize: String(pageSize) };
   if (sort) params.sort = `${sort.field}:${sort.direction}`;
@@ -30,32 +30,36 @@ export function useModuleData({ moduleId, page, pageSize, sort, filter, search, 
         : `${condition.operator}:${String(condition.value)}`;
   }
   const queryParams = recordId ? { recordId } : params;
-  const result = useCachedPage<ModulePaginatedResponse<Record<string, unknown>>>({
+  const result = useCachedPage<ModulePaginatedResponse<Record<string, unknown>> | Record<string, unknown>>({
     module: moduleId,
     disabled,
     params: queryParams,
     revalidateOnInvalidation: ['leads', 'contacts', 'accounts'].includes(moduleId),
-    intervalMs: 60_000,
+    intervalMs: recordId ? undefined : 60_000,
     fetchFn: async (signal) => {
       if (recordId) {
         // Resolve the selected record independently of list filters and pagination.
         const response = await apiClient.get<ApiResponse<Record<string, unknown>>>(
           `/crm/${moduleId}/${encodeURIComponent(recordId)}`, { signal },
         );
-        const row = response.data;
-        const data = row && !row.isArchived && !row.deletedAt ? [row] : [];
-        return { success: true, data, meta: { page: 1, pageSize, total: data.length, totalPages: data.length } };
+        if (!response.data) throw new Error('Record not found');
+        return response.data;
       }
       return apiClient.get<ModulePaginatedResponse<Record<string, unknown>>>(`/crm/${moduleId}`, { params, signal });
     },
   });
+  const row = recordId ? result.data as Record<string, unknown> | undefined : undefined;
+  const selected = row && !row.isArchived && !row.deletedAt ? [row] : EMPTY_DATA;
+  // Never store this projection under {recordId}: the detail reader expects the raw record.
+  const response = recordId ? result.data && { success: true, data: selected, meta: { page: 1, pageSize, total: selected.length, totalPages: selected.length } }
+    : result.data as ModulePaginatedResponse<Record<string, unknown>> | undefined;
   return {
-    data: result.data?.data ?? EMPTY_DATA,
-    facets: (result.data as { facets?: Record<string, number> } | null)?.facets,
-    meta: result.data?.meta ? {
-      ...result.data.meta,
-      pageSize: result.data.meta.pageSize ?? (result.data.meta as unknown as { limit: number }).limit,
-      totalPages: Math.ceil(result.data.meta.total / (result.data.meta.pageSize ?? (result.data.meta as unknown as { limit: number }).limit)),
+    data: response?.data ?? EMPTY_DATA,
+    facets: (response as { facets?: Record<string, number> } | null)?.facets,
+    meta: response?.meta ? {
+      ...response.meta,
+      pageSize: response.meta.pageSize ?? (response.meta as unknown as { limit: number }).limit,
+      totalPages: Math.ceil(response.meta.total / (response.meta.pageSize ?? (response.meta as unknown as { limit: number }).limit)),
     } : null,
     isLoading: result.isInitialLoad || result.isRefreshing,
     isInitialLoad: result.isInitialLoad,

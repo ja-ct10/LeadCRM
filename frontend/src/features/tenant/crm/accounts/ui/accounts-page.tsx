@@ -391,8 +391,8 @@ export default function AccountsPage(): React.ReactElement {
         searchPlaceholder="Search accounts..."
         onRefresh={refetchAccounts}
         refreshDisabled={isLoading || isRefreshing}
-        loading={isLoading || isRefreshing || isColumnsLoading}
-        loadingLabel={isLoading || isRefreshing ? 'Loading accounts...' : 'Loading columns...'}
+        loading={isLoading || isColumnsLoading}
+        loadingLabel={isLoading ? 'Loading accounts...' : 'Loading columns...'}
         onManageColumns={() => setIsManageColumnsOpen(true)}
       >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">

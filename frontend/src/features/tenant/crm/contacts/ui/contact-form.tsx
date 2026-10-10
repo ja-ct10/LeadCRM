@@ -1,5 +1,6 @@
 'use client';
 import { LEAD_SOURCES } from '@leadcrm/shared';
+import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
@@ -70,11 +71,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     email: initialData?.email || '',
     phone: initialData?.phone || '',
     companyName: initialData?.companyName || '',
+    jobTitle: initialData?.jobTitle || '',
+    notes: initialData?.notes || '',
     status: normalizeCrmStatus(initialData?.status),
     source: initialData?.leadSource || '',
     accountId: initialData?.accountId || initialData?.organizationId || '',
     assignedUserId: initialData?.assignedUserId || '',
     productInterest: initialData?.productInterests || initialData?.productInterest || [],
+    activeProducts: initialData?.activeProducts || [],
     address: initialData?.address || '',
   }), [initialData]);
 
@@ -113,6 +117,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   }, [initialData?.id]);
 
   const selectedProducts = watch('productInterest') || [];
+  const selectedActiveProducts = watch('activeProducts') || [];
 
   const [saveError, setSaveError] = useState('');
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
@@ -126,10 +131,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       email: data.email || undefined,
       phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
       companyName: data.companyName || (isEdit ? '' : undefined),
+      jobTitle: data.jobTitle || (isEdit ? '' : undefined),
+      notes: data.notes || (isEdit ? '' : undefined),
       status: data.status || 'Warm',
       leadSource: data.source || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
+      activeProducts: data.activeProducts || [],
       address: data.address || (isEdit ? '' : undefined),
     };
 
@@ -151,13 +159,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
+        <ConfiguredFormLayout form={customFields} module="contacts">
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
 
           {/* First & Last Name (required) */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
+            <FieldWrap fieldKey="firstName" label="First Name *" htmlFor={`${fieldId}-firstName`} error={errors.firstName?.message}>
               <input
                 {...register('firstName')}
                 id={`${fieldId}-firstName`}
@@ -167,7 +176,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                 placeholder="Enter first name"
               />
             </FieldWrap>
-            <FieldWrap label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
+            <FieldWrap fieldKey="lastName" label="Last Name *" htmlFor={`${fieldId}-lastName`} error={errors.lastName?.message}>
               <input
                 {...register('lastName')}
                 id={`${fieldId}-lastName`}
@@ -181,7 +190,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           {/* Email & Phone */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <FieldWrap label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
+            <FieldWrap fieldKey="email" label="Email *" htmlFor={`${fieldId}-email`} error={errors.email?.message}>
               <div className="relative">
                 <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={14} />
                 <input
@@ -195,7 +204,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                 />
               </div>
             </FieldWrap>
-            <FieldWrap label="Phone">
+            <FieldWrap fieldKey="phone" label="Phone">
               <PhilippinePhoneInput
                 value={phoneLocal}
                 onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); }}
@@ -205,7 +214,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </div>
 
           {/* Company Name */}
-          <FieldWrap label="Company Name" htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message}>
+          <FieldWrap fieldKey="company" label="Company Name" htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message}>
             <input
               {...register('companyName')}
               id={`${fieldId}-companyName`}
@@ -214,6 +223,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               className={`${inputCls} ${errors.companyName ? inputErrorCls : ''}`}
               placeholder="Company or organization name"
             />
+          </FieldWrap>
+          <FieldWrap fieldKey="jobTitle" label="Job Title" htmlFor={`${fieldId}-jobTitle`} error={errors.jobTitle?.message}>
+            <input {...register('jobTitle')} id={`${fieldId}-jobTitle`} aria-invalid={!!errors.jobTitle} className={`${inputCls} ${errors.jobTitle ? inputErrorCls : ''}`} placeholder="Job title" />
           </FieldWrap>
           <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
@@ -224,7 +236,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Status */}
-            <FieldWrap label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
+            <FieldWrap fieldKey="status" label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
               <div className="relative">
                 <select
                   {...register('status')}
@@ -243,9 +255,12 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               </div>
             </FieldWrap>
 
-            <FieldWrap label="Product Interest">
+            <FieldWrap fieldKey="productInterestIds" label="Product Interest">
               <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
+            </FieldWrap>
+            <FieldWrap fieldKey="activeProductIds" label="Active Products">
+              <ProductInterestSelect ariaLabel="Active Products" products={productRecords} valueMode="name" values={selectedActiveProducts} onChange={values => setValue('activeProducts', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
             </FieldWrap>
           </div>
           <CustomFieldGroup form={customFields} group="Status & Classification" />
@@ -256,7 +271,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           <SectionHeader num={3} title="Relationships" />
 
           {/* Account (organization) selector */}
-          <FieldWrap label="Account">
+          <FieldWrap fieldKey="accountId" label="Account">
             <Controller
               name="accountId"
               control={control}
@@ -273,7 +288,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </FieldWrap>
 
           {/* Assigned User */}
-          <FieldWrap label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
+          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
             <Controller
               name="assignedUserId"
               control={control}
@@ -300,7 +315,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         <div className="space-y-4">
           <SectionHeader num={4} title="Additional Information" />
 
-          <FieldWrap label="Source" htmlFor={`${fieldId}-source`} error={errors.source?.message}>
+          <FieldWrap fieldKey="source" label="Source" htmlFor={`${fieldId}-source`} error={errors.source?.message}>
             <div className="relative">
               <select
                 {...register('source')}
@@ -317,7 +332,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </FieldWrap>
 
           {/* Address */}
-              <FieldWrap label="Full Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
+              <FieldWrap fieldKey="address" label="Full Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
@@ -331,9 +346,13 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               />
             </div>
           </FieldWrap>
+          <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
+            <textarea {...register('notes')} id={`${fieldId}-notes`} rows={3} maxLength={10000} className={`${inputCls} ${errors.notes ? inputErrorCls : ''}`} placeholder="Add notes" />
+          </FieldWrap>
           <CustomFieldGroup form={customFields} group="Additional Information" />
         </div>
         <CustomFieldExtraGroups form={customFields} startNumber={5} />
+        </ConfiguredFormLayout>
       </div>
 
       {/* Sticky Footer */}
@@ -378,7 +397,7 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 

@@ -15,10 +15,11 @@ interface Props {
   disabled?: boolean;
   single?: boolean;
   labels?: Record<string, string>;
+  ariaLabel?: string;
 }
 
 /** One catalog-backed selector; name mode preserves the Contact/Account snapshot API. */
-export function ProductInterestSelect({ id, values, onChange, products, valueMode = 'id', disabled, single = false, labels = {} }: Props) {
+export function ProductInterestSelect({ id, values, onChange, products, valueMode = 'id', disabled, single = false, labels = {}, ariaLabel = 'Product Interest' }: Props) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const selected = [...new Set(values)];
@@ -27,7 +28,7 @@ export function ProductInterestSelect({ id, values, onChange, products, valueMod
   const labelFor = (value: string) => options.find(p => p.value === value)?.label || value;
   return <div className="min-w-0 [&>div]:w-full">
     <DropdownMenu open={open} onOpenChange={setOpen}>
-      <DropdownMenuTrigger asChild><button ref={trigger} id={id} type="button" disabled={disabled} aria-label="Product Interest" className="flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
+      <DropdownMenuTrigger asChild><button ref={trigger} id={id} type="button" disabled={disabled} aria-label={ariaLabel} className="flex min-h-11 w-full min-w-0 items-center justify-between gap-2 rounded-xl border border-input bg-background px-3 py-2 text-left text-sm focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
         <span className="min-w-0 [overflow-wrap:anywhere]">{selected.length === 0 ? 'Select product interests…' : selected.length === 1 ? labelFor(selected[0]) : `${selected.length} selected`}</span><ChevronDown className="h-4 w-4 shrink-0" />
       </button></DropdownMenuTrigger>
       <DropdownMenuContent align="start" role="group" aria-label="Product interests" className="w-80 max-w-[calc(100vw-2rem)]" onKeyDown={event => {

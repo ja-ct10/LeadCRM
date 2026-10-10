@@ -4,11 +4,11 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { DEFAULT_CLOSING_FIELDS, type ClosingRequirementsState } from '@leadcrm/shared';
 import { DealClosingRequirements } from '../deal-closing-requirements';
 
-const mocks = vi.hoisted(() => ({ patch: vi.fn(), upload: vi.fn(), refetch: vi.fn(), data: undefined as ClosingRequirementsState | undefined }));
+const mocks = vi.hoisted(() => ({ patch: vi.fn(), upload: vi.fn(), refetch: vi.fn(), data: undefined as ClosingRequirementsState | undefined, error: null as string | null }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { patch: mocks.patch, upload: mocks.upload } }));
-vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: mocks.data, refetch: mocks.refetch, isInitialLoad: false, error: null }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: mocks.data, refetch: mocks.refetch, isInitialLoad: false, error: mocks.error }) }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn() } }));
-beforeEach(() => { vi.clearAllMocks(); mocks.data = { fields: DEFAULT_CLOSING_FIELDS, values: {}, files: [], errors: {}, locked: false }; });
+beforeEach(() => { vi.clearAllMocks(); mocks.error = null; mocks.data = { fields: DEFAULT_CLOSING_FIELDS, values: {}, files: [], errors: {}, locked: false }; });
 afterEach(cleanup);
 
 it('shows truthful completion and warns about automatic closing before the last required save', () => {
@@ -74,4 +74,33 @@ it('uses the shared collapse and restores the same requirement content', () => {
   view.rerender(<DealClosingRequirements dealId="deal" canEdit focusRequested onSaved={() => {}} />);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   expect(screen.getByRole('progressbar')).toBeTruthy();
+});
+it('retains loaded closing evidence on refresh failure and removes evidence when the cache is cleared', () => {
+  const field = DEFAULT_CLOSING_FIELDS.find(field => field.id === 'reference-number')!;
+  mocks.data = { fields: [field], values: { [field.id]: 'REF-1' }, files: [], errors: {}, locked: true };
+  const view = render(<DealClosingRequirements dealId="deal" canEdit />);
+  const value = screen.getByText('REF-1');
+  mocks.error = 'Unable to refresh requirements';
+  view.rerender(<DealClosingRequirements dealId="deal" canEdit />);
+  expect(screen.getByText('REF-1')).toBe(value);
+  expect(screen.getByRole('alert').textContent).toContain(mocks.error);
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(mocks.refetch).toHaveBeenCalledTimes(1);
+  mocks.data = undefined;
+  view.rerender(<DealClosingRequirements dealId="deal" canEdit />);
+  expect(screen.queryByText('REF-1')).toBeNull();
+  expect(screen.getByRole('alert').textContent).toContain(mocks.error);
+});
+it('keeps the closing draft mounted while a background refresh fails', () => {
+  const field = DEFAULT_CLOSING_FIELDS.find(field => field.id === 'closing-notes')!;
+  mocks.data = { fields: [field], values: { [field.id]: 'Existing evidence' }, files: [], errors: {}, locked: false };
+  const view = render(<DealClosingRequirements dealId="deal" canEdit />);
+  fireEvent.click(screen.getByRole('button', { name: `Edit ${field.name}` }));
+  const input = screen.getByLabelText(field.name) as HTMLTextAreaElement;
+  fireEvent.change(input, { target: { value: 'Closing draft' } });
+  mocks.error = 'Unable to refresh requirements';
+  view.rerender(<DealClosingRequirements dealId="deal" canEdit />);
+  expect(screen.getByLabelText(field.name)).toBe(input);
+  expect(input.value).toBe('Closing draft');
+  expect(screen.getByRole('alert').textContent).toContain(mocks.error);
 });

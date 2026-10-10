@@ -10,6 +10,7 @@
  */
 
 'use client';
+import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import { useRouter } from 'next/navigation';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
@@ -329,6 +330,8 @@ export function LeadsDataGrid({
 
   // ─── Stable Callbacks ────────────────────────────────────────────────
 
+  const configuredColumns = useConfiguredCrmColumns('leads', gridColumns);
+
   const getRowId = useCallback((lead: Lead) => lead.id, []);
 
   // ─── Row Actions (⋯ menu) ─────────────────────────────────────────────
@@ -378,7 +381,7 @@ export function LeadsDataGrid({
 
       {/* Data Grid */}
       <DataGrid<Lead>
-        columns={gridColumns}
+        columns={configuredColumns}
         data={leads}
         getRowId={getRowId}
         height="auto"

@@ -6,6 +6,7 @@ export const CUSTOM_FIELD_MODULES = ['leads', 'contacts', 'accounts', 'deals'] a
 export type CustomFieldModule = typeof CUSTOM_FIELD_MODULES[number];
 export const CUSTOM_FIELD_MODULE_LABELS: Record<CustomFieldModule, string> = { leads: 'Leads', contacts: 'Contacts', accounts: 'Accounts', deals: 'Deals' };
 export const CLOSED_WON_GROUP = 'Closed Won Requirements';
+export const CLOSED_WON_GROUP_ID = 'deals:closing-evidence';
 export const CUSTOM_FIELD_BUILT_IN_GROUPS: Record<CustomFieldModule, readonly string[]> = {
   leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information'],
   contacts: ['Basic Information', 'Status & Classification', 'Relationships', 'Additional Information'],
@@ -22,7 +23,9 @@ export const ClosingFieldInputSchema = z.object({
   appliesTo: z.literal('Closed Won Requirements').optional(),
   module: z.enum(CUSTOM_FIELD_MODULES).default('deals'),
   group: z.string().trim().min(1, 'Group / Section is required.').max(100).default(CLOSED_WON_GROUP),
+  groupId: z.string().min(1).max(100).optional(),
   visibleInForm: z.boolean().default(true),
+  visibleInDetails: z.boolean().default(true),
   order: z.number().int().min(0).max(100000).default(0),
   required: z.boolean(),
   active: z.boolean().default(true),
@@ -34,13 +37,14 @@ export const ClosingFieldInputSchema = z.object({
   }
 });
 export type ClosingFieldInput = z.infer<typeof ClosingFieldInputSchema>;
-export type ClosingField = ClosingFieldInput & { id: string; version: number };
+export type ClosingField = ClosingFieldInput & { id: string; version: number; deletedAt?: string; deletedById?: string };
 export type ClosingValues = Record<string, string | number | null>;
 export const CustomFieldValuesSchema = z.record(z.string().min(1).max(100), z.union([z.string().max(10000), z.number().finite(), z.null()])).refine(v => Object.keys(v).length <= 100, 'Supply at most 100 field values.');
-export interface CustomFieldState { fields: ClosingField[]; values: ClosingValues; files: { id: string; name: string; url: string }[] }
-export const isClosedWonField = (field: Pick<ClosingField, 'module' | 'group'>) => field.module === 'deals' && customFieldNameKey(field.group) === customFieldNameKey(CLOSED_WON_GROUP);
+export interface CustomFieldState { fields: ClosingField[]; values: ClosingValues; files: { id: string; name: string; url: string }[]; layout?: import('./field-catalog').FieldLayout }
+export const isClosedWonField = (field: Pick<ClosingField, 'module' | 'group' | 'groupId'>) => field.module === 'deals' && (field.groupId ? field.groupId === CLOSED_WON_GROUP_ID : customFieldNameKey(field.group) === customFieldNameKey(CLOSED_WON_GROUP));
+export const isSystemClosingField = (field: Pick<ClosingField, 'id' | 'module' | 'group' | 'groupId'>) => isClosedWonField(field) && DEFAULT_CLOSING_FIELDS.some(seeded => seeded.id === field.id);
 /** Legacy definitions/snapshots retain their IDs and original context. */
-export const normalizeCustomField = (field: ClosingField): ClosingField => ({ ...field, module: field.module ?? 'deals', group: field.group ?? CLOSED_WON_GROUP, visibleInForm: field.visibleInForm ?? true, order: field.order ?? 0 });
+export const normalizeCustomField = (field: ClosingField): ClosingField => ({ ...field, module: field.module ?? 'deals', group: field.group ?? CLOSED_WON_GROUP, groupId: field.groupId ?? (isClosedWonField({ ...field, module: field.module ?? 'deals', group: field.group ?? CLOSED_WON_GROUP }) ? CLOSED_WON_GROUP_ID : undefined), visibleInForm: field.visibleInForm ?? true, visibleInDetails: field.visibleInDetails ?? true, order: field.order ?? 0 });
 export const ClosingValuesPatchSchema = z.object({ values: z.record(z.string().min(1).max(100), z.union([z.string().max(10000), z.number().finite(), z.null()])).refine(v => Object.keys(v).length > 0 && Object.keys(v).length <= 100, 'Supply 1–100 field values.') }).strict();
 export interface ClosingRequirementsState {
   fields: ClosingField[];
@@ -56,7 +60,7 @@ export const DEFAULT_CLOSING_FIELDS: ClosingField[] = [
   { id: 'reference-number', name: 'Reference Number', type: 'Text', required: false },
   { id: 'required-document', name: 'Required Document', type: 'File Upload', required: false },
   { id: 'closing-notes', name: 'Closing Notes', type: 'Long Text', required: false },
-].map((field, order) => ({ options: [], description: '', active: true, module: 'deals', group: CLOSED_WON_GROUP, visibleInForm: true, order, version: 1, ...field })) as ClosingField[];
+].map((field, order) => ({ options: [], description: '', active: true, module: 'deals', group: CLOSED_WON_GROUP, groupId: CLOSED_WON_GROUP_ID, visibleInForm: true, visibleInDetails: true, order, version: 1, ...field })) as ClosingField[];
 
 /** File IDs are checked against tenant/Deal-owned persistent records by the backend. */
 export function closingValueError(field: ClosingField, value: unknown): string | undefined {

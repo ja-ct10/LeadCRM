@@ -49,6 +49,7 @@ const original = {
   dealId: null,
   accountId: null,
   assignedById: actorId,
+  createdById: actorId,
   completedAt: null,
   completedById: null,
   isArchived: false,
@@ -84,6 +85,24 @@ beforeEach(() => {
 });
 
 describe("Task service authority", () => {
+  it("sets the immutable creator from the validated actor separately from the assigned agent", async () => {
+    const task = await scoped(() => service.createTask(tenantId, actorId, input));
+    expect(task).toMatchObject({ createdById: actorId, assignedUserId: input.assignedUserId, assignedById: actorId });
+    expect(db.task.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ createdById: actorId }) }));
+  });
+
+  it("rejects spoofed creator input on creation and reassignment", async () => {
+    await expect(scoped(() => service.createTask(tenantId, actorId, { ...input, createdById: 'spoof' }))).rejects.toThrow();
+    await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, { assignedUserId: 'replacement', createdById: 'spoof' }))).rejects.toThrow();
+    expect(db.task.create).not.toHaveBeenCalled();
+    expect(db.task.update).not.toHaveBeenCalled();
+  });
+
+  it("reassignment and completion leave the original creator intact", async () => {
+    const task = await scoped(() => service.updateTask(original.id, tenantId, 'new-actor', { assignedUserId: 'replacement', status: 'completed' }));
+    expect(task).toMatchObject({ createdById: actorId, assignedUserId: 'replacement', assignedById: 'new-actor' });
+    expect(db.task.update.mock.calls[0][0].data).not.toHaveProperty('createdById');
+  });
   it("validates payloads even when called directly by Workflow", async () => {
     await expect(
       scoped(() =>

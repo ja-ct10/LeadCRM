@@ -128,7 +128,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     await scope(() => saveField(tenantId, actor.id, { visibleInForm: false }, field.id));
     const options = await scope(() => workflows.getOptions(tenantId, actor.id));
     expect(getWorkflowUpdateFields('lead', options.customFields).some(f => f.customFieldId === field.id)).toBe(false);
-    expect(getWorkflowConditionFields('lead', undefined, options.customFields).some(f => f.customFieldId === field.id)).toBe(false);
+    expect(getWorkflowConditionFields('lead', undefined, options.customFields).some(f => f.customFieldId === field.id)).toBe(true);
   });
 
   it('advertises four update triggers, Contact labels and SMS but no retired actions', () => {

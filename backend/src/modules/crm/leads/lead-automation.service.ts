@@ -8,6 +8,7 @@ import { fireLeadCreated, fireDealCreated, fireDealUpdated } from '../../automat
 import { isAssignableAgent, SALES_PIPELINE_STAGES, pipelineStageColor } from '@leadcrm/shared';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
 import { productRelationData } from './product-relations';
+import { findSalesGroup } from '../../administration/groups/sales-group';
 
 type Tx = Prisma.TransactionClient;
 export const crmScope = (tenantId: string) => ({ tenantId });
@@ -122,7 +123,23 @@ export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId
   return agent;
 }
 
-export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCreateInput, actorId?: string) {
+/** Public inquiries rotate exclusively through current eligible default Sales members. */
+export async function resolveFormSalesAgent(tx: Tx, tenantId: string) {
+  const group = await findSalesGroup(tx, tenantId);
+  if (!group) return undefined;
+  const members = new Set(group.members.map(member => member.userId));
+  const agents = (await eligibleAgents(tx, tenantId)).filter(user => members.has(user.id)).sort((a, b) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  if (!agents.length) return undefined;
+  const key = { tenantId, module: 'form-lead-assignment', key: `sales:${group.id}` };
+  const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
+  const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
+  // A removed cursor member still has a stable position in the ordered pool.
+  const agent = agents.find(user => user.id > lastId) ?? agents[0];
+  await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent.id }, update: { value: agent.id } });
+  return agent;
+}
+
+export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCreateInput, actorId?: string, assignment: 'default' | 'public-form' = 'default') {
   const scope = crmScope(input.tenantId);
   if (input.creationKey) {
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });
@@ -137,11 +154,18 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
   const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
   const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null } });
-  const agent = await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
+  const agent = assignment === 'public-form'
+    ? await resolveFormSalesAgent(tx, scope.tenantId)
+    : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
   if (agent) {
     await tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } });
     await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId ?? agent.id, type: 'assignment',
-      title: `Lead ${agent ? 'assigned to ' + agent.firstName + ' ' + agent.lastName : 'awaiting assignment'}`, description: `${input.assignedUserId ? 'Explicit' : 'System round-robin'} assignment.` } });
+      title: `Lead assigned to ${agent.firstName} ${agent.lastName}`, description: assignment === 'public-form' ? 'Default Sales group round-robin assignment.' : `${input.assignedUserId ? 'Explicit' : 'System round-robin'} assignment.` } });
+  } else if (assignment === 'public-form' && actorId) {
+    await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId, type: 'assignment',
+      title: 'Lead awaiting assignment', description: 'The default Sales group has no eligible active members. The inquiry was saved as Unassigned.' } });
+    await tx.auditLog.create({ data: { ...scope, userId: actorId, action: 'lead.assignment_unavailable', entityType: 'Lead', entityId: lead.id,
+      changeset: { after: { assignedUserId: null, assignment: 'public-form', reason: 'sales_group_empty' } } } });
   }
   if (actorId) await tx.auditLog.create({ data: { ...scope, userId: actorId, action: 'lead.created', entityType: 'Lead', entityId: lead.id } });
   const assignedLead = await tx.lead.findFirstOrThrow({ where: { id: lead.id, ...scope }, include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } } });

@@ -46,14 +46,15 @@ test('the complete release history deploys reviewed transitions while guarded co
   const crm = '20261110000000_retire_unused_crm_columns';
   const lead = '20261112000000_retire_lead_nonform_columns';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, '20261121000000_mailbox_reply_header');
+  assert.equal(plan.through, '20261124000000_crm_content_revisions');
   assert.deepEqual(plan.exclude, [relationship, crm, lead]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
     '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_mailbox_thread_metadata', '20261114000000_notification_delivery',
     '20261115000000_dashboard_revisions', '20261115000000_workflow_assignment_history',
     '20261116000000_user_groups', '20261117000000_campaign_submission_recovery', '20261118000000_group_revisions',
-    '20261119000000_notification_utc_timestamps', '20261120000000_password_recovery_security', '20261121000000_mailbox_reply_header']) {
+    '20261119000000_notification_utc_timestamps', '20261120000000_password_recovery_security', '20261121000000_mailbox_reply_header',
+    '20261121000000_task_creator_sales_group', '20261123000000_campaign_schedule', '20261124000000_crm_content_revisions']) {
     assert.ok(selected.includes(name), name);
   }
   assert.throws(() => deploymentPlan(rows, [...names, '20261115000000_unreviewed']), /REVIEW_MIGRATIONS/);

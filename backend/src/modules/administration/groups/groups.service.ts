@@ -15,7 +15,12 @@ function rethrowMembershipConflict(error: unknown): never {
 }
 
 export async function getAll(tenantId: string) {
-  return repo.findAllGroups(tenantId);
+  return (await repo.findAllGroups(tenantId)).map(presentGroup);
+}
+
+function presentGroup<T extends { systemKey: string | null }>(group: T) {
+  const { systemKey, ...data } = group;
+  return { ...data, isDefault: systemKey === 'SALES' };
 }
 
 export async function create(tenantId: string, actorId: string, name: string) {
@@ -26,7 +31,7 @@ export async function create(tenantId: string, actorId: string, name: string) {
     action: 'group.created', entityType: 'TenantGroup', entityId: group.id,
     after: { name },
   });
-  return group;
+  return presentGroup(group);
 }
 
 export async function update(id: string, tenantId: string, actorId: string, name: string) {
@@ -40,12 +45,13 @@ export async function update(id: string, tenantId: string, actorId: string, name
     action: 'group.updated', entityType: 'TenantGroup', entityId: id,
     after: { name },
   });
-  return group;
+  return presentGroup(group);
 }
 
 export async function remove(id: string, tenantId: string, actorId: string) {
   const existing = await repo.findGroupById(id, tenantId);
   if (!existing) throw new NotFoundError('Group');
+  if (existing.systemKey) throw new ConflictError('The default Sales group cannot be deleted.');
 
   const deleted = await repo.deleteEmptyGroup(id, tenantId).catch(rethrowMembershipConflict);
   if (!deleted.count) throw new ConflictError('Remove all members from this group before deleting it.');

@@ -9,6 +9,7 @@ import { TableLoadingState } from './table-loading-state';
 import { toast } from 'sonner';
 import { CheckCircle2, Circle, LockKeyhole } from 'lucide-react';
 import { panelInputClass } from '@/shared/components/side-panel-styles';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
 
 function RequirementRow({ field, state, dealId, canEdit, onSaved }: { field: ClosingField; state: ClosingRequirementsState; dealId: string; canEdit: boolean; onSaved: (state: ClosingRequirementsState) => void }) {
   const stored = state.values[field.id];
@@ -52,22 +53,28 @@ function RequirementRow({ field, state, dealId, canEdit, onSaved }: { field: Clo
   </div>;
 }
 
-export function DealClosingRequirements({ dealId, canEdit, onSaved, focusRequested = false }: { focusRequested?: boolean; dealId: string; canEdit: boolean; onSaved: () => void }) {
+export function DealClosingRequirements({ dealId, canEdit, onSaved, focusRequested = false }: { focusRequested?: boolean; dealId: string; canEdit: boolean; onSaved?: () => void }) {
   const query = useCachedPage<ClosingRequirementsState>({ module: 'deals', params: { recordId: dealId, closingRequirements: true }, revalidateOnInvalidation: true, fetchFn: async signal => (await apiClient.get<{ data: ClosingRequirementsState }>(`/crm/deals/${dealId}/closing-requirements`, { signal })).data });
   const [saved, setSaved] = useState<ClosingRequirementsState>();
+  const [showAllEvidence, setShowAllEvidence] = useState(false);
   useEffect(() => { setSaved(undefined); }, [query.data]);
-  const state = saved ?? query.data;
+  const state = query.data ? saved ?? query.data : undefined;
   const fields = state?.fields.filter(field => field.active || state.locked) ?? [];
+  const visibleFields = fields.filter(field => focusRequested || field.visibleInDetails !== false);
+  const sectionTitle = state?.fields[0]?.group ?? 'Closed Won Requirements';
   const required = fields.filter(field => field.required);
   const completed = state ? required.filter(field => !state.errors[field.id] && !closingValueError(field, state.values[field.id]) && (field.type !== 'File Upload' || state.files.some(file => file.id === state.values[field.id]))).length : 0;
   return <div id={`closing-requirements-${dealId}`} tabIndex={-1} aria-label="Closed Won Requirements" className="min-w-0 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary">
-    <RecordSection title="Closed Won Requirements" forceOpen={focusRequested}>
+    <RecordSection title={sectionTitle} forceOpen={focusRequested}>
     <div className="space-y-3 border-b border-border p-4">{state && <span className="inline-flex items-center gap-1.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">{state.locked ? <><LockKeyhole size={12} />Locked</> : `${completed} of ${required.length} required complete`}</span>}{state && !state.locked && required.length > 0 && <div role="progressbar" aria-label="Required fields completed" aria-valuenow={completed} aria-valuemin={0} aria-valuemax={required.length} className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full bg-blue-600 dark:bg-blue-400" style={{ width: `${completed / required.length * 100}%` }} /></div>}</div>
-    {query.isInitialLoad && !state ? <TableLoadingState label="Loading requirements" /> : query.error ? <div role="alert" className="p-3 text-sm">{query.error}<Button onClick={() => void query.refetch()}>Retry</Button></div> : state && <>
+    {query.error && <div role="alert" className="p-3 text-sm">{query.error}<Button onClick={() => void query.refetch()}>Retry</Button></div>}
+    {query.isInitialLoad && !state && !query.error ? <TableLoadingState label="Loading requirements" /> : state && <>
       <div className="space-y-2 border-b border-border bg-muted/30 p-4 text-xs leading-relaxed text-muted-foreground"><p>{state.locked ? 'Closing evidence is preserved. Historical values cannot be edited.' : !fields.length ? 'No active closing requirements are configured.' : completed < required.length ? 'Complete the required fields below before closing this Deal.' : required.length ? 'All required fields are complete.' : 'There are no required fields. You can add optional closing details below.'}</p>{!state.locked && fields.length > 0 && <p>When this Deal is Qualified, saving a change with all required fields complete automatically closes it as won and locks the closing evidence. Add optional details before saving the final required field.</p>}</div>
-      {fields.map(field => <RequirementRow key={`${dealId}:${field.id}:${field.version}`} field={field} state={state} dealId={dealId} canEdit={canEdit} onSaved={next => { setSaved(next); void query.refetch(); onSaved(); toast.success(next.locked ? 'Deal closed as won' : 'Requirement saved'); }} />)}
+      {visibleFields.map(field => <RequirementRow key={`${dealId}:${field.id}:${field.version}`} field={field} state={state} dealId={dealId} canEdit={canEdit} onSaved={next => { setSaved(next); onSaved?.(); toast.success(next.locked ? 'Deal closed as won' : 'Requirement saved'); }} />)}
+      {visibleFields.length < fields.length && <div className="p-4"><Button variant="outline" onClick={() => setShowAllEvidence(true)}>Open closing requirements</Button><p className="mt-2 text-xs text-muted-foreground">Required evidence remains available in the closing dialog.</p></div>}
       {state.locked && !state.fields.length && <dl className="space-y-2 p-3 text-xs">{Object.entries(state.values).filter(([, value]) => value != null).map(([key, value]) => <div key={key}><dt className="capitalize text-muted-foreground">{key.replaceAll('-', ' ')}</dt><dd className="whitespace-pre-wrap [overflow-wrap:anywhere]">{String(value)}</dd></div>)}</dl>}
     </>}
     </RecordSection>
+    <Dialog open={showAllEvidence} onOpenChange={setShowAllEvidence}><DialogContent><DialogHeader><DialogTitle>{sectionTitle}</DialogTitle></DialogHeader>{state && fields.map(field => <RequirementRow key={`${dealId}:${field.id}:${field.version}`} field={field} state={state} dealId={dealId} canEdit={canEdit} onSaved={next => { setSaved(next); onSaved?.(); toast.success(next.locked ? 'Deal closed as won' : 'Requirement saved'); }} />)}</DialogContent></Dialog>
   </div>;
 }

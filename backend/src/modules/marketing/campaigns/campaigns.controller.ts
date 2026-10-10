@@ -1,6 +1,6 @@
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import { AppError } from '../../../shared/errors/app-error';
-﻿import { Request, Response, NextFunction } from 'express';
+import { Request, Response, NextFunction } from 'express';
 import * as service from './campaigns.service';
 import { getOrganizationSettings } from '../../administration/organization-settings/organization-settings.service';
 import { getBrevoSenderIdentity } from '../../../shared/services/email.service';
@@ -40,7 +40,7 @@ export async function getCampaignMetrics(req: Request, res: Response, next: Next
 }
 
 export async function duplicateCampaign(req: Request, res: Response, next: NextFunction) {
-  try { res.status(201).json({ success: true, data: await service.duplicateCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId) }); } catch (error) { next(error); }
+  try { res.status(201).json({ success: true, data: await service.duplicateCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) }); } catch (error) { next(error); }
 }
 export async function getCampaignReport(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await service.getCampaignReport(String(req.params.id), req.user!.tenantId) }); } catch (error) { next(error); }
@@ -58,4 +58,11 @@ async function presentCampaign<T extends object>(req: Request, campaign: T): Pro
 }
 async function presentCampaigns<T extends { data: object[] }>(req: Request, page: T): Promise<T> {
   return { ...page, data: await Promise.all(page.data.map(row => presentCampaign(req, row))) };
+}
+
+export async function scheduleCampaign(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await presentCampaign(req, await service.scheduleCampaign(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body)) }); } catch (error) { next(error); }
+}
+export async function cancelCampaignSchedule(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await presentCampaign(req, await service.cancelCampaignSchedule(String(req.params.id), req.user!.tenantId, req.user!.userId)) }); } catch (error) { next(error); }
 }

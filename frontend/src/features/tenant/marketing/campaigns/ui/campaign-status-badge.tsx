@@ -3,6 +3,7 @@ import { Badge, type BadgeProps } from '@/shared/components/ui/badge';
 const statuses: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
   SENDING: { label: 'Sending', variant: 'secondary' },
   INTERRUPTED: { label: 'Interrupted', variant: 'warning' },
+  SCHEDULED: { label: 'Scheduled', variant: 'info' },
   DRAFT: { label: 'Draft', variant: 'secondary' },
   SENT: { label: 'Sent', variant: 'info' },
   PARTIALLY_SENT: { label: 'Partially Sent', variant: 'warning' },
@@ -11,10 +12,10 @@ const statuses: Record<string, { label: string; variant: BadgeProps['variant'] }
 };
 
 export function formatCampaignStatus(status: string) {
-  return statuses[status.toUpperCase()]?.label ?? '—';
+  return statuses[status.toUpperCase()]?.label ?? 'â€”';
 }
 
 export function CampaignStatusBadge({ status }: { status: string }) {
-  if (!status || !statuses[status.toUpperCase()]) return <span title="No confirmed delivery outcome">—</span>;
+  if (!status || !statuses[status.toUpperCase()]) return <span title="No confirmed delivery outcome">â€”</span>;
   return <Badge variant={statuses[status.toUpperCase()].variant}>{formatCampaignStatus(status)}</Badge>;
 }

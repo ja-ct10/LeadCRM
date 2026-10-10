@@ -22,15 +22,19 @@ const sendLimiter = rateLimit({ windowMs: 60000, limit: 5, standardHeaders: true
 router.get('/campaigns/metrics', authorize('campaigns.view_reports'), campaignController.getCampaignMetrics);
 router.get('/campaigns/sms-settings', authorize('campaigns.view'), campaignController.getSmsSettings);
 router.get('/campaigns/email-settings', authorize('campaigns.view'), campaignController.getEmailSettings);
+router.get('/audiences/fields', authorize('campaigns.view'), audienceController.audienceFields);
 router.get('/audiences/companies', authorize('campaigns.view'), audienceController.audienceCompanies);
 router.get('/audiences', authorize('campaigns.view'), audienceController.getAudiences);
 router.post('/audiences/preview', authorize('campaigns.view'), writeLimiter, audienceController.previewAudience);
 router.post('/audiences', authorize('campaigns.create'), writeLimiter, audienceController.createAudience);
+router.put('/audiences/:id', authorize('campaigns.edit'), writeLimiter, audienceController.updateAudience);
 // ── Campaigns ─────────────────────────────────────────
 router.get(   '/campaigns',             authorize('campaigns.view'),   campaignController.getCampaigns);
 router.get(   '/campaigns/:id',         authorize('campaigns.view'),   campaignController.getCampaignById);
 router.post(  '/campaigns',             authorize('campaigns.create'), writeLimiter, campaignController.createCampaign);
 router.put(   '/campaigns/:id',         authorize('campaigns.edit'), writeLimiter, campaignController.updateCampaign);
+router.patch('/campaigns/:id/schedule', authorize('campaigns.send'), sendLimiter, campaignController.scheduleCampaign);
+router.delete('/campaigns/:id/schedule', authorize('campaigns.send'), sendLimiter, campaignController.cancelCampaignSchedule);
 router.patch( '/campaigns/:id/send',    authorize('campaigns.send'), sendLimiter, campaignController.sendCampaign);
 router.patch( '/campaigns/:id/archive', authorize('campaigns.archive'), campaignController.archiveCampaign);
 

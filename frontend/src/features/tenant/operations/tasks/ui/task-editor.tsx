@@ -119,7 +119,7 @@ export function TaskEditor({
     setError("");
     try {
       if (!title.trim()) throw new Error("Enter a task title.");
-      if (!assignedUserId) throw new Error("Select a task owner.");
+      if (!assignedUserId) throw new Error("Select an assigned agent.");
       const dueDateUnchanged = !!task && dueDate === manilaLocalDateTime(task.dueDate);
       const resolvedDueDate = resolveManilaTaskDueDateTime(dueDate);
       if (!dueDateUnchanged) {
@@ -447,6 +447,7 @@ export function TaskEditor({
               )}
               {task && (
                 <dl className="space-y-2 border-t border-border pt-4 text-xs text-muted-foreground">
+                  <div><dt className="inline">Task Owner (Created by): </dt><dd className="inline">{task.createdBy ? `${task.createdBy.firstName} ${task.createdBy.lastName}` : 'Not recorded'}</dd></div>
                   <div>Created {new Date(task.createdAt).toLocaleString()}</div>
                   {task.completedAt && (
                     <div>

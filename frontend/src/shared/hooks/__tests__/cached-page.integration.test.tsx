@@ -76,6 +76,7 @@ describe('real cached request lifecycle', () => {
     const hook = renderHook(({ page }) => useModuleData({ moduleId: 'leads', page, pageSize: 25 }), { initialProps: { page: 1 } });
     const firstSignal = mocks.get.mock.calls[0][1].signal;
     hook.rerender({ page: 2 });
+    await act(async () => { await Promise.resolve(); });
     expect(firstSignal.aborted).toBe(true);
     await act(async () => { second.resolve(response(2)); });
     await act(async () => { first.resolve(response(1)); });
@@ -138,17 +139,42 @@ describe('real cached request lifecycle', () => {
     expect(getPageCacheSize()).toBe(0);
   });
 
-  it('preserves loading state until the newest refresh finishes', async () => {
-    const old = deferred<string[]>();
-    const latest = deferred<string[]>();
-    const fetchFn = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(latest.promise);
-    const hook = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
-    act(() => { void hook.result.current.refetch(); });
-    await act(async () => { old.reject(new Error('obsolete error')); });
-    expect(hook.result.current.isInitialLoad).toBe(true);
-    expect(hook.result.current.error).toBeNull();
-    await act(async () => { latest.resolve(['latest']); });
-    expect(hook.result.current.data).toEqual(['latest']);
+  it('coalesces identical pending reads across readers and repeated refreshes', async () => {
+    const pending = deferred<string[]>();
+    const fetchFn = vi.fn().mockReturnValue(pending.promise);
+    const first = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
+    const second = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
+    act(() => { void first.result.current.refetch(); void second.result.current.refetch(); });
+    expect(fetchFn).toHaveBeenCalledOnce();
+    first.unmount();
+    await act(async () => { pending.resolve(['current']); });
+    expect(second.result.current.data).toEqual(['current']);
+    expect(second.result.current.isInitialLoad).toBe(false);
+  });
+
+  it('evicts a record after authoritative 404 so remount cannot hydrate deleted data', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'deleted-record' });
+    const hook = renderHook(() => useCachedPage({ module: 'contacts', params: { recordId: 'deleted-record' }, fetchFn }));
+    await waitFor(() => expect(hook.result.current.data).toEqual({ id: 'deleted-record' }));
+    fetchFn.mockRejectedValueOnce(Object.assign(new Error('Contact not found'), { status: 404 }));
+    await act(async () => { await hook.result.current.refetch(); });
+    expect(hook.result.current.data).toBeUndefined(); expect(getPageCacheSize()).toBe(0);
+    hook.unmount(); fetchFn.mockReturnValue(new Promise(() => {}));
+    const remounted = renderHook(() => useCachedPage({ module: 'contacts', params: { recordId: 'deleted-record' }, fetchFn }));
+    expect(remounted.result.current.data).toBeUndefined();
+  });
+
+  it('clears every shared reader after a denied response even when the first reader evicts its module', async () => {
+    const denied = deferred<string[]>();
+    const fetchFn = vi.fn().mockResolvedValueOnce(['private']).mockReturnValue(denied.promise);
+    const first = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
+    await waitFor(() => expect(first.result.current.data).toEqual(['private']));
+    const second = renderHook(() => useCachedPage({ module: 'contacts', params: {}, fetchFn }));
+    expect(second.result.current.data).toEqual(['private']);
+    act(() => { void first.result.current.refetch(); });
+    await act(async () => { denied.reject(Object.assign(new Error('Access denied'), { status: 403 })); });
+    expect(first.result.current.data).toBeUndefined(); expect(second.result.current.data).toBeUndefined();
+    expect(getPageCacheSize()).toBe(0);
   });
 
   it('does not fetch when disabled or when signed out', () => {
@@ -188,6 +214,15 @@ it.each(['leads', 'accounts', 'deals'])('loads a selected %s by ID independently
   await waitFor(() => expect(hook.result.current.data[0]?.id).toBe('selected'));
   expect(mocks.get).toHaveBeenCalledWith(`/crm/${moduleId}/selected`, { signal: expect.any(AbortSignal) });
   expect(hook.result.current.meta).toMatchObject({ page: 1, total: 1 });
+});
+
+it.each(['leads', 'contacts', 'accounts', 'deals'])('shares one raw selected %s response for concurrent readers', async moduleId => {
+  mocks.get.mockResolvedValue({ data: { id: 'selected', firstName: 'Visible', lastName: 'Record', email: 'native@example.test', isArchived: false } });
+  const first = renderHook(() => useModuleData({ moduleId, page: 8, pageSize: 25, recordId: 'selected', search: 'stale filter' }));
+  const second = renderHook(() => useModuleData({ moduleId, page: 1, pageSize: 25, recordId: 'selected' }));
+  await waitFor(() => expect(first.result.current.data[0]?.email).toBe('native@example.test'));
+  await waitFor(() => expect(second.result.current.data[0]?.email).toBe('native@example.test'));
+  expect(mocks.get.mock.calls.filter(([path]) => path === `/crm/${moduleId}/selected`)).toHaveLength(1);
 });
 
 

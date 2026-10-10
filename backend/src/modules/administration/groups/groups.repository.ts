@@ -7,6 +7,7 @@ const GROUP_SELECT = {
   id:        true,
   tenantId:  true,
   name:      true,
+  systemKey: true,
   createdAt: true,
   updatedAt: true,
   members: {
@@ -59,7 +60,7 @@ export async function updateGroup(id: string, tenantId: string, name: string) {
 export async function deleteEmptyGroup(id: string, tenantId: string) {
   // The predicate and serializable transaction protect against concurrent additions.
   return prisma.$transaction(tx => tx.tenantGroup.deleteMany({
-    where: { id, tenantId, members: { none: {} } },
+    where: { id, tenantId, systemKey: null, members: { none: {} } },
   }), { isolationLevel: 'Serializable' });
 }
 

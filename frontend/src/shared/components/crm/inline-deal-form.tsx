@@ -1,9 +1,9 @@
 'use client';
 
 import React, { useMemo } from 'react';
-import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from './record-custom-fields';
-import { CUSTOM_FIELD_BUILT_IN_GROUPS, CLOSED_WON_GROUP, type ClosingValues } from '@leadcrm/shared';
-import { PanelSectionHeading } from '@/shared/components/side-panel-styles';
+import { useRecordCustomFields } from './record-custom-fields';
+import { ConfiguredFormLayout } from './configured-form-layout';
+import type { ClosingValues } from '@leadcrm/shared';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -156,8 +156,9 @@ export function InlineDealForm({
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3" noValidate>
+      <ConfiguredFormLayout form={customFields} module="deals">
       {/* Title */}
-      <div>
+      <div data-crm-field-key="title">
         <label htmlFor={`${productFieldId}-title`} className={labelCls}>Title <span className="text-red-500">*</span></label>
         <input
           id={`${productFieldId}-title`}
@@ -174,40 +175,39 @@ export function InlineDealForm({
         )}
       </div>
 
-      <div>
+      <div data-crm-field-key="productInterestIds">
         <label htmlFor={productFieldId} className={labelCls}>Product Interest</label>
         <ProductInterestSelect single id={productFieldId} products={products} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       </div>
-      <div>
+      <div data-crm-field-key="value">
         <label htmlFor={`${productFieldId}-value`} className={labelCls}>Value</label>
         <input id={`${productFieldId}-value`} readOnly className={inputCls} value={new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(productValue)} />
       </div>
 
       <input type="hidden" {...register('pipelineId')} />
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <div>
+        <div data-crm-field-key="priority">
           <label htmlFor={`${productFieldId}-priority`} className={labelCls}>Priority</label>
           <select id={`${productFieldId}-priority`} {...register('priority')} className={selectCls}>
             <option value="LOW">Low</option><option value="MEDIUM">Medium</option><option value="HIGH">High</option>
           </select>
         </div>
-        <div>
+        <div data-crm-field-key="stageId">
           <label htmlFor={`${productFieldId}-stage`} className={labelCls}>Starting stage</label>
           <input type="hidden" {...register('stageId')} />
           <input id={`${productFieldId}-stage`} readOnly className={inputCls} value={defaultStage?.name ?? 'Unavailable'} />
           {errors.stageId && <p className="text-xs text-destructive">{errors.stageId.message}</p>}
         </div>
       </div>
-      <div>
+      <div data-crm-field-key="expectedCloseDate">
         <label htmlFor={`${productFieldId}-close`} className={labelCls}>Expected Close Date</label>
         <input id={`${productFieldId}-close`} type="date" {...register('expectedCloseDate')} className={cn(inputCls, 'min-w-0')} />
       </div>
       {!defaultPipeline && <p role="alert" className="text-xs text-destructive">Sales Pipeline is unavailable.</p>}
       {defaultPipeline && !defaultStage && <p role="alert" className="text-xs text-destructive">The Lead starting stage is unavailable.</p>}
 
-      {CUSTOM_FIELD_BUILT_IN_GROUPS.deals.filter(group => group !== CLOSED_WON_GROUP && customFields.fields.some(field => field.group === group)).map((group, index) => <section key={group} className="min-w-0 space-y-3"><PanelSectionHeading number={index + 1}>{group}</PanelSectionHeading><CustomFieldGroup form={customFields} group={group} /></section>)}
-      <CustomFieldExtraGroups form={customFields} startNumber={4} />
+      </ConfiguredFormLayout>
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
         <Button

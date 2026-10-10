@@ -13,3 +13,10 @@ export async function previewAudience(req: Request, res: Response, next: NextFun
 export async function audienceCompanies(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await service.audienceCompanies(req.user!.tenantId, req.query.source ?? 'ALL') }); } catch (e) { next(e); }
 }
+
+export async function audienceFields(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.audienceFields(req.user!.tenantId, req.query.source) }); } catch (error) { next(error); }
+}
+export async function updateAudience(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.updateAudience(req.user!.tenantId, String(req.params.id), req.body) }); } catch (error) { next(error); }
+}

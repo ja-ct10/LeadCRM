@@ -7,6 +7,8 @@ import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
 import { revokeSession } from './session.service';
 import { readAuthUser } from './auth-user';
 import { AUTH_COOKIE_NAME as COOKIE_NAME, AUTH_COOKIE_OPTIONS as COOKIE_OPTIONS } from './auth-session';
+import { ensureSalesGroup } from '../../modules/administration/groups/sales-group';
+import { tenantContext } from '../tenant/tenant-context';
 export {
   getOnboardingStatus, updateOnboardingStep, completeOnboarding,
   saveOnboardingWorkspace,
@@ -71,6 +73,8 @@ export async function seedDemo(_req: Request, res: Response, next: NextFunction)
     });
 
     const passwordHash = await hashPassword(demoPassword);
+
+    await tenantContext.run({ tenantId: tenant.id }, () => prisma.$transaction(tx => ensureSalesGroup(tx, tenant.id), { isolationLevel: 'Serializable' }));
 
     await prisma.user.upsert({
       where:  { tenantId_email: { tenantId: tenant.id, email: DEMO_EMAIL } },

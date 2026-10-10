@@ -1,13 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema = exports.SMS_CAMXIAN_FOOTER = exports.SMS_MAX_LENGTH = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
+exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema = exports.SMS_CAMXIAN_FOOTER = exports.SMS_MAX_LENGTH = exports.CampaignScheduleConfigSchema = exports.CampaignScheduleSchema = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceMatchModeSchema = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
 exports.escapeEmailHtml = escapeEmailHtml;
 exports.renderEmailVariables = renderEmailVariables;
+exports.campaignVariableKeys = campaignVariableKeys;
 exports.buildFinalSms = buildFinalSms;
 exports.appendSmsFooter = appendSmsFooter;
 exports.smsMessageStats = smsMessageStats;
 const zod_1 = require("zod");
-const record_experience_1 = require("./record-experience");
 const lead_created_contract_1 = require("./lead-created.contract");
 exports.EMAIL_VARIABLES = ['first_name', 'last_name', 'company_name', 'contact_number', 'status', 'sender_name', 'sender_email'];
 exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES.map(key => `{{${key}}}`);
@@ -16,42 +16,42 @@ function escapeEmailHtml(value) {
 }
 function renderEmailVariables(text, values, html = false) {
     return text.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_token, key) => {
-        if (!exports.EMAIL_VARIABLES.includes(key))
-            return '';
         const value = Object.prototype.hasOwnProperty.call(values, key) ? values[key] ?? '' : '';
         return html ? escapeEmailHtml(value) : value.replace(/[\x00-\x1f\x7f]/g, ' ');
     });
 }
 exports.MarketingNameSchema = zod_1.z.string().trim().min(1, 'Name is required.').max(150).regex(/^[^\x00-\x1f\x7f]*$/, 'Control characters are not allowed.');
 exports.EmailSubjectSchema = zod_1.z.string().max(200).regex(/^[^\x00-\x1f\x7f]*$/, 'Subject must not contain line breaks or control characters.').transform(s => s.trim());
-exports.AudienceSourceSchema = zod_1.z.enum(['LEADS', 'CONTACTS', 'ALL']);
+/** ALL remains a historical read value only. New operations choose one source. */
+exports.AudienceSourceSchema = zod_1.z.enum(['LEADS', 'CONTACTS']);
+exports.AudienceMatchModeSchema = zod_1.z.enum(['AND', 'OR']);
 exports.AUDIENCE_FIELDS = ['status', 'source', 'company', 'productInterest', 'assignedUserId', 'createdAt'];
-exports.AUDIENCE_OPERATORS = ['equals', 'not_equals', 'contains', 'any', 'gte', 'lte', 'between'];
-const equality = zod_1.z.enum(['equals', 'not_equals']);
-exports.AudienceConditionSchema = zod_1.z.discriminatedUnion('field', [
-    zod_1.z.object({ field: zod_1.z.literal('status'), operator: equality, value: zod_1.z.enum(record_experience_1.CrmStatusSchema.options, { errorMap: () => ({ message: 'Select a status.' }) }) }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('source'), operator: equality, value: zod_1.z.enum(record_experience_1.LeadSourceSchema.options, { errorMap: () => ({ message: 'Select a source.' }) }) }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('company'), operator: zod_1.z.enum(['equals', 'not_equals', 'contains']), value: zod_1.z.string().trim().min(1, 'Select a company.').max(200).regex(/^[^\x00-\x1f\x7f]*$/) }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('productInterest'), operator: equality, value: zod_1.z.array(zod_1.z.string().uuid()).min(1, 'Select a Product Interest.').max(100).transform(ids => [...new Set(ids)]) }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('assignedUserId'), operator: equality, value: zod_1.z.string().uuid('Select an Assigned Agent.') }).strict(),
-    zod_1.z.object({ field: zod_1.z.literal('createdAt'), operator: zod_1.z.enum(['any', 'gte', 'lte', 'between']), value: zod_1.z.union([zod_1.z.string(), zod_1.z.object({ from: zod_1.z.string(), to: zod_1.z.string() }).strict(), zod_1.z.null()]) }).strict(),
-]).superRefine((c, ctx) => {
-    if (c.field !== 'createdAt')
-        return;
-    if (c.operator === 'any') {
+exports.AUDIENCE_OPERATORS = ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'any', 'gt', 'gte', 'lt', 'lte', 'between', 'is_empty', 'is_not_empty'];
+exports.AudienceConditionSchema = zod_1.z.object({
+    field: zod_1.z.string().min(1).max(160).regex(/^(?:[A-Za-z][A-Za-z0-9]*|customFieldValues\.[A-Za-z0-9_-]+)$/),
+    operator: zod_1.z.enum(exports.AUDIENCE_OPERATORS),
+    value: zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.number().finite(), zod_1.z.boolean(), zod_1.z.array(zod_1.z.string().max(1000)).max(100), zod_1.z.object({ from: zod_1.z.string(), to: zod_1.z.string() }).strict(), zod_1.z.null()]),
+}).strict().superRefine((c, ctx) => {
+    if (['is_empty', 'is_not_empty', 'any'].includes(c.operator)) {
         if (c.value !== null)
-            ctx.addIssue({ code: 'custom', path: ['value'], message: 'Any date has no value.' });
-        return;
+            ctx.addIssue({ code: 'custom', path: ['value'], message: 'Presence and Any date operators have no value.' });
     }
-    const parsed = lead_created_contract_1.LeadCreatedFilterSchema.safeParse(c.operator === 'between'
-        ? { operator: c.operator, ...(typeof c.value === 'object' ? c.value : {}) }
-        : { operator: c.operator, date: c.value });
-    if (!parsed.success)
-        ctx.addIssue({ code: 'custom', path: ['value'], message: c.operator === 'between' ? 'Enter valid dates with From on or before To.' : 'Select a valid date.' });
+    else if (c.value === null || c.value === '' || Array.isArray(c.value) && !c.value.length)
+        ctx.addIssue({ code: 'custom', path: ['value'], message: 'Enter a condition value.' });
+    if (c.field === 'createdAt' && !['is_empty', 'is_not_empty', 'any'].includes(c.operator)) {
+        const parsed = lead_created_contract_1.LeadCreatedFilterSchema.safeParse(c.operator === 'between' ? { operator: c.operator, ...(typeof c.value === 'object' ? c.value : {}) } : { operator: c.operator, date: c.value });
+        if (!parsed.success)
+            ctx.addIssue({ code: 'custom', path: ['value'], message: 'Enter valid calendar dates with From on or before To.' });
+    }
 });
-exports.AudiencePreviewSchema = zod_1.z.object({ source: exports.AudienceSourceSchema, conditions: zod_1.z.array(exports.AudienceConditionSchema).max(20).default([]) }).strict();
+exports.AudiencePreviewSchema = zod_1.z.object({ source: exports.AudienceSourceSchema, matchMode: exports.AudienceMatchModeSchema.default('AND'), conditions: zod_1.z.array(exports.AudienceConditionSchema).max(20).default([]) }).strict();
 exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema.extend({ channel: zod_1.z.enum(['EMAIL', 'SMS']).default('EMAIL'), page: zod_1.z.number().int().min(1).max(100000).default(1), limit: zod_1.z.number().int().min(1).max(50).default(25) });
 exports.CreateAudienceSchema = exports.AudiencePreviewSchema.extend({ name: exports.MarketingNameSchema });
+exports.CampaignScheduleSchema = zod_1.z.object({ scheduledFor: zod_1.z.string().datetime({ offset: true }).refine(value => new Date(value).getTime() > Date.now(), 'Schedule a future date and time.') }).strict();
+exports.CampaignScheduleConfigSchema = exports.AudiencePreviewSchema.extend({ timezone: zod_1.z.literal('Asia/Manila'), scheduleFailureReason: zod_1.z.string().max(1000).optional() });
+function campaignVariableKeys(text) {
+    return [...new Set([...text.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map(match => match[1]))];
+}
 // Application safety bound, not a TextBee limit. TextBee documents multipart
 // segmentation but no hard message-length maximum in its public API contract.
 exports.SMS_MAX_LENGTH = 50000;
@@ -91,6 +91,8 @@ exports.CampaignDraftSchema = zod_1.z.object({
 }).strict();
 exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema.extend({ type: zod_1.z.enum(['EMAIL', 'SMS'], { errorMap: () => ({ message: 'Select Email or SMS.' }) }) });
 exports.CampaignSendSchema = exports.CampaignDraftSchema.superRefine((v, ctx) => {
+    if (v.audienceSource && v.targetAudienceId)
+        ctx.addIssue({ code: 'custom', path: ['targetAudienceId'], message: 'Select a saved audience or a source, not both.' });
     if (!v.audienceSource && !v.targetAudienceId)
         ctx.addIssue({ code: 'custom', path: ['targetAudienceId'], message: 'Target audience is required.' });
     if (v.type === 'EMAIL' && !v.subject?.trim())

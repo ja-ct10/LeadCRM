@@ -31,8 +31,11 @@ router.get('/users/:id/permissions', (req, res, next) => {
 }, roleController.getUserPermissions);
 router.use(workspaceReadyMiddleware);
 router.get('/closing-requirements', authorize('custom_fields.view'), closingRequirements.list);
+router.get('/closing-requirements/layout/:module', authorize('custom_fields.view'), closingRequirements.layout);
+router.patch('/closing-requirements/layout/:module', authorize('custom_fields.edit'), closingRequirements.saveLayout);
 router.post('/closing-requirements', authorize('custom_fields.create'), closingRequirements.create);
 router.patch('/closing-requirements/:id', authorizeFieldChanges, closingRequirements.edit);
+router.delete('/closing-requirements/:id', authorize('custom_fields.delete'), closingRequirements.remove);
 
 // Per-type RBAC is enforced by the archive service before querying or restoring.
 router.get('/archived-data', authorize('archived_data.view'), archivedData.list);

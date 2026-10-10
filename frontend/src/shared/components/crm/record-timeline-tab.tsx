@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   FileText,
   Phone,
@@ -22,11 +22,12 @@ import { DataLoadingSkeleton } from './data-view-states';
 import { Input } from '@/shared/components/ui/input';
 import { Textarea } from '@/shared/components/ui/textarea';
 import { activitiesService } from '@/features/tenant/crm/activities/services/activities.service';
-import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
+import { useRecordActivities, type RecordActivityFilters, type TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { USE_MOCK_DATA } from '@/lib/config';
+import { getPageCacheGeneration } from '@/shared/cache/page-cache';
 import type { RecordModule } from '@/shared/hooks/use-record-detail';
 import { activityEmail, EmailActivity, EmailThread, groupEmailActivities } from './email-activity';
 
@@ -45,12 +46,20 @@ export interface RecordTimelineTabProps {
   /** Record ID for creating new activities */
   recordId: string;
   /** Callback after an activity is created (to refetch) */
-  onActivityCreated?: () => void;
+  onActivityCreated?: (activity?: TimelineActivity) => void;
+  notes?: TimelineActivity[];
+  notesLoading?: boolean;
+  notesError?: string | null;
+  hasMoreNotes?: boolean;
+  onLoadMoreNotes?: () => void;
+  hasMore?: boolean;
+  onLoadMore?: () => void;
+  onFiltersChange?: (filters: RecordActivityFilters) => void;
 }
 
 const ACTIVITY_FILTERS = ['All', 'Emails', 'Tasks', 'Status'] as const;
 type FilterType = typeof ACTIVITY_FILTERS[number];
-type ComposerMode = 'note' | 'email' | 'task';
+
 
 // ─── Activity icon/color mapping ─────────────────────────────────────────────
 
@@ -94,102 +103,34 @@ function formatRelativeTime(isoDate: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// ─── Quick Composer ──────────────────────────────────────────────────────────
-
-interface QuickComposerProps {
-  module: RecordModule;
-  recordId: string;
-  onCreated?: () => void;
-}
-
-function QuickComposer({ module, recordId, onCreated }: QuickComposerProps): React.ReactElement {
+function NoteComposer({ module, recordId, onCreated }: { module: RecordModule; recordId: string; onCreated?: (activity?: TimelineActivity) => void }) {
   const { addActivity } = useData();
   const { user } = useAuth();
-  const [mode, setMode] = useState<ComposerMode>('note');
-  const [text, setText] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const modes: { id: ComposerMode; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: 'note', label: 'Note', icon: FileText },
-    { id: 'task', label: 'Task', icon: CheckCircle2 },
-    { id: 'email', label: 'Email', icon: Mail },
-  ];
-
-  const handleSubmit = async (e: React.FormEvent): Promise<void> => {
-    e.preventDefault();
-    if (!text.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
+  const [draft, setDraft] = useState('');
+  const [saving, setSaving] = useState(false);
+  const submitting = useRef(false);
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const value = draft.trim();
+    if (!value || submitting.current) return;
+    submitting.current = true; setSaving(true);
     try {
+      let activity: TimelineActivity | undefined;
       if (USE_MOCK_DATA) {
-        if (!user) throw new Error('Sign in to log activity');
-        await addActivity({ type: mode, title: text.trim(), relatedToType: module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact', relatedToId: recordId, createdBy: user.id, createdAt: new Date().toISOString() });
+        if (!user) throw new Error('Sign in to save a note');
+        await addActivity({ type: 'note', title: value.slice(0, 255), description: value.length > 255 ? value : undefined, relatedToType: module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact', relatedToId: recordId, createdBy: user.id, createdAt: new Date().toISOString() });
       } else {
-        // The current API supports these record links. Never send a stripped or
-        // unknown field, which would create an unlinked activity.
-        await activitiesService.create({ type: mode, title: text.trim(), ...(module === 'leads' ? { leadId: recordId } : module === 'contacts' ? { contactId: recordId } : module === 'accounts' ? { accountId: recordId } : { dealId: recordId }) });
+        const response = await activitiesService.create({ type: 'note', title: value.slice(0, 255), ...(value.length > 255 ? { description: value } : {}), ...(module === 'leads' ? { leadId: recordId } : module === 'contacts' ? { contactId: recordId } : module === 'accounts' ? { accountId: recordId } : { dealId: recordId }) });
+        activity = response.data;
       }
-      setText('');
-      toast.success(`${mode.charAt(0).toUpperCase() + mode.slice(1)} logged`);
-      onCreated?.();
-    } catch {
-      toast.error('Failed to log activity');
-    } finally {
-      setIsSubmitting(false);
-    }
+      onCreated?.(activity); setDraft(''); toast.success('Note saved');
+    } catch (error) { toast.error(error instanceof Error ? error.message : 'Failed to save note'); }
+    finally { submitting.current = false; setSaving(false); }
   };
-
-  return (
-    <form onSubmit={handleSubmit} className="border border-border rounded-xl bg-card overflow-hidden">
-      {/* Mode selector */}
-      <div className="flex flex-wrap items-center gap-1 px-4 pt-3 pb-2 border-b border-border/50">
-        {modes.map((m) => (
-          <button
-            key={m.id}
-            type="button"
-            onClick={() => setMode(m.id)}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-              mode === m.id
-                ? 'bg-primary/10 text-primary'
-                : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-            )}
-          >
-            <m.icon className="h-3.5 w-3.5" />
-            {m.label}
-          </button>
-        ))}
-        <span className="ml-auto text-xs text-muted-foreground">Quick Log</span>
-      </div>
-
-      {/* Text input */}
-      <div className="p-3">
-        <Textarea
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          placeholder={`Write a ${mode}...`}
-          className="min-h-[60px] resize-none border-0 p-0 shadow-none focus-visible:ring-0 text-sm"
-          aria-label="Activity description"
-          maxLength={255}
-          disabled={isSubmitting}
-        />
-      </div>
-
-      {/* Footer */}
-      <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-3">
-        <span className="text-xs text-muted-foreground">Will be timestamped now</span>
-        <Button
-          type="submit"
-          size="sm"
-          disabled={!text.trim() || isSubmitting}
-          className="gap-1.5"
-        >
-          <Send className="h-3.5 w-3.5" />
-          Save {mode.charAt(0).toUpperCase() + mode.slice(1)}
-        </Button>
-      </div>
-    </form>
-  );
+  return <form onSubmit={save} className="space-y-2 rounded-xl border border-border bg-card p-3">
+    <Textarea aria-label="Note" placeholder="Write a note..." value={draft} onChange={event => setDraft(event.target.value)} disabled={saving} className="min-h-20 resize-y" />
+    <div className="flex justify-end"><Button type="submit" size="sm" disabled={!draft.trim() || saving}>{saving ? 'Saving…' : 'Save note'}</Button></div>
+  </form>;
 }
 
 // ─── Timeline Entry ──────────────────────────────────────────────────────────
@@ -233,146 +174,57 @@ function TimelineEntry({ activity, compact = false }: TimelineEntryProps): React
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function RecordTimelineTab({
-  activities,
-  module,
-  recordId,
-  onActivityCreated,
-  loading = false,
-  error,
-  compact = false,
-  tasks,
-}: RecordTimelineTabProps): React.ReactElement {
-  const canCreate = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey);
-  const canLog = canCreate;
+export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange }: RecordTimelineTabProps): React.ReactElement {
+  const canEdit = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey);
+  const { user, tenant } = useAuth();
+  const editorIdentity = JSON.stringify([tenant?.id, user?.id, user?.role, module, recordId]);
+  const identity = JSON.stringify([editorIdentity, getPageCacheGeneration()]);
+  const noteReader = useRecordActivities(module, recordId, providedNotes === undefined, undefined, { type: 'note' });
+  const [saved, setSaved] = useState<{ identity: string; rows: TimelineActivity[] }>({ identity, rows: [] });
   const [filter, setFilter] = useState<FilterType>('All');
   const [searchTerm, setSearchTerm] = useState('');
-  const [visibleCount, setVisibleCount] = useState(20);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const composerRef = useRef<HTMLDivElement>(null);
+  const localNotes = saved.identity === identity ? saved.rows : [];
+  const authoritativeNotes = providedNotes ?? noteReader.activities;
   useEffect(() => {
-    if (!composerOpen) return;
-    const composer = composerRef.current;
-    const container = composer?.closest<HTMLElement>('[data-record-scroll]');
-    if (!composer || !container) return;
-    container.scrollTo({ top: container.scrollTop + composer.getBoundingClientRect().top - container.getBoundingClientRect().top, behavior: 'smooth' });
-    composer.querySelector<HTMLElement>('textarea, input, button')?.focus({ preventScroll: true });
-  }, [composerOpen]);
-
-  const filters = ACTIVITY_FILTERS;
-
-  // Filter + search activities
-  const filteredActivities = useMemo(() => {
-    let result = activities;
-
-    // Type filter
-    if (filter !== 'All') {
-      const allowedTypes = FILTER_MAPPING[filter];
-      result = result.filter((a) => allowedTypes.includes(a.type));
-    }
-
-    // Search
-    if (searchTerm.trim()) {
-      const query = searchTerm.toLowerCase();
-      result = result.filter(
-        (a) =>
-          a.title.toLowerCase().includes(query) ||
-          ([activityEmail(a)?.body, activityEmail(a)?.subject, activityEmail(a)?.from, ...(activityEmail(a)?.to ?? [])].filter(Boolean).join(' ').toLowerCase().includes(query)) ||
-          (a.description?.toLowerCase().includes(query) ?? false) ||
-          ([a.createdBy?.firstName, a.createdBy?.lastName].filter(Boolean).join(' ').toLowerCase().includes(query))
-      );
-    }
-
-    return result;
-  }, [activities, filter, searchTerm]);
-
+    setSaved(previous => {
+      const rows = previous.rows.filter(row => !authoritativeNotes.some(note => note.id === row.id));
+      return rows.length === previous.rows.length ? previous : { ...previous, rows };
+    });
+  }, [authoritativeNotes]);
+  const merge = (rows: TimelineActivity[]) => [...new Map([...rows, ...localNotes].map(row => [row.id, row])).values()].sort((a,b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  const notes = merge(authoritativeNotes);
+  const allActivities = merge(activities);
+  const changeFilters = (nextFilter: FilterType, search: string) => {
+    setFilter(nextFilter); setSearchTerm(search);
+    onFiltersChange?.({ type: FILTER_MAPPING[nextFilter].join(',') || undefined, search: search.trim() || undefined });
+  };
+  const filteredActivities = allActivities.filter(activity => (filter === 'All' || FILTER_MAPPING[filter].includes(activity.type)) && (!searchTerm.trim() || [activity.title, activity.description, activity.createdBy?.firstName, activity.createdBy?.lastName, activityEmail(activity)?.body, activityEmail(activity)?.subject].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.trim().toLowerCase())));
   const entries = [
-    ...groupEmailActivities(filteredActivities.filter(a => a.type === 'email')).map(thread => ({ id: `thread:${thread.key}`, createdAt: thread.createdAt, content: <EmailThread thread={thread} /> })),
-    ...filteredActivities.filter(a => a.type !== 'email').map(activity => ({ id: activity.id, createdAt: activity.createdAt, content: <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"><TimelineEntry activity={activity} compact={compact} /></div> })),
-  ].sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
-  const visibleEntries = entries.slice(0, visibleCount);
-  const hasMore = entries.length > visibleCount;
-
-  const handleLoadMore = useCallback((): void => {
-    setVisibleCount((prev) => prev + 20);
-  }, []);
-
-  return (
-    <div className={cn('w-full min-w-0', compact ? 'space-y-3 px-3 py-4 sm:space-y-4 sm:px-4 sm:py-5' : 'space-y-4 px-[var(--panel-gutter,1.5rem)] py-5')}>
-      {/* Quick Composer */}
-      {canLog && (!compact || composerOpen) ? <div ref={composerRef}><QuickComposer key={recordId} module={module} recordId={recordId} onCreated={() => { setComposerOpen(false); onActivityCreated?.(); }} /></div> : !compact && canCreate ? <p className="rounded-lg border border-border p-3 text-sm text-muted-foreground">Activity history is available below. Quick Log is currently unavailable for this record.</p> : null}
-      <h3 className={cn('font-semibold uppercase tracking-[0.14em] text-muted-foreground', compact ? 'text-[11px] sm:text-xs' : 'text-xs')}>Activity Timeline{!loading && !error ? ` (${activities.length})` : ''}</h3>
+    ...groupEmailActivities(filteredActivities.filter(activity => activity.type === 'email')).map(thread => ({ id: `thread:${thread.key}`, createdAt: thread.createdAt, content: <EmailThread thread={thread} /> })),
+    ...filteredActivities.filter(activity => activity.type !== 'email').map(activity => ({ id: activity.id, createdAt: activity.createdAt, content: <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"><TimelineEntry activity={activity} compact={compact} /></div> })),
+  ].sort((a,b) => b.createdAt.localeCompare(a.createdAt) || b.id.localeCompare(a.id));
+  const heading = 'text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground';
+  return <div className={cn('w-full min-w-0 space-y-4', compact ? 'px-3 py-4 sm:px-4 sm:py-5' : 'px-[var(--panel-gutter,1.5rem)] py-5')}>
+    <section aria-label="Notes" className="space-y-3">
+      <h3 className={heading}>Notes</h3>
+      {canEdit && <NoteComposer key={editorIdentity} module={module} recordId={recordId} onCreated={activity => {
+        if (activity) setSaved(previous => ({ identity, rows: [...(previous.identity === identity ? previous.rows : []).filter(row => row.id !== activity.id), activity] }));
+        onActivityCreated?.(activity);
+      }} />}
+      {(notesError ?? noteReader.error) && <p role="alert" className="text-sm text-destructive">{notesError ?? noteReader.error}</p>}
+      {(notesLoading ?? noteReader.isInitialLoad) && !notes.length ? <DataLoadingSkeleton rowCount={2} columnCount={1} /> : notes.length ? <div className="divide-y divide-border rounded-xl border border-border bg-card">{notes.map(note => <TimelineEntry key={note.id} activity={note} compact={compact} />)}</div> : <p className="text-sm text-muted-foreground">No notes yet.</p>}
+      {(hasMoreNotes ?? noteReader.hasMore) && <Button variant="ghost" size="sm" onClick={onLoadMoreNotes ?? noteReader.loadMore} disabled={noteReader.isRefreshing}>Load older notes</Button>}
+    </section>
+    {tasks ?? <section aria-label="Tasks"><h3 className={heading}>Tasks</h3></section>}
+    <section aria-label="Activity Timeline" className="space-y-3">
+      <h3 className={heading}>Activity Timeline</h3>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-
-      {/* Filter bar */}
-      <div className="flex min-w-0 flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-1">
-          {filters.map((f) => (
-            <button
-              key={f}
-              type="button"
-              aria-pressed={filter === f}
-              onClick={() => { setFilter(f); setVisibleCount(20); }}
-              className={cn(
-                'px-3 py-1.5 text-xs font-medium rounded-full whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:ring-ring',
-                compact && 'min-h-8 border border-border bg-card px-1.5 text-[11px] sm:min-h-9 sm:px-2 sm:text-xs',
-                compact && filter === f ? 'bg-[var(--primary)] text-white border-transparent' : filter === f
-                  ? 'bg-primary/10 text-primary'
-                  : 'text-muted-foreground hover:text-foreground hover:bg-accent/50'
-              )}
-            >
-              {f}
-            </button>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative w-full">
-          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            value={searchTerm}
-            onChange={(e) => { setSearchTerm(e.target.value); setVisibleCount(20); }}
-            aria-label="Search activities"
-            placeholder="Search activities..."
-            className={cn('pl-8 w-full', compact ? 'h-8 text-[11px] sm:h-9 sm:text-xs' : 'h-9 text-xs')}
-          />
-        </div>
-      </div>
-
-      {tasks && (filter === 'All' || filter === 'Tasks') && tasks}
-      {loading && !activities.length && <div role="status" aria-label="Loading activity history" className="rounded-xl border border-border bg-card"><DataLoadingSkeleton rowCount={3} columnCount={1} rowHeight={104} /></div>}
-      {/* Timeline list */}
-      {(!loading && !error || activities.length > 0) && <div className="min-w-0 space-y-3">
-        {visibleEntries.length > 0 ? (
-          <>
-            {visibleEntries.map(entry => <React.Fragment key={entry.id}>{entry.content}</React.Fragment>)}
-
-            {/* Load more */}
-            {hasMore && (
-              <div className="px-4 py-3 text-center">
-                <button
-                  type="button"
-                  onClick={handleLoadMore}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  Load more ({entries.length - visibleCount} remaining)
-                </button>
-              </div>
-            )}
-          </>
-        ) : (
-          <div className="px-4 py-12 text-center">
-            {compact ? <Activity className="mx-auto mb-3 h-9 w-9 rounded-full bg-[var(--primary)]/10 p-2 text-[var(--primary)]" /> : <Plus className="h-8 w-8 text-muted-foreground/50 mx-auto mb-2" />}
-            <p className="text-sm text-muted-foreground">
-              {activities.length === 0
-                ? 'No activity recorded for this record.'
-                : 'No activities match your filter.'}
-            </p>
-            {compact && canLog && !composerOpen && <Button variant="ghost" size="sm" className="mt-2 gap-1 text-[var(--primary)]" onClick={() => setComposerOpen(true)}><Plus size={13} />Log an activity</Button>}
-          </div>
-        )}
-      </div>}
-      {compact && canLog && activities.length > 0 && !composerOpen && <Button variant="ghost" size="sm" className="gap-1 text-[var(--primary)]" onClick={() => setComposerOpen(true)}><Plus size={13} />Log an activity</Button>}
-    </div>
-  );
+      <div className="flex flex-wrap gap-1">{ACTIVITY_FILTERS.map(value => <button key={value} type="button" aria-pressed={filter === value} onClick={() => changeFilters(value, searchTerm)} className={cn('min-h-8 rounded-full border border-border px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-ring', filter === value ? 'bg-primary text-primary-foreground' : 'hover:bg-accent')}>{value}</button>)}</div>
+      <div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Search activities" placeholder="Search activities..." value={searchTerm} onChange={event => changeFilters(filter, event.target.value)} className="h-9 pl-8 text-xs" /></div>
+      {loading && !allActivities.length && <div role="status" aria-label="Loading activity history"><DataLoadingSkeleton rowCount={3} columnCount={1} /></div>}
+      {entries.map(entry => <React.Fragment key={entry.id}>{entry.content}</React.Fragment>)}
+      {!loading && !entries.length && <p className="py-6 text-center text-sm text-muted-foreground">{filter === 'All' && !searchTerm ? 'No activity recorded for this record.' : 'No activities match your filter.'}</p>}
+      {hasMore && <Button variant="ghost" size="sm" onClick={onLoadMore} disabled={loading}>Load older activity</Button>}
+    </section>
+  </div>;
 }

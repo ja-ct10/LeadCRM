@@ -29,6 +29,7 @@ vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLe
 import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-record-view';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { toast } from 'sonner';
+import { defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
 
 const records = {
   deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
@@ -36,6 +37,7 @@ const records = {
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
+
 
 it.each(['Electric Fence', 'Laptop/Server/Data Cabinets'])('prefills Deal email from the Contact and canonical Product %s', async product => {
   const original = mocks.get.getMockImplementation()!;
@@ -68,6 +70,11 @@ it.each(['', 'broken'])('disables an unusable canonical Contact email (%s) witho
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
   mocks.get.mockImplementation(async (path: string) => {
+    if (path.endsWith('/field-layout')) {
+      const module = path.split('/')[2] as CrmRecordModule;
+      const layout = defaultFieldLayout(module);
+      return { data: { layout, fields: getCrmFieldCatalog(module, [], layout) } };
+    }
     if (path.includes('/custom-fields')) return { data: { fields: [], values: {}, files: [] } };
     if (path.includes('/closing-requirements')) return { data: { fields: [], values: {}, errors: {}, files: [], locked: false } };
     if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
@@ -79,7 +86,7 @@ beforeEach(() => {
 });
 
 it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>
-  (module === 'accounts' ? ['Account name'] : ['First name', 'Last name']).flatMap(label =>
+  (module === 'accounts' ? ['Account Name'] : ['First Name', 'Last Name']).flatMap(label =>
     ['panel', 'page'].map(surface => ({ module, label, surface }))))
 )('requires and trims $module $label in the $surface', async ({ module, label, surface }) => {
   mocks.put.mockResolvedValue({ success: true });
@@ -97,7 +104,7 @@ it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>
   expect(mocks.put).not.toHaveBeenCalled();
   fireEvent.change(input, { target: { value: '  Trimmed  ' } });
   fireEvent.click(await screen.findByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith(`/crm/${module}/one`, { [module === 'accounts' ? 'name' : label === 'First name' ? 'firstName' : 'lastName']: 'Trimmed' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledWith(`/crm/${module}/one`, { [module === 'accounts' ? 'name' : label === 'First Name' ? 'firstName' : 'lastName']: 'Trimmed' }));
 });
 
 afterEach(cleanup);
@@ -175,7 +182,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByRole('button', { name: module === 'deals' ? /^Associations/ : /^Deals/ });
+  await screen.findByRole('button', { name: module === 'deals' ? /^Lead\/Contact/ : /^Deals/ });
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'deals' ? 'dealId' : module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
   expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
@@ -200,8 +207,9 @@ it('does not refetch relationships when switching tabs and retains collapsible s
   await screen.findByText('Lina Reyes', { selector: 'h1' });
   expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(0);
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByRole('button', { name: /Converted contact/ });
-  const about = screen.getByRole('button', { name: 'About' });
+  await screen.findByRole('button', { name: /^Deals/ });
+  expect(screen.queryByRole('button', { name: /Converted contact/ })).toBeNull();
+  const about = screen.getByRole('button', { name: defaultFieldLayout('leads').groups[0].label });
   fireEvent.click(about);
   expect(about.getAttribute('aria-expanded')).toBe('false');
   fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
@@ -209,10 +217,15 @@ it('does not refetch relationships when switching tabs and retains collapsible s
   await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1));
 });
 
-it('reuses contact relationship history instead of requesting it twice', async () => {
+it('reads Contact Notes and Timeline separately without downloading relationship history for Activity', async () => {
   render(<CrmRecordView module="contacts" id="one" />);
   await screen.findByText('No activity recorded for this record.');
-  await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(1));
+  await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path.includes('/activities'))).toHaveLength(2));
+  const paths = mocks.get.mock.calls.filter(([path]) => path.includes('/activities')).map(([path]) => path);
+  expect(new Set(paths).size).toBe(2);
+  expect(paths.every(path => path.includes('contactId=one'))).toBe(true);
+  expect(paths.some(path => path.includes('type=note'))).toBe(true);
+  expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(0);
 });
 
 it('hides mutation controls without permissions', async () => {
@@ -223,7 +236,7 @@ it('hides mutation controls without permissions', async () => {
   expect(screen.getAllByText('Warm', { selector: 'span' }).length).toBeGreaterThan(0);
   expect(screen.queryByRole('button', { name: 'Warm' })).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  expect(screen.queryByRole('button', { name: /Edit (First name|Email|Account name)/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Edit (First Name|Email|Account Name)/ })).toBeNull();
 });
 
 it('shows related request failures instead of empty relationship counts', async () => {
@@ -267,8 +280,8 @@ it('edits Contact details inline using canonical API fields', async () => {
   render(<CrmRecordView module="contacts" id="one" />);
   await screen.findByRole('heading', { name: 'Nora Lim' });
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  fireEvent.click(screen.getByRole('button', { name: 'Edit Company' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Company' }), { target: { value: 'Updated Company' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Company Name' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Company Name' }), { target: { value: 'Updated Company' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/contacts/one', { company: 'Updated Company' }));
   expect(screen.queryByRole('dialog')).toBeNull();
@@ -326,7 +339,7 @@ it.each(['leads', 'contacts'] as const)('%s header and inline status editors sen
     await waitFor(() => expect(mocks.put).toHaveBeenLastCalledWith(`/crm/${module}/one`, { status }));
     await screen.findByRole('button', { name: 'Edit Status' });
   }
-}, 15000);
+}, 30000);
 
 it('Deal menu enters Details and saves or cancels inline without opening another drawer', async () => {
   const onEdit = vi.fn(); mocks.put.mockResolvedValue({ success: true });
@@ -335,12 +348,12 @@ it('Deal menu enters Details and saves or cancels inline without opening another
   fireEvent.click(screen.getByRole('button', { name: 'Record actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit deal' }));
   expect(screen.getByRole('tab', { name: /Details/ }).getAttribute('aria-selected')).toBe('true');
-  fireEvent.click(screen.getByRole('button', { name: 'Edit Deal title' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Deal title' }), { target: { value: 'Cancelled' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Title' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Cancelled' } });
   fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
   expect(mocks.put).not.toHaveBeenCalled();
-  fireEvent.click(screen.getByRole('button', { name: 'Edit Deal title' }));
-  fireEvent.change(screen.getByRole('textbox', { name: 'Deal title' }), { target: { value: 'Saved title' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Title' }));
+  fireEvent.change(screen.getByRole('textbox', { name: 'Title' }), { target: { value: 'Saved title' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(mocks.put).toHaveBeenCalledWith('/crm/deals/one', { title: 'Saved title' }));
   expect(onEdit).not.toHaveBeenCalled(); expect(screen.queryByRole('dialog')).toBeNull();

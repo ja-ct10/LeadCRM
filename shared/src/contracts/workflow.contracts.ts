@@ -106,6 +106,7 @@ export type WorkflowDraft = z.infer<typeof WorkflowDraftSchema>;
 export const WorkflowValidationSchema = WorkflowDraftSchema.extend({ workflowId: z.string().uuid().optional() });
 export interface WorkflowOptions {
   customFields?: ClosingField[];
+  fieldLayouts?: Partial<Record<import('./closing-requirements').CustomFieldModule, import('./field-catalog').FieldLayout>>;
   users: Array<{id:string;name:string}>;
   taskAssignees?: Array<{id:string;name:string}>;
   roles?: WorkflowAssignmentPoolOption[];

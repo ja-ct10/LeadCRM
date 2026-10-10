@@ -32,6 +32,8 @@ export interface ActivityRecord {
 // ─── Query params ─────────────────────────────────────────────────────────────
 
 export interface ActivityQueryParams {
+  cursor?: string;
+  search?: string;
   page?:        number;
   limit?:       number;
   /** Filter to activities linked to a specific lead */
@@ -56,8 +58,10 @@ export interface ActivityQueryParams {
 // ─── Service ──────────────────────────────────────────────────────────────────
 
 export const activitiesService = {
-  getAll: (params?: ActivityQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<ActivityRecord>> => {
+  getAll: (params?: ActivityQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<ActivityRecord> & { total: number; nextCursor?: string | null }> => {
     const query = new URLSearchParams();
+    if (params?.cursor) query.set('cursor', params.cursor);
+    if (params?.search) query.set('search', params.search);
     if (params?.page)        query.set('page',        String(params.page));
     if (params?.limit)       query.set('limit',       String(params.limit));
     if (params?.leadId)      query.set('leadId',      params.leadId);
@@ -70,7 +74,7 @@ export const activitiesService = {
     if (params?.dateFrom)    query.set('dateFrom',    params.dateFrom);
     if (params?.dateTo)      query.set('dateTo',      params.dateTo);
     const qs = query.toString();
-    return apiClient.get<PaginatedResponse<ActivityRecord>>(`/crm/activities${qs ? `?${qs}` : ''}`, { signal });
+    return apiClient.get<PaginatedResponse<ActivityRecord> & { total: number; nextCursor?: string | null }>(`/crm/activities${qs ? `?${qs}` : ''}`, { signal });
   },
 
   getById: (id: string): Promise<ApiResponse<ActivityRecord>> =>

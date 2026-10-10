@@ -1,7 +1,8 @@
-﻿'use client';
+'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CampaignDraftSchema, CampaignSendSchema, EMAIL_VARIABLE_TOKENS, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown, type CampaignEmailSettings } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, EMAIL_VARIABLES, EMAIL_VARIABLE_TOKENS, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown, type CampaignEmailSettings } from '@leadcrm/shared';
+import { CampaignVariablePicker, useCampaignFields, campaignSampleValues } from './campaign-variable-picker';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
@@ -46,6 +47,9 @@ export function CampaignBuilder({
   const [campaignType, setCampaignType] = useState<CampaignType>(
     (initialCampaign?.type === 'Sms' ? 'SMS' : initialCampaign?.type as CampaignType) || (initialType as CampaignType) || 'Email',
   );
+  const scheduled = initialCampaign?.status.toLowerCase() === 'scheduled';
+  const [deliveryMode, setDeliveryMode] = useState<'now' | 'schedule'>(scheduled ? 'schedule' : 'now');
+  const [scheduledTime, setScheduledTime] = useState(initialCampaign?.scheduledFor ? new Date(new Date(initialCampaign.scheduledFor).getTime() + 8 * 3600000).toISOString().slice(0, 16) : '');
   const [targetAudience, setTargetAudience] = useState(initialCampaign?.targetAudienceId || initialCampaign?.audienceSource || '');
   const [messageContent, setMessageContent] = useState(initialCampaign?.body || initialContent || '');
   const [emailSubject, setEmailSubject] = useState(initialCampaign?.subject || initialSubject || '');
@@ -113,6 +117,7 @@ export function CampaignBuilder({
 
   const [savedId, setSavedId] = useState(initialCampaign?.id);
   const [audiences, setAudiences] = useState<SavedAudience[]>([]);
+  const [editingAudience, setEditingAudience] = useState<SavedAudience | undefined>();
   const [showAudiencePanel, setShowAudiencePanel] = useState(false);
   const [counts, setCounts] = useState<AudienceBreakdown | null>(null);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -126,24 +131,30 @@ export function CampaignBuilder({
     let cancelled = false;
     setCounts(null);
     const audience = audiences.find(a => a.id === targetAudience);
-    const source = ['ALL', 'LEADS', 'CONTACTS'].includes(targetAudience) ? targetAudience as 'ALL' | 'LEADS' | 'CONTACTS' : undefined;
-    if (!source && !audience) return;
-    const definition = audience ? { source: audience.source, conditions: audience.conditions } : { source: source!, conditions: [] };
+    const source = ['LEADS', 'CONTACTS'].includes(targetAudience) ? targetAudience as 'LEADS' | 'CONTACTS' : undefined;
+    if ((!source && !audience) || audience?.source === 'ALL' || audience?.repairReason) return;
+    const definition = audience ? { source: audience.source, matchMode: audience.matchMode, conditions: audience.conditions } : { source: source!, conditions: [] };
     const timer = setTimeout(() => audiencesApi.preview({ ...definition, channel: campaignType === 'SMS' ? 'SMS' : 'EMAIL' }).then(res => { if (!cancelled) setCounts(res.data); }).catch(e => { if (!cancelled) setErrors(prev => ({ ...prev, targetAudienceId: e.message })); }), 400);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [targetAudience, audiences, campaignType]);
-  const previewVariables = { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: emailSender?.senderName || 'Configured sender unavailable', sender_email: emailSender?.senderEmail || 'Sender email unavailable' };
+  const chosenAudience = audiences.find(audience => audience.id === targetAudience);
+  const selectedSource = scheduled ? initialCampaign?.scheduleConfig?.source : (chosenAudience?.source === 'LEADS' || chosenAudience?.source === 'CONTACTS' ? chosenAudience.source : targetAudience === 'LEADS' || targetAudience === 'CONTACTS' ? targetAudience : undefined);
+  const { fields: variableFields, error: variableError } = useCampaignFields(selectedSource);
+  const approvedVariables = new Set<string>([...EMAIL_VARIABLES, ...variableFields.filter(field => field.personalizationAvailable).map(field => field.technicalKey)]);
+  const invalidVariables = selectedSource ? campaignVariableKeys(emailSubject + '\n' + messageContent).filter(key => !approvedVariables.has(key)) : [];
+  const variableRepair = invalidVariables.length ? `Repair unavailable variables for this source: ${invalidVariables.map(key => '{{' + key + '}}').join(', ')}.` : '';
+  const previewVariables = { ...campaignSampleValues(variableFields), first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: emailSender?.senderName || 'Configured sender unavailable', sender_email: emailSender?.senderEmail || 'Sender email unavailable' };
   const getPreviewText = (text: string) => renderEmailVariables(text, previewVariables);
   const previewSubject = () => getPreviewText(emailSubject) || campaignName || 'Email preview';
   const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><base target="_blank"><style>body{font:14px/1.6 system-ui;margin:0;overflow-wrap:anywhere;color:${previewDark ? '#cbd5e1' : '#334155'}}a{color:${previewDark ? '#60a5fa' : '#2563eb'}}img,table{max-width:100%}</style></head><body>${renderCampaignPreview(messageContent, previewVariables)}</body></html>`} />;
   let smsPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
-    smsPreview = buildFinalSms({ body: messageContent, variables: { first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' } });
+    smsPreview = buildFinalSms({ body: messageContent, variables: { ...previewVariables, first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' } });
     if (smsPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit including personalization and the contact footer.`;
   }
   async function save(send: boolean) {
     if (requestLock.current || (send ? !maySend : !canWrite)) return;
-    const source = ['LEADS', 'CONTACTS', 'ALL'].includes(targetAudience) ? targetAudience : null;
+    const source = ['LEADS', 'CONTACTS'].includes(targetAudience) ? targetAudience : null;
     const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? prepareCampaignBody(messageContent) : messageContent,
       audienceSource: source, targetAudienceId: source ? null : targetAudience || null };
     const parsed = (send ? CampaignSendSchema : CampaignDraftSchema).safeParse(input);
@@ -152,12 +163,23 @@ export function CampaignBuilder({
       for (const issue of parsed.error.issues) next[String(issue.path[0])] ??= issue.message;
       setErrors(next); return;
     }
+    if (targetAudience === 'ALL' || chosenAudience?.source === 'ALL' || chosenAudience?.repairReason) { setErrors({ audienceSource: 'Repair this legacy audience by selecting Leads, Contacts, or a new single-source audience.' }); return; }
+    if (send && variableRepair) { setErrors({ form: variableRepair }); return; }
+    if (send && deliveryMode === 'schedule') {
+      const date = new Date(scheduledTime + ':00+08:00');
+      const parsedTime = CampaignScheduleSchema.safeParse({ scheduledFor: Number.isFinite(date.getTime()) ? date.toISOString() : '' });
+      if (!parsedTime.success) { setErrors({ form: 'Choose a valid future date and time in Asia/Manila.' }); return; }
+    }
     if (send && campaignType === 'Multi-Channel') { setErrors({ form: 'Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.' }); return; }
     if (send && campaignType === 'SMS' && smsPreviewError) { setErrors({ form: smsPreviewError }); return; }
     requestLock.current = true; setIsSending(true); setErrors({});
     try {
       const res = !canWrite && savedId ? { data: { id: savedId } } : savedId ? await campaignsApi.update(savedId, parsed.data) : await campaignsApi.create(parsed.data);
       setSavedId(res.data.id);
+      if (send && deliveryMode === 'schedule') {
+        await campaignsApi.schedule(res.data.id, new Date(scheduledTime + ':00+08:00').toISOString());
+        toast.success('Campaign scheduled once in Asia/Manila.'); onBack(); return;
+      }
       if (send) {
         let result = (await campaignsApi.send(res.data.id)).data;
         // Each status request stays within the proxy timeout. Closing the editor
@@ -188,6 +210,15 @@ export function CampaignBuilder({
       if (!Object.keys(next).length) next.form = error.message || 'Could not save campaign.';
       setErrors(next);
     } finally { requestLock.current = false; setIsSending(false); }
+  }
+  async function manageSchedule(cancel: boolean) {
+    if (requestLock.current || !initialCampaign || !maySend) return;
+    const due = scheduledTime ? new Date(scheduledTime + ':00+08:00') : null;
+    if (!cancel && (!due || !Number.isFinite(due.getTime()) || due.getTime() <= Date.now())) { setErrors({ form: 'Choose a valid future date and time in Asia/Manila.' }); return; }
+    requestLock.current = true; setIsSending(true); setErrors({});
+    try { if (cancel) await campaignsApi.cancelSchedule(initialCampaign.id); else await campaignsApi.schedule(initialCampaign.id, due!.toISOString()); toast.success(cancel ? 'Schedule cancelled. The campaign is now a draft.' : 'Campaign rescheduled.'); onBack(); }
+    catch (error) { setErrors({ form: error instanceof Error ? error.message : 'Unable to change schedule.' }); }
+    finally { requestLock.current = false; setIsSending(false); }
   }
   const handleSend = () => save(true);
   const handleSaveDraft = () => save(false);
@@ -292,7 +323,7 @@ export function CampaignBuilder({
           </button>
           <button onClick={handleSend} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="flex items-center whitespace-nowrap gap-1.5 sm:gap-2 px-2 min-[375px]:px-3 sm:px-5 py-2 bg-primary hover:bg-primary/90 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-md shadow-primary/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
             {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            {isSending ? 'Sending...' : 'Send Now'}
+            {isSending ? deliveryMode === 'schedule' ? 'Scheduling...' : 'Sending...' : deliveryMode === 'schedule' ? 'Schedule Once' : 'Send Now'}
           </button>
           <button type="button" onClick={() => isDesktop ? setShowPreview(previous => !previous) : setMobilePreview(previous => !previous)}
             aria-label={(isDesktop ? showPreview : mobilePreview) ? 'Hide live preview' : 'Show live preview'} aria-expanded={isDesktop ? showPreview : mobilePreview} aria-controls="campaign-live-preview"
@@ -302,7 +333,9 @@ export function CampaignBuilder({
         </div>
       </div>
 
-      <FieldError message={errors.form} />
+      <FieldError message={errors.form || variableError || variableRepair || undefined} />
+      {initialCampaign?.scheduleConfig?.scheduleFailureReason && <p role="status" className="m-3 rounded border border-amber-300 p-3 text-sm text-amber-800">Schedule failed: {initialCampaign.scheduleConfig.scheduleFailureReason}</p>}
+      {scheduled && <div className="m-3 space-y-2 rounded border p-3 text-sm"><p>Approved content and audience rules are fixed. Cancel the schedule to edit them.</p><label>Schedule Once (Asia/Manila)<input aria-label="Scheduled date and time" type="datetime-local" value={scheduledTime} onChange={event => setScheduledTime(event.target.value)} className="ml-2 rounded border bg-transparent p-2" /></label><div className="flex gap-2"><button disabled={isSending || !maySend} onClick={() => void manageSchedule(false)} className="rounded border px-3 py-2">Reschedule</button><button disabled={isSending || !maySend} onClick={() => void manageSchedule(true)} className="rounded border px-3 py-2">Cancel schedule</button></div></div>}
       {/* Split Layout */}
       <div ref={formScrollRef} className="min-h-0 flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
         {/* Editor */}
@@ -329,23 +362,26 @@ export function CampaignBuilder({
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label htmlFor="builder-audience" className="text-sm font-medium text-slate-700 dark:text-slate-300">Target Audience <span className="text-red-500">*</span></label>
-                  <button type="button" onClick={() => setShowAudiencePanel(true)} className="text-xs font-bold text-primary dark:text-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200 flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                  <button type="button" onClick={() => { setEditingAudience(undefined); setShowAudiencePanel(true); }} className="text-xs font-bold text-primary dark:text-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200 flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                     <Plus size={11} className="stroke-[3px]" /> Create New
                   </button>
                 </div>
                 <div className="relative">
                   <select id="builder-audience" value={targetAudience} onChange={(e) => { setTargetAudience(e.target.value); setErrors(prev => ({ ...prev, targetAudienceId: '' })); }} className={`${inputCls} appearance-none cursor-pointer pr-8`}>
-                    <option value="">Select an audience</option><option value="LEADS">All Leads</option><option value="CONTACTS">All Contacts</option><option value="ALL">All Leads &amp; Contacts</option>
-                    {audiences.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    <option value="">Select an audience</option><option value="LEADS">All Leads</option><option value="CONTACTS">All Contacts</option>{targetAudience === 'ALL' && <option value="ALL" disabled>Legacy mixed audience — select a source</option>}
+                    {audiences.map(a => <option key={a.id} value={a.id} disabled={a.source === 'ALL' || !!a.repairReason}>{a.name}{a.source === 'ALL' || a.repairReason ? ' — repair required' : ''}</option>)}
                   </select>
                   <Tags size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                 </div>
                 <FieldError message={errors.targetAudienceId || errors.audienceSource} />
+                {chosenAudience && canEdit && <button type="button" className="mt-2 text-xs text-primary" onClick={() => { setEditingAudience(chosenAudience); setShowAudiencePanel(true); }}>{chosenAudience.source === 'ALL' || chosenAudience.repairReason ? 'Repair saved audience' : 'Edit saved audience'}</button>}
               </div>
             </div>
           </div>
 
           <div className="border-t border-gray-100 dark:border-white/3" />
+          <label className="block text-sm">Delivery<select aria-label="Delivery" className={inputCls} value={deliveryMode} onChange={event => setDeliveryMode(event.target.value as 'now' | 'schedule')}><option value="now">Send Now</option><option value="schedule">Schedule Once</option></select></label>
+          {deliveryMode === 'schedule' && <label className="block text-sm">Schedule Once (Asia/Manila)<input aria-label="Schedule Once (Asia/Manila)" type="datetime-local" className={inputCls} value={scheduledTime} onChange={event => setScheduledTime(event.target.value)} /><span className="text-xs text-slate-500">Sends once after the due time, within the backend polling interval while it is running.</span></label>}
           <AudienceCounts counts={counts} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} />
 
           {/* Message Content */}
@@ -359,10 +395,8 @@ export function CampaignBuilder({
                       <Wand2 size={14} /> Insert Variable
                     </button>
                     {showVarDropdown && (
-                      <div className="absolute right-0 top-full mt-1 w-48 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
-                        {EMAIL_VARIABLE_TOKENS.map(v => (
-                          <button key={v} type="button" onClick={() => insertVariable(v)} className="w-full text-left px-3 py-2 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors duration-150 cursor-pointer">{v}</button>
-                        ))}
+                      <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                        <CampaignVariablePicker fields={variableFields} onInsert={insertVariable} />
                       </div>
                     )}
                   </div>
@@ -401,7 +435,7 @@ export function CampaignBuilder({
           </SheetContent>
         </Sheet>}
       </div>
-      {showAudiencePanel && <AudiencePanel channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => prev.some(item => item.id === audience.id) ? prev.map(item => item.id === audience.id ? audience : item) : [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
+      {showAudiencePanel && <AudiencePanel initialAudience={editingAudience} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => prev.some(item => item.id === audience.id) ? prev.map(item => item.id === audience.id ? audience : item) : [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
     </div>
   );
 }

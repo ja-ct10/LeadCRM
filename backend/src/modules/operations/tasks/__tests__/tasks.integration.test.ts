@@ -5,6 +5,7 @@ import prisma from "../../../../config/database.config";
 import { tenantContext } from "../../../../core/tenant/tenant-context";
 import { issueAuthSession } from "../../../../core/auth/auth-session";
 import app from "../../../../app";
+import { reassignTaskLinks } from '../tasks.repository';
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/");
 const disposable =
   ["localhost", "127.0.0.1"].includes(url.hostname) &&
@@ -238,6 +239,9 @@ describe.skipIf(!disposable)(
       expect(task.lead.id).toBe(lead.id);
       expect(task.deal.id).toBe(deal.id);
       expect(task.assignedById).toBe(actor.id);
+      expect(task.createdById).toBe(actor.id);
+      expect(task.createdBy).toMatchObject({ id: actor.id, firstName: actor.firstName });
+      expect(task.assignedUserId).toBe(owner.id);
       const completed = await call(`/operations/tasks/${task.id}`, "PUT", {
         status: "completed",
       });
@@ -263,6 +267,7 @@ describe.skipIf(!disposable)(
         completedById: null,
         assignedUserId: actor.id,
         contactId: null,
+        createdById: actor.id,
       });
       const audits = await prisma.auditLog.findMany({
         where: { tenantId, entityId: task.id },
@@ -305,6 +310,31 @@ describe.skipIf(!disposable)(
       expect((await call(`/operations/tasks/${task.id}`)).body.data).toMatchObject({ isArchived: false, title: 'Recoverable task' });
       expect((await call(path, 'PATCH')).status).toBe(404);
       expect((await call('/administration/archived-data/Task/invalid/restore', 'PATCH')).status).toBe(400);
+    });
+    it('rejects creator spoofing and reads converted Lead Tasks once without turning inherited visibility into direct merge links', async () => {
+      expect((await call('/operations/tasks', 'POST', { ...draft('Spoofed creator'), createdById: owner.id })).status).toBe(400);
+      const convertedContact = await prisma.contact.create({ data: { tenantId, firstName: 'Continuity', lastName: 'Contact' } });
+      const destination = await prisma.contact.create({ data: { tenantId, firstName: 'Merge', lastName: 'Target' } });
+      const source = await prisma.lead.create({ data: { tenantId, firstName: 'Converted', lastName: 'Source', contactId: convertedContact.id, convertedAt: new Date() } });
+      const pending = await prisma.lead.create({ data: { tenantId, firstName: 'Unconverted', lastName: 'Source', contactId: convertedContact.id } });
+      const inherited = (await call('/operations/tasks', 'POST', { ...draft('Continuity inherited'), leadId: source.id })).body.data;
+      const both = (await call('/operations/tasks', 'POST', { ...draft('Continuity both'), leadId: source.id, contactId: convertedContact.id, status: 'completed' })).body.data;
+      const direct = (await call('/operations/tasks', 'POST', { ...draft('Continuity direct'), contactId: convertedContact.id })).body.data;
+      await call('/operations/tasks', 'POST', { ...draft('Continuity unconverted'), leadId: pending.id });
+      const query = `/operations/tasks?contactId=${convertedContact.id}&search=Continuity`;
+      const result = await call(query);
+      expect(result.body.meta.total).toBe(3);
+      expect(new Set(result.body.data.map((task: { id: string }) => task.id))).toEqual(new Set([inherited.id, both.id, direct.id]));
+      expect(result.body.data.find((task: { id: string }) => task.id === inherited.id)).toMatchObject({ contactId: null, contactIds: [], createdById: actor.id, assignedUserId: owner.id });
+      const summary = await call(`/operations/tasks/summary?contactId=${convertedContact.id}&search=Continuity`);
+      expect(summary.body.data).toMatchObject({ total: 3, active: 2, completed: 1 });
+      expect((await call(`/operations/tasks/${inherited.id}`, 'PUT', { createdById: owner.id })).status).toBe(400);
+      const moved = await scope(() => prisma.$transaction(tx => reassignTaskLinks(tx, 'contact', destination.id, convertedContact.id, tenantId)));
+      expect(moved.count).toBe(2);
+      expect(await prisma.taskContact.count({ where: { tenantId, taskId: inherited.id } })).toBe(0);
+      expect(await prisma.taskContact.count({ where: { tenantId, taskId: both.id, contactId: destination.id } })).toBe(1);
+      expect(await prisma.taskLead.count({ where: { tenantId, taskId: inherited.id, leadId: source.id } })).toBe(1);
+      expect((await call(`/operations/tasks/${inherited.id}`)).body.data).toMatchObject({ createdById: actor.id, assignedUserId: owner.id, contactIds: [] });
     });
     it("rejects cross-tenant, inactive, and invalid references", async () => {
       for (const bad of [

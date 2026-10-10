@@ -1,92 +1,86 @@
-# Module custom fields
+# Customize Fields
 
-Implementation and verification report, 7 October 2026. The existing Settings gallery, side panels, field definitions and Closed Won workflow are extended across Leads, Contacts, Accounts and Deals.
+Settings → Customize Fields keeps the existing `custom-fields` tab ID and administration API paths. Select Leads, Contacts, Accounts or Deals, then search the compact field table. The table includes supported System fields and custom definitions, their immutable technical keys, section, Required setting, and independent Show in Forms / Show in Details controls.
 
-## Implementation report
+## Identity and storage
 
-1. **Existing architecture.** `ClosingFieldDefinition` already stored tenant-scoped JSON definitions with stable IDs and versions. The administration API and Settings cards managed six field types. Deal evidence used `closingValues`, secure `RecordFile` IDs and immutable `closingSnapshot` evidence. This implementation extends those definitions and validators.
-2. **Schema/model changes.** Definition JSON gains `module`, `group`, `visibleInForm` and `order`. `CustomFieldValue` separates values from configuration, with a composite tenant/definition foreign key, tenant/record foreign keys, per-field/per-record uniqueness, a scalar JSON constraint and exactly one module-matching record reference. Definition and value timestamps remain persisted. `RecordFile.pendingModule` supports uploads before a new record exists.
-3. **Supported modules.** Leads, Contacts, Accounts and Deals. Tasks are not advertised: the current record-file and relationship architecture supports these four CRM record types, not Tasks.
-4. **Module selector.** New Field selects one of the four modules. Edit Field displays the original module read-only; the server rejects changes. The Settings filter is separate from global search and offers All Modules plus these four modules.
-5. **Group/Section.** Suggestions come from the selected module's actual built-in form sections and saved groups. Group is required, trimmed and limited to 100 characters. Fields appear after standard inputs inside the matching section.
-6. **Custom groups.** Entering a new name creates its context within the definition; no second group-storage system is introduced. Case-insensitive, trimmed matches reuse an existing module-specific name. Visible custom groups become numbered sections after built-in sections. Creation order is persisted and stable; there is no new drag-and-drop ordering UI.
-7. **Visible in Form.** A persisted boolean defaults to true. Ordinary form rendering and server-required validation both use `active && visibleInForm`. Configuration changes invalidate the affected cached forms and details.
-8. **Hide/Show.** The card menu patches that same boolean. It neither archives nor deletes the definition or any values. Show restores the existing value when the form reloads. Disabled fields remain separately identified.
-9. **Required.** The shared renderer blocks empty required values and shows inline errors. The backend repeats validation within the record transaction, so invalid values roll back record creation/update. Hidden or disabled ordinary fields do not block submission. Active required Closed Won fields remain enforced within the closing workflow regardless of ordinary-form visibility.
-10. **Types.** Text: string, maximum 1,000 characters. Long Text: string, maximum 10,000. Number: finite numeric JSON value; ordinary inputs reject nonnumeric characters while typing. Date: an actual calendar date in `YYYY-MM-DD`. Dropdown: one configured choice, with trimmed, case-insensitive duplicate-choice rejection. File Upload: a persisted, tenant/record-owned secure file ID, maximum 10 MB, using existing MIME/signature checks. Module and type are immutable. Removing a dropdown choice does not rewrite unchanged optional historical values; a submitted change must match current choices.
-11. **Leads.** New/Edit Lead uses the shared renderer in Basic Information, Status & Interest, Organization and Additional Information, followed by custom sections. The existing adapter passes record-specific values. Creation, updates and values share a transaction; idempotent Lead creation does not overwrite values on replay. Converted Leads retain their existing edit restriction.
-12. **Contacts.** New/Edit Contact renders Basic Information, Status & Classification, Relationships and Additional Information plus custom sections. Contact values use the Contact record reference and cannot be submitted as Lead values. The create/update service forwards the actor for file claims and audit history.
-13. **Accounts.** New/Edit Account renders Basic Information, Address, Relationships, Products & Interests and Notes plus custom sections. Values persist with Account create/update. Archiving preserves the value rows; the historical reader remains tenant-scoped.
-14. **Deals.** The shared create/edit form and related-record quick create render ordinary Deal fields separately from closing evidence. Batch creation validates and stores values for each Deal atomically. An uploaded file may be shared within that explicit batch using separate record-owned metadata IDs. The current Deal Details editing pattern is preserved: Edit deal opens Details, where Edit custom fields saves grouped values inline. The same custom-value editor is available in other record Details panels with edit permission.
-15. **Closed Won compatibility.** Existing definition IDs, versions, types, options and requirements are preserved. Legacy definitions receive Deals / Closed Won Requirements metadata. Known stored closing values are backfilled into normalized rows; `closingValues` remains dual-written, and `closingSnapshot` is never rewritten. Unknown legacy keys remain in the legacy JSON. Server stage validation, Qualified-to-Won behavior and locked evidence remain intact.
-16. **Persistence.** Definition mutations use the existing administration endpoints. Record create/update DTOs accept `customFieldValues`, keyed by field ID. The backend rejects foreign-module, unknown, hidden or disabled submitted fields and merges accepted patches with saved values. Edit forms submit changed values only. No localStorage or mock-only persistence is introduced.
-17. **History.** Hide, disable, definition rename, choice edits and group changes do not delete stored values. Details show saved hidden/disabled fields with their status, grouped by their current definition. Audit logs retain definition/value changes. Frozen closing evidence uses its original snapshot metadata. Ordinary fields do not introduce a second frozen-snapshot system.
-18. **Permissions.** Existing `custom_fields.view/create/edit/disable` checks remain. Changing active status additionally requires disable permission. Ordinary field filling uses the record module's create/edit permission, and reading saved values requires module view. Pending uploads require module create and may be claimed only by their uploader in the same tenant/module within 24 hours. Record-scoped uploads/downloads retain existing permissions and tenant checks.
-19. **Migration.** `20261105000000_module_custom_fields` performs transactional EXPAND → BACKFILL → VERIFY. Application code switches ordinary values to normalized storage while dual-writing closing compatibility JSON. RETIRE is intentionally deferred. The deployment allowlist includes this independent migration while continuing to exclude the guarded relationship-retirement migration.
-20. **Tests.** See the executed-check ledger below. Integration verification uses disposable PGlite databases and real authenticated HTTP requests; external file storage responses are mocked. Browser verification uses the production-built application with a disposable database.
-21. **Build/typecheck.** The repository's `lint` scripts are TypeScript `tsc --noEmit` checks. All three workspaces and both production builds passed. Prisma generate and schema validation passed. The frontend build warns that its local fallback API URL is localhost; the browser harness explicitly points the proxy to its disposable local backend.
-22. **Limitations.** Production migration, deployment, production data volumes/locking, and live Supabase upload/download have not been exercised. I cannot confirm this. The complete repository test suite was not run; the checks below describe the actual coverage. Browser coverage is Chrome at the listed widths, not every browser/device. Existing import, conversion and automation behavior is not extended to map custom values between modules. Historical files on archived records retain the existing file endpoint's access restrictions. Abandoned pending uploads are cleaned on the uploader's next upload after expiration, not by a new scheduled job.
+The explicit shared catalog is `shared/src/contracts/field-catalog.ts`. Native technical keys come from supported CRM contracts. Custom keys are `customFieldValues.<existing-definition-id>`; renaming a label never changes its key, values, import identity, Workflow reference or Campaign token.
 
-## API contract
+`ClosingFieldDefinition.definition` remains the definition store. JSON adds `groupId`, `visibleInDetails`, and retirement metadata (`deletedAt`, `deletedById`). `CustomFieldValue`, secure `RecordFile` metadata, audits, legacy Deal `closingValues`, and immutable closing snapshots retain their existing stores and identities.
 
-All paths below are relative to `/api/v1`. Authentication, tenant scoping and workspace readiness are unchanged.
+Each module has one tenant-scoped `TenantPreference` with its module name and key `field-layout`. Its typed JSON contains stable section IDs, display names and order, plus native field label/presentation/order overrides. Built-in section IDs are deterministic; legacy section IDs are persisted once. Definition `group` strings remain compatibility projections of the section label. No new table or migration is needed for these JSON additions.
+
+Only the exact IDs in `DEFAULT_CLOSING_FIELDS`, within the protected Deal closing context, are System closing definitions. A custom field with a matching display name stays Custom. Native fields and System closing definitions cannot be deleted. Types, modules and technical keys remain immutable.
+
+## Layout and visibility
+
+Manage Field Groups supports Add, Rename, Move up, Move down, and safe Delete within the selected module. Each module supports at most 100 groups. Names are trimmed, limited to 100 characters, and unique ignoring case. Field rows have accessible move controls for ordering within their section. New custom fields append to their selected section.
+
+Add Group beside the field form's selector creates the section in the same module, selects it, and retains the unfinished field draft. A nonempty section can be deleted only after explicitly selecting a valid ordinary destination section; the move and deletion commit atomically. Fields and values are never cascade-deleted.
+
+`deals:closing-evidence` is the protected closing-context ID. Its display name may change without changing closing validation. Ordinary fields cannot move into this context, closing fields cannot move out, and the protected section cannot be deleted. Legacy name-based definitions are normalized into this stable context.
+
+The drawer and full page share `CrmRecordView`. Details combines native and custom fields in the saved module sections and order. Existing staff create/edit forms retain their original input controls and business validation while a small layout helper arranges those controls alongside custom fields. Column label overrides reuse the same configuration without adding custom table columns or changing saved column IDs.
+
+Loaded custom values and closing evidence remain visible when a background refresh temporarily fails. An inline error offers Retry, and an open editor keeps its draft. When the existing cache clears unavailable or unauthorized data, these components remove the old values as well. Successful saves use the existing automatic cache invalidation without an additional manual refresh.
+
+Hide affects presentation and preserves values. Disable affects operational availability. Required ordinary custom inputs cannot be hidden from forms until Required is turned off. Mandatory system inputs remain available. Required closing evidence stays enforced independently of Details visibility and is available through the closing dialog. Dropdown options used by saved values cannot be removed.
+
+Active fields hidden from forms remain available for permitted Workflow conditions and Campaign audience/personalization reads. Workflow update actions keep their existing governed editability checks. File fields support presence conditions; Campaign personalization does not expose private file IDs or links. Public Form published snapshots remain unchanged until the Form is explicitly edited and published again.
+
+## Deletion and history
+
+Delete requires the separate `custom_fields.delete` action through the existing `canDelete` permission machinery. Edit permission does not grant deletion. The server rejects System deletion and checks saved Workflows, Forms (including published configuration), audience conditions, templates, and Draft/Scheduled Campaign rules/content for immutable field IDs and tokens. Rejections identify the affected saved references so they can be repaired.
+
+Unreferenced Custom deletion retires the definition. It disappears from current configuration and new writes while the original definition, values, files, audits and frozen snapshots remain intact. Record custom-field reads retain retired definitions for historical inspection. There is no purge or restore UI.
+
+## API
+
+Paths below are relative to `/api/v1`; authenticated tenant scope and workspace readiness remain required.
 
 | Method and path | Behavior | Permission |
 | --- | --- | --- |
-| `GET /administration/closing-requirements` | All saved definitions, including disabled and hidden | `custom_fields.view` |
-| `POST /administration/closing-requirements` | Create a definition | `custom_fields.create` |
-| `PATCH /administration/closing-requirements/:id` | Patch configuration or visibility | `custom_fields.edit`; active changes also require `custom_fields.disable` |
-| `PATCH /administration/closing-requirements/:id` with only `{ "active": false }` | Disable without deletion | `custom_fields.disable` |
-| `GET /crm/{module}/custom-fields` | Module definitions for ordinary forms; excludes closing context | Any of module view/create/edit |
-| `GET /crm/{module}/:id/custom-fields` | Definitions, saved values and record-file metadata | Module view |
-| Existing record `POST`/`PUT` endpoints | Accept optional `customFieldValues` alongside standard fields | Existing module create/edit |
-| `POST /crm/deals/batch` | Applies values to every new Deal within the same transaction | `deals.create` |
-| `POST /crm/{module}/custom-field-uploads?name=...&type=...` | Raw file bytes; creates a temporary uploader-owned file | Module create |
+| `GET /administration/closing-requirements` | Current definitions, including disabled/hidden fields | `custom_fields.view` |
+| `POST /administration/closing-requirements` | Create a definition with a stable ID | `custom_fields.create` |
+| `PATCH /administration/closing-requirements/:id` | Governed definition/presentation changes | `custom_fields.edit`; active changes also require `custom_fields.disable` |
+| `PATCH /administration/closing-requirements/:id` with only `{ "active": false }` | Disable a definition | `custom_fields.disable` |
+| `DELETE /administration/closing-requirements/:id` | Dependency-checked retirement | `custom_fields.delete` |
+| `GET /administration/closing-requirements/layout/:module` | Typed layout and resolved System/Custom catalog | `custom_fields.view` |
+| `PATCH /administration/closing-requirements/layout/:module` | Add/rename/order/delete sections or change field presentation/order | `custom_fields.edit` |
+| `GET /crm/:module/field-layout` | The same resolved layout for CRM readers/editors | Any of module view/create/edit |
+| `GET /crm/:module/custom-fields` | Current ordinary module definitions; excludes closing context | Any of module view/create/edit |
+| `GET /crm/:module/:id/custom-fields` | Definitions, retained values, section layout and secure file metadata | Module view |
+| Existing record `POST`/`PUT` endpoints | Optional `customFieldValues` keyed by definition ID | Existing module create/edit |
+| `POST /crm/deals/batch` | Validates/stores values per new Deal in the existing transaction | `deals.create` |
+| `POST /crm/:module/custom-field-uploads?name=...&type=...` | Pending uploader-owned secure file bytes | Module create |
 
-`module` is `leads`, `contacts`, `accounts` or `deals`. Definitions retain their existing ID and version contract. The old optional `appliesTo` literal remains accepted for legacy clients; new UI uses Module and Group/Section. Old definition clients that omit context retain the legacy Deals / Closed Won Requirements default.
+Layout PATCH accepts a strict single command:
 
 ```json
-{
-  "module": "leads",
-  "group": "Additional Information",
-  "name": "Project Budget",
-  "type": "Number",
-  "required": true,
-  "visibleInForm": true,
-  "active": true,
-  "description": "Budget in PHP",
-  "options": []
-}
+{ "action": "add", "label": "Project information" }
+{ "action": "rename", "groupId": "<stable-id>", "label": "Site information" }
+{ "action": "moveGroup", "groupId": "<stable-id>", "direction": "up" }
+{ "action": "delete", "groupId": "<stable-id>", "moveToGroupId": "<destination-id>" }
+{ "action": "field", "technicalKey": "email", "label": "Work email", "visibleInDetails": true }
+{ "action": "field", "technicalKey": "customFieldValues.<id>", "direction": "down" }
 ```
 
-A record submission contains `"customFieldValues": { "<definition-id>": 25000 }`. Values may be strings, finite numbers or null. Null clears an optional visible field. Omitted values are preserved. Field count and value payloads are capped at 100 per module/submission. Names are unique within the same module and normalized group; the same label in different modules or groups is allowed.
+Definition types remain Text (1,000 characters), Long Text (10,000), finite Number, real `YYYY-MM-DD` Date, configured Dropdown, and File Upload. Files require successful persistent tenant/record-owned uploads, use the existing MIME/signature checks, and are limited to 10 MB. Pending files remain scoped to their module/uploader and expire after 24 hours. Definition count and submitted value count remain capped at 100 per module/request. Null clears an optional editable field; omitted values remain unchanged.
 
-## Executed-check ledger
+## Verification
 
-| Check | Actual result |
-| --- | --- |
-| Prisma generate | Passed |
-| Prisma validate | Passed using local placeholder connection URLs; validation does not connect to a live database |
-| All-workspace `npm run lint` | Passed: backend, frontend, shared TypeScript checks |
-| `npm run build` | Passed: backend and frontend production builds |
-| `node backend/scripts/test-custom-fields.mjs` | Passed: 7 integration scenarios, migration preservation, tenant/record SQL constraints, plus migration replay with compatibility retirement deferred |
-| `node backend/scripts/test-crm-completion.mjs` | Passed: 14 existing CRM/closing integration tests and migration preservation checks |
-| Focused Deal backend unit/property tests | Passed: 26 tests across lifecycle, lifecycle migration, junction synchronization and error classification |
-| Focused frontend form/renderer/settings/adapter/cache tests | Passed: 72 tests across 11 files; the final renderer suite then passed with two additional inline-editor tests |
-| Existing record-panel regressions and final custom-field editor tests | Passed: 53 tests across 2 files (44 panel tests, 9 renderer/editor tests); 118 distinct frontend tests across the combined runs. An initial five-second panel timeout passed on rerun with a 15-second limit and one worker |
-| Deployment guard tests (`npm --prefix backend run test:rollout`) | Passed: 7 tests |
-| Chrome responsive/persistence acceptance | Passed: 61 checks (55 responsive, 4 create/edit persistence, 2 Hide/Show preservation), zero page errors. Results and screenshots: `data/outputs/custom-fields-browser/`; generated by `backend/scripts/verify-custom-fields-browser.mjs` |
-| `git diff --check` | Passed |
+Focused service tests cover immutable identity, native label overrides, stable section rename/order, required/mandatory hiding guards, closing-context protection, safe section deletion, hidden-field Workflow read availability, dependency-checked retirement, retained values, and used-option rejection. Frontend tests cover combined native/custom sections, no duplicate rendering, independent Details hiding, retained drafts, and existing custom-field/Contact/inline Deal saving behavior.
 
-The browser harness covers Settings, New Field, Edit Field, and create/edit flows for all four modules at 1440, 768, 390, 375 and 320 pixels. It submits real API saves, reloads values, checks missing-required behavior, inspects horizontal overflow, and records page errors. It also tests persisted Hide/Show and restores the previously saved Lead value. Run after building, with `PLAYWRIGHT_MODULE` pointing to an installed Playwright package and Chrome available. It starts only a disposable database and localhost servers; it does not use deployment credentials.
+Run the isolated migration and authenticated API checks from the repository root:
 
-Desktop and 320px screenshots were also visually inspected, including New Field, grouped Lead/Account forms, Settings cards and inline Deal custom-field editing. Captured pages use the existing LeadCRM typography, buttons, panels and section headings.
+```sh
+node backend/scripts/test-custom-fields.mjs
+```
 
-## Deployment sequence
+The harness creates fresh in-memory PGlite databases, replays forward migrations, and starts a temporary loopback PostgreSQL socket for Prisma. It never uses a deployment database. Restricted test environments must permit child processes and local loopback connections; a Prisma `P1001` before the first assertion indicates the local connection was blocked, not a completed API check. On Windows, use a writable `TEMP`/`TMP` directory if the test runner cannot write its transform cache.
 
-1. Back up the target database and verify the normal release migration history. Keep the existing retirement gates; do not reset the database or use destructive `db push`.
-2. Apply the repository's normal `npm --prefix backend run db:deploy` release path with the target's configured credentials. The new migration is transactional and independently verified with relationship retirement deferred. No target database has been migrated by this task.
-3. Deploy matching backend/shared and frontend changes together. Verify definition IDs/counts, known backfilled values, unchanged closing JSON/snapshots, and tenant/RBAC access before enabling normal use.
-4. Perform authenticated create, reload, edit, hide/show and Closed Won checks on the deployment. Verify live secure storage separately. Preserve `closingValues` and `closingSnapshot`; no retirement is part of this release.
+The implementation acceptance run passed all 11 authenticated HTTP tests, including saved section rename/order/safe deletion, mandatory input protection, explicit Delete permissions, Workflow/template dependencies, retirement with retained values, secure upload ownership, module/tenant isolation, and unchanged frozen closing evidence. Migration replay passed both the standard order and deferred relationship-compatibility retirement; definition IDs/count/version, normalized values and original closing JSON/snapshots were preserved. SQL tenant foreign keys and module/record association constraints passed separately.
 
-Use [the architecture guide](ARCHITECTURE.md), [API guide](API.md) and [existing engagement/closing documentation](engagement-deal-creation.md) for surrounding behavior.
+The focused field service suite (`backend/src/modules/crm/closing-requirements/field-layout.test.ts`) passed seven tests, including rejection at the group limit without corrupting the saved layout. The Customize Fields settings suite passed ten tests covering module search, System/Custom actions and permissions, independent visibility, group controls and Add Group draft preservation. The existing record custom-field, Contact save, inline Deal, and closing-requirement frontend suites passed 23 tests across four files, including transient-error value/draft retention and cleared-cache hiding. These checks use isolated data and mocked storage/providers. They do not establish live provider delivery or deployment readiness. Current release-wide lint/build results and concrete environment limitations belong in the implementation delivery report.
+
+See the [architecture guide](ARCHITECTURE.md), [API guide](API.md), and [closing behavior](engagement-deal-creation.md) for surrounding contracts and release migration prerequisites.

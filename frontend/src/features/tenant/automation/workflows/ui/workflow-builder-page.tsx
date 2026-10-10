@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
-import { getWorkflowConditionFields } from '@leadcrm/shared';
+import { getWorkflowConditionFields, WORKFLOW_MODULES } from '@leadcrm/shared';
 import { WorkflowBuilderSkeleton } from './workflow-builder-skeleton';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type {
@@ -106,7 +106,7 @@ export default function WorkflowBuilderPage() {
           initialVersion: saved?.version,
           options: options.data,
           ...metadata,
-          triggers: metadata.triggers.map(trigger => ({ ...trigger, fields: getWorkflowConditionFields(trigger.entity, trigger.type, options.data.customFields) })),
+          triggers: metadata.triggers.map(trigger => ({ ...trigger, fields: getWorkflowConditionFields(trigger.entity, trigger.type, options.data.customFields, options.data.fieldLayouts?.[WORKFLOW_MODULES[trigger.entity]]) })),
         });
       })
       .catch((failure) => {

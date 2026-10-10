@@ -15,12 +15,21 @@ import { createHash } from 'node:crypto';
 export const dashboardEvents = (req: Request, res: Response, next: NextFunction) => observeEvents(req, res, next, 'dashboard');
 export const authorizationEvents = (req: Request, res: Response, next: NextFunction) => observeEvents(req, res, next, 'authorization');
 export const pipelineEvents = (req: Request, res: Response, next: NextFunction) => observeEvents(req, res, next, 'pipeline');
-async function observeEvents(req: Request, res: Response, next: NextFunction, prefix: 'dashboard' | 'authorization' | 'pipeline') {
+export const recordEvents = (req: Request, res: Response, next: NextFunction) => observeEvents(req, res, next, 'crm');
+async function assertRecordAccess(req: Request) {
+  for (const permission of ['leads.view', 'contacts.view', 'accounts.view', 'deals.view', 'tasks.view'] as const) {
+    try { await assertPermissions(req.user!, [permission]); return; }
+    catch (error) { if (!(error instanceof AppError) || error.statusCode !== 403) throw error; }
+  }
+  throw new AppError('Access denied', 403);
+}
+async function observeEvents(req: Request, res: Response, next: NextFunction, prefix: 'dashboard' | 'authorization' | 'pipeline' | 'crm') {
   const reporting = prefix === 'dashboard';
   const ready = prefix !== 'authorization';
   try {
     if (reporting) await dashboardAccess(req.user!);
     if (prefix === 'pipeline') await assertPermissions(req.user!, ['deals.view']);
+    if (prefix === 'crm') await assertRecordAccess(req);
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-store, no-transform');
     res.setHeader('X-Accel-Buffering', 'no');
@@ -43,11 +52,13 @@ async function observeEvents(req: Request, res: Response, next: NextFunction, pr
         const revision = await tenantContext.run({ tenantId }, async () => {
           if (reporting) await dashboardAccess(req.user!);
           if (prefix === 'pipeline') await assertPermissions(req.user!, ['deals.view']);
+          if (prefix === 'crm') await assertRecordAccess(req);
           return prisma.dashboardRevision.findUnique({ where: { tenantId } });
         });
         const counters = { analytics: String(revision?.analytics ?? 0), leads: String(revision?.leads ?? 0),
           actions: String(revision?.actions ?? 0), access: String(revision?.access ?? 0) };
         let payload: unknown = reporting ? counters : { access: counters.access };
+        if (prefix === 'crm') payload = { content: String(revision?.content ?? 0) };
         if (prefix === 'pipeline') {
           // Hash metadata only. Deal/task writes do not cause selector refetches.
           const stages = await tenantContext.run({ tenantId }, () => prisma.stage.findMany({ where: { tenantId, pipeline: { isArchived: false } }, orderBy: { id: 'asc' },

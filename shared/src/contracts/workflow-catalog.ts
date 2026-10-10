@@ -2,6 +2,7 @@ import type { ActionDefinition, WorkflowEntity, WorkflowField, WorkflowTriggerDe
 import { CRM_STATUSES, LEAD_SOURCES, COMPANY_SIZE_OPTIONS } from './record-experience';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { isClosedWonField, type ClosingField, type CustomFieldModule } from './closing-requirements';
+import type { FieldLayout } from './field-catalog';
 
 export const WORKFLOW_MODULES: Record<WorkflowEntity, CustomFieldModule> = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 export const WORKFLOW_MESSAGE_VARIABLES = [
@@ -21,7 +22,7 @@ export function getWorkflowCustomFields(entity: WorkflowEntity, definitions: Clo
   }));
 }
 /** Explicit module contract. Database properties never become builder fields implicitly. */
-export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: ClosingField[] = []): WorkflowField[] {
+export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: ClosingField[] = [], layout?: FieldLayout): WorkflowField[] {
   const assignment: WorkflowField = { field: 'assignedUserId', label: 'Assigned Agent', type: 'user', nullable: true };
   const account: WorkflowField = { field: 'accountId', label: 'Account', type: 'account', nullable: true };
   const product: WorkflowField = { field: 'productInterestIds', label: 'Product Interest', type: 'products' };
@@ -43,10 +44,11 @@ export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: Cl
     { ...choice('status', 'Status', CRM_STATUSES), required: true }, product, account,
     choice('source', entity === 'lead' ? 'Lead Source' : 'Source', LEAD_SOURCES), assignment, text('address', 'Full Address'),
   ];
-  return [...standard, ...getWorkflowCustomFields(entity, customFields)];
+  return [...standard.map(field => ({ ...field, label: layout?.fields[field.field]?.label ?? field.label })), ...getWorkflowCustomFields(entity, customFields)];
 }
-export function getWorkflowConditionFields(entity: WorkflowEntity, trigger?: string, customFields: ClosingField[] = []): WorkflowField[] {
-  const definitions = getWorkflowUpdateFields(entity, customFields).map(f => ({ ...f, field: entity + '.' + f.field }));
+export function getWorkflowConditionFields(entity: WorkflowEntity, trigger?: string, customFields: ClosingField[] = [], layout?: FieldLayout): WorkflowField[] {
+  // Presentation visibility governs editing; active hidden values remain readable.
+  const definitions = getWorkflowUpdateFields(entity, customFields.map(field => ({ ...field, visibleInForm: true })), layout).map(f => ({ ...f, field: entity + '.' + f.field }));
   if (entity === 'deal') definitions.push(
     { field: 'deal.value', label: 'Deal Value', type: 'number' },
     { field: 'deal.productInterestIds', label: 'Product Interest', type: 'products' },

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { subscribePageCacheInvalidation, buildCacheKey, createPageCacheGuard, getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
+import { subscribePageCacheInvalidation, buildCacheKey, createPageCacheGuard, getPageCache, requestPageCache, invalidatePageCache, setPageCache } from '@/shared/cache/page-cache';
 
 interface CachedPageOptions<T> {
   module: string;
@@ -25,7 +25,7 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
   const enabled = !disabled && !isLoading && !authError && !!tenantId && !!user?.id;
   const cached = enabled ? getPageCache<T>(module, tenantId, scopedParams) : null;
   const [state, setState] = useState<{
-    key: string; data?: T; fetching: boolean; error: string | null;
+    key: string; data?: T; fetching: boolean; error: string | null; errorStatus?: number;
   }>(() => ({ key, data: cached?.data, fetching: enabled, error: null }));
   const latest = useRef({ key, fetchFn, scopedParams });
   latest.current = { key, fetchFn, scopedParams };
@@ -43,20 +43,24 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
     const initial = getPageCache<T>(module, tenantId, request.scopedParams);
     setState((prev) => ({ key, data: prev.key === key ? prev.data : initial?.data, fetching: true, error: null }));
     try {
-      const data = await request.fetchFn(controller.signal);
+      const data = await requestPageCache(module, tenantId, request.scopedParams, request.fetchFn, controller.signal);
       if (!current()) return;
       setPageCache(module, tenantId, request.scopedParams, data);
       setState({ key, data, fetching: false, error: null });
     } catch (error) {
-      if (!current()) return;
       const status = (error as { status?: number })?.status;
-      if (status === 401 || status === 403) invalidatePageCache(module, tenantId, false);
+      const unavailable = status === 401 || status === 403 || status === 404;
+      // Every shared reader must clear an authoritative denial. The first reader's
+      // eviction invalidates guards belonging to the other readers of this request.
+      if (controller.signal.aborted || latest.current.key !== key || (!unavailable && !validCache())) return;
+      if (unavailable) invalidatePageCache(module, tenantId, false);
       setState((prev) => ({
         ...prev,
         // Do not keep showing previously authorized data after access is revoked.
-        data: status === 401 || status === 403 ? undefined : prev.data,
+        data: unavailable ? undefined : prev.data,
         fetching: false,
         error: error instanceof Error ? error.message : 'Failed to load data',
+        errorStatus: status,
       }));
     } finally {
       if (activeRequest.current === controller) activeRequest.current = null;
@@ -93,12 +97,17 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
 
   useEffect(() => {
     if (!enabled) return;
-    return subscribePageCacheInvalidation((changedModule, changedTenant) => {
+    let queued: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribePageCacheInvalidation((changedModule, changedTenant) => {
       if (changedModule === '*') {
         setState({ key, data: undefined, fetching: true, error: null });
-        void refetch();
-      } else if (revalidateOnInvalidation && changedModule === module && (!changedTenant || changedTenant === tenantId)) void refetch();
+        clearTimeout(queued); void refetch(); return;
+      }
+      if (changedModule === '*' || revalidateOnInvalidation && changedModule === module && (!changedTenant || changedTenant === tenantId)) {
+        clearTimeout(queued); queued = setTimeout(() => void refetch(), 0);
+      }
     });
+    return () => { unsubscribe(); clearTimeout(queued); };
   }, [enabled, revalidateOnInvalidation, module, tenantId, key, refetch]);
 
   const data = enabled ? (state.key === key ? state.data : cached?.data) : undefined;
@@ -108,6 +117,12 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
     isInitialLoad: fetching && data === undefined,
     isRefreshing: fetching && data !== undefined,
     error: enabled && state.key === key ? state.error : null,
+    errorStatus: enabled && state.key === key ? state.errorStatus : undefined,
     refetch,
+    setData: (data: T) => {
+      if (!enabled) return;
+      setPageCache(module, tenantId, latest.current.scopedParams, data);
+      setState({ key, data, fetching: false, error: null });
+    },
   };
 }

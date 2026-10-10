@@ -28,8 +28,8 @@ Related relationship, audit, and record writes commit together. Tenant-scoped ID
 | Roles | `RoleDefinition`, `UserRole`, and `RolePermission`; metadata and permission replacement save in one transaction |
 | Customer records | Leads, Contacts, Accounts and their relationships share tenant validation, imports, file history, and CRM activity |
 | Deals | Canonical `accountId`; ordered Lead/Contact associations; current Product price snapshots at creation; governed stage changes |
-| Tasks | Ordered CRM associations, assigned user, activity/assignment history, shared Manila date conversion; unfinished work transfers during user deactivation |
-| Forms | Saved definitions and submissions; publish permission is separate from editing; submission-only fields are labeled clearly |
+| Tasks | Ordered CRM associations, immutable creator, current Assigned Agent, contextual inherited reads after conversion, activity/assignment history, shared Manila date conversion; unfinished work transfers during user deactivation |
+| Forms | Saved definitions and submissions; new Leads use protected Sales Group rotation in the sales transaction; retries preserve one turn and returning assignments; publish permission remains separate |
 | Reporting | Reports reuses Dashboard's authorized server aggregates, filters, real stage labels, and CSV definitions |
 | Gmail | Persisted scoped mailbox history and owned account; recipient/CRM assignment checks apply to manual, scheduled, and Workflow sends |
 | Campaigns | Durable submission lease and recipient attempt markers; provider webhooks record delivery; interrupted uncertain outcomes remain reviewable without automatic resend |
@@ -40,7 +40,9 @@ The Department-to-Groups migration preserves all existing memberships and create
 
 Committed tenant revisions drive Dashboard SSE and the independent authorization stream. Group changes increment the existing access revision, so open User/Profile/Workflow views can refresh their current data. Pipeline metadata has its own authenticated revision stream. Mailbox uses persisted synchronization/version state and an authenticated event stream; opening Inbox does not force a provider reload.
 
-Workflows and notification delivery use their existing background services. Notification outbox defaults and raw SQL due/lease comparisons use explicit UTC so a non-UTC database session cannot claim reminders early. Historical timestamps remain preserved. Campaign submission recovery discovers bounded expired work, finalizes known unsent recipients, and flags uncertain outcomes `INTERRUPTED` for review. The obsolete campaign scheduler is removed. Inbox scheduling remains a separate Gmail-backed service; read/cancel operations are owner-scoped, and cancellation competes atomically with the transition to sending. Confirmed delivery is never requeued because later history cleanup fails.
+CRM record/Activity/Task/field/relationship writes also increment `DashboardRevision.content` transactionally. One `/crm/record-events` listener emits counters and coalesces the existing identity-scoped cache reads. Loaded views preserve drafts/tabs/scroll during revalidation; access loss and authoritative missing records evict cached data. See [CRM record views](crm-record-detail-ui.md).
+
+Workflows and notification delivery use their existing background services. Notification outbox defaults and raw SQL due/lease comparisons use explicit UTC so a non-UTC database session cannot claim reminders early. Historical timestamps remain preserved. Campaign submission recovery discovers bounded expired work, finalizes known unsent recipients, and flags uncertain outcomes `INTERRUPTED` for review. Schedule Once polls bounded persisted due Campaigns every 30 seconds, validates the scheduling actor and current recipient eligibility, and calls the existing sender with approved content/source/rules. Conditional claims prevent multiple workers or concurrent cancellation/rescheduling from dispatching twice. Definite preflight failures return unclaimed schedules to Draft with a visible reason. Inbox scheduling remains a separate Gmail-backed service; read/cancel operations are owner-scoped, and cancellation competes atomically with the transition to sending. Confirmed delivery is never requeued because later history cleanup fails.
 
 ## Shared package
 
@@ -48,7 +50,7 @@ Workflows and notification delivery use their existing background services. Noti
 
 ## Deployment and verification
 
-Stop old backend processes and apply forward migrations before starting the matching backend. The current polish introduces `20261116000000_user_groups`, `20261117000000_campaign_submission_recovery`, `20261118000000_group_revisions` and `20261119000000_notification_utc_timestamps`. See the [rollout steps](../README.md#forward-rollout) and [system polish plan](plans/system-polish.md). Production database changes and provider sends require their own operational verification; source/tests are not evidence of a deployed release.
+Stop old backend processes and apply forward migrations before starting the matching backend. See the ordered [rollout steps](../README.md#forward-rollout), including Task creator/Sales Group, Campaign Schedule Once and CRM content revisions. Production database changes and provider sends require their own operational verification; source/tests are not evidence of a deployed release.
 
 ## References
 

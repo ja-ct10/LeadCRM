@@ -60,6 +60,7 @@ exports.Permission = {
     CUSTOM_FIELDS_CREATE: 'custom_fields.create',
     CUSTOM_FIELDS_EDIT: 'custom_fields.edit',
     CUSTOM_FIELDS_DISABLE: 'custom_fields.disable',
+    CUSTOM_FIELDS_DELETE: 'custom_fields.delete',
     ARCHIVED_DATA_VIEW: 'archived_data.view',
     ARCHIVED_DATA_RESTORE: 'archived_data.restore',
     USERS_VIEW: 'users.view',
