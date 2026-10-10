@@ -173,21 +173,21 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
 
     if (access.tasks) {
       const where = { tenantId, isArchived: false, status: { notIn: ['completed', 'cancelled'] }, ...ownerScope };
-      const selection = { orderBy: [{ dueDate: 'asc' as const }, { id: 'asc' as const }], take: 6, select: { id: true, title: true, dueDate: true, priority: true } };
+      const selection = { orderBy: [{ dueDate: 'asc' as const }, { id: 'asc' as const }], select: { id: true, title: true, dueDate: true, priority: true } };
       const [count, overdue, high, other] = await Promise.all([
         tx.task.count({ where }),
         tx.task.findMany({ ...selection, where: { ...where, dueDate: { lt: now } } }),
         tx.task.findMany({ ...selection, where: { ...where, dueDate: { gte: now }, priority: 'High' } }),
         tx.task.findMany({ ...selection, where: { ...where, dueDate: { gte: now }, priority: { not: 'High' } } }),
       ]);
-      const tasks = [...overdue, ...high, ...other].slice(0, 6);
+      const tasks = [...overdue, ...high, ...other];
       result.pendingActions += count;
       result.actions.push(...tasks.map(task => ({ id: task.id, kind: 'task' as const, title: task.title, priority: task.priority,
         dueDate: task.dueDate.toISOString(), overdue: task.dueDate < now, href: `/operations/taskboard?taskId=${encodeURIComponent(task.id)}` })));
     }
     if (access.leads) {
       const where = { ...leadWhere, ...ownerScope, status: 'Hot' };
-      const [count, leads] = await Promise.all([tx.lead.count({ where }), tx.lead.findMany({ where, take: 3,
+      const [count, leads] = await Promise.all([tx.lead.count({ where }), tx.lead.findMany({ where,
         orderBy: [{ updatedAt: 'asc' }, { id: 'asc' }], select: { id: true, firstName: true, lastName: true } })]);
       result.pendingActions += count;
       result.actions.push(...leads.map(lead => ({ id: lead.id, kind: 'lead' as const, title: `${lead.firstName} ${lead.lastName}`,
@@ -199,7 +199,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       if (stages.length) {
         const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null, ...ownerScope, OR: stages.map(stage => ({ stageId: stage.id,
           OR: [{ stageChangedAt: { lt: new Date(+now - stage.rottenAfterDays! * 86400000) } }, { stageChangedAt: null, createdAt: { lt: new Date(+now - stage.rottenAfterDays! * 86400000) } }] })) };
-        const [count, deals] = await Promise.all([tx.deal.count({ where }), tx.deal.findMany({ where, take: 3,
+        const [count, deals] = await Promise.all([tx.deal.count({ where }), tx.deal.findMany({ where,
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, title: true, priority: true } })]);
         result.pendingActions += count;
         result.actions.push(...deals.map(deal => ({ id: deal.id, kind: 'deal' as const, title: deal.title, priority: deal.priority,

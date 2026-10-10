@@ -229,7 +229,7 @@ describe('authoritative dashboard', () => {
     await db.task.createMany({ data: Array.from({ length: 8 }, (_, index) => ({ id: `priority-${index}`, tenantId: 'a', assignedUserId: 'agent', title: `Priority ${index}`,
       status: 'pending', priority: index === 7 ? 'High' : 'Low', dueDate: new Date(+now + (index === 7 ? 10 : 1) * 86400000) })) });
     const ordered = (await report()).actions.filter(row => row.kind === 'task');
-    expect(ordered).toHaveLength(6);
+    expect(ordered).toHaveLength(10);
     expect(ordered.slice(0,3).map(row => row.id)).toEqual(['overdue','priority-7','today']);
     await db.task.updateMany({ where: { id: { startsWith: 'priority-' } }, data: { isArchived: true } });
   });
@@ -244,6 +244,56 @@ describe('authoritative dashboard', () => {
     const foreignBefore = await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId: 'b' } });
     await db.lead.update({ where: { id: 'active-lead' }, data: { isArchived: true } });
     expect(await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId: 'b' } })).toEqual(foreignBefore);
+  });
+  it('returns every qualifying action beyond the old display caps without widening staff or tenant access', async () => {
+    const ids: string[] = [];
+    const ownIds: string[] = [];
+    await db.stage.update({ where: { id: 'lead' }, data: { rottenAfterDays: 1 } });
+    try {
+      for (const owner of ['agent', 'other-agent']) {
+        const created = [];
+        for (let index = 0; index < 8; index++) {
+          const id = `scroll-task-${owner}-${index}`;
+          await db.task.create({ data: { id, tenantId: 'a', assignedUserId: owner, title: id, status: 'pending', priority: index % 2 ? 'Low' : 'High', dueDate: new Date(+now - 86400000) } });
+          created.push(id);
+        }
+        for (let index = 0; index < 5; index++) {
+          const id = `scroll-lead-${owner}-${index}`;
+          await db.lead.create({ data: { id, tenantId: 'a', assignedUserId: owner, firstName: id, lastName: 'Action', status: 'Hot' } });
+          created.push(id);
+        }
+        for (let index = 0; index < 4; index++) {
+          const id = `scroll-deal-${owner}-${index}`;
+          await deal(id, 'lead', 100, { assignedUserId: owner, ownerId: owner });
+          created.push(id);
+        }
+        ids.push(...created);
+        if (owner === 'agent') ownIds.push(...created);
+      }
+      await db.task.create({ data: { id: 'scroll-foreign', tenantId: 'b', assignedUserId: 'foreign', title: 'Foreign action', dueDate: now, status: 'pending' } });
+      const organization = await report();
+      const staff = await scoped(() => dashboard(agent, query, now));
+      expect(organization.actions.filter(row => ids.includes(row.id))).toHaveLength(34);
+      expect(staff.actions.filter(row => ids.includes(row.id))).toHaveLength(17);
+      expect(staff.actions.filter(row => ids.includes(row.id)).map(row => row.id).sort()).toEqual(ownIds.sort());
+      expect(organization.pendingActions).toBe(organization.actions.length);
+      expect(staff.pendingActions).toBe(staff.actions.length);
+      expect(organization.actions.some(row => row.id === 'scroll-foreign')).toBe(false);
+      expect(staff.actions.some(row => row.id === 'scroll-foreign')).toBe(false);
+      const orderedTasks = organization.actions.filter(row => row.id.startsWith('scroll-task-'));
+      expect(orderedTasks.slice(0, 8).every(row => row.priority === 'High')).toBe(true);
+      expect(orderedTasks.slice(8).every(row => row.priority === 'Low')).toBe(true);
+      await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'tasks' }, data: { canView: false } });
+      const restricted = await scoped(() => dashboard(agent, query, now));
+      expect(restricted.actions.some(row => row.kind === 'task')).toBe(false);
+      expect(restricted.actions.filter(row => ids.includes(row.id))).toHaveLength(9);
+    } finally {
+      await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'tasks' }, data: { canView: true } });
+      await db.stage.update({ where: { id: 'lead' }, data: { rottenAfterDays: null } });
+      await db.task.updateMany({ where: { id: { startsWith: 'scroll-' } }, data: { isArchived: true } });
+      await db.lead.updateMany({ where: { id: { startsWith: 'scroll-' } }, data: { isArchived: true } });
+      await db.deal.updateMany({ where: { id: { startsWith: 'scroll-' } }, data: { isArchived: true } });
+    }
   });
   it('enforces staff scope, module restrictions, HTTP auth, exports and cross-tenant requests', async () => {
     const organization = await scoped(() => dashboard(agent, query, now));

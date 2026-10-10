@@ -2,12 +2,12 @@
 import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/store/AuthContext';
-import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Download, Calendar, ChevronDown, Filter } from 'lucide-react';
+import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Calendar, ChevronDown, Filter } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from '@/shared/components/charts/ChartComponents';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import DashboardSkeleton from '@/shared/components/dashboard-skeleton';
-import { useDashboard, dashboardQueryString } from '../hooks/use-dashboard-report';
-import { DASHBOARD_TIMEZONE, DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, dashboardToday, pipelineStageColor, type DashboardQuery, type DashboardRange, type FunnelRange } from '@leadcrm/shared';
+import { useDashboard } from '../hooks/use-dashboard-report';
+import { DASHBOARD_TIMEZONE, DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, dashboardToday, pipelineStageColor, type DashboardQuery, type DashboardReport, type DashboardRange, type FunnelRange } from '@leadcrm/shared';
 import { Input } from '@/shared/components/ui/input';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -55,12 +55,14 @@ function DashboardClock() {
   </time>;
 }
 
-export default function Dashboard({ heading }: { heading?: string } = {}) {
+export default function Dashboard({ heading, renderToolbarActions }: {
+  heading?: string;
+  renderToolbarActions?: (props: { query: DashboardQuery; report: DashboardReport | null; error: string | null; className: string }) => React.ReactNode;
+} = {}) {
   const { user } = useAuth();
   const [query, setQuery] = useState<DashboardQuery>({ range: 'thisMonth', revenueInterval: 'month', funnelRange: 'month' });
   const [custom, setCustom] = useState(false);
   const [draft, setDraft] = useState({ start: '', end: '' });
-  const [exporting, setExporting] = useState(false);
   const [funnelCustom, setFunnelCustom] = useState(false);
   const [funnelDraft, setFunnelDraft] = useState({ start: '', end: '' });
   const [funnelError, setFunnelError] = useState('');
@@ -118,20 +120,6 @@ export default function Dashboard({ heading }: { heading?: string } = {}) {
     if (loading) return;
     if (await refresh()) toast.success('Dashboard metrics refreshed'); else toast.error('Dashboard could not refresh');
   };
-  const exportCsv = async () => {
-    if (exporting) return;
-    setExporting(true);
-    try {
-      const response = await fetch(`/api/proxy/reporting/dashboard/export?${dashboardQueryString(query)}`, { credentials: 'include', cache: 'no-store' });
-      if (!response.ok) throw new Error('Export could not load. Your access or reporting data may have changed.');
-      const url = URL.createObjectURL(await response.blob());
-      const link = document.createElement('a'); link.href = url;
-      link.download = `LeadCRM_Dashboard_${report?.period.start}_${report?.period.end}.csv`;
-      document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url);
-      toast.success('Dashboard exported to CSV');
-    } catch (err) { toast.error(err instanceof Error ? err.message : 'Export failed'); }
-    finally { setExporting(false); }
-  };
   if (!user) return null;
   if (!report && loading && !error) return <div className="p-4 lg:p-6 space-y-6"><DashboardSkeleton /></div>;
   return (
@@ -145,7 +133,7 @@ export default function Dashboard({ heading }: { heading?: string } = {}) {
           <DropdownMenu><DropdownMenuTrigger className={toolbarButton} aria-label="Dashboard date range" title={ranges.find(range => range.id === query.range)?.label}><Calendar size={14} aria-hidden="true" /><span className="hidden sm:inline">{ranges.find(range => range.id === query.range)?.label}</span><ChevronDown size={12} aria-hidden="true" className="hidden sm:block" /></DropdownMenuTrigger>
             <DropdownMenuContent align="end">{ranges.map(range => <DropdownMenuItem key={range.id} onClick={() => selectRange(range.id)}>{range.label}</DropdownMenuItem>)}</DropdownMenuContent>
           </DropdownMenu>
-          <button onClick={exportCsv} disabled={!report || exporting || !!error} className={toolbarButton} title="Export CSV" aria-label={exporting ? 'Exporting…' : 'Export CSV'}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">{exporting ? 'Exporting…' : 'Export CSV'}</span></button>
+          {renderToolbarActions?.({ query, report, error, className: toolbarButton })}
           <button onClick={handleRefresh} disabled={loading} className={toolbarButton} title="Sync Metrics" aria-label={loading ? 'Syncing…' : 'Sync Metrics'}><RefreshCw size={14} aria-hidden="true" className={loading ? 'animate-spin' : ''} /><span className="hidden sm:inline">{loading ? 'Syncing…' : 'Sync Metrics'}</span></button>
         </div>
       </div>
@@ -164,14 +152,15 @@ export default function Dashboard({ heading }: { heading?: string } = {}) {
         </div>
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
           <div className={`lg:col-span-8 ${card} min-h-[320px]`}>
-            <div className="flex flex-wrap items-start justify-between mb-5 gap-2"><ChartHeading title={`Revenue Trend by ${intervalLabel}`} /><div className="flex items-center gap-2"><span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 shrink-0"><ArrowUpRight size={11} />{metric?.won ?? '—'} won deals</span><ChartFilter title="Revenue Trend" options={['Week', 'Month', 'Year']} value={intervalLabel} onSelect={label => setQuery(previous => ({ ...previous, revenueInterval: label.toLowerCase() as DashboardQuery['revenueInterval'] }))} /></div></div>
-            {metric?.totalRevenue == null ? <Empty>Revenue unavailable for this scope or incomplete data.</Empty> : <div className="h-[220px]" role="img" aria-label={`Revenue Trend by ${intervalLabel}: ${money(metric.totalRevenue)} for the selected period.`}><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.trend}><CartesianGrid /><XAxis dataKey="name" tickFormatter={bucketLabel} /><YAxis domain={report.trend.every(row => row.revenue >= 0) ? [0, 'auto'] : undefined} tickFormatter={value => money(Number(value))} /><Tooltip formatter={value => money(Number(value))} /><Area dataKey="revenue" name={`Revenue (${currency})`} stroke="#3B82F6" /></AreaChart></ResponsiveContainer></div>}
+            <div className="flex shrink-0 flex-wrap items-start justify-between mb-5 gap-2"><ChartHeading title={`Revenue Trend by ${intervalLabel}`} /><div className="flex items-center gap-2"><span className="flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 shrink-0"><ArrowUpRight size={11} />{metric?.won ?? '—'} won deals</span><ChartFilter title="Revenue Trend" options={['Week', 'Month', 'Year']} value={intervalLabel} onSelect={label => setQuery(previous => ({ ...previous, revenueInterval: label.toLowerCase() as DashboardQuery['revenueInterval'] }))} /></div></div>
+            {metric?.totalRevenue == null ? <Empty>Revenue unavailable for this scope or incomplete data.</Empty> : <div className="relative flex-1 min-h-[220px]" role="img" aria-label={`Revenue Trend by ${intervalLabel}: ${money(metric.totalRevenue)} for the selected period.`}><div className="absolute inset-0"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.trend}><CartesianGrid /><XAxis dataKey="name" tickFormatter={bucketLabel} /><YAxis domain={report.trend.every(row => row.revenue >= 0) ? [0, 'auto'] : undefined} tickFormatter={value => money(Number(value))} /><Tooltip formatter={value => money(Number(value))} /><Area dataKey="revenue" name={`Revenue (${currency})`} stroke="#3B82F6" /></AreaChart></ResponsiveContainer></div></div>}
           </div>
           <div className={`lg:col-span-4 ${card} min-h-[320px]`}>
-            <div className="mb-4"><h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2"><Zap size={16} className="text-amber-500" />Action Center</h3><p className="text-xs text-slate-500 mt-0.5">Current · Overdue tasks first, hot leads and configured stale deals</p></div>
-            <div className="flex-1 space-y-2.5">
-              {!report.access.tasks && !report.access.leads && !report.access.deals ? <Empty>No permitted action modules.</Empty> : report.pendingActions === 0 ? <div className="flex flex-col items-center justify-center gap-2 text-slate-400 py-8"><Check size={28} className="text-emerald-500" /><p className="text-sm font-medium text-slate-600 dark:text-slate-300">All caught up!</p><p className="text-xs">No qualifying pending actions.</p></div> : report.actions.map(action => <Link href={action.href} key={`${action.kind}:${action.id}`} className={`block p-3 rounded-xl border ${action.overdue || action.kind === 'lead' ? 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500`}>
-                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1 block">{action.overdue ? 'Overdue task' : action.kind === 'lead' ? 'Hot lead' : action.kind === 'deal' ? 'Deal needs attention' : 'Pending task'} · {action.priority}</span><p className="text-sm font-semibold text-slate-800 dark:text-white break-words">{action.title}</p>{action.dueDate && <p className="text-xs text-slate-500 mt-0.5">Due {new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeZone: 'Asia/Manila' }).format(new Date(action.dueDate))}</p>}
+            <div className="mb-4 shrink-0"><h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2"><Zap size={16} className="text-amber-500" />Action Center</h3><p className="text-xs text-slate-500 mt-0.5">Current · Overdue tasks first, hot leads and configured stale deals</p></div>
+            {/* Five 6.75rem slots plus four existing gaps; scale with font density. */}
+            <div role="region" aria-label="Action Center actions" tabIndex={0} className="h-[21.5rem] lg:h-[36.25rem] shrink-0 min-h-0 space-y-2.5 overflow-y-auto overflow-x-hidden custom-scrollbar [scrollbar-gutter:stable] focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2">
+              {!report.access.tasks && !report.access.leads && !report.access.deals ? <div className="h-full flex"><Empty>No permitted action modules.</Empty></div> : report.pendingActions === 0 ? <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-400 py-8"><Check size={28} className="text-emerald-500" /><p className="text-sm font-medium text-slate-600 dark:text-slate-300">All caught up!</p><p className="text-xs">No qualifying pending actions.</p></div> : report.actions.map(action => <Link href={action.href} key={`${action.kind}:${action.id}`} title={action.title} className={`block h-[6.75rem] p-3 rounded-xl border ${action.overdue || action.kind === 'lead' ? 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2`}>
+                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1 block">{action.overdue ? 'Overdue task' : action.kind === 'lead' ? 'Hot lead' : action.kind === 'deal' ? 'Deal needs attention' : 'Pending task'} · {action.priority}</span><p className="text-sm font-semibold text-slate-800 dark:text-white break-words line-clamp-2">{action.title}</p>{action.dueDate && <p className="text-xs text-slate-500 mt-0.5">Due {new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeZone: 'Asia/Manila' }).format(new Date(action.dueDate))}</p>}
               </Link>)}
             </div>
           </div>

@@ -23,7 +23,7 @@ import {
   renderDate,
   MODULE_ACCENT_COLORS,
 } from '@/shared/components/data-grid';
-import type { QuickAction, SortState, RowActionItem } from '@/shared/components/data-grid';
+import type { SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import type { ColumnConfigItem } from '@leadcrm/shared';
@@ -327,18 +327,6 @@ export function LeadsDataGrid({
     },
   });
 
-  // ─── Quick Actions ─────────────────────────────────────────────────────
-
-  const quickActions: QuickAction<Lead>[] = useMemo(() => [
-    {
-      id: 'email',
-      label: 'Email',
-      icon: <Mail size={14} />,
-      onClick: (lead: Lead) => { if (lead.email) router.push(recordEmailComposeHref(lead.email ?? '') ?? '/inbox'); },
-      visible: (lead: Lead) => Boolean(lead.email),
-    },
-  ], []);
-
   // ─── Stable Callbacks ────────────────────────────────────────────────
 
   const getRowId = useCallback((lead: Lead) => lead.id, []);
@@ -401,7 +389,6 @@ export function LeadsDataGrid({
         sort={sort}
         onSortChange={onSortChange}
         onRowClick={onRowClick}
-        quickActions={quickActions}
         onHideColumn={onHideColumn}
         rowActions={getRowActions}
         onSettingsClick={onManageColumns}

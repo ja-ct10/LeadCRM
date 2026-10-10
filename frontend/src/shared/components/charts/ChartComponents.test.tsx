@@ -18,6 +18,11 @@ it('renders horizontal stage bars with official colors and formatted currency to
 it('applies actual monetary formatting to the revenue area tooltip', () => {
   render(<AreaChart data={[{ name: '2020-01-01', revenue: 45000 }]}><XAxis dataKey="name" /><YAxis /><Tooltip formatter={value => `₱${value}`} /><Area dataKey="revenue" name="Revenue" /></AreaChart>);
   expect(captured.line.options.plugins.tooltip.callbacks.label({ dataset: { label: 'Revenue' }, parsed: { y: 45000 } })).toBe('Revenue: ₱45000');
+  expect(captured.line.data.labels).toEqual(['2020-01-01']);
+  expect(captured.line.data.datasets[0].data).toEqual([45000]);
+  expect(captured.line.data.datasets[0].pointRadius).toBe(4);
+  expect(captured.line.options.responsive).toBe(true);
+  expect(captured.line.options.maintainAspectRatio).toBe(false);
 });
 it('anchors a zero-only revenue period at zero and formats readable calendar ticks', () => {
   render(<AreaChart data={[{ name: '2020-01-01', revenue: 0 }]}><XAxis dataKey="name" tickFormatter={() => 'Jan 2020'} /><YAxis domain={[0, 'auto']} /><Area dataKey="revenue" /></AreaChart>);

@@ -9,9 +9,11 @@ import { createRequire } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, createWriteStream, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/dashboard-verification');
+const uiPolish = process.argv.includes('--ui-polish');
+const root = resolve(import.meta.dirname, '../..'), output = resolve(process.env.DASHBOARD_VERIFICATION_OUTPUT || (uiPolish ? process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-dashboard-leads-ui') : resolve(root, 'data/outputs/dashboard-verification')));
 const clockOnly = process.argv.includes('--clock-only');
 mkdirSync(output, { recursive: true });
 const pg = await PGlite.create(); await replayCrmMigrations(pg);
@@ -84,12 +86,22 @@ try {
   gateway.listen(3032); await new Promise(done=>gateway.once('listening',done));
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(token) {
-    const context = await browser.newContext({ ignoreHTTPSErrors:true, viewport: { width: 1440, height: 1000 } });
+    const context = await browser.newContext({ ignoreHTTPSErrors:true, hasTouch:uiPolish, viewport: { width: 1440, height: 1000 } });
     await context.addInitScript(() => {
       const Native = window.EventSource; window.__dashboardEvents = [];
       window.EventSource = class extends Native {
         constructor(...args) { super(...args); this.addEventListener('dashboard-change', () => window.__dashboardEvents.push(Date.now())); }
       };
+    });
+    if (uiPolish) await context.addInitScript(() => {
+      const clear = CanvasRenderingContext2D.prototype.clearRect;
+      const text = CanvasRenderingContext2D.prototype.fillText;
+      const arc = CanvasRenderingContext2D.prototype.arc;
+      const curve = CanvasRenderingContext2D.prototype.bezierCurveTo;
+      CanvasRenderingContext2D.prototype.clearRect = function(...args) { this.canvas.__labels = []; this.canvas.__points = []; this.canvas.__curves = []; return clear.apply(this, args); };
+      CanvasRenderingContext2D.prototype.fillText = function(...args) { (this.canvas.__labels ??= []).push(String(args[0])); return text.apply(this, args); };
+      CanvasRenderingContext2D.prototype.arc = function(...args) { (this.canvas.__points ??= []).push({ x: args[0], y: args[1], radius: args[2] }); return arc.apply(this, args); };
+      CanvasRenderingContext2D.prototype.bezierCurveTo = function(...args) { (this.canvas.__curves ??= []).push({ x: args[4], y: args[5] }); return curve.apply(this, args); };
     });
     await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const tab = await context.newPage(); tab.setDefaultTimeout(25000); tab.on('pageerror', error => pageErrors.push(error.message));
@@ -127,7 +139,7 @@ try {
     for (const width of [1440,640,639,390,320]) {
       await page.setViewportSize({width,height:1000});
       await clock.scrollIntoViewIfNeeded();
-      for (const label of ['Dashboard date range','Export CSV','Sync Metrics']) {
+      for (const label of ['Dashboard date range','Sync Metrics']) {
         const control = page.getByRole('button',{name:label,exact:true});
         assert.equal(await control.locator('span').isVisible(),width>=640);
         if (width<640) {
@@ -142,6 +154,9 @@ try {
       await page.screenshot({path:resolve(output,`clock-${width}-funnel.png`),fullPage:true});
       record(`Clock, requested notes and responsive toolbar ${width}`,dimensions);
     }
+  } else if (uiPolish) {
+    const { verifyDashboardLeadsUi } = await import('./verify-dashboard-leads-ui.mjs');
+    await verifyDashboardLeadsUi({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, admin, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, leadsOnly: process.argv.includes('--leads-only') });
   } else {
   const lead = await mutation('Another agent creates a lead visible to both reporting users', () => http('/crm/leads', 'POST', { firstName: 'Browser', lastName: 'Lead', email: 'browser@example.test', status: 'Warm', assignedUserId: replacement.id }, replacementToken), () => expectValue('Total Leads', '1'));
   const created = await mutation('Deal creation updates all current charts', () => http('/crm/deals', 'POST', { pipelineId: pipeline.id, stageId: stages[0].id, title: 'Browser Deal', productInterestIds: [products[0].id], assignedUserId: agent.id }), () => expectValue('Active Deals', '1'));
@@ -166,7 +181,7 @@ try {
   await mutation('Lost closure and Win Rate denominator', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[4].id, lostReason:'Deferred' }), () => expectValue('Win Rate','50%'));
   await mutation('Lost reopening removes current outcome and restores pipeline', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[2].id }), async () => { await expectValue('Active Deals','1'); await expectValue('Win Rate','100%'); });
   const task = await mutation('Task creation updates Action Center', () => http('/operations/tasks','POST',{ title:'Browser overdue follow-up', dueDate:new Date(Date.now()-86400000).toISOString(), priority:'High', assignedUserId:agent.id }), async () => { await page.getByText('Browser overdue follow-up',{exact:true}).waitFor(); await staffSession.tab.getByText('Browser overdue follow-up',{exact:true}).waitFor(); });
-  const actionLayout = await page.getByRole('link').filter({hasText:'Browser overdue follow-up'}).evaluate(el=>({maxHeight:getComputedStyle(el.parentElement).maxHeight,overflow:getComputedStyle(el.parentElement).overflowY,clipped:el.getBoundingClientRect().bottom>el.parentElement.getBoundingClientRect().bottom+1})); assert.equal(actionLayout.maxHeight,'none'); assert.equal(actionLayout.clipped,false); record('Action Center uses natural unclipped list height',actionLayout);
+  const actionLayout = await page.getByRole('link').filter({hasText:'Browser overdue follow-up'}).evaluate(el=>({height:el.parentElement.clientHeight,overflow:getComputedStyle(el.parentElement).overflowY,clipped:el.getBoundingClientRect().bottom>el.parentElement.getBoundingClientRect().bottom+1})); assert.equal(actionLayout.height,580); assert.equal(actionLayout.overflow,'auto'); assert.equal(actionLayout.clipped,false); record('Action Center uses a stable five-slot scroll viewport',actionLayout);
   await mutation('Task completion removes pending action', () => http(`/operations/tasks/${task.id}/complete`,'PATCH'), async () => until(async () => await page.getByText('Browser overdue follow-up',{exact:true}).count() === 0, 'Task disappeared'));
   const workflows = require('../dist/backend/src/modules/automation/workflows/workflows.service.js');
   const workflow = await scope(() => workflows.createWorkflow(tenant.id,admin.id,{ name:'Dashboard movement', trigger:'deal.updated', isActive:true, conditions:{operator:'AND',conditions:[{field:'deal.title',operator:'equals',value:'Workflow Ready'}]},actions:[{type:'move_deal_stage',config:{stageId:stages[1].id}}] }));
@@ -268,8 +283,10 @@ try {
   }
   await reopened.context.close();
   record('All five saved colors persist and propagate through authorized Dashboard revisions');
-  const downloadWait = page.waitForEvent('download'); await page.getByRole('button',{name:'Export CSV',exact:true}).click(); const download = await downloadWait;
-  await download.saveAs(resolve(output,'dashboard.csv')); assert.equal(await download.failure(),null); record('Authorized CSV download through production proxy path');
+  assert.equal(await page.getByRole('button',{name:'Export CSV',exact:true}).count(),0);
+  const csv = await page.request.get(base+'/api/proxy/reporting/dashboard/export?range=thisMonth');
+  assert.ok(csv.ok()); assert.match(csv.headers()['content-type'],/text\/csv/);
+  record('Dashboard export button removed; shared reporting CSV endpoint remains authorized');
   let failing = true;
   await page.route('**/api/proxy/reporting/dashboard?*', route => failing ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,error:{message:'Acceptance database unavailable'}})}) : route.continue());
   await page.getByRole('button',{name:'Sync Metrics',exact:true}).click(); await page.getByRole('alert').filter({hasText:'Acceptance database unavailable'}).waitFor();
@@ -278,7 +295,8 @@ try {
   await wait(5000); // Let verification toasts expire before visual inspection.
   for (const theme of ['light','dark']) {
     await page.evaluate(theme => { localStorage.setItem('app_theme',theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange',{detail:{theme,mode:theme === 'dark' ? 'Dark' : 'Light'}})); },theme);
-    assert.equal(await page.locator('[data-theme-container]').evaluate(el=>el.classList.contains('dark')),theme === 'dark');
+    await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((el, dark) => el.classList.contains('dark') === dark, theme === 'dark'), `${theme} theme applied`);
+    assert.equal(await page.locator('.crm-shell[data-theme-container]').evaluate(el=>el.classList.contains('dark')),theme === 'dark');
     for (const width of [1440,1024,768,390,375,320]) {
       await page.setViewportSize({width,height:1000}); await wait(300);
       const dimensions = await page.evaluate(() => ({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow:document.documentElement.scrollWidth > innerWidth+1,
