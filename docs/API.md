@@ -29,13 +29,15 @@ Signed identity is verified against the session store and current database
 user/role. Tenant context comes from the authenticated session. CRM endpoints
 also enforce employee-domain access, password-change requirements, onboarding readiness, and RBAC.
 
-## Standard Response Envelope
+## Response envelopes
+Most domain APIs use the envelopes below; auth and mailbox operations retain their established operation-specific responses.
+
 ```typescript
 // Success
 { success: true, data: T, meta?: PaginationMeta }
 
 // Error
-{ success: false, error: "Human-readable message" }
+{ success: false, error: "Human-readable message" | { code: string, message: string }, fieldErrors?: Record<string, string[]> }
 
 // Paginated
 { success: true, data: T[], meta: { total, page, limit, hasMore } }
@@ -50,8 +52,8 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | Method | Path | Responsibility |
 | --- | --- | --- |
 | POST | /auth/login | Password verification and a normal HttpOnly session cookie |
-| GET | /auth/me | Current database-backed account state, including mustChangePassword and passwordChangedAt |
-| PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle, department; returns the canonical user |
+| GET | /auth/me | Current database-backed account state, including mustChangePassword, passwordChangedAt, and read-only Group summaries |
+| PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle; returns the canonical user |
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | POST | /auth/logout | Revoke session and expire cookie |
@@ -66,7 +68,7 @@ Public signup, Google sign-in, OTP, verification, company setup, and step-progre
 Profile updates use a strict shared Zod whitelist and derive both user and tenant identity
 from the session. Email and privilege fields are not editable. Avatar references are only
 written by the upload service; JSON profile patches cannot supply arbitrary avatar URLs.
-Both updates are audited. Existing `GET /auth/me` restores saved profile values after reload.
+Group membership is administrator-managed; self-profile patches reject `groupIds` and the retired `department` field. Both updates are audited. Existing `GET /auth/me` restores saved profile values after reload.
 Storage requires server-only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and
 `SUPABASE_AVATAR_BUCKET`. Use a private bucket accepting `image/webp`, with a 5 MB limit.
 The browser crops before upload; the server decodes, validates and re-encodes the image,
@@ -78,7 +80,7 @@ avatar reference in `User.avatarUrl`. Do not expose the service key as a `NEXT_P
 
 ## CRM Endpoints (`/api/v1/crm/`)
 
-All require an authenticated session and completed per-user onboarding.
+All require an authenticated session and completed per-user onboarding. Deal account filtering uses canonical `accountId`; the compatibility `organizationId` alias must agree when both are supplied.
 
 For Lead, Contact, and Account archive/restore endpoints, permissions, archived
 queries, and migration requirements, see [CRM archive verification](crm-archive-verification.md).
@@ -91,13 +93,14 @@ queries, and migration requirements, see [CRM archive verification](crm-archive-
 | `GET` | `/crm/contacts/:id` | Get contact by ID | `contacts.view` |
 | `POST` | `/crm/contacts` | Create contact | `contacts.create` |
 | `PUT` | `/crm/contacts/:id` | Update contact | `contacts.edit` |
-| `PATCH` | `/crm/contacts/:id/archive` | Archive contact | `contacts.delete` |
+| `PATCH` | `/crm/contacts/:id/archive` | Archive contact | `contacts.archive` |
+| `PATCH` | `/crm/contacts/:id/restore` | Restore contact | `archived_data.restore` + `contacts.view` |
 
 **Query params for GET /contacts:**
 - `?page=1&limit=20` — pagination
-- `?status=HOT` — filter by status (HOT, WARM, COLD, CANCELLED, CLOSED)
+- `?status=Hot` — canonical CRM status values are `Hot`, `Warm`, `Cold`, `Cancelled`, `Closed`
 - `?search=john` — search by name, email, or company
-- `?archived=true` — show archived contacts
+- Archived visibility and record access remain permission-controlled; see the archive reference above.
 
 ### Accounts
 
@@ -149,9 +152,6 @@ for migration verification and deployment requirements.
 | `POST` | `/crm/deals/batch` | Atomically create one Lead-stage Deal per selected canonical Product; requires `deals.create` |
 | `PUT` | `/crm/deals/:id` | Update deal |
 | `PATCH` | `/crm/deals/:id/stage` | Move deal to new stage |
-| `GET` | `/crm/deals/:id/actions` | List DealActions for a deal |
-| `POST` | `/crm/deals/:id/actions` | Perform a DealAction (ASSIGN_AGENT, SEND_EMAIL, ADD_NOTE, etc.) |
-| `GET` | `/crm/deals/:id/stage-history` | List DealStageHistory entries |
 | `GET` | `/crm/pipelines` | List pipelines |
 | `GET` | `/crm/pipelines/:id` | Read pipeline including ordered stages |
 | `POST` | `/crm/stages` | Add a stage to the existing pipeline |
@@ -235,24 +235,38 @@ is superseded by the normalization report linked above.
 
 ---
 
-## Marketing Endpoints (`/api/v1/marketing/`) — Stub
+## Marketing endpoints
 
-For the database-backed Forms management, anonymous public routes, and submission
-history, see [Forms implementation and verification](forms-production-report.md#actual-api-endpoints).
+All paths are relative to `/api/v1`. Protected operations require a ready workspace and the indicated permission.
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/marketing/campaigns` | List campaigns |
-| `POST` | `/marketing/campaigns` | Create campaign |
-| `PUT` | `/marketing/campaigns/:id` | Update campaign |
-| `POST` | `/marketing/campaigns/:id/send` | Send campaign |
-| `DELETE` | `/marketing/campaigns/:id` | Delete campaign |
-| `GET` | `/marketing/campaigns/:id/metrics` | CampaignMetrics snapshots |
-| `GET` | `/marketing/target-audiences` | List TargetAudiences |
-| `POST` | `/marketing/target-audiences` | Create TargetAudience + conditions |
-| `GET` | `/marketing/target-audiences/:id/preview` | Preview resolved contacts (dynamic query) |
-| `GET` | `/marketing/templates` | List templates (Email + SMS) |
-| `POST` | `/marketing/templates` | Create template |
+| Method | Path | Purpose | Permission |
+| --- | --- | --- | --- |
+| GET / POST | `/marketing/campaigns` | List/create Campaigns | `campaigns.view` / `campaigns.create` |
+| GET / PUT | `/marketing/campaigns/:id` | Read/update Campaign | `campaigns.view` / `campaigns.edit` |
+| PATCH | `/marketing/campaigns/:id/send` | Submit Campaign to configured provider | `campaigns.send` |
+| PATCH | `/marketing/campaigns/:id/archive` | Archive Campaign | `campaigns.archive` |
+| POST | `/marketing/campaigns/:id/duplicate` | Create draft copy | `campaigns.duplicate` |
+| GET | `/marketing/campaigns/:id/report`, `/marketing/campaigns/metrics` | Delivery reports | `campaigns.view_reports` |
+| GET / POST | `/marketing/audiences` | Read/save audiences | `campaigns.view` / `campaigns.create` |
+| POST | `/marketing/audiences/preview` | Resolve audience preview | `campaigns.view` |
+| GET | `/marketing/audiences/companies` | Audience company options | `campaigns.view` |
+| GET / POST | `/marketing/templates` | List/create templates | `campaigns.view` / `campaigns.create` |
+| GET / PUT | `/marketing/templates/:id` | Read/update template | `campaigns.view` / `campaigns.edit` |
+| PATCH | `/marketing/templates/:id/archive` | Archive template | `campaigns.archive` |
+| GET / POST | `/marketing/forms` | List/create Forms | `forms.view` / `forms.create` |
+| GET / PUT | `/marketing/forms/:id` | Read/edit Form definition | `forms.view` / `forms.edit` |
+| PATCH | `/marketing/forms/:id/publish`, `/marketing/forms/:id/unpublish` | Change publication state | `forms.publish` |
+| POST | `/marketing/forms/:id/duplicate` | Copy Form | `forms.duplicate` |
+| DELETE | `/marketing/forms/:id` | Delete eligible Form | `forms.delete` |
+| GET | `/marketing/forms/:id/submissions` | Submission history | `forms.view_submissions` |
+| GET | `/public/forms/:publicId` | Read published public Form | Guest |
+| POST | `/public/forms/:publicId/submissions` | Validated public submission | Guest; rate-limited |
+
+Campaign sends use Brevo email or TextBee SMS, not the removed placeholder scheduler. Durable leases/recipient attempt markers let recovery finalize expired submissions as `INTERRUPTED`. Known unsent recipients are failed; uncertain provider outcomes remain reviewable without an automatic resend. No new recovery endpoint is exposed.
+
+Forms editing and publishing are distinct permissions. Company Website is explicitly submission-only; it is retained in submission history and is not advertised as a saved Lead field.
+
+See [Campaign email delivery](campaign-email-delivery.md), [Forms implementation](forms-production-report.md#actual-api-endpoints), and the [polish plan](plans/system-polish.md).
 
 ---
 
@@ -289,14 +303,19 @@ and applicable workload/limit without reserving work or changing assignment stat
 
 ---
 
-## Operations Endpoints (`/api/v1/operations/`) — Stub
+## Task endpoints
 
-| Method | Path | Description |
-|---|---|---|
-| `GET` | `/operations/service-orders` | List service orders |
-| `POST` | `/operations/service-orders` | Create service order |
-| `GET` | `/operations/tasks` | List tasks |
-| `POST` | `/operations/tasks` | Create task |
+| Method | Path | Purpose | Permission |
+| --- | --- | --- | --- |
+| GET | `/operations/tasks`, `/operations/tasks/:id` | List/read Tasks | `tasks.view` |
+| GET | `/operations/tasks/summary`, `/operations/tasks/options` | Scoped counts and relationship options | `tasks.view`; options also require the related module view grant |
+| POST | `/operations/tasks` | Create Task | `tasks.create`; additional assignment/completion grants when applicable |
+| PUT | `/operations/tasks/:id` | Edit Task or action-only assignment/completion | `tasks.view` plus the applicable edit/assign/complete grant |
+| PATCH | `/operations/tasks/:id/complete` | Complete Task | `tasks.complete` |
+| PATCH | `/operations/tasks/:id/archive` | Archive Task | `tasks.archive` |
+| POST | `/operations/tasks/bulk` | Edit/assign/complete/archive selected Tasks | Corresponding action grant |
+
+Task due dates use the shared Manila conversion for local calendar/date-time inputs; explicit ISO instants are preserved. There is no registered service-order API.
 
 ---
 
@@ -325,62 +344,70 @@ response contains `id` and all six canonical saved values. Tenant identity comes
 from the session, never the request body. `domain` is descriptive organization
 metadata and does not change the fixed employee-email policy.
 
-### Users
-| Method | Path | Description | RolePermission flag |
-|---|---|---|---|
-| `GET` | `/administration/users` | List users | `users.canView` |
-| `GET` | `/administration/users/:id` | Read a tenant user | `users.canView` |
-| `GET` | `/administration/users/:id/avatar/:avatarId` | Read that tenant user's saved private profile image; verifies the persisted reference and returns an uncached image | `users.canView` |
-| `POST` | `/administration/users` | Create user + send password setup email | `users.canEdit` (`users.manage`) |
-| `PUT` | `/administration/users/:id` | Update user profile / role | `users.canEdit` |
-| `DELETE` | `/administration/users/:id` | Delete user | `users.canEdit` (`users.manage`) |
-| `PATCH` | `/administration/users/:id/archive` | Deactivate user and revoke sessions | `users.canEdit` (`users.manage`) |
-| `PATCH` | `/administration/users/:id/restore` | Activate user | `users.canEdit` (`users.manage`) |
-| `POST` | `/administration/users/:id/password-reset` | Send recovery email to the selected database user; HTTP 202 | `users.canEdit` (`users.manage`) |
+### Users and Groups
 
-There is no registered `/administration/users/:id/status` or
-`/administration/users/invite` route. Status can also be changed through the
-existing PUT endpoint using `ACTIVE` or `INACTIVE`. Create requires first name,
-last name, email, PH mobile phone and an active tenant custom role's exact name.
-Phone is stored as `+639xxxxxxxxx`; email is trimmed and lowercased. The existing
-employee-domain policy still applies. Credentials and avatar URLs are not accepted.
-Recovery reuses `PasswordResetToken` and the existing recovery service; tokens are
-bound to the selected user ID. No reset token is returned to the administrator.
+| Method | Path | Purpose | Permission |
+| --- | --- | --- | --- |
+| GET | `/administration/users`, `/administration/users/:id` | List/read tenant users and Group summaries | `users.view` |
+| GET | `/administration/users/:id/avatar/:avatarId` | Read persisted private avatar reference | `users.view` |
+| POST | `/administration/users` | Create user, assign role/memberships, request setup email | `users.create`; role/group changes also require their grants |
+| PUT | `/administration/users/:id` | Update profile, role, status, or memberships | `users.edit`, `roles.assign`, `users.activate` according to submitted fields |
+| POST | `/administration/users/bulk-update` | Existing profile/role/status bulk changes; membership changes are individual only | Applicable field grants |
+| GET | `/administration/users/:id/deactivation-impact` | Preview unfinished work and eligible replacement | Client Admin + `users.activate` + `users.view` |
+| POST | `/administration/users/:id/deactivate` | Transactional reassignment and deactivation/session revocation | Client Admin + `users.activate` + `users.view` |
+| PATCH | `/administration/users/:id/archive` | Archive user | `users.archive` |
+| PATCH | `/administration/users/:id/restore` | Restore user | `archived_data.restore` + `users.view` |
+| POST | `/administration/users/:id/password-reset` | Recovery request; no token returned to administrator | `users.edit` |
+| GET | `/administration/groups` | Group/member reference | `groups.view` |
+| POST / PUT | `/administration/groups` / `/administration/groups/:id` | Create/update Group | `groups.create` / `groups.edit` |
+| DELETE | `/administration/groups/:id` | Remove Group | `groups.delete` |
+| POST | `/administration/groups/:id/members` | Add same-tenant member | Client Admin + `groups.edit` |
+| DELETE | `/administration/groups/:id/members/:userId` | Remove membership | Client Admin + `groups.edit` |
 
-### Roles & Permissions
-| Method | Path | Description | RolePermission flag |
-|---|---|---|---|
-| `GET` | `/administration/roles` | List RoleDefinitions | `roles.canEdit` (`roles.manage`) |
-| `POST` | `/administration/roles` | Create RoleDefinition | `users.canCreate` |
-| `PUT` | `/administration/roles/:id` | Update role name/description | `users.canEdit` |
-| `DELETE` | `/administration/roles/:id` | Archive role | `users.canDelete` |
-| `GET` | `/administration/roles/:id/permissions` | List RolePermission rows for a role | `users.canView` |
-| `PUT` | `/administration/roles/:id/permissions` | Bulk upsert RolePermission rows | `users.canEdit` |
-| `PATCH` | `/administration/roles/:id/permissions/:module` | Update single module flags | `users.canEdit` |
+User create requires first/last name, normalized employee email, PH mobile phone, and an active custom role's exact name. Group writes accept `groupIds: string[]` (unique UUIDs, at most 100); omitted means no membership change, and `[]` clears memberships. Only Client Admin with `groups.edit` can submit membership changes. Group IDs must belong to the current tenant. Membership writes require the target user to be active; activation and membership changes can commit together. User/auth responses expose `groups: [{id,name}]`; self-profile cannot modify them. The retired Department field is rejected.
 
-**RolePermission upsert body:**
-```json
-{
-  "permissions": [
-    { "module": "contacts",  "canView": true,  "canCreate": true,  "canEdit": true,  "canDelete": false },
-    { "module": "deals",     "canView": true,  "canCreate": true,  "canEdit": true,  "canDelete": false },
-    { "module": "campaigns", "canView": true,  "canCreate": false, "canEdit": false, "canDelete": false }
-  ]
-}
-```
+Membership, role, audit, and scalar user writes are transactional. Unfinished, nonarchived Tasks participate in deactivation reassignment; completed/cancelled historical Tasks keep their original assignee. Replacement eligibility includes Task view access when unfinished Tasks exist. There is no registered Users export, permanent-delete, invite, or standalone status endpoint.
 
-### Team Management activity history
-| Method | Path | Description | RolePermission flag |
-|---|---|---|---|
-| `GET` | `/administration/audit` | Retained user-history log — paginated, filterable | `audit.view` |
+### Roles, archive, and audit
 
-**Query params for GET /audit:**
-- `?category=crm` — filter by category (auth/crm/billing/workflow/admin/system)
-- `?severity=WARNING` — filter by severity (INFO/WARNING/CRITICAL)
-- `?userId=xxx` — filter by user
-- `?entityType=Deal` — filter by entity type
-- `?from=2026-01-01&to=2026-06-27` — date range
-- `?page=1&limit=50`
+| Method | Path | Purpose | Permission |
+| --- | --- | --- | --- |
+| GET | `/administration/roles`, `/administration/roles/:id` | Role definitions and permission rows | `roles.view` |
+| POST | `/administration/roles` | Create custom role | `roles.create` |
+| PUT | `/administration/roles/:id` | Save name/description and optional permission replacement atomically | `roles.edit` |
+| PATCH | `/administration/roles/:id/archive` | Archive custom role | `roles.archive` |
+| POST / DELETE | `/administration/roles/assign` / `/administration/roles/unassign` | Assign/remove role | `roles.assign` |
+| GET | `/administration/permissions` | Permission-builder reference | `roles.view` |
+| GET | `/administration/audit` | Paginated team activity history | `users.view` |
+| GET | `/administration/archived-data` | Supported archived records, including roles | `archived_data.view` plus per-type service checks |
+| PATCH | `/administration/archived-data/:type/:id/restore` | Restore supported record type | `archived_data.restore` plus per-type service checks |
+
+Role create/update bodies use `permissions` rows from the shared module/action catalog. There are no separate registered role permission-update endpoints. Protected system roles keep their safeguards. Group membership does not replace module permission grants.
+
+### Inbox integration
+
+Gmail routes are under `/integrations/gmail`. The OAuth callback is state-validated; other routes require an authenticated ready workspace, either `leads.view` or `contacts.view`, and mailbox ownership/current CRM scope checks. Staff Inbox uses the employee's own connected account. Recipient access is rechecked before delivery, including Workflow and scheduled sends.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/integrations/gmail/authorize`, `/integrations/gmail/status` | OAuth URL/connection status |
+| GET | `/integrations/gmail/callback` | State-validated provider callback |
+| POST | `/integrations/gmail/sync`, `/integrations/gmail/disconnect` | Request sync/disconnect |
+| GET | `/integrations/gmail/emails`, `/integrations/gmail/unread-count`, `/integrations/gmail/events` | Persisted mailbox reads/counts/events |
+| GET | `/integrations/gmail/threads/:threadId` | Scoped thread |
+| POST | `/integrations/gmail/send`, `/integrations/gmail/drafts` | Send/save draft |
+| DELETE | `/integrations/gmail/drafts/:draftId` | Remove draft |
+| POST | `/integrations/gmail/scheduled` | Queue Gmail-backed scheduled message |
+| GET | `/integrations/gmail/scheduled/:id` | Read own scheduled message status/body/cancel capability |
+| POST | `/integrations/gmail/scheduled/:id/cancel` | Cancel pending/claimed message; retain Gmail draft |
+
+Scheduled detail/cancel require the same tenant, owned account, and original creating user. Cancellation is idempotent for an already cancelled item and returns 409 after delivery starts or if its outcome needs verification. The worker never blindly resends an uncertain Gmail submission. See [engagement](engagement-deal-creation.md).
+
+### Notifications and preferences
+
+`/notifications` includes list/counts/operations, destination validation, read/read-all, deletion, and personal preferences. Access is session-scoped; destinations retain module checks. Saved columns/table preferences use `/preferences/columns` and `/preferences/table`. These are existing authenticated services, not tenant IDs supplied by clients.
+
+Notification worker due/lease checks and new outbox timestamps use explicit UTC, including when the database session uses Asia/Manila. The forward migration preserves historical timestamps rather than guessing their original timezone.
 
 ---
 
@@ -419,38 +446,27 @@ The Next proxy forwards both streams without buffering. No additional WebSocket 
 ---
 
 
-## Webhook Endpoints (No Auth)
+## Provider webhooks
 
-| Method | Path | Description |
-|---|---|---|
-| `POST` | `/api/webhooks/gmail` | Gmail push notifications |
+- `POST /api/v1/webhooks/brevo`: Campaign email status with configured webhook authentication.
+- `POST /api/v1/webhooks/textbee`: SMS delivery status with configured signed-webhook validation.
 
-
+Mailbox synchronization uses its existing server-side incremental Gmail job; there is no registered Gmail push webhook. See the provider reports and server environment examples for current configuration.
 
 ---
 
 ## Tenancy Rule
 
-Every query must include `WHERE tenantId = :tenantId`. The `tenantId` is always read from the JWT — never from the request body.
+Protected domain requests derive tenant identity from the verified session. Record lookups and relationship writes must retain that tenant scope; clients cannot choose a tenant through the request body. Public Forms resolve the tenant from the published Form on the server. Authentication and provider callbacks retain their dedicated identity-validation paths.
 
 ---
 
 ## RBAC
 
-Permissions are stored in the `RolePermission` table — one row per module per role with
-`canView`, `canCreate`, `canEdit`, `canDelete` boolean flags.
+Permission keys come from the shared module/action catalog. Middleware uses `authorize`, `authorizeAll`, or `authorizeAny`; the permission service resolves current role grants from `RolePermission` rows, including module-specific action fields. Missing grants deny access. Client Admin retains the protected tenant-admin model, while some administrative operations explicitly require that role.
 
-`Client Admin` bypasses all checks for their own tenant.
+Frontend permission guards improve the user flow; server checks enforce it. Groups choose assignment pools and do not grant permissions. Access revisions refresh current authorization across open views. Workspace status fails closed unless it is `ACTIVE` or the compatibility `SANDBOX` status.
 
-```typescript
-// Middleware usage — reads from RolePermission table
-router.post('/contacts',    rbac('contacts', 'canCreate'), controller.create);
-router.put('/contacts/:id', rbac('contacts', 'canEdit'),   controller.update);
-router.delete('/contacts/:id', rbac('contacts', 'canDelete'), controller.remove);
+## Current rollout additions
 
-// rbac() resolves: prisma.rolePermission.findUnique({ where: { roleId_module: { roleId, module } } })
-// Returns 403 if flag is false or row doesn't exist
-```
-
-Permission modules: `contacts` · `deals` · `organizations` · `campaigns` · `workflows` ·
-`tasks` · `service_orders` · `reports` · `users` · `settings` · `audit`
+Stop old backend processes, then apply `20261116000000_user_groups`, `20261117000000_campaign_submission_recovery`, `20261118000000_group_revisions` and `20261119000000_notification_utc_timestamps` after the existing migration history and before starting the updated backend. These preserve legacy Department values as same-tenant Group memberships, add durable interrupted submission handling, reuse the access-revision stream for Group synchronization and make new notification timestamps explicitly UTC. See [rollout](../README.md#forward-rollout) and the [polish plan](plans/system-polish.md).
