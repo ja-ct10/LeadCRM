@@ -409,11 +409,19 @@ Gmail routes are under `/integrations/gmail`. The OAuth callback is state-valida
 | POST | `/integrations/gmail/sync`, `/integrations/gmail/disconnect` | Request sync/disconnect |
 | GET | `/integrations/gmail/emails`, `/integrations/gmail/unread-count`, `/integrations/gmail/events` | Persisted mailbox reads/counts/events |
 | GET | `/integrations/gmail/threads/:threadId` | Scoped thread |
+| GET | `/integrations/gmail/conversations/:conversationId` | Scoped correspondent history, bounded message pages |
+| PATCH | `/integrations/gmail/messages/:messageId/read-state` | Read/unread one currently authorized message |
 | POST | `/integrations/gmail/send`, `/integrations/gmail/drafts` | Send/save draft |
 | DELETE | `/integrations/gmail/drafts/:draftId` | Remove draft |
 | POST | `/integrations/gmail/scheduled` | Queue Gmail-backed scheduled message |
 | GET | `/integrations/gmail/scheduled/:id` | Read own scheduled message status/body/cancel capability |
 | POST | `/integrations/gmail/scheduled/:id/cancel` | Cancel pending/claimed message; retain Gmail draft |
+
+For All, Unread, and Sent, `/emails` returns correspondent summaries with a tenant/account-scoped `conversationId`, `conversationKind`, exact normalized `correspondentAddresses`, authorized `messageCount`, and latest-message metadata. One-to-one histories consolidate distinct Gmail threads sharing the same exact external address. Threads containing several external participants retain a separate group identity. Drafts and Scheduled remain individual items. Search matches authorized messages before returning each complete group once; unread counts count groups containing incoming unread messages.
+
+Correspondent history accepts `maxResults` (1–50, default 50) and `pageToken`. Original Gmail topics are ordered by their first authorized activity, then provider thread ID; messages within each topic are ordered by timestamp, then provider message ID. Cursor changes caused by mailbox revisions or assignment changes require a reload. Original `/threads/:threadId` consumers remain supported. Reply uses the selected provider message ID and its stored original Gmail thread and RFC headers, never `conversationId`.
+
+Existing bulk Archive/Trash routes accept `{ conversationIds }`, `{ threadIds }`, or `{ messageIds }`. Correspondent toolbar/list actions cover all currently authorized non-draft messages across the selected histories; topic controls target one original Gmail thread. Each message is reauthorized before its provider mutation. Group selections exceeding 1,000 messages are rejected before writing; use topic controls for larger histories. See the [implementation and verification report](inbox-correspondent-grouping-report.md).
 
 Scheduled detail/cancel require the same tenant, owned account, and original creating user. Cancellation is idempotent for an already cancelled item and returns 409 after delivery starts or if its outcome needs verification. The worker never blindly resends an uncertain Gmail submission. See [engagement](engagement-deal-creation.md).
 

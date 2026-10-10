@@ -1486,6 +1486,7 @@ model MailboxMessage {
   labels String[]
   sentAt DateTime
   rfcMessageId String?
+  rfcInReplyTo String?
   rfcReferences String[] @default([])
   attachments Json @default("[]")
   leadId String?

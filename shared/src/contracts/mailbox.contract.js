@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MailboxBulkActionSchema = exports.ScheduleMailboxEmailSchema = exports.MailboxListSchema = exports.SaveMailboxDraftSchema = exports.MailboxReadStateSchema = exports.MAILBOX_FILTERS = exports.SendMailboxEmailSchema = exports.ClosedWonConfirmationSchema = exports.CLOSED_WON_CONFIRMATION_TYPES = void 0;
+exports.MailboxBulkActionSchema = exports.MailboxConversationPageSchema = exports.MailboxConversationIdSchema = exports.ScheduleMailboxEmailSchema = exports.MailboxListSchema = exports.SaveMailboxDraftSchema = exports.MailboxReadStateSchema = exports.MAILBOX_FILTERS = exports.SendMailboxEmailSchema = exports.ClosedWonConfirmationSchema = exports.CLOSED_WON_CONFIRMATION_TYPES = void 0;
 const zod_1 = require("zod");
 exports.CLOSED_WON_CONFIRMATION_TYPES = ['Approved Quotation', 'Signed/Approved Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'];
 exports.ClosedWonConfirmationSchema = zod_1.z.object({
@@ -45,7 +45,13 @@ exports.ScheduleMailboxEmailSchema = exports.SendMailboxEmailSchema.extend({
     draftId: zod_1.z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
 }).strict();
 const providerId = zod_1.z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
+exports.MailboxConversationIdSchema = zod_1.z.string().regex(/^c_[a-f0-9]{32}$/);
+exports.MailboxConversationPageSchema = zod_1.z.object({
+    maxResults: zod_1.z.coerce.number().int().min(1).max(50).default(50),
+    pageToken: zod_1.z.string().max(2000).optional(),
+});
 exports.MailboxBulkActionSchema = zod_1.z.union([
+    zod_1.z.object({ conversationIds: zod_1.z.array(exports.MailboxConversationIdSchema).min(1).max(100) }).strict(),
     zod_1.z.object({ threadIds: zod_1.z.array(providerId).min(1).max(100) }).strict(),
     zod_1.z.object({ messageIds: zod_1.z.array(providerId).min(1).max(100) }).strict(),
 ]);

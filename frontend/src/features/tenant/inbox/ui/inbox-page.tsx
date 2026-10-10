@@ -240,7 +240,7 @@ export default function InboxPage(): React.ReactElement {
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
   if (selectedEmail) return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card">
-    <EmailConversationView key={selectedEmail.threadId} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => { void loadEmails(tokenRef.current, pageRef.current); setRevision(value => value + 1); }} />
+    <EmailConversationView key={selectedEmail.conversationId ?? selectedEmail.threadId} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => { void loadEmails(tokenRef.current, pageRef.current); setRevision(value => value + 1); }} />
   </motion.div>;
   return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col gap-4 pb-16">
     <header><h1 className="font-display text-2xl font-bold tracking-tight">Inbox</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}</p>}</header>

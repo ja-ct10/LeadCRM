@@ -1,7 +1,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema, MailboxBulkActionSchema } from '@leadcrm/shared';
-import { mutateMailboxThread, mutateMailboxThreads } from './mailbox-thread-actions';
+import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema, MailboxBulkActionSchema, MailboxConversationIdSchema } from '@leadcrm/shared';
+import { mutateMailboxThread, mutateMailboxThreads, mutateMailboxCorrespondents, mutateMailboxMessages } from './mailbox-thread-actions';
+import { readMailboxCorrespondent } from './mailbox-correspondents.service';
 import { sendMailboxEmail } from './mailbox-send.service';
 import { scheduleMailboxEmail, getScheduledMailboxEmail, cancelScheduledMailboxEmail } from './scheduled-mailbox.service';
 import { fetchEmails, fetchUnreadCount, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
@@ -63,6 +64,12 @@ export async function schedule(req: Request, res: Response, next: NextFunction) 
 export async function thread(req: Request, res: Response, next: NextFunction) {
   try { res.json(await readMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId))); } catch (error) { next(error); }
 }
+export async function correspondent(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await readMailboxCorrespondent(req.user!.tenantId, req.user!.userId, MailboxConversationIdSchema.parse(req.params.conversationId), req.query)); } catch (error) { next(error); }
+}
+export async function messageReadState(req: Request, res: Response, next: NextFunction) {
+  try { const { isRead } = MailboxReadStateSchema.parse(req.body); res.json(await mutateMailboxMessages(req.user!.tenantId, req.user!.userId, [providerId.parse(req.params.messageId)], isRead ? 'read' : 'unread')); } catch (error) { next(error); }
+}
 export async function attachment(req: Request, res: Response, next: NextFunction) {
   try {
     const file = await readMailboxAttachment(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId), z.string().regex(/^[a-zA-Z0-9_-]+$/).max(2000).parse(req.params.attachmentId));
@@ -103,12 +110,16 @@ export async function disconnect(req: Request, res: Response, next: NextFunction
     res.json({ success: true, message: 'Work email disconnected. Saved CRM history is preserved.' });
   } catch (error) { next(error); }
 }
-export async function trash(req: Request, res: Response, next: NextFunction) {
-  try { const data = MailboxBulkActionSchema.parse(req.body); res.json(await ('threadIds' in data ? mutateMailboxThreads(req.user!.tenantId, req.user!.userId, data.threadIds, 'trash') : trashEmails(req.user!.tenantId, req.user!.userId, data.messageIds))); } catch (error) { next(error); }
+async function bulkAction(req: Request, res: Response, next: NextFunction, action: 'archive' | 'trash') {
+  try {
+    const data = MailboxBulkActionSchema.parse(req.body), { tenantId, userId } = req.user!;
+    res.json(await ('conversationIds' in data ? mutateMailboxCorrespondents(tenantId, userId, data.conversationIds, action) :
+      'threadIds' in data ? mutateMailboxThreads(tenantId, userId, data.threadIds, action) :
+        (action === 'trash' ? trashEmails : archiveEmails)(tenantId, userId, data.messageIds)));
+  } catch (error) { next(error); }
 }
-export async function archive(req: Request, res: Response, next: NextFunction) {
-  try { const data = MailboxBulkActionSchema.parse(req.body); res.json(await ('threadIds' in data ? mutateMailboxThreads(req.user!.tenantId, req.user!.userId, data.threadIds, 'archive') : archiveEmails(req.user!.tenantId, req.user!.userId, data.messageIds))); } catch (error) { next(error); }
-}
+export const trash = (req: Request, res: Response, next: NextFunction) => bulkAction(req, res, next, 'trash');
+export const archive = (req: Request, res: Response, next: NextFunction) => bulkAction(req, res, next, 'archive');
 export async function saveDraftHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const data = SaveMailboxDraftSchema.parse(req.body);

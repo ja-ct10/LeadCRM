@@ -52,6 +52,13 @@ export interface MailboxAttachment { id: string; filename: string; mimeType: str
 export interface MailboxEmail {
   id: string;
   threadId: string;
+  /** Inbox identity only. Never pass this value to Gmail as a thread ID. */
+  conversationId?: string;
+  conversationKind?: 'person' | 'group';
+  correspondentAddresses?: string[];
+  rfcMessageId?: string;
+  rfcInReplyTo?: string | null;
+  rfcReferences?: string[];
   draftId?: string;
   from: string;
   to: string[];
@@ -84,7 +91,19 @@ export interface ScheduledMailboxEmailDetail {
 }
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
+export const MailboxConversationIdSchema = z.string().regex(/^c_[a-f0-9]{32}$/);
+export const MailboxConversationPageSchema = z.object({
+  maxResults: z.coerce.number().int().min(1).max(50).default(50),
+  pageToken: z.string().max(2000).optional(),
+});
+export interface MailboxConversationDetail {
+  emails: MailboxEmail[];
+  nextPageToken?: string;
+  messageCount: number;
+  threads: { threadId: string; dealOptions: { id: string; title: string; stage: string }[]; canAssociateDeal: boolean }[];
+}
 export const MailboxBulkActionSchema = z.union([
+  z.object({ conversationIds: z.array(MailboxConversationIdSchema).min(1).max(100) }).strict(),
   z.object({ threadIds: z.array(providerId).min(1).max(100) }).strict(),
   z.object({ messageIds: z.array(providerId).min(1).max(100) }).strict(),
 ]);

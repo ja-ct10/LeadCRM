@@ -27,7 +27,7 @@ function extractName(from: string): string {
   return match ? match[1].trim() : from.split('@')[0];
 }
 
-const rowId = (email: GmailEmail) => email.messageCount ? email.threadId : email.id;
+const rowId = (email: GmailEmail) => email.conversationId ?? (email.messageCount ? email.threadId : email.id);
 const eligible = (email: GmailEmail) => !email.scheduledStatus && !email.labels.includes('DRAFT');
 
 export default function InboxEmailList({ emails, onEmailsChanged, refreshDisabled = false, loading = false, hasLoadError = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
@@ -148,7 +148,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                 disabled={refreshDisabled || busy}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
                 aria-label="Archive"
-                title="Archive"
+                title="Archive all authorized messages in selected histories"
               >
                 {isArchiving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Archive className="w-4 h-4" />}
               </button>
@@ -157,7 +157,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                 disabled={refreshDisabled || busy}
                 className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
                 aria-label="Delete"
-                title="Delete"
+                title="Move all authorized messages in selected histories to trash"
               >
                 {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
               </button>
@@ -193,7 +193,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
       {/* "All selected" banner */}
       {allSelected && (
         <div className="px-4 py-2 text-center text-xs text-slate-600 dark:text-slate-400 bg-blue-50/50 dark:bg-blue-950/20 border-b border-gray-100 dark:border-white/[0.05] shrink-0">
-          All <strong>{emails.length}</strong> conversations on this page are selected.{' '}
+          All <strong>{selectable.length}</strong> histories on this page are selected. Actions affect all authorized messages in each selected history.{' '}
 
         </div>
       )}
@@ -242,13 +242,13 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                 {/* Sender */}
                 <span
                   className={cn(
-                    'col-start-1 row-start-1 min-w-0 md:w-[180px] md:shrink-0 truncate text-[13px] pr-2 md:pr-4',
+                    'col-start-1 row-start-1 flex min-w-0 md:w-[180px] md:shrink-0 text-[13px] pr-2 md:pr-4',
                     !email.isRead
                       ? 'font-bold text-slate-900 dark:text-white'
                       : 'font-normal text-slate-700 dark:text-slate-400',
                   )}
                 >
-                  {email.participants?.length ? email.participants.join(', ') : email.direction === 'outbound' ? `You → ${extractName(email.to[0] ?? '')}` : extractName(email.from)}{(email.messageCount ?? 0) > 1 && <span aria-label={`${email.messageCount} messages`}> ({email.messageCount})</span>}
+                  <span className="min-w-0 truncate">{email.participants?.length ? email.participants.join(', ') : email.direction === 'outbound' ? `You → ${extractName(email.to[0] ?? '')}` : extractName(email.from)}</span>{(email.messageCount ?? 0) > 0 && <span className="ml-1 shrink-0" aria-label={`${email.messageCount} messages`}>({email.messageCount})</span>}
                 </span>
 
                 {/* Subject + Snippet */}

@@ -400,6 +400,7 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     replyToAddress: parseAddressList(getHeader('Reply-To')).length === 1 ? mailboxAddress(getHeader('Reply-To')) ?? null : null,
     plainText: plainText || undefined,
     rfcMessageId: getHeader('Message-ID'),
+    rfcInReplyTo: /^<[^\s<>]+>$/.test(getHeader('In-Reply-To')) && getHeader('In-Reply-To').length <= 500 ? getHeader('In-Reply-To') : null,
     rfcReferences: /[\r\n]/.test(getHeader('References')) ? [] : [...new Set((getHeader('References').match(/<[^\s<>]+>/g) ?? []).filter(id => id.length <= 500))],
     attachments: parts.filter(part => part.filename && part.body?.attachmentId).map(part => ({ id: part.body!.attachmentId!, filename: part.filename!, mimeType: part.mimeType ?? 'application/octet-stream', size: part.body?.size ?? 0 })),
     automated: /^(?:mailer-daemon|postmaster)@/i.test(normalizeEmail(from)) || getHeader('Return-Path').trim() === '<>' || parts.some(part => /message\/(?:delivery-status|disposition-notification)/i.test(part.mimeType ?? '')) || /multipart\/report/i.test(data.payload.mimeType ?? '') || (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),

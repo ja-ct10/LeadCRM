@@ -14,10 +14,11 @@ try {
   const before = (await db.query('SELECT * FROM "MailboxMessage"')).rows[0];
   const accountBefore = (await db.query('SELECT * FROM "EmailAccount"')).rows[0];
   await replayCrmMigrations(db, { from: migration });
-  const { ccRecipients, replyToAddress, sourceMessageId, rfcReferences, attachments, ...after } = (await db.query('SELECT * FROM "MailboxMessage"')).rows[0];
+  const { ccRecipients, replyToAddress, sourceMessageId, rfcReferences, attachments, rfcInReplyTo, ...after } = (await db.query('SELECT * FROM "MailboxMessage"')).rows[0];
   assert.deepEqual(after, before);
   assert.deepEqual(ccRecipients, []); assert.equal(replyToAddress, null); assert.equal(sourceMessageId, null);
   assert.deepEqual(rfcReferences, []); assert.deepEqual(attachments, []);
+  assert.equal(rfcInReplyTo, null);
   const accountAfter = (await db.query('SELECT * FROM "EmailAccount"')).rows[0];
   for (const field of Object.keys(accountBefore)) assert.deepEqual(accountAfter[field], accountBefore[field]);
   await db.exec(`INSERT INTO "MailboxSendReceipt" ("id", "tenantId", "accountId", "requestId", "payloadHash", "updatedAt") VALUES ('receipt', 'history-tenant', 'history-account', 'request', 'hash', now());`);

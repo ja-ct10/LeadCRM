@@ -88,6 +88,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
         await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
+          ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         return;
       }
@@ -107,7 +108,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
         fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: recipients.flatMap(value => mailboxAddress(value) ?? []), draftId: email.draftId,
         ...(email.labels.includes('DRAFT') && sourceDraft ? { sourceMessageId: sourceDraft.sourceMessageId, crmDraft: sourceDraft.crmDraft } : {}),
-        body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId,
+        body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId, rfcInReplyTo: email.rfcInReplyTo,
         ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
         leadId: link?.leadId ?? null, contactId: link?.contactId ?? null, dealId, meaningful: genuineReply,
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };

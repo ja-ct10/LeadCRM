@@ -23,7 +23,7 @@ export function storedEmail(row: MailboxMessage): GmailEmail {
     labels: row.labels, isRead: !row.labels.includes('UNREAD'), draftId: row.draftId ?? undefined,
     direction: row.direction as GmailEmail['direction'], leadId: row.leadId, contactId: row.contactId,
     dealId: row.dealId, needsDealAssociation: row.needsDealAssociation, rfcMessageId: row.rfcMessageId ?? undefined,
-    rfcReferences: row.rfcReferences, attachments: Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : [] };
+    rfcInReplyTo: row.rfcInReplyTo, rfcReferences: row.rfcReferences, attachments: Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : [] };
 }
 
 export async function listStoredMailbox(tenantId: string, userId: string, input: MailboxListOptions = {}) {

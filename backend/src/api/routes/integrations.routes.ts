@@ -14,6 +14,8 @@ import {
   deleteDraftHandler,
   sync,
   thread,
+  correspondent,
+  messageReadState,
   threadReadState,
   threadArchive,
   threadTrash,
@@ -43,6 +45,8 @@ router.post('/gmail/scheduled', schedule);
 router.get('/gmail/scheduled/:id', scheduledDetail);
 router.post('/gmail/scheduled/:id/cancel', cancelScheduled);
 router.get('/gmail/threads/:threadId', thread);
+router.get('/gmail/conversations/:conversationId', correspondent);
+router.patch('/gmail/messages/:messageId/read-state', messageReadState);
 router.get('/gmail/messages/:messageId/attachments/:attachmentId', attachment);
 router.patch('/gmail/threads/:threadId/read-state', threadReadState);
 router.post('/gmail/threads/:threadId/archive', threadArchive);

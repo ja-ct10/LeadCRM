@@ -17,6 +17,15 @@ it('renders participant names, count and latest preview without changing the row
   expect(screen.getByText('— Latest reply')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: /Open email from Doris/ })); expect(options.onEmailClick).toHaveBeenCalledWith(row);
 });
+it('retains correspondent selection when a different Gmail topic becomes the latest message', async () => {
+  const conversationId = 'c_' + 'a'.repeat(32), options = { ...props(), emails: [{ ...row, conversationId }] };
+  const view = render(<InboxEmailList {...options} />);
+  fireEvent.click(screen.getByLabelText('Select all emails'));
+  view.rerender(<InboxEmailList {...options} emails={[{ ...row, id: 'topic-new', threadId: 'different-thread', conversationId, messageCount: 7 }]} />);
+  expect((screen.getByLabelText('Select all emails') as HTMLInputElement).checked).toBe(true);
+  fireEvent.click(screen.getByLabelText('Archive'));
+  await waitFor(() => expect(mocks.archive).toHaveBeenCalledWith([conversationId]));
+});
 it.each(['Archive', 'Delete'])('selects visible conversations and sends stable thread IDs for %s', async action => {
   const options = props(), view = render(<InboxEmailList {...options} />);
   fireEvent.click(screen.getByLabelText('Select all emails'));

@@ -87,6 +87,8 @@ function deploymentPlan(records, localNames) {
     // Preserves existing recovery links by hashing stored secrets. Coordinate
     // with the auth release; old binaries must stop before token storage changes.
     '20261120000000_password_recovery_security',
+    // Nullable provider metadata only; no compatibility columns or mail changed.
+    '20261121000000_mailbox_reply_header',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

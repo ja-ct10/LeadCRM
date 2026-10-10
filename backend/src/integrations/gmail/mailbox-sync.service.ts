@@ -34,14 +34,14 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
   return { leadsView, contactsView, leadsEdit: await allowed('leads.edit'), contactsEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
 }
 
-export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string) {
+export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string): Promise<GmailEmail[]> {
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account) return emails;
   const scope = await resolveMailboxScope(account, permissions);
   if (expectedScopeHash && expectedScopeHash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } }, select: { providerMessageId: true, direction: true, leadId: true, contactId: true, dealId: true, needsDealAssociation: true } });
-  return emails.map(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
-    ...email, direction: row?.direction ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
+  return emails.map<GmailEmail>(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
+    ...email, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,
     contactId: row?.contactId && scope.contactIds.includes(row.contactId) ? row.contactId : undefined,
     dealId: permissions.dealsView && (scope.leadIds.includes(row?.leadId ?? '') || scope.contactIds.includes(row?.contactId ?? '')) ? row?.dealId : undefined,
