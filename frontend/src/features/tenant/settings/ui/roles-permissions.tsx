@@ -131,7 +131,7 @@ function PermSection({ group, allPerms, activePermIds, onToggle, onGroupToggle, 
         </div>
         <span className={cn(
           'shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full',
-          allEnabled ? 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400' : someEnabled ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
+          allEnabled ? 'bg-blue-50 text-blue-700 dark:bg-primary/10 dark:text-primary' : someEnabled ? 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400',
         )}>
           {enabledCount}/{groupPerms.length}
         </span>
@@ -225,7 +225,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
             <input id="role-name" required aria-invalid={!!nameError} aria-describedby={nameError ? "role-name-error" : undefined} maxLength={50} type="text" value={name} onChange={(e) => { setName(e.target.value); if (e.target.value.trim()) setNameError(''); }} placeholder="e.g. Regional Manager" autoFocus
               disabled={isSystemRole || saving}
               className={cn(
-                "w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm",
+                "w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm",
                 isSystemRole && "bg-slate-50 dark:bg-slate-800/50 text-slate-500 cursor-not-allowed"
               )} />
             {nameError && <p id="role-name-error" role="alert" className="mt-1 text-sm text-red-600 dark:text-red-400">{nameError}</p>}
@@ -233,7 +233,7 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
           <div className="flex-1 min-w-0">
             <label htmlFor="role-description" className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Description <span className="font-normal text-slate-400">— Optional</span></label>
             <input id="role-description" maxLength={200} disabled={isSystemRole || saving} type="text" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Brief description of this role"
-              className="w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all shadow-sm" />
+              className="w-full px-4 py-2.5 bg-white dark:bg-[#16191E] border border-gray-200 dark:border-[#262A33] text-slate-900 dark:text-white rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm" />
           </div>
         </div>
         

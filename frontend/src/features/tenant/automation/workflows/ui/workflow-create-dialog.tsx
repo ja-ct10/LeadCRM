@@ -19,7 +19,6 @@ interface Props {
   onChoose: (templateIndex?: number) => void | Promise<void>;
 }
 const recordIcons = { lead: UserPlus, contact: Users, deal: BriefcaseBusiness, account: Building2 };
-const focusable = 'button:not(:disabled),input:not(:disabled),select:not(:disabled),a[href],[tabindex="0"]';
 
 export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: Props) {
   const id = useId();
@@ -33,35 +32,19 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
   const panel = useRef<HTMLDivElement | null>(null);
   const content = useRef<HTMLDivElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
-  const previousFocus = useRef<HTMLElement | null>(null);
   const previousTemplate = useRef<number | null>(null);
   const mounted = useRef(true);
   const close = useCallback(() => { if (!lock.current) onClose(); }, [onClose]);
   const attachPanel = useCallback((node: HTMLDivElement | null) => {
     panel.current = node;
     if (node) {
-      // Strict Mode can attach this ref again after focus is already inside the dialog.
-      previousFocus.current ??= document.activeElement as HTMLElement;
       node.querySelector<HTMLInputElement>('input')?.focus();
     }
   }, []);
 
   useEffect(() => {
     mounted.current = true;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const containFocus = (event: FocusEvent) => {
-      if (panel.current && event.target instanceof Node && !panel.current.contains(event.target)) {
-        panel.current.querySelector<HTMLElement>(focusable)?.focus();
-      }
-    };
-    document.addEventListener('focusin', containFocus);
-    return () => {
-      mounted.current = false;
-      document.body.style.overflow = previousOverflow;
-      document.removeEventListener('focusin', containFocus);
-      previousFocus.current?.focus();
-    };
+    return () => { mounted.current = false; };
   }, []);
 
   useLayoutEffect(() => {
@@ -107,15 +90,7 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
 
   return <Dialog open onOpenChange={open => { if (!open) close(); }}>
     <DialogContent ref={attachPanel} showClose={false} aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}
-      className="flex max-h-[calc(100dvh-2rem)] max-w-[960px] flex-col gap-0 overflow-hidden p-0 text-[var(--text-primary)] [color-scheme:light] dark:[color-scheme:dark]"
-      onKeyDown={event => {
-        if (event.key !== 'Tab') return;
-        const elements = Array.from(event.currentTarget.querySelectorAll<HTMLElement>(focusable));
-        const first = elements[0], last = elements[elements.length - 1];
-        if (!first) { event.preventDefault(); return; }
-        if (event.shiftKey && (document.activeElement === first || !event.currentTarget.contains(document.activeElement))) { event.preventDefault(); last.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
-      }}>
+      className="flex max-h-[calc(100dvh-2rem)] max-w-[960px] flex-col gap-0 overflow-hidden p-0 text-[var(--text-primary)] [color-scheme:light] dark:[color-scheme:dark]">
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-5 sm:px-6">
         <div className="min-w-0"><DialogTitle id={`${id}-title`} className="text-xl leading-snug">Create workflow</DialogTitle>
           <DialogDescription id={`${id}-description`} className="mt-1.5 leading-relaxed">Start from scratch or customize a ready-made workflow.</DialogDescription></div>

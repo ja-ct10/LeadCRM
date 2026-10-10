@@ -53,7 +53,6 @@ export interface Contact extends SharedContact {
   suffix?: string;
   displayName?: string;
   preferredName?: string;
-  department?: string;
   profilePhoto?: string;
   gender?: string;
   dateOfBirth?: string;

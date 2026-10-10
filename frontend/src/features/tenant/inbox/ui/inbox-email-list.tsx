@@ -123,7 +123,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
               disabled={busy || refreshDisabled || selectable.length === 0}
               ref={(el) => { if (el) el.indeterminate = someSelected; }}
               onChange={toggleSelectAll}
-              className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+              className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
               aria-label="Select all emails"
             />
 
@@ -228,7 +228,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                   checked={isSelected}
                   disabled={!eligible(email) || refreshDisabled || busy}
                   onChange={() => toggleSelect(rowId(email))}
-                  className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-blue-600 focus:ring-blue-500 focus:ring-offset-0 cursor-pointer"
+                  className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
                   aria-label={`Select email from ${extractName(email.from)}`}
                 />
               </div>
@@ -236,9 +236,8 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
               {/* Email content — clickable row */}
               <button
                 onClick={() => onEmailClick(email)}
-                disabled={!!email.scheduledStatus}
                 className="flex-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-y-1 min-w-0 text-left cursor-pointer py-0.5 md:flex"
-                aria-label={`Open email from ${extractName(email.from)}: ${email.subject}`}
+                aria-label={email.scheduledStatus ? `Review scheduled email: ${email.subject}` : `Open email from ${extractName(email.from)}: ${email.subject}`}
               >
                 {/* Sender */}
                 <span

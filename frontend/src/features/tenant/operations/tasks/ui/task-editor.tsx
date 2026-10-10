@@ -2,7 +2,7 @@
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { ManilaDateTimePicker } from "@/shared/components/ui/manila-date-time-picker";
 import { taskRecordOptions } from "../task-relations";
-import { useEffect, useId, useRef, useState } from "react";
+import { useId, useRef, useState } from "react";
 import {
   TASK_STATUSES,
   TASK_LINK_KINDS,
@@ -112,42 +112,7 @@ export function TaskEditor({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [confirmArchive, setConfirmArchive] = useState(false);
-  const panel = useRef<HTMLDivElement>(null);
   const heading = useId();
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    const timer = setTimeout(
-      () => panel.current?.querySelector<HTMLElement>("input,button")?.focus(),
-      0,
-    );
-    const trap = (event: KeyboardEvent) => {
-      if (event.key !== "Tab" || !panel.current) return;
-      const nodes = [
-        ...panel.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex="0"]',
-        ),
-      ];
-      const first = nodes[0],
-        last = nodes[nodes.length - 1];
-      if (
-        event.shiftKey &&
-        (document.activeElement === first ||
-          !panel.current.contains(document.activeElement))
-      ) {
-        event.preventDefault();
-        last?.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first?.focus();
-      }
-    };
-    document.addEventListener("keydown", trap);
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener("keydown", trap);
-      previous?.focus();
-    };
-  }, []);
   const save = async () => {
     if (busy || !editable) return;
     setBusy(true);
@@ -225,7 +190,6 @@ export function TaskEditor({
       }}
     >
       <SheetContent
-        ref={panel}
         aria-labelledby={heading}
         showClose={!busy}
         className={panelSurfaceClass}

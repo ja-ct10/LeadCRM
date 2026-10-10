@@ -6,6 +6,7 @@ import { assertPermissions } from '../../../core/permissions/permission.service'
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import type { PermissionKey } from '../../../shared/constants/permissions';
+import { loadArchiveDatePage } from './archive-date-page';
 
 type Actor = { userId: string; tenantId: string; role: string };
 const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchema>['type'], [PermissionKey, PermissionKey]> = {
@@ -32,7 +33,6 @@ function source<T>(count: () => Promise<number>, load: (skip: number, take: numb
 export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
   await assertPermissions(actor, ['archived_data.view']);
   const where = scope(actor);
-  const identityWhere = { tenantId: actor.tenantId, isArchived: true };
   const searchWhere = (...fields: string[]) => query.search?.trim() ? {
     AND: query.search.trim().split(/\s+/).map(term => ({
       OR: fields.map(field => ({ [field]: { contains: term, mode: 'insensitive' as const } })),
@@ -55,7 +55,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     Deal: source(() => prisma.deal.count({ where: titleWhere }), (skip, take) => prisma.deal.findMany({ where: titleWhere, ...pageArgs(skip, take), select: { id: true, title: true, value: true, currency: true, deletedAt: true } }), r => ({ id: r.id, name: r.title, detail: r.value === null ? '' : [r.currency, String(r.value)].filter(Boolean).join(' '), archivedAt: r.deletedAt })),
     Pipeline: source(() => prisma.pipeline.count({ where }), (skip, take) => prisma.pipeline.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     User: source(() => prisma.user.count({ where: usersWhere }), (skip, take) => prisma.user.findMany({ where: usersWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true } }), r => ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email })),
-    Role: source(() => prisma.roleDefinition.count({ where: identityWhere }), (skip, take) => prisma.roleDefinition.findMany({ where: identityWhere, ...pageArgs(skip, take), select: { id: true, name: true, isSystemRole: true } }), r => ({ id: r.id, name: r.name, canRestore: !r.isSystemRole && !protectedRole(r.name) })),
+    Role: source(() => prisma.roleDefinition.count({ where: nameWhere }), (skip, take) => prisma.roleDefinition.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true, isSystemRole: true } }), r => ({ id: r.id, name: r.name, canRestore: !r.isSystemRole && !protectedRole(r.name) })),
     Workflow: source(() => prisma.workflow.count({ where: nameWhere }), (skip, take) => prisma.workflow.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     Campaign: source(() => prisma.campaign.count({ where: nameWhere }), (skip, take) => prisma.campaign.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     Template: source(() => prisma.template.count({ where }), (skip, take) => prisma.template.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
@@ -73,14 +73,22 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
   if (query.type && !visible.length) throw new AppError('Access denied', 403);
   const counts = await Promise.all(visible.map(type => sources[type].count()));
   const total = counts.reduce((sum, count) => sum + count, 0);
+  if ((query.sortBy ?? 'archivedAt') === 'archivedAt') {
+    const rows = await loadArchiveDatePage(actor.tenantId, visible, query);
+    const restorePermissions = new Map(await Promise.all(visible.map(async type => [type, await allowed(permissions[type][1])] as const)));
+    const data: ArchivedRecord[] = rows.map(row => ({ type: row.type, id: row.id, name: row.name, detail: row.detail,
+      archivedAt: row.archivedAt?.toISOString() ?? null,
+      canRestore: restorePermissions.get(row.type) === true && (row.type !== 'Role' || !row.isSystemRole && !protectedRole(row.name)) }));
+    return { data, meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
+  }
   // Merge archive identities before pagination so All types has a global ordering.
   const all: ArchivedRecord[] = [];
   for (const [index, type] of visible.entries()) {
     const canRestore = await allowed(permissions[type][1]);
     for (let offset = 0; offset < counts[index]; offset += 500) {
       const rows = await sources[type].load(offset, 500);
-      const audits = await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type,
-        entityId: { in: rows.map(row => row.id) }, OR: [{ action: { endsWith: '.archived' } }, ...(type === 'User' ? [{ action: 'user.updated' }] : [])] },
+      const audits = await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type === 'Role' ? { in: ['Role', 'RoleDefinition'] } : type,
+        entityId: { in: rows.map(row => row.id) }, OR: [{ action: { endsWith: '.archived' } }, ...(type === 'User' ? [{ action: 'user.updated' }, { action: 'user.deactivated_with_reassignment' }] : [])] },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { entityId: true, createdAt: true, changeset: true, action: true } });
       const dates = new Map<string, Date>();
       for (const audit of audits) {

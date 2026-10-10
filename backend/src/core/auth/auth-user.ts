@@ -9,6 +9,11 @@ export const authTenantSelect = {
   onboardingStep: true, onboardingCompletedAt: true, ownerUserId: true,
 } satisfies Prisma.TenantSelect;
 
+export const authUserInclude = {
+  tenant: { select: authTenantSelect },
+  groupMemberships: { select: { group: { select: { id: true, name: true } } } },
+} satisfies Prisma.UserInclude;
+
 export interface AuthUserSource {
   id: string;
   email: string;
@@ -24,7 +29,7 @@ export interface AuthUserSource {
   onboardingCompletedAt?: Date | null;
   phone?: string | null;
   jobTitle?: string | null;
-  department?: string | null;
+  groupMemberships?: { group: { id: string; name: string } }[];
   avatarUrl?: string | null;
   tenant?: {
     name?: string | null;
@@ -55,7 +60,7 @@ export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
     emailVerified: user.emailVerified?.toISOString() ?? null,
     phone: user.phone ?? null,
     jobTitle: user.jobTitle ?? null,
-    department: user.department ?? null,
+    groups: (user.groupMemberships ?? []).map(member => member.group).sort((a, b) => a.name.localeCompare(b.name)),
     avatarUrl: user.avatarUrl ?? null,
     tenantName: tenant?.name ?? null,
     tenantStatus: tenant?.status ?? null,
@@ -79,7 +84,7 @@ export async function readAuthUser(
 ): Promise<AuthUser> {
   const user = await db.user.findFirst({
     where: { id: userId, tenantId },
-    include: { tenant: { select: authTenantSelect } },
+    include: authUserInclude,
   });
   if (!user) throw new AppError('Authentication required', 401);
   return buildAuthUserResponse(user);

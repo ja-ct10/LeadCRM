@@ -46,12 +46,12 @@ interface ContactFormProps {
   initialData?: Contact;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Partial<Contact>) => void;
+  onSave: (data: Partial<Contact>) => void | Promise<void>;
 }
 
 interface ContactFormInnerProps {
   initialData?: Contact;
-  onSave: (data: Partial<Contact>) => void;
+  onSave: (data: Partial<Contact>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -72,7 +72,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     companyName: initialData?.companyName || '',
     status: normalizeCrmStatus(initialData?.status),
     source: initialData?.leadSource || '',
-    accountId: initialData?.organizationId || '',
+    accountId: initialData?.accountId || initialData?.organizationId || '',
     assignedUserId: initialData?.assignedUserId || '',
     productInterest: initialData?.productInterests || initialData?.productInterest || [],
     address: initialData?.address || '',
@@ -114,31 +114,31 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
   const selectedProducts = watch('productInterest') || [];
 
-  const onSubmit = (data: CreateContactFormValues | UpdateContactFormValues): void => {
+  const [saveError, setSaveError] = useState('');
+  const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
     if (!customFields.validate()) return;
-    // Build payload using frontend Contact type field names.
-    // The adapter (toBackendCreateContact/toBackendUpdateContact) handles
-    // mapping to backend DTO names (e.g. leadSource → source, productInterest → productInterest).
+    setSaveError('');
+    // contactsV2Api translates the display aliases to Contact API columns.
     const cleaned: Partial<Contact> = {
       customFieldValues: customFields.payload(),
       firstName: data.firstName || undefined,
       lastName: data.lastName || undefined,
       email: data.email || undefined,
-      phone: phoneLocal ? toE164(phoneLocal) : undefined,
-      companyName: data.companyName || undefined,
+      phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
+      companyName: data.companyName || (isEdit ? '' : undefined),
       status: data.status || 'Warm',
-      leadSource: data.source || undefined,
+      leadSource: data.source || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
-      address: data.address || undefined,
+      address: data.address || (isEdit ? '' : undefined),
     };
 
     // Pass accountId through directly — adapter maps it correctly
-    if (data.accountId) {
-      (cleaned as Record<string, unknown>).accountId = data.accountId;
-    }
+    if (data.accountId || isEdit) (cleaned as Record<string, unknown>).accountId = data.accountId || null;
+    if (isEdit && !data.assignedUserId) (cleaned as Record<string, unknown>).assignedUserId = null;
 
-    onSave(cleaned);
+    try { await onSave(cleaned); }
+    catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to save Contact. Please try again.'); }
   };
 
   // Style classes
@@ -150,6 +150,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="flex h-full min-h-0 flex-col" noValidate>
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
+        {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
@@ -325,7 +326,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                 aria-invalid={!!errors.address}
                 aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={3}
-                className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
+                className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
                 placeholder="123 Main St, City, State, Zip Code"
               />
             </div>
@@ -347,7 +348,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         <button
           type="submit"
           disabled={customFields.blocked || isSubmitting}
-          className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Contact'}
         </button>

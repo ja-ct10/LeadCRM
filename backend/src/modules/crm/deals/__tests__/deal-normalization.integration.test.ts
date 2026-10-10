@@ -9,6 +9,7 @@ import { tenantContext } from '../../../../core/tenant/tenant-context';
 vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DEAL_NORMALIZATION_TEST_DATABASE_URL! } } }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient;
 let update: typeof import('../deals.repository').updateDeal;
+let contactList: typeof import('../../contacts-v2/contacts-v2.repository').findAllContacts;
 beforeAll(async () => {
   pg = await PGlite.create(); await replayCrmMigrations(pg);
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -16,6 +17,7 @@ beforeAll(async () => {
   db = (await import('../../../../config/database.config')).default;
   installTenantScoping(db);
   update = (await import('../deals.repository')).updateDeal;
+  contactList = (await import('../../contacts-v2/contacts-v2.repository')).findAllContacts;
   await db.tenant.createMany({ data: [{ id: 'tenant-a', name: 'A', slug: 'a' }, { id: 'tenant-b', name: 'B', slug: 'b' }] });
   await db.user.create({ data: { id: 'actor', tenantId: 'tenant-a', email: 'actor@camxian.com', firstName: 'Actor', lastName: 'Test', role: 'Client Admin' } });
   await db.pipeline.create({ data: { id: 'pipeline', tenantId: 'tenant-a', name: 'Sales' } });
@@ -69,4 +71,56 @@ describe('normalized Deal writes', () => {
     }))).rejects.toThrow();
     expect(await db.stage.findUniqueOrThrow({ where: { id: foreign.stages[0].id } })).toMatchObject({ tenantId: 'tenant-b', pipelineId: foreign.id });
   });
+});
+
+it('paginates and filters Contact records and returns full-scope facets from the database', async () => {
+  const createdAt = new Date('2026-10-01T00:00:00Z');
+  await db.contact.createMany({ data: Array.from({ length: 125 }, (_, index) => ({
+    id: `paged-${index}`, tenantId: 'tenant-a', firstName: 'Paged', lastName: String(index),
+    assignedUserId: 'actor', status: 'COLD' as const, createdAt,
+    updatedAt: index === 0 ? new Date('2026-10-02T00:00:00Z') : createdAt,
+  })) });
+  const all = await contactList('tenant-a', { page: 2, limit: 25, search: 'Paged' });
+  expect(all.data).toHaveLength(25); expect(all.total).toBe(125);
+  expect(all.facets).toMatchObject({ 'status:Cold': 125, 'owner:actor': 125, touched: 1, untouched: 124 });
+  const touched = await contactList('tenant-a', { search: 'Paged', currentUserId: 'actor', filter: { scope: 'equals:my', status: 'in:Cold', system: 'in:touched' }, sort: 'createdAt:asc' });
+  expect(touched.data.map(contact => contact.id)).toEqual(['paged-0']);
+  await db.contactDeal.create({ data: { tenantId: 'tenant-a', dealId: 'deal', contactId: 'paged-0', position: 0 } });
+  const linked = await contactList('tenant-a', { search: 'Paged', filter: { related: 'in:has_deals' } });
+  expect(linked.data.map(contact => contact.id)).toEqual(['paged-0']);
+  await db.deal.update({ where: { id: 'deal' }, data: { isArchived: true } });
+  expect((await contactList('tenant-a', { search: 'Paged', filter: { related: 'in:has_deals' } })).data).toEqual([]);
+});
+
+it('Contact merge preserves conversion, Deal projections and Inbox history on the survivor', async () => {
+  const { execute } = await import('../../merge/merge.service');
+  await db.contact.createMany({ data: ['merge-primary', 'merge-secondary'].map(id => ({ id, tenantId: 'tenant-a', firstName: id, lastName: 'Merge' })) });
+  await db.lead.create({ data: { id: 'converted-merge', tenantId: 'tenant-a', firstName: 'Converted', lastName: 'Merge', contactId: 'merge-secondary', convertedAt: new Date() } });
+  await db.deal.create({ data: { id: 'merge-deal', tenantId: 'tenant-a', title: 'Merge Deal', pipelineId: 'pipeline', stageId: 'stage', contactDeals: { create: [
+    { contactId: 'merge-secondary', position: 0 }, { contactId: 'merge-primary', position: 1 },
+  ] } } });
+  await db.emailAccount.create({ data: { id: 'merge-mailbox', tenantId: 'tenant-a', userId: 'actor', email: 'actor@camxian.com', accessToken: 'disposable-not-a-provider-token', scopes: [] } });
+  await db.mailboxMessage.create({ data: { id: 'merge-message', tenantId: 'tenant-a', accountId: 'merge-mailbox', providerMessageId: 'test-message', threadId: 'test-thread', direction: 'inbound', from: 'customer@example.com', recipients: ['actor@camxian.com'], subject: 'History', body: 'History', snippet: 'History', labels: [], sentAt: new Date(), contactId: 'merge-secondary' } });
+  const sourceBeforeMerge = await db.contact.findUniqueOrThrow({ where: { id: 'merge-secondary' } });
+  await execute({ tenantId: 'tenant-a', userId: 'actor', entityType: 'contact', primaryId: 'merge-primary', secondaryId: 'merge-secondary', fieldResolutions: {} });
+  expect(await db.contact.findUniqueOrThrow({ where: { id: 'merge-secondary' } })).toMatchObject({ isArchived: true, deletedBy: 'actor', status: sourceBeforeMerge.status });
+  expect(await db.lead.findUniqueOrThrow({ where: { id: 'converted-merge' } })).toMatchObject({ contactId: 'merge-primary' });
+  expect(await db.contactDeal.findMany({ where: { dealId: 'merge-deal' } })).toHaveLength(1);
+  const linkedDeal = await (await import('../deals.repository')).findDealById('merge-deal', 'tenant-a');
+  expect(linkedDeal).toMatchObject({ contactId: 'merge-primary' });
+  expect(await db.mailboxMessage.findUniqueOrThrow({ where: { id: 'merge-message' } })).toMatchObject({ contactId: 'merge-primary', body: 'History' });
+  expect(await db.emailAccount.findUniqueOrThrow({ where: { id: 'merge-mailbox' } })).toMatchObject({ mailboxVersion: 1 });
+});
+
+it('Account merge rejects the same account and preserves customer links when merging distinct accounts', async () => {
+  const { execute } = await import('../../merge/merge.service');
+  await db.account.createMany({ data: ['account-primary', 'account-secondary'].map(id => ({ id, tenantId: 'tenant-a', name: id })) });
+  const input = { tenantId: 'tenant-a', userId: 'actor', entityType: 'account' as const, primaryId: 'account-primary', secondaryId: 'account-primary', fieldResolutions: {} };
+  await expect(execute(input)).rejects.toThrow('different Accounts');
+  expect(await db.account.findUniqueOrThrow({ where: { id: 'account-primary' } })).toMatchObject({ isArchived: false });
+  await db.contact.update({ where: { id: 'merge-primary' }, data: { accountId: 'account-secondary' } });
+  await execute({ ...input, secondaryId: 'account-secondary' });
+  expect(await db.contact.findUniqueOrThrow({ where: { id: 'merge-primary' } })).toMatchObject({ accountId: 'account-primary' });
+  expect(await db.account.findUniqueOrThrow({ where: { id: 'account-secondary' } })).toMatchObject({ isArchived: true, deletedBy: 'actor' });
+  expect(await db.auditLog.count({ where: { tenantId: 'tenant-a', action: 'account.merged', entityId: 'account-primary' } })).toBe(1);
 });

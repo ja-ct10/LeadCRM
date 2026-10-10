@@ -45,7 +45,8 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   };
 
   const ids = await sortedPageIds(query.sort, ["name","industry","size","city","country","createdAt"], skip, limit,
-    () => prisma.account.findMany({ where, select: { id: true, name: true, industry: true, size: true, city: true, country: true, createdAt: true } }));
+    () => prisma.account.findMany({ where, select: { id: true, name: true, industry: true, size: true, city: true, country: true, createdAt: true } }),
+    direction => prisma.account.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     prisma.account.findMany({
       where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],

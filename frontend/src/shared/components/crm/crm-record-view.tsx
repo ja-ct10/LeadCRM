@@ -20,6 +20,7 @@ import { useRecordActivities, type TimelineActivity } from '@/shared/hooks/use-r
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { Button } from '@/shared/components/ui/button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
+import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/shared/components/ui/tabs';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import { RecordTimelineTab } from './record-timeline-tab';
@@ -336,14 +337,14 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       { label: 'Email', value: record.email, apiField: 'email', type: 'email' as const },
       { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const },
       { label: 'Company', value: module === 'leads' ? record.companyName : record.company, apiField: module === 'leads' ? 'companyName' : 'company' },
-      ...(module === 'contacts' ? [{ label: 'Job title', value: record.jobTitle, apiField: 'jobTitle' }] : [{ label: 'Website', value: record.website, apiField: 'website' }]),
+      ...(module === 'contacts' ? [{ label: 'Job title', value: record.jobTitle, apiField: 'jobTitle' }] : []),
       { label: 'Source', value: source, apiField: 'source' },
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
     productRow,
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
     { label: 'Assigned Agent', value: owner },
-    { label: 'Notes', value: module === 'leads' ? record.description : record.notes, apiField: module === 'leads' ? 'description' : 'notes', type: 'textarea' },
+    ...(module === 'leads' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
   ];
 
   const customFields = object(record.customFields);
@@ -464,7 +465,14 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       </div>
     </Tabs>
 
-    {lostStage && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void changeStage(lostStage, lostReason); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" onClick={() => setLostStage(undefined)}>Cancel</Button></form></div>}
+    <Dialog open={Boolean(lostStage)} onOpenChange={open => { if (!open && !saving) setLostStage(undefined); }}>
+      <DialogContent showClose={false} aria-label="Close Deal as lost" className="max-w-sm">
+        <form className="space-y-3" onSubmit={e => { e.preventDefault(); if (lostStage && !saving) void changeStage(lostStage, lostReason); }}>
+          <label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label>
+          <div className="flex flex-wrap gap-2"><Button disabled={saving || !lostReason.trim()}>Save</Button><Button type="button" variant="ghost" disabled={saving} onClick={() => setLostStage(undefined)}>Cancel</Button></div>
+        </form>
+      </DialogContent>
+    </Dialog>
     {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={refresh} />}
     <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
       try { await apiClient.patch(`/crm/${module}/${encodeURIComponent(id)}/archive`); toast.success(`${label} archived`); setArchiving(false); if (onClose) onClose(); else router.push(`/crm/${module}`); }

@@ -12,6 +12,9 @@ import EmojiPicker from './emoji-picker';
 import { safeMailboxHtml } from '../services/email-html';
 import type { MailboxComposeDraft } from '../services/email-presentation';
 import type { ApiRequestError } from '@/lib/api/client';
+import { useFocusMode } from '@/shared/lib/overlay-state';
+import { useMediaQuery } from '@/shared/hooks/use-media-query';
+import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 
 interface ComposeModalProps {
   isOpen: boolean;
@@ -51,6 +54,12 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   const linkRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
   const scheduleRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const owner = React.useId();
+  const compact = useMediaQuery('(max-width: 767px)');
+  const modal = isOpen && !isMinimized && (compact || isFullscreen);
+  useFocusMode(isOpen && !isMinimized && isFullscreen);
+  useModalInteraction({ open: modal, panelRef, owner, onClose: () => { if (!mutationPending.current) { resetForm(); onClose(); } } });
 
   useEffect(() => {
     if (!pauseUntil) return;
@@ -302,11 +311,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
 
   return (
     <motion.div
+      ref={panelRef}
       initial={{ opacity: 0, y: 30, scale: 0.95 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={springTransition}
       className={`${containerClasses} flex flex-col border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 shadow-2xl`}
       role="dialog"
+      aria-modal={modal ? true : undefined}
       aria-label="Compose email"
       onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); if (showEmojiPicker || showLinkInput || showMoreMenu || showScheduleMenu) { setShowEmojiPicker(false); setShowLinkInput(false); setShowMoreMenu(false); setShowScheduleMenu(false); } else if (!mutationPending.current) { resetForm(); onClose(); } } }}
     >
@@ -422,7 +433,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             <button
               onClick={() => void handleSend()}
               disabled={isSending || isSavingDraft || paused}
-              className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
               aria-label="Send email"
             >
               {isSending ? (
@@ -437,7 +448,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
               onClick={() => setShowScheduleMenu(value => !value)}
               aria-expanded={showScheduleMenu}
               title="Schedule send"
-              className="h-9 px-2 rounded-r-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 border-l border-blue-500 text-white cursor-pointer transition-colors"
+              className="h-9 px-2 rounded-r-full bg-primary hover:bg-primary/90 disabled:opacity-60 border-l border-primary text-white cursor-pointer transition-colors"
               aria-label="Schedule send options"
             >
               <ChevronDown className="w-3.5 h-3.5" />
@@ -453,7 +464,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
           <div role="toolbar" aria-label="Message formatting" className="flex w-full min-w-0 flex-nowrap items-center gap-0.5 overflow-x-auto [&>*]:shrink-0">
             <button
               onClick={() => execFormat('bold')}
-              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('bold') ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('bold') ? 'text-primary dark:text-primary bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               aria-label="Bold"
               title="Bold (Ctrl+B)"
             >
@@ -461,7 +472,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             </button>
             <button
               onClick={() => execFormat('italic')}
-              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('italic') ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('italic') ? 'text-primary dark:text-primary bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               aria-label="Italic"
               title="Italic (Ctrl+I)"
             >
@@ -469,7 +480,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             </button>
             <button
               onClick={() => execFormat('underline')}
-              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('underline') ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('underline') ? 'text-primary dark:text-primary bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               aria-label="Underline"
               title="Underline (Ctrl+U)"
             >
@@ -477,7 +488,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             </button>
             <button
               onClick={() => execFormat('insertUnorderedList')}
-              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('list') ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
+              className={`p-2 rounded-full transition-colors cursor-pointer ${activeFormats.has('list') ? 'text-primary dark:text-primary bg-blue-50 dark:bg-blue-950/40' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'}`}
               aria-label="Bullet list"
               title="Bullet list"
             >
@@ -512,13 +523,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
                         value={linkUrl}
                         onChange={(e) => setLinkUrl(e.target.value)}
                         placeholder="https://..."
-                        className="min-w-0 flex-1 h-8 px-2.5 rounded-md border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-blue-500"
+                        className="min-w-0 flex-1 h-8 px-2.5 rounded-md border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-900 text-xs text-slate-900 dark:text-white focus:outline-none focus:border-primary"
                         onKeyDown={(e) => { if (e.key === 'Enter') insertLink(); }}
                         autoFocus
                       />
                       <button
                         onClick={insertLink}
-                        className="h-8 px-3 rounded-md bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 cursor-pointer"
+                        className="h-8 px-3 rounded-md bg-primary text-white text-xs font-medium hover:bg-primary/90 cursor-pointer"
                       >
                         Add
                       </button>
@@ -545,7 +556,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 4 }}
                     transition={{ duration: 0.12 }}
-                    className="absolute bottom-24 left-3 right-3 overflow-x-auto sm:bottom-24 sm:left-auto sm:right-3 mb-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 shadow-lg z-10"
+                    className="absolute bottom-24 left-3 right-3 sm:left-auto sm:right-3 sm:w-80 max-w-[calc(100vw-2.5rem)] mb-2 rounded-xl border border-gray-200 dark:border-white/[0.08] bg-white dark:bg-slate-800 shadow-lg z-10"
                   >
                     <EmojiPicker onSelect={insertEmoji} />
                   </motion.div>

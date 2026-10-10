@@ -55,17 +55,21 @@ async function project(event: NotificationEvent, now: Date) {
 /** A bounded lease claim never advances past unprocessed work. Expired leases recover on restart. */
 export async function dispatchTenantNotifications(tenantId: string, now = new Date(), batchSize = 25) {
   const leaseToken = randomUUID();
+  // These columns store UTC in timestamp-without-time-zone values. A Date bound
+  // as timestamptz otherwise changes comparison meaning with the SQL session zone.
+  const utcNow = now.toISOString();
+  const utcLeaseUntil = new Date(+now + 120000).toISOString();
   const limit = Math.min(100, Math.max(1, batchSize));
   const scope = tenantContext.getStore();
   if (scope && scope.tenantId !== tenantId) throw new Error('NOTIFICATION_TENANT_MISMATCH');
   const events = await tenantContext.exit(async () => await prisma.$queryRaw<NotificationEvent[]>`
     WITH pending AS (
       SELECT id FROM "NotificationEvent"
-      WHERE "tenantId"=${tenantId} AND "processedAt" IS NULL AND "availableAt"<=${now}
-        AND ("leaseUntil" IS NULL OR "leaseUntil"<=${now})
+      WHERE "tenantId"=${tenantId} AND "processedAt" IS NULL AND "availableAt"<=${utcNow}::timestamp
+        AND ("leaseUntil" IS NULL OR "leaseUntil"<=${utcNow}::timestamp)
       ORDER BY "availableAt",id FOR UPDATE SKIP LOCKED LIMIT ${limit}
     )
-    UPDATE "NotificationEvent" e SET "leaseToken"=${leaseToken}, "leaseUntil"=${new Date(+now + 120000)}, attempts=attempts+1
+    UPDATE "NotificationEvent" e SET "leaseToken"=${leaseToken}, "leaseUntil"=${utcLeaseUntil}::timestamp, attempts=attempts+1
     FROM pending WHERE e.id=pending.id RETURNING e.*`);
   let processed = 0, failed = 0;
   for (const event of events) {

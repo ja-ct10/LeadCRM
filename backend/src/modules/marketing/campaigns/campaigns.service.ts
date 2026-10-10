@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
 import { z } from 'zod';
-import { campaignLinkDestination, campaignHtmlLinks, CreateCampaignDraftSchema, CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, type CampaignSendResult } from '@leadcrm/shared';
+import { campaignLinkDestination, campaignHtmlLinks, CreateCampaignDraftSchema, CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, isWorkspaceAccessible, isOnboardingComplete, type CampaignSendResult } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
@@ -14,6 +14,10 @@ import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from
 import { findCampaignReport } from './campaigns.repository';
 import { recalculateCampaignDelivery, recipientDeliveryFailed } from './campaign-delivery-status';
 import type { CampaignRecipient, CampaignClickedLink } from '@leadcrm/shared';
+import { CAMPAIGN_LEASE_MS, interruptCampaignSubmission } from './campaign-submission-recovery';
+import { readAuthUser } from '../../../core/auth/auth-user';
+import { requireEmployeeAccount } from '../../../core/auth/account-access';
+import { assertPermissions } from '../../../core/permissions/permission.service';
 
 export async function getCampaignReport(id: string, tenantId: string) {
   const report = await findCampaignReport(id, tenantId);
@@ -127,8 +131,8 @@ export async function getCampaignById(id: string, tenantId: string) {
   ]);
   return { ...c, deliveredCount, bouncedCount, sendResult: campaignSendResult(c) };
 }
-function campaignSendResult(campaign: { id: string; recipientCount: number; sentCount: number; failedCount: number; status: CampaignStatus; submissionFinishedAt: Date | null }): CampaignSendResult {
-  return { campaignId: campaign.id, eligibleRecipients: campaign.recipientCount, submittedRecipients: campaign.sentCount, failedRecipients: campaign.failedCount, status: campaign.status, submissionComplete: !!campaign.submissionFinishedAt };
+function campaignSendResult(campaign: { id: string; recipientCount: number; sentCount: number; failedCount: number; status: CampaignStatus; submissionFinishedAt: Date | null; submissionInterruptedAt?: Date | null }): CampaignSendResult {
+  return { campaignId: campaign.id, eligibleRecipients: campaign.recipientCount, submittedRecipients: campaign.sentCount, failedRecipients: campaign.failedCount, status: campaign.status, submissionComplete: !!campaign.submissionFinishedAt, ...(campaign.submissionInterruptedAt ? { submissionInterrupted: true } : {}) };
 }
 async function validateReferences(tenantId: string, dto: ReturnType<typeof CampaignDraftSchema.parse>) {
   if (dto.targetAudienceId) await audienceDefinition(tenantId, dto.targetAudienceId);
@@ -157,7 +161,7 @@ export async function getCampaignMetrics(tenantId: string) {
   const where = { ...campaignScope(tenantId), isArchived: false };
   const [sum, active, email] = await Promise.all([
     prisma.campaign.aggregate({ where, _sum: { sentCount: true, openedCount: true, clickedCount: true } }),
-    prisma.campaign.count({ where: { ...where, status: 'SENDING' } }),
+    prisma.campaign.count({ where: { ...where, status: 'SENDING', submissionFinishedAt: null } }),
     prisma.campaign.aggregate({ where: { ...where, type: 'EMAIL' }, _sum: { sentCount: true, openedCount: true, clickedCount: true } }),
   ]);
   return { activeCampaigns: active, sent: sum._sum.sentCount || 0, emailSent: email._sum.sentCount || 0, opened: email._sum.openedCount || 0, clicked: email._sum.clickedCount || 0 };
@@ -165,9 +169,11 @@ export async function getCampaignMetrics(tenantId: string) {
 
 async function prepareCampaign(id: string, tenantId: string) {
   const scope = campaignScope(tenantId);
-  return prisma.$transaction(async tx => {
+  if (!acceptingSubmissions) throw new AppError('Campaign sending is temporarily unavailable while the server restarts.', 503);
+  const leaseId = randomUUID();
+  const preparation = prisma.$transaction(async tx => {
     // The row lock also serializes draft edits and simultaneous Send Now requests.
-    const claim = await tx.campaign.updateMany({ where: { id, ...scope, status: 'DRAFT', submissionStartedAt: null, isArchived: false }, data: { status: 'SENDING', submissionStartedAt: new Date() } });
+    const claim = await tx.campaign.updateMany({ where: { id, ...scope, status: 'DRAFT', submissionStartedAt: null, isArchived: false }, data: { status: 'SENDING', submissionStartedAt: new Date(), submissionLeaseId: leaseId, submissionLeaseUntil: new Date(Date.now() + CAMPAIGN_LEASE_MS) } });
     if (!claim.count) {
       if (!await tx.campaign.findFirst({ where: { id, ...scope } })) throw new AppError('Campaign not found.', 404);
       throw new AppError('Campaign has already started or is not sendable.', 409);
@@ -203,17 +209,42 @@ async function prepareCampaign(id: string, tenantId: string) {
     ] });
     if (campaign.type === 'EMAIL') await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
     await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length } });
-    return sends;
+    return { recipients: sends, leaseId };
   }, { timeout: 30000 });
-
+  activePreparations.add(preparation);
+  void preparation.finally(() => activePreparations.delete(preparation)).catch(() => undefined);
+  return preparation;
 }
 
-async function deliverPrepared(id: string, tenantId: string, userId: string, prepared: Awaited<ReturnType<typeof prepareCampaign>>): Promise<CampaignSendResult> {
+async function submissionTransaction<T>(id: string, tenantId: string, leaseId: string, work: (tx: Prisma.TransactionClient) => Promise<T>) {
+  return prisma.$transaction(async tx => {
+    const claim = await tx.campaign.updateMany({ where: { id, tenantId, submissionLeaseId: leaseId, submissionFinishedAt: null, submissionLeaseUntil: { gt: new Date() } },
+      data: { submissionLeaseUntil: new Date(Date.now() + CAMPAIGN_LEASE_MS) } });
+    if (!claim.count) throw new AppError('Campaign submission claim expired. Review the campaign report before sending anything again.', 409);
+    return work(tx);
+  }, { timeout: 30000 });
+}
+
+async function deliverPrepared(id: string, tenantId: string, userId: string, preparation: Awaited<ReturnType<typeof prepareCampaign>>): Promise<CampaignSendResult> {
   const scope = campaignScope(tenantId);
+  const { recipients: prepared, leaseId } = preparation;
   // No external HTTP inside a transaction. Keep at most five provider requests active.
   console.info('[Campaigns]', { event: 'submission_started', campaignId: id, tenantId, recipientCount: prepared.length });
   for (let offset = 0; offset < prepared.length; offset += 5) {
+    if (!acceptingSubmissions) throw new AppError('Campaign submission interrupted by server shutdown.', 503);
+    const actor = await readAuthUser(userId, tenantId);
+    requireEmployeeAccount(actor);
+    if (actor.status !== 'ACTIVE' || actor.mustChangePassword || !isWorkspaceAccessible(actor.tenantStatus) || !isOnboardingComplete(actor)) throw new AppError('Campaign sender access is unavailable.', 403);
+    await assertPermissions({ userId, tenantId, role: actor.role }, ['campaigns.send']);
     const results = await Promise.allSettled(prepared.slice(offset, offset + 5).map(async recipient => {
+      // Persist the intent before the HTTP call so crash recovery can distinguish
+      // untouched recipients from messages the provider may have accepted.
+      await submissionTransaction(id, tenantId, leaseId, async tx => {
+        const marked = await tx.campaignContact.updateMany({ where: { id: recipient.id, ...scope, status: 'pending', submissionAttemptedAt: null },
+          data: { status: 'submitting', submissionAttemptedAt: new Date() } });
+        if (!marked.count) throw new AppError('Recipient submission already attempted. Automatic replay is blocked.', 409);
+        if (recipient.channel === 'EMAIL') await tx.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: 'submitting' } });
+      });
       let result;
       try {
         result = recipient.channel === 'SMS'
@@ -224,55 +255,69 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
         const reason = rejected ? `${recipient.channel === 'SMS' ? 'TEXTBEE' : 'BREVO'}_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
         console.warn('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: rejected ? 'rejected' : 'unconfirmed', httpStatus: error instanceof EmailSubmissionError ? error.httpStatus : undefined });
         // Unconfirmed requests may have been accepted: preserve them for review.
-        await prisma.$transaction([
-          prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: rejected ? 'failed' : 'pending', failureReason: reason } }),
-          ...(recipient.channel === 'EMAIL' ? [prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: rejected ? 'failed' : 'pending', errorMessage: reason } })] : []),
-        ]);
+        await submissionTransaction(id, tenantId, leaseId, async tx => {
+          await tx.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: rejected ? 'failed' : 'pending', failureReason: reason } });
+          if (recipient.channel === 'EMAIL') await tx.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: rejected ? 'failed' : 'pending', errorMessage: reason } });
+        });
         return;
       }
       const submitted = result.submitted;
       const now = new Date();
       console.info('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: submitted ? 'accepted' : 'not_submitted', messageId: result.messageId });
-      await prisma.$transaction([
-        // Acquire the campaign lock first, matching webhook lock order.
-        prisma.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } }),
-        prisma.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: submitted ? 'submitted' : 'failed', messageId: result.messageId,
+      await submissionTransaction(id, tenantId, leaseId, async tx => {
+        await tx.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } });
+        await tx.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: submitted ? 'submitted' : 'failed', messageId: result.messageId,
           submittedAt: submitted ? now : null,
-          failureReason: submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } }),
-        ...(recipient.channel === 'EMAIL' ? [prisma.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'submitted' : 'failed', brevoMessageId: result.messageId } })] : []),
-      ]);
+          failureReason: submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } });
+        if (recipient.channel === 'EMAIL') await tx.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'submitted' : 'failed', brevoMessageId: result.messageId } });
+      });
     }));
     if (results.some(result => result.status === 'rejected')) throw new AppError('Campaign delivery requires review because a result could not be saved.', 503);
   }
-  const result = await prisma.$transaction(async tx => {
+  const result = await submissionTransaction(id, tenantId, leaseId, async tx => {
     // Hold the same campaign lock as webhooks while taking the final snapshot.
     await tx.campaign.update({ where: { id, ...scope }, data: { engagement: { increment: 0 } } });
     const campaign = await recalculateCampaignDelivery(tx, id, tenantId);
     // sentAt on Campaign is the historical submission time, never delivery proof.
-    const finished = await tx.campaign.update({ where: { id, ...scope }, data: { submissionFinishedAt: new Date(), ...(campaign.sentCount && !campaign.sentAt ? { sentAt: new Date() } : {}) } });
+    const finished = await tx.campaign.update({ where: { id, ...scope }, data: { submissionFinishedAt: new Date(), submissionLeaseId: null, submissionLeaseUntil: null, ...(campaign.sentCount && !campaign.sentAt ? { sentAt: new Date() } : {}) } });
     return campaignSendResult(finished);
   });
   console.info('[Campaigns]', { event: 'submission_completed', tenantId, ...result });
   await writeAuditLog({ tenantId, userId, action: 'campaign.submitted', entityType: 'Campaign', entityId: id, after: { ...result } });
   return result;
 }
+let acceptingSubmissions = true;
+const activePreparations = new Set<Promise<unknown>>();
+const activeSubmissions = new Set<Promise<CampaignSendResult>>();
+function trackSubmission(id: string, tenantId: string, userId: string, preparation: Awaited<ReturnType<typeof prepareCampaign>>) {
+  const work = deliverPrepared(id, tenantId, userId, preparation).catch(async error => {
+    try { await interruptCampaignSubmission(id, tenantId, preparation.leaseId); }
+    catch { console.error('[Campaigns] Could not persist interruption; the expired lease will be recovered.'); }
+    throw error;
+  });
+  activeSubmissions.add(work);
+  void work.finally(() => activeSubmissions.delete(work)).catch(() => undefined);
+  return work;
+}
+/** Stop between batches, let in-flight provider calls finish, then preserve the report. */
+export async function drainCampaignSubmissions() {
+  acceptingSubmissions = false;
+  do { await Promise.allSettled([...activePreparations, ...activeSubmissions]); }
+  while (activePreparations.size || activeSubmissions.size);
+}
 // Service-level completion is useful to workers/tests; HTTP uses queueCampaign below.
 export async function sendCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {
-  return deliverPrepared(id, tenantId, userId, await prepareCampaign(id, tenantId));
+  return trackSubmission(id, tenantId, userId, await prepareCampaign(id, tenantId));
 }
 
 export async function queueCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {
   const prepared = await prepareCampaign(id, tenantId);
   // The committed snapshot and submissionStartedAt claim
   // prevent replays even if the browser closes or the proxy request finishes.
-  void deliverPrepared(id, tenantId, userId, prepared).catch(async () => {
+  void trackSubmission(id, tenantId, userId, prepared).catch(() => {
     console.error('[Campaigns] Delivery interrupted; persisted recipient results require review.');
-    try {
-      await prisma.campaign.updateMany({ where: { id, ...campaignScope(tenantId), submissionFinishedAt: null }, data: { submissionFinishedAt: new Date() } });
-      await writeAuditLog({ tenantId, userId, action: 'campaign.delivery_interrupted', entityType: 'Campaign', entityId: id, severity: 'WARNING' });
-    } catch { console.error('[Campaigns] Could not persist the submission interruption; inspect unfinished campaigns.'); }
   });
-  return { campaignId: id, eligibleRecipients: prepared.length, submittedRecipients: 0, failedRecipients: 0, status: 'SENDING', submissionComplete: false };
+  return { campaignId: id, eligibleRecipients: prepared.recipients.length, submittedRecipients: 0, failedRecipients: 0, status: 'SENDING', submissionComplete: false };
 }
 
 export async function archiveCampaign(id: string, tenantId: string, userId: string) {

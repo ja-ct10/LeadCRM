@@ -20,7 +20,8 @@ import { sendMail, EmailSubmissionError } from '../../../../shared/services/emai
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../../core/auth/auth-session';
-import { createCampaign, getCampaignById, sendCampaign, updateCampaign } from '../campaigns.service';
+import { createCampaign, getCampaignById, sendCampaign, updateCampaign, archiveCampaign } from '../campaigns.service';
+import { recoverCampaignSubmissions, interruptCampaignSubmission } from '../campaign-submission-recovery';
 import { createAudience, getAudiences, resolveAudience } from '../audiences.service';
 import { createTemplate, getTemplates } from '../../templates/templates.service';
 import { processBrevoEvent } from '../brevo-webhook';
@@ -301,10 +302,15 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(sendMail).toHaveBeenCalledTimes(1);
   });
   it('bounds concurrency at five and preserves recipient snapshots after CRM deletion', async () => {
-    let active = 0, peak = 0;
+    let active = 0, peak = 0, attempts = 0;
+    const releases: Array<() => void> = [];
     vi.mocked(sendMail).mockImplementation(async () => {
       active++; peak = Math.max(peak, active);
-      await new Promise(resolve => setTimeout(resolve, 10)); active--;
+      await new Promise<void>(resolve => {
+        releases.push(resolve); attempts++;
+        // Deterministic provider barrier avoids relying on database speed.
+        if (releases.length === 5 || attempts === 12) releases.splice(0).forEach(release => release());
+      }); active--;
       return { submitted: true, messageId: `<${randomUUID()}@test>` };
     });
     await scoped(async () => {
@@ -689,6 +695,69 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect((await request('/marketing/campaigns', 'POST', { name: 'New Multi', type: 'MULTI_CHANNEL' })).status).toBe(400);
     const historical = await scoped(() => prisma.campaign.create({ data: { tenantId, name: 'Historical Multi', type: 'MULTI_CHANNEL', status: 'DRAFT', createdById: userId } }));
     expect((await request(`/marketing/campaigns/${historical.id}`)).body.data.type).toBe('MULTI_CHANNEL');
+  });
+
+  it('recovers an expired worker without replaying accepted or uncertain recipients and allows archiving', async () => {
+    const campaign = await draft();
+    const expired = new Date(Date.now() - 300000), leaseId = randomUUID();
+    const acceptedId = randomUUID(), untouchedId = randomUUID(), uncertainId = randomUUID();
+    await scoped(async () => {
+      await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'SENDING', recipientCount: 3, submissionStartedAt: expired, submissionLeaseId: leaseId, submissionLeaseUntil: expired } });
+      await prisma.campaignContact.createMany({ data: [
+        { id: acceptedId, tenantId, campaignId: campaign.id, email: 'accepted@example.test', status: 'submitted', submittedAt: expired, submissionAttemptedAt: expired, messageId: randomUUID() },
+        { id: untouchedId, tenantId, campaignId: campaign.id, email: 'untouched@example.test', status: 'pending' },
+        { id: uncertainId, tenantId, campaignId: campaign.id, email: 'uncertain@example.test', status: 'submitting', submissionAttemptedAt: expired },
+      ] });
+      await prisma.emailDeliveryLog.createMany({ data: ['untouched', 'uncertain'].map(name => ({ tenantId, campaignId: campaign.id, toEmail: `${name}@example.test`, fromEmail: 'sender@example.test', subject: 'Interrupted', status: name === 'uncertain' ? 'submitting' : 'pending' })) });
+    });
+    expect(await recoverCampaignSubmissions()).toBeGreaterThan(0);
+    expect(await recoverCampaignSubmissions()).toBe(0);
+    const result = await scoped(() => getCampaignById(campaign.id, tenantId));
+    expect(result).toMatchObject({ status: 'INTERRUPTED', sentCount: 1, failedCount: 1, submissionLeaseId: null, submissionLeaseUntil: null,
+      sendResult: { submissionComplete: true, submissionInterrupted: true } });
+    expect(result.submissionInterruptedAt).toBeTruthy();
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: acceptedId } })).toMatchObject({ status: 'submitted', failureReason: null });
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: untouchedId } })).toMatchObject({ status: 'failed', failureReason: 'SUBMISSION_INTERRUPTED_NOT_SENT' });
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: uncertainId } })).toMatchObject({ status: 'pending', failureReason: 'PROVIDER_SUBMISSION_UNCONFIRMED' });
+    expect(sendMail).not.toHaveBeenCalled();
+    expect(sendSms).not.toHaveBeenCalled();
+    await expect(scoped(() => sendCampaign(campaign.id, tenantId, userId))).rejects.toMatchObject({ statusCode: 409 });
+    await scoped(() => archiveCampaign(campaign.id, tenantId, userId));
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).isArchived).toBe(true);
+  });
+
+  it('does not recover a healthy lease or let a different worker interrupt it', async () => {
+    const campaign = await draft(), leaseId = randomUUID();
+    await scoped(() => prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'SENDING', submissionStartedAt: new Date(), submissionLeaseId: leaseId, submissionLeaseUntil: new Date(Date.now() + 120000) } }));
+    expect(await interruptCampaignSubmission(campaign.id, tenantId, randomUUID())).toBeNull();
+    expect(await recoverCampaignSubmissions()).toBe(0);
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).submissionFinishedAt).toBeNull();
+  });
+
+  it('persists attempt intent before HTTP and prevents an expired worker overwriting recovered outcomes', async () => {
+    const companyName = 'Interruption ' + randomUUID();
+    const campaign = await scoped(async () => {
+      await prisma.lead.createMany({ data: [1, 2].map(index => ({ tenantId, firstName: 'Interrupted', lastName: String(index), email: `interrupted-${randomUUID()}@example.test`, companyName })) });
+      const audience = await createAudience(tenantId, { name: companyName, source: 'LEADS', conditions: [{ field: 'company', operator: 'equals', value: companyName }] });
+      return createCampaign(tenantId, userId, { name: companyName, type: 'EMAIL', subject: 'Hi', body: 'Hello', targetAudienceId: audience.id });
+    });
+    const release: Array<() => void> = [];
+    vi.mocked(sendMail).mockImplementation(async message => {
+      const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, email: message.to as string } });
+      expect(row.status).toBe('submitting'); expect(row.submissionAttemptedAt).toBeTruthy();
+      await new Promise<void>(resolve => release.push(resolve));
+      return { submitted: true, messageId: randomUUID() };
+    });
+    const pending = scoped(() => sendCampaign(campaign.id, tenantId, userId));
+    await vi.waitFor(() => expect(release).toHaveLength(2));
+    await scoped(() => prisma.campaign.update({ where: { id: campaign.id }, data: { submissionLeaseUntil: new Date(Date.now() - 1) } }));
+    expect(await recoverCampaignSubmissions()).toBe(1);
+    release.forEach(resolve => resolve());
+    await expect(pending).rejects.toThrow('requires review');
+    const saved = await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(saved).toMatchObject({ status: 'INTERRUPTED', sentCount: 0, failedCount: 0 });
+    expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id, status: 'pending', failureReason: 'PROVIDER_SUBMISSION_UNCONFIRMED' } })).toBe(2);
+    expect(sendMail).toHaveBeenCalledTimes(2);
   });
 
 });

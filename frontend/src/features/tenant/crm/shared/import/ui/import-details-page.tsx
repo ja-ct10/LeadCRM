@@ -64,7 +64,7 @@ function getStatusBadge(status: string): { label: string; className: string } {
       return { label: 'Failed', className: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400' };
     case 'pending':
     case 'importing':
-      return { label: 'In Progress', className: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' };
+      return { label: 'In Progress', className: 'bg-blue-100 dark:bg-primary/20 text-blue-700 dark:text-primary' };
     default:
       return { label: status, className: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400' };
   }
@@ -195,7 +195,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
         </p>
         <button
           onClick={() => router.push(backToImport)}
-          className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors"
+          className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors"
         >
           <ArrowLeft size={14} />
           Back to Import
@@ -234,7 +234,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
             {importData.status === 'importing' && importData.idempotencyKey && (
               <div className="mt-3 text-[13px] text-slate-500">
                 <p>The original importer can resume by uploading the same CSV with the same column mapping.</p>
-                <button onClick={() => router.push(`${backToImport}?importKey=${encodeURIComponent(importData.idempotencyKey!)}`)} className="mt-2 text-blue-600 font-medium cursor-pointer">
+                <button onClick={() => router.push(`${backToImport}?importKey=${encodeURIComponent(importData.idempotencyKey!)}`)} className="mt-2 text-primary font-medium cursor-pointer">
                   Resume import <ArrowLeft size={13} className="inline rotate-180" />
                 </button>
               </div>
@@ -296,7 +296,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
             ) : resultsError ? (
               <div role="alert" className="py-8 text-center text-sm text-red-600">
                 <p>{resultsError}</p>
-                <button onClick={fetchResults} className="mt-3 text-blue-600 font-medium cursor-pointer"><RefreshCw size={13} className="inline" /> Retry results</button>
+                <button onClick={fetchResults} className="mt-3 text-primary font-medium cursor-pointer"><RefreshCw size={13} className="inline" /> Retry results</button>
               </div>
             ) : results.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center">

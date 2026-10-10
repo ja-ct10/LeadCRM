@@ -1,7 +1,7 @@
 'use client';
 import { panelThemeClass, panelHeaderClass, panelTitleClass, panelBodyClass, panelFooterClass, panelInputClass, panelCloseClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useId } from 'react';
 import { GripVertical, Lock, X, Search } from 'lucide-react';
 import {
   DndContext,
@@ -24,6 +24,8 @@ import { Switch } from '@/shared/components/ui/switch';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { cn } from '@/lib/utils';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
+import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
+import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 
 // ─────────────────────────────────────────────────────
 // SHARED MANAGE COLUMNS DRAWER
@@ -121,6 +123,8 @@ export function ManageColumnsDrawer({
   const [retryCount, setRetryCount] = useState(0);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
+  const owner = useId();
+  const wasOpen = useRef(false);
 
   // Sync local columns when drawer opens or effectiveColumns change
   useEffect(() => {
@@ -266,77 +270,40 @@ export function ManageColumnsDrawer({
   }, [onReset]);
 
   const handleClose = useCallback(() => {
+    if (saveState === 'saving') return;
     if (hasChanges) {
       setShowCloseConfirm(true);
     } else {
       onClose();
-      triggerRef?.current?.focus();
     }
-  }, [hasChanges, onClose, triggerRef]);
+  }, [hasChanges, onClose, saveState]);
 
   const handleConfirmClose = useCallback(() => {
     setShowCloseConfirm(false);
     onClose();
-    triggerRef?.current?.focus();
-  }, [onClose, triggerRef]);
+  }, [onClose]);
 
+  useModalInteraction({ open: isOpen, panelRef: drawerRef, owner, onClose: handleClose });
   useEffect(() => {
-    if (!isOpen) return;
-    function handleKeyDown(event: KeyboardEvent): void {
-      if (event.key === 'Escape') { event.preventDefault(); handleClose(); }
-    }
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, handleClose]);
-
-  // Focus trap
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const drawer = drawerRef.current;
-    if (!drawer) return;
-
-    const focusableSelector =
-      'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-    const firstFocusable = drawer.querySelector(focusableSelector) as HTMLElement | null;
-    firstFocusable?.focus();
-
-    function handleTabTrap(event: KeyboardEvent): void {
-      if (event.key !== 'Tab') return;
-
-      const focusableElements = drawer!.querySelectorAll(focusableSelector);
-      if (focusableElements.length === 0) return;
-
-      const first = focusableElements[0] as HTMLElement;
-      const last = focusableElements[focusableElements.length - 1] as HTMLElement;
-
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener('keydown', handleTabTrap);
-    return () => document.removeEventListener('keydown', handleTabTrap);
-  }, [isOpen]);
+    if (wasOpen.current && !isOpen) triggerRef?.current?.focus();
+    wasOpen.current = isOpen;
+  }, [isOpen, triggerRef]);
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <OverlayOwnerContext.Provider value={owner}><ThemedPortal><div className="fixed inset-0 z-50 flex justify-end">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-slate-950/40 backdrop-blur-sm transition-opacity"
         onClick={handleClose}
+        data-overlay-backdrop=""
         aria-hidden="true"
       />
       {/* Drawer Panel */}
       <div
         ref={drawerRef}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
         aria-label={`Manage Columns - ${module}`}
@@ -353,6 +320,7 @@ export function ManageColumnsDrawer({
           <button
             type="button"
             onClick={handleClose}
+            disabled={saveState === 'saving'}
             className={panelCloseClass + " grid place-items-center"}
             aria-label="Close drawer"
           >
@@ -436,10 +404,11 @@ export function ManageColumnsDrawer({
           </div>
         )}
         {/* Footer */}
-        <div className={panelFooterClass + " justify-between"}>
+        <div className={panelFooterClass + " flex-wrap justify-between"}>
           <button
             type="button"
             onClick={() => setShowResetConfirm(true)}
+            disabled={saveState === 'saving'}
             className={panelSecondaryActionClass}
           >
             Reset to Default
@@ -462,6 +431,6 @@ export function ManageColumnsDrawer({
       <ConfirmActionDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}
         title="Discard changes?" description="You have unsaved changes. Are you sure you want to close without saving?"
         variant="warning" confirmLabel="Discard" cancelLabel="Keep editing" onConfirm={handleConfirmClose} />
-    </div>
+    </div></ThemedPortal></OverlayOwnerContext.Provider>
   );
 }

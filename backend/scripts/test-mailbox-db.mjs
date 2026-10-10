@@ -16,7 +16,7 @@ const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
-const child = spawn(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', `src/integrations/gmail/${file}`], {
+const child = spawn(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', `src/integrations/gmail/${file}`, '--maxWorkers=1', '--pool=threads', '--testTimeout=20000', '--hookTimeout=30000'], {
   cwd: root, stdio: 'inherit', windowsHide: true, env: { ...process.env,
     DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_test_1?connection_limit=1&statement_cache_size=0`,
     JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'),

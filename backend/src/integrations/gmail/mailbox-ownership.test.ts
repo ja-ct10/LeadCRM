@@ -26,7 +26,7 @@ const configure = (value: unknown) => { mocks.config.gmail.testMailboxOverride =
 beforeEach(() => {
   vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02'));
   configure(entry);
-  mocks.readUser.mockResolvedValue({ ...user, id: user.userId, role: 'Sales', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() });
+  mocks.readUser.mockResolvedValue({ ...user, id: user.userId, role: 'Sales', status: 'ACTIVE', tenantStatus: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() });
   mocks.account.findUnique.mockResolvedValue(account);
   mocks.decrypt.mockReturnValue('test-token');
   mocks.state.deleteMany.mockResolvedValue({ count: 1 });

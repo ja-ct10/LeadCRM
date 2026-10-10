@@ -117,7 +117,7 @@ export function OrganizationSettingsForm() {
   if (error) return <div role="alert" className="space-y-3 text-sm"><p>{error}</p><button type="button" onClick={() => setReload(value => value + 1)} className="border rounded-lg px-3 py-2">Retry</button></div>;
   if (!draft || organization?.id !== tenant?.id) return <div role="status" aria-label="Loading organization settings" className="w-full max-w-none min-w-0 space-y-6">
     <PageHeader title="General" subtitle="Manage your organization's profile and contact details." />
-    <section className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
+    <section className="bg-card border border-border rounded-2xl p-5 space-y-5">
     <div><h3 className="text-sm font-semibold">Organization Details</h3><p className="text-xs text-slate-500 mt-1">Your organization's profile and contact details</p></div>
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-4" aria-hidden="true">{fields.map(([key]) => <div key={key} className={`space-y-1.5 ${key === 'address' ? 'lg:col-span-2' : ''}`}>
       <div className="h-4 w-28 rounded bg-slate-200 dark:bg-slate-700 animate-pulse motion-reduce:animate-none" />
@@ -129,7 +129,7 @@ export function OrganizationSettingsForm() {
   const accountStatus = organization && accountStatuses[organization.status];
   return <form onSubmit={save} noValidate className="w-full max-w-none min-w-0 space-y-6">
     <PageHeader title="General" subtitle="Manage your organization's profile and contact details." />
-    <section aria-labelledby="organization-details-title" className="bg-white dark:bg-[#25313D] border border-gray-200 dark:border-white/[0.06] rounded-2xl p-5 space-y-5">
+    <section aria-labelledby="organization-details-title" className="bg-card border border-border rounded-2xl p-5 space-y-5">
     <div>
       <div className="flex items-center justify-between gap-3">
         <h3 id="organization-details-title" className="text-sm font-semibold">Organization Details</h3>
@@ -159,14 +159,14 @@ export function OrganizationSettingsForm() {
             setFieldErrors(errors => ({ ...errors, [key]: issue?.message ?? '' }));
             setDraft(value => value && ({ ...value, [key]: next }));
           },
-          className: `w-full min-w-0 pl-9 pr-3 py-2 bg-gray-50 dark:bg-[#1B252F] border border-gray-200 dark:border-slate-700 rounded-lg text-sm text-slate-900 dark:text-white outline-none transition-colors ${editing && !saving ? 'focus:border-blue-500' : 'cursor-default'}`,
+          className: `w-full min-w-0 pl-9 pr-3 py-2 bg-muted border border-border rounded-lg text-sm text-foreground outline-none transition-colors ${editing && !saving ? 'focus:border-primary' : 'cursor-default'}`,
         };
         return <div key={key} className={`min-w-0 space-y-1.5 ${key === 'address' ? 'lg:col-span-2' : ''}`}>
           <label className="text-xs font-semibold text-slate-500 dark:text-slate-400" htmlFor={props.id}>{label}{props.required && <span aria-hidden="true" className="ml-1 text-red-500">*</span>}</label>
-          {key === 'phone' ? <div className="flex min-w-0 rounded-lg border border-gray-200 dark:border-slate-700 bg-gray-50 dark:bg-[#1B252F] focus-within:border-blue-500">
-            <span className="flex shrink-0 items-center border-r border-gray-200 dark:border-slate-700 px-3 text-sm text-slate-500">+63</span>
+          {key === 'phone' ? <div className="flex min-w-0 rounded-lg border border-border bg-muted focus-within:border-primary">
+            <span className="flex shrink-0 items-center border-r border-border px-3 text-sm text-slate-500">+63</span>
             <input {...props} type="tel" inputMode="tel" placeholder="(28) 123-3488"
-              className="w-full min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-slate-900 dark:text-white rounded-r-lg outline-none"
+              className="w-full min-w-0 flex-1 bg-transparent px-3 py-2 text-sm text-foreground rounded-r-lg outline-none"
               onBlur={() => setDraft(value => value && ({ ...value, phone: formatOrganizationPhone(value.phone) }))}
             />
           </div> : <div className="relative"><Icon aria-hidden="true" className="absolute left-3 top-3 w-3.5 h-3.5 text-slate-500" />
@@ -182,16 +182,16 @@ export function OrganizationSettingsForm() {
     </div>
     {editing && <div className="flex flex-wrap justify-end gap-2">
       <button type="button" disabled={saving} onClick={() => { setDraft(saved); setFieldErrors({}); setEditing(false); }} className="border rounded-lg px-4 py-2 text-sm">Cancel</button>
-      <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"><Save size={14} />{saving ? 'Saving…' : 'Save Changes'}</button>
+      <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-primary text-white rounded-lg text-sm disabled:opacity-50"><Save size={14} />{saving ? 'Saving…' : 'Save Changes'}</button>
     </div>}
     </section>
-    <Card role="region" aria-labelledby="system-information-title" className="bg-white dark:bg-[#25313D] border-gray-200 dark:border-white/[0.06] shadow-none backdrop-blur-none p-5 space-y-5">
+    <Card role="region" aria-labelledby="system-information-title" className="bg-card border-border shadow-none backdrop-blur-none p-5 space-y-5">
       <h3 id="system-information-title" className="text-sm font-semibold">System Information</h3>
       <dl className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="min-w-0 space-y-1.5">
           <dt className="text-xs font-semibold text-slate-500 dark:text-slate-400">Account ID</dt>
           <dd className="flex items-center gap-2 min-w-0">
-            <span className="min-w-0 break-all font-mono text-sm text-slate-900 dark:text-white">{organization?.id}</span>
+            <span className="min-w-0 break-all font-mono text-sm text-foreground">{organization?.id}</span>
             <Button type="button" variant="ghost" size="icon" className="shrink-0 h-8 w-8" aria-label="Copy Account ID" title="Copy Account ID" onClick={copyAccountId}><Copy aria-hidden="true" /></Button>
           </dd>
         </div>

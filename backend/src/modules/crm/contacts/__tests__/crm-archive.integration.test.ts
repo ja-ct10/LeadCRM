@@ -251,14 +251,14 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
   }
   it.each(extraTypes)('%s restores the original database row and preserves content/history', async type => {
     const row = await createExtra(type);
-    if (type === 'Campaign' || type === 'Workflow') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id && item.archivedAt === null)).toBe(true);
+    if (type === 'Campaign' || type === 'Workflow' || type === 'Role') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id && item.archivedAt === null)).toBe(true);
     else expect((await archiveRequest(`?type=${type}`)).status).toBe(400);
     const before = await readExtra(type, row.id);
     expect((await archiveRequest(`/${type}/${row.id}/restore`, 'PATCH')).status).toBe(200);
     const after = await readExtra(type, row.id);
     expect(after).toMatchObject({ ...before, isArchived: false, updatedAt: expect.any(Date) });
     if (type === 'Workflow') expect(after).toMatchObject({ isActive: false, status: 'PAUSED' });
-    if (type === 'Campaign' || type === 'Workflow') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id)).toBe(false);
+    if (type === 'Campaign' || type === 'Workflow' || type === 'Role') expect((await archiveRequest(`?type=${type}`)).body.data.some((item: any) => item.id === row.id)).toBe(false);
     expect((await archiveRequest(`/${type}/${row.id}/restore`, 'PATCH')).status).toBe(404);
     expect(await db.auditLog.count({ where: { entityId: row.id, action: type.toLowerCase() + '.restored' } })).toBe(1);
   });
@@ -275,7 +275,7 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     expect((await archiveRequest(`/User/${randomUUID()}/restore`, 'PATCH')).status).toBe(400);
     const role = await db.roleDefinition.create({ data: { tenantId, name: 'Guest', isArchived: true } });
     expect((await archiveRequest(`/Role/${role.id}/restore`, 'PATCH')).status).toBe(403);
-    expect((await archiveRequest('?type=Role')).status).toBe(400);
+    expect((await archiveRequest('?type=Role')).status).toBe(200);
   });
   it('searches before pagination across allowed types and preserves tenant/RBAC scope', async () => {
     const marker = 'Search' + randomUUID();

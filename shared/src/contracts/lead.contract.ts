@@ -30,6 +30,6 @@ export type UpdateLeadInput = z.infer<typeof UpdateLeadSchema>;
 export const DeactivateUserSchema = z.object({ replacementAgentId: z.string().uuid().nullable().optional() }).strict();
 export interface DeactivationImpact {
   userId: string;
-  counts: { leads: number; contacts: number; accounts: number; deals: number };
+  counts: { leads: number; contacts: number; accounts: number; deals: number; tasks: number };
   total: number;
 }

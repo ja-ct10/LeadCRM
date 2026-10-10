@@ -117,9 +117,9 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   // ── Shared styles ──────────────────────────────────────────────────────────
   const cardCls = 'border border-gray-200 dark:border-white/[0.08] rounded-xl p-4 bg-white dark:bg-white/[0.02]';
   const radioCls = 'w-full text-left px-4 py-3 rounded-xl border transition-all text-sm';
-  const radioActiveCls = 'border-blue-500 bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300';
-  const radioInactiveCls = 'border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-blue-500/30';
-  const inputCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all';
+  const radioActiveCls = 'border-primary bg-blue-50 dark:bg-primary/10 text-blue-700 dark:text-blue-300';
+  const radioInactiveCls = 'border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-primary/30';
+  const inputCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all';
 
   // ── Step Renderers ─────────────────────────────────────────────────────────
 
@@ -283,7 +283,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
               <React.Fragment key={s.num}>
                 <div className={cn(
                   'flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-medium transition-colors',
-                  step === s.num ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-300' :
+                  step === s.num ? 'bg-blue-50 dark:bg-primary/10 text-blue-700 dark:text-blue-300' :
                   step > s.num ? 'text-green-600 dark:text-green-400' : 'text-slate-400 dark:text-slate-500'
                 )}>
                   {step > s.num ? <Check size={12} /> : <span>{s.num}</span>}
@@ -321,7 +321,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
               className={cn(
                 'min-h-[42px] px-5 py-2.5 text-sm font-semibold rounded-xl transition-all flex items-center gap-1',
                 canGoNext()
-                  ? 'bg-blue-600 text-white hover:bg-blue-700'
+                  ? 'bg-primary text-white hover:bg-primary/90'
                   : 'bg-slate-100 dark:bg-white/[0.05] text-slate-400 cursor-not-allowed'
               )}
             >

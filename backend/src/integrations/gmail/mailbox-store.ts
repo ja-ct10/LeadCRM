@@ -36,7 +36,7 @@ export async function listStoredMailbox(tenantId: string, userId: string, input:
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw new AppError('Invalid mailbox page.', 400);
   if (options.filter === 'scheduled') {
     const visibleDrafts = await prisma.mailboxMessage.findMany({ where: base, select: { draftId: true } });
-    const where: Prisma.ScheduledMailboxEmailWhereInput = { tenantId, accountId: account.id, createdById: userId, status: { not: 'sent' },
+    const where: Prisma.ScheduledMailboxEmailWhereInput = { tenantId, accountId: account.id, createdById: userId, status: { notIn: ['sent', 'cancelled'] },
       draftId: { in: visibleDrafts.flatMap(row => row.draftId ?? []) },
       ...(options.query ? { OR: [{ subject: { contains: options.query, mode: 'insensitive' } }, { recipients: { has: options.query.toLowerCase() } }] } : {}) };
     const rows = await prisma.scheduledMailboxEmail.findMany({ where, orderBy: [{ scheduledAt: options.sort === 'oldest' ? 'asc' : 'desc' }, { id: 'asc' }], skip: offset, take: options.maxResults + 1 });

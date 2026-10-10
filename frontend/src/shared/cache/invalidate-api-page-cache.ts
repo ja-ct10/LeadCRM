@@ -16,6 +16,7 @@ export function invalidateApiPageCache(path: string): void {
     const type = path.split('/')[3];
     if (type === 'Role') { clearPageCache(); return; }
     if (type === 'Pipeline') { modules.add('pipeline'); modules.add('pipelines'); }
+    if (type === 'Task') { modules.add('activities'); modules.add('reports'); }
     if (type === 'Workflow') modules.add('workflows');
     if (type === 'Campaign' || type === 'Template') { modules.add('campaigns'); modules.add('templates'); }
   }
@@ -50,6 +51,9 @@ export function invalidateApiPageCache(path: string): void {
   if (area === 'operations') {
     modules.add('activities');
     modules.add('reports');
+  }
+  if (area === 'administration' && resource === 'groups') {
+    ['users', 'groups', 'workflows'].forEach(module => modules.add(module));
   }
   if (area === 'administration' && (resource === 'roles' || resource === 'users')) {
     clearPageCache();

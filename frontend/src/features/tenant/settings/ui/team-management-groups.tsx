@@ -40,6 +40,9 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const [loaded, setLoaded] = useState(USE_MOCK_DATA);
   const [loadError, setLoadError] = useState('');
   const loadingRef = useRef(false);
+  const reloadPending = useRef(false);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modal, setModal] = useState<'create' | 'rename' | 'members' | null>(null);
   const [name, setName] = useState('');
@@ -52,13 +55,21 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const { confirm, close, dialogProps } = useConfirmDialog();
   const active = groups.find(group => group.id === activeId);
   const loadGroups = useCallback(async () => {
-    if (loadingRef.current) return;
+    if (loadingRef.current) { reloadPending.current = true; return; }
     loadingRef.current = true; setLoading(true); setLoadError('');
-    try { const result = await groupsApi.getAll(); setGroups(result.data); setLoaded(true); }
-    catch (error) { setLoadError(errorMessage(error)); }
-    finally { loadingRef.current = false; setLoading(false); }
+    try {
+      do {
+        reloadPending.current = false;
+        const result = await groupsApi.getAll();
+        if (!mounted.current) return;
+        setGroups(result.data); setLoaded(true);
+      } while (reloadPending.current && mounted.current);
+    }
+    catch (error) { if (mounted.current) { setLoadError(errorMessage(error)); if ([401, 403].includes((error as { status?: number }).status ?? 0)) { setGroups([]); setLoaded(false); } } }
+    finally { loadingRef.current = false; if (mounted.current) setLoading(false); }
   }, []);
   useEffect(() => { if (!USE_MOCK_DATA) void loadGroups(); }, [loadGroups]);
+  useEffect(() => { const changed = () => { if (!USE_MOCK_DATA) void loadGroups(); }; window.addEventListener('leadcrm:groups-changed', changed); return () => window.removeEventListener('leadcrm:groups-changed', changed); }, [loadGroups]);
 
   const mutate = async (action: () => Promise<void>, propagateError = false) => {
     if (busyRef.current) return;
@@ -168,9 +179,9 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       <DataGrid ariaLabel="Group members" columns={columns} data={visibleMembers} getRowId={member => member.id} height="auto" emptyMessage={members.length ? 'No members match your search.' : canManageMembers ? 'No members yet. Use Add Members to add users to this group.' : 'No members yet.'} />
     </> : <>
       <ModuleTableToolbar label="Groups" search={search} onSearch={setSearch} placeholder="Search groups..." refreshing={loading} onRefresh={loadGroups} />
-      {loading ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
+      {loading && !loaded ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
         {visibleGroups.map(group => <div key={group.id} className="flex min-w-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 last:border-0 px-3 py-2">
-          <button aria-label={`Open ${group.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500" onClick={() => { setActiveId(group.id); setMemberSearch(''); }}>
+          <button aria-label={`Open ${group.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => { setActiveId(group.id); setMemberSearch(''); }}>
             <span className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-2 text-blue-500"><Users size={16} /></span>
             <span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{group.name}</span><span className="text-xs text-slate-500">{group.members.length} member{group.members.length === 1 ? '' : 's'}</span></span>
           </button>
@@ -185,7 +196,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         <form onSubmit={save} noValidate className="mt-5 space-y-4">
           {modal !== 'members' && <div><label htmlFor="group-name" className="mb-2 block text-xs font-semibold text-slate-700 dark:text-slate-300">Name <span className="text-red-500" aria-hidden="true">*</span></label>
             <input id="group-name" required autoFocus maxLength={100} disabled={busy} value={name} onChange={event => { setName(event.target.value); setNameError(''); }} aria-invalid={!!nameError} aria-describedby={nameError ? 'group-name-error' : undefined}
-              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500" />
+              className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary" />
             {nameError && <p id="group-name-error" role="alert" className="mt-1 text-xs text-red-500">{nameError}</p>}
           </div>}
           {modal !== 'rename' && canManageMembers && <div className="space-y-2">
@@ -193,7 +204,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
             <ModuleSearchInput value={userSearch} onChange={setUserSearch} placeholder="Search users..." disabled={busy} />
             <div className="max-h-52 overflow-y-auto space-y-1">
               {availableUsers.map(user => <label key={user.id} className="flex min-w-0 items-center gap-2 rounded-lg px-1 py-2 hover:bg-slate-50 dark:hover:bg-slate-800">
-                <input type="checkbox" disabled={busy} checked={selectedIds.includes(user.id)} onChange={() => setSelectedIds(previous => previous.includes(user.id) ? previous.filter(id => id !== user.id) : [...previous, user.id])} aria-label={`Select ${user.firstName} ${user.lastName}`} className="shrink-0 accent-blue-600" />
+                <input type="checkbox" disabled={busy} checked={selectedIds.includes(user.id)} onChange={() => setSelectedIds(previous => previous.includes(user.id) ? previous.filter(id => id !== user.id) : [...previous, user.id])} aria-label={`Select ${user.firstName} ${user.lastName}`} className="shrink-0 accent-primary" />
                 <AvatarCell name={`${user.firstName} ${user.lastName}`} subtitle={user.email} initials={`${user.firstName?.[0] ?? ''}${user.lastName?.[0] ?? ''}`} />
               </label>)}
               {!availableUsers.length && <p className="py-3 text-xs text-slate-500">No users available.</p>}

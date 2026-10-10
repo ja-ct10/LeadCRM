@@ -21,13 +21,13 @@ export function NotificationContent({ notification }: { notification: Notificati
   const Icon = notificationIcon(notification.type);
   return <>
     <span className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-xl sm:h-10 sm:w-10',
-      notification.isRead ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-blue-100 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400')}>
+      notification.isRead ? 'bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400' : 'bg-blue-100 text-primary dark:bg-primary/15 dark:text-primary')}>
       <Icon className="h-[18px] w-[18px]" aria-hidden="true" />
     </span>
     <span className="min-w-0 flex-1">
       <span className="flex items-center gap-2">
         <span className={cn('text-sm text-foreground [overflow-wrap:anywhere]', notification.isRead ? 'font-medium' : 'font-semibold')}>{notification.title}</span>
-        {!notification.isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-600" aria-label="Unread notification" />}
+        {!notification.isRead && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary" aria-label="Unread notification" />}
       </span>
       {notification.body && <span className="mt-0.5 block text-xs leading-relaxed text-muted-foreground [overflow-wrap:anywhere]">{notification.body}</span>}
       <span className="mt-1.5 flex items-center gap-1 text-[11px] text-muted-foreground">

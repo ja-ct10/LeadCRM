@@ -16,16 +16,17 @@ type TeamTab = 'Users' | 'Groups';
 // ── TeamManagement ─────────────────────────────────────────────────────────
 
 export function TeamManagement(): React.ReactElement {
-  const { user: currentUser } = useAuth();
+  const { user: currentUser, userCan } = useAuth();
   const { users } = useData();
   const tenantId = currentUser?.tenantId ?? '';
 
-  const isClientAdmin = currentUser?.role?.trim().toLowerCase() === 'client admin';
-  const visibleTabs: TeamTab[] = isClientAdmin ? ['Users', 'Groups'] : ['Groups'];
-  const [activeTab, setActiveTab] = useState<TeamTab>('Groups');
+  const canViewUsers = userCan('users', 'canView'), canViewGroups = userCan('groups', 'canView');
+  const visibleTabs: TeamTab[] = [...(canViewUsers ? ['Users' as const] : []), ...(canViewGroups ? ['Groups' as const] : [])];
+  const [activeTab, setActiveTab] = useState<TeamTab>(canViewUsers ? 'Users' : 'Groups');
+  const selectedTab = visibleTabs.includes(activeTab) ? activeTab : visibleTabs[0];
   const [loadedUsers, setLoadedUsers] = useState<User[] | null>(null);
   useEffect(() => { setLoadedUsers(null); }, [tenantId]);
-  useEffect(() => { setActiveTab(isClientAdmin ? 'Users' : 'Groups'); }, [isClientAdmin, tenantId]);
+  useEffect(() => { setActiveTab(canViewUsers ? 'Users' : 'Groups'); }, [tenantId, currentUser?.id]);
 
   // These are computed here and passed down to sub-tabs that need them
   const tenantUsers = useMemo(
@@ -48,19 +49,19 @@ export function TeamManagement(): React.ReactElement {
               onClick={() => setActiveTab(tab)}
               className={cn(
                 'relative px-2 sm:px-4 py-2.5 text-xs font-semibold transition-colors cursor-pointer flex items-center gap-1.5',
-                activeTab === tab
+                selectedTab === tab
                   ? 'text-slate-900 dark:text-white'
                   : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300',
               )}
             >
               {tab}
               {count !== null && (
-                <span className={cn('text-[10px] font-bold', activeTab === tab ? 'text-slate-900 dark:text-white' : 'text-slate-400')}>
+                <span className={cn('text-[10px] font-bold', selectedTab === tab ? 'text-slate-900 dark:text-white' : 'text-slate-400')}>
                   {count}
                 </span>
               )}
-              {activeTab === tab && (
-                <motion.div layoutId="team-tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+              {selectedTab === tab && (
+                <motion.div layoutId="team-tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
               )}
             </button>
           );
@@ -73,15 +74,16 @@ export function TeamManagement(): React.ReactElement {
   return (
     <div className="min-w-0 w-full space-y-4">
       <PageHeader title="Team Management" subtitle="Manage users and groups within Camxian Technologies." />
+      {!visibleTabs.length && <p role="alert">You do not have permission to view users or groups.</p>}
       {/* Tab content */}
-      <AnimatePresence mode="wait">
-        {activeTab === 'Users' && isClientAdmin && (
-          <motion.div key="users" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+      <AnimatePresence key={`${tenantId}:${currentUser?.id}:${canViewUsers}:${canViewGroups}`} mode="wait">
+        {selectedTab === 'Users' && currentUser && (
+          <motion.div key={`users:${tenantId}:${currentUser.id}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <UsersSubTab renderHeader={renderHeader} onUsersLoaded={setLoadedUsers} />
           </motion.div>
         )}
-        {activeTab === 'Groups' && currentUser && (
-          <motion.div key="groups" initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
+        {selectedTab === 'Groups' && currentUser && (
+          <motion.div key={`groups:${tenantId}:${currentUser.id}`} initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
             <GroupsSubTab renderHeader={renderHeader} tenantUsers={tenantUsers} />
           </motion.div>
         )}

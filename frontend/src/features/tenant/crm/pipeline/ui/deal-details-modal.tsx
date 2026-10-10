@@ -16,6 +16,7 @@ import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { toast } from 'sonner';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { DealContactsField } from '@/features/tenant/crm/deals/ui/deal-contacts-field';
+import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -65,7 +66,7 @@ export interface DealDetailsModalProps {
 
 const TASK_STATUS_STYLES: Record<TaskStatus, string> = {
   pending:      'bg-slate-100 text-slate-600 dark:bg-white/5 dark:text-slate-400',
-  'in_progress':'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400',
+  'in_progress':'bg-blue-100 text-blue-700 dark:bg-primary/10 dark:text-primary',
   blocked:      'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400',
   completed:    'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400',
   cancelled:    'bg-slate-100 text-slate-400 dark:bg-white/5 line-through',
@@ -193,31 +194,15 @@ export function DealDetailsModal({
     }`;
 
   return (
-    <>
-      {/* Backdrop */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        onClick={onClose}
-        className="fixed inset-0 bg-black/40 backdrop-blur-[2px] z-[60]"
-      />
-
-      {/* Drawer panel */}
-      <motion.div
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-        className="fixed right-0 top-0 h-full w-full max-w-lg bg-gray-50 dark:bg-slate-900 border-l border-gray-300 dark:border-white/[0.1] z-[70] shadow-2xl flex flex-col"
-      >
+    <Sheet open onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent showClose={false} aria-label="Deal details" layerClassName="z-[70]" className="max-w-lg sm:max-w-lg bg-gray-50 dark:bg-slate-900 border-l border-gray-300 dark:border-white/[0.1] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="p-6 border-b border-gray-200 dark:border-white/[0.05] flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${
               deal.priority === 'High'   ? 'bg-red-500/10 text-red-400' :
               deal.priority === 'Medium' ? 'bg-orange-500/10 text-orange-400' :
-                                           'bg-blue-500/10 text-blue-400'
+                                           'bg-primary/10 text-blue-400'
             }`}>
               <Building size={20} />
             </div>
@@ -235,19 +220,19 @@ export function DealDetailsModal({
             <button key={tab} onClick={() => setActiveTab(tab)} className={tabClass(tab)}>
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
               {tab === 'tasks' && taskCount > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-500/20 text-blue-400">
+                <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-primary/20 text-blue-400">
                   {taskCount}
                 </span>
               )}
               {activeTab === tab && (
-                <motion.div layoutId="dealModalTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
+                <motion.div layoutId="dealModalTab" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
               )}
             </button>
           ))}
         </div>
 
         {/* Scrollable content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+        <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 space-y-6 custom-scrollbar">
 
           {/* ── OVERVIEW TAB ─────────────────────────────────────────────── */}
           {activeTab === 'overview' && (
@@ -263,7 +248,7 @@ export function DealDetailsModal({
                   <div className="flex items-center gap-2">
                     <div className={`w-2 h-2 rounded-full ${
                       deal.priority === 'High' ? 'bg-red-500' :
-                      deal.priority === 'Medium' ? 'bg-orange-500' : 'bg-blue-500'
+                      deal.priority === 'Medium' ? 'bg-orange-500' : 'bg-primary'
                     }`} />
                     <p className="text-sm font-semibold text-slate-900 dark:text-white">{deal.priority}</p>
                   </div>
@@ -272,13 +257,13 @@ export function DealDetailsModal({
 
               {/* Automation block */}
               {isAutomatedOnly && (
-                <div className="bg-gradient-to-br from-blue-500/10 to-indigo-500/5 border border-blue-500/25 rounded-2xl p-5 space-y-3">
+                <div className="bg-gradient-to-br from-blue-500/10 to-indigo-500/5 border border-primary/25 rounded-2xl p-5 space-y-3">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
                       <Shield size={16} className="text-blue-400 animate-pulse" />
                       <h4 className="text-xs font-bold text-blue-400 uppercase tracking-wider">Process Automation</h4>
                     </div>
-                    <span className="text-[10px] bg-blue-500/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-blue-500/10">Active Enforcer</span>
+                    <span className="text-[10px] bg-primary/20 text-blue-300 font-semibold px-2 py-0.5 rounded-full border border-primary/10">Active Enforcer</span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                     Manual stage drags are disabled. This deal progresses automatically based on verified sales workflow rules.
@@ -290,7 +275,7 @@ export function DealDetailsModal({
                     </div>
                     <div className="flex gap-1 w-full h-1.5 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
                       {pipeline.stages.map((st, idx) => (
-                        <div key={st.id} className={`h-full flex-1 transition-all duration-300 ${idx <= currentStageIdx ? 'bg-blue-500' : 'bg-gray-300 dark:bg-white/10'}`} />
+                        <div key={st.id} className={`h-full flex-1 transition-all duration-300 ${idx <= currentStageIdx ? 'bg-primary' : 'bg-gray-300 dark:bg-white/10'}`} />
                       ))}
                     </div>
                   </div>
@@ -318,7 +303,7 @@ export function DealDetailsModal({
                 <form onSubmit={handleSaveEdit} className="space-y-4 bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] p-5 rounded-2xl">
                   <div className="flex items-center justify-between border-b border-gray-200 dark:border-white/[0.05] pb-2">
                     <h4 className="text-xs font-bold text-slate-500 uppercase tracking-widest">Edit Deal Fields</h4>
-                    <span className="text-[10px] text-blue-400 font-semibold px-2 py-0.5 bg-blue-500/10 rounded-full">Editing</span>
+                    <span className="text-[10px] text-blue-400 font-semibold px-2 py-0.5 bg-primary/10 rounded-full">Editing</span>
                   </div>
 
                   <div>
@@ -419,7 +404,7 @@ export function DealDetailsModal({
                       Cancel
                     </button>
                     <button type="submit"
-                      className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-500 transition-all shadow-md shadow-blue-500/10">
+                      className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-all shadow-md shadow-primary/10">
                       Save Changes
                     </button>
                   </div>
@@ -443,7 +428,7 @@ export function DealDetailsModal({
                           : 'Unassigned' },
                       { icon: <Calendar size={14} />, label: 'Close Date', value: deal.expectedCloseDate || 'Not set' },
                       { icon: <Tag size={14} />, label: 'Stage',
-                        value: <span className="bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">{currentStageName}</span> },
+                        value: <span className="bg-primary/10 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">{currentStageName}</span> },
                       { icon: <span>🌐</span>, label: 'Contact Source', value: deal.leadSource || '—' },
                       { icon: <span>🏭</span>, label: 'Industry',       value: deal.industry    || '—' },
                       { icon: <span>📌</span>, label: 'Product Interests', value: deal.productInterests?.length ? deal.productInterests.join(', ') : '—' },
@@ -475,9 +460,9 @@ export function DealDetailsModal({
                 <div className="space-y-3 pt-1">
                   <h4 className="text-xs font-bold text-emerald-500 uppercase tracking-widest">Next Steps</h4>
                   <button onClick={() => onNavigate('workflows')}
-                    className="w-full flex items-center justify-between p-4 bg-blue-500/10 border border-blue-500/20 rounded-2xl hover:bg-blue-500/20 transition-all group">
+                    className="w-full flex items-center justify-between p-4 bg-primary/10 border border-primary/20 rounded-2xl hover:bg-primary/20 transition-all group">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                      <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
                         <Rocket size={20} />
                       </div>
                       <div className="text-left">
@@ -521,7 +506,7 @@ export function DealDetailsModal({
                         <div key={act.id} className="flex gap-3">
                           <div className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 ${
                             act.type === 'call'    ? 'bg-green-500/20 border-green-500/30 text-green-400' :
-                            act.type === 'email'   ? 'bg-blue-500/20 border-blue-500/30 text-blue-400' :
+                            act.type === 'email'   ? 'bg-primary/20 border-primary/30 text-blue-400' :
                             act.type === 'meeting' ? 'bg-purple-500/20 border-purple-500/30 text-purple-400' :
                                                      'bg-slate-500/20 border-slate-500/30 text-slate-400'
                           }`}>
@@ -551,7 +536,7 @@ export function DealDetailsModal({
                     <button key={type} type="button" onClick={() => setNewActivity({ ...newActivity, type })}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors border ${
                         newActivity.type === type
-                          ? 'bg-blue-500/20 text-blue-400 border-blue-500/30'
+                          ? 'bg-primary/20 text-blue-400 border-primary/30'
                           : 'bg-white dark:bg-white/[0.02] text-slate-500 border-transparent hover:bg-gray-50 dark:hover:bg-white/[0.05]'
                       }`}>
                       {type === 'call' ? <PhoneCall size={12} /> : type === 'email' ? <Mail size={12} /> : type === 'meeting' ? <Users size={12} /> : <MessageSquare size={12} />}
@@ -582,7 +567,7 @@ export function DealDetailsModal({
                   className="w-full bg-white dark:bg-white/[0.02] border border-gray-200 dark:border-white/[0.05] rounded-xl p-3 text-sm text-slate-900 dark:text-white focus:outline-none resize-none" />
                 <div className="flex justify-end">
                   <button type="submit"
-                    className="px-4 py-2 bg-blue-600 text-white text-xs font-bold rounded-xl hover:bg-blue-500 transition-all">
+                    className="px-4 py-2 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary/90 transition-all">
                     Log Activity
                   </button>
                 </div>
@@ -596,7 +581,7 @@ export function DealDetailsModal({
                       <div key={act.id} className="flex gap-3">
                         <div className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 ${
                           act.type === 'call'    ? 'bg-green-500/20 border-green-500/30 text-green-400' :
-                          act.type === 'email'   ? 'bg-blue-500/20 border-blue-500/30 text-blue-400' :
+                          act.type === 'email'   ? 'bg-primary/20 border-primary/30 text-blue-400' :
                           act.type === 'meeting' ? 'bg-purple-500/20 border-purple-500/30 text-purple-400' :
                                                    'bg-slate-500/20 border-slate-500/30 text-slate-400'
                         }`}>
@@ -642,7 +627,7 @@ export function DealDetailsModal({
                         <div className={`w-6 h-6 rounded-full border flex items-center justify-center shrink-0 z-10 text-xs ${
                           isWon  ? 'bg-emerald-500/20 border-emerald-500/30 text-emerald-400' :
                           isLost ? 'bg-red-500/20 border-red-500/30 text-red-400' :
-                                   'bg-blue-500/20 border-blue-500/30 text-blue-400'
+                                   'bg-primary/20 border-primary/30 text-blue-400'
                         }`}>
                           <ArrowRight size={12} />
                         </div>
@@ -677,7 +662,7 @@ export function DealDetailsModal({
           {activeTab === 'automation' && (
             <div className="space-y-3 p-4 text-sm text-slate-600 dark:text-slate-300">
               <p>Workflow activity is recorded in this deal's timeline. Open Workflows to inspect persisted runs and step results.</p>
-              <a className="text-blue-600 dark:text-blue-400 underline" href="/automation/workflows">Open workflow runs</a>
+              <a className="text-primary dark:text-primary underline" href="/automation/workflows">Open workflow runs</a>
             </div>
           )}
         </div>{/* end scrollable content */}
@@ -690,7 +675,7 @@ export function DealDetailsModal({
           </button>
           {canEdit && (
             <button type="button" onClick={handleOpenEdit}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-blue-500/20">
+              className="flex-1 bg-primary hover:bg-primary/90 text-white py-2.5 rounded-xl text-sm font-semibold transition-all shadow-lg shadow-primary/20">
               Edit Deal
             </button>
           )}
@@ -702,7 +687,7 @@ export function DealDetailsModal({
           )}
         </div>
 
-      </motion.div>
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }

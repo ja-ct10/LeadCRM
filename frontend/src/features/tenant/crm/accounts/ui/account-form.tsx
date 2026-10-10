@@ -239,7 +239,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 aria-invalid={!!errors.address}
                 aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={2}
-                className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
+                className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
                 placeholder="123 Main Street, Suite 100"
               />
             </div>
@@ -378,7 +378,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               aria-invalid={!!errors.notes}
               aria-describedby={errors.notes ? `${fieldId}-notes-error` : undefined}
               rows={3}
-              className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none ${errors.notes ? inputErrorCls : ''}`}
+              className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.notes ? inputErrorCls : ''}`}
               placeholder="General notes about this account..."
             />
           </FieldWrap>
@@ -390,7 +390,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
               aria-invalid={!!errors.internalNotes}
               aria-describedby={errors.internalNotes ? `${fieldId}-internalNotes-error` : undefined}
               rows={3}
-              className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none ${errors.internalNotes ? inputErrorCls : ''}`}
+              className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.internalNotes ? inputErrorCls : ''}`}
               placeholder="Internal-only notes (not visible to the client)..."
             />
           </FieldWrap>}
@@ -411,7 +411,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         <button
           type="submit"
           disabled={customFields.blocked || isSubmitting}
-          className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25 disabled:opacity-50 disabled:cursor-not-allowed"
+          className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Account'}
         </button>

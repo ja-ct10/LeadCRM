@@ -9,6 +9,7 @@ export default defineConfig({
     environment: 'jsdom',
   },
   resolve: {
+    extensions: ['.ts', '.tsx', '.mjs', '.js', '.cjs', '.json'],
     alias: {
       '@/features/tenant': path.resolve(__dirname, './src/features/tenant'),
       '@/shared': path.resolve(__dirname, './src/shared'),

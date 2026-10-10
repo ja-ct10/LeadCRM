@@ -1,9 +1,11 @@
 'use client';
 import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
-import React, { ReactNode, useEffect } from 'react';
+import React, { ReactNode, useId, useRef } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
+import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 
 interface SlidingDrawerProps {
   isOpen: boolean;
@@ -26,31 +28,12 @@ export function SlidingDrawer({
   width = 'w-full max-w-lg md:max-w-xl',
   headerActions,
 }: SlidingDrawerProps) {
-  // Lock body scrolling when the drawer is open
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
-    return () => {
-      document.body.style.overflow = 'auto';
-    };
-  }, [isOpen]);
-
-  // Handle ESC key press to close the drawer
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isOpen) {
-        onClose();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose]);
+  const owner = useId();
+  const panelRef = useRef<HTMLDivElement>(null);
+  useModalInteraction({ open: isOpen, panelRef, owner, onClose });
 
   return (
-    <AnimatePresence>
+    <OverlayOwnerContext.Provider value={owner}><ThemedPortal><AnimatePresence>
       {isOpen && (
         <>
           {/* Backdrop Blur Overlay */}
@@ -60,12 +43,18 @@ export function SlidingDrawer({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
+            aria-hidden="true"
             className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-[100] cursor-pointer"
           />
 
           {/* Sliding Drawer Container */}
           <motion.div
+            ref={panelRef}
             id="sliding-drawer-container"
+            role="dialog"
+            aria-modal="true"
+            aria-label={title || 'Record editor'}
+            tabIndex={-1}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -103,6 +92,6 @@ export function SlidingDrawer({
           </motion.div>
         </>
       )}
-    </AnimatePresence>
+    </AnimatePresence></ThemedPortal></OverlayOwnerContext.Provider>
   );
 }

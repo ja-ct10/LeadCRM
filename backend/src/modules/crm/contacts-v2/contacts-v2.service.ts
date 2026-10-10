@@ -10,7 +10,8 @@ import { recordChanges, customFieldChangeTracker } from '../record-updates';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
-  return paginate(result.data.map(contact => ({ ...contact, status: normalizeCrmStatus(contact.status) })), result.total, { page: result.page, limit: result.limit });
+  const response = paginate(result.data.map(contact => ({ ...contact, status: normalizeCrmStatus(contact.status) })), result.total, { page: result.page, limit: result.limit });
+  return { ...response, meta: { ...response.meta, facets: result.facets } };
 }
 
 export async function getContactById(id: string, tenantId: string) {

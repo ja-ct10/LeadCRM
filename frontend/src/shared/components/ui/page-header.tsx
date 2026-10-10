@@ -21,7 +21,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   badge,
 }) => {
   return (
-    <div className={`flex min-w-0 items-start justify-between gap-3 mb-4 ${className}`}>
+    <div className={`flex min-w-0 flex-col items-stretch justify-between gap-3 mb-4 sm:flex-row sm:flex-wrap sm:items-start ${className}`}>
       <div className="flex min-w-0 flex-1 items-start gap-3">
         {backButtonProps && (
           <div className="pt-0.5">
@@ -43,7 +43,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         </div>
       </div>
       {actions && (
-        <div className="flex items-center gap-2.5 shrink-0">
+        <div data-page-actions className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5">
           {actions}
         </div>
       )}

@@ -19,6 +19,7 @@ import {
 import { Button } from '@/shared/components/ui/button';
 import WorkflowBuilder from './visual-workflow-builder';
 import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
+import { toast } from 'sonner';
 export default function WorkflowBuilderPage() {
   const router = useRouter(),
     params = useParams<{ id?: string }>(),
@@ -41,6 +42,21 @@ export default function WorkflowBuilderPage() {
   const id = params.id === 'new' ? undefined : params.id,
     recipe = query.get('template');
   const createdId = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (!tenant?.id || !canView) return;
+    let cancelled = false, pending = false;
+    const refreshOptions = () => {
+      if (pending) return;
+      pending = true;
+      workflowsApi.options().then(response => {
+        if (!cancelled) setLoaded(current => current ? { ...current, options: response.data } : current);
+      }).catch(() => {
+        if (!cancelled) toast.error('Assignment choices could not refresh. Your workflow edits are preserved.');
+      }).finally(() => { pending = false; });
+    };
+    window.addEventListener('leadcrm:groups-changed', refreshOptions);
+    return () => { cancelled = true; window.removeEventListener('leadcrm:groups-changed', refreshOptions); };
+  }, [tenant?.id, canView]);
   useEffect(() => {
     if (!tenant?.id || !canView || (!id && !canCreate)) return;
     let cancelled = false;

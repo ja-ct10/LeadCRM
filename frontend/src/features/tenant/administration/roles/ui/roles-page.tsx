@@ -73,7 +73,7 @@ export default function RolesPage(): React.ReactElement {
             onClick={() => setActiveTab(t.id)}
             className={`px-4 py-2.5 text-[13px] font-medium border-b-2 -mb-[1px] transition-colors ${
               activeTab === t.id
-                ? 'border-blue-600 dark:border-blue-400 text-blue-600 dark:text-blue-400'
+                ? 'border-primary dark:border-primary text-primary dark:text-primary'
                 : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
             }`}
           >
@@ -93,7 +93,7 @@ export default function RolesPage(): React.ReactElement {
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search roles…"
-              className="w-full h-9 pl-9 pr-3 text-[13px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+              className="w-full h-9 pl-9 pr-3 text-[13px] rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary"
             />
           </div>
 
@@ -122,7 +122,7 @@ export default function RolesPage(): React.ReactElement {
                 {searchQuery ? `No roles match "${searchQuery}"` : 'No roles created yet.'}
               </p>
               {canCreate && !searchQuery && (
-                <button type="button" onClick={() => openBuilder()} className="mt-3 text-[12px] text-blue-600 dark:text-blue-400 underline">
+                <button type="button" onClick={() => openBuilder()} className="mt-3 text-[12px] text-primary dark:text-primary underline">
                   Create your first role
                 </button>
               )}

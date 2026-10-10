@@ -1,6 +1,6 @@
 import { notificationActor } from '../../modules/notifications/notification-actor';
 import { requireEmployeeAccount } from '../../core/auth/account-access';
-import { isOnboardingComplete } from '@leadcrm/shared';
+import { isOnboardingComplete, isWorkspaceAccessible } from '@leadcrm/shared';
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import type { AuthUser } from '@leadcrm/shared';
@@ -54,8 +54,8 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     requireEmployeeAccount(user);
     const authPath = req.baseUrl?.endsWith('/auth') ? req.path : '';
     const recovery = ['/me', '/change-password', '/logout'].includes(authPath);
-    if (['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '')) {
-      throw new AppError('Workspace access is suspended.', 403);
+    if (!isWorkspaceAccessible(user.tenantStatus)) {
+      throw new AppError('Workspace access is unavailable.', 403);
     }
     if (user.mustChangePassword && !recovery) {
       throw new AppError('Change your temporary password first.', 403, 'PASSWORD_CHANGE_REQUIRED');

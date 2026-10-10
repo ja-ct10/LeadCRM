@@ -3,12 +3,11 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.AVATAR_MAX_BYTES = exports.AVATAR_MIME_TYPES = exports.UpdateSelfProfileSchema = exports.SelfProfileFieldSchemas = exports.ProfilePhoneInputSchema = exports.PROFILE_FIELD_LIMIT_ERRORS = exports.PROFILE_FIELD_LIMITS = void 0;
 const zod_1 = require("zod");
 const ph_phone_1 = require("../validation/ph-phone");
-exports.PROFILE_FIELD_LIMITS = { firstName: 50, lastName: 50, jobTitle: 100, department: 100 };
+exports.PROFILE_FIELD_LIMITS = { firstName: 50, lastName: 50, jobTitle: 100 };
 exports.PROFILE_FIELD_LIMIT_ERRORS = {
     firstName: `First name must not exceed ${exports.PROFILE_FIELD_LIMITS.firstName} characters.`,
     lastName: `Last name must not exceed ${exports.PROFILE_FIELD_LIMITS.lastName} characters.`,
     jobTitle: `Job title must not exceed ${exports.PROFILE_FIELD_LIMITS.jobTitle} characters.`,
-    department: `Department must not exceed ${exports.PROFILE_FIELD_LIMITS.department} characters.`,
 };
 const optionalText = (max, message) => zod_1.z.string().trim().max(max, message).nullable().optional();
 const profilePhone = zod_1.z.string().nullable().optional().transform((value, context) => {
@@ -30,7 +29,6 @@ exports.SelfProfileFieldSchemas = {
     lastName: zod_1.z.string().trim().min(1, 'Last name is required').max(exports.PROFILE_FIELD_LIMITS.lastName, exports.PROFILE_FIELD_LIMIT_ERRORS.lastName).optional(),
     phone: exports.ProfilePhoneInputSchema,
     jobTitle: optionalText(exports.PROFILE_FIELD_LIMITS.jobTitle, exports.PROFILE_FIELD_LIMIT_ERRORS.jobTitle),
-    department: optionalText(exports.PROFILE_FIELD_LIMITS.department, exports.PROFILE_FIELD_LIMIT_ERRORS.department),
 };
 exports.UpdateSelfProfileSchema = zod_1.z.object({ ...exports.SelfProfileFieldSchemas, phone: profilePhone }).strict()
     .refine(value => Object.keys(value).length > 0, 'No profile changes supplied');

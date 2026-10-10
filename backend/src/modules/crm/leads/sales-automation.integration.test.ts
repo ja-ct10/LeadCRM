@@ -100,6 +100,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const lead = await create(['Smart Lock', 'Biometrics'], { companyName: 'Example Company' });
     const deals = await prisma.deal.findMany({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deals[0].pipelineId, isWon: true } });
+    const initialHistoryCount = await prisma.dealStageHistory.count({ where: { tenantId, dealId: deals[0].id } });
     await prepareToClose(deals[0]);
     const first = await scope(() => moveDealStage(deals[0].id, tenantId, won.id, adminId, undefined, undefined, undefined, { type: 'Approved Quotation', date: new Date().toISOString().slice(0, 10) }));
     // Saving the final closing requirements already completed the Won transition.
@@ -114,7 +115,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(await prisma.contact.count({ where: { tenantId, email: lead.email } })).toBe(1);
     expect(await prisma.account.count({ where: { tenantId, name: 'Example Company' } })).toBe(1);
     expect(await prisma.contactDeal.count({ where: { tenantId, contactId: updatedLead.contactId! } })).toBe(2);
-    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deals[0].id } })).toBe(2);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deals[0].id } })).toBe(initialHistoryCount + 2);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).assignedUserId).toBe(lead.assignedUserId);
   });
   it('reuses normalized contact identity, preserves historical fields and rolls back ambiguous conversion', async () => {
@@ -130,13 +131,14 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const second = await create(['Smart Lock'], { email });
     await prisma.contact.create({ data: { tenantId, firstName: 'Conflicting', lastName: 'Identity', email, activeProducts: [], productInterests: [] } });
     const secondDeal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: second.id } } } });
+    const secondInitialHistoryCount = await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } });
     const rejected = await prepareToClose(secondDeal, 409);
     expect(rejected.body.error).toContain('conflicting Contact/Account matches');
     const qualifiedId = (await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId;
     expect((await prisma.stage.findUniqueOrThrow({ where: { id: qualifiedId } })).name).toBe('Qualified');
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: second.id } })).contactId).toBeNull();
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: secondDeal.id } })).stageId).toBe(qualifiedId);
-    expect(await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } })).toBe(1);
+    expect(await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } })).toBe(secondInitialHistoryCount + 1);
   });
   it('preserves an explicitly linked Contact and matches company whitespace without duplicating history', async () => {
     const company = `  Legacy   Company ${randomUUID()}  `;
@@ -222,8 +224,9 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await prisma.pipeline.create({ data: { tenantId, name: 'Hidden archived pipeline', type: 'Sales', isArchived: true } });
     const all = await request('/administration/archived-data');
     expect(all.status).toBe(200);
-    expect(all.body.data.every((r: { type: string }) => ['Lead', 'Contact', 'Account', 'Deal', 'User'].includes(r.type))).toBe(true);
-    for (const type of ['Pipeline', 'Role', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
+    expect(all.body.data.every((r: { type: string }) => ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow', 'Role'].includes(r.type))).toBe(true);
+    for (const type of ['Pipeline', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
+    expect((await request('/administration/archived-data?type=Role')).status).toBe(200);
     expect(await prisma.pipeline.count({ where: { tenantId, name: 'Hidden archived pipeline', isArchived: true } })).toBe(1);
   });
   it('manual Lead HTTP retries preserve a single Lead and automatic Deal', async () => {
@@ -404,7 +407,13 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
 
   it('manages existing pipeline stages while protecting ownership, archived Deals and history', async () => {
-    const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const official = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    expect((await request('/crm/stages', 'POST', { pipelineId: official.pipeline.id, name: 'Unsupported stage', order: 100 })).status).toBe(400);
+    expect((await request(`/crm/stages/${official.initial.id}`, 'PUT', { color: '#123456' })).status).toBe(200);
+    expect((await prisma.stage.findUniqueOrThrow({ where: { id: official.initial.id } })).color).toBe('#123456');
+    // Historical nonofficial pipelines retain their existing stage management contract.
+    const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Legacy custom pipeline' } });
+    const initial = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0, isDefault: true } });
     const created = await request('/crm/stages', 'POST', { pipelineId: pipeline.id, name: '  Proposal  ', order: 100 });
     expect(created.status).toBe(201);
     const id = created.body.data.id;
@@ -429,7 +438,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await request(`/crm/stages/${id}`, 'PUT', { name: 'Denied' }, deniedToken)).status).toBe(403);
     expect((await request(`/crm/stages/${initial.id}`, 'PUT', { name: 'Initial renamed' })).status).toBe(400);
     const next = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
-    expect(next.initial.id).toBe(initial.id);
+    expect(next.initial.id).toBe(official.initial.id);
   });
 
   it('persists Deal file history through the shared file service with tenant and permission checks', async () => {

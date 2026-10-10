@@ -92,4 +92,4 @@ export const CampaignSendSchema = CampaignDraftSchema.superRefine((v, ctx) => {
 export const MarketingTemplateSchema = z.object({ name: MarketingNameSchema, type: z.enum(['Email', 'SMS']), category: MarketingNameSchema.optional(), subject: EmailSubjectSchema.optional(), content: z.string().trim().min(1, 'Message content is required.').max(50000) }).strict().superRefine((v, ctx) => {
   if (v.type === 'Email' && !v.subject) ctx.addIssue({ code: 'custom', path: ['subject'], message: 'Subject line is required.' });
 });
-export interface CampaignSendResult { campaignId: string; eligibleRecipients: number; submittedRecipients: number; failedRecipients: number; status: import('../types/campaign.types').CampaignStatus; submissionComplete?: boolean }
+export interface CampaignSendResult { campaignId: string; eligibleRecipients: number; submittedRecipients: number; failedRecipients: number; status: import('../types/campaign.types').CampaignStatus; submissionComplete?: boolean; submissionInterrupted?: boolean }

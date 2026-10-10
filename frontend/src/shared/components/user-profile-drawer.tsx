@@ -7,6 +7,7 @@ import { User, Deal, Task } from '@/store/types';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { useAuth } from '@/store/AuthContext';
 import { getTenantCurrency, formatCurrency } from '@/shared/utils/currency';
+import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,8 +50,8 @@ export const UserProfileDrawer: React.FC<UserProfileDrawerProps> = ({
 
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden bg-slate-900/50 backdrop-blur-xs flex justify-end animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-white dark:bg-slate-950 h-full shadow-2xl flex flex-col border-l border-slate-200 dark:border-white/10 overflow-y-auto">
+    <Sheet open={Boolean(user)} onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent showClose={false} aria-label={`${user.firstName} ${user.lastName} profile`} className="max-w-md overflow-hidden p-0">
 
         {/* ── Header Banner ─────────────────────────────────────────────── */}
         <div className="relative bg-gradient-to-r from-blue-600 to-indigo-700 p-6 text-white shrink-0">
@@ -64,15 +65,15 @@ export const UserProfileDrawer: React.FC<UserProfileDrawerProps> = ({
           </div>
 
           <div className="flex items-center gap-4">
-            <div className="w-16 h-16 rounded-2xl bg-white/20 backdrop-blur-md border-2 border-white/30 flex items-center justify-center text-2xl font-black text-white shadow-inner">
+            <div className="w-16 h-16 shrink-0 rounded-2xl bg-white/20 backdrop-blur-md border-2 border-white/30 flex items-center justify-center text-2xl font-black text-white shadow-inner">
               {user.firstName ? user.firstName.charAt(0) : '?'}
             </div>
-            <div>
-              <h3 className="text-xl font-bold leading-tight">
+            <div className="min-w-0 pr-6">
+              <h3 className="break-words text-xl font-bold leading-tight">
                 {user.firstName} {user.lastName}
               </h3>
               <p className="text-xs text-blue-100 font-medium mt-0.5">{user.role}</p>
-              <div className="mt-2 flex items-center gap-2">
+              <div className="mt-2 flex flex-wrap items-center gap-2">
                 <span
                   className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     user.status === 'active'
@@ -94,7 +95,7 @@ export const UserProfileDrawer: React.FC<UserProfileDrawerProps> = ({
         </div>
 
         {/* ── Content Body ──────────────────────────────────────────────── */}
-        <div className="p-6 space-y-6 flex-1">
+        <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-4 sm:p-6">
 
           {/* Key Metric Cards */}
           <div className="grid grid-cols-2 gap-3">
@@ -215,7 +216,7 @@ export const UserProfileDrawer: React.FC<UserProfileDrawerProps> = ({
           </div>
 
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 };

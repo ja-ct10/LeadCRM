@@ -76,16 +76,7 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
   if (dto.name        !== undefined) metaFields.name        = dto.name;
   if (dto.description !== undefined) metaFields.description = dto.description;
 
-  // Update meta fields if any
-  if (Object.keys(metaFields).length > 0) {
-    const result = await repo.updateRoleMeta(id, tenantId, metaFields);
-    if (!result) throw new NotFoundError('Role');
-  }
-
-  // Replace permission rows if provided
-  if (dto.permissions !== undefined) {
-    await repo.upsertPermissions(id, tenantId, dto.permissions);
-  }
+  await repo.updateRoleAndPermissions(id, tenantId, metaFields, dto.permissions);
 
   await writeAuditLog({
     tenantId, userId,

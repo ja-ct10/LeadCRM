@@ -1,8 +1,9 @@
 ﻿'use client';
 import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
-import React, { ReactNode, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import React, { ReactNode, useId, useRef } from 'react';
+import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
+import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 import { AnimatePresence, motion } from 'motion/react';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 
@@ -16,16 +17,10 @@ interface SideSheetProps {
 }
 
 export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 'w-full max-w-lg md:max-w-xl' }: SideSheetProps) {
-  useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = 'hidden';
-    } else {
-      document.body.style.overflow = 'auto';
-    }
-    return () => {
-      document.body.style.overflow = 'auto';
-    };
-  }, [isOpen]);
+  const panelRef = useRef<HTMLDivElement>(null);
+  const owner = useId();
+  const titleId = useId();
+  useModalInteraction({ open: isOpen, panelRef, owner, onClose });
 
   const content = (
     <AnimatePresence>
@@ -39,6 +34,11 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-200"
           />
           <motion.div
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={titleId}
+            tabIndex={-1}
             initial={{ x: '100%' }}
             animate={{ x: 0 }}
             exit={{ x: '100%' }}
@@ -48,8 +48,8 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
             {/* Header */}
             <div className={panelHeaderClass + " flex items-center justify-between gap-3"}>
               <div className="min-w-0">
-                <h2 className={panelTitleClass}>{title}</h2>
-                {subtitle && <p className="text-sm text-slate-500 mt-1">{subtitle}</p>}
+                <h2 id={titleId} className={panelTitleClass}>{title}</h2>
+                {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
               </div>
               <ModalCloseButton onClose={onClose} ariaLabel="Close sheet" size={20} className={panelCloseClass + " grid place-items-center"} />
             </div>
@@ -65,5 +65,5 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
   );
 
   if (typeof window === 'undefined') return null;
-  return createPortal(content, document.body);
+  return <OverlayOwnerContext.Provider value={owner}><ThemedPortal>{content}</ThemedPortal></OverlayOwnerContext.Provider>;
 }

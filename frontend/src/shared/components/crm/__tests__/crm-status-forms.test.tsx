@@ -1,5 +1,5 @@
 import React from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { CRM_STATUSES, CrmStatusSchema } from '@leadcrm/shared';
 import { LeadFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
@@ -21,6 +21,10 @@ vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: ()
   { id: '9acc2460-e846-9826-9889-bb85bce8cfda', name: 'Biometrics' },
 ], loading: false }) }));
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
+beforeEach(() => {
+  transport.post.mockResolvedValue({ success: true, data: { id: 'contact' } });
+  transport.put.mockResolvedValue({ success: true, data: { id: 'contact' } });
+});
 
 it.each(CRM_STATUSES)('submits the New Lead side panel with %s and both selected product IDs', async status => {
   const submitted = vi.fn();

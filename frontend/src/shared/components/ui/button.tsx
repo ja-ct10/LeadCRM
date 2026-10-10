@@ -83,8 +83,8 @@ Button.displayName = "Button"
 /** Page-level create action, using the shared primary button in every viewport. */
 function CreateButton({ label, children, className, ...props }: Omit<ButtonProps, 'size' | 'variant'> & { label: string }) {
   return <TooltipProvider><Tooltip><TooltipTrigger asChild>
-    <Button {...props} aria-label={label} title={label} className={cn('w-9 shrink-0 px-0 sm:w-auto sm:px-4', className)}>
-      <Plus aria-hidden="true" /><span className="hidden sm:inline">{label}</span>{children}
+    <Button {...props} aria-label={label} title={label} className={cn('min-h-11 min-w-11 w-auto max-w-full shrink-0 px-4', className)}>
+      <Plus aria-hidden="true" /><span className="whitespace-normal text-left">{label}</span>{children}
     </Button>
   </TooltipTrigger><TooltipContent>{label}</TooltipContent></Tooltip></TooltipProvider>
 }

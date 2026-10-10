@@ -132,14 +132,17 @@ function isTaskOverdue(task, now = Date.now()) {
         !!task.dueDate &&
         Date.parse(task.dueDate) < now);
 }
-/** Calendar boundaries are local; the wire contract always carries instants. */
+/** Task pickers and calendar filters share the workspace's Manila timezone. */
 function taskDateRange(period, now = new Date()) {
-    const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const parts = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(now);
+    const date = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    const start = new Date(Date.UTC(Number(date.year), Number(date.month) - 1, Number(date.day)));
     if (period === "week")
-        start.setDate(start.getDate() - ((start.getDay() + 6) % 7));
+        start.setUTCDate(start.getUTCDate() - ((start.getUTCDay() + 6) % 7));
     const end = new Date(start);
-    end.setDate(end.getDate() + (period === "week" ? 7 : 1));
-    return { dueFrom: start.toISOString(), dueTo: end.toISOString() };
+    end.setUTCDate(end.getUTCDate() + (period === "week" ? 7 : 1));
+    const offset = 8 * 60 * 60 * 1000;
+    return { dueFrom: new Date(start.getTime() - offset).toISOString(), dueTo: new Date(end.getTime() - offset).toISOString() };
 }
 exports.TASK_COLUMN_DEFINITIONS = [
     {

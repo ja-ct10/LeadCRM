@@ -83,17 +83,28 @@ export async function updateRoleMeta(
   tenantId: string,
   data: { name?: string; description?: string },
 ) {
-  const existing = await prisma.roleDefinition.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  if (existing.isSystemRole) return null;
+  return updateRoleAndPermissions(id, tenantId, data);
+}
+
+/** Metadata, the primary-role label and permission rows commit together. */
+export async function updateRoleAndPermissions(
+  id: string,
+  tenantId: string,
+  data: { name?: string; description?: string },
+  permissions?: Array<PermissionFlags & { module: string }>,
+) {
   return roleNameTransaction(async tx => {
+    const existing = await tx.roleDefinition.findFirst({ where: { id, tenantId, isArchived: false } });
+    if (!existing) throw new NotFoundError('Role');
+    if (existing.isSystemRole) throw new ForbiddenError('System roles cannot be modified');
     if (data.name && await tx.roleDefinition.findFirst({ where: { tenantId, id: { not: id }, name: { equals: data.name, mode: 'insensitive' } } })) {
       throw new ConflictError('A role with this name already exists.');
     }
-    const role = await tx.roleDefinition.update({ where: { id }, data });
+    const role = Object.keys(data).length ? await tx.roleDefinition.update({ where: { id, tenantId }, data }) : existing;
     if (data.name && data.name !== existing.name) {
       await tx.user.updateMany({ where: { tenantId, role: existing.name }, data: { role: data.name } });
     }
+    if (permissions !== undefined) await replacePermissions(tx, id, tenantId, permissions);
     return role;
   });
 }
@@ -107,23 +118,20 @@ export async function upsertPermissions(
   tenantId: string,
   permissions: Array<PermissionFlags & { module: string }>,
 ): Promise<void> {
-  await prisma.$transaction(async (tx) => {
-    const incomingModules = permissions.map((p) => p.module);
+  await updateRoleAndPermissions(roleId, tenantId, {}, permissions);
+}
 
-    // Delete rows for modules not in the new set
-    await tx.rolePermission.deleteMany({
-      where: { roleId, tenantId, module: { notIn: incomingModules } },
+async function replacePermissions(tx: Prisma.TransactionClient, roleId: string, tenantId: string,
+  permissions: Array<PermissionFlags & { module: string }>) {
+  const incomingModules = permissions.map(p => p.module);
+  await tx.rolePermission.deleteMany({ where: { roleId, tenantId, module: { notIn: incomingModules } } });
+  for (const p of permissions) {
+    await tx.rolePermission.upsert({
+      where: { roleId_module: { roleId, module: p.module } },
+      create: { tenantId, roleId, ...EMPTY_PERMISSION_FLAGS, ...p },
+      update: { ...EMPTY_PERMISSION_FLAGS, ...p },
     });
-
-    // Upsert each provided module row
-    for (const p of permissions) {
-      await tx.rolePermission.upsert({
-        where: { roleId_module: { roleId, module: p.module } },
-        create: { tenantId, roleId, ...EMPTY_PERMISSION_FLAGS, ...p },
-        update: { ...EMPTY_PERMISSION_FLAGS, ...p },
-      });
-    }
-  });
+  }
 }
 
 export async function archiveRole(id: string, tenantId: string) {

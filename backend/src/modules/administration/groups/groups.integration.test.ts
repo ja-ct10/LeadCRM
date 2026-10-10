@@ -7,7 +7,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_campaign_test_\d+$/.test(url.pathname);
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|campaign_test_\d+)$/.test(url.pathname);
 let server: Server, base: string, tenantId: string, token: string, deniedToken: string, userId: string, foreignUserId: string;
 const scoped = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
 async function request(path: string, method = 'GET', body?: unknown, auth = token) {
@@ -18,9 +18,9 @@ beforeAll(async () => {
   if (!disposable) return;
   tenantId = (await prisma.tenant.create({ data: { name: 'Groups tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
   const other = await prisma.tenant.create({ data: { name: 'Other tenant', slug: randomUUID() } });
-  const user = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date() } });
+  const user = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
   userId = user.id; token = (await issueAuthSession(user)).token;
-  const denied = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Denied', lastName: 'User', role: 'Sales', mustChangePassword: false, emailVerified: new Date() } });
+  const denied = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Denied', lastName: 'User', role: 'Sales', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
   deniedToken = (await issueAuthSession(denied)).token;
   foreignUserId = (await prisma.user.create({ data: { tenantId: other.id, email: `${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'User', role: 'Sales' } })).id;
   server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
@@ -48,6 +48,7 @@ it.skipIf(!disposable)('rejects nonempty deletion from actual rows, keeps member
   expect((await request(`/${id}`, 'DELETE')).status).toBe(200);
 });
 it.skipIf(!disposable)('preserves RBAC and tenant isolation for group and membership mutations', async () => {
+  expect((await request('', 'GET', undefined, deniedToken)).status).toBe(403);
   const id = (await request('', 'POST', { name: 'Scoped group' })).body.data.id;
   expect((await request(`/${id}/members`, 'POST', { userId: foreignUserId })).status).toBe(404);
   expect((await request(`/${id}`, 'DELETE', undefined, deniedToken)).status).toBe(403);
@@ -58,10 +59,14 @@ it.skipIf(!disposable)('preserves RBAC and tenant isolation for group and member
   expect((await request(`/${foreignGroup.id}/members`, 'POST', { userId })).status).toBe(404);
 });
 
-it.skipIf(!disposable)('allows non-admin tenant roles to view group members but reserves membership changes for Client Admin', async () => {
+it.skipIf(!disposable)('allows group viewers to view group members but reserves membership changes for Client Admin', async () => {
   const id = (await request('', 'POST', { name: 'Read only group' })).body.data.id;
   expect((await request(`/${id}/members`, 'POST', { userId })).status).toBe(200);
 
+  const viewerRole = await scoped(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Group Viewer' } }));
+  await scoped(() => prisma.rolePermission.create({ data: { tenantId, roleId: viewerRole.id, module: 'groups', canView: true } }));
+  const staff = await prisma.user.findFirstOrThrow({ where: { tenantId, role: 'Sales' } });
+  await scoped(() => prisma.userRole.create({ data: { tenantId, userId: staff.id, roleId: viewerRole.id } }));
   const visible = await request('', 'GET', undefined, deniedToken);
   expect(visible.status).toBe(200);
   expect(visible.body.data.find((group: { id: string }) => group.id === id).members[0].user)

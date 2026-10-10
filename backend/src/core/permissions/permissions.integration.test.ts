@@ -85,8 +85,8 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
       ['GET','/administration/product-interests/missing/closed-won'], ['PATCH','/administration/archived-data/leads/missing/restore'],
       ['POST','/administration/roles/assign'], ['PUT',`/administration/users/${actor.user.userId}`],
     ]) expect((await call(path, actor.token, method, method === 'GET' ? undefined : {})).status, path).toBe(403);
-    // Group directory visibility is intentionally tenant-wide; membership writes remain restricted.
-    expect((await call('/administration/groups', actor.token)).status).toBe(200);
+    // Group directory reads require the same explicit View grant as other modules.
+    expect((await call('/administration/groups', actor.token)).status).toBe(403);
     expect((await call('/administration/groups/missing/members', actor.token, 'POST', { userId: actor.user.userId })).status).toBe(403);
     const editor = await roleUser('Task Editor QA', [{ module: 'tasks', canView: true, canCreate: true, canEdit: true }]);
     const task = await call('/operations/tasks', editor.token, 'POST', { title: 'Permission QA', dueDate: '2026-11-01T09:00:00.000Z', assignedUserId: editor.user.userId });

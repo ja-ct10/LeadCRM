@@ -2,7 +2,6 @@ import { salesTransaction, validateSalesOwner } from '../leads/lead-automation.s
 import { productRelationData } from '../leads/product-relations';
 import { serializeLead } from '../leads/lead-serializer';
 import prisma from '../../../config/database.config';
-import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import * as repo from './merge.repository';
 import type {
@@ -18,6 +17,9 @@ const SYSTEM_FIELDS = new Set([
   'id', 'tenantId', 'createdAt', 'updatedAt', 'deletedAt', 'deletedBy',
   'createdById', 'updatedById', 'convertedAt', 'convertedById', 'contactId',
 ]);
+// The update contracts explicitly permit clearing these relationships with null.
+// Required identity fields (including Email) must keep their nonempty value.
+const NULLABLE_MERGE_FIELDS = new Set(['accountId', 'assignedUserId']);
 
 // Fields that are mergeable for each entity type
 const LEAD_MERGE_FIELDS = [
@@ -27,7 +29,7 @@ const LEAD_MERGE_FIELDS = [
 ];
 
 const CONTACT_MERGE_FIELDS = [
-  'firstName', 'lastName', 'email', 'phone', 'companyName', 'address',
+  'firstName', 'lastName', 'email', 'phone', 'company', 'address',
   'productInterests', 'source', 'assignedUserId', 'status', 'accountId',
 ];
 
@@ -164,9 +166,10 @@ async function executeLeadMerge(
 // ── Contact Merge ─────────────────────────────────────────────────────────────
 
 async function previewContactMerge(tenantId: string, primaryId: string, secondaryId: string): Promise<MergePreviewResult> {
+  if (primaryId === secondaryId) throw new ValidationError('Choose two different Contacts.');
   const [primary, secondary] = await Promise.all([
-    prisma.contact.findFirst({ where: { id: primaryId, tenantId } }),
-    prisma.contact.findFirst({ where: { id: secondaryId, tenantId } }),
+    prisma.contact.findFirst({ where: { id: primaryId, tenantId, isArchived: false, deletedAt: null } }),
+    prisma.contact.findFirst({ where: { id: secondaryId, tenantId, isArchived: false, deletedAt: null } }),
   ]);
 
   if (!primary) throw new NotFoundError('Primary contact');
@@ -191,28 +194,33 @@ async function executeContactMerge(
   tenantId: string, userId: string, primaryId: string, secondaryId: string,
   fieldResolutions: Record<string, 'primary' | 'secondary'>,
 ): Promise<MergeExecuteResult> {
-  const [primary, secondary] = await Promise.all([
-    prisma.contact.findFirst({ where: { id: primaryId, tenantId } }),
-    prisma.contact.findFirst({ where: { id: secondaryId, tenantId } }),
-  ]);
+  if (primaryId === secondaryId) throw new ValidationError('Choose two different Contacts.');
+  const result = await salesTransaction(async tx => {
+    const [primary, secondary] = await Promise.all([
+      tx.contact.findFirst({ where: { id: primaryId, tenantId, isArchived: false, deletedAt: null } }),
+      tx.contact.findFirst({ where: { id: secondaryId, tenantId, isArchived: false, deletedAt: null } }),
+    ]);
 
-  if (!primary) throw new NotFoundError('Primary contact');
-  if (!secondary) throw new NotFoundError('Secondary contact');
+    if (!primary) throw new NotFoundError('Primary contact');
+    if (!secondary) throw new NotFoundError('Secondary contact');
 
-  const mergedData = resolveFields(primary, secondary, fieldResolutions, CONTACT_MERGE_FIELDS);
+    const mergedData = resolveFields(primary, secondary, fieldResolutions, CONTACT_MERGE_FIELDS);
 
-  const result = await prisma.$transaction(async (tx) => {
+    if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) {
+      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId));
+    }
+
     const reassignedCounts = await repo.reassignContactRelationships(tx, primaryId, secondaryId, tenantId);
     if (mergedData.productInterests !== undefined) Object.assign(mergedData, await productRelationData(tx, 'contact', tenantId, { names: mergedData.productInterests as string[] }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests] }, true));
 
     const updatedPrimary = await tx.contact.update({
-      where: { id: primaryId } as never,
+      where: { id: primaryId, tenantId },
       data: mergedData as never,
     });
 
     await tx.contact.update({
-      where: { id: secondaryId } as never,
-      data: { status: 'Archived' } as never,
+      where: { id: secondaryId, tenantId },
+      data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
     });
 
     await tx.activity.create({
@@ -224,15 +232,9 @@ async function executeContactMerge(
       } as never,
     });
 
+    await tx.auditLog.create({ data: { tenantId, userId, action: 'contact.merged', entityType: 'Contact', entityId: primaryId,
+      metadata: { secondaryId, mergedFields: Object.keys(fieldResolutions) } } });
     return { mergedRecord: updatedPrimary, reassignedCounts };
-  });
-
-  await writeAuditLog({
-    tenantId, userId,
-    action: 'contact.merged',
-    entityType: 'Contact',
-    entityId: primaryId,
-    after: { secondaryId, mergedFields: Object.keys(fieldResolutions) },
   });
 
   return {
@@ -245,9 +247,10 @@ async function executeContactMerge(
 // ── Account Merge ─────────────────────────────────────────────────────────────
 
 async function previewAccountMerge(tenantId: string, primaryId: string, secondaryId: string): Promise<MergePreviewResult> {
+  if (primaryId === secondaryId) throw new ValidationError('Choose two different Accounts.');
   const [primary, secondary] = await Promise.all([
-    prisma.account.findFirst({ where: { id: primaryId, tenantId, isArchived: false } }),
-    prisma.account.findFirst({ where: { id: secondaryId, tenantId, isArchived: false } }),
+    prisma.account.findFirst({ where: { id: primaryId, tenantId, isArchived: false, deletedAt: null } }),
+    prisma.account.findFirst({ where: { id: secondaryId, tenantId, isArchived: false, deletedAt: null } }),
   ]);
 
   if (!primary) throw new NotFoundError('Primary account');
@@ -272,27 +275,28 @@ async function executeAccountMerge(
   tenantId: string, userId: string, primaryId: string, secondaryId: string,
   fieldResolutions: Record<string, 'primary' | 'secondary'>,
 ): Promise<MergeExecuteResult> {
-  const [primary, secondary] = await Promise.all([
-    prisma.account.findFirst({ where: { id: primaryId, tenantId, isArchived: false } }),
-    prisma.account.findFirst({ where: { id: secondaryId, tenantId, isArchived: false } }),
-  ]);
-
-  if (!primary) throw new NotFoundError('Primary account');
-  if (!secondary) throw new NotFoundError('Secondary account');
-
-  const mergedData = resolveFields(primary, secondary, fieldResolutions, ACCOUNT_MERGE_FIELDS);
-
-  const result = await prisma.$transaction(async (tx) => {
+  if (primaryId === secondaryId) throw new ValidationError('Choose two different Accounts.');
+  const result = await salesTransaction(async (tx) => {
+    const [primary, secondary] = await Promise.all([
+      tx.account.findFirst({ where: { id: primaryId, tenantId, isArchived: false, deletedAt: null } }),
+      tx.account.findFirst({ where: { id: secondaryId, tenantId, isArchived: false, deletedAt: null } }),
+    ]);
+    if (!primary) throw new NotFoundError('Primary account');
+    if (!secondary) throw new NotFoundError('Secondary account');
+    const mergedData = resolveFields(primary, secondary, fieldResolutions, ACCOUNT_MERGE_FIELDS);
+    if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) {
+      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId));
+    }
     const reassignedCounts = await repo.reassignAccountRelationships(tx, primaryId, secondaryId, tenantId);
     if (mergedData.productInterests !== undefined || mergedData.activeProducts !== undefined) Object.assign(mergedData, await productRelationData(tx, 'account', tenantId, { names: mergedData.productInterests as string[] | undefined, activeNames: mergedData.activeProducts as string[] | undefined }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests], activeProducts: [...primary.activeProducts, ...secondary.activeProducts] }, true));
 
     const updatedPrimary = await tx.account.update({
-      where: { id: primaryId } as never,
+      where: { id: primaryId, tenantId },
       data: mergedData as never,
     });
 
     await tx.account.update({
-      where: { id: secondaryId } as never,
+      where: { id: secondaryId, tenantId },
       data: { isArchived: true, deletedAt: new Date(), deletedBy: userId } as never,
     });
 
@@ -305,15 +309,9 @@ async function executeAccountMerge(
       } as never,
     });
 
+    await tx.auditLog.create({ data: { tenantId, userId, action: 'account.merged', entityType: 'Account', entityId: primaryId,
+      metadata: { secondaryId, mergedFields: Object.keys(fieldResolutions) } } });
     return { mergedRecord: updatedPrimary, reassignedCounts };
-  });
-
-  await writeAuditLog({
-    tenantId, userId,
-    action: 'account.merged',
-    entityType: 'Account',
-    entityId: primaryId,
-    after: { secondaryId, mergedFields: Object.keys(fieldResolutions) },
   });
 
   return {
@@ -356,7 +354,7 @@ function resolveFields(
     const resolution = resolutions[field];
     if (resolution === 'secondary') {
       const val = (secondary as Record<string, unknown>)[field];
-      if (val !== undefined && val !== null) {
+      if (val !== undefined && (val !== null || NULLABLE_MERGE_FIELDS.has(field))) {
         merged[field] = val;
       }
     } else if (resolution === 'primary') {

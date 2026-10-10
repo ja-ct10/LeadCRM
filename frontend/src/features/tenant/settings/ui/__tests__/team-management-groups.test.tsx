@@ -14,14 +14,24 @@ const mount = () => render(<GroupsSubTab tenantUsers={[user] as never} />);
 const openGroup = async () => { fireEvent.click(await screen.findByRole('button', { name: 'Open Sales' })); };
 beforeEach(() => { vi.clearAllMocks(); mocks.role = 'Client Admin'; mocks.getAll.mockResolvedValue({ data: [group()] }); mocks.remove.mockResolvedValue(undefined); mocks.removeMember.mockResolvedValue(undefined); mocks.addMember.mockResolvedValue(undefined); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
-it('uses skeletons, removes filters, searches groups and uses skeleton rows while refreshing once', async () => {
+it('uses initial skeletons, searches groups and retains rows during background refresh', async () => {
   let resolve!: (value: unknown) => void; mocks.getAll.mockReturnValueOnce(new Promise(done => { resolve = done; })); mount();
   expect(screen.getByRole('status', { name: 'Loading groups' })).toBeTruthy(); expect(screen.queryByText(/Loading groups/)).toBeNull(); expect(screen.queryByRole('button', { name: /Filter/ })).toBeNull();
   await act(async () => resolve({ data: [group()] }));
   fireEvent.change(screen.getByLabelText('Search groups'), { target: { value: 'none' } }); expect(screen.getByText('No groups match your search.')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Search groups'), { target: { value: 'sal' } }); expect(screen.getByText('Sales')).toBeTruthy();
   mocks.getAll.mockReturnValueOnce(new Promise(done => { resolve = done; })); const refresh = screen.getByRole('button', { name: 'Refresh' }); fireEvent.click(refresh); fireEvent.click(refresh);
-  expect(screen.queryByText('Sales')).toBeNull(); expect(screen.getByRole('status', { name: 'Loading groups' })).toBeTruthy(); expect(mocks.getAll).toHaveBeenCalledTimes(2); await act(async () => resolve({ data: [group()] }));
+  expect(screen.getByText('Sales')).toBeTruthy(); expect(screen.queryByRole('status', { name: 'Loading groups' })).toBeNull(); expect(mocks.getAll).toHaveBeenCalledTimes(2); await act(async () => resolve({ data: [group()] }));
+});
+
+it('refetches a Group change that arrives while the first response is in flight', async () => {
+  let resolve!: (value: unknown) => void;
+  mocks.getAll.mockReturnValueOnce(new Promise(done => { resolve = done; })).mockResolvedValueOnce({ data: [{ ...group(), name: 'Sales renamed' }] });
+  mount();
+  await act(async () => window.dispatchEvent(new Event('leadcrm:groups-changed')));
+  await act(async () => resolve({ data: [group()] }));
+  expect(await screen.findByText('Sales renamed')).toBeTruthy();
+  expect(mocks.getAll).toHaveBeenCalledTimes(2);
 });
 it('requires trimmed names and creates a group with zero optional members, without duplicate requests', async () => {
   mount(); await screen.findByText('Sales'); fireEvent.click(screen.getByRole('button', { name: 'New Group' }));

@@ -25,6 +25,7 @@ export const db = {
 export function resetDb() {
   vi.resetAllMocks();
   Object.assign(tenant, {
+    status: 'SANDBOX',
     ownerUserId: user.id, onboardingStep: 0, onboardingCompletedAt: null,
     name: 'Workspace', industry: null, companySize: null, website: null,
   });

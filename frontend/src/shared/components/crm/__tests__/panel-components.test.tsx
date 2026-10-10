@@ -13,7 +13,7 @@ vi.mock('@/store/DataContext', () => ({
         id: 'pipe-1',
         name: 'Sales Pipeline',
         stages: [
-          { id: 'stg-1', name: 'Prospect', order: 1 },
+          { id: 'stg-1', name: 'Lead', order: 1 },
           { id: 'stg-2', name: 'Proposal', order: 2 },
           { id: 'stg-3', name: 'Negotiation', order: 3 },
         ],
@@ -157,13 +157,16 @@ describe('InlineDealForm', () => {
     mockOnSubmit.mockClear();
   });
 
-  it('hides the fixed pipeline and renders the stage select', () => {
+  it('hides the fixed pipeline and shows its read-only Lead starting stage', () => {
     render(
       <InlineDealForm onSubmit={mockOnSubmit} />
     );
 
     expect(screen.queryByText('Pipeline')).toBeNull();
-    expect(screen.getByText((_, element) => element?.tagName === 'LABEL' && element.textContent === 'Stage *')).toBeDefined();
+    const startingStage = screen.getByLabelText('Starting stage') as HTMLInputElement;
+    expect(startingStage.value).toBe('Lead');
+    expect(startingStage.readOnly).toBe(true);
+    expect(document.querySelector<HTMLInputElement>('input[name="stageId"]')?.value).toBe('stg-1');
     expect(screen.queryByText('Sales Pipeline')).toBeNull();
   });
 

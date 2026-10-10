@@ -1,4 +1,6 @@
+import type { CreateAdministrationUserInput, UpdateAdministrationUserInput } from '@leadcrm/shared';
 import { assertNoOwnership } from './user-deactivation.service';
+import { replaceUserGroups, serializeUserGroups } from './user-groups';
 import { eligibleAgents } from '../../crm/leads/lead-automation.service';
 import { requestPasswordReset } from '../../../core/auth/password-reset.service';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -19,7 +21,8 @@ import { Prisma } from '@prisma/client';
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
   email: true, role: true, status: true, createdAt: true, updatedAt: true,
-  phone: true, jobTitle: true, department: true, avatarUrl: true, lastLoginAt: true,
+  phone: true, jobTitle: true, avatarUrl: true, lastLoginAt: true,
+  groupMemberships: { select: { group: { select: { id: true, name: true } } } },
   // passwordHash is NEVER selected
 };
 
@@ -40,19 +43,20 @@ export async function getAll(tenantId: string, query: Record<string, unknown>) {
     } : {}),
   };
   const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['firstName', 'email', 'role', 'status', 'createdAt'], skip, limit,
-    () => prisma.user.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true, createdAt: true } }));
+    () => prisma.user.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true, createdAt: true } }),
+    direction => prisma.user.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     prisma.user.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: SAFE_USER_SELECT }),
     prisma.user.count({ where }),
   ]);
   const assignable = new Set((await eligibleAgents(prisma, tenantId)).map(user => user.id));
-  return paginate(orderPage(data, ids).map(user => ({ ...user, assignableAgent: assignable.has(user.id) })), total, { page, limit });
+  return paginate(orderPage(data, ids).map(user => ({ ...serializeUserGroups(user), assignableAgent: assignable.has(user.id) })), total, { page, limit });
 }
 
 export async function getById(id: string, tenantId: string) {
   const user = await prisma.user.findFirst({ where: { id, tenantId }, select: SAFE_USER_SELECT });
   if (!user) throw new NotFoundError('User');
-  return { ...user, assignableAgent: (await eligibleAgents(prisma, tenantId)).some(agent => agent.id === id) };
+  return { ...serializeUserGroups(user), assignableAgent: (await eligibleAgents(prisma, tenantId)).some(agent => agent.id === id) };
 }
 
 export async function getAvatar(id: string, tenantId: string, avatarId: string) {
@@ -60,9 +64,7 @@ export async function getAvatar(id: string, tenantId: string, avatarId: string) 
   return readSelfAvatar(id, tenantId, avatarId);
 }
 
-export async function create(tenantId: string, actorId: string, dto: {
-  firstName: string; lastName: string; email: string; role: string; phone: string; jobTitle?: string; department?: string;
-}) {
+export async function create(tenantId: string, actorId: string, dto: CreateAdministrationUserInput) {
   dto = CreateUsersSchema.parse(dto);
   const role = await prisma.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: false } });
   if (!role) throw new ValidationError('Select an active custom role.');
@@ -78,21 +80,20 @@ export async function create(tenantId: string, actorId: string, dto: {
         tenantId, firstName: dto.firstName, lastName: dto.lastName,
         email: dto.email.trim().toLowerCase(), passwordHash,
         mustChangePassword: true, onboardingCompletedAt: null, role: dto.role,
-        phone: dto.phone, jobTitle: dto.jobTitle, department: dto.department,
+        phone: dto.phone, jobTitle: dto.jobTitle,
       },
       select: SAFE_USER_SELECT,
     });
     await replaceUserRole(tx, created.id, tenantId, created.role);
+    if (dto.groupIds !== undefined) await replaceUserGroups(tx, tenantId, created.id, dto.groupIds);
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: created.id, changeset: { before: null, after: { email: dto.email, role: created.role } } } });
-    return created;
-  });
+    return dto.groupIds !== undefined ? tx.user.findFirstOrThrow({ where: { id: created.id, tenantId }, select: SAFE_USER_SELECT }) : created;
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   const setupEmailSent = await sendWelcomeCredentials(user, temporaryPassword);
-  return { ...user, setupEmailSent };
+  return { ...serializeUserGroups(user), setupEmailSent };
 }
 
-export async function update(id: string, tenantId: string, actorId: string, dto: {
-  firstName?: string; lastName?: string; role?: string; status?: string; phone?: string; jobTitle?: string; department?: string;
-}) {
+export async function update(id: string, tenantId: string, actorId: string, dto: UpdateAdministrationUserInput) {
   dto = UpdateUsersSchema.parse(dto);
   if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
     throw new ValidationError('Invalid status value provided');
@@ -104,7 +105,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
 
   if (existing.role === 'Client Admin' && dto.role !== undefined) throw new ForbiddenError('Client Admin role cannot be reassigned');
   if (id === actorId && dto.status === 'INACTIVE') throw new ForbiddenError('Cannot deactivate your own account');
-  const updateData: any = { ...dto };
+  const { groupIds, ...updateData } = dto;
   if (dto.status) updateData.status = dto.status as any; // Cast as enum
 
   const protectsLastClientAdmin = existing.role === 'Client Admin' && existing.status === 'ACTIVE' && dto.status === 'INACTIVE';
@@ -117,7 +118,14 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
         if (activeAdmins <= 1) throw new ConflictError('At least one active Client Admin must remain.');
       }
       if (dto.role) await replaceUserRole(tx, id, tenantId, dto.role);
-      return tx.user.update({ where: { id }, data: updateData, select: SAFE_USER_SELECT });
+      const updated = await tx.user.update({ where: { id, tenantId }, data: updateData, select: SAFE_USER_SELECT });
+      if (groupIds !== undefined) {
+        if (dto.status === 'INACTIVE') throw new ValidationError('Reassign groups separately before deactivating a user.');
+        await replaceUserGroups(tx, tenantId, id, groupIds);
+      }
+      await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.updated', category: 'admin', entityType: 'User', entityId: id,
+        changeset: JSON.parse(JSON.stringify({ before: { status: existing.status }, after: dto })) as Prisma.InputJsonValue } });
+      return groupIds !== undefined ? tx.user.findFirstOrThrow({ where: { id, tenantId }, select: SAFE_USER_SELECT }) : updated;
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   } catch (error) {
     // A concurrent administrator deactivation can invalidate the serializable count.
@@ -127,8 +135,7 @@ export async function update(id: string, tenantId: string, actorId: string, dto:
     throw error;
   }
   if (dto.status === 'INACTIVE') await revokeAllUserSessions(id);
-  await writeAuditLog({ tenantId, userId: actorId, action: 'user.updated', entityType: 'User', entityId: id, before: { status: existing.status }, after: dto as Record<string, unknown> });
-  return user;
+  return serializeUserGroups(user);
 }
 
 export async function archive(id: string, tenantId: string, actorId: string) {
@@ -153,17 +160,9 @@ export async function restore(id: string, tenantId: string, actorId: string) {
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.restored', entityType: 'User', entityId: id, after: { status: 'ACTIVE' }, severity: 'INFO' });
 }
 
-export async function deleteRecord(id: string, tenantId: string, actorId: string) {
-  const existing = await prisma.user.findFirst({ where: { id, tenantId } });
-  if (!existing) throw new NotFoundError('User');
-  if (id === actorId) throw new ForbiddenError('Cannot delete your own account');
-
-  await prisma.user.delete({ where: { id } });
-  await writeAuditLog({ tenantId, userId: actorId, action: 'user.deleted', entityType: 'User', entityId: id, severity: 'CRITICAL' });
-}
-
 export async function bulkUpdate(ids: string[], tenantId: string, actorId: string, dto: Record<string, any>) {
   dto = UpdateUsersSchema.parse(dto);
+  if (dto.groupIds !== undefined) throw new ValidationError('Update group membership for each user individually.');
   if (dto.status && !['ACTIVE', 'INACTIVE', 'PENDING'].includes(dto.status)) {
     throw new ValidationError('Invalid status value provided');
   }
@@ -180,18 +179,6 @@ export async function bulkUpdate(ids: string[], tenantId: string, actorId: strin
   });
   if (dto.status === 'INACTIVE') for (const id of ids) await revokeAllUserSessions(id);
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_updated', entityType: 'User', after: { ids, updates: dto }, severity: 'WARNING' });
-}
-
-export async function bulkDelete(ids: string[], tenantId: string, actorId: string) {
-  if (ids.includes(actorId)) throw new ForbiddenError('Cannot delete your own account in a bulk operation');
-
-  await prisma.user.deleteMany({
-    where: {
-      id: { in: ids },
-      tenantId,
-    },
-  });
-  await writeAuditLog({ tenantId, userId: actorId, action: 'user.bulk_deleted', entityType: 'User', after: { ids }, severity: 'CRITICAL' });
 }
 
 export async function sendPasswordReset(id: string, tenantId: string, actorId: string) {

@@ -55,8 +55,8 @@ function deploymentTarget(records, localNames) {
 // Keep the separate authenticated retirement gate while deploying current auth.
 function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
-  // Keep old serving clients and rollback images compatible. Column retirement
-  // requires its own reviewed release; normal startup only expands the schema.
+  // CRM column retirement retains its separate verification gate. Other reviewed
+  // transitions below can require a coordinated application release.
   const deferred = [crmRetirement, leadRetirement].filter(name => localNames.includes(name)
     && !records.some(row => row.migration_name === name && finished(row)));
   if (target !== relationshipExpansion) return { through: target, exclude: deferred };
@@ -78,6 +78,12 @@ function deploymentPlan(records, localNames) {
     '20261114000000_notification_delivery',
     '20261115000000_dashboard_revisions',
     '20261115000000_workflow_assignment_history',
+    // The preserving Groups conversion is a reviewed release transition. Stop
+    // old application binaries before applying it, as documented in the rollout.
+    '20261116000000_user_groups',
+    '20261117000000_campaign_submission_recovery',
+    '20261118000000_group_revisions',
+    '20261119000000_notification_utc_timestamps',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

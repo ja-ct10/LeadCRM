@@ -9,7 +9,7 @@ import { writeAuditLog } from '../../core/audit/audit.service';
 import { AppError } from '../../shared/errors/app-error';
 import { getAuthorizationUrl, exchangeCodeForTokens, getUserInfo } from './gmail.oauth';
 import { normalizeEmail } from './engagement-rules';
-import { isOnboardingComplete } from '@leadcrm/shared';
+import { isOnboardingComplete, isWorkspaceAccessible } from '@leadcrm/shared';
 import { getMailboxTestOverride, isMailboxOwner } from './mailbox-ownership';
 
 export async function beginMailboxConnection(user: { userId: string; tenantId: string; email: string }, sessionToken: string) {
@@ -32,8 +32,13 @@ export async function finishMailboxConnection(state: string, code: string) {
   if (!session || session.userId !== userId || session.tenantId !== tenantId || session.revokedAt || session.expiresAt <= new Date()) throw new AppError('Sign in again before connecting email.', 401);
   const user = await readAuthUser(userId, tenantId);
   requireEmployeeAccount(user);
-  if (user.status !== 'ACTIVE' || user.mustChangePassword || ['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '') || !isOnboardingComplete(user)) throw new AppError('Workspace access is unavailable.', 403);
-  await assertPermissions({ userId, tenantId, role: user.role }, ['contacts.view']);
+  if (user.status !== 'ACTIVE' || user.mustChangePassword || !isWorkspaceAccessible(user.tenantStatus) || !isOnboardingComplete(user)) throw new AppError('Workspace access is unavailable.', 403);
+  const identityPermissions = { userId, tenantId, role: user.role };
+  try { await assertPermissions(identityPermissions, ['leads.view']); }
+  catch (error) {
+    if (!(error instanceof AppError) || error.statusCode !== 403) throw error;
+    await assertPermissions(identityPermissions, ['contacts.view']);
+  }
   const tokens = await exchangeCodeForTokens(code, decryptToken(challenge.verifier));
   const info = await getUserInfo(tokens.access_token);
   const identity = { userId, tenantId, email: user.email };

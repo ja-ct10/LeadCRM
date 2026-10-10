@@ -26,7 +26,7 @@ function getDatePlusDays(days: number): string {
 // ── Zod Schema ─────────────────────────────────────────────────────────────
 
 const InlineDealSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(255),
+  title: z.string().trim().min(1, 'Title is required').max(255),
   productInterestIds: z.array(z.string().uuid()).length(1, 'Select exactly one Product Interest.'),
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
@@ -77,7 +77,7 @@ export function InlineDealForm({
 
   // Keep the configured starting stage even when display order changes.
   const defaultPipeline = pipelines[0];
-  const defaultStage = defaultPipeline?.stages?.find(stage => stage.isDefault) ?? defaultPipeline?.stages?.[0];
+  const defaultStage = defaultPipeline?.stages?.find(stage => stage.name.trim().toLowerCase() === 'lead' && !stage.isWon && !stage.isLost);
 
   const {
     register,
@@ -104,16 +104,9 @@ export function InlineDealForm({
     if (defaultStage) setValue('stageId', defaultStage.id, { shouldValidate: true });
   }, [defaultPipeline?.id, defaultStage?.id, setValue]);
 
-  const selectedPipelineId = watch('pipelineId');
   const selectedProductIds = watch('productInterestIds');
   const productValue = products.filter(p => selectedProductIds.includes(p.id)).reduce((sum, p) => sum + Math.round(p.dealValue * 100), 0) / 100;
   const productFieldId = React.useId();
-
-  const stagesForPipeline = useMemo(() => {
-    if (!selectedPipelineId) return [];
-    const pipeline = pipelines.find((p) => p.id === selectedPipelineId);
-    return pipeline?.stages ?? [];
-  }, [selectedPipelineId, pipelines]);
 
   const onFormSubmit = async (formData: InlineDealFormData): Promise<void> => {
     if (!customFields.validate()) return;
@@ -159,20 +152,25 @@ export function InlineDealForm({
   const errorCls = '!border-destructive focus:!ring-destructive/20';
   const labelCls = 'block text-xs font-medium text-muted-foreground mb-1';
 
-  const isSubmitDisabled = !isValid || loading || !!error || !selectedProductIds.length || isSubmitting || isLoading;
+  const isSubmitDisabled = !defaultPipeline || !defaultStage || !isValid || loading || !!error || !selectedProductIds.length || isSubmitting || isLoading;
 
   return (
     <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3" noValidate>
       {/* Title */}
       <div>
-        <label className={labelCls}>Title <span className="text-red-500">*</span></label>
+        <label htmlFor={`${productFieldId}-title`} className={labelCls}>Title <span className="text-red-500">*</span></label>
         <input
+          id={`${productFieldId}-title`}
+          aria-required="true"
+          aria-invalid={!!errors.title}
+          aria-describedby={errors.title ? `${productFieldId}-title-error` : undefined}
+          maxLength={255}
           {...register('title')}
           className={cn(inputCls, errors.title && errorCls)}
           placeholder="Deal title"
         />
         {errors.title && (
-          <p className="text-xs text-destructive mt-0.5">{errors.title.message}</p>
+          <p id={`${productFieldId}-title-error`} className="text-xs text-destructive mt-0.5">{errors.title.message}</p>
         )}
       </div>
 
@@ -195,11 +193,9 @@ export function InlineDealForm({
           </select>
         </div>
         <div>
-          <label htmlFor={`${productFieldId}-stage`} className={labelCls}>Stage <span className="text-red-500">*</span></label>
-          <select id={`${productFieldId}-stage`} {...register('stageId')} className={cn(selectCls, errors.stageId && errorCls)} disabled={!selectedPipelineId}>
-            <option value="">Select stage</option>
-            {stagesForPipeline.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-          </select>
+          <label htmlFor={`${productFieldId}-stage`} className={labelCls}>Starting stage</label>
+          <input type="hidden" {...register('stageId')} />
+          <input id={`${productFieldId}-stage`} readOnly className={inputCls} value={defaultStage?.name ?? 'Unavailable'} />
           {errors.stageId && <p className="text-xs text-destructive">{errors.stageId.message}</p>}
         </div>
       </div>
@@ -208,6 +204,7 @@ export function InlineDealForm({
         <input id={`${productFieldId}-close`} type="date" {...register('expectedCloseDate')} className={cn(inputCls, 'min-w-0')} />
       </div>
       {!defaultPipeline && <p role="alert" className="text-xs text-destructive">Sales Pipeline is unavailable.</p>}
+      {defaultPipeline && !defaultStage && <p role="alert" className="text-xs text-destructive">The Lead starting stage is unavailable.</p>}
 
       {CUSTOM_FIELD_BUILT_IN_GROUPS.deals.filter(group => group !== CLOSED_WON_GROUP && customFields.fields.some(field => field.group === group)).map((group, index) => <section key={group} className="min-w-0 space-y-3"><PanelSectionHeading number={index + 1}>{group}</PanelSectionHeading><CustomFieldGroup form={customFields} group={group} /></section>)}
       <CustomFieldExtraGroups form={customFields} startNumber={4} />

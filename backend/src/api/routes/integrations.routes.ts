@@ -19,6 +19,8 @@ import {
   threadTrash,
   associateDeal,
   schedule,
+  scheduledDetail,
+  cancelScheduled,
   attachment,
 } from '../../integrations/gmail/gmail.controller';
 
@@ -38,6 +40,8 @@ router.use('/gmail', authMiddleware, workspaceReadyMiddleware, authorizeAny('lea
 router.post('/gmail/sync', sync);
 router.get('/gmail/events', mailboxEvents);
 router.post('/gmail/scheduled', schedule);
+router.get('/gmail/scheduled/:id', scheduledDetail);
+router.post('/gmail/scheduled/:id/cancel', cancelScheduled);
 router.get('/gmail/threads/:threadId', thread);
 router.get('/gmail/messages/:messageId/attachments/:attachmentId', attachment);
 router.patch('/gmail/threads/:threadId/read-state', threadReadState);

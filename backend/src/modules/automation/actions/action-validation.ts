@@ -10,6 +10,10 @@ import { ValidationError, NotFoundError } from '../../../shared/errors/http-erro
 import { getAvailableActions } from './actions.service';
 import * as repo from './actions.repository';
 import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
+import { mailboxPermissions } from '../../../integrations/gmail/mailbox-sync.service';
+import { assertMailboxCustomerPermission, assertMailboxRecipients } from '../../../integrations/gmail/mailbox-recipient-access';
+import { authorizedMailbox } from '../../../integrations/gmail/mailbox-store';
+import { mailboxAddress } from '../../../integrations/gmail/mailbox-scope';
 
 export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   const matches = (['lead', 'contact', 'deal', 'account'] as const).filter(entity => typeof context[`${entity}.id`] === 'string');
@@ -81,10 +85,28 @@ export async function validateEmail(action: WorkflowAction, entity: WorkflowEnti
   if (!subject.trim() || !sanitizeCampaignHtml(content).trim()) throw new ValidationError('Choose a complete template or enter an email subject and message.');
   if (!EmailSubjectSchema.safeParse(subject).success) throw new ValidationError('Email subject must be at most 200 characters without line breaks or control characters.');
   validateVariables(`${subject} ${content}`);
-  if (!await repo.findSender(String(action.config.senderUserId), tenantId)) throw new ValidationError('Connect the selected sender to Gmail before activating.');
+  const senderUserId = String(action.config.senderUserId);
+  if (!await repo.findSender(senderUserId, tenantId)) throw new ValidationError('Connect the selected sender to Gmail before activating.');
+  if (!context) {
+    const permissions = await mailboxPermissions(tenantId, senderUserId);
+    assertMailboxCustomerPermission(permissions, entity === 'lead', entity === 'contact');
+  }
   if (context) {
     if (!z.string().email().safeParse(context[`${entity}.email`]).success) throw new ValidationError('No valid email address found for the triggering record.');
     if (context[`${entity}.doNotContact`] === true) throw new ValidationError('This Contact is marked Do not contact.');
+    const where = { tenantId, id: String(context[`${entity}.id`]), isArchived: false, deletedAt: null };
+    const record = entity === 'lead' ? await prisma.lead.findFirst({ where: { ...where, convertedAt: null }, select: { id: true } })
+      : await prisma.contact.findFirst({ where, select: { id: true } });
+    if (!record) throw new NotFoundError('Active email recipient');
+    // Run Check projects earlier validated assignments into this context. Live
+    // delivery still rechecks the persisted assignment through Gmail sendEmail.
+    if (context[`${entity}.assignedUserId`] !== senderUserId) throw new ValidationError('The selected sender must be assigned to the email recipient. Add an earlier owner assignment or choose the assigned sender.');
+    const { account, scope, permissions } = await authorizedMailbox(tenantId, senderUserId);
+    const email = mailboxAddress(String(context[`${entity}.email`]))!;
+    const projectedScope = { ...scope, addresses: [...new Set([...scope.addresses, email])],
+      leadIds: entity === 'lead' ? [...new Set([...scope.leadIds, record.id])] : scope.leadIds,
+      contactIds: entity === 'contact' ? [...new Set([...scope.contactIds, record.id])] : scope.contactIds };
+    await assertMailboxRecipients(account, projectedScope, permissions, [email], '', { type: entity as 'lead' | 'contact', id: record.id, email });
   }
 }
 

@@ -1,5 +1,9 @@
 'use client';
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
+import { useMediaQuery } from '@/shared/hooks/use-media-query';
+import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
+import { useWorkspacePanel } from '@/shared/lib/overlay-state';
+import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -20,6 +24,7 @@ interface FilterItem {
 }
 
 interface ModuleFilterRailProps {
+  label?: string;
   filterContent?: React.ReactNode;
   showFilters: boolean;
   filterGroups?: FilterGroup[];
@@ -32,11 +37,16 @@ interface ModuleFilterRailProps {
 }
 
 /** Leads filter rail: inline on desktop, a left drawer with a backdrop on mobile. */
-export function ModuleFilterRail({ filterContent, showFilters, filterGroups, onToggleFilters, filterSearchTerm = '', onFilterSearch, onFilterToggle, totalRecords = 0, onClearFilters }: ModuleFilterRailProps) {
+export function ModuleFilterRail({ label = 'Filters', filterContent, showFilters, filterGroups, onToggleFilters, filterSearchTerm = '', onFilterSearch, onFilterToggle, totalRecords = 0, onClearFilters }: ModuleFilterRailProps) {
   const mobilePanel = useRef<HTMLElement>(null);
   const desktopPanel = useRef<HTMLElement>(null);
   const closeFilters = useRef(onToggleFilters);
   closeFilters.current = onToggleFilters;
+  const compact = useMediaQuery('(max-width: 1279px)');
+  const owner = useId();
+  const open = showFilters && Boolean(filterGroups);
+  useWorkspacePanel(260, open && !compact);
+  useModalInteraction({ open: open && compact, panelRef: mobilePanel, owner, onClose: () => closeFilters.current?.() });
   useEffect(() => {
     if (!showFilters) return;
     const fitPanel = () => {
@@ -55,33 +65,20 @@ export function ModuleFilterRail({ filterContent, showFilters, filterGroups, onT
   }, [showFilters]);
   useEffect(() => {
     if (!showFilters) return;
-    const previousFocus = document.activeElement as HTMLElement | null;
-    const isMobile = () => window.matchMedia('(max-width: 639px)').matches;
-    if (isMobile()) mobilePanel.current?.querySelector('button')?.focus();
     const handleKey = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') closeFilters.current?.();
-      if (event.key !== 'Tab' || !isMobile()) return;
-      const controls = mobilePanel.current?.querySelectorAll<HTMLElement>('button, input, select');
-      if (!controls?.length) return;
-      const first = controls[0];
-      const last = controls[controls.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault(); last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault(); first.focus();
-      }
+      if (!compact && event.key === 'Escape' && !event.defaultPrevented) closeFilters.current?.();
     };
     document.addEventListener('keydown', handleKey);
     return () => {
       document.removeEventListener('keydown', handleKey);
-      previousFocus?.focus();
     };
-  }, [showFilters]);
+  }, [showFilters, compact]);
   return <>
+      {open && compact && <OverlayOwnerContext.Provider value={owner}><ThemedPortal>
         {/* Filter Rail — backdrop for mobile */}
         {showFilters && filterGroups && (
           <div
-            className="fixed inset-0 z-50 bg-black/30 sm:hidden"
+            className="fixed inset-0 z-50 bg-black/30 xl:hidden"
             onClick={onToggleFilters}
             aria-hidden="true"
           />
@@ -94,12 +91,13 @@ export function ModuleFilterRail({ filterContent, showFilters, filterGroups, onT
               ref={mobilePanel}
               role="dialog"
               aria-modal="true"
-              aria-label="Filters"
+              aria-label={label}
+              tabIndex={-1}
               initial={{ x: -260, opacity: 0 }}
               animate={{ x: 0, opacity: 1 }}
               exit={{ x: -260, opacity: 0 }}
               transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-              className="fixed inset-y-0 left-0 z-[60] w-[260px] max-w-full sm:hidden shadow-2xl"
+              className="fixed inset-y-0 left-0 z-[60] h-dvh w-[280px] max-w-[calc(100vw-2rem)] xl:hidden shadow-2xl"
             >
               <div className="w-full h-full flex flex-col bg-white dark:bg-slate-800 border-r border-[#E4E9F0] dark:border-slate-700 overflow-hidden">
                 {/* Filter header */}
@@ -152,17 +150,19 @@ export function ModuleFilterRail({ filterContent, showFilters, filterGroups, onT
             </motion.aside>
           )}
         </AnimatePresence>
+      </ThemedPortal></OverlayOwnerContext.Provider>}
 
         {/* Filter Rail — desktop: inline side panel animates width (hidden on mobile) */}
         <AnimatePresence>
           {showFilters && filterGroups && (
             <motion.aside
               ref={desktopPanel}
+              aria-label={!compact ? label : undefined}
               initial={{ width: 0, opacity: 0 }}
               animate={{ width: 260, opacity: 1 }}
               exit={{ width: 0, opacity: 0 }}
               transition={{ duration: 0.2, ease: 'easeInOut' }}
-              className="hidden sm:block shrink-0 overflow-hidden"
+              className="hidden xl:block shrink-0 overflow-hidden"
             >
               <div className="w-[260px] h-full max-h-[var(--filter-available-height)] flex flex-col bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl mr-3 overflow-hidden">
                 {/* Filter header */}

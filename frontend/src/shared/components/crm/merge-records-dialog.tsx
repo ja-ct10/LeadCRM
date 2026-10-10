@@ -235,7 +235,7 @@ export function MergeRecordsDialog({
                     {/* Radio indicator */}
                     <div className="flex flex-col items-center gap-1">
                       <div className={cn('w-3 h-3 rounded-full border-2', fieldResolutions[fc.field] === 'primary' ? 'border-green-500 bg-green-500' : 'border-slate-300 dark:border-slate-600')} />
-                      <div className={cn('w-3 h-3 rounded-full border-2', fieldResolutions[fc.field] === 'secondary' ? 'border-blue-500 bg-blue-500' : 'border-slate-300 dark:border-slate-600')} />
+                      <div className={cn('w-3 h-3 rounded-full border-2', fieldResolutions[fc.field] === 'secondary' ? 'border-primary bg-primary' : 'border-slate-300 dark:border-slate-600')} />
                     </div>
 
                     {/* Secondary Value */}
@@ -245,7 +245,7 @@ export function MergeRecordsDialog({
                       className={cn(
                         'text-left px-3 py-2 rounded-lg text-xs transition-all border',
                         fieldResolutions[fc.field] === 'secondary'
-                          ? 'border-blue-300 dark:border-blue-600 bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300'
+                          ? 'border-blue-300 dark:border-primary bg-blue-50 dark:bg-blue-950/20 text-blue-800 dark:text-blue-300'
                           : 'border-transparent hover:border-slate-200 dark:hover:border-white/[0.08] text-slate-600 dark:text-slate-400',
                       )}
                     >

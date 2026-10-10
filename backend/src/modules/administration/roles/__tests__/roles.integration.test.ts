@@ -8,7 +8,7 @@ import { issueAuthSession } from '../../../../core/auth/auth-session';
 import app from '../../../../app';
 import * as repo from '../roles.repository';
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_environment_test_\d+$/.test(url.pathname);
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|environment_test_\d+)$/.test(url.pathname);
 describe.skipIf(!disposable)('custom roles: authenticated HTTP and database persistence', () => {
   let server: Server, base: string, tenantId: string, otherTenantId: string, token: string, readerToken: string, otherToken: string;
   const password = 'Role-Test-Password-123!';
@@ -93,5 +93,21 @@ describe.skipIf(!disposable)('custom roles: authenticated HTTP and database pers
     finally { failure.mockRestore(); }
     expect(await prisma.roleDefinition.count({ where: { tenantId, name: 'Rollback' } })).toBe(0);
     expect(await prisma.rolePermission.count({ where: { tenantId, role: { name: 'Rollback' } } })).toBe(0);
+  });
+  it('rolls back a role rename, staff role label and permission replacement on an update failure', async () => {
+    const created = await call('/administration/roles', 'POST', { name: 'Atomic rename', permissions: [permissions[0]] });
+    const roleId = created.body.data.id;
+    const staff = await prisma.user.create({ data: { tenantId, role: 'Atomic rename', email: `atomic-${Date.now()}@camxian.com`, firstName: 'Atomic', lastName: 'Staff', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, userId: staff.id, roleId } });
+    const transaction = prisma.$transaction.bind(prisma);
+    const failure = vi.spyOn(prisma, '$transaction').mockImplementationOnce((async (work: (tx: any) => Promise<unknown>, options: any) => transaction(async tx => {
+      const write = vi.spyOn(tx.rolePermission, 'upsert').mockRejectedValueOnce(new Error('Simulated permission update failure'));
+      try { return await work(tx); } finally { write.mockRestore(); }
+    }, options)) as never);
+    try { await expect(repo.updateRoleAndPermissions(roleId, tenantId, { name: 'Renamed after failure' }, [permissions[1]])).rejects.toThrow('Simulated permission update failure'); }
+    finally { failure.mockRestore(); }
+    expect((await prisma.roleDefinition.findUniqueOrThrow({ where: { id: roleId } })).name).toBe('Atomic rename');
+    expect((await prisma.user.findUniqueOrThrow({ where: { id: staff.id } })).role).toBe('Atomic rename');
+    expect((await prisma.rolePermission.findMany({ where: { tenantId, roleId } })).map(permission => permission.module)).toEqual([permissions[0].module]);
   });
 });

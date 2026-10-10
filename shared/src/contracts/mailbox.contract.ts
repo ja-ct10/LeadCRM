@@ -78,6 +78,11 @@ export interface MailboxEmail {
 
 export interface MailboxUnreadCount { unreadCount: number; unreadCountUnit?: 'conversations' }
 
+export interface ScheduledMailboxEmailDetail {
+  id: string; status: string; scheduledAt: string; recipients: string[];
+  subject: string; body: string; lastError: string | null; canCancel: boolean;
+}
+
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export const MailboxBulkActionSchema = z.union([
   z.object({ threadIds: z.array(providerId).min(1).max(100) }).strict(),

@@ -1,7 +1,7 @@
 'use client';
 
 import * as React from 'react';
-import { createPortal } from 'react-dom';
+import { ThemedPortal } from '@/shared/components/theme-scope';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '@/lib/utils';
 
@@ -175,7 +175,7 @@ export function DropdownMenuContent({
     </AnimatePresence>
   );
 
-  return createPortal(content, document.body);
+  return <ThemedPortal>{content}</ThemedPortal>;
 }
 
 export interface DropdownMenuItemProps extends React.HTMLAttributes<HTMLDivElement> {

@@ -279,7 +279,7 @@ export const CompanyProfileTabs = ({
             <span className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border ${getCRMStatusStyles(selectedOrg?.status || 'Customer')}`}>
               {selectedOrg?.status || 'Customer'} Account
             </span>
-            <span className="text-[10px] font-bold bg-blue-500/10 text-blue-400 px-2.5 py-0.5 rounded-full border border-blue-500/10">
+            <span className="text-[10px] font-bold bg-primary/10 text-blue-400 px-2.5 py-0.5 rounded-full border border-primary/10">
               {selectedOrg?.leadSource || 'Website Portal'}
             </span>
           </div>
@@ -287,7 +287,7 @@ export const CompanyProfileTabs = ({
           {onEditClick && (
             <button
               onClick={onEditClick}
-              className="mt-4 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-550 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+              className="mt-4 w-full py-1.5 px-3 bg-primary hover:bg-blue-550 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
             >
               <Edit size={12} /> Update Company Details
             </button>
@@ -341,7 +341,7 @@ export const CompanyProfileTabs = ({
               onClick={() => setActiveTab(tab)}
               className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all capitalize whitespace-nowrap ${
                 activeTab === tab 
-                  ? 'bg-blue-500 text-white shadow-sm' 
+                  ? 'bg-primary text-white shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5'
               }`}
             >
@@ -450,7 +450,7 @@ export const CompanyProfileTabs = ({
                         setSelectedOrgName(null);
                       }
                     }}
-                    className="p-3 border border-gray-150 dark:border-white/3 bg-gray-50/50 dark:bg-white/1 hover:border-blue-500/25 rounded-xl flex items-center justify-between cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-white/5"
+                    className="p-3 border border-gray-150 dark:border-white/3 bg-gray-50/50 dark:bg-white/1 hover:border-primary/25 rounded-xl flex items-center justify-between cursor-pointer transition-all hover:bg-slate-50 dark:hover:bg-white/5"
                   >
                     <div className="text-left space-y-0.5">
                       <span className="font-bold text-slate-900 dark:text-white block text-xs md:text-sm">{c.leadPerson}</span>
@@ -509,7 +509,7 @@ export const CompanyProfileTabs = ({
                 <button 
                   type="button" 
                   onClick={handleSaveNotes}
-                  className="bg-blue-600 hover:bg-blue-550 font-bold text-white px-4 py-2 rounded-xl text-xs transition-colors shadow-md shadow-blue-500/10"
+                  className="bg-primary hover:bg-blue-550 font-bold text-white px-4 py-2 rounded-xl text-xs transition-colors shadow-md shadow-primary/10"
                 >
                   Save Corporate Records
                 </button>
@@ -555,7 +555,7 @@ export const CompanyProfileTabs = ({
                 <div className="grid grid-cols-2 sm:grid-cols-6 gap-2.5">
                   {[
                     { label: 'Total Deals',     value: dealStats.total,                                        color: 'bg-slate-100 dark:bg-white/5 text-slate-700 dark:text-slate-300' },
-                    { label: 'Active',          value: dealStats.active,                                       color: 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' },
+                    { label: 'Active',          value: dealStats.active,                                       color: 'bg-blue-50 dark:bg-primary/10 text-blue-700 dark:text-primary' },
                     { label: 'Pipeline Value',  value: `₱${dealStats.pipelineValue.toLocaleString()}`,         color: 'bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400' },
                     { label: 'Won Deals',       value: dealStats.won,                                          color: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400' },
                     { label: 'Win Rate',        value: `${dealStats.winRate}%`,                                color: 'bg-teal-50 dark:bg-teal-500/10 text-teal-700 dark:text-teal-400' },
@@ -606,7 +606,7 @@ export const CompanyProfileTabs = ({
                           >
                             {/* 1. Deal Column (Enriched with Title + Subtext) */}
                             <td className="py-3 px-3 min-w-50">
-                              <p className="font-bold text-slate-900 dark:text-white truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">{deal.title}</p>
+                              <p className="font-bold text-slate-900 dark:text-white truncate group-hover:text-primary dark:group-hover:text-blue-400 transition-colors">{deal.title}</p>
                               <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
                                 Rep: {deal.leadPerson || 'General Lead'} {deal.leadSource ? `• ${deal.leadSource}` : ''}
                               </p>
@@ -629,7 +629,7 @@ export const CompanyProfileTabs = ({
                               <span className={`inline-block px-2 py-0.5 rounded text-[10px] font-bold ${
                                 isWon  ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20' :
                                 isLost ? 'bg-red-100   dark:bg-red-500/10   text-red-700   dark:text-red-400   border border-red-500/20'     :
-                                         'bg-blue-100  dark:bg-blue-500/10  text-blue-700  dark:text-blue-400 border border-blue-500/20'
+                                         'bg-blue-100  dark:bg-primary/10  text-blue-700  dark:text-primary border border-primary/20'
                               }`}>
                                 {stageName}
                               </span>
@@ -670,7 +670,7 @@ export const CompanyProfileTabs = ({
                   <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This account has no associated B2B deals yet.</p>
                   <button 
                     onClick={() => toast.info('Initiate new B2B deal from the Deals page or Pipeline module.')}
-                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-white shadow-sm transition-colors"
                   >
                     <Plus size={14} />
                     Create Deal
@@ -741,7 +741,7 @@ export const CompanyProfileTabs = ({
                 <div className="flex justify-end pt-1">
                   <button 
                     type="submit" 
-                    className="bg-blue-600 hover:bg-blue-550 text-white font-bold text-xs px-4.5 py-2 rounded-xl transition-all shadow-md shadow-blue-500/10 flex items-center gap-1.5"
+                    className="bg-primary hover:bg-blue-550 text-white font-bold text-xs px-4.5 py-2 rounded-xl transition-all shadow-md shadow-primary/10 flex items-center gap-1.5"
                   >
                     🔄 Propagate sync to {selectedOrg.leads.length} personnel profiles
                   </button>

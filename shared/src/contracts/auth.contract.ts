@@ -10,7 +10,7 @@ export interface AuthUser {
   emailVerified: string | null;
   phone?: string | null;
   jobTitle?: string | null;
-  department?: string | null;
+  groups?: { id: string; name: string }[];
   avatarUrl: string | null;
   tenantName: string | null;
   tenantStatus: string | null;

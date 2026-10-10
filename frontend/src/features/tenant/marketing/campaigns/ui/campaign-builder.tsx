@@ -6,6 +6,7 @@ import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
 import { renderCampaignPreview, prepareCampaignBody } from '../services/campaign-html';
+import { useTheme } from '@/shared/hooks/use-theme';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { toast } from 'sonner';
 import {
@@ -74,12 +75,7 @@ export function CampaignBuilder({
   const activeField = useRef<'subject' | 'body'>('body');
   const [organizationEmail, setOrganizationEmail] = useState<string | null>(null);
   const [emailSender, setEmailSender] = useState<CampaignEmailSettings | null>(null);
-  const [previewDark, setPreviewDark] = useState(false);
-  useEffect(() => {
-    const update = () => setPreviewDark(document.querySelector('[data-theme-container]')?.classList.contains('dark') ?? false);
-    update(); window.addEventListener('themechange', update);
-    return () => window.removeEventListener('themechange', update);
-  }, []);
+  const { isDark: previewDark } = useTheme();
   useEffect(() => {
     let cancelled = false;
     campaignsApi.emailSettings().then(res => { if (!cancelled) setEmailSender(res.data); })
@@ -171,6 +167,10 @@ export function CampaignBuilder({
           const current = (await campaignsApi.get(res.data.id)).data;
           result = current.sendResult;
         }
+        if (result.submissionInterrupted || result.status === 'INTERRUPTED') {
+          toast.warning('Campaign submission was interrupted. Review the recipient report and provider history before sending again; uncertain recipients were not retried.');
+          onBack(); return;
+        }
         if (result.status === 'SENDING') {
           toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted. Waiting for provider confirmation.`);
           onBack(); return;
@@ -192,19 +192,19 @@ export function CampaignBuilder({
   const handleSend = () => save(true);
   const handleSaveDraft = () => save(false);
 
-  const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200';
+  const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200';
 
   const preview = (
         <div id="campaign-live-preview" className="w-full min-w-0 min-h-0 flex-1 lg:flex-none lg:w-105 shrink-0 flex flex-col bg-linear-to-br from-slate-50 via-slate-100 to-blue-50/30 dark:from-[#030712] dark:via-[#0a1020] dark:to-blue-950/10 overflow-y-auto">
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-gray-200 dark:border-white/5 bg-white/50 dark:bg-white/2 backdrop-blur-lg">
             <span id="campaign-preview-title" className="text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider">Live Preview</span>
             <div className="flex items-center gap-2">
-              {!isDesktop && <button type="button" aria-label="Close preview" onClick={() => setMobilePreview(false)} className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"><X size={16} /></button>}
+              {!isDesktop && <button type="button" aria-label="Close preview" onClick={() => setMobilePreview(false)} className="p-2 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"><X size={16} /></button>}
               <div className="flex gap-0.5 bg-slate-200/80 dark:bg-white/5 p-0.5 rounded-lg border border-gray-200 dark:border-white/5">
-                <button type="button" onClick={() => setPreviewDevice('desktop')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${previewDevice === 'desktop' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Desktop preview">
+                <button type="button" onClick={() => setPreviewDevice('desktop')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${previewDevice === 'desktop' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Desktop preview">
                   <Monitor size={14} />
                 </button>
-                <button type="button" onClick={() => setPreviewDevice('mobile')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${previewDevice === 'mobile' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Mobile preview">
+                <button type="button" onClick={() => setPreviewDevice('mobile')} className={`p-1.5 rounded-md transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${previewDevice === 'mobile' ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-white'}`} aria-label="Mobile preview">
                   <Smartphone size={14} />
                 </button>
               </div>
@@ -278,7 +278,7 @@ export function CampaignBuilder({
       {/* Top Bar */}
       <div className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <button disabled={isSending} onClick={onBack} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+          <button disabled={isSending} onClick={onBack} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <ArrowLeft size={18} />
           </button>
           <div>
@@ -287,16 +287,16 @@ export function CampaignBuilder({
           </div>
         </div>
         <div role="group" aria-label="Campaign actions" className="flex flex-nowrap items-center gap-1.5 sm:gap-2 self-end md:self-auto">
-          <button aria-label="Save Draft" onClick={handleSaveDraft} disabled={isSending || !canWrite} className="whitespace-nowrap px-2 min-[375px]:px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
+          <button aria-label="Save Draft" onClick={handleSaveDraft} disabled={isSending || !canWrite} className="whitespace-nowrap px-2 min-[375px]:px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed">
             Save<span className="hidden min-[375px]:inline"> Draft</span>
           </button>
-          <button onClick={handleSend} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="flex items-center whitespace-nowrap gap-1.5 sm:gap-2 px-2 min-[375px]:px-3 sm:px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-md shadow-blue-500/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
+          <button onClick={handleSend} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="flex items-center whitespace-nowrap gap-1.5 sm:gap-2 px-2 min-[375px]:px-3 sm:px-5 py-2 bg-primary hover:bg-primary/90 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-md shadow-primary/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
             {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
             {isSending ? 'Sending...' : 'Send Now'}
           </button>
           <button type="button" onClick={() => isDesktop ? setShowPreview(previous => !previous) : setMobilePreview(previous => !previous)}
             aria-label={(isDesktop ? showPreview : mobilePreview) ? 'Hide live preview' : 'Show live preview'} aria-expanded={isDesktop ? showPreview : mobilePreview} aria-controls="campaign-live-preview"
-            className="shrink-0 rounded-lg border border-gray-200 dark:border-white/10 p-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+            className="shrink-0 rounded-lg border border-gray-200 dark:border-white/10 p-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <PanelRight size={16} aria-hidden="true" />
           </button>
         </div>
@@ -319,7 +319,7 @@ export function CampaignBuilder({
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5">Type <span className="text-red-500">*</span></label>
                 <div className="flex rounded-lg border border-gray-200 dark:border-white/10 overflow-hidden bg-slate-50 dark:bg-white/3">
                   {(['Email', 'SMS'] as CampaignType[]).map((t) => (
-                    <button key={t} type="button" onClick={() => setCampaignType(t)} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${campaignType === t ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-white/5'}`}>
+                    <button key={t} type="button" onClick={() => setCampaignType(t)} className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 text-sm font-medium transition-all duration-200 cursor-pointer ${campaignType === t ? 'bg-primary text-white shadow-sm shadow-primary/20' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-white dark:hover:bg-white/5'}`}>
                       {t === 'Email' && <Mail size={14} />}{t === 'SMS' && <MessageSquare size={14} />}{t === 'Multi-Channel' && <Zap size={14} />}
                       {t === 'Multi-Channel' ? 'Multi' : t}
                     </button>
@@ -329,7 +329,7 @@ export function CampaignBuilder({
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <label htmlFor="builder-audience" className="text-sm font-medium text-slate-700 dark:text-slate-300">Target Audience <span className="text-red-500">*</span></label>
-                  <button type="button" onClick={() => setShowAudiencePanel(true)} className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200 flex items-center gap-1 bg-blue-500/10 hover:bg-blue-500/20 px-2 py-0.5 rounded border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                  <button type="button" onClick={() => setShowAudiencePanel(true)} className="text-xs font-bold text-primary dark:text-primary hover:text-blue-700 dark:hover:text-blue-300 transition-colors duration-200 flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                     <Plus size={11} className="stroke-[3px]" /> Create New
                   </button>
                 </div>
@@ -355,7 +355,7 @@ export function CampaignBuilder({
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Content <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <button type="button" onClick={() => setShowVarDropdown(!showVarDropdown)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">
+                    <button type="button" onClick={() => setShowVarDropdown(!showVarDropdown)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary dark:text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors duration-200 border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <Wand2 size={14} /> Insert Variable
                     </button>
                     {showVarDropdown && (
@@ -370,12 +370,12 @@ export function CampaignBuilder({
                 {campaignType === 'Email' && (
                   <div className="mb-3">
                     <label htmlFor="builder-subject" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject Line <span className="text-red-500">*</span></label>
-                    <input ref={subjectRef} onFocus={() => { activeField.current = 'subject'; }} id="builder-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors" placeholder="e.g. Welcome to LeadCRM, {{first_name}}!" />
+                    <input ref={subjectRef} onFocus={() => { activeField.current = 'subject'; }} id="builder-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors" placeholder="e.g. Welcome to LeadCRM, {{first_name}}!" />
                     <FieldError message={errors.subject} />
                   </div>
                 )}
                 <label htmlFor="builder-body" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Body <span className="text-red-500">*</span></label>
-                <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{first_name}}, ...' : 'Hi {{first_name}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
+                <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{first_name}}, ...' : 'Hi {{first_name}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
                 <FieldError message={errors.body || (campaignType === 'SMS' ? smsPreviewError : '')} />
                 {campaignType === 'SMS' && (
                   <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -386,7 +386,7 @@ export function CampaignBuilder({
                   <span className="text-xs text-slate-500 dark:text-slate-400 font-medium block mb-1.5">Quick fields:</span>
                   <div className="flex flex-wrap gap-1.5">
                     {EMAIL_VARIABLE_TOKENS.map(tag => (
-                      <button key={tag} type="button" draggable onDragStart={event => dragVariable(event, tag)} onClick={() => insertVariable(tag)} className="text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-medium px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/5 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500">{tag}</button>
+                      <button key={tag} type="button" draggable onDragStart={event => dragVariable(event, tag)} onClick={() => insertVariable(tag)} className="text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-medium px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/5 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{tag}</button>
                     ))}
                   </div>
                 </div>
@@ -396,12 +396,12 @@ export function CampaignBuilder({
 
         {isDesktop ? (showPreview && preview) : <Sheet open={mobilePreview} onOpenChange={setMobilePreview}>
           <SheetContent showClose={false} trapFocus layerClassName="z-[300]" aria-labelledby="campaign-preview-title"
-            className={`${previewDark ? 'dark theme-dark' : ''} h-dvh max-w-full sm:max-w-105 overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]`}>
+            className="h-dvh max-w-full sm:max-w-105 overflow-hidden pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
             {preview}
           </SheetContent>
         </Sheet>}
       </div>
-      {showAudiencePanel && <AudiencePanel channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
+      {showAudiencePanel && <AudiencePanel channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => prev.some(item => item.id === audience.id) ? prev.map(item => item.id === audience.id ? audience : item) : [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
     </div>
   );
 }

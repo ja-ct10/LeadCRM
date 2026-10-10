@@ -87,8 +87,8 @@ function ResizeHandle({ columnId, currentWidth, onStartResize, isResizing }: Res
     <div
       className={cn(
         'absolute right-0 top-0 h-full w-[5px] cursor-col-resize z-10',
-        'group-hover/header:bg-blue-400/30',
-        isResizing && 'bg-blue-500/50',
+        'group-hover/header:bg-primary/30',
+        isResizing && 'bg-primary/50',
       )}
       onPointerDown={(e) => {
         e.preventDefault();
@@ -172,9 +172,9 @@ function DataGridRowInner<T>({
       className={cn(
         'transition-colors duration-100 cursor-pointer group/row border-b border-[#eef0f3] dark:border-slate-800',
         highlighted
-          ? 'ring-2 ring-inset ring-blue-400 dark:ring-blue-500 bg-blue-50/70 dark:bg-blue-500/15 animate-pulse-once'
+          ? 'ring-2 ring-inset ring-primary dark:ring-primary bg-blue-50/70 dark:bg-primary/15 animate-pulse-once'
           : selected
-            ? 'bg-blue-50 dark:bg-blue-500/10'
+            ? 'bg-blue-50 dark:bg-primary/10'
             : 'hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50',
       )}
       style={viewMode === 'wrap' ? { minHeight: rowHeight, maxHeight: 156 } : { height: rowHeight }}
@@ -191,7 +191,7 @@ function DataGridRowInner<T>({
           className={cn(
             'sticky left-0 z-10 px-1 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
-              ? 'bg-blue-50/60 dark:bg-blue-500/5'
+              ? 'bg-blue-50/60 dark:bg-primary/5'
               : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
           )}
           onClick={(e) => e.stopPropagation()}
@@ -208,7 +208,7 @@ function DataGridRowInner<T>({
           className={cn(
             'sticky z-10 px-3 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
-              ? 'bg-blue-50/60 dark:bg-blue-500/5'
+              ? 'bg-blue-50/60 dark:bg-primary/5'
               : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
             pinnedLeftColumns.length === 0 && isScrolled
               ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
@@ -221,7 +221,7 @@ function DataGridRowInner<T>({
             type="checkbox"
             checked={selected}
             onChange={() => toggleRow(rowId)}
-            className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
+            className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
             aria-label={`Select record ${rowId}`}
           />
         </td>
@@ -240,7 +240,7 @@ function DataGridRowInner<T>({
             className={cn(
               'sticky z-10 px-3 border-r border-[#eef0f3] dark:border-slate-800',
               selected
-                ? 'bg-blue-50/60 dark:bg-blue-500/5'
+                ? 'bg-blue-50/60 dark:bg-primary/5'
                 : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
               isLastPinned && isScrolled
                 ? 'shadow-[4px_0_8px_-2px_rgba(0,0,0,0.08)] dark:shadow-[4px_0_8px_-2px_rgba(0,0,0,0.25)]'
@@ -313,7 +313,7 @@ function DataGridRowInner<T>({
             className={cn(
               'sticky right-0 z-10 px-3',
               selected
-                ? 'bg-blue-50/60 dark:bg-blue-500/5'
+                ? 'bg-blue-50/60 dark:bg-primary/5'
                 : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
               'shadow-[inset_1px_0_0_0_#e5e7eb] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
               col.align === 'right' && 'text-right',
@@ -393,14 +393,14 @@ function SortIndicator({ direction, sortable }: SortIndicatorProps): React.React
     <span className="ml-1 inline-flex shrink-0 items-center gap-[1px]" aria-hidden="true">
       {/* Down arrow ↓ */}
       <svg width="6" height="8" viewBox="0 0 6 8" fill="none" xmlns="http://www.w3.org/2000/svg"
-        className={downActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-300 dark:text-slate-600'}
+        className={downActive ? 'text-primary dark:text-primary' : 'text-slate-300 dark:text-slate-600'}
       >
         <path d="M3 7L0.5 2.5H5.5L3 7Z" fill="currentColor" />
         <line x1="3" y1="0.5" x2="3" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
       </svg>
       {/* Up arrow ↑ */}
       <svg width="6" height="8" viewBox="0 0 6 8" fill="none" xmlns="http://www.w3.org/2000/svg"
-        className={upActive ? 'text-blue-600 dark:text-blue-400' : isInactive ? 'text-slate-300 dark:text-slate-600' : 'text-slate-300 dark:text-slate-600'}
+        className={upActive ? 'text-primary dark:text-primary' : isInactive ? 'text-slate-300 dark:text-slate-600' : 'text-slate-300 dark:text-slate-600'}
       >
         <path d="M3 1L5.5 5.5H0.5L3 1Z" fill="currentColor" />
         <line x1="3" y1="7.5" x2="3" y2="4" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" />
@@ -786,7 +786,7 @@ export function DataGrid<T = Record<string, unknown>>({
                       if (el) el.indeterminate = someSelected;
                     }}
                     onChange={toggleAll}
-                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-[#2563EB] focus:ring-[#2563EB]/20 cursor-pointer accent-[#2563EB]"
+                    className="w-3.5 h-3.5 rounded border-[#E4E9F0] dark:border-slate-600 text-primary focus:ring-primary/20 cursor-pointer accent-primary"
                     aria-label="Select all records"
                   />
                 </th>
@@ -1039,7 +1039,7 @@ export function DataGrid<T = Record<string, unknown>>({
                           onClick={emptyState.onCreateRecord}
                           className={cn(
                             'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-md transition-colors',
-                            'bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-700',
+                            'bg-primary hover:bg-primary/90 dark:bg-primary dark:hover:bg-primary/90',
                             'text-white',
                           )}
                         >

@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema, MailboxBulkActionSchema } from '@leadcrm/shared';
 import { mutateMailboxThread, mutateMailboxThreads } from './mailbox-thread-actions';
 import { sendMailboxEmail } from './mailbox-send.service';
-import { scheduleMailboxEmail } from './scheduled-mailbox.service';
+import { scheduleMailboxEmail, getScheduledMailboxEmail, cancelScheduledMailboxEmail } from './scheduled-mailbox.service';
 import { fetchEmails, fetchUnreadCount, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
 import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.service';
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
@@ -12,6 +12,14 @@ import { writeAuditLog } from '../../core/audit/audit.service';
 import { readMailboxAttachment } from './mailbox-attachments';
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
+export async function scheduledDetail(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await getScheduledMailboxEmail(req.user!.tenantId, req.user!.userId, z.string().uuid().parse(req.params.id))); }
+  catch (error) { next(error); }
+}
+export async function cancelScheduled(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await cancelScheduledMailboxEmail(req.user!.tenantId, req.user!.userId, z.string().uuid().parse(req.params.id))); }
+  catch (error) { next(error); }
+}
 
 export async function authorize(req: Request, res: Response, next: NextFunction) {
   try {

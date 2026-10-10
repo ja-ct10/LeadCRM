@@ -19,7 +19,7 @@ import { useData } from '@/store/DataContext';
 
 const EMPTY_RECORDS: ArchivedRecord[] = [];
 const rowId = (record: ArchivedRecord) => `${record.type}-${record.id}`;
-const restoreClass = 'inline-flex min-h-11 min-w-11 sm:min-h-8 items-center justify-center gap-1.5 px-3 py-1.5 bg-[#3B82F6]/10 hover:bg-[#3B82F6]/15 text-[#3B82F6] dark:text-[#60A5FA] rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500';
+const restoreClass = 'inline-flex min-h-11 min-w-11 sm:min-h-8 items-center justify-center gap-1.5 px-3 py-1.5 bg-primary/10 hover:bg-primary/15 text-primary dark:text-primary rounded-lg text-xs font-semibold transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary';
 
 export function ArchivedData(): React.ReactElement {
   const { user, tenant, userCan } = useAuth();
@@ -118,7 +118,7 @@ export function ArchivedData(): React.ReactElement {
           {(['All', ...ARCHIVE_TYPES] as const).map(type => (
             <button key={type} type="button" aria-pressed={filter === type} disabled={restoring}
               onClick={() => { setFilter(type); changePage(1); }}
-              className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${filter === type ? 'bg-[#3B82F6] text-white' : 'bg-slate-100 dark:bg-[#1B252F] text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
+              className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${filter === type ? 'bg-primary text-white' : 'bg-muted text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
               {type}
             </button>
           ))}

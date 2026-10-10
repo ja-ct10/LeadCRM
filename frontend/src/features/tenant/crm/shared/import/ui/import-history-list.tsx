@@ -39,7 +39,7 @@ function getStatusBadge(status: ImportSummary['status']): { label: string; class
     case 'completed': return { label: 'Success', className: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' };
     case 'completed_with_errors': return { label: 'Partial', className: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' };
     case 'failed': return { label: 'Failed', className: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400' };
-    case 'pending': case 'importing': return { label: 'In Progress', className: 'bg-blue-100 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400' };
+    case 'pending': case 'importing': return { label: 'In Progress', className: 'bg-blue-100 dark:bg-primary/20 text-blue-700 dark:text-primary' };
     default: return { label: status, className: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400' };
   }
 }
@@ -102,7 +102,7 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
         <div className="w-12 h-12 rounded-full bg-red-50 dark:bg-red-500/10 flex items-center justify-center mx-auto mb-3"><AlertCircle size={20} className="text-red-500" /></div>
         <p className="text-sm font-medium text-slate-700 dark:text-slate-300">Failed to load import history</p>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{error}</p>
-        <button onClick={fetchImports} className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"><RefreshCw size={12} /> Retry</button>
+        <button onClick={fetchImports} className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-[12px] font-medium text-primary dark:text-primary bg-blue-50 dark:bg-primary/10 rounded-lg hover:bg-blue-100 transition-colors cursor-pointer"><RefreshCw size={12} /> Retry</button>
       </div>
     );
   }
@@ -123,7 +123,7 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
           <p className="text-[12.5px] text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
             Upload a CSV to bring your first batch of {config.moduleLabel.toLowerCase()} into LeadCRM.
           </p>
-          <button onClick={onStartNew ?? (() => router.push(`/crm/${moduleKey}/import`))} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">
+          <button onClick={onStartNew ?? (() => router.push(`/crm/${moduleKey}/import`))} className="mt-4 inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors cursor-pointer">
             Start an import <ArrowRight size={13} />
           </button>
         </div>

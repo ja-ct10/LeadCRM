@@ -17,7 +17,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
-import { createPortal } from 'react-dom';
+import { ThemedPortal } from '@/shared/components/theme-scope';
 import {
   MoreHorizontal,
   Eye,
@@ -95,10 +95,10 @@ export function RowActionsMenu({
     placeMenu();
     window.addEventListener('resize', placeMenu);
     window.addEventListener('scroll', placeMenu, true);
-    const observer = new ResizeObserver(placeMenu);
-    observer.observe(dropdownRef.current!);
+    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(placeMenu);
+    if (dropdownRef.current) observer?.observe(dropdownRef.current);
     return () => {
-      observer.disconnect();
+      observer?.disconnect();
       window.removeEventListener('resize', placeMenu);
       window.removeEventListener('scroll', placeMenu, true);
     };
@@ -119,6 +119,8 @@ export function RowActionsMenu({
 
     function handleEscape(e: KeyboardEvent): void {
       if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
         setIsOpen(false);
         buttonRef.current?.focus();
       }
@@ -160,12 +162,11 @@ export function RowActionsMenu({
       </button>
 
       {/* Dropdown Menu — rendered via portal to escape overflow:hidden */}
-      {isOpen && createPortal(
-        <div
+      {isOpen && <ThemedPortal>{<div
           className={cn(
             'fixed z-[9999]',
             'w-[180px] py-1.5 px-1',
-            'bg-white dark:bg-slate-800 border border-gray-200 dark:border-white/[0.08]',
+            'bg-popover border border-border',
             'rounded-lg shadow-xl',
           )}
           style={{
@@ -213,9 +214,7 @@ export function RowActionsMenu({
               {action.disabledReason && <p id={`action-${action.id}-reason`} className="px-3 pb-2 text-xs text-slate-500 dark:text-slate-400">{action.disabledReason}</p>}
             </React.Fragment>
           ))}
-        </div>,
-        document.body,
-      )}
+        </div>}</ThemedPortal>}
     </div>
   );
 }

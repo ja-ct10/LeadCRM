@@ -192,7 +192,7 @@ export const DEALS_COLUMN_REGISTRY: ModuleRegistry = {
 export const COLUMN_REGISTRIES: Record<string, ModuleRegistry> = {
   campaigns: { module: 'campaigns', columns: CAMPAIGNS_TABLE_COLUMNS, sortableFields: ['name', 'createdAt'] },
   workflows: { module: 'workflows', columns: WORKFLOWS_TABLE_COLUMNS, sortableFields: ['name', 'createdAt'] },
-  users: { module: 'users', columns: USERS_TABLE_COLUMNS, sortableFields: ['name', 'role', 'email', 'status', 'department', 'createdAt'] },
+  users: { module: 'users', columns: USERS_TABLE_COLUMNS, sortableFields: ['name', 'role', 'email', 'status', 'groups', 'createdAt'] },
   tasks: { module: 'tasks', columns: TASK_COLUMN_DEFINITIONS, sortableFields: ['title', 'dueDate', 'createdAt', 'updatedAt'] },
   leads: LEADS_COLUMN_REGISTRY,
   accounts: ACCOUNTS_COLUMN_REGISTRY,

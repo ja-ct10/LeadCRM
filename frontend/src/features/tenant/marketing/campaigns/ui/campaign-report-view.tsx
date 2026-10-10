@@ -173,6 +173,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       <span className="min-w-0 flex-1">{error}{report && ' Previously loaded data is shown.'}</span>
       <Button variant="outline" onClick={() => void fetchReport()} disabled={loading}>Retry</Button>
     </div>}
+    {current.submissionInterruptedAt && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-200">Submission was interrupted. Recipients marked as not sent were never submitted. Unconfirmed recipients may have been accepted. Review recipient failure reasons and provider history before sending again; no recipients were automatically retried.</div>}
     {(report || initialLoading) && <>
       <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-5' : 'xl:grid-cols-6'} gap-3`}>
         {metrics.map((metric, index) => <Card key={metric.label} className="min-w-0 rounded-lg p-4 shadow-sm">

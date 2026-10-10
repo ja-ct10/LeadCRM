@@ -315,13 +315,13 @@ export function ModuleWorkspace({
               className={cn(
                 'px-3 py-2 text-[13px] font-medium transition-colors relative',
                 activeTab === tab.id
-                  ? 'text-[#2563EB] dark:text-blue-400'
+                  ? 'text-primary dark:text-primary'
                   : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white',
               )}
             >
               {tab.label}
               {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-[#2563EB] dark:bg-blue-400 rounded-full" />
+                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary dark:bg-primary rounded-full" />
               )}
             </button>
           ))}
@@ -380,7 +380,7 @@ export function ModuleWorkspace({
                   className={cn(
                     'p-1.5 rounded-md transition-colors',
                     isActive
-                      ? 'bg-[#2563EB] text-white shadow-sm'
+                      ? 'bg-primary text-white shadow-sm'
                       : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700',
                   )}
                 >
@@ -418,13 +418,13 @@ export function ModuleWorkspace({
                           className={cn(
                             'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
                             isActive
-                              ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                              ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
                               : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                           )}
                         >
                           <Icon size={15} />
                           {viewOption.label}
-                          {isActive && <span className="ml-auto text-[#2563EB]">✓</span>}
+                          {isActive && <span className="ml-auto text-primary">✓</span>}
                         </button>
                       );
                     })}
@@ -473,13 +473,13 @@ export function ModuleWorkspace({
                           className={cn(
                             'w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium transition-colors',
                             isActive
-                              ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                              ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
                               : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                           )}
                         >
                           <Icon size={15} />
                           {viewOption.label}
-                          {isActive && <Check size={13} className="ml-auto text-[#2563EB]" />}
+                          {isActive && <Check size={13} className="ml-auto text-primary" />}
                         </button>
                       );
                     })}
@@ -654,7 +654,7 @@ function TableSettingsMenuInline({
           {/* Manage Columns */}
           {onManageColumns && (
             <button
-              onClick={() => { onManageColumns(); setIsOpen(false); }}
+              onClick={() => { menuRef.current?.querySelector('button')?.focus(); onManageColumns(); setIsOpen(false); }}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
             >
               <Settings2 size={14} className="text-[#5A6B85] dark:text-slate-400" />
@@ -685,6 +685,8 @@ function TableSettingsMenuInline({
                 onMouseLeave={() => setActiveSubmenu(null)}
               >
                 <button
+                  onClick={() => setActiveSubmenu('pageSize')}
+                  aria-expanded={activeSubmenu === 'pageSize'}
                   className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                   aria-haspopup="true"
                 >
@@ -695,7 +697,7 @@ function TableSettingsMenuInline({
                 </button>
 
                 {activeSubmenu === 'pageSize' && (
-                  <div className="absolute right-full top-0 mr-1 w-32 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+                  <div className="relative mx-2 my-1 sm:absolute sm:right-full sm:top-0 sm:mr-1 sm:ml-0 sm:my-0 sm:w-32 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
                     {PAGE_SIZE_OPTIONS.map((size) => (
                       <button
                         key={size}
@@ -703,7 +705,7 @@ function TableSettingsMenuInline({
                         className={cn(
                           'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
                           pageSize === size
-                            ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                            ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
                             : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                         )}
                       >
@@ -729,6 +731,8 @@ function TableSettingsMenuInline({
             onMouseLeave={() => setActiveSubmenu(null)}
           >
             <button
+              onClick={() => setActiveSubmenu('viewMode')}
+              aria-expanded={activeSubmenu === 'viewMode'}
               className="w-full flex items-center gap-2.5 px-3 py-2 text-[13px] font-medium text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
               aria-haspopup="true"
             >
@@ -741,13 +745,13 @@ function TableSettingsMenuInline({
             </button>
 
             {activeSubmenu === 'viewMode' && (
-              <div className="absolute right-full top-0 mr-1 w-36 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
+              <div className="relative mx-2 my-1 sm:absolute sm:right-full sm:top-0 sm:mr-1 sm:ml-0 sm:my-0 sm:w-36 bg-white dark:bg-slate-800 border border-[#E4E9F0] dark:border-slate-700 rounded-xl shadow-lg z-50 py-1.5">
                 <button
                   onClick={() => { onViewModeChange?.('wrap'); setIsOpen(false); setActiveSubmenu(null); }}
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
                     viewMode === 'wrap'
-                      ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                      ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
                       : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                   )}
                 >
@@ -759,7 +763,7 @@ function TableSettingsMenuInline({
                   className={cn(
                     'w-full flex items-center gap-2 px-3 py-2 text-[13px] font-medium transition-colors',
                     viewMode === 'clip'
-                      ? 'text-[#2563EB] dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10'
+                      ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10'
                       : 'text-[#0F172A] dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700',
                   )}
                 >
@@ -798,7 +802,7 @@ function PageSizeSelectorInline({ pageSize, onPageSizeChange }: PageSizeSelector
         id="toolbar-page-size"
         value={pageSize}
         onChange={(e) => onPageSizeChange(Number(e.target.value))}
-        className="h-8 px-2 pr-6 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-[#2563EB]/20 cursor-pointer appearance-none"
+        className="h-8 px-2 pr-6 text-[12px] font-medium rounded-lg border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-800 text-[#0F172A] dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary/20 cursor-pointer appearance-none"
         aria-label="Records per page"
       >
         {PAGE_SIZE_OPTIONS.map((size) => (
@@ -914,11 +918,11 @@ export function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onIm
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.95 }}
             transition={{ duration: 0.12 }}
-            className="absolute top-full right-0 mt-1.5 w-48 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 py-1"
+            className="absolute top-full left-0 right-auto sm:left-auto sm:right-0 mt-1.5 w-48 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 py-1"
             role="menu"
           >
             <button
-              onClick={() => { onPrimaryAction(); setIsOpen(false); }}
+              onClick={() => { dropdownRef.current?.querySelector('button')?.focus(); onPrimaryAction(); setIsOpen(false); }}
               className="flex items-center gap-2.5 w-full px-3.5 py-2.5 text-[13px] text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors text-left"
               role="menuitem"
             >

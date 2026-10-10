@@ -6,6 +6,7 @@ import { X, Lock, Shield, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { RoleDetail } from '@/store/types/roles.types';
 import { PermissionMatrix } from './permission-matrix';
+import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 
 interface RoleDetailDrawerProps {
   role:    RoleDetail | null;
@@ -23,16 +24,11 @@ function buildPermissionsMap(role: RoleDetail): Record<string, { canView: boolea
 
 export function RoleDetailDrawer({ role, isOpen, onClose }: RoleDetailDrawerProps): React.ReactElement {
   return (
-    <>
-      {/* Backdrop */}
-      {isOpen && <div className="fixed inset-0 z-40 bg-slate-950/40 backdrop-blur-sm" onClick={onClose} />}
-
-      {/* Drawer */}
-      <div className={cn(
-        'fixed inset-y-0 right-0 z-50', panelSurfaceClass,
+    <Sheet open={isOpen} onOpenChange={open => { if (!open) onClose(); }}>
+      <SheetContent showClose={false} aria-label="Role details" className={cn(
+        panelSurfaceClass,
         'border-l border-slate-200 dark:border-slate-700 shadow-2xl',
-        'flex flex-col transition-transform duration-200',
-        isOpen ? 'translate-x-0' : 'translate-x-full',
+        'flex flex-col',
       )}>
         {/* Header */}
         <div className={panelHeaderClass + " flex items-start justify-between gap-3"}>
@@ -108,7 +104,7 @@ export function RoleDetailDrawer({ role, isOpen, onClose }: RoleDetailDrawerProp
             </div>
           </div>
         )}
-      </div>
-    </>
+      </SheetContent>
+    </Sheet>
   );
 }

@@ -31,13 +31,14 @@ export async function deliverNotification(params: CreateNotificationParams): Pro
       const scope = tenantContext.getStore();
       if (scope && scope.tenantId !== params.tenantId) throw new Error('NOTIFICATION_TENANT_MISMATCH');
       const at = params.eligibilityAt ?? new Date();
+      const utcAt = at.toISOString();
       // Hold a read lock through delivery, so completion/reassignment cannot commit
       // between the final eligibility check and the reminder insert.
       const eligible = await tenantContext.exit(async () => await tx.$queryRaw<Array<{ id: string }>>`
         SELECT id FROM "Task" WHERE "tenantId"=${params.tenantId} AND id=${params.entityId ?? ''}
           AND "assignedUserId"=${params.userId} AND "notificationVersion"=${params.taskVersion ?? -1}
           AND NOT "isArchived" AND status NOT IN ('completed','cancelled')
-          AND ((${params.type}='task_due' AND "dueDate">${at}) OR (${params.type}='task_overdue' AND "dueDate"<=${at}))
+          AND ((${params.type}='task_due' AND "dueDate">${utcAt}::timestamp) OR (${params.type}='task_overdue' AND "dueDate"<=${utcAt}::timestamp))
         FOR SHARE`);
       currentTask = eligible.length > 0;
     }

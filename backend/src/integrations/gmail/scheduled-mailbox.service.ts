@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { ScheduleMailboxEmailSchema } from '@leadcrm/shared';
+import { ScheduleMailboxEmailSchema, type ScheduledMailboxEmailDetail } from '@leadcrm/shared';
 import { z } from 'zod';
 import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
@@ -12,6 +12,31 @@ import { readGmailJson, writeGmailJson } from './gmail-read';
 import { ingestMailboxMessages } from './mailbox-ingestion.service';
 
 export const scheduleMessageId = (id: string) => `<leadcrm-schedule-${id}@leadcrm.invalid>`;
+
+export async function getScheduledMailboxEmail(tenantId: string, userId: string, id: string): Promise<ScheduledMailboxEmailDetail> {
+  const { account, scope } = await authorizedMailbox(tenantId, userId);
+  const item = await prisma.scheduledMailboxEmail.findFirst({ where: { id, tenantId, accountId: account.id, createdById: userId } });
+  if (!item) throw new AppError('Scheduled email not found.', 404);
+  const draft = await prisma.mailboxMessage.findFirst({ where: { tenantId, accountId: account.id, draftId: item.draftId } });
+  if (!draft) throw new AppError('Scheduled draft is no longer available. Review Gmail before resending.', 404);
+  await assertStoredMessages(account, scope, [draft.providerMessageId]);
+  return { id: item.id, status: item.status, scheduledAt: item.scheduledAt.toISOString(), recipients: item.recipients, subject: item.subject,
+    body: draft.body, lastError: item.lastError, canCancel: ['pending', 'claimed'].includes(item.status) };
+}
+
+/** Cancelling competes atomically with the worker's transition to sending. */
+export async function cancelScheduledMailboxEmail(tenantId: string, userId: string, id: string) {
+  const { account } = await authorizedMailbox(tenantId, userId);
+  const item = await prisma.scheduledMailboxEmail.findFirst({ where: { id, tenantId, accountId: account.id, createdById: userId }, select: { status: true } });
+  if (!item) throw new AppError('Scheduled email not found.', 404);
+  if (item.status === 'cancelled') return { id, status: 'cancelled' };
+  const cancelled = await prisma.scheduledMailboxEmail.updateMany({ where: { id, tenantId, accountId: account.id, createdById: userId, status: { in: ['pending', 'claimed'] } },
+    data: { status: 'cancelled', leaseId: null, leaseUntil: null, retryAt: null, lastError: null } });
+  if (!cancelled.count) throw new AppError('Delivery has already started or needs verification. Check Gmail Sent before resending.', 409);
+  // Keep the Gmail draft so the employee can edit it through the existing Drafts screen.
+  await mailboxChanged(account.id);
+  return { id, status: 'cancelled' };
+}
 
 export async function scheduleMailboxEmail(tenantId: string, userId: string, input: z.infer<typeof ScheduleMailboxEmailSchema>) {
   const data = ScheduleMailboxEmailSchema.parse(input);
@@ -55,7 +80,7 @@ export async function runScheduledMailboxEmails() {
       OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, data: { status: uncertain ? 'uncertain' : 'claimed', leaseId, leaseUntil: new Date(Date.now() + 120000), attemptCount: { increment: 1 } } });
     if (!claim.count) return;
     const update = async (data: Parameters<typeof prisma.scheduledMailboxEmail.updateMany>[0]['data']) => {
-      if (!(await prisma.scheduledMailboxEmail.updateMany({ where: { id: item.id, leaseId }, data })).count) throw new AppError('Scheduled email claim lost.', 409);
+      if (!(await prisma.scheduledMailboxEmail.updateMany({ where: { id: item.id, leaseId, status: { not: 'cancelled' } }, data })).count) throw new AppError('Scheduled email claim lost.', 409);
     };
     let deliveryStarted = uncertain, accepted = false, committed = false;
     try {
@@ -101,6 +126,8 @@ export async function runScheduledMailboxEmails() {
       } catch { /* History worker will finish ingestion. */ }
     } catch (error) {
       if (committed) return; // Never regress a confirmed delivery because cleanup failed.
+      const current = await prisma.scheduledMailboxEmail.findUnique({ where: { id: item.id }, select: { leaseId: true } });
+      if (current?.leaseId !== leaseId) return; // Cancellation or a newer worker owns the row.
       const unknown = accepted || uncertain || deliveryStarted && (!(error instanceof AppError) || error.code === 'GMAIL_OUTCOME_UNKNOWN');
       const transient = error instanceof AppError && error.code === 'GMAIL_RATE_LIMITED';
       await update({ status: unknown && item.attemptCount < 4 ? 'uncertain' : transient && item.attemptCount < 3 ? 'pending' : 'failed',

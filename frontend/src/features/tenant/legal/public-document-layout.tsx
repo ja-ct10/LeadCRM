@@ -5,7 +5,7 @@ export const publicLinkClass = 'rounded-sm text-blue-700 underline underline-off
 
 export function PublicDocumentLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-white text-slate-800">
+    <div className="min-h-[var(--app-viewport-height)] bg-white text-slate-800">
       <a href="#document" className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:bg-white focus:p-4 focus:text-blue-700">Skip to content</a>
       <header className="border-b border-slate-200">
         <div className="mx-auto flex max-w-4xl flex-wrap items-center justify-between gap-4 px-5 py-5 sm:px-8">

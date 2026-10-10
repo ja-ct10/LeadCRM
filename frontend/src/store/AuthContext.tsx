@@ -9,7 +9,8 @@ import React, {
 import { User, Tenant } from './types';
 import { hasModulePermission, isApplicablePermission } from '@leadcrm/shared';
 import type { ResolvedPermissions, PermissionAction } from './types/roles.types';
-import { MOCK_USERS, MOCK_TENANTS } from './mockData';
+import { MOCK_USERS, MOCK_TENANTS, MOCK_ROLES } from './mockData';
+import { resolveMockPermissions } from './mock-permissions';
 import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearPageCache }         from '@/shared/cache/page-cache';
@@ -17,11 +18,6 @@ import { clearPageCache }         from '@/shared/cache/page-cache';
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
 const USE_MOCK_AUTH = process.env.NODE_ENV !== 'production' && process.env.NEXT_PUBLIC_USE_MOCK_AUTH === 'true';
-
-// ─── Super-role names ─────────────────────────────────────────────────────────
-// Module-level constant — never recreated per render.
-// These roles bypass RolePermission evaluation in userCan().
-const SUPER_ROLE_NAMES = ['Client Admin'] as const;
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -132,7 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       status: apiUser.status as User['status'],
       phone: apiUser.phone ?? undefined,
       jobTitle: apiUser.jobTitle ?? undefined,
-      department: apiUser.department ?? undefined,
+      groups: apiUser.groups ?? [],
       avatarUrl: apiUser.avatarUrl ?? undefined,
     });
     setTenant(buildTenantFromApiUser({ ...apiUser }));
@@ -181,7 +177,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshPermissions = useCallback(async (): Promise<void> => {
-    if (USE_MOCK_AUTH || isLoading || authError || !user?.id) return;
+    if (isLoading || authError || !user?.id) return;
+    if (USE_MOCK_AUTH) {
+      setPermissions(resolveMockPermissions(user, MOCK_ROLES));
+      setIsPermissionsLoaded(true);
+      return;
+    }
     const id = user.id;
     const generation = ++permissionGeneration.current;
     try {
@@ -196,7 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsPermissionsLoaded(true);
       }
     }
-  }, [user?.id, isLoading, authError]);
+  }, [user?.id, user?.role, user?.tenantId, isLoading, authError]);
 
   useEffect(() => {
     setPermissions({});
@@ -210,7 +211,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   // Super roles bypass RolePermission evaluation.
   const userCan = useCallback((module: string, action: PermissionAction): boolean => {
     if (!user) return false;
-    const norm = user.role?.toLowerCase().trim() ?? '';
     if (!isApplicablePermission(module, action)) return false;
     if (user.role === 'Client Admin') return true;
     return hasModulePermission(permissions, module, action);
@@ -243,6 +243,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  useEffect(() => {
+    if (USE_MOCK_AUTH || !user?.id) return;
+    const changed = (event: Event) => {
+      if (event instanceof CustomEvent && event.detail?.source === 'authorization') return;
+      void accessRefresh.current.refreshUser().catch(() => {});
+    };
+    window.addEventListener('leadcrm:groups-changed', changed);
+    return () => window.removeEventListener('leadcrm:groups-changed', changed);
+  }, [user?.id]);
+
   const accessRefresh = useRef({ refreshUser, refreshPermissions });
   accessRefresh.current = { refreshUser, refreshPermissions };
   useEffect(() => {
@@ -258,9 +268,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     source.addEventListener('authorization-change', event => {
       const revision = (event as MessageEvent<string>).data;
       if (revision === previous) return;
-      if (previous !== undefined) { setPermissions({}); setIsPermissionsLoaded(true); }
+      // Commit refreshed grants when the server responds. Membership-only
+      // revisions keep permitted editors mounted; failed reads clear grants.
       previous = revision;
       refresh();
+      window.dispatchEvent(new CustomEvent('leadcrm:groups-changed', { detail: { source: 'authorization' } }));
     });
     source.addEventListener('open', refresh);
     source.addEventListener('authorization-access-changed', () => {

@@ -4,6 +4,7 @@ exports.ImportResultsQuerySchema = exports.ImportListQuerySchema = exports.CsvUp
 exports.parseImportCsv = parseImportCsv;
 exports.mapImportCsv = mapImportCsv;
 const zod_1 = require("zod");
+const lead_contract_1 = require("../contracts/lead.contract");
 exports.CSV_MAX_BYTES = 10 * 1024 * 1024;
 exports.CSV_MAX_ROWS = 5000;
 const importIdentity = (value) => value.trim().replace(/\s+/g, ' ').toLowerCase();
@@ -30,7 +31,7 @@ const person = {
     phone: required('Phone Number', 50), companyName: required('Company Name', 200),
     address: required('Full Address', 500), productInterest: products,
 };
-exports.ImportLeadRowSchema = zod_1.z.object({ ...person, website, source: optional(100), description: optional(2000),
+exports.ImportLeadRowSchema = zod_1.z.object({ ...person, firstName: lead_contract_1.LeadNameSchema, lastName: lead_contract_1.LeadNameSchema, phone: lead_contract_1.LeadPhoneSchema.optional().default(''), companyName: optional(2000), address: optional(2000), source: lead_contract_1.OptionalLeadSourceSchema.optional().default(''),
     status: optional(30).transform(v => v ? v[0].toUpperCase() + v.slice(1).toLowerCase() : 'Warm')
         .pipe(zod_1.z.enum(['Hot', 'Warm', 'Cold', 'Cancelled'], { errorMap: () => ({ message: 'Status must be Hot, Warm, Cold or Cancelled. Close customers through a confirmed Closed Won Deal.' }) })),
 }).strict();
@@ -53,7 +54,7 @@ exports.ImportDealRowSchema = zod_1.z.object({
 }).strict();
 exports.importRowSchemas = { leads: exports.ImportLeadRowSchema, contacts: exports.ImportContactRowSchema, accounts: exports.ImportAccountRowSchema, deals: exports.ImportDealRowSchema };
 exports.importRequiredFields = {
-    leads: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address'],
+    leads: ['firstName', 'lastName', 'email'],
     contacts: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address'],
     accounts: ['name'], deals: ['title', 'productInterest', 'pipeline', 'stage'],
 };

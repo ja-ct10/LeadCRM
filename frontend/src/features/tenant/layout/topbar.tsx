@@ -18,11 +18,12 @@ import { cn } from '@/lib/utils';
 interface TopbarProps {
   onOpenSidebar: () => void;
   onOpenInbox: () => void;
+  sidebarOpen?: boolean;
 }
 
 // -- Component -----------------------------------------------------------------
 
-export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): React.ReactElement {
+export default function Topbar({ onOpenSidebar, onOpenInbox, sidebarOpen = false }: TopbarProps): React.ReactElement {
   const { unreadCount: notificationCount } = useNotifications('all', { countsOnly: true });
   const { currentPath } = useLayout();
   const { tenant, user } = useAuth();
@@ -74,13 +75,18 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
     : NAV_ITEMS.find(item => item.path === currentPath)?.name ||
         (currentPath === 'help' ? 'Help Center' :
          currentPath === 'notifications' ? 'Notifications' :
-         currentPath === 'inbox' ? 'Messages' : 'Dashboard');
+         currentPath === 'inbox' ? 'Messages' :
+         currentPath === 'profile-settings' ? 'Profile Settings' :
+         currentPath === 'forms' ? 'Forms' :
+         currentPath === 'reports' ? 'Reports' :
+         currentPath === 'deals' ? 'Deals' :
+         currentPath === 'card-showcase' ? 'Card Showcase' : 'Dashboard');
 
   // Get parent group for breadcrumb
   const currentGroup = NAV_ITEMS.find(item => item.path === currentPath);
   const groupName = currentPath === 'settings'
     ? settingsBreadcrumb.group
-    : (currentGroup as any)?.group ?? '';
+    : (currentGroup as any)?.group ?? ({ 'profile-settings': 'General', forms: 'Marketing', deals: 'CRM', reports: 'Reporting' } as Record<string, string>)[currentPath] ?? '';
 
   // Sub-page breadcrumb (e.g. "Import" for /crm/leads/import)
   const subPageName = isImportPage ? 'Import' : null;
@@ -90,9 +96,12 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
       {/* Left: Mobile hamburger + Mobile search + Breadcrumb */}
       <div className="flex items-center gap-0.5 sm:gap-1 flex-1 min-w-0">
         <button
-          className="lg:hidden text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors"
+          type="button"
+          className="navigation-menu-trigger text-[var(--text-tertiary)] hover:text-[var(--text-primary)] p-1.5 min-w-[44px] min-h-[44px] items-center justify-center rounded-lg transition-colors"
           onClick={onOpenSidebar}
           aria-label="Open sidebar"
+          aria-expanded={sidebarOpen}
+          aria-controls="crm-navigation"
         >
           <Menu size={18} />
         </button>
@@ -149,7 +158,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           className={cn(
             'relative w-8 h-8 sm:min-w-[44px] sm:min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
             currentPath === 'inbox'
-              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
+              ? 'bg-primary/10 text-primary'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
           )}
           aria-label="Open Inbox"
@@ -170,7 +179,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
           className={cn(
             'relative w-8 h-8 sm:min-w-[44px] sm:min-h-[44px] rounded-lg flex items-center justify-center transition-colors',
             isNotificationsOpen
-              ? 'bg-[#3B82F6]/10 text-[#3B82F6]'
+              ? 'bg-primary/10 text-primary'
               : 'text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-[var(--surface-secondary)]',
           )}
           aria-label={`Notifications, ${notificationCount} unread`}
@@ -180,7 +189,7 @@ export default function Topbar({ onOpenSidebar, onOpenInbox }: TopbarProps): Rea
         >
           <Bell size={16} />
           {notificationCount > 0 && (
-            <span className="absolute -top-1 -right-1 min-w-4 rounded-full bg-blue-600 px-1 text-center text-[9px] font-bold leading-4 text-white">{notificationCount > 99 ? '99+' : notificationCount}</span>
+            <span className="absolute -top-1 -right-1 min-w-4 rounded-full bg-primary px-1 text-center text-[9px] font-bold leading-4 text-white">{notificationCount > 99 ? '99+' : notificationCount}</span>
           )}
         </button>
 

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { ThemedPortal } from '@/shared/components/theme-scope';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
@@ -68,18 +68,18 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
   useEffect(() => { if (isOpen && position) dropdownRef.current?.focus(); }, [isOpen, !!position]);
 
   if (typeof document === 'undefined') return null;
-  return createPortal(<AnimatePresence>{isOpen && position && (
+  return <ThemedPortal>{<AnimatePresence>{isOpen && position && (
     <motion.div ref={dropdownRef} id="notifications-dropdown" role="dialog" aria-labelledby="notifications-title" tabIndex={-1}
       initial={{ opacity: 0, y: shouldReduce ? 0 : -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
       style={position}
-      className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white shadow-xl shadow-slate-900/10 backdrop-blur-md focus:outline-none dark:border-slate-700/80 dark:bg-[#1E293B] dark:shadow-black/40">
+      className="fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-xl shadow-slate-900/10 backdrop-blur-md focus:outline-none dark:shadow-black/40">
       <div className="shrink-0 border-b border-border px-4 py-3">
         <div className="flex items-start justify-between gap-2">
           <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <h2 id="notifications-title" className="text-base font-semibold text-foreground">Notifications</h2>
-            <span className="rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-semibold text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">{unreadCount} unread</span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{unreadCount} unread</span>
           </div>
-          <button type="button" className="shrink-0 whitespace-nowrap rounded text-xs font-medium leading-6 text-blue-600 hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50 dark:text-blue-400" disabled={!unreadCount || isMutating} onClick={() => void markAllAsRead()} aria-label="Mark all notifications as read">Mark all as read</button>
+          <button type="button" className="shrink-0 whitespace-nowrap rounded text-xs font-medium leading-6 text-primary hover:underline focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50" disabled={!unreadCount || isMutating} onClick={() => void markAllAsRead()} aria-label="Mark all notifications as read">Mark all as read</button>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{unreadCount ? `${unreadCount} ${unreadCount === 1 ? 'item needs' : 'items need'} your attention` : "You're all caught up"}</p>
       </div>
@@ -104,5 +104,5 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
         <Button className="h-10 w-full justify-between" onClick={() => { onClose(); router.push('/notifications'); }}><span className="flex-1">View All Notifications</span><ArrowRight aria-hidden="true" /></Button>
       </div>
     </motion.div>
-  )}</AnimatePresence>, document.body);
+  )}</AnimatePresence>}</ThemedPortal>;
 }

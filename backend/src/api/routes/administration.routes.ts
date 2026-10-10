@@ -79,7 +79,7 @@ router.get(   '/permissions',          authorize('roles.view'), permController.g
 router.get(   '/audit',                authorize('users.view'),   auditController.getAuditLogs);
 
 // -- Groups ---------------------------------------------
-router.get(   '/groups',                     groupController.getAll);
+router.get(   '/groups',                     authorize('groups.view'), groupController.getAll);
 router.post(  '/groups',                     authorize('groups.create'), validate(CreateGroupSchema), groupController.create);
 router.put(   '/groups/:id',                 authorize('groups.edit'), validate(UpdateGroupSchema), groupController.update);
 router.delete('/groups/:id',                 authorize('groups.delete'), groupController.remove);
@@ -94,6 +94,10 @@ function authorizeClientAdmin(req: import('express').Request, _res: import('expr
 
 async function authorizeUserChanges(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
   try {
+    if (req.body.groupIds !== undefined) {
+      if (req.user?.role !== 'Client Admin') throw new ForbiddenError('Only Client Admin users can manage group membership.');
+      await assertPermissions(req.user!, ['groups.edit']);
+    }
     if (req.method !== 'POST' || req.path.endsWith('/bulk-update')) {
       const fields = Object.keys(req.body).filter(key => key !== 'ids' && key !== 'role' && key !== 'status');
       if (fields.length || (req.body.role === undefined && req.body.status === undefined)) await assertPermissions(req.user!, ['users.edit']);

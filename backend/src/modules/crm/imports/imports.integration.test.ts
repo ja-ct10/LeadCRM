@@ -18,7 +18,7 @@ const csv = (rows: Record<string, string>[]) => {
   return { fileName: 'test.csv', csvText: [keys.join(','), ...rows.map(r => keys.map(k => quote(r[k] ?? '')).join(','))].join('\n'),
     mappings: Object.fromEntries(keys.map((k, i) => [k, i])), idempotencyKey: randomUUID() };
 };
-const person = (email: string, productInterest = 'CCTV Surveillance System; Biometrics') => ({ firstName: 'John', lastName: 'Doe', email, phone: '09123456789', companyName: 'ABC Corporation', address: 'Manila', productInterest });
+const person = (email: string, productInterest = 'CCTV Surveillance System; Biometrics') => ({ firstName: 'John', lastName: 'Doe', email, phone: '9123456789', companyName: 'ABC Corporation', address: 'Manila', productInterest });
 
 describe('shared CSV contract', () => {
   it('validates structure, normalized headers, mapping, size, row limits and physical lines', () => {

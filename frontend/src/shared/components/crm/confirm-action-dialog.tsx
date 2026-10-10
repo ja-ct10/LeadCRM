@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { ThemedPortal } from '@/shared/components/theme-scope';
 import { AlertTriangle, CheckCircle2, Info, Loader2, Trash2, X, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { lockBackgroundScroll, lockModalBackground, registerOverlay } from '@/shared/lib/overlay-state';
 
 export type ConfirmActionVariant = 'default' | 'destructive' | 'success' | 'warning';
 
@@ -28,7 +29,7 @@ export interface ConfirmActionDialogProps {
 export type ConfirmActionOptions = Omit<ConfirmActionDialogProps, 'open' | 'onOpenChange'>;
 
 const variants = {
-  default: { icon: Info, accent: 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400', button: 'bg-blue-600 hover:bg-blue-700' },
+  default: { icon: Info, accent: 'bg-primary/10 text-primary', button: 'bg-primary hover:bg-primary/90' },
   destructive: { icon: Trash2, accent: 'bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400', button: 'bg-red-600 hover:bg-red-700' },
   success: { icon: CheckCircle2, accent: 'bg-green-50 text-green-700 dark:bg-green-500/10 dark:text-green-400', button: 'bg-green-700 hover:bg-green-800' },
   warning: { icon: AlertTriangle, accent: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-400', button: 'bg-orange-700 hover:bg-orange-800' },
@@ -63,12 +64,9 @@ export function ConfirmActionDialog({
     const previousFocus = document.activeElement as HTMLElement | null;
     const dialog = dialogRef.current;
     const layer = layerRef.current;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    // Keep background drawers/forms out of keyboard and assistive technology navigation.
-    const background = Array.from(document.body.children).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== layer);
-    const inertState = background.map(element => [element, element.inert] as const);
-    background.forEach(element => { element.inert = true; });
+    const releaseOverlay = registerOverlay(id);
+    const releaseScroll = lockBackgroundScroll();
+    const releaseInert = dialog ? lockModalBackground(dialog) : () => {};
     const isTopmost = () => {
       const layers = document.querySelectorAll('[data-confirm-action-layer]');
       return layers[layers.length - 1] === layer;
@@ -100,9 +98,9 @@ export function ConfirmActionDialog({
       session.current++;
       document.removeEventListener('keydown', onKeyDown, true);
       document.removeEventListener('focusin', onFocus);
-      inertState.forEach(([element, inert]) => { element.inert = inert; });
-      // A parent drawer may have already released its scroll lock while unmounting.
-      if (document.body.style.overflow === 'hidden') document.body.style.overflow = previousOverflow;
+      releaseInert();
+      releaseScroll();
+      releaseOverlay();
       if (previousFocus?.isConnected && !previousFocus.closest('[inert]')) previousFocus.focus();
     };
   }, [open]);
@@ -137,13 +135,12 @@ export function ConfirmActionDialog({
   const style = variants[variant];
   const Icon = icon ?? style.icon;
   const describedBy = [description && `${id}-description`, warning && `${id}-warning`, error && `${id}-error`].filter(Boolean).join(' ') || undefined;
-  const focusClass = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:focus-visible:ring-offset-slate-900';
+  const focusClass = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-card';
 
-  return createPortal(
-    <div ref={layerRef} data-confirm-action-layer className="fixed inset-0 z-[400] flex items-center justify-center p-4" onClick={event => event.stopPropagation()} onSubmit={event => event.stopPropagation()}>
+  return <ThemedPortal>{<div ref={layerRef} data-confirm-action-layer className="fixed inset-0 z-[400] flex items-center justify-center p-4" onClick={event => event.stopPropagation()} onSubmit={event => event.stopPropagation()}>
       <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm" onClick={handleCancel} aria-hidden="true" />
       <div ref={dialogRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={describedBy} aria-busy={loading}
-        className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-gray-200 bg-white shadow-2xl outline-none dark:border-white/[0.08] dark:bg-slate-900">
+        className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl outline-none">
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-4 py-4 dark:border-white/[0.05] sm:px-5">
           <div className="flex min-w-0 items-center gap-3">
             <div aria-hidden="true" className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', style.accent)}><Icon size={18} /></div>
@@ -166,8 +163,7 @@ export function ConfirmActionDialog({
           </button>
         </footer>
       </div>
-    </div>, document.body,
-  );
+    </div>}</ThemedPortal>;
 }
 
 export default ConfirmActionDialog;

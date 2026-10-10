@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { PrismaClient } from '@prisma/client';
-import { readFileSync, readdirSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer, type Server } from 'node:http';
 import { hashSync } from 'bcryptjs';
@@ -43,6 +43,8 @@ beforeAll(async () => {
     INSERT INTO "Invoice" (id,"tenantId","invoiceNumber",amount,"totalAmount",frequency,"startDate","updatedAt") VALUES ('retired-invoice','migration-tenant','OLD-001',100,100,'Monthly',NOW(),NOW());
     INSERT INTO "Activity" (id,"tenantId","createdById",type,title,"invoiceId") VALUES ('keep-activity','migration-tenant','migration-user','note','Historical record','retired-invoice');`);
   for (const name of readdirSync(resolve(__dirname, '../../../../prisma/migrations')).filter(name => name >= '20261007000000' && /^\d/.test(name)).sort()) {
+    const migrationPath = resolve(__dirname, '../../../../prisma/migrations', name, 'migration.sql');
+    if (!existsSync(migrationPath)) continue;
     // This fixture first proves the older security cleanup preserves tokens.
     // The later unreachable-flow retirement requires those fixtures cleared.
     if (name === '20261031000000_retire_obsolete_infrastructure') await pg.exec('DELETE FROM "EmailVerificationToken"');
@@ -62,7 +64,7 @@ beforeAll(async () => {
       `);
       for (const table of preservedTables) snapshots.set(table, await snapshot(table));
     }
-    await pg.exec(readFileSync(resolve(__dirname, '../../../../prisma/migrations', name, 'migration.sql'), 'utf8'));
+    await pg.exec(readFileSync(migrationPath, 'utf8'));
     if (name === cleanupMigration) {
       for (const table of preservedTables) expect(await snapshot(table)).toEqual(snapshots.get(table));
     }

@@ -24,9 +24,9 @@ export const PALETTE_FIELDS: PaletteField[] = [
   { type: 'contact-name',   label: 'Contact Name',   icon: '👤',  color: 'bg-emerald-700', section: 'crm' },
   { type: 'contact-phone',  label: 'Contact Phone',  icon: '📞',  color: 'bg-emerald-700', section: 'crm' },
   { type: 'contact-email',  label: 'Contact Email',  icon: '@',   color: 'bg-emerald-700', section: 'crm' },
-  { type: 'company-website',label: 'Company Website',icon: '🌐',  color: 'bg-emerald-700', section: 'crm' },
   { type: 'company-name',   label: 'Company Name',   icon: '🏢',  color: 'bg-emerald-700', section: 'crm' },
   // Regular
+  { type: 'company-website',label: 'Company Website',icon: '🌐',  color: 'bg-amber-700', section: 'regular' },
   { type: 'single-line',    label: 'Single Line',    icon: 'T',   color: 'bg-amber-700',   section: 'regular' },
   { type: 'multi-line',     label: 'Multi Line',     icon: '≡',   color: 'bg-amber-700',   section: 'regular' },
   { type: 'email',          label: 'Email',          icon: '@',   color: 'bg-amber-700',   section: 'regular' },

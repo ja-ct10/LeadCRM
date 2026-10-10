@@ -319,7 +319,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-2 max-w-sm">
           You don&apos;t have permission to import {config.moduleLabel.toLowerCase()}.
         </p>
-        <button onClick={() => router.push(config.backRoute)} className="mt-5 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">
+        <button onClick={() => router.push(config.backRoute)} className="mt-5 inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors cursor-pointer">
           <ArrowLeft size={14} /> Back to {config.moduleLabel}
         </button>
       </div>
@@ -346,11 +346,11 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
               </div>
               {/* View Toggle */}
               <div className="flex max-w-full items-center border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
-                <button disabled={isImporting || isValidating} onClick={() => { resetState(); setActiveView('wizard'); }} className={cn('inline-flex items-center gap-1.5 px-2 sm:px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'wizard' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'wizard'}>
+                <button disabled={isImporting || isValidating} onClick={() => { resetState(); setActiveView('wizard'); }} className={cn('inline-flex items-center gap-1.5 px-2 sm:px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'wizard' ? 'bg-blue-50 dark:bg-primary/10 text-blue-700 dark:text-primary' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'wizard'}>
                   <Upload size={13} /> New import
                 </button>
                 <div className="w-px h-5 bg-slate-200 dark:bg-slate-700" />
-                <button disabled={isImporting || isValidating} onClick={() => setActiveView('history')} className={cn('inline-flex items-center gap-1.5 px-2 sm:px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'history' ? 'bg-blue-50 dark:bg-blue-500/10 text-blue-700 dark:text-blue-400' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'history'}>
+                <button disabled={isImporting || isValidating} onClick={() => setActiveView('history')} className={cn('inline-flex items-center gap-1.5 px-2 sm:px-3.5 py-2 text-[12.5px] font-medium transition-colors cursor-pointer', activeView === 'history' ? 'bg-blue-50 dark:bg-primary/10 text-blue-700 dark:text-primary' : 'text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800')} aria-pressed={activeView === 'history'}>
                   <Clock size={13} /> History
                 </button>
               </div>
@@ -387,11 +387,11 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                     </button>
                   )}
                   {step < 3 ? (
-                    <button onClick={handleContinue} disabled={isParsing || isValidating || (step === 1 && !(file && csvRows.length > 0)) || (step === 2 && !allRequiredMapped)} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped)) ? 'text-white bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
+                    <button onClick={handleContinue} disabled={isParsing || isValidating || (step === 1 && !(file && csvRows.length > 0)) || (step === 2 && !allRequiredMapped)} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped)) ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
                       {isValidating ? <><Loader2 size={14} className="animate-spin" /> Validating…</> : <>Continue <ArrowRight size={14} /></>}
                     </button>
                   ) : (
-                    <button onClick={handleImport} disabled={isImporting || (!canResume && validCount === 0)} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-blue-600 hover:bg-blue-700 cursor-pointer' : 'text-white bg-blue-400 cursor-not-allowed')}>
+                    <button onClick={handleImport} disabled={isImporting || (!canResume && validCount === 0)} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-white bg-primary cursor-not-allowed')}>
                       {isImporting ? <><Loader2 size={14} className="animate-spin" /> Importing {progress}/{csvRows.length}…</> : <><Sparkles size={14} /> {canResume ? 'Resume import' : 'Import ' + validCount + ' ' + config.moduleLabel.toLowerCase()}</>}
                     </button>
                   )}
@@ -429,7 +429,7 @@ function StepIndicator({ currentStep, hasErrors, fileName, mappedCount, totalReq
         return (
           <React.Fragment key={s.num}>
             <div className="flex min-w-0 items-center gap-2.5">
-              <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all', isCompleted && 'bg-emerald-500 text-white', isActive && !showError && 'bg-blue-600 text-white', isActive && showError && 'bg-amber-500 text-white', !isCompleted && !isActive && 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500')} aria-current={isActive ? 'step' : undefined} aria-label={s.label}>
+              <div className={cn('w-10 h-10 rounded-full flex items-center justify-center shrink-0 transition-all', isCompleted && 'bg-emerald-500 text-white', isActive && !showError && 'bg-primary text-white', isActive && showError && 'bg-amber-500 text-white', !isCompleted && !isActive && 'bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500')} aria-current={isActive ? 'step' : undefined} aria-label={s.label}>
                 {isCompleted ? <CheckCircle2 size={18} /> : <Icon size={17} />}
               </div>
               <div className="hidden sm:block min-w-0 max-w-40 break-words">
@@ -461,7 +461,7 @@ function Step1Upload({ config, file, recordCount, isDragging, fileInputRef, onFi
       <div
         onDrop={onDrop} onDragOver={(e) => e.preventDefault()} onDragEnter={onDragEnter} onDragLeave={onDragLeave}
         onClick={() => fileInputRef.current?.click()}
-        className={cn('relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all', isDragging ? 'border-blue-400 bg-blue-50/50 dark:bg-blue-500/5' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600', file && 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/30 dark:bg-emerald-500/5')}
+        className={cn('relative border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition-all', isDragging ? 'border-primary bg-blue-50/50 dark:bg-primary/5' : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-primary', file && 'border-emerald-300 dark:border-emerald-700 bg-emerald-50/30 dark:bg-emerald-500/5')}
         style={{ backgroundImage: !file ? 'radial-gradient(circle, #e2e8f0 1px, transparent 1px)' : undefined, backgroundSize: !file ? '20px 20px' : undefined }}
         role="button" tabIndex={0} aria-label="Upload CSV file"
         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') fileInputRef.current?.click(); }}
@@ -473,11 +473,11 @@ function Step1Upload({ config, file, recordCount, isDragging, fileInputRef, onFi
             </div>
             <p className="text-[14px] font-semibold text-slate-900 dark:text-white break-all">{file.name}</p>
             <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-1">{recordCount.toLocaleString()} records detected</p>
-            <button onClick={(e) => { e.stopPropagation(); onReplaceFile(); }} className="mt-3 text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 cursor-pointer">Replace file</button>
+            <button onClick={(e) => { e.stopPropagation(); onReplaceFile(); }} className="mt-3 text-[12px] font-medium text-primary dark:text-primary hover:text-blue-700 cursor-pointer">Replace file</button>
           </div>
         ) : (
           <div className="flex flex-col items-center">
-            <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-500/10 flex items-center justify-center mb-3">
+            <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-primary/10 flex items-center justify-center mb-3">
               <Upload size={22} className="text-blue-500" />
             </div>
             <p className="text-[14px] font-semibold text-slate-800 dark:text-slate-200">{isDragging ? 'Drop your CSV here' : 'Drag and drop your CSV here'}</p>
@@ -494,7 +494,7 @@ function Step1Upload({ config, file, recordCount, isDragging, fileInputRef, onFi
           <p className="text-[13px] font-semibold text-slate-900 dark:text-white">Don&apos;t have a CSV template?</p>
           <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">Download our template to see every field LeadCRM expects.</p>
         </div>
-        <button onClick={onDownloadTemplate} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer">
+        <button onClick={onDownloadTemplate} className="inline-flex items-center gap-1.5 text-[12.5px] font-medium text-primary dark:text-primary hover:text-blue-700 dark:hover:text-blue-300 whitespace-nowrap cursor-pointer">
           <Download size={13} /> Download CSV template
         </button>
       </div>
@@ -567,7 +567,7 @@ function Step2MapColumns({ config, csvHeaders, mappings, unmappedColumns, allReq
         <div className="space-y-2.5 pt-2">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">Uploaded Data Preview</p>
-            <p className="text-[11.5px] text-blue-500 dark:text-blue-400">Showing first {previewRows.length} of {totalRecords} records</p>
+            <p className="text-[11.5px] text-blue-500 dark:text-primary">Showing first {previewRows.length} of {totalRecords} records</p>
           </div>
           <div className="max-w-full overflow-x-auto border border-slate-200 dark:border-slate-700 rounded-lg">
             <table className="w-full text-[12px]">
@@ -719,7 +719,7 @@ function ImportResultView({ config, result, onViewDetails, onStartNew }: { confi
         {result.failedRecords > 0 && <div className="border border-red-200 dark:border-red-700/50 bg-red-50/50 dark:bg-red-500/5 rounded-lg p-3"><p className="text-[10px] font-bold uppercase text-red-600 dark:text-red-400 mb-1">Failed</p><p className="text-[16px] font-bold text-red-600 dark:text-red-400">{result.failedRecords}</p></div>}
       </div>
       <div className="flex flex-wrap items-center gap-3 pt-3 border-t border-slate-100 dark:border-slate-800">
-        <button onClick={onViewDetails} className="inline-flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors cursor-pointer">View Details <ArrowRight size={14} /></button>
+        <button onClick={onViewDetails} className="inline-flex items-center gap-2 h-9 px-5 text-[13px] font-semibold text-white bg-primary hover:bg-primary/90 rounded-lg transition-colors cursor-pointer">View Details <ArrowRight size={14} /></button>
         <button onClick={onStartNew} className="text-[13px] font-medium text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Start new import</button>
       </div>
     </div>

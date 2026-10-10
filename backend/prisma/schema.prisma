@@ -65,6 +65,7 @@ enum CampaignType {
 
 enum CampaignStatus {
   SENDING
+  INTERRUPTED
   SENT
   PARTIALLY_SENT
   DELIVERED
@@ -170,7 +171,6 @@ model User {
   passwordHash  String? // Legacy passwordless accounts use password recovery.
   phone         String?
   jobTitle      String?
-  department    String?
   avatarUrl     String?
   lastLoginAt   DateTime?
   // Primary role identity for routing; custom permissions come from UserRole.
@@ -859,7 +859,7 @@ model Notification {
   eventKey   String?
   isRead     Boolean   @default(false)
   readAt     DateTime?
-  createdAt  DateTime  @default(now())
+  createdAt  DateTime  @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
 
   tenant Tenant @relation(fields: [tenantId], references: [id])
   user   User   @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
@@ -887,9 +887,9 @@ model NotificationEvent {
   actorId String?
   admins Boolean @default(false)
   payload Json @default("{}")
-  occurredAt DateTime @default(now())
-  createdAt DateTime @default(now())
-  availableAt DateTime @default(now())
+  occurredAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
+  availableAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
   attempts Int @default(0)
   leaseToken String?
   leaseUntil DateTime?
@@ -907,7 +907,7 @@ model NotificationDelivery {
   userId String
   eventKey String
   outcome String @default("delivered")
-  createdAt DateTime @default(now())
+  createdAt DateTime @default(dbgenerated("(CURRENT_TIMESTAMP AT TIME ZONE 'UTC'::text)"))
   tenant Tenant @relation(fields: [tenantId], references: [id])
   user User @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)
   @@id([tenantId, userId, eventKey])
@@ -1010,6 +1010,9 @@ model Campaign {
   type             CampaignType
   status           CampaignStatus @default(DRAFT)
   submissionStartedAt DateTime?
+  submissionLeaseId String?
+  submissionLeaseUntil DateTime?
+  submissionInterruptedAt DateTime?
   notificationRunVersion Int @default(0)
   submissionFinishedAt DateTime?
   subject          String?
@@ -1033,6 +1036,7 @@ model Campaign {
   emailDeliveryLogs EmailDeliveryLog[]
 
   @@index([tenantId, status])
+  @@index([submissionFinishedAt, submissionLeaseUntil])
   @@index([tenantId, isArchived])
   @@index([tenantId])
 }
@@ -1132,6 +1136,7 @@ model CampaignContact {
   email String?
   phone String?
   submittedAt DateTime? // Provider acceptance; sentAt is provider-confirmed sent
+  submissionAttemptedAt DateTime? // Persisted before provider call; never automatically replayed
   providerUpdatedAt DateTime?
   personalization Json?
   messageId String? @unique

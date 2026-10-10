@@ -35,7 +35,8 @@
     "db:leads:retire": "node scripts/deploy-lead-fields.cjs --retire",
     "db:relations:verify": "node scripts/deploy-canonical-relationships.cjs --verify",
     "db:relations:retire": "node scripts/deploy-canonical-relationships.cjs --retire",
-    "test:rollout": "node --test scripts/verify-crm-import-rollout.test.cjs scripts/verify-canonical-rollout.test.cjs"
+    "test:rollout": "node --test scripts/verify-crm-import-rollout.test.cjs scripts/verify-canonical-rollout.test.cjs",
+    "test:migration-scripts": "node --test scripts/verify-lead-retirement.test.mjs scripts/verify-campaign-status-migration.test.mjs"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

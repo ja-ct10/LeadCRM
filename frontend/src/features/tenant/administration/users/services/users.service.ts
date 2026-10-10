@@ -47,6 +47,8 @@ export const usersService = {
     const dto = userAdapter.toCreateDTO(data);
     const res = await apiClient.post<ApiResponse<UserDTO>>('/administration/users', dto);
     if (res.data?.setupEmailSent === false) toast.warning('Account created, but the welcome email could not be submitted. Use Send Password Reset to establish a password.');
+    window.dispatchEvent(new Event('leadcrm:users-changed'));
+    if (data.groupIds !== undefined) window.dispatchEvent(new Event('leadcrm:groups-changed'));
     return {
       ...res,
       data: userAdapter.toModel(res.data as UserDTO),
@@ -56,6 +58,8 @@ export const usersService = {
   update: async (id: string, data: Partial<User>): Promise<ApiResponse<User>> => {
     const dto = userAdapter.toUpdateDTO(data);
     const res = await apiClient.put<ApiResponse<UserDTO>>(`/administration/users/${id}`, dto);
+    window.dispatchEvent(new Event('leadcrm:users-changed'));
+    if (data.groupIds !== undefined) window.dispatchEvent(new Event('leadcrm:groups-changed'));
     return {
       ...res,
       data: userAdapter.toModel(res.data as UserDTO),
@@ -70,14 +74,9 @@ export const usersService = {
   restore: (id: string): Promise<void> =>
     apiClient.patch<void>(`/administration/users/${id}/restore`),
 
-  delete: (id: string): Promise<void> =>
-    apiClient.delete<void>(`/administration/users/${id}`),
-    
   bulkUpdate: (ids: string[], data: Partial<User>): Promise<void> => {
     const dto = userAdapter.toUpdateDTO(data);
     return apiClient.post<void>('/administration/users/bulk-update', { ids, ...dto });
   },
   
-  bulkDelete: (ids: string[]): Promise<void> => 
-    apiClient.post<void>('/administration/users/bulk-delete', { ids }),
 };

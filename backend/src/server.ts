@@ -2,7 +2,8 @@
 import app from './app';
 import { startNotificationScheduler } from './modules/notifications/notification-events.service';
 import { startMailboxScheduler } from './integrations/gmail/mailbox-sync.service';
-import { startCampaignScheduler } from './core/scheduler/campaign-scheduler.service';
+import { startCampaignRecoveryScheduler } from './modules/marketing/campaigns/campaign-submission-recovery';
+import { drainCampaignSubmissions } from './modules/marketing/campaigns/campaigns.service';
 import { purgeExpiredSessions } from './core/auth/session.service';
 import { startImportCleanupScheduler } from './modules/crm/imports/import-cleanup.service';
 import { validateEnvironment } from './config/validate-env';
@@ -46,12 +47,13 @@ function startSessionPurgeScheduler(): void {
 
 let stopMailbox: (() => void) | undefined;
 let stopNotifications: (() => Promise<void>) | undefined;
+let stopCampaignRecovery: (() => Promise<void>) | undefined;
 const server = app.listen(PORT, () => {
   console.log(`[server] LeadCRM API running on http://localhost:${PORT}`);
   console.log(`[server] Environment: ${process.env.NODE_ENV ?? 'development'}`);
 
   // Start background services
-  startCampaignScheduler();
+  stopCampaignRecovery = startCampaignRecoveryScheduler();
   stopMailbox = startMailboxScheduler();
   if (process.env.NOTIFICATION_WORKER_ENABLED !== 'false') stopNotifications = startNotificationScheduler();
   startSessionPurgeScheduler();
@@ -59,10 +61,11 @@ const server = app.listen(PORT, () => {
 
 
 });
-server.on('close', () => { stopMailbox?.(); void stopNotifications?.(); });
+server.on('close', () => { stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
   stopMailbox?.();
-  server.close(() => { void (stopNotifications?.() ?? Promise.resolve()).finally(() => process.exit(0)); });
+  const drain = drainCampaignSubmissions();
+  server.close(() => { void Promise.allSettled([drain, stopNotifications?.(), stopCampaignRecovery?.()]).finally(() => process.exit(0)); });
   // Interrupted mailbox pages and scheduled claims resume from durable leases.
   setTimeout(() => process.exit(0), 30000).unref();
 });

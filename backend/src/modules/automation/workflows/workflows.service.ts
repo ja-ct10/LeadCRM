@@ -158,7 +158,7 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
       const targets = action.type === 'move_deal_stage' ? await resolveDealTargets(action, trigger.entity, tenantId, context) : undefined;
       actions.push({ type: action.type, valid: true, ...(assignment ? { assignment } : {}),
         message: assignment ? `Would assign ${assignment.resolvedUserName} (${assignment.candidateCount} eligible). ${assignment.reason}.${assignment.workload !== undefined ? ` Active workload: ${assignment.workload}${assignment.capacityLimit !== undefined ? ` / ${assignment.capacityLimit}` : ''}.` : ''} No records or assignment state changed.` : targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
-          : action.type === 'send_email' ? 'Recipient resolved; template and sender available. No email sent.' : 'Configuration and references valid. No changes made.' });
+          : action.type === 'send_email' ? 'Recipient, sender permissions, mailbox ownership and projected assignment are valid. No email sent.' : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
       if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = assignment!.resolvedUserId;
       if (action.type === 'create_task' && assignment) {

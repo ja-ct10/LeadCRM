@@ -163,12 +163,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
   });
   it('guards direct deactivation and refuses assigning or restoring active records to inactive users', async () => {
     const target = await newAgent(); await owned(target.id);
-    await expect(prisma.user.update({ where: { id: target.id }, data: { status: 'INACTIVE' } })).rejects.toThrow();
+    await expect(prisma.$transaction(tx => tx.user.update({ where: { id: target.id }, data: { status: 'INACTIVE' } }))).rejects.toThrow();
     const empty = await newAgent();
     expect((await call(`/administration/users/${empty.id}/deactivate`, 'POST', {})).status).toBe(200);
-    await expect(prisma.lead.create({ data: { tenantId, ...input(), assignedUserId: empty.id } })).rejects.toThrow();
+    await expect(prisma.$transaction(tx => tx.lead.create({ data: { tenantId, ...input(), assignedUserId: empty.id } }))).rejects.toThrow();
     const archived = await prisma.lead.create({ data: { tenantId, ...input(), assignedUserId: empty.id, isArchived: true } });
-    await expect(prisma.lead.update({ where: { id: archived.id }, data: { isArchived: false } })).rejects.toThrow();
+    await expect(prisma.$transaction(tx => tx.lead.update({ where: { id: archived.id }, data: { isArchived: false } }))).rejects.toThrow();
     expect((await call(`/crm/leads/${archived.id}/restore`, 'PATCH')).status).toBe(409);
   });
   it('serializes a simultaneous assignment and deactivation without orphaning a Lead', async () => {

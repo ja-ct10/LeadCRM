@@ -372,3 +372,21 @@ it('Deal header uses Messages between actions and status and the shared Activity
   expect(screen.queryByRole('button', { name: 'Calls & Emails' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Emails' })).toBeTruthy();
 });
+
+it('removes retired Lead Website and Notes editors while keeping Contact Notes and Account Website', async () => {
+  const lead = render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { name: 'Lina Reyes' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.queryByRole('button', { name: 'Edit Website' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit Notes' })).toBeNull();
+  lead.unmount();
+  const contact = render(<CrmRecordView module="contacts" id="one" />);
+  await screen.findByRole('heading', { name: 'Nora Lim' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByRole('button', { name: 'Edit Notes' })).toBeTruthy();
+  contact.unmount();
+  render(<CrmRecordView module="accounts" id="one" />);
+  await screen.findByRole('heading', { name: 'North Company' });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByRole('button', { name: 'Edit Website' })).toBeTruthy();
+});

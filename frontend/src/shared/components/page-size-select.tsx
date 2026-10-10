@@ -34,7 +34,7 @@ export function PageSizeSelect({ value, onChange, options = [10, 20, 25, 50, 100
         type="button"
         disabled={disabled}
         onClick={() => setIsOpen(!isOpen)}
-        className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+        className="inline-flex items-center gap-1 h-7 px-2.5 text-xs font-medium rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-primary/20"
         aria-expanded={isOpen}
         aria-haspopup="listbox"
         aria-label="Records per page"
@@ -55,7 +55,7 @@ export function PageSizeSelect({ value, onChange, options = [10, 20, 25, 50, 100
               className={cn(
                 'w-full px-3 py-1.5 text-xs text-left transition-colors',
                 value === size
-                  ? 'text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-500/10 font-medium'
+                  ? 'text-primary dark:text-primary bg-blue-50 dark:bg-primary/10 font-medium'
                   : 'text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700',
               )}
             >

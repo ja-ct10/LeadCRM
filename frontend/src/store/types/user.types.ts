@@ -31,7 +31,8 @@ export interface User {
   email: string;
   phone?: string;
   jobTitle?: string;
-  department?: string;
+  groups?: { id: string; name: string }[];
+  groupIds?: string[];
   avatarUrl?: string;
   org?: string; // keeping org for legacy compatibility temporarily if used elsewhere
   team?: string; // keeping team for legacy compatibility temporarily

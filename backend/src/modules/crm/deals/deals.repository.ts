@@ -18,6 +18,10 @@ import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle'
 export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
   const { page, limit } = params;
   const skip = (page - 1) * limit;
+  if (params.accountId && params.organizationId && params.accountId !== params.organizationId) {
+    throw new ValidationError('Account and legacy organization filters must identify the same Account.');
+  }
+  const accountId = params.accountId ?? params.organizationId;
 
   // --- Build where clause ---
   const where: Prisma.DealWhereInput = {
@@ -27,7 +31,7 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     ...(params.pipelineId     ? { pipelineId: params.pipelineId }         : {}),
     ...(params.priority       ? { priority: params.priority }             : {}),
     ...(params.assignedUserId ? { assignedUserId: params.assignedUserId } : {}),
-    ...(params.organizationId ? { accountId: params.organizationId }     : {}),
+    ...(accountId             ? { accountId }                           : {}),
     ...(params.contactId      ? { contactDeals: { some: { contactId: params.contactId } } } : {}),
     ...(params.leadId         ? { leadDeals: { some: { leadId: params.leadId } } }          : {}),
     ...(params.search ? { title: { contains: params.search, mode: 'insensitive' as const } } : {}),

@@ -1,5 +1,6 @@
 "use client";
 import { PageHeader } from '@/shared/components/ui/page-header';
+import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -95,7 +96,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   };
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 sm:p-6">
     <PageHeader title="Deals" subtitle="Track opportunities throughout the Sales Pipeline." actions={pipeline && <div className="flex items-center gap-2">{canManageStages && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" aria-label="Manage pipeline stages" title="Manage pipeline stages" disabled={USE_MOCK_DATA} onClick={() => setManageStages(true)}><Settings size={16} /></Button></TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}{canCreate && <CreateActionDropdown primaryActionLabel="New Deal" onPrimaryAction={() => setCreateStage((pipeline.stages.find(s => s.isDefault) ?? pipeline.stages.find(s => s.name.toLowerCase() === 'lead'))?.id ?? pipeline.stages[0]?.id)} onImport={() => router.push('/crm/deals/import')} />}</div>} />
-    <div className="mb-3 flex gap-1 border-b border-border">{['All Deals', 'My Deals'].map((label, i) => <button key={label} onClick={() => setMyDeals(!!i)} className={`min-h-11 px-3 text-sm ${myDeals === !!i ? 'border-b-2 border-blue-600 text-blue-600' : 'text-muted-foreground'}`}>{label}</button>)}</div>
+    <div className="mb-3 flex gap-1 border-b border-border">{['All Deals', 'My Deals'].map((label, i) => <button key={label} onClick={() => setMyDeals(!!i)} className={`min-h-11 px-3 text-sm ${myDeals === !!i ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>{label}</button>)}</div>
     <div className="mb-3 flex min-w-0 items-center gap-2"><div className="relative min-w-0 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={() => void refresh()} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
       <ModuleFilterRail showFilters={showFilters} filterGroups={groups} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={all.length} onClearFilters={() => setFilters({})} onFilterToggle={(group, item) => setFilters(old => ({ ...old, [group]: old[group]?.includes(item) ? old[group].filter(id => id !== item) : [...(old[group] ?? []), item] }))} />
@@ -108,6 +109,13 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     {manageStages && pipeline && <PipelineStagesDialog pipelineId={pipeline.id} onClose={() => setManageStages(false)} onChanged={async () => { await refreshPipelines(); await query.refetch(); }} />}
     <DealPanel open={!!selected} deal={selected} onOpenChange={open => { if (!open) { setSelected(null); void query.refetch(); } }} />
     <DealFormSheet isOpen={!!createStage} mode="create" onClose={() => setCreateStage(undefined)} preselect={{ pipelineId: pipeline?.id, stageId: createStage }} onSubmit={async values => { await addDeals(values); setCreateStage(undefined); await query.refetch(); }} />
-    {lost && <div role="dialog" aria-modal="true" aria-label="Close Deal as lost" className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40 p-4"><form className="w-full max-w-sm space-y-3 rounded-xl bg-card p-4" onSubmit={e => { e.preventDefault(); void move(lost.id, lost.stageId, lostReason).catch(() => {}); }}><label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label><button disabled={moving || !lostReason.trim()} className="min-h-11 rounded bg-blue-600 px-4 text-white">Save</button><button type="button" className="min-h-11 px-4" onClick={() => setLost(undefined)}>Cancel</button></form></div>}
+    <Dialog open={Boolean(lost)} onOpenChange={open => { if (!open && !moving) setLost(undefined); }}>
+      <DialogContent aria-label="Close Deal as lost" className="max-w-sm">
+        {lost && <form className="space-y-3" onSubmit={e => { e.preventDefault(); void move(lost.id, lost.stageId, lostReason).catch(() => {}); }}>
+          <label className="block text-sm">Lost reason<textarea required maxLength={2000} value={lostReason} onChange={e => setLostReason(e.target.value)} className="mt-2 w-full rounded border bg-background p-2" /></label>
+          <div className="flex flex-wrap gap-2"><button disabled={moving || !lostReason.trim()} className="min-h-11 rounded bg-primary px-4 text-white">Save</button><button type="button" disabled={moving} className="min-h-11 px-4" onClick={() => setLost(undefined)}>Cancel</button></div>
+        </form>}
+      </DialogContent>
+    </Dialog>
   </div>;
 }

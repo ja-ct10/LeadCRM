@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow'] as const;
+export const ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow', 'Role'] as const;
 export const ArchiveTypeSchema = z.enum(ARCHIVE_TYPES);
 export type ArchiveType = z.infer<typeof ArchiveTypeSchema>;
 export const ArchiveQuerySchema = z.object({

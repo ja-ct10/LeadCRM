@@ -97,6 +97,10 @@ export const DealsQuerySchema = z.object({
   dateTo:         z.string().datetime().optional(),
   archived:       z.enum(['true', 'false']).default('false'),
   groupByStage:   z.enum(['true', 'false']).optional(),
+}).superRefine((query, context) => {
+  if (query.accountId && query.organizationId && query.accountId !== query.organizationId) {
+    context.addIssue({ code: z.ZodIssueCode.custom, path: ['accountId'], message: 'Account and legacy organization filters must identify the same Account.' });
+  }
 });
 
 export type DealsQueryParams = z.infer<typeof DealsQuerySchema>;

@@ -25,6 +25,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     return { status: response.status, body: await response.json() };
   };
   beforeAll(async () => {
+    // Regression: UTC timestamp columns must behave the same in a non-UTC session.
+    await prisma.$executeRawUnsafe("SET TIME ZONE 'Asia/Manila'");
     tenantId = (await prisma.tenant.create({ data: { name: 'Delivery', slug: randomUUID() } })).id;
     const agentRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Agent' } }); roleId = agentRole.id;
     const adminRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
@@ -46,6 +48,18 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     base = 'http://127.0.0.1:' + (server.address() as { port: number }).port + '/api/v1';
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
+
+  it('stores new trigger occurrence and availability instants in UTC in a non-UTC session', async () => {
+    const before = Date.now();
+    const row = await contact();
+    const event = await prisma.notificationEvent.findFirstOrThrow({ where: { tenantId, entityId: row.id, type: 'contact_assigned' } });
+    for (const instant of [event.occurredAt, event.createdAt, event.availableAt]) {
+      expect(+instant).toBeGreaterThanOrEqual(before - 1000);
+      expect(+instant).toBeLessThanOrEqual(Date.now() + 1000);
+    }
+    await processEvents();
+    expect(await notifications(row.id)).toHaveLength(1);
+  });
 
   it('direct Contact API creates one Contact event and an authorized Contact destination', async () => {
     const created = await request('/crm/contacts', 'POST', { firstName: 'Direct', lastName: 'Contact', email: 'direct@example.test', assignedUserId: agentId }, adminToken);
@@ -88,9 +102,10 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const deal = await prisma.deal.create({ data: { tenantId, pipelineId, stageId, title: 'Durable Deal', assignedUserId: agentId, tags: [], productInterests: [] } });
     await processEvents();
     await prisma.deal.update({ where: { id: deal.id }, data: { assignedUserId: otherId } });
-    await prisma.notificationEvent.updateMany({ where: { tenantId, entityId: deal.id, processedAt: null }, data: { leaseToken: 'crashed', leaseUntil: new Date(Date.now() + 1000) } });
-    await processEvents(); expect(await notifications(deal.id, otherId)).toHaveLength(0);
-    const later = new Date(Date.now() + 2000);
+    const leaseCheckAt = new Date();
+    await prisma.notificationEvent.updateMany({ where: { tenantId, entityId: deal.id, processedAt: null }, data: { leaseToken: 'crashed', leaseUntil: new Date(+leaseCheckAt + 1000) } });
+    await processEvents(leaseCheckAt); expect(await notifications(deal.id, otherId)).toHaveLength(0);
+    const later = new Date(+leaseCheckAt + 2000);
     await Promise.all([processEvents(later), processEvents(later)]);
     expect(await notifications(deal.id, otherId)).toHaveLength(1);
   });
@@ -235,7 +250,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: message.id } })).labels).toContain('UNREAD');
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: 'temporary' } });
     await processEvents(); expect((await notifications(account.id)).filter(n => n.type === 'mailbox_sync_failed')).toHaveLength(0);
-    await processEvents(new Date(Date.now() + 16 * 60000)); expect((await notifications(account.id)).filter(n => n.type === 'mailbox_sync_failed')).toHaveLength(1);
+    const incident = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
+    expect(Math.abs(+incident.notificationFailedAt! - Date.now())).toBeLessThan(2000);
+    await processEvents(new Date(+incident.notificationFailedAt! + 15 * 60000 - 1));
+    expect((await notifications(account.id)).filter(n => n.type === 'mailbox_sync_failed')).toHaveLength(0);
+    await processEvents(new Date(+incident.notificationFailedAt! + 15 * 60000));
+    expect((await notifications(account.id)).filter(n => n.type === 'mailbox_sync_failed')).toHaveLength(1);
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: null } });
     await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false } });
     await processEvents();

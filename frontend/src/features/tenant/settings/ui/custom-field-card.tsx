@@ -14,14 +14,14 @@ export function CustomFieldCard({ title, description, context, kind, status, met
     <div className="h-2 w-2/3 rounded bg-slate-800 dark:bg-slate-300" />
     {kind === 'product' ? <>
       <div className="flex h-5 items-center justify-between rounded border border-slate-200 px-1 dark:border-slate-700"><div className="h-1.5 w-8 rounded bg-slate-100 dark:bg-slate-700" /><ChevronDown size={9} className="text-slate-400" /></div>
-      <div className="flex h-5 items-center gap-1 rounded bg-blue-50 px-1 text-blue-600 dark:bg-blue-950"><Tag size={10} /><div className="h-1.5 w-10 rounded bg-blue-200 dark:bg-blue-700" /></div>
+      <div className="flex h-5 items-center gap-1 rounded bg-blue-50 px-1 text-primary dark:bg-blue-950"><Tag size={10} /><div className="h-1.5 w-10 rounded bg-blue-200 dark:bg-primary" /></div>
     </> : <>
-      {[true, false].map((checked, index) => <div key={index} className="flex h-4 items-center gap-1.5"><span className={`flex h-3 w-3 items-center justify-center rounded-sm border ${checked ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-200 dark:border-slate-600'}`}>{checked && <Check size={9} />}</span><div className="h-1.5 flex-1 rounded bg-slate-100 dark:bg-slate-700" /></div>)}
+      {[true, false].map((checked, index) => <div key={index} className="flex h-4 items-center gap-1.5"><span className={`flex h-3 w-3 items-center justify-center rounded-sm border ${checked ? 'border-primary bg-primary text-white' : 'border-slate-200 dark:border-slate-600'}`}>{checked && <Check size={9} />}</span><div className="h-1.5 flex-1 rounded bg-slate-100 dark:bg-slate-700" /></div>)}
     </>}
-    <div className="h-3 rounded bg-blue-600" />
+    <div className="h-3 rounded bg-primary" />
   </div>;
-  const previewClass = 'flex h-36 w-full items-center justify-center bg-slate-50 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-600 dark:bg-slate-800 dark:hover:bg-slate-800/80';
-  const titleClass = 'block max-w-full truncate text-left text-sm font-semibold hover:text-blue-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600';
+  const previewClass = 'flex h-36 w-full items-center justify-center bg-slate-50 transition-colors hover:bg-slate-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary dark:bg-slate-800 dark:hover:bg-slate-800/80';
+  const titleClass = 'block max-w-full truncate text-left text-sm font-semibold hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
   return <article className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900">
     {href ? <Link href={href} aria-label={`Manage ${title}`} title={description} className={previewClass}>{preview}</Link> : <button type="button" disabled={disabled} onClick={onClick} aria-label={`Manage ${title}`} title={description} className={previewClass}>{preview}</button>}
     <div className="flex items-center justify-between gap-2 p-4">

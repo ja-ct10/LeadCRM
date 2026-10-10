@@ -178,7 +178,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   // Reset password view
   if (authView === 'reset') {
     return (
-      <div className="min-h-screen bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
+      <div className="min-h-[var(--app-viewport-height)] bg-linear-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 flex items-center justify-center p-4">
         <div className="w-full max-w-md bg-white dark:bg-slate-900 p-4 sm:p-8 rounded-2xl border border-gray-200 dark:border-white/5 shadow-xl">
           <div className="flex flex-col items-center mb-8">
             <div className="w-16 h-16 bg-white dark:bg-slate-800 rounded-lg ring-1 ring-slate-200 dark:ring-slate-700 flex items-center justify-center mb-4">
@@ -293,7 +293,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   // Forgot password - email sent confirmation
   if (authView === 'forgot-sent') {
     return (
-      <div className="min-h-screen flex">
+      <div className="min-h-[var(--app-viewport-height)] flex">
         {/* Left side - Blue gradient section */}
         <div
           className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
@@ -372,7 +372,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   // Forgot password - email input form
   if (authView === 'forgot') {
     return (
-      <div className="min-h-screen flex">
+      <div className="min-h-[var(--app-viewport-height)] flex">
         {/* Left side - Blue gradient section */}
         <div
           className="hidden lg:flex lg:w-1/2 relative overflow-hidden"
@@ -464,7 +464,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
   // Main login view with split-screen layout
   return (
-    <div className="min-h-screen flex flex-col lg:flex-row">
+    <div className="min-h-[var(--app-viewport-height)] flex flex-col lg:flex-row">
       <CamxianBrandPanel onNavigate={onNavigate} />
 
       {/* Right side - Login form */}

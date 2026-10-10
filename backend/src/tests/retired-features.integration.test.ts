@@ -37,7 +37,7 @@ beforeAll(async () => {
   process.env.RETIREMENT_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
   db = (await import('../config/database.config')).default;
   tenantId = (await db.tenant.create({ data: { name: 'Retirement regression', slug: 'retirement', status: 'ACTIVE', onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
-  const identity = async (email: string, role: string, tenant = tenantId) => db.user.create({ data: { tenantId: tenant, email, role, firstName: 'Preserved', lastName: 'Identity', mustChangePassword: false, passwordHash: 'unchanged-hash' } });
+  const identity = async (email: string, role: string, tenant = tenantId) => historicalCreate('User', { tenantId: tenant, email, role, firstName: 'Preserved', lastName: 'Identity', mustChangePassword: false, passwordHash: 'unchanged-hash' });
   userId = (await identity('admin@camxian.com', 'Client Admin')).id;
   operatorId = (await identity('legacy@camxian.com', 'System Admin')).id;
   const isolatedTenant = (await db.tenant.create({ data: { name: 'Legacy seed tenant', slug: 'leadcrm-system' } })).id;
@@ -49,10 +49,10 @@ beforeAll(async () => {
   for (const id of [operatorId, staffId]) await db.userRole.create({ data: { tenantId, userId: id, roleId: oldRole.id } });
   await db.userRole.create({ data: { tenantId, userId: staffId, roleId: salesRole.id } });
   await historicalCreate('RolePermission', { tenantId, roleId: oldRole.id, module: 'admin', canView: true });
-  const { issueAuthSession } = await import('../core/auth/auth-session');
+  const { createAuthSessionToken } = await import('../core/auth/auth-session');
   for (const id of [userId, operatorId, seedOperatorId, staffId]) {
-    const user = await db.user.findUniqueOrThrow({ where: { id } });
-    if (id === userId) token = (await issueAuthSession(user)).token;
+    const user = await db.user.findUniqueOrThrow({ where: { id }, select: { id: true, tenantId: true, role: true, email: true } });
+    if (id === userId) token = await createAuthSessionToken(user);
     else await db.session.create({ data: { userId: id, tenantId: user.tenantId, tokenHash: `old-session-${id}`, expiresAt: new Date(Date.now() + 60000) } });
   }
   const account = await historicalCreate('Account', { tenantId, name: 'Preserved company' });
@@ -64,13 +64,13 @@ beforeAll(async () => {
   records = { leads: lead.id, contacts: contact.id, accounts: account.id, deals: deal.id };
   const links = { leadId: lead.id, contactId: contact.id, accountId: account.id, dealId: deal.id };
   const task = await historicalCreate('Task', { tenantId, title: 'Preserved task', dueDate: new Date(), assignedUserId: userId, ...links });
-  const mailbox = await db.emailAccount.create({ data: { tenantId, userId, email: 'admin@camxian.com', accessToken: 'encrypted-access-unchanged', refreshToken: 'encrypted-refresh-unchanged', scopes: ['gmail.modify'], syncCursor: 'preserved-cursor' } });
-  const message = await db.mailboxMessage.create({ data: { tenantId, accountId: mailbox.id, providerMessageId: 'gmail-message', threadId: 'thread', direction: 'inbound', from: 'lead@example.test', recipients: ['admin@camxian.com'], subject: 'Preserved email', body: 'Original email body', snippet: 'Original', labels: ['INBOX'], sentAt: new Date(), leadId: lead.id, contactId: contact.id } });
+  const mailbox = await historicalCreate('EmailAccount', { tenantId, userId, email: 'admin@camxian.com', accessToken: 'encrypted-access-unchanged', refreshToken: 'encrypted-refresh-unchanged', scopes: ['gmail.modify'], syncCursor: 'preserved-cursor' });
+  const message = await historicalCreate('MailboxMessage', { tenantId, accountId: mailbox.id, providerMessageId: 'gmail-message', threadId: 'thread', direction: 'inbound', from: 'lead@example.test', recipients: ['admin@camxian.com'], subject: 'Preserved email', body: 'Original email body', snippet: 'Original', labels: ['INBOX'], sentAt: new Date(), leadId: lead.id, contactId: contact.id });
   await db.mailboxOAuthState.create({ data: { tenantId, userId, stateHash: 'preserved-state', sessionHash: 'session-hash', verifier: 'encrypted-verifier', expiresAt: new Date(Date.now() + 60000) } });
   for (const type of ['email', 'task', 'stage_change', 'workflow', 'note']) await db.activity.create({ data: { tenantId, createdById: userId, type, title: `Preserved ${type}`, ...links, taskId: task.id, metadata: type === 'email' ? { mailboxMessageId: message.id } : {} } });
   await db.auditLog.create({ data: { tenantId, userId, action: 'user.updated', entityType: 'User', entityId: userId } });
   await db.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: stage.id, movedById: userId } });
-  await db.recordFile.create({ data: { tenantId, uploadedById: userId, leadId: lead.id, name: 'preserved.pdf', size: 12, type: 'application/pdf', objectKey: 'preserved-object-key' } });
+  await historicalCreate('RecordFile', { tenantId, uploadedById: userId, leadId: lead.id, name: 'preserved.pdf', size: 12, type: 'application/pdf', objectKey: 'preserved-object-key' });
   await db.passwordResetToken.create({ data: { userId, email: 'admin@camxian.com', token: 'preserved-reset', expires: new Date(Date.now() + 60000) } });
   await pg.query('INSERT INTO "EmailVerificationToken" (id,"userId",email,"tokenHash","expiresAt") VALUES ($1,$2,$3,$4,$5)', ['preserved-verification',userId,'admin@camxian.com','preserved-verification',new Date(Date.now()+60000)]);
   await pg.query('INSERT INTO "TenantDocument" (id,"tenantId","documentKey","fileName","filePath") VALUES ($1,$2,$3,$4,$5)', ['old-doc', tenantId, 'business', 'business.pdf', '/retired/document']);
@@ -93,7 +93,9 @@ beforeAll(async () => {
   await pg.exec('DELETE FROM "EmailVerificationToken"');
   await replayCrmMigrations(pg, '20261102000000_retire_relationship_compatibility', '20261031000000');
   await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
-  await replayCrmMigrations(pg, undefined, '20261102000000');
+  await replayCrmMigrations(pg, '20261112000000_retire_lead_nonform_columns', '20261102000000');
+  await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
+  await replayCrmMigrations(pg, undefined, '20261112000000');
   server = (await import('../app')).default.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
 }, 60000);

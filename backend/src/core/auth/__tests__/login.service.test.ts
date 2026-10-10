@@ -7,7 +7,7 @@ vi.mock('../../../shared/helpers/crypto', () => ({
 }));
 vi.mock('../session.service', () => ({ createSession: vi.fn(), revokeSession: vi.fn() }));
 vi.mock('../jwt.service', () => ({ signToken: vi.fn().mockReturnValue('server-only-token') }));
-import { db, user, resetDb } from './auth-test-db';
+import { db, user, tenant, resetDb } from './auth-test-db';
 import { loginUser } from '../auth.service';
 
 it.each(['Guest', 'GUEST', ' guest '])('rejects legacy %s login even with a valid employee email/password', async role => {
@@ -112,4 +112,16 @@ it('accepts an unverified internally provisioned employee without OTP and return
   const result = await loginUser({ email: 'EMPLOYEE@CAMXIAN.COM', password: 'secret' });
   expect(result.user.mustChangePassword).toBe(true);
   expect(createSession).toHaveBeenCalledOnce();
+});
+
+it.each(['SUSPENDED', 'CANCELLED', 'DELETED', 'REJECTED', 'unknown'])('rejects valid credentials for an unavailable %s workspace', async status => {
+  tenant.status = status;
+  await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toMatchObject({ statusCode: 403 });
+  expect(createSession).not.toHaveBeenCalled();
+});
+
+it('rechecks workspace access inside the session transaction', async () => {
+  db.user.findFirst.mockResolvedValueOnce({ ...user, tenant: { ...tenant, status: 'CANCELLED' } });
+  await expect(loginUser({ email: user.email, password: 'secret' })).rejects.toMatchObject({ statusCode: 403 });
+  expect(createSession).not.toHaveBeenCalled();
 });

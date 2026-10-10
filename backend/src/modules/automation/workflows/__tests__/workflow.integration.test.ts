@@ -449,6 +449,30 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(dry.valid).toBe(false); expect(dry.actions[0].message).toContain('expectedCloseDate');
     await fire('deal', deal); expect((await runs(workflow.id))[0].status).toBe('failed');
   });
+  it('checks the Gmail sender assignment and projects an earlier owner assignment without changing the record', async () => {
+    const sample = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Mail', lastName: 'Scope', email: 'scope-check@example.test', assignedUserId: actor.id } }));
+    const role = await prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales' } });
+    await prisma.emailAccount.create({ data: { tenantId, userId: owner.id, email: owner.email, accessToken: 'disposable-fixture', scopes: ['gmail.send'] } });
+    try {
+      const emailAction: WorkflowAction = { type: 'send_email', config: { templateId: template.id, senderUserId: owner.id } };
+      const blocked = await create([emailAction], { isActive: false });
+      const mismatch = await scope(() => workflows.testWorkflow(blocked.id, tenantId, sample.id));
+      expect(mismatch.valid).toBe(false); expect(mismatch.actions[0].message).toContain('must be assigned');
+      const projected = await create([{ type: 'assign_owner', config: { userId: owner.id } }, emailAction], { isActive: false });
+      const success = await scope(() => workflows.testWorkflow(projected.id, tenantId, sample.id));
+      expect(success.valid).toBe(true); expect(success.actions[1].message).toContain('projected assignment');
+      expect((await prisma.lead.findUniqueOrThrow({ where: { id: sample.id } })).assignedUserId).toBe(actor.id);
+      expect(sendEmail).not.toHaveBeenCalled();
+      await prisma.lead.update({ where: { id: sample.id }, data: { assignedUserId: owner.id } });
+      await prisma.rolePermission.updateMany({ where: { tenantId, roleId: role.id, module: 'leads' }, data: { canEdit: false } });
+      const revoked = await scope(() => workflows.testWorkflow(blocked.id, tenantId, sample.id));
+      expect(revoked.valid).toBe(false); expect(revoked.actions[0].message).toContain('permission');
+      await prisma.rolePermission.updateMany({ where: { tenantId, roleId: role.id, module: 'leads' }, data: { canEdit: true } });
+    } finally {
+      await prisma.rolePermission.updateMany({ where: { tenantId, roleId: role.id, module: 'leads' }, data: { canEdit: true } });
+      await prisma.emailAccount.deleteMany({ where: { tenantId, userId: owner.id } });
+    }
+  });
   it('rejects protected fields, unsupported actions/triggers, and invalid numeric conditions at activation', async () => {
     for (const actions of [[{ type: 'update_field', config: { field: 'status', value: 'HOT' } }], [{ type: 'send_sms', config: {} }]]) {
       expect((await call('/automation/workflows', 'POST', { name: 'Unsafe', trigger: 'lead.created', actions, isActive: true })).status).toBe(400);

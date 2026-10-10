@@ -12,7 +12,7 @@ import * as usersService from './users.service';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_account_test_\d+$/.test(url.pathname);
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|account_test_\d+)$/.test(url.pathname);
 describe.skipIf(!disposable)('user administration and deal imports over authenticated HTTP', () => {
   let server: Server, base: string, tenantId: string, otherTenant: string, token: string, readerToken: string, readerId: string;
   let userId: string, otherUserId: string, pipelineId: string, stageId: string, otherStageId: string;
@@ -48,7 +48,7 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
-  const valid = { firstName: ' Juan ', lastName: ' Dela Cruz ', email: ' JUAN@camxian.com ', phone: '9171234567', role: 'Sales representative', jobTitle: ' Sales ', department: ' Manila ' };
+  const valid = { firstName: ' Juan ', lastName: ' Dela Cruz ', email: ' JUAN@camxian.com ', phone: '9171234567', role: 'Sales representative', jobTitle: ' Sales ' };
 
   it('validates and persists normalized users, canonical roles, edits, and audit events', async () => {
     for (const patch of [{ firstName: ' ' }, { lastName: '\nJuan' }, { email: 'juan@' }, { phone: '' }, { phone: '+6309171234567' }, { role: 'Other role' }, { tenantId: otherTenant }]) {
@@ -57,7 +57,7 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     const created = await call('/administration/users', 'POST', valid);
     expect(created.status).toBe(201);
     userId = created.body.data.id;
-    expect(created.body.data).toMatchObject({ firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@camxian.com', phone: '+639171234567', jobTitle: 'Sales', department: 'Manila', setupEmailSent: true });
+    expect(created.body.data).toMatchObject({ firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@camxian.com', phone: '+639171234567', jobTitle: 'Sales', groups: [], setupEmailSent: true });
     expect(created.body.data).not.toHaveProperty('passwordHash');
     expect(await prisma.userRole.count({ where: { userId, tenantId } })).toBe(1);
     expect((await call('/administration/users', 'POST', valid)).status).toBe(409);

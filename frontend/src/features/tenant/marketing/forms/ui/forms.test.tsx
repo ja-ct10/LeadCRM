@@ -8,13 +8,49 @@ import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
 vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { }, userCan: () => true }) }));
+const permissions = vi.hoisted(() => ({ edit: true, publish: true }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { }, userCan: (_module: string, permission: string) => permission === 'canEdit' ? permissions.edit : permission === 'canPublish' ? permissions.publish : true }) }));
 const products = [{ id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Smart Lock', dealValue: 5000, active: true, createdAt: '', updatedAt: '' }];
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false, error: '' }) }));
 const form = { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
-beforeEach(() => { vi.resetAllMocks(); vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
+beforeEach(() => { vi.resetAllMocks(); permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
+  it('lets an edit-only employee save a draft while publishing stays disabled', async () => {
+    permissions.publish = false;
+    vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Edited draft' } });
+    expect((screen.getByLabelText('Form name') as HTMLInputElement).value).toBe('Edited draft');
+    expect((screen.getByRole('button', { name: 'Publish' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(service.updateForm).toHaveBeenCalledWith('form', expect.objectContaining({ name: 'Edited draft' })));
+    expect(service.publishForm).not.toHaveBeenCalled();
+  });
+  it('keeps draft changes locked for a publish-only employee but allows publishing the saved form', async () => {
+    permissions.edit = false;
+    vi.mocked(service.publishForm).mockResolvedValue({ ...form, status: 'published' });
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Unauthorized edit' } });
+    expect((screen.getByLabelText('Form name') as HTMLInputElement).value).toBe('Contact Us');
+    fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    await waitFor(() => expect(service.publishForm).toHaveBeenCalledWith('form'));
+    expect(service.updateForm).not.toHaveBeenCalled();
+  });
+  it('saves Company Website as a submission-only answer without an ineffective CRM mapping', async () => {
+    vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    fireEvent.click(screen.getByText('Add fields or change design'));
+    const dialog = await screen.findByRole('dialog'); fireEvent.click(within(dialog).getByText('Company Website'));
+    fireEvent.keyDown(window, { key: 'Escape' });
+    fireEvent.click(screen.getByLabelText('Edit Company Website'));
+    expect(screen.getByText('Website answers are saved in submission history. They do not update the CRM record.')).toBeTruthy();
+    expect(within(screen.getByLabelText('CRM mapping')).queryByRole('option', { name: 'website' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(service.updateForm).toHaveBeenCalled());
+    const added = vi.mocked(service.updateForm).mock.calls[0][1].fields?.find(field => field.type === 'company-website');
+    expect(added?.mapToField).toBeUndefined();
+  });
   it('distinguishes loading, error and empty lists and retries', async () => {
     vi.mocked(service.getFormsByTenant).mockRejectedValueOnce(new Error('Network failed')).mockResolvedValue([]);
     render(<FormsPage />); expect(screen.getByLabelText('Loading forms')).toBeTruthy(); expect(screen.queryByText('No forms yet')).toBeNull();
@@ -23,7 +59,7 @@ describe('Forms UI', () => {
   it('uses the portal menu with exactly Edit, Duplicate, Delete', async () => {
     vi.mocked(service.getFormsByTenant).mockResolvedValue([form]); render(<FormsPage />); await screen.findByText('Contact Us');
     fireEvent.click(screen.getByLabelText('More actions')); const menu = screen.getByRole('menu'); expect(within(menu).getAllByRole('menuitem').map(e => e.textContent)).toEqual(['Edit','Duplicate','Delete']);
-    expect(menu.parentElement).toBe(document.body); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
+    expect(menu.closest('[data-theme-portal]')?.parentElement).toBe(document.body); fireEvent.keyDown(document, { key: 'Escape' }); expect(screen.queryByRole('menu')).toBeNull();
   });
   it('blocks published deletion with an explanation and allows deletion after unpublishing', async () => {
     const published = { ...form, status: 'published' as const, publishedVersion: 2 };
@@ -98,11 +134,15 @@ describe('Forms UI', () => {
     expect(screen.getByText('Contact Us')).toBeTruthy(); expect(screen.getByRole('alertdialog')).toBeTruthy();
   });
   it('opens mobile tools, adds fields, closes with Escape and keeps edits', async () => {
+    const originalOverflow = document.body.style.overflow;
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
-    fireEvent.click(screen.getByText('Add fields or change design'));
+    const trigger = screen.getByText('Add fields or change design'); trigger.focus(); fireEvent.click(trigger);
     const dialog = await screen.findByRole('dialog'); expect(dialog.getAttribute('aria-label')).toBe('Form tools');
     fireEvent.click(within(dialog).getByText('Single Line')); fireEvent.keyDown(window, { key: 'Escape' });
     expect(screen.getByLabelText('Move Short answer up')).toBeTruthy(); expect(screen.getByText('Unsaved changes')).toBeTruthy(); expect(service.updateForm).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(document.body.style.overflow).toBe(originalOverflow);
+    expect(document.activeElement).toBe(trigger);
   });
   it('persists reordered fields before publishing and passes the saved revision', async () => {
     vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));

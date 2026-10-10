@@ -6,6 +6,7 @@
  */
 
 import React from 'react';
+import { useTheme } from '@/shared/hooks/use-theme';
 import {
   Chart as ChartJS,
   CategoryScale,
@@ -33,24 +34,9 @@ ChartJS.register(
 );
 
 // ─── Shared style defaults ────────────────────────────────────
-function isDarkMode() {
-  if (typeof document === 'undefined') return true;
-  // Check the tenant CRM container, not <html>
-  const container = document.querySelector('[data-theme-container]');
-  return container ? container.classList.contains('dark') : false;
-}
+function useChartTheme() { return useTheme().isDark; }
 
-const subscribeTheme = (changed: () => void) => {
-  const listener = () => queueMicrotask(changed); // Read after the scoped container applies its theme.
-  window.addEventListener('themechange', listener);
-  return () => window.removeEventListener('themechange', listener);
-};
-function useChartTheme() {
-  return React.useSyncExternalStore(subscribeTheme, isDarkMode, () => false);
-}
-
-function getTooltipStyle() {
-  const dark = isDarkMode();
+function getTooltipStyle(dark: boolean) {
   return {
     backgroundColor: dark ? '#1e293b' : '#ffffff',
     borderColor: dark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)',
@@ -63,30 +49,12 @@ function getTooltipStyle() {
   };
 }
 
-function getAxisDefaults() {
-  const dark = isDarkMode();
+function getAxisDefaults(dark: boolean) {
   return {
     ticks: { color: dark ? '#94a3b8' : '#475569', font: { size: 12 } },
     grid: { color: dark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.06)' },
   };
 }
-
-// Keep for backward compat
-const darkTooltip = {
-  backgroundColor: '#1e293b',
-  borderColor: 'rgba(255,255,255,0.1)',
-  borderWidth: 1,
-  titleColor: '#f8fafc',
-  bodyColor: '#94a3b8',
-  cornerRadius: 10,
-  padding: 10,
-  boxPadding: 4,
-};
-
-const axisDefaults = {
-  ticks: { color: '#64748b', font: { size: 12 } },
-  grid: { color: 'rgba(255,255,255,0.05)' },
-};
 
 // ─── Prop types ───────────────────────────────────────────────
 interface DataItem { [key: string]: string | number; }
@@ -210,7 +178,7 @@ export function ResponsiveContainer({
     <div style={{
       width: typeof width === 'number' ? `${width}px` : width,
       height: typeof height === 'number' ? `${height}px` : height,
-      minWidth, minHeight, position: 'relative',
+      minWidth: minWidth ?? 0, minHeight, maxWidth: '100%', position: 'relative',
     }}>
       {children}
     </div>
@@ -262,22 +230,22 @@ export function BarChart({ data, children, layout }: BarChartProps) {
       legend: showLegend
         ? { labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12 } }
         : { display: false },
-      tooltip: { ...getTooltipStyle(), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(horizontal ? context.parsed.x : context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
+      tooltip: { ...getTooltipStyle(dark), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(horizontal ? context.parsed.x : context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
     },
     scales: {
-      x: { ...getAxisDefaults(), grid: { color: 'transparent' }, ...(horizontal ? { beginAtZero: true, ticks: { ...getAxisDefaults().ticks, callback: xTickFormatter } } : {}) },
+      x: { ...getAxisDefaults(dark), grid: { color: 'transparent' }, ...(horizontal ? { beginAtZero: true, ticks: { ...getAxisDefaults(dark).ticks, callback: xTickFormatter } } : {}) },
       y: {
-        ...getAxisDefaults(),
+        ...getAxisDefaults(dark),
         ...(horizontal ? {} : { beginAtZero: true }),
-        ticks: { ...getAxisDefaults().ticks, ...(horizontal ? {} : { precision: 0 }),
+        ticks: { ...getAxisDefaults(dark).ticks, ...(horizontal ? {} : { precision: 0 }),
           callback: yTickFormatter || (horizontal ? (value => labels[Number(value)] ?? '') : ((v: any) => v)) },
       },
     },
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <ChartBar data={{ labels, datasets }} options={options} />
+    <div style={{ position: 'relative', minWidth: 0, width: '100%', height: '100%' }}>
+      <ChartBar style={{ maxWidth: '100%' }} data={{ labels, datasets }} options={options} />
     </div>
   );
 }
@@ -286,7 +254,7 @@ export function BarChart({ data, children, layout }: BarChartProps) {
 // AreaChart
 // ─────────────────────────────────────────────────────────────
 export function AreaChart({ data, children }: BarChartProps) {
-  useChartTheme();
+  const dark = useChartTheme();
   let xDataKey = 'name';
   let xTickFormatter: XAxisProps['tickFormatter'];
   let yDomain: YAxisProps['domain'];
@@ -330,22 +298,22 @@ export function AreaChart({ data, children }: BarChartProps) {
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      tooltip: { ...getTooltipStyle(), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
+      tooltip: { ...getTooltipStyle(dark), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
     },
     scales: {
-      x: { ...getAxisDefaults(), grid: { color: 'transparent' }, ticks: { ...getAxisDefaults().ticks, autoSkip: true, maxRotation: 0, maxTicksLimit: 6, callback: value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
+      x: { ...getAxisDefaults(dark), grid: { color: 'transparent' }, ticks: { ...getAxisDefaults(dark).ticks, autoSkip: true, maxRotation: 0, maxTicksLimit: 6, callback: value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
       y: {
-        ...getAxisDefaults(),
+        ...getAxisDefaults(dark),
         ...(typeof yDomain?.[0] === 'number' ? { min: yDomain[0], beginAtZero: yDomain[0] === 0 } : {}),
         ...(typeof yDomain?.[1] === 'number' ? { max: yDomain[1] } : {}),
-        ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
+        ticks: { ...getAxisDefaults(dark).ticks, callback: yTickFormatter || ((v: any) => v) },
       },
     },
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <ChartLine data={{ labels, datasets }} options={options} />
+    <div style={{ position: 'relative', minWidth: 0, width: '100%', height: '100%' }}>
+      <ChartLine style={{ maxWidth: '100%' }} data={{ labels, datasets }} options={options} />
     </div>
   );
 }
@@ -387,20 +355,20 @@ export function LineChart({ data, children }: BarChartProps) {
     maintainAspectRatio: false,
     plugins: {
       legend: showLegend ? { labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12 } } : { display: false },
-      tooltip: { ...getTooltipStyle() },
+      tooltip: { ...getTooltipStyle(dark) },
     },
     scales: {
-      x: { ...getAxisDefaults(), grid: { color: 'transparent' } },
+      x: { ...getAxisDefaults(dark), grid: { color: 'transparent' } },
       y: {
-        ...getAxisDefaults(),
-        ticks: { ...getAxisDefaults().ticks, callback: yTickFormatter || ((v: any) => v) },
+        ...getAxisDefaults(dark),
+        ticks: { ...getAxisDefaults(dark).ticks, callback: yTickFormatter || ((v: any) => v) },
       },
     },
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <ChartLine data={{ labels, datasets }} options={options} />
+    <div style={{ position: 'relative', minWidth: 0, width: '100%', height: '100%' }}>
+      <ChartLine style={{ maxWidth: '100%' }} data={{ labels, datasets }} options={options} />
     </div>
   );
 }
@@ -461,13 +429,13 @@ export function PieChart({ children }: PieChartProps) {
       legend: showLegend
         ? { position: 'bottom', labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12, padding: 16 } }
         : { display: false },
-      tooltip: { ...getTooltipStyle() },
+      tooltip: { ...getTooltipStyle(dark) },
     },
   };
 
   return (
-    <div style={{ position: 'relative', width: '100%', height: '100%' }}>
-      <ChartDoughnut data={chartData} options={options} />
+    <div style={{ position: 'relative', minWidth: 0, width: '100%', height: '100%' }}>
+      <ChartDoughnut style={{ maxWidth: '100%' }} data={chartData} options={options} />
     </div>
   );
 }

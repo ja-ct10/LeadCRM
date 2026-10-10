@@ -18,6 +18,10 @@ export const PATHNAME_TO_PATH: Record<string, string> = {
   '/crm/deals':                    'deals',
   '/crm/pipeline':                 'pipeline',
   '/automation/workflows':         'workflows',
+  '/campaigns':                    'campaigns',
+  '/marketing/forms':              'forms',
+  '/crm/companies':                'accounts',
+  '/card-showcase':                'card-showcase',
   '/marketing/campaigns':          'campaigns',
   '/reporting':                    'reports',
   // Legacy routes — these now redirect to Settings tabs
@@ -43,6 +47,7 @@ export const PATH_TO_PATHNAME: Record<string, string> = {
   'deals':               '/crm/deals',
   'pipeline':            '/crm/pipeline',
   'workflows':           '/automation/workflows',
+  'forms':               '/marketing/forms',
   'campaigns':           '/marketing/campaigns',
   'reports':             '/reporting',
   // Legacy paths — resolve to redirect shells which bounce to Settings

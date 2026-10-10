@@ -6,6 +6,7 @@ import HelpLayout from '../ui/help-layout';
 const auth = vi.hoisted(() => ({ user: null as null | { id: string; mustChangePassword?: boolean }, isLoading: false, authError: null as string | null }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => auth }));
 vi.mock('@/features/tenant/layout/crm-layout', () => ({ default: ({ children }: { children: React.ReactNode }) => <div><aside aria-label="CRM sidebar" /><header aria-label="CRM top bar" />{children}</div> }));
+vi.mock('@/shared/providers/pwa-install-provider', () => ({ usePwaInstall: () => ({ status: 'unknown', dismissed: false, install: vi.fn(), restorePromotion: vi.fn() }) }));
 afterEach(() => { cleanup(); auth.user = null; auth.isLoading = false; auth.authError = null; });
 
 it.each(['signed out', 'restoring session', 'session unavailable'])('renders public guides without workspace chrome when %s', state => {

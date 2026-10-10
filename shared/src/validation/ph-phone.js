@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PH_MOBILE_ERROR = exports.PH_MOBILE_LENGTH = void 0;
+exports.PH_MOBILE_LENGTH = exports.PH_MOBILE_ERROR = void 0;
 exports.isPhMobileInput = isPhMobileInput;
 exports.isValidPhMobile = isValidPhMobile;
 exports.validatePhMobile = validatePhMobile;

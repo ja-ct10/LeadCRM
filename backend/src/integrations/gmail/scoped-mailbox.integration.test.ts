@@ -536,6 +536,31 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/emails?filter=sent')).body.emails).toHaveLength(1);
     expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: test.item.id } })).status).toBe('sent');
   });
+  it('reviews a pending schedule from persisted data, cancels it once, and preserves its editable draft', async () => {
+    const queued = await queuedEmail(); queued.provider.mockClear();
+    const detail = await call('/scheduled/' + queued.item.id);
+    expect(detail.status).toBe(200); expect(detail.body).toMatchObject({ id: queued.item.id, subject: 'Scheduled inquiry', recipients: [leadEmail], body: '<p>Hello</p>', canCancel: true });
+    expect(queued.provider).not.toHaveBeenCalled();
+    expect((await call('/scheduled/' + queued.item.id + '/cancel', 'POST', {})).status).toBe(200);
+    expect((await call('/scheduled/' + queued.item.id + '/cancel', 'POST', {})).status).toBe(200);
+    expect((await call('/emails?filter=scheduled')).body.emails).toHaveLength(0);
+    expect((await call('/emails?filter=drafts')).body.emails).toHaveLength(1);
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
+    await runScheduledMailboxEmails(); expect(queued.sends()).toBe(0);
+    expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).status).toBe('cancelled');
+  });
+  it('does not expose or cancel another employee schedule and rejects cancellation after sending begins', async () => {
+    const queued = await queuedEmail();
+    const other = await prisma.user.findUniqueOrThrow({ where: { id: otherId } });
+    const otherToken = (await issueAuthSession(other)).token;
+    await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId: otherId, provider: 'gmail' } },
+      create: { tenantId, userId: otherId, email: other.email, accessToken: encryptToken(randomUUID()), scopes: ['https://www.googleapis.com/auth/gmail.modify'] }, update: { isActive: true } });
+    expect((await call('/scheduled/' + queued.item.id, 'GET', undefined, 'Bearer ' + otherToken)).status).toBe(404);
+    expect((await call('/scheduled/' + queued.item.id + '/cancel', 'POST', {}, 'Bearer ' + otherToken)).status).toBe(404);
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { status: 'sending' } });
+    expect((await call('/scheduled/' + queued.item.id + '/cancel', 'POST', {})).status).toBe(409);
+    expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).status).toBe('sending');
+  });
   it('recovers an expired pre-send claim after restart and rechecks assignments', async () => {
     const test = await queuedEmail();
     await prisma.scheduledMailboxEmail.update({ where: { id: test.item.id }, data: { scheduledAt: new Date(0), status: 'claimed', leaseId: 'old-worker', leaseUntil: new Date(0) } });

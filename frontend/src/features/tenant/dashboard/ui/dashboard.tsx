@@ -55,7 +55,7 @@ function DashboardClock() {
   </time>;
 }
 
-export default function Dashboard() {
+export default function Dashboard({ heading }: { heading?: string } = {}) {
   const { user } = useAuth();
   const [query, setQuery] = useState<DashboardQuery>({ range: 'thisMonth', revenueInterval: 'month', funnelRange: 'month' });
   const [custom, setCustom] = useState(false);
@@ -138,7 +138,7 @@ export default function Dashboard() {
     <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="p-4 lg:p-6 space-y-6" aria-busy={loading}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="text-sm text-slate-500 dark:text-slate-400">
-          <span>Welcome back, <strong className="text-slate-700 dark:text-slate-300">{user.firstName}</strong></span>
+          <span>{heading ? <strong className="text-slate-700 dark:text-slate-300">{heading}</strong> : <>Welcome back, <strong className="text-slate-700 dark:text-slate-300">{user.firstName}</strong></>}</span>
           <DashboardClock />
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -158,7 +158,7 @@ export default function Dashboard() {
       {!report ? <p className="text-sm text-slate-500">Dashboard metrics are unavailable.</p> : <>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {statCards.map(({ label, value, icon: Icon, color, trend }) => <div key={label} role="group" aria-label={label} className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col gap-2 min-w-0">
-            <div className="flex items-start justify-between gap-1"><div className={`p-2 rounded-md ${colors[color].bg} ${colors[color].text}`}><Icon size={16} /></div><span className="text-[10px] font-semibold text-slate-500 text-right">{trend}</span></div>
+            <div className="flex min-w-0 items-start justify-between gap-1"><div className={`shrink-0 p-2 rounded-md ${colors[color].bg} ${colors[color].text}`}><Icon size={16} /></div><span className="min-w-0 break-words text-[10px] font-semibold text-slate-500 text-right">{trend}</span></div>
             <div><span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">{label}</span><span className="text-base font-bold text-slate-900 dark:text-white tracking-tight mt-0.5 block break-words">{value}</span></div>
           </div>)}
         </div>

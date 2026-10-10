@@ -7,7 +7,7 @@ beforeEach(() => { vi.clearAllMocks(); repo.createCompany.mockResolvedValue({ id
 it('creates and edits without obsolete fields, stripping legacy input before persistence', async () => {
   const legacy = { name: 'Account', tags: [], country: 'Philippines', taxId: 'invalid', customerType: 'Prospect', customerSince: 'invalid' };
   await createCompany('tenant', 'user', legacy);
-  expect(repo.createCompany).toHaveBeenCalledWith('tenant', { name: 'Account', tags: [], country: 'Philippines' });
+  expect(repo.createCompany).toHaveBeenCalledWith('tenant', { name: 'Account', tags: [], country: 'Philippines' }, 'user');
   await updateCompany('account', 'tenant', 'user', legacy);
-  expect(repo.updateCompany).toHaveBeenCalledWith('account', 'tenant', { name: 'Account', tags: [], country: 'Philippines' });
+  expect(repo.updateCompany).toHaveBeenCalledWith('account', 'tenant', { name: 'Account', tags: [], country: 'Philippines' }, 'user');
 });

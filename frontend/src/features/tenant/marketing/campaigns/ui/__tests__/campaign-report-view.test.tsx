@@ -28,6 +28,13 @@ const select = (label: string) => {
 };
 const rows = () => within(screen.getAllByRole('grid')[0]).getAllByRole('row').slice(1);
 describe('campaign report', () => {
+  it('explains interrupted submissions without claiming uncertain recipients were retried', async () => {
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, status: 'INTERRUPTED', submissionInterruptedAt: '2026-10-09T01:00:00Z' } } as never);
+    mount(); await screen.findByText('Doris Testing');
+    expect(screen.getAllByText('Interrupted').length).toBeGreaterThan(0);
+    expect(screen.getByText(/Unconfirmed recipients may have been accepted/)).toBeTruthy();
+    expect(screen.getByText(/no recipients were automatically retried/)).toBeTruthy();
+  });
   it('shows five original links by default and expands all without losing full URLs', async () => {
     const next = response();
     next.data.topLinks = Array.from({ length: 6 }, (_, i) => ({ ...next.data.topLinks[0], url: `https://camxian.com/products?id=${i}#detail` }));

@@ -27,7 +27,8 @@ test('six-status migration retains historical records and uses only delivery evi
       }
     }
     const before = (await db.query('SELECT count(*)::int AS count FROM "CampaignContact"')).rows[0].count;
-    await replayCrmMigrations(db, { from: migration });
+    // Assert this migration's historical boundary; recovery has separate current-schema coverage.
+    await replayCrmMigrations(db, { from: migration, before: '20261110000000' });
     assert.deepEqual((await db.query(`SELECT enumlabel FROM pg_enum WHERE enumtypid = '"CampaignStatus"'::regtype ORDER BY enumsortorder`)).rows.map(r => r.enumlabel), ['SENDING','SENT','PARTIALLY_SENT','DELIVERED','FAILED','DRAFT']);
     const rows = (await db.query('SELECT id,status,"submissionStartedAt","submissionFinishedAt" FROM "Campaign"')).rows;
     assert.equal(rows.length, cases.length);

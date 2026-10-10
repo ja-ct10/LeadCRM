@@ -194,8 +194,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   };
 
   // Shared field classes
-  const inputCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500';
-  const selectCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
+  const inputCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none transition-all focus:ring-2 focus:ring-primary/20 focus:border-primary';
+  const selectCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl pl-3.5 pr-8 py-2.5 text-sm text-slate-900 dark:text-white outline-none appearance-none cursor-pointer focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all [&>option]:bg-white dark:[&>option]:bg-slate-900';
   const errorInputCls = '!border-red-500 focus:!ring-red-500/20';
 
   return (
@@ -373,7 +373,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 aria-invalid={!!errors.address}
                 aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={3}
-                className="w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 outline-none transition-all resize-none overflow-hidden"
+                className="w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none overflow-hidden"
                 placeholder="123 Main St, Apt 4B, City, State, Zip Code"
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
@@ -401,7 +401,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         <button
           type="submit"
           disabled={customFields.blocked || productsLoading || !!productError}
-          className="px-6 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:scale-95 rounded-xl transition-all shadow-lg shadow-blue-500/25"
+          className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
         >
           {isEdit ? 'Save Changes' : 'Create Lead'}
         </button>
@@ -415,7 +415,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 function SectionHeader({ num, title }: { num: number; title: string }): React.ReactElement {
   return (
     <div className="flex items-center gap-3">
-      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white text-[11px] font-bold shrink-0">
+      <div className="flex items-center justify-center w-6 h-6 rounded-full bg-primary text-white text-[11px] font-bold shrink-0">
         {num}
       </div>
       <h3 className="text-sm font-bold text-slate-900 dark:text-white tracking-wide">{title}</h3>

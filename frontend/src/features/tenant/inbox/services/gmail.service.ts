@@ -1,6 +1,6 @@
 import { apiClient } from '@/lib/api/client';
 export type { MailboxEmail as GmailEmail } from '@leadcrm/shared';
-import type { MailboxEmail as GmailEmail, MailboxUnreadCount, MailboxListOptions } from '@leadcrm/shared';
+import type { MailboxEmail as GmailEmail, MailboxUnreadCount, MailboxListOptions, ScheduledMailboxEmailDetail } from '@leadcrm/shared';
 
 export const fetchGmailUnreadCount = () => apiClient.get<MailboxUnreadCount>('/integrations/gmail/unread-count');
 
@@ -66,6 +66,8 @@ export async function fetchGmailEmails(options?: MailboxListOptions, signal?: Ab
 export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string; forwardSourceMessageId?: string }) =>
   apiClient.post<{ id: string; status: string }>('/integrations/gmail/scheduled', data);
 export const deleteGmailDraft = (draftId: string) => apiClient.delete(`/integrations/gmail/drafts/${encodeURIComponent(draftId)}`);
+export const getScheduledGmailEmail = (id: string) => apiClient.get<ScheduledMailboxEmailDetail>(`/integrations/gmail/scheduled/${encodeURIComponent(id)}`);
+export const cancelScheduledGmailEmail = (id: string) => apiClient.post<{ id: string; status: string }>(`/integrations/gmail/scheduled/${encodeURIComponent(id)}/cancel`, {});
 
 /**
  * Sends an email through the connected Gmail account.

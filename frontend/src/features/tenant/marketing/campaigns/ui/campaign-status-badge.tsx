@@ -2,6 +2,7 @@ import { Badge, type BadgeProps } from '@/shared/components/ui/badge';
 
 const statuses: Record<string, { label: string; variant: BadgeProps['variant'] }> = {
   SENDING: { label: 'Sending', variant: 'secondary' },
+  INTERRUPTED: { label: 'Interrupted', variant: 'warning' },
   DRAFT: { label: 'Draft', variant: 'secondary' },
   SENT: { label: 'Sent', variant: 'info' },
   PARTIALLY_SENT: { label: 'Partially Sent', variant: 'warning' },

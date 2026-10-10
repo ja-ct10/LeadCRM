@@ -12,7 +12,7 @@ for (const suite of process.argv.length > 2 ? process.argv.slice(2) : ['src/modu
   const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
   await socket.start();
   try {
-    const child = spawn(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', suite], {
+    const child = spawn(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', suite, '--maxWorkers=1', '--pool=threads', '--testTimeout=20000', '--hookTimeout=30000'], {
       cwd: root, stdio: 'inherit', windowsHide: true, env: { ...process.env,
         DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_campaign_test_1?connection_limit=1`,
         JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'),

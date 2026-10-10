@@ -22,6 +22,7 @@ it.each([
   ['/notifications/123/read', ['notifications']],
   ['/administration/archived-data/Pipeline/123/restore', ['archived-crm', 'pipeline', 'pipelines']],
   ['/administration/archived-data/Workflow/123/restore', ['archived-crm', 'workflows']],
+  ['/administration/archived-data/Task/123/restore', ['archived-crm', 'activities', 'reports']],
   ['/administration/archived-data/Template/123/restore', ['archived-crm', 'campaigns', 'templates']],
 ])('invalidates caches after a successful mutation to %s', async (path, modules) => {
   await apiClient.patch(path);

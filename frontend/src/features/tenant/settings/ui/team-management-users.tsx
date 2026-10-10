@@ -6,15 +6,15 @@ import { CreateButton } from '@/shared/components/ui/button';
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { compareSortValues } from '@leadcrm/shared';
 import {
-  Plus, X, UserCheck, UserX,
+  Plus, UserCheck, UserX,
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
+import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { usePagination } from '@/shared/hooks/use-pagination';
 import { LeadsPagination, LEADS_PAGE_SIZES } from '@/shared/components/crm/leads-pagination';
-import { FilterGroupSection } from '@/shared/components/crm/module-workspace';
+import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
@@ -83,6 +83,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         }
         if (!cancelled) {
           setAllUsers(result);
+          setEditingUser(previous => previous ? result.find(user => user.id === previous.id) ?? null : null);
           onUsersLoaded?.(result);
         }
       } catch (error) { if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Unable to load users.'); }
@@ -102,16 +103,17 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
-  const [departmentFilter, setDepartmentFilter] = useState<string[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
   const [showFilters, setShowFilters] = useState(false);
-  const departments = useMemo(() => [...new Set(tenantUsers.map(u => u.department).filter((value): value is string => !!value?.trim()))].sort(), [tenantUsers]);
+  const groups = useMemo(() => [...new Map(tenantUsers.flatMap(user => user.groups ?? []).map(group => [group.id, group])).values()].sort((a, b) => a.name.localeCompare(b.name)), [tenantUsers]);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [initiallyEditing, setInitiallyEditing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   useEffect(() => { setEditingUser(null); setIsAddOpen(false); }, [tenantId]);
+  useEffect(() => { const changed = () => setReload(value => value + 1); window.addEventListener('leadcrm:groups-changed', changed); return () => window.removeEventListener('leadcrm:groups-changed', changed); }, []);
   const [confirmArchive, setConfirmArchive] = useState<User | null>(null);
   const [statusChangeUser, setStatusChangeUser] = useState<User | null>(null);
   const [changingStatus, setChangingStatus] = useState(false);
@@ -121,12 +123,13 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const [preflighting, setPreflighting] = useState(false);
   const beginStatusChange = async (target: User) => {
     if (preflighting) return;
+    if (target.status === 'active' && currentUser?.role !== 'Client Admin') return;
     setReplacement(''); setImpact(null);
     if (target.status !== 'active') { setStatusChangeUser(target); return; }
     setPreflighting(true);
     try {
       const result = await usersService.deactivationImpact(target.id);
-      if (!result.data) throw new Error('Unable to check CRM ownership.');
+      if (!result.data) throw new Error('Unable to check assigned records and unfinished tasks.');
       setImpact(result.data); setReassignUser(target);
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to check CRM ownership.'); }
     finally { setPreflighting(false); }
@@ -137,25 +140,26 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       const matchSearch = !search || `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(search.toLowerCase());
       const matchRole = roleFilter.length === 0 || roleFilter.includes(u.role);
       const matchStatus = statusFilter.length === 0 || statusFilter.some((s) => s.toLowerCase() === (u.status ?? '').toLowerCase());
-      return matchSearch && matchRole && matchStatus && (departmentFilter.length === 0 || departmentFilter.includes(u.department ?? ''));
+      return matchSearch && matchRole && matchStatus && (groupFilter.length === 0 || u.groups?.some(group => groupFilter.includes(group.id)));
     }).sort((a, b) => {
-      const value = (u: User) => sort.field === 'name' ? `${u.firstName} ${u.lastName}` : sort.field === 'createdAt' ? u.createdAt ? new Date(u.createdAt) : null : u[sort.field as keyof User];
+      const value = (u: User) => sort.field === 'name' ? `${u.firstName} ${u.lastName}` : sort.field === 'groups' ? u.groups?.map(group => group.name).join(', ') : sort.field === 'createdAt' ? u.createdAt ? new Date(u.createdAt) : null : u[sort.field as keyof User];
       return compareSortValues(value(a), value(b), sort.direction) || a.id.localeCompare(b.id);
     });
-  }, [tenantUsers, search, roleFilter, statusFilter, departmentFilter, sort]);
+  }, [tenantUsers, search, roleFilter, statusFilter, groupFilter, sort]);
 
   const { currentPage, pageSize, totalItems, paginateItems, goToPage, setPageSize } = usePagination({
     totalItems: filtered.length,
     initialPageSize: 25,
     pageSizeOptions: LEADS_PAGE_SIZES,
-    resetDeps: [search, roleFilter, statusFilter, departmentFilter, sort],
+    resetDeps: [search, roleFilter, statusFilter, groupFilter, sort],
   });
   const paginated = paginateItems(filtered);
-  useEffect(() => { setSelected(new Set()); }, [tenantId, currentPage, pageSize, search, roleFilter, statusFilter, departmentFilter]);
+  useEffect(() => { setSelected(new Set()); }, [tenantId, currentPage, pageSize, search, roleFilter, statusFilter, groupFilter]);
   const openUser = (user: User, edit = false) => { setInitiallyEditing(edit); setEditingUser(user); };
 
   const handleSavedUser = (saved: User, refresh = true) => {
     setAllUsers(previous => previous.some(user => user.id === saved.id) ? previous.map(user => user.id === saved.id ? saved : user) : [saved, ...previous]);
+    setEditingUser(previous => previous?.id === saved.id ? saved : previous);
     if (refresh) setReload(value => value + 1);
   };
   const [archiving, setArchiving] = useState(false);
@@ -178,7 +182,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       if (nextStatus === 'inactive') {
         const result = await usersService.deactivate(statusChangeUser.id, replacement || null);
         handleSavedUser(result.user, false);
-        toast.success(result.impact.total ? 'CRM records transferred successfully and user deactivated.' : 'User deactivated successfully.');
+        toast.success(result.impact.total ? 'Records and unfinished tasks transferred successfully and user deactivated.' : 'User deactivated successfully.');
       } else {
         const result = await usersService.update(statusChangeUser.id, { status: nextStatus });
         if (!result.data) throw new Error('Unable to update user status.');
@@ -204,16 +208,17 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
 
   const canAssignRoles = userCan('roles', 'canAssign');
   const canManageUsers = userCan('users', 'canEdit'), canCreateUsers = userCan('users', 'canCreate') && userCan('roles', 'canAssign'), canActivateUsers = userCan('users', 'canActivate'), canArchiveUsers = userCan('users', 'canArchive');
+  const canDeactivateUsers = canActivateUsers && currentUser?.role === 'Client Admin';
   const columns: DataGridColumnDef<User>[] = [
     { id: 'name', sortable: true, header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span></button> },
     { id: 'role', sortable: true, header: 'Role', accessor: u => u.role, width: 180, cell: (_, u) => <span className={cn('rounded-full border px-2 py-0.5 text-xs', roleColor(u.role))}>{u.role}</span> },
     { id: 'email', sortable: true, header: 'Contact', accessor: u => u.email, width: 250, cell: (_, u) => <div><p>{u.email}</p><p className="text-xs text-muted-foreground">{u.phone}</p></div> },
     { id: 'status', sortable: true, header: 'Status', accessor: u => u.status ?? 'active', width: 110, cell: (_, u) => <span className={cn('rounded-full px-2 py-1 text-xs', u.status === 'active' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-slate-500/10 text-slate-500')}>{u.status ?? 'active'}</span> },
-    { id: 'department', sortable: true, header: 'Department', accessor: u => u.department || '—', width: 150 },
+    { id: 'groups', sortable: true, header: 'Groups', accessor: u => u.groups?.map(group => group.name).join(', ') || '—', width: 180 },
     { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => {
       const active = u.status === 'active';
       const label = active ? `Deactivate ${u.firstName} ${u.lastName}` : `Activate ${u.firstName} ${u.lastName}`;
-      return <button type="button" aria-label={label} title={active ? 'Deactivate user' : 'Activate user'} disabled={!canActivateUsers || preflighting} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
+      return <button type="button" aria-label={label} title={active && !canDeactivateUsers ? 'Client Admin is required to deactivate and reassign ownership' : active ? 'Deactivate user' : 'Activate user'} disabled={(active ? !canDeactivateUsers : !canActivateUsers) || preflighting} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
     } },
   ];
 
@@ -226,25 +231,22 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {tableColumns.drawer}
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
       <ModuleTableToolbar label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
-        filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || departmentFilter.length)} onClick={() => setShowFilters(value => !value)} />}
+        filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || groupFilter.length)} onClick={() => setShowFilters(value => !value)} />}
         refreshing={loading} onRefresh={() => setReload(value => value + 1)} onManageColumns={tableColumns.openColumns} />
 
       <div className="flex min-w-0 gap-3 items-stretch">
-        {showFilters && <div className="fixed inset-0 z-30 bg-black/30 sm:hidden" aria-hidden="true" onClick={() => setShowFilters(false)} />}
-        {showFilters && <motion.aside initial={{ x: -260, opacity: 0 }} animate={{ x: 0, opacity: 1 }} transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-          id="user-filters" aria-label="User filters" onKeyDown={event => { if (event.key === 'Escape') setShowFilters(false); }}
-          className="fixed inset-y-0 left-0 z-40 w-[260px] max-w-full flex flex-col shadow-2xl sm:static sm:z-auto sm:shadow-none sm:max-h-[calc(100dvh-12rem)] shrink-0 sm:self-start sm:rounded-xl border border-[#E4E9F0] dark:border-slate-700 bg-white dark:bg-slate-900 overflow-hidden">
-          <div className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-[#E4E9F0] dark:border-slate-700">
-            <span className="text-[13px] font-semibold text-slate-900 dark:text-white">Filter by</span>
-            <button aria-label="Close filters" onClick={() => setShowFilters(false)} className="p-1 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-slate-500"><X size={14} /></button>
-          </div>
-          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 custom-scrollbar">
-            <FilterGroupSection group={{ id: 'status', label: 'Status', items: ['active', 'inactive'].map(id => ({ id, label: id === 'active' ? 'Active' : 'Inactive', isChecked: statusFilter.includes(id) })) }} onToggle={(_, id) => setStatusFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
-            <FilterGroupSection group={{ id: 'department', label: 'Department', items: departments.map(id => ({ id, label: id, isChecked: departmentFilter.includes(id) })) }} onToggle={(_, id) => setDepartmentFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
-            <FilterGroupSection group={{ id: 'role', label: 'Role', items: roleNames.map(id => ({ id, label: id, isChecked: roleFilter.includes(id) })) }} onToggle={(_, id) => setRoleFilter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id])} />
-          </div>
-          <div className="shrink-0 border-t border-[#E4E9F0] dark:border-slate-700 px-4 py-2.5 text-xs text-slate-500">{filtered.length} users in this module</div>
-        </motion.aside>}
+        <ModuleFilterRail label="User filters" showFilters={showFilters} onToggleFilters={() => setShowFilters(value => !value)} totalRecords={filtered.length}
+          filterGroups={[
+            { id: 'status', label: 'Status', items: ['active', 'inactive'].map(id => ({ id, label: id === 'active' ? 'Active' : 'Inactive', isChecked: statusFilter.includes(id) })) },
+            { id: 'groups', label: 'Groups', items: groups.map(group => ({ id: group.id, label: group.name, isChecked: groupFilter.includes(group.id) })) },
+            { id: 'role', label: 'Role', items: roleNames.map(id => ({ id, label: id, isChecked: roleFilter.includes(id) })) },
+          ]}
+          onFilterToggle={(group, id) => {
+            const update = (previous: string[]) => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id];
+            if (group === 'status') setStatusFilter(update);
+            else if (group === 'groups') setGroupFilter(update);
+            else if (group === 'role') setRoleFilter(update);
+          }} />
         <div className="min-w-0 flex-1 space-y-4">
           {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
             <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
@@ -252,7 +254,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
                 { id: 'view', label: 'View', onClick: () => openUser(u) },
                 ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
                   { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
-                  { id: 'status', label: u.status === 'active' ? 'Deactivate' : 'Activate', disabled: !canActivateUsers, onClick: () => void beginStatusChange(u) },
+                  { id: 'status', label: u.status === 'active' ? 'Deactivate' : 'Activate', disabled: u.status === 'active' ? !canDeactivateUsers : !canActivateUsers, onClick: () => void beginStatusChange(u) },
                   { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
                 ] : []),
               ]} />}
@@ -296,8 +298,8 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       <ConfirmActionDialog
         open={!!reassignUser && !statusChangeUser}
         onOpenChange={open => { if (!open) { setReassignUser(null); setImpact(null); setReplacement(''); } }}
-        title="Reassign CRM Records"
-        description={impact?.total ? `${reassignUser?.firstName} ${reassignUser?.lastName} currently owns CRM records that must be reassigned before the account can be deactivated.` : 'No active CRM records are assigned to this user.'}
+        title="Reassign Records and Tasks"
+        description={impact?.total ? `${reassignUser?.firstName} ${reassignUser?.lastName} has assigned records and unfinished tasks that must be reassigned before the account can be deactivated.` : 'No active records or unfinished tasks are assigned to this user.'}
         confirmLabel="Continue"
         confirmDisabled={!!impact?.total && !replacement}
         onConfirm={() => { setStatusChangeUser(reassignUser); return false; }}
@@ -312,11 +314,11 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
         onOpenChange={(open) => { if (!open && !changingStatus) { setStatusChangeUser(null); setReassignUser(null); setReplacement(''); setImpact(null); } }}
         title={statusChangeUser?.status === 'active' ? 'Deactivate this user?' : 'Activate this user?'}
         description={statusChangeUser?.status === 'active'
-          ? `Deactivate ${statusChangeUser.firstName} ${statusChangeUser.lastName}? ${impact?.total ? `${impact.counts.leads} Leads, ${impact.counts.contacts} Contacts, ${impact.counts.accounts} Accounts, and ${impact.counts.deals} Deals will be reassigned to ${allUsers.find(user => user.id === replacement)?.firstName ?? ''} ${allUsers.find(user => user.id === replacement)?.lastName ?? ''}. ` : ''}They will lose access to this workspace.`
+          ? `Deactivate ${statusChangeUser.firstName} ${statusChangeUser.lastName}? ${impact?.total ? `${impact.counts.leads} Leads, ${impact.counts.contacts} Contacts, ${impact.counts.accounts} Accounts, and ${impact.counts.deals} Deals and ${impact.counts.tasks} unfinished Tasks will be reassigned to ${allUsers.find(user => user.id === replacement)?.firstName ?? ''} ${allUsers.find(user => user.id === replacement)?.lastName ?? ''}. ` : ''}They will lose access to this workspace.`
           : `Activate ${statusChangeUser?.firstName ?? ''} ${statusChangeUser?.lastName ?? ''}? They will regain access to this workspace.`}
         confirmLabel={statusChangeUser?.status === 'active' ? 'Deactivate' : 'Activate'}
         variant={statusChangeUser?.status === 'active' ? 'warning' : 'success'}
-        confirmDisabled={!canActivateUsers || (statusChangeUser?.status === 'active' && !!impact?.total && !replacement)}
+        confirmDisabled={(statusChangeUser?.status === 'active' ? !canDeactivateUsers : !canActivateUsers) || (statusChangeUser?.status === 'active' && !!impact?.total && !replacement)}
         isLoading={changingStatus}
         onConfirm={handleStatusChange}
       />

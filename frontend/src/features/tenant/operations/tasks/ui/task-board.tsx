@@ -37,7 +37,7 @@ import {
 import { TaskTable } from "./task-table";
 import { useTaskColumns } from "../use-task-columns";
 import { useTasks } from "../use-tasks";
-import { localDateTime, taskDueInstant } from "../task-data";
+import { manilaLocalDateTime, manilaTaskDueInstant } from "../task-data";
 import { TaskEditor, TaskSelector } from "./task-editor";
 
 type Period = "all" | "overdue" | "today" | "week";
@@ -108,15 +108,15 @@ export default function TaskBoard() {
     limit,
   };
   const queryKey = JSON.stringify(query);
-  const data = useTasks(query);
+  const data = useTasks(query, true);
   const columnPreferences = useTaskColumns(data.identity, data.canRead);
   const identity = useRef(data.identity);
   identity.current = data.identity;
   useEffect(() => {
-    if (!data.loading) refreshPending.current = false;
-  }, [data.loading]);
+    if (!data.loading && !data.refreshing) refreshPending.current = false;
+  }, [data.loading, data.refreshing]);
   const refresh = () => {
-    if (data.loading || mutationPending.current || refreshPending.current)
+    if (data.loading || data.refreshing || mutationPending.current || refreshPending.current)
       return;
     refreshPending.current = true;
     data.refresh();
@@ -208,9 +208,9 @@ export default function TaskBoard() {
     if (
       date &&
       time &&
-      localDateTime(taskDueInstant(`${date}T${time}`)) === `${date}T${time}`
+      manilaLocalDateTime(manilaTaskDueInstant(`${date}T${time}`)) === `${date}T${time}`
     )
-      dueDate = taskDueInstant(`${date}T${time}`);
+      dueDate = manilaTaskDueInstant(`${date}T${time}`);
   } catch {
     /* Invalid selections keep Reschedule disabled. */
   }
@@ -404,7 +404,7 @@ export default function TaskBoard() {
         totalRecords={total}
         onRefresh={refresh}
         refreshLabel="Refresh tasks"
-        refreshDisabled={busy || data.loading}
+        refreshDisabled={busy || data.loading || data.refreshing}
         loading={data.loading || columnPreferences.loading}
         loadingLabel={data.loading ? "Loading tasks..." : "Loading columns..."}
         onManageColumns={() => setColumnsOpen(true)}
@@ -428,7 +428,7 @@ export default function TaskBoard() {
             {notice}
           </p>
         )}
-        {!data.error && (
+        {(!data.error || data.tasks.length > 0) && (
           <>
             <TaskTable
               tasks={data.tasks}
@@ -531,7 +531,7 @@ export default function TaskBoard() {
             {bulkAction === "assign" ? "Assign tasks" : "Reschedule tasks"}
           </DialogTitle>
           <DialogDescription id="task-bulk-description">
-            Update {selected.length} selected task(s).
+            Update {selected.length} selected task(s). {bulkAction === 'reschedule' && 'Dates and times use Asia/Manila.'}
           </DialogDescription>
           {bulkAction === "assign" ? (
             <TaskSelector

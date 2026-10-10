@@ -1509,7 +1509,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       status: userData.status || "active",
       phone: userData.phone || "",
       jobTitle: userData.jobTitle || "",
-      department: userData.department || "",
+      groups: userData.groups ?? [],
     };
 
     // Optimistic Update

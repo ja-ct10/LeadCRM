@@ -29,7 +29,7 @@ function menu() {
 it('opens downward through a fixed body portal with enough space', () => {
   menu();
   const dropdown = screen.getByRole('menu');
-  expect(dropdown.parentElement).toBe(document.body);
+  expect(dropdown.closest('[data-theme-portal]')?.parentElement).toBe(document.body);
   expect(dropdown.style.top).toBe('132px');
   expect(dropdown.style.left).toBe('50px');
 });

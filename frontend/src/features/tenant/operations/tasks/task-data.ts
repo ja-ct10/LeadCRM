@@ -13,6 +13,7 @@ import {
 import type { Task } from "@/store/types";
 import { subscribePageCacheInvalidation } from "@/shared/cache/page-cache";
 import { tasksApi } from "@/shared/services/tasks.api";
+import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 
 export function localTaskQuery(
   tasks: Task[],
@@ -190,13 +191,13 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
 }
 
 export function localDateTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "";
-  const pad = (part: number) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  return manilaLocalDateTime(value);
 }
 export function taskDueInstant(value: string): string {
-  const date = new Date(value.length === 10 ? `${value}T17:00:00` : value);
+  if (/^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2})?$/.test(value)) return manilaTaskDueInstant(value);
+  // Persisted ISO instants retain their timezone, including existing API callers.
+  if (!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value)) throw new Error('Choose a valid due date and time.');
+  const date = new Date(value);
   if (Number.isNaN(date.getTime()))
     throw new Error("Choose a valid due date and time.");
   return date.toISOString();

@@ -60,18 +60,17 @@ describe("Task contract and calendar rules", () => {
       TaskBulkSchema.safeParse({ operation: "complete", ids: [] }).success,
     ).toBe(false);
   });
-  it("preserves date and time and constructs half-open local calendar boundaries", () => {
+  it("preserves Manila date and time and constructs half-open Manila calendar boundaries", () => {
     const input = "2026-09-27T21:30";
     expect(localDateTime(taskDueInstant(input))).toBe(input);
     expect(localDateTime(taskDueInstant("2026-09-27"))).toBe(
       "2026-09-27T17:00",
     );
-    const day = taskDateRange("today", new Date(2026, 8, 27, 23, 59));
-    expect(new Date(day.dueFrom).getHours()).toBe(0);
-    expect(new Date(day.dueTo).getDate()).toBe(28);
-    const week = taskDateRange("week", new Date(2026, 8, 27));
-    expect(new Date(week.dueFrom).getDay()).toBe(1);
-    expect(new Date(week.dueTo).getDay()).toBe(1);
+    expect(taskDueInstant('2026-09-27T21:30')).toBe('2026-09-27T13:30:00.000Z');
+    expect(taskDueInstant('2026-09-27T13:30:00.000Z')).toBe('2026-09-27T13:30:00.000Z');
+    const now = new Date('2026-09-27T23:59:00.000Z');
+    expect(taskDateRange('today', now)).toEqual({ dueFrom: '2026-09-27T16:00:00.000Z', dueTo: '2026-09-28T16:00:00.000Z' });
+    expect(taskDateRange('week', now)).toEqual({ dueFrom: '2026-09-27T16:00:00.000Z', dueTo: '2026-10-04T16:00:00.000Z' });
   });
   it("uses Manila wall time and rolls an elapsed same-day clock time to tomorrow", () => {
     const now = new Date(manilaTaskDueInstant("2026-10-05T21:50"));

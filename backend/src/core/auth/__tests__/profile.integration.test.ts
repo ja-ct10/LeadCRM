@@ -6,7 +6,7 @@ import { issueAuthSession } from '../auth-session';
 import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_account_test_\d+$/.test(url.pathname);
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|account_test_\d+)$/.test(url.pathname);
 describe.skipIf(!disposable)('profile and sorting persistence through authenticated HTTP', () => {
   let server: Server, storage: Server, base: string, tenantId: string, userId: string, token: string;
   const objects = new Map<string, Buffer>();
@@ -45,12 +45,14 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     await prisma.$disconnect();
   });
   it('persists safe fields across fresh auth reads and sessions, rejecting privileged changes', async () => {
-    expect((await request('/auth/profile', 'PATCH', { firstName: 'Ada', phone: '9171234567', jobTitle: 'Engineer', department: 'Research' })).status).toBe(200);
+    expect((await request('/auth/profile', 'PATCH', { firstName: 'Ada', phone: '9171234567', jobTitle: 'Engineer' })).status).toBe(200);
     const dbUser = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
-    expect(dbUser).toMatchObject({ firstName: 'Ada', phone: '+639171234567', jobTitle: 'Engineer', department: 'Research' });
+    expect(dbUser).toMatchObject({ firstName: 'Ada', phone: '+639171234567', jobTitle: 'Engineer' });
     token = (await issueAuthSession(dbUser)).token;
     const restored = (await request('/auth/me')).body.data.user;
-    expect(restored).toMatchObject({ firstName: 'Ada', department: 'Research' }); expect(restored).not.toHaveProperty('passwordHash');
+    expect(restored).toMatchObject({ firstName: 'Ada', groups: [] }); expect(restored).not.toHaveProperty('passwordHash');
+    expect((await request('/auth/profile', 'PATCH', { department: 'Research' })).status).toBe(400);
+    expect((await request('/auth/profile', 'PATCH', { groupIds: [] })).status).toBe(400);
     expect((await request('/auth/profile', 'PATCH', { role: 'Client Admin' })).status).toBe(400);
     expect((await request('/auth/profile', 'PATCH', { tenantId: 'other', firstName: 'Other' })).status).toBe(400);
     expect((await request('/auth/profile', 'PATCH', { firstName: 'Anonymous' }, false)).status).toBe(401);

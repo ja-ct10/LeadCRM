@@ -1,12 +1,11 @@
 import { z } from 'zod';
 import { isValidPhMobile, PH_MOBILE_ERROR, toE164 } from '../validation/ph-phone';
 
-export const PROFILE_FIELD_LIMITS = { firstName: 50, lastName: 50, jobTitle: 100, department: 100 } as const;
+export const PROFILE_FIELD_LIMITS = { firstName: 50, lastName: 50, jobTitle: 100 } as const;
 export const PROFILE_FIELD_LIMIT_ERRORS = {
   firstName: `First name must not exceed ${PROFILE_FIELD_LIMITS.firstName} characters.`,
   lastName: `Last name must not exceed ${PROFILE_FIELD_LIMITS.lastName} characters.`,
   jobTitle: `Job title must not exceed ${PROFILE_FIELD_LIMITS.jobTitle} characters.`,
-  department: `Department must not exceed ${PROFILE_FIELD_LIMITS.department} characters.`,
 } as const;
 
 const optionalText = (max: number, message: string) => z.string().trim().max(max, message).nullable().optional();
@@ -28,7 +27,6 @@ export const SelfProfileFieldSchemas = {
   lastName: z.string().trim().min(1, 'Last name is required').max(PROFILE_FIELD_LIMITS.lastName, PROFILE_FIELD_LIMIT_ERRORS.lastName).optional(),
   phone: ProfilePhoneInputSchema,
   jobTitle: optionalText(PROFILE_FIELD_LIMITS.jobTitle, PROFILE_FIELD_LIMIT_ERRORS.jobTitle),
-  department: optionalText(PROFILE_FIELD_LIMITS.department, PROFILE_FIELD_LIMIT_ERRORS.department),
 };
 
 export const UpdateSelfProfileSchema = z.object({ ...SelfProfileFieldSchemas, phone: profilePhone }).strict()

@@ -8,6 +8,7 @@ import { PERMISSION_MODULES, ROLE_TEMPLATES, EMPTY_PERMISSION_FLAGS } from '@lea
 import type { PermissionFlags, PermissionAction, RoleListItem } from '@/store/types/roles.types';
 import { PermissionMatrix } from './permission-matrix';
 import { rolesService } from '../services/roles.service';
+import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 
 interface RoleBuilderModalProps {
   isOpen:    boolean;
@@ -116,24 +117,20 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/50 dark:bg-black/70" onClick={onClose} />
-
-      {/* Modal */}
-      <div className="relative z-10 w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-700 flex flex-col max-h-[90vh]">
+    <Dialog open={isOpen} onOpenChange={open => { if (!open && !isSaving) onClose(); }}>
+      <DialogContent showClose={false} aria-label={editRole ? 'Edit Role' : 'Create Role'} className="max-w-2xl flex flex-col overflow-hidden p-0 sm:p-0">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex-shrink-0">
           <h2 className="text-[15px] font-semibold text-slate-900 dark:text-white">
             {editRole ? 'Edit Role' : 'Create Role'}
           </h2>
-          <button type="button" onClick={onClose} className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+          <button type="button" disabled={isSaving} aria-label="Close role editor" onClick={onClose} className="p-1.5 min-h-11 min-w-11 grid place-items-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             <X size={16} />
           </button>
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-4 space-y-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-5">
           {/* Name */}
           <div>
             <label className="block text-[12px] font-medium text-slate-700 dark:text-slate-300 mb-1.5">Role name <span className="text-red-500">*</span></label>
@@ -143,7 +140,7 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
               onChange={e => setName(e.target.value)}
               maxLength={50}
               placeholder="e.g. Senior Sales"
-              className="w-full h-9 px-3 text-[13px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+              className="w-full h-9 px-3 text-[13px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary"
             />
           </div>
 
@@ -156,7 +153,7 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
               onChange={e => setDesc(e.target.value)}
               maxLength={200}
               placeholder="Optional short description"
-              className="w-full h-9 px-3 text-[13px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400"
+              className="w-full h-9 px-3 text-[13px] rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary dark:focus:ring-primary"
             />
           </div>
 
@@ -211,20 +208,20 @@ export function RoleBuilderModal({ isOpen, onClose, onSaved, editRole }: RoleBui
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
-          <button type="button" onClick={onClose} className="h-9 px-4 text-[13px] font-medium rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
+        <div className="flex flex-wrap items-center justify-end gap-2 px-4 sm:px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex-shrink-0">
+          <button type="button" disabled={isSaving} onClick={onClose} className="min-h-11 px-4 text-[13px] font-medium rounded-lg text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors">
             Cancel
           </button>
           <button
             type="button"
             disabled={isSaving}
             onClick={handleSave}
-            className="h-9 px-5 text-[13px] font-medium rounded-lg bg-blue-600 dark:bg-blue-500 text-white hover:bg-blue-700 dark:hover:bg-blue-600 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
+            className="h-9 px-5 text-[13px] font-medium rounded-lg bg-primary dark:bg-primary text-white hover:bg-primary/90 dark:hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed transition-colors"
           >
             {isSaving ? 'Saving…' : editRole ? 'Update Role' : 'Create Role'}
           </button>
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

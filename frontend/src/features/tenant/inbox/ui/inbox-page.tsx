@@ -10,6 +10,7 @@ import InboxCurrentEmpty from './inbox-current-empty';
 import InboxEmailList from './inbox-email-list';
 import EmailConversationView from './email-conversation-view';
 import ComposeModal from './compose-modal';
+import { ScheduledEmailDialog } from './scheduled-email-dialog';
 import type { ApiRequestError } from '@/lib/api/client';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
@@ -49,6 +50,7 @@ export default function InboxPage(): React.ReactElement {
   }, [searchParams, router]);
 
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
+  const [selectedSchedule, setSelectedSchedule] = useState<string>();
   useNotificationRecordLink('threadId', connectionStatus?.email ?? '', !!connectionStatus?.isConnected,
     async id => { const response = await fetchGmailThread(id); const latest = response.emails[response.emails.length - 1]; if (!latest) throw new Error('Unavailable'); return latest; }, setSelectedEmail);
   const [revision, setRevision] = useState(0);
@@ -232,7 +234,7 @@ export default function InboxPage(): React.ReactElement {
     finally { disconnectPending.current = false; setDisconnecting(false); }
   };
   const openEmail = (email: GmailEmail) => {
-    if (email.scheduledStatus) return;
+    if (email.scheduledStatus) { setSelectedSchedule(email.id); return; }
     if (filter === 'drafts') { setComposeDraft({ to: email.to.join(', '), subject: email.subject, body: email.body, draftId: email.draftId }); setIsComposeOpen(true); }
     else setSelectedEmail(email);
   };
@@ -259,6 +261,7 @@ export default function InboxPage(): React.ReactElement {
       {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
+    {connectionStatus?.isConnected && selectedSchedule && <ScheduledEmailDialog key={selectedSchedule} id={selectedSchedule} onClose={() => setSelectedSchedule(undefined)} onCancelled={() => { void loadEmails(tokenRef.current, pageRef.current); toast.success('Scheduled send cancelled. The email is available in Drafts.'); }} />}
     <ComposeModal isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
   </motion.div>;
 }

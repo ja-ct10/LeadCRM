@@ -53,7 +53,7 @@ it('retains View without exposing forbidden mutations', () => {
 it('uses the Leads blue filter state and returns to inactive when closed', () => {
   render(<CampaignsPage />);
   const filter = screen.getByLabelText('Filter campaigns');
-  fireEvent.click(filter); expect(filter.className).toContain('bg-[#2563EB]'); expect(filter.className).toContain('text-white');
+  fireEvent.click(filter); expect(filter.className).toContain('bg-primary'); expect(filter.className).toContain('text-white');
   fireEvent.click(filter); expect(filter.className).toContain('bg-white'); expect(filter.getAttribute('aria-expanded')).toBe('false');
 });
 it.each(['initial', 'refreshing'] as const)('keeps the campaign controls visible during %s table loading', state => {
@@ -63,8 +63,8 @@ it.each(['initial', 'refreshing'] as const)('keeps the campaign controls visible
   if (state === 'initial') expect(screen.queryByRole('grid')).toBeNull();
   else expect(screen.getByRole('grid')).toBeTruthy();
 });
-it('offers only the five final statuses and Email/SMS types', () => {
+it('offers persisted outcome statuses including interrupted submissions and Email/SMS types', () => {
   render(<CampaignsPage />); fireEvent.click(screen.getByLabelText('Filter campaigns'));
   const filters = screen.getAllByRole('checkbox').filter(el => !el.getAttribute('aria-label')?.startsWith('Select'));
-  expect([...new Set(filters.map(el => el.closest('label')?.textContent))]).toEqual(['Sent', 'Partially Sent', 'Delivered', 'Failed', 'Draft', 'Email', 'SMS']);
+  expect([...new Set(filters.map(el => el.closest('label')?.textContent))]).toEqual(['Sent', 'Partially Sent', 'Interrupted', 'Delivered', 'Failed', 'Draft', 'Email', 'SMS']);
 });

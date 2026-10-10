@@ -52,6 +52,8 @@ index.html
 src/main.tsx
 # Turborepo cache
 .turbo/
+# Disposable QA worker/cache artifacts.
+/.tmp/
 
 # Reviewed onboarding repair is maintained source, not a scratch script.
 !backend/src/scripts/fix-null-onboarding.ts

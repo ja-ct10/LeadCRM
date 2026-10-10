@@ -8,7 +8,7 @@ import { readAuthUser } from '../../core/auth/auth-user';
 import { assertPermissions } from '../../core/permissions/permission.service';
 import { requireEmployeeAccount } from '../../core/auth/account-access';
 import { tenantContext } from '../../core/tenant/tenant-context';
-import { isOnboardingComplete } from '@leadcrm/shared';
+import { isOnboardingComplete, isWorkspaceAccessible } from '@leadcrm/shared';
 import { AppError } from '../../shared/errors/app-error';
 import { fetchMessageDetail, getValidAccessToken, parseGmailMessage, GmailApiMessage } from './gmail.service';
 import { ingestMailboxMessages, evaluateMailboxEngagement, MailboxPermissions } from './mailbox-ingestion.service';
@@ -22,7 +22,7 @@ import { readGmailJson as gmailJson } from './gmail-read';
 export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true): Promise<MailboxPermissions> {
   const user = await readAuthUser(userId, tenantId);
   requireEmployeeAccount(user);
-  if (user.status !== 'ACTIVE' || user.mustChangePassword || ['SUSPENDED', 'REJECTED'].includes(user.tenantStatus ?? '') || !isOnboardingComplete(user)) throw new AppError('Mailbox access unavailable.', 403);
+  if (user.status !== 'ACTIVE' || user.mustChangePassword || !isWorkspaceAccessible(user.tenantStatus) || !isOnboardingComplete(user)) throw new AppError('Mailbox access unavailable.', 403);
   const identity = { userId, tenantId, role: user.role };
   const allowed = async (permission: 'leads.view' | 'contacts.view' | 'leads.edit' | 'contacts.edit' | 'deals.edit' | 'deals.view') => {
     try { await assertPermissions(identity, [permission]); return true; } catch (error) { if (error instanceof AppError && error.statusCode === 403) return false; throw error; }

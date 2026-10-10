@@ -14,7 +14,8 @@ it('starts read-only with database values and Cancel discards unsaved edits', ()
   render(<ProfileForm />);
   expect(screen.queryByLabelText('Time Zone')).toBeNull();
   expect((screen.getByLabelText('First Name') as HTMLInputElement).disabled).toBe(true);
-  expect((screen.getByLabelText('Department') as HTMLInputElement).value).toBe('');
+  expect(screen.queryByLabelText('Department')).toBeNull();
+  expect(screen.getByLabelText('Groups').textContent).toBe('No groups assigned');
   expect(screen.queryByText('Save Changes')).toBeNull();
   fireEvent.click(screen.getByText('Edit'));
   expect((screen.getByLabelText('Email Address') as HTMLInputElement).disabled).toBe(true);
@@ -28,7 +29,7 @@ it('waits for server confirmation, blocks duplicate saves and remains editable o
   mocks.save.mockReturnValue(new Promise((_, r) => { reject = r; }));
   render(<ProfileForm />);
   fireEvent.click(screen.getByText('Edit'));
-  fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'Engineering' } });
+  fireEvent.change(screen.getByLabelText('Job Title'), { target: { value: 'Engineer' } });
   fireEvent.click(screen.getByText('Save Changes'));
   expect(mocks.success).not.toHaveBeenCalled();
   expect((screen.getByText('Saving…') as HTMLButtonElement).disabled).toBe(true);
@@ -64,9 +65,6 @@ it('shows field errors for overlong profile fields and reuses the PH mobile rule
   fireEvent.change(screen.getByLabelText('Job Title'), { target: { value: 'J'.repeat(101) } });
   expect((screen.getByLabelText('Job Title') as HTMLInputElement).value).toBe('');
   expect(screen.getByText('Job title must not exceed 100 characters.')).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Department'), { target: { value: 'D'.repeat(101) } });
-  expect((screen.getByLabelText('Department') as HTMLInputElement).value).toBe('');
-  expect(screen.getByText('Department must not exceed 100 characters.')).toBeTruthy();
   const phone = screen.getByLabelText('Phone Number') as HTMLInputElement;
   expect(screen.getByText('+63')).toBeTruthy();
   fireEvent.change(phone, { target: { value: '9123456789abc' } });

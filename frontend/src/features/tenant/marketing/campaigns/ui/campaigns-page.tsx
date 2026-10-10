@@ -21,6 +21,7 @@ import EmptyState from '@/shared/components/empty-state';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
+import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
@@ -194,7 +195,7 @@ export default function CampaignsPage() {
         <p className="text-sm text-red-500 dark:text-red-400 mb-3">{campaignsError}</p>
         <button
           onClick={refetchCampaigns}
-          className="text-xs text-blue-500 hover:text-blue-600 underline underline-offset-2 cursor-pointer"
+          className="text-xs text-blue-500 hover:text-primary underline underline-offset-2 cursor-pointer"
         >
           Try again
         </button>
@@ -319,7 +320,7 @@ export default function CampaignsPage() {
                   <button
                     onClick={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
                     aria-label="New Email Template"
-                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer md:hidden"
+                    className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-md hover:bg-primary/90 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer md:hidden"
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
@@ -333,7 +334,7 @@ export default function CampaignsPage() {
                   <button
                     onClick={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
                     aria-label="New SMS Template"
-                    className="h-8 w-8 flex items-center justify-center bg-blue-600 text-white rounded-md hover:bg-blue-700 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600 cursor-pointer md:hidden"
+                    className="h-8 w-8 flex items-center justify-center bg-primary text-white rounded-md hover:bg-primary/90 active:scale-95 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary cursor-pointer md:hidden"
                   >
                     <Plus size={14} aria-hidden="true" />
                   </button>
@@ -380,6 +381,7 @@ export default function CampaignsPage() {
                     id: 'status', label: 'Status', items: [
                       { id: 'sent', label: 'Sent' },
                       { id: 'partially_sent', label: 'Partially Sent' },
+                      { id: 'interrupted', label: 'Interrupted' },
                       { id: 'delivered', label: 'Delivered' },
                       { id: 'failed', label: 'Failed' },
                       { id: 'draft', label: 'Draft' },
@@ -464,7 +466,7 @@ export default function CampaignsPage() {
                       setBuilderInitialType('Email');
                       setBuilderInitialContent(template.content); setBuilderSubject(template.subject || '');
                       setShowBuilder(true);
-                    }} className="flex-1 py-2 text-sm font-medium text-white bg-[#0A6EFF] rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
+                    }} className="flex-1 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                       Use Template
                     </button>
                   </div>
@@ -519,7 +521,7 @@ export default function CampaignsPage() {
                     <button onClick={() => {
                       setBuilderInitialType('SMS'); setBuilderInitialContent(template.content);
                       setShowBuilder(true);
-                    }} className="flex-1 py-2 text-sm font-medium text-white bg-[#0A6EFF] rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
+                    }} className="flex-1 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]">
                       Use Template
                     </button>
                   </div>
@@ -586,7 +588,7 @@ export default function CampaignsPage() {
                 <button
                   type="button"
                   onClick={() => setShowVarDropdown(!showVarDropdown)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-blue-600 dark:text-blue-400 bg-blue-500/10 rounded-md hover:bg-blue-500/20 transition-colors duration-200 border border-blue-500/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary dark:text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors duration-200 border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                 >
                   <Wand2 size={14} /> Insert Variable
                 </button>
@@ -632,14 +634,14 @@ export default function CampaignsPage() {
       </SideSheet>
       {/* Preview Template Modal */}
       {previewTemplate && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-gray-50 dark:bg-slate-950 rounded-2xl border border-gray-300 dark:border-white/10 w-full max-w-lg overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+        <Dialog open={!!previewTemplate} onOpenChange={open => { if (!open) setPreviewTemplate(null); }}>
+          <DialogContent showClose={false} aria-label="Template Preview" className="bg-gray-50 dark:bg-slate-950 max-w-lg p-0 sm:p-0 [overflow-wrap:anywhere]">
             <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-white/5">
               <div>
                 <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Template Preview</h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">{previewTemplate.name}</p>
               </div>
-              <button onClick={() => setPreviewTemplate(null)} className="p-2 text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors"><X size={20} /></button>
+              <button aria-label="Close template preview" onClick={() => setPreviewTemplate(null)} className="p-2 min-h-11 min-w-11 grid place-items-center text-slate-500 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors"><X size={20} /></button>
             </div>
             <div className="p-6 space-y-4">
               {previewTemplate.type === 'Email' && (
@@ -655,7 +657,7 @@ export default function CampaignsPage() {
                 </div>
               </div>
             </div>
-            <div className="flex justify-end gap-3 p-6 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-slate-950">
+            <div className="flex flex-wrap justify-end gap-3 p-4 sm:p-6 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-slate-950">
               <button onClick={() => setPreviewTemplate(null)} className="px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/5 rounded-lg transition-colors">Close</button>
               <button
                 onClick={() => {
@@ -663,13 +665,13 @@ export default function CampaignsPage() {
                   setShowBuilder(true);
                   setPreviewTemplate(null);
                 }}
-                className="px-4 py-2 bg-[#0A6EFF] text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-blue-600 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
+                className="px-4 py-2 bg-primary text-slate-900 dark:text-white text-sm font-medium rounded-lg hover:bg-primary/90 transition-colors shadow-[0_0_15px_rgba(10,110,255,0.2)]"
               >
                 Use Template
               </button>
             </div>
-          </div>
-        </div>
+          </DialogContent>
+        </Dialog>
       )}
     </motion.div>
   );

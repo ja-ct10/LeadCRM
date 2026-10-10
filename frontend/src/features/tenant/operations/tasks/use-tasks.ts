@@ -5,7 +5,7 @@ import { useAuth } from "@/store/AuthContext";
 import { useData } from "@/store/DataContext";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 
-export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = false) {
+export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
   const { user, tenant } = useAuth();
   const { queryTasks, queryTaskSummary, tasksRevision, refreshTasks } =
     useData();
@@ -14,7 +14,7 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = false) {
     refreshTasks();
   }, [refreshTasks]);
   const queryKey = JSON.stringify(query);
-  const identity = `${tenant?.id}:${user?.id}:${canRead}`;
+  const identity = `${tenant?.id}:${user?.id}:${user?.role}:${canRead}`;
   const key = `${identity}:${queryKey}:${tasksRevision}`;
   const [result, setResult] = useState<{
     key: string;
@@ -32,9 +32,10 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = false) {
         if (current) setResult({ key, scope: identity + queryKey, page, summary });
       })
       .catch((error) => {
+        const status = (error as { status?: number })?.status;
         if (current)
           setResult(previous => ({
-            ...(preserveOnRefresh && previous?.scope === identity + queryKey ? { page: previous.page, summary: previous.summary } : {}),
+            ...(status !== 401 && status !== 403 && preserveOnRefresh && previous?.scope === identity + queryKey ? { page: previous.page, summary: previous.summary } : {}),
             key,
             scope: identity + queryKey,
             error:
@@ -51,7 +52,8 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = false) {
     meta: visible?.page?.meta,
     summary: visible?.summary,
     error: visible?.error,
-    loading: canRead && !!tenant && result?.key !== key,
+    loading: canRead && !!tenant && !visible?.page && result?.key !== key,
+    refreshing: canRead && !!tenant && !!visible?.page && result?.key !== key,
     canRead,
     refresh: refreshTasks,
     identity,

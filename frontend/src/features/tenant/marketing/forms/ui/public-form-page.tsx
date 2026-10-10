@@ -30,7 +30,7 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
       setDone(true);
     } catch (err) { setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.'); } finally { setBusy(false); }
   }
-  return <main className="min-h-screen bg-slate-100 px-3 py-6 sm:p-8 text-slate-900">
+  return <main className="min-h-[var(--app-viewport-height)] bg-slate-100 px-3 py-6 sm:p-8 text-slate-900">
     <div className="w-full max-w-2xl mx-auto min-w-0">
       {loading ? <div aria-label="Loading form" className="animate-pulse h-96 rounded-xl bg-slate-200" /> : done ? <section role="status" className="bg-white rounded-xl p-6 text-center space-y-3"><h1 className="text-2xl font-bold">Thank you!</h1><p>Thank you for submitting the form.</p><p className="text-sm">Your submission has been received.<br />We will get back to you shortly.</p></section> : <>
         {error && <div role="alert" className="bg-white border border-red-200 rounded-lg p-4 mb-4 text-red-700 break-words">{error}{!form && <button onClick={() => setRetry(v => v + 1)} className="block underline mt-2">Retry</button>}</div>}

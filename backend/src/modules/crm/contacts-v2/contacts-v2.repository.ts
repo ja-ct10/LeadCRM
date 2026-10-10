@@ -8,6 +8,7 @@ import { salesTransaction } from '../leads/lead-automation.service';
 import { assertClosedStatus, cancelOpenDeals, contactStatusValue } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
+import { parseFilterParams, buildPrismaFilters } from '../../../shared/helpers/filter-parser';
 
 /**
  * Contacts V2 Repository — queries the Contact table.
@@ -29,10 +30,31 @@ const CONTACT_INCLUDE = {
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
+  const filters = parseFilterParams(query);
+  const statusFilter = filters.find(filter => filter.field === 'status');
+  if (statusFilter && ['in', 'not_in', 'equals'].includes(statusFilter.operator)) {
+    const values = Array.isArray(statusFilter.value) ? statusFilter.value : [statusFilter.value];
+    statusFilter.value = values.map(value => CrmStatusSchema.parse(value).toUpperCase());
+    if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
+  }
+  const clauses = buildPrismaFilters(filters, new Set(['status', 'assignedUserId', 'accountId']));
+  const scope = filters.find(filter => filter.field === 'scope')?.value;
+  if (scope === 'my') clauses.push({ assignedUserId: String(query.currentUserId ?? '') });
+  if (scope === 'active') clauses.push({ status: { in: ['HOT', 'WARM'] } });
+  const system = filters.find(filter => filter.field === 'system')?.value;
+  const systemValues = Array.isArray(system) ? system : [];
+  if (systemValues.includes('touched') !== systemValues.includes('untouched')) {
+    clauses.push({ updatedAt: systemValues.includes('touched') ? { gt: prisma.contact.fields.createdAt } : { lte: prisma.contact.fields.createdAt } });
+  }
+  const related = filters.find(filter => filter.field === 'related')?.value;
+  if (Array.isArray(related) && related.includes('has_deals')) {
+    clauses.push({ contactDeals: { some: { tenantId, deal: { tenantId, isArchived: false } } } });
+  }
 
   const where: Record<string, unknown> = {
     tenantId,
     isArchived: query.archived === 'true',
+    ...(clauses.length ? { AND: clauses } : {}),
   };
 
   // Status filter — value must be a valid ContactStatus enum member
@@ -61,12 +83,16 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
       { lastName:  { contains: term, mode: 'insensitive' } },
       { email:     { contains: term, mode: 'insensitive' } },
       { company:   { contains: term, mode: 'insensitive' } },
+      { account:   { name: { contains: term, mode: 'insensitive' } } },
       { phone:     { contains: term, mode: 'insensitive' } },
     ];
   }
 
-  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['firstName', 'email', 'company', 'createdAt'], skip, limit,
-    () => prisma.contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, company: true, createdAt: true } }));
+  const sort = typeof query.sort === 'string' ? query.sort.replace(/^companyName:/, 'company:') : query.sort;
+  const ids = await sortedPageIds(sort === 'createdAt:desc' ? undefined : sort, ['firstName', 'lastName', 'email', 'phone', 'company', 'status', 'source', 'createdAt'], skip, limit,
+    async () => (await prisma.contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true, status: true, source: true, createdAt: true, account: { select: { name: true } } } }))
+      .map(row => ({ ...row, company: row.account?.name ?? row.company })),
+    direction => prisma.contact.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     prisma.contact.findMany({
       where: ids ? { ...where, id: { in: ids } } : where,
@@ -78,7 +104,16 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     prisma.contact.count({ where: where as never }),
   ]);
 
-  return { data: orderPage(data, ids), total, page, limit };
+  const [statuses, agents, touched, hasDeals] = await Promise.all([
+    prisma.contact.groupBy({ by: ['status'], where: where as never, _count: true }),
+    prisma.contact.groupBy({ by: ['assignedUserId'], where: where as never, _count: true }),
+    prisma.contact.count({ where: { AND: [where, { updatedAt: { gt: prisma.contact.fields.createdAt } }] } as never }),
+    prisma.contact.count({ where: { AND: [where, { contactDeals: { some: { tenantId, deal: { tenantId, isArchived: false } } } }] } as never }),
+  ]);
+  const facets: Record<string, number> = { touched, untouched: total - touched, has_deals: hasDeals };
+  for (const row of statuses) facets['status:' + normalizeCrmStatus(row.status)] = row._count;
+  for (const row of agents) if (row.assignedUserId) facets['owner:' + row.assignedUserId] = row._count;
+  return { data: orderPage(data, ids), total, page, limit, facets };
 }
 
 export async function findContactById(id: string, tenantId: string) {

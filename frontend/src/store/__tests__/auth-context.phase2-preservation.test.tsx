@@ -46,7 +46,7 @@ async function loadRealApiAuthModule(mocks: {
       logout: () => logoutMock(),
     },
   }));
-  vi.doMock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [] }));
+  vi.doMock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [], MOCK_ROLES: [] }));
 
   const mod = await import('../AuthContext');
   return { AuthProvider: mod.AuthProvider, useAuth: mod.useAuth };
@@ -63,7 +63,7 @@ async function loadMockAuthModule(): Promise<{
   vi.doMock('@/shared/services/auth.api', () => ({
     authApi: { me: vi.fn(), login: vi.fn(), logout: vi.fn() },
   }));
-  vi.doMock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [] }));
+  vi.doMock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [], MOCK_ROLES: [] }));
   const mod = await import('../AuthContext');
   return { AuthProvider: mod.AuthProvider, useAuth: mod.useAuth };
 }

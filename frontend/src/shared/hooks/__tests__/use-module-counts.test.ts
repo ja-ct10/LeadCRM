@@ -13,7 +13,7 @@ vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get } }));
 beforeEach(() => {
   clearPageCache(); mocks.get.mockReset();
   mocks.auth = { tenant: { id: 'a' }, user: { id: 'user', role: 'Client Admin', } };
-  mocks.get.mockImplementation(async (path: string) => ({ meta: { total: path === '/crm/leads' ? 3 : path === '/crm/contacts' ? 5 : 7 } }));
+  mocks.get.mockImplementation(async (path: string) => ({ data: [], meta: { total: path === '/crm/leads' ? 3 : path === '/crm/contacts' ? 5 : 7 } }));
 });
 afterEach(() => { cleanup(); clearPageCache(); });
 it('fetches independent API totals and uses the Contact page service pagination', async () => {
@@ -35,7 +35,7 @@ it.each(['leads', 'contacts'])('refreshes related customer counts after %s creat
   const hook = renderHook(() => useModuleCounts(['leads', 'contacts']));
   await waitFor(() => expect(hook.result.current.counts.contacts).toBe(5));
   for (const suffix of ['', '/record/archive', '/record']) {
-    mocks.get.mockClear(); mocks.get.mockResolvedValue({ meta: { total: 0 } });
+    mocks.get.mockClear(); mocks.get.mockResolvedValue({ data: [], meta: { total: 0 } });
     await act(async () => invalidateApiPageCache(`/crm/${module}${suffix}`));
     await waitFor(() => expect(hook.result.current.counts[module]).toBe(0));
     expect(mocks.get).toHaveBeenCalledTimes(2);

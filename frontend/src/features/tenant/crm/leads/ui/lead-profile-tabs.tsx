@@ -274,7 +274,7 @@ export const ClientProfileTabs = ({
           {onEditClick && (
             <button
               onClick={onEditClick}
-              className="mt-4 w-full py-1.5 px-3 bg-blue-600 hover:bg-blue-550 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
+              className="mt-4 w-full py-1.5 px-3 bg-primary hover:bg-primary/90 text-white font-bold rounded-lg text-xs flex items-center justify-center gap-1.5 shadow-sm transition-all"
             >
               <Edit size={12} /> Update Profile Details
             </button>
@@ -323,7 +323,7 @@ export const ClientProfileTabs = ({
               onClick={() => setActiveTab(tab)}
               className={`text-xs font-bold px-3 py-1.5 rounded-lg transition-all capitalize whitespace-nowrap ${
                 activeTab === tab 
-                  ? 'bg-blue-500 text-white shadow-sm' 
+                  ? 'bg-primary text-white shadow-sm'
                   : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50 dark:text-slate-400 dark:hover:text-white dark:hover:bg-white/5'
               }`}
             >
@@ -526,7 +526,7 @@ export const ClientProfileTabs = ({
                 <button 
                   type="button" 
                   onClick={handleSaveNotes}
-                  className="bg-blue-600 hover:bg-blue-500 font-bold text-white px-4 py-2 rounded-xl text-xs transition-colors shadow-md shadow-blue-500/10"
+                  className="bg-primary hover:bg-primary/90 font-bold text-white px-4 py-2 rounded-xl text-xs transition-colors shadow-md shadow-blue-500/10"
                 >
                   Save Internal Notes
                 </button>
@@ -687,7 +687,7 @@ export const ClientProfileTabs = ({
                   <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">This client has no associated opportunities yet.</p>
                   <button 
                     onClick={() => toast.info('Initiate new deal creation from the Deals page or Pipeline module.')}
-                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm transition-colors"
+                    className="mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-primary hover:bg-primary/90 text-white shadow-sm transition-colors"
                   >
                     <Plus size={14} />
                     Create Deal

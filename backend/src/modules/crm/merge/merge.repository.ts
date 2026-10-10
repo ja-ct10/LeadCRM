@@ -92,6 +92,9 @@ export async function reassignLeadRelationships(
   // Files follow the surviving record. Conflicting custom values remain on the
   // archived source; missing fields are copied with their original timestamps.
   await tx.recordFile.updateMany({ where: { tenantId, leadId: secondaryId }, data: { leadId: primaryId } });
+  await tx.formSubmission.updateMany({ where: { tenantId, leadId: secondaryId }, data: { leadId: primaryId } });
+  await tx.mailboxMessage.updateMany({ where: { tenantId, leadId: secondaryId }, data: { leadId: primaryId } });
+  await tx.emailAccount.updateMany({ where: { tenantId, messages: { some: { tenantId, leadId: primaryId } } }, data: { mailboxVersion: { increment: 1 } } });
   const values = await tx.customFieldValue.findMany({ where: { tenantId, leadId: secondaryId } });
   for (const value of values) await tx.customFieldValue.upsert({
     where: { tenantId_fieldId_leadId: { tenantId, fieldId: value.fieldId, leadId: primaryId } },
@@ -163,8 +166,21 @@ export async function reassignContactRelationships(
   }
 
   // CampaignContacts
+  // Keep conversion, form, file and custom-field links attached to the survivor.
+  await tx.lead.updateMany({ where: { tenantId, contactId: secondaryId }, data: { contactId: primaryId } });
+  await tx.formSubmission.updateMany({ where: { tenantId, contactId: secondaryId }, data: { contactId: primaryId } });
+  await tx.recordFile.updateMany({ where: { tenantId, contactId: secondaryId }, data: { contactId: primaryId } });
+  await tx.mailboxMessage.updateMany({ where: { tenantId, contactId: secondaryId }, data: { contactId: primaryId } });
+  await tx.emailAccount.updateMany({ where: { tenantId, messages: { some: { tenantId, contactId: primaryId } } }, data: { mailboxVersion: { increment: 1 } } });
+  const values = await tx.customFieldValue.findMany({ where: { tenantId, contactId: secondaryId } });
+  for (const value of values) await tx.customFieldValue.upsert({
+    where: { tenantId_fieldId_contactId: { tenantId, fieldId: value.fieldId, contactId: primaryId } },
+    create: { tenantId, fieldId: value.fieldId, module: 'contacts', contactId: primaryId, value: value.value as Prisma.InputJsonValue, createdAt: value.createdAt, updatedAt: value.updatedAt }, update: {},
+  });
+  // A campaign keeps its existing delivery history when both records participated.
+  const primaryCampaigns = await tx.campaignContact.findMany({ where: { tenantId, contactId: primaryId }, select: { campaignId: true } });
   const campaigns = await tx.campaignContact.updateMany({
-    where: { contactId: secondaryId, tenantId },
+    where: { contactId: secondaryId, tenantId, campaignId: { notIn: primaryCampaigns.map(row => row.campaignId) } },
     data: { contactId: primaryId },
   });
 

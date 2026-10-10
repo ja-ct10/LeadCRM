@@ -80,10 +80,10 @@ export function PermissionMatrix({ value, readOnly = false, onChange }: Permissi
                       className={cn(
                         'inline-flex items-center justify-center w-5 h-5 rounded border transition-colors',
                         checked
-                          ? 'bg-blue-600 dark:bg-blue-500 border-blue-600 dark:border-blue-500 text-white'
+                          ? 'bg-primary dark:bg-primary border-primary dark:border-primary text-white'
                           : 'bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 text-transparent',
                         interactive && !locked
-                          ? 'cursor-pointer hover:border-blue-400 dark:hover:border-blue-400'
+                          ? 'cursor-pointer hover:border-primary dark:hover:border-primary'
                           : 'cursor-default opacity-70',
                         locked && 'opacity-60',
                       )}
