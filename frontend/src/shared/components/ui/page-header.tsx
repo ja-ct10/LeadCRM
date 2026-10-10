@@ -11,7 +11,7 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   className?: string;
   badge?: ReactNode;
-  /** Keep actions beside the title at every width, with the subtitle below. */
+  /** Keep actions beside the title at every width, with the subtitle below (default). */
   actionsInlineWithTitle?: boolean;
 }
 
@@ -22,7 +22,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   actions,
   className = '',
   badge,
-  actionsInlineWithTitle = false,
+  actionsInlineWithTitle = true,
 }) => {
   return (
     <div className={cn('min-w-0 mb-4', actionsInlineWithTitle

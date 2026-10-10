@@ -40,6 +40,8 @@ export function TeamManagement(): React.ReactElement {
   };
 
   const renderHeader = (action: React.ReactNode) => (
+    <>
+      <PageHeader title="Team Management" subtitle="Manage users and groups within Camxian Technologies." actions={action} />
       <div className="flex min-w-0 items-center gap-0 border-b border-gray-200 dark:border-white/[0.07]">
         {visibleTabs.map((tab) => {
           const count = tabCounts[tab];
@@ -66,14 +68,13 @@ export function TeamManagement(): React.ReactElement {
             </button>
           );
         })}
-        <div className="ml-auto shrink-0 pl-2 pb-1">{action}</div>
       </div>
-
+    </>
   );
 
   return (
     <div className="min-w-0 w-full space-y-4">
-      <PageHeader title="Team Management" subtitle="Manage users and groups within Camxian Technologies." />
+      {(!selectedTab || !currentUser) && <PageHeader title="Team Management" subtitle="Manage users and groups within Camxian Technologies." />}
       {!visibleTabs.length && <p role="alert">You do not have permission to view users or groups.</p>}
       {/* Tab content */}
       <AnimatePresence key={`${tenantId}:${currentUser?.id}:${canViewUsers}:${canViewGroups}`} mode="wait">

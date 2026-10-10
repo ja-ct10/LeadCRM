@@ -15,7 +15,7 @@ Mobile and tablet navigation support Escape, outside dismissal, left swipe, focu
 ## Shared layout changes
 
 - The top install banner occupies normal layout space. Its measured height is deducted from the app viewport; navigation starts below it.
-- Page actions wrap. Shared primary create actions show only the + icon below 640px, retaining their accessible label and tooltip; larger screens show the full label. The Deals header keeps its stage-management gear immediately before New Deal and aligned with the title at every width, with the subtitle below. Create dropdowns align with the left edge on mobile. Table settings submenus expand within the menu on mobile and support tap and keyboard activation.
+- Shared page headers keep create actions aligned with the title at every width, with the subtitle below. Shared primary create actions show only the + icon below 640px, retaining their accessible label and tooltip; larger screens show the full label. The Deals header keeps its stage-management gear immediately before New Deal. Team Management places New User or New Group beside its title, above the tabs. Create dropdowns open inward from the right edge at every width. Table settings submenus expand within the menu on mobile and support tap and keyboard activation.
 - Shared dialogs have viewport gutters, bounded height, and internal scrolling. Sheets and record drawers use dynamic viewport height. Nested overlays retain scroll and inert locks until the final overlay closes.
 - Legacy role, task, deal, handoff, scratchpad, inbox, and template preview surfaces use the shared dialog behavior. The existing form payloads and API permission checks are retained.
 - Manage Columns, owner profiles and record-level lost-deal confirmation also use shared overlay handling. Columns retain save/retry/reset and unsaved-change confirmation; dismissal is blocked during a pending save. Owner profile content scrolls inside the viewport.
@@ -59,7 +59,15 @@ The mock UI session has no live backend authentication. A disposable loopback fi
 - X hid the banner; reloading and supplying a fresh prompt showed it again. Clicking Install invoked the retained simulated prompt once. Recording installation, reloading and supplying another prompt kept the banner hidden.
 - Frontend TypeScript checking and four focused test files passed: 33 tests covering PWA lifecycle, appearance, compiled CSS and pipeline-stage management. The temporary preview files and server were removed and the browser viewport override was reset.
 
-The historical audits below predate the current palette, single-row mobile layout, icon-only Create buttons and dismissal behavior. Their screenshots and banner contrast measurements describe the earlier implementation.
+## Current module create-header checks
+
+- The shared `PageHeader` now defaults to the same title/action row used by Deals. This covers Leads, Contacts, Accounts, Tasks, Campaigns, Forms, Workflows, Products, Custom Fields and both Roles & Permissions pages. Team Management's existing child-supplied action now renders beside its content title rather than its tabs. Module labels, handlers and permission conditions are retained.
+- An isolated preview used production `ModuleWorkspace` instances for Leads, Contacts, Accounts and Tasks, production `TeamManagement` with fixture services, and shared production `PageHeader` / create controls for the remaining modules. It did not recreate every full module page.
+- Eleven header configurations passed at 320, 480, 639, 640, 768, 1024 and 1440px: 77 cases with title/button vertical alignment, actions at the right edge, subtitles below, no header or document overflow, and labels hidden below 640px / visible from 640px. A read-only header remained without a create action.
+- At 320px the Leads create menu stayed inside the viewport and its Create New item invoked the fixture action. Switching Team Management to Groups retained title alignment; New Group opened the existing dialog.
+- Frontend TypeScript checking passed. All three existing Team Management test files passed: 25 tests. A pagination test exceeded the unchanged five-second timeout in the sandbox, then the full focused run passed outside the sandbox without timeout or test changes. The temporary preview server and files were removed.
+
+The historical audits below predate the current palette, single-row mobile layout, icon-only Create buttons, aligned module headers and dismissal behavior. Their screenshots and banner contrast measurements describe the earlier implementation.
 
 ## Earlier recorded browser checks
 

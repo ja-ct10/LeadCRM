@@ -918,7 +918,7 @@ export function CreateActionDropdown({ primaryActionLabel, onPrimaryAction, onIm
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -4, scale: 0.95 }}
             transition={{ duration: 0.12 }}
-            className="absolute top-full left-0 right-auto sm:left-auto sm:right-0 mt-1.5 w-48 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 py-1"
+            className="absolute top-full right-0 mt-1.5 w-48 max-w-[calc(100vw-2rem)] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg shadow-lg z-50 py-1"
             role="menu"
           >
             <button
