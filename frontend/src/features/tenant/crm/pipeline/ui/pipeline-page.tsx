@@ -95,7 +95,18 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     finally { setMoving(false); }
   };
   return <div className="flex min-h-0 min-w-0 flex-1 flex-col p-3 sm:p-6">
-    <PageHeader title="Deals" subtitle="Track opportunities throughout the Sales Pipeline." actions={pipeline && <div className="flex items-center gap-2">{canManageStages && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" aria-label="Manage pipeline stages" title="Manage pipeline stages" disabled={USE_MOCK_DATA} onClick={() => setManageStages(true)}><Settings size={16} /></Button></TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}{canCreate && <CreateActionDropdown primaryActionLabel="New Deal" onPrimaryAction={() => setCreateStage((pipeline.stages.find(s => s.isDefault) ?? pipeline.stages.find(s => s.name.toLowerCase() === 'lead'))?.id ?? pipeline.stages[0]?.id)} onImport={() => router.push('/crm/deals/import')} />}</div>} />
+    <PageHeader title="Deals" subtitle="Track opportunities throughout the Sales Pipeline." actionsInlineWithTitle
+      actions={pipeline && <div className="flex items-center gap-2">
+        {canManageStages && <TooltipProvider><Tooltip><TooltipTrigger asChild>
+          <Button variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label="Manage pipeline stages"
+            title="Manage pipeline stages" disabled={USE_MOCK_DATA} onClick={() => setManageStages(true)}>
+            <Settings size={16} aria-hidden="true" />
+          </Button>
+        </TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}
+        {canCreate && <CreateActionDropdown primaryActionLabel="New Deal"
+          onPrimaryAction={() => setCreateStage((pipeline.stages.find(s => s.isDefault) ?? pipeline.stages.find(s => s.name.toLowerCase() === 'lead'))?.id ?? pipeline.stages[0]?.id)}
+          onImport={() => router.push('/crm/deals/import')} />}
+      </div>} />
     <div className="mb-3 flex gap-1 border-b border-border">{['All Deals', 'My Deals'].map((label, i) => <button key={label} onClick={() => setMyDeals(!!i)} className={`min-h-11 px-3 text-sm ${myDeals === !!i ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>{label}</button>)}</div>
     <div className="mb-3 flex min-w-0 items-center gap-2"><div className="relative min-w-0 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={() => void refresh()} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">

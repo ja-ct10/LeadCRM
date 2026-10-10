@@ -12,6 +12,7 @@ export interface InstallPromptEvent extends Event {
   userChoice: Promise<InstallChoice>;
 }
 export const INSTALL_DISMISSAL_KEY = 'leadcrm:pwa-install-dismissed:v1';
+export const INSTALLED_APP_KEY = 'leadcrm:pwa-installed:v1';
 type InstallStatus = 'unknown' | 'available' | 'prompting' | 'accepted' | 'installed';
 type InstallContext = { status: InstallStatus; dismissed: boolean; install: () => Promise<void>; restorePromotion: () => void };
 const PwaContext = createContext<InstallContext | null>(null);
@@ -36,13 +37,23 @@ export function PwaInstallProvider({ children }: { children: React.ReactNode }) 
 
   useEffect(() => {
     mounted.current = true;
-    try { setDismissed(localStorage.getItem(INSTALL_DISMISSAL_KEY) === 'true'); } catch { /* Memory fallback. */ }
+    // Dismissal now lasts only for this page load; retire the old persistent flag.
+    try { localStorage.removeItem(INSTALL_DISMISSAL_KEY); } catch { /* Storage is optional. */ }
+    const markInstalled = () => {
+      installed.current = true;
+      deferred.current = null;
+      setStatus('installed');
+      try { localStorage.setItem(INSTALLED_APP_KEY, 'true'); } catch { /* Memory fallback. */ }
+    };
+    try {
+      if (localStorage.getItem(INSTALLED_APP_KEY) === 'true') markInstalled();
+    } catch { /* Memory fallback. */ }
     const standalone = window.matchMedia('(display-mode: standalone)');
     const minimal = window.matchMedia('(display-mode: minimal-ui)');
     const controls = window.matchMedia('(display-mode: window-controls-overlay)');
     const launchedAsApp = () => standalone.matches || minimal.matches || controls.matches || Boolean((navigator as Navigator & { standalone?: boolean }).standalone);
     const updateDisplayMode = () => {
-      if (launchedAsApp()) { installed.current = true; deferred.current = null; setStatus('installed'); }
+      if (launchedAsApp()) markInstalled();
     };
     updateDisplayMode();
     const capturePrompt = (event: Event) => {
@@ -55,13 +66,15 @@ export function PwaInstallProvider({ children }: { children: React.ReactNode }) 
     };
     const onInstalled = () => {
       const alreadyInstalled = installed.current;
-      installed.current = true;
-      deferred.current = null;
-      setStatus('installed');
+      markInstalled();
       if (!alreadyInstalled) toast.success('LeadCRM installed. Open it from your device’s app launcher.', { id: 'leadcrm-installed' });
     };
     const onStorage = (event: StorageEvent) => {
-      if (event.key === INSTALL_DISMISSAL_KEY || event.key === null) setDismissed(event.newValue === 'true');
+      if (event.key !== INSTALLED_APP_KEY || event.newValue !== 'true') return;
+      try { if (event.storageArea !== localStorage) return; } catch { /* Memory fallback. */ return; }
+      installed.current = true;
+      deferred.current = null;
+      setStatus('installed');
     };
     window.addEventListener('beforeinstallprompt', capturePrompt);
     window.addEventListener('appinstalled', onInstalled);
@@ -114,12 +127,10 @@ export function PwaInstallProvider({ children }: { children: React.ReactNode }) 
 
   const dismiss = () => {
     setDismissed(true);
-    try { localStorage.setItem(INSTALL_DISMISSAL_KEY, 'true'); } catch { /* Remember for this session. */ }
   };
   const restorePromotion = () => {
     setDismissed(false);
     setCancelled(false);
-    try { localStorage.removeItem(INSTALL_DISMISSAL_KEY); } catch { /* Memory fallback. */ }
   };
 
   return <PwaContext.Provider value={{ status, dismissed, install, restorePromotion }}>
@@ -127,7 +138,7 @@ export function PwaInstallProvider({ children }: { children: React.ReactNode }) 
       <section ref={bannerRef} data-pwa-banner role="region" aria-label="Install LeadCRM" inert={overlayActive}
         className="pwa-install-banner">
       <div className="pwa-install-banner__content">
-        <p className="pwa-install-banner__message">Get the LeadCRM app on your smartphone, tablet or desktop computer</p>
+        <p className="pwa-install-banner__message">Get the LeadCRM app!</p>
         <div className="pwa-install-banner__actions">
           <button type="button" aria-label="Install LeadCRM app" onClick={() => void install()}
             className="pwa-install-banner__install">

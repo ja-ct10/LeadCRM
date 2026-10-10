@@ -15,7 +15,7 @@ Mobile and tablet navigation support Escape, outside dismissal, left swipe, focu
 ## Shared layout changes
 
 - The top install banner occupies normal layout space. Its measured height is deducted from the app viewport; navigation starts below it.
-- Page actions wrap and primary create actions retain their labels on small screens. Create dropdowns align with the left edge on mobile. Table settings submenus expand within the menu on mobile and support tap and keyboard activation.
+- Page actions wrap. Shared primary create actions show only the + icon below 640px, retaining their accessible label and tooltip; larger screens show the full label. The Deals header keeps its stage-management gear immediately before New Deal and aligned with the title at every width, with the subtitle below. Create dropdowns align with the left edge on mobile. Table settings submenus expand within the menu on mobile and support tap and keyboard activation.
 - Shared dialogs have viewport gutters, bounded height, and internal scrolling. Sheets and record drawers use dynamic viewport height. Nested overlays retain scroll and inert locks until the final overlay closes.
 - Legacy role, task, deal, handoff, scratchpad, inbox, and template preview surfaces use the shared dialog behavior. The existing form payloads and API permission checks are retained.
 - Manage Columns, owner profiles and record-level lost-deal confirmation also use shared overlay handling. Columns retain save/retry/reset and unsaved-change confirmation; dismissal is blocked during a pending save. Owner profile content scrolls inside the viewport.
@@ -24,25 +24,44 @@ Mobile and tablet navigation support Escape, outside dismissal, left swipe, focu
 
 ## PWA behavior
 
-The banner displays only after a usable browser-issued `beforeinstallprompt` event. It is suppressed in installed display modes, after `appinstalled`, after dismissal, and after cancellation for the current session. Prompt events are consumed once, and duplicate clicks are guarded. X dismissal uses `leadcrm:pwa-install-dismissed:v1` and survives reloads. Storage failures fall back to the current session.
+The banner displays only after a usable browser-issued `beforeinstallprompt` event. It is suppressed in installed display modes, after `appinstalled`, after dismissal, and after cancellation for the current page load. Prompt events are consumed once, and duplicate clicks are guarded. X dismissal lives in provider memory, survives SPA navigation, and resets on a new page load, including reopening or refreshing. The old `leadcrm:pwa-install-dismissed:v1` storage entry is removed on mount. Installation observed through `appinstalled` or an installed display mode is recorded separately as `leadcrm:pwa-installed:v1`, persists across page loads and suppresses promotion in other open tabs. Accepting the prompt alone does not persist this flag. Storage failures fall back to memory; clearing storage or using another browser profile removes this remembered installation state.
 
 Successful installation shows one confirmation toast. Prompt failures show an actionable error toast. Resizing and ordinary dismissal are silent. Help includes browser-specific installation instructions when a native prompt is unavailable.
 
-The banner has its own `ThemeScope`, so Classic, Light, Dark and System use the existing appearance store without changing the styling policy of public pages. Its CSS variables derive the green tint from `--success` and `--surface`, its text from `--text-primary`, and its Install action from the selected primary accent's darker shade. This keeps white button text readable across all seven accents. System follows live operating-system appearance changes. Appearance changes do not remount the install provider or discard a captured prompt.
+The banner has its own `ThemeScope`, so Classic, Light, Dark and System use the existing appearance store without changing the styling policy of public pages. Dedicated banner variables use the requested palette independently of the app accent, including violet. System follows live operating-system appearance changes. Appearance changes do not remount the install provider or discard a captured prompt.
 
-Below 640px, the message uses a 13px minimum with a separate action row aligned to the right. Install is content-sized, with a 14px icon and 12px horizontal padding; it measures approximately 84px wide rather than filling the row. X retains a 44px width. At 640px and above, the message and actions share a row with a 14px message minimum. Density preferences can increase text size, while both controls retain a 44px minimum height. The measured banner height updates through `ResizeObserver`, including wrapping and density changes.
+| Element | Light / Classic | Dark |
+| --- | --- | --- |
+| Background | `#EBF2FE` | `#161D2A` |
+| Bottom border | `#BDD3F3` | `#303E55` |
+| Message | `#18202B` | `#F0F2F4` |
+| Install button | `#1E64EF` | `#4384FF` |
+| Install text and download icon | `#FAFBFD` | `#FFFFFF` |
+| Dismiss icon | `#62748E` | `#9099A7` |
+
+At every width the banner is a single row: “Get the LeadCRM app!” on the left, Install and X on the right. The message is 13px below 640px and 14px above; Install text remains 13px. Vertical padding is 4px and the controls retain 44px minimum heights, making the banner approximately 53px tall before any device safe-area inset. Install keeps its 14px download icon and content-sized width. The measured banner height continues to update through `ResizeObserver`.
 
 The manifest uses correctly sized 192px and 512px icons, a separately padded maskable icon, and a stable app ID. The service worker refreshes the public asset cache while preserving its existing exclusion of API, private, and dynamic CRM responses.
 
 ## Verification scope
 
-Browser verification uses an isolated local mock session. The temporary iframe harness supports exact requested widths without changing the user's desktop zoom. Measurements use the browser's reported dimensions, which can round by a pixel at the current desktop zoom. Breakpoint boundary behavior is also covered by unit tests.
+Earlier browser verification used an isolated local mock session and temporary iframe harness. The current follow-up uses the production provider, theme scope, appearance store, PageHeader and CreateButton in an isolated component preview with an explicit browser viewport override. It does not recreate the full CRM page. Measurements use the browser's reported dimensions, which can round slightly at the current desktop zoom.
 
-Native installation is simulated through `beforeinstallprompt`, `userChoice`, and `appinstalled`; no operating-system app is installed by these checks. The simulation verifies eligibility gating, colors, one prompt invocation, successful-install feedback, and remembered dismissal after reload.
+Native installation is simulated through `beforeinstallprompt`, `userChoice`, and `appinstalled`; no operating-system app is installed by these checks. The current simulation verifies eligibility gating, colors, one prompt invocation, dismissal reset after reload, and installed-state suppression after reload.
 
 The mock UI session has no live backend authentication. A disposable loopback fixture supplies populated dashboard/reporting data, a draft form and a connected but empty email inbox. It never forwards requests or sends mail. Other API-dependent modules use available empty, loading and recoverable error states. Automated feature tests cover populated data and existing business operations. Live backend CRUD, real device keyboards, and native Chrome/Edge/iOS installation remain release checks.
 
-## Recorded browser checks
+## Current compact banner checks
+
+- All twelve palette colors matched the browser's computed colors in Light and Dark; the blue Install button remained unchanged with a violet app accent.
+- Widths 320, 480, 639, 640, 768, 1024 and 1440px passed without horizontal overflow or banner text overlapping Install. Create labels were hidden through 639px and visible from 640px. The gear stayed immediately before New Deal and vertically centered with the title at every width.
+- At 320px the banner measured approximately 52.8px in both Medium and Large appearance density, with the message fitting on one line.
+- X hid the banner; reloading and supplying a fresh prompt showed it again. Clicking Install invoked the retained simulated prompt once. Recording installation, reloading and supplying another prompt kept the banner hidden.
+- Frontend TypeScript checking and four focused test files passed: 33 tests covering PWA lifecycle, appearance, compiled CSS and pipeline-stage management. The temporary preview files and server were removed and the browser viewport override was reset.
+
+The historical audits below predate the current palette, single-row mobile layout, icon-only Create buttons and dismissal behavior. Their screenshots and banner contrast measurements describe the earlier implementation.
+
+## Earlier recorded browser checks
 
 Before the theme refinement, the integrated mock CRM shell was measured from 320px to 2560px. Its sidebar occupied 0px on mobile, approximately 56px on tablet, and 220px on desktop. Tablet expansion and Escape dismissal, mobile navigation below the banner, route-change dismissal, create-record drawer bounds, profile menu bounds, and scroll locking were exercised. At 320px, Leads, Contacts, Accounts, Deals, Pipeline, Tasks, Campaigns, Workflows and Settings fitted their page containers. API-dependent modules used available empty/error states. This does not establish complete coverage of every module and operation.
 
@@ -64,18 +83,18 @@ At 320px with Medium density, the banner was approximately 108px tall. At 640px 
 
 Earlier screenshots: [Dark mobile](assets/responsive-pwa/banner-dark-mobile.jpg), [Light mobile](assets/responsive-pwa/banner-light-mobile.jpg), [Classic tablet](assets/responsive-pwa/banner-classic-tablet.jpg). Raw measurements and behavior results are saved alongside these images.
 
-## Final refinement checks
+## Earlier integrated refinement checks
 
-- The smaller Install button passed 60 integrated browser cases: Classic, Light, Dark and System at all 15 widths listed above. No banner or app-page overflow was measured; Install remained approximately 84px wide with a 44px height. The earlier System/light and System/dark simulations, density and contrast checks remain applicable to the unchanged theme variables.
+- The smaller Install button passed 60 integrated browser cases: Classic, Light, Dark and System at all 15 widths listed above. No banner or app-page overflow was measured; Install remained approximately 84px wide with a 44px height. These cases and their contrast measurements predate the current palette and dismissal changes.
 - All nine Settings sections were checked at 320px. The populated Forms builder fitted, its tools sheet bounded itself to the viewport, keyboard focus stayed inside the sheet, tap-to-add worked and Escape restored focus to the tools trigger.
 - The email composer and emoji picker fitted at 320px portrait and 740×320 landscape. Emoji controls now reflow rather than requiring horizontal scrolling; category tabs retain a bounded horizontal scroller. Escape dismissed the picker before the composer. Composer input survived desktop resizing and fullscreen toggling; navigation changed from 220px to 0px in focus mode and returned to 220px on exit.
 - Dashboard captions wrap in narrow cards. Shared chart containers and canvases remain bounded to their parents while Chart.js redraws after resizing. SMS phone previews scale to their available container width.
 - The final module matrix contains 182 passing layout cases across 26 routes at requested widths 320, 480, 768, 1024, 1025, 1440 and 2560px. It covers Dashboard, CRM tables and Pipeline, Tasks, Campaigns, Workflows and its builder, Inbox, Reporting, Notifications, all Settings sections, the Leads import wizard, Help, privacy, terms and support. Reporting was rechecked after the chart fix; the import wizard was retried after its first development compilation exceeded the harness wait. No page overflow remained in the recorded final cases. Shared component tests cover additional drawers, confirmations and form operations; the matrix is not a record of every possible populated screen or business operation.
 - Keyboard Enter invoked the retained native prompt exactly once after actual app appearance changes and SPA navigation. Accepted installation plus `appinstalled` hid the banner, reset its reserved height to 0px and showed one success toast. X dismissal remained honored after reload and another installable event.
 
-Current screenshots: [smaller button in Light](assets/responsive-pwa/compact-banner-light-mobile.jpg), [smaller button in Dark](assets/responsive-pwa/compact-banner-dark-mobile.jpg). Final evidence: [module measurements](assets/responsive-pwa/module-measurements.json), [theme and size measurements](assets/responsive-pwa/compact-banner-measurements.json), [install/dismissal behavior](assets/responsive-pwa/compact-banner-behavior.json). Requested and measured widths can differ by a pixel because of the desktop's existing zoom; exact navigation boundaries also pass unit tests. The theme matrix verifies rendered theme classes, not only the requested preference labels.
+Earlier screenshots: [smaller button in Light](assets/responsive-pwa/compact-banner-light-mobile.jpg), [smaller button in Dark](assets/responsive-pwa/compact-banner-dark-mobile.jpg). Earlier evidence: [module measurements](assets/responsive-pwa/module-measurements.json), [theme and size measurements](assets/responsive-pwa/compact-banner-measurements.json), [install/dismissal behavior](assets/responsive-pwa/compact-banner-behavior.json). Requested and measured widths can differ by a pixel because of the desktop's existing zoom; exact navigation boundaries also pass unit tests. The theme matrix verifies rendered theme classes, not only the requested preference labels.
 
-## Automated results
+## Earlier automated results
 
 | Check | Result |
 | --- | --- |

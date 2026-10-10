@@ -2,6 +2,7 @@
 
 import React, { ReactNode } from 'react';
 import { BackButton, BackButtonProps } from './back-button';
+import { cn } from '@/lib/utils';
 
 export interface PageHeaderProps {
   title: string;
@@ -10,6 +11,8 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   className?: string;
   badge?: ReactNode;
+  /** Keep actions beside the title at every width, with the subtitle below. */
+  actionsInlineWithTitle?: boolean;
 }
 
 export const PageHeader: React.FC<PageHeaderProps> = ({
@@ -19,9 +22,12 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   actions,
   className = '',
   badge,
+  actionsInlineWithTitle = false,
 }) => {
   return (
-    <div className={`flex min-w-0 flex-col items-stretch justify-between gap-3 mb-4 sm:flex-row sm:flex-wrap sm:items-start ${className}`}>
+    <div className={cn('min-w-0 mb-4', actionsInlineWithTitle
+      ? 'grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-0.5'
+      : 'flex flex-col items-stretch justify-between gap-3 sm:flex-row sm:flex-wrap sm:items-start', className)}>
       <div className="flex min-w-0 flex-1 items-start gap-3">
         {backButtonProps && (
           <div className="pt-0.5">
@@ -35,7 +41,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
             </h1>
             {badge}
           </div>
-          {subtitle && (
+          {subtitle && !actionsInlineWithTitle && (
             <p className="mt-0.5 text-sm font-normal leading-5 text-slate-500 dark:text-slate-400">
               {subtitle}
             </p>
@@ -43,9 +49,14 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         </div>
       </div>
       {actions && (
-        <div data-page-actions className="flex min-w-0 max-w-full flex-wrap items-center gap-2.5">
+        <div data-page-actions className={cn('flex min-w-0 max-w-full items-center', actionsInlineWithTitle ? 'gap-2' : 'flex-wrap gap-2.5')}>
           {actions}
         </div>
+      )}
+      {subtitle && actionsInlineWithTitle && (
+        <p className="col-span-2 text-sm font-normal leading-5 text-slate-500 dark:text-slate-400">
+          {subtitle}
+        </p>
       )}
     </div>
   );

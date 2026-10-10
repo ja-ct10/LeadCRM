@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const feedback = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 vi.mock('sonner', () => ({ toast: feedback }));
-import { INSTALL_DISMISSAL_KEY, PwaInstallProvider, type InstallPromptEvent } from '@/shared/providers/pwa-install-provider';
+import { INSTALL_DISMISSAL_KEY, INSTALLED_APP_KEY, PwaInstallProvider, type InstallPromptEvent } from '@/shared/providers/pwa-install-provider';
 import { updateAppearance } from '@/lib/appearance';
 import { type ThemeMode } from '@/lib/appearance-config';
 
@@ -34,21 +34,33 @@ it('stays hidden until a real prompt object is available, then invokes it once',
   const event = installEvent();
   act(() => window.dispatchEvent(event));
   expect(event.defaultPrevented).toBe(true);
-  expect(screen.getByText('Get the LeadCRM app on your smartphone, tablet or desktop computer')).toBeTruthy();
+  expect(screen.getByText('Get the LeadCRM app!')).toBeTruthy();
   await act(async () => { const button = screen.getByRole('button', { name: 'Install LeadCRM app' }); fireEvent.click(button); fireEvent.click(button); });
   expect(event.prompt).toHaveBeenCalledTimes(1);
   expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(localStorage.getItem(INSTALLED_APP_KEY)).toBeNull();
 });
 
-it('remembers X dismissal across remounts and newly supplied prompt events', () => {
+it('keeps X dismissal through navigation but resets it on a new page load', () => {
   const first = app();
   act(() => window.dispatchEvent(installEvent()));
   fireEvent.click(screen.getByRole('button', { name: 'Dismiss install banner' }));
-  expect(localStorage.getItem(INSTALL_DISMISSAL_KEY)).toBe('true');
+  first.rerender(<PwaInstallProvider><main>Another page</main></PwaInstallProvider>);
+  act(() => window.dispatchEvent(installEvent()));
+  expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(localStorage.getItem(INSTALL_DISMISSAL_KEY)).toBeNull();
   first.unmount();
   app();
   act(() => window.dispatchEvent(installEvent()));
-  expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(screen.getByRole('region', { name: 'Install LeadCRM' })).toBeTruthy();
+});
+
+it('retires an existing permanent dismissal without suppressing installation', () => {
+  localStorage.setItem(INSTALL_DISMISSAL_KEY, 'true');
+  app();
+  act(() => window.dispatchEvent(installEvent()));
+  expect(screen.getByRole('region', { name: 'Install LeadCRM' })).toBeTruthy();
+  expect(localStorage.getItem(INSTALL_DISMISSAL_KEY)).toBeNull();
 });
 
 it('hides and reports installation through browser UI, without duplicate notifications', () => {
@@ -60,6 +72,31 @@ it('hides and reports installation through browser UI, without duplicate notific
   expect(feedback.success).toHaveBeenCalledTimes(1);
   act(() => window.dispatchEvent(installEvent()));
   expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(localStorage.getItem(INSTALLED_APP_KEY)).toBe('true');
+});
+
+it('remembers installation on a new page load without repeating the success toast', () => {
+  const first = app();
+  act(() => window.dispatchEvent(new Event('appinstalled')));
+  first.unmount();
+  app();
+  act(() => window.dispatchEvent(installEvent()));
+  expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(feedback.success).toHaveBeenCalledTimes(1);
+});
+
+it('hides an open promotion when another tab records installation', () => {
+  app();
+  act(() => window.dispatchEvent(installEvent()));
+  expect(screen.getByRole('region', { name: 'Install LeadCRM' })).toBeTruthy();
+  act(() => {
+    localStorage.setItem(INSTALLED_APP_KEY, 'true');
+    window.dispatchEvent(new StorageEvent('storage', { key: INSTALLED_APP_KEY, newValue: 'true', storageArea: localStorage }));
+  });
+  expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  act(() => window.dispatchEvent(installEvent()));
+  expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(feedback.success).not.toHaveBeenCalled();
 });
 
 it('does not promote installation when launched as an installed app', () => {
@@ -67,6 +104,7 @@ it('does not promote installation when launched as an installed app', () => {
   app();
   act(() => window.dispatchEvent(installEvent()));
   expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();
+  expect(localStorage.getItem(INSTALLED_APP_KEY)).toBe('true');
 });
 
 it('suppresses repeated promotion after a native cancellation', async () => {
@@ -135,5 +173,5 @@ it('keeps remembered dismissal when appearance changes', () => {
   act(() => updateAppearance({ mode: 'Dark' }));
   act(() => window.dispatchEvent(installEvent()));
   expect(screen.queryByRole('region')).toBeNull();
-  expect(localStorage.getItem(INSTALL_DISMISSAL_KEY)).toBe('true');
+  expect(localStorage.getItem(INSTALL_DISMISSAL_KEY)).toBeNull();
 });
