@@ -1,6 +1,6 @@
 import { compatibleWorkflow } from './workflow-fields';
 import { tenantContext } from '../../../core/tenant/tenant-context';
-import { WorkflowDraftSchema, normalizeWorkflowAssignment, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
+import { WorkflowDraftSchema, WorkflowValidationSchema, WorkflowConditionSchema, missingWorkflowConditionValues, normalizeWorkflowAssignment, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
 import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, assignmentOutput } from '../assignment/workflow-assignment.service';
 import { assertWorkflowPermissions, assertAssignmentReferencePermissions } from '../actions/action-permissions';
 import { writeAuditLog } from '../../../core/audit/audit.service';
@@ -21,8 +21,10 @@ import { z } from 'zod';
 import { workflowNameKey, suggestWorkflowCopyName } from './workflow-names';
 import { workflowDefinitionChanged } from './workflow-version';
 
-function sanitizeDraft(draft: WorkflowDraft): WorkflowDraft {
-  return { ...draft, actions: draft.actions.map(normalizeWorkflowAssignment).map(action => ({ ...action, config: Object.fromEntries(
+function sanitizeDraft(draft: WorkflowDraft, previousConditions?: unknown): WorkflowDraft {
+  const previous = WorkflowConditionSchema.safeParse(previousConditions);
+  const incomplete = new Set(missingWorkflowConditionValues(draft.conditions, previous.success ? previous.data : undefined));
+  return { ...draft, ...(draft.conditions ? { conditions: { ...draft.conditions, conditions: draft.conditions.conditions.map(({ incompleteValue: _previousMarker, ...rule }, index) => incomplete.has(index) ? { ...rule, incompleteValue: true as const } : rule) } } : {}), actions: draft.actions.map(normalizeWorkflowAssignment).map(action => ({ ...action, config: Object.fromEntries(
     Object.entries(action.config).map(([key, value]) => [key, typeof value !== 'string' ? value
       : action.type === 'send_email' && key === 'body' ? sanitizeCampaignHtml(value.trim()) : value.trim()]),
   ) })) };
@@ -103,8 +105,8 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   await validateConditionReferences(draft, tenantId);
   if (!draft.isActive) for (const action of draft.actions) await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
-  if (draft.isActive) { await validateWorkflow(draft, tenantId); await assertWorkflowPermissions(draft, tenantId, userId); }
-  const sanitized = sanitizeDraft(draft);
+  if (draft.isActive) { await validateWorkflow(draft, tenantId, existing.status !== 'DRAFT' ? existing.conditions : undefined); await assertWorkflowPermissions(draft, tenantId, userId); }
+  const sanitized = sanitizeDraft(draft, existing.status !== 'DRAFT' ? existing.conditions : undefined);
   const workflow = await repo.updateWorkflow(id, tenantId, { ...sanitized, status: draft.isActive ? 'ACTIVE' : existing.isActive || existing.status === 'PAUSED' ? 'PAUSED' : 'DRAFT', ...(draft.isActive ? { activatedById: userId } : {}) }, workflowDefinitionChanged(existing, sanitized));
   await writeAuditLog({ tenantId, userId, action: existing.isActive !== workflow.isActive ? workflow.isActive ? 'workflow.activated' : 'workflow.paused' : 'workflow.updated', entityType: 'Workflow', entityId: id });
   return workflow;
@@ -184,9 +186,13 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
 
 export async function validateDraft(tenantId: string, userId: string, input: unknown) {
   requireScope(tenantId);
-  const draft = parseDraft(input);
+  const parsed = WorkflowValidationSchema.safeParse(input);
+  if (!parsed.success) throw new ValidationError(parsed.error.issues[0]?.message ?? 'Review the workflow.');
+  const { workflowId, ...draft } = parsed.data;
+  const existing = workflowId ? await repo.findWorkflowById(workflowId, tenantId) : null;
+  if (workflowId && (!existing || existing.isArchived)) throw new NotFoundError('Workflow');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
-  await validateWorkflow(draft, tenantId);
+  await validateWorkflow(draft, tenantId, existing && existing.status !== 'DRAFT' ? existing.conditions : undefined);
   await assertWorkflowPermissions(draft, tenantId, userId);
   return { valid: true, message: 'Trigger, conditions, action configuration, permissions and references are valid. No actions were executed.' };
 }

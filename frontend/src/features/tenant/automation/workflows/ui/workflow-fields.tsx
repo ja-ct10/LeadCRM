@@ -129,13 +129,17 @@ export function ConditionFields({
             key={index}
             className="space-y-3 rounded-xl border border-[var(--border)] p-3"
           >
-            <p className="text-xs font-semibold text-[var(--muted-foreground)]">
-              Condition {index + 1}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-[var(--muted-foreground)]">Condition {index + 1}</p>
+              <Button type="button" variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" onClick={() => onChange({ ...value, conditions: value.conditions.filter((_, i) => i !== index) })} aria-label={`Remove condition ${index + 1}`} title="Remove condition">
+                <Trash2 size={16} aria-hidden="true" />
+              </Button>
+            </div>
             <label className="block">
-              Field
+              <span>Field <span className="text-red-500" aria-hidden="true">*</span></span>
               <select
                 aria-label={`Condition ${index + 1} field`}
+                aria-required="true"
                 className={workflowControl}
                 value={rule.field}
                 onChange={(event) => {
@@ -180,11 +184,12 @@ export function ConditionFields({
             </label>
             {!['is_empty', 'is_not_empty'].includes(rule.operator) && (
               <label className="block">
-                Value
+                <span>Value <span className="text-red-500" aria-hidden="true">*</span></span>
                 {field?.type === 'boolean' ? (
                   <select
                     className={workflowControl}
                     aria-label={`Condition ${index + 1} value`}
+                    aria-required="true"
                     value={String(rule.value)}
                     onChange={(event) =>
                       update({ value: event.target.value === 'true' })
@@ -196,6 +201,7 @@ export function ConditionFields({
                 ) : choices ? (
                   <select
                     aria-label={`Condition ${index + 1} value`}
+                    aria-required="true"
                     className={workflowControl}
                     value={String(rule.value ?? '')}
                     onChange={(event) => update({ value: event.target.value })}
@@ -208,9 +214,10 @@ export function ConditionFields({
                       </option>
                     ))}
                   </select>
-                ) : field?.multiline ? <textarea aria-label={`Condition ${index + 1} value`} className={workflowControl} rows={4} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
+                ) : field?.multiline ? <textarea aria-label={`Condition ${index + 1} value`} aria-required="true" className={workflowControl} rows={4} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
                   <Input
                     aria-label={`Condition ${index + 1} value`}
+                    aria-required="true"
                     type={
                       field?.type === 'number'
                         ? 'number'
@@ -232,27 +239,12 @@ export function ConditionFields({
                 )}
               </label>
             )}
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={() =>
-                onChange({
-                  ...value,
-                  conditions: value.conditions.filter((_, i) => i !== index),
-                })
-              }
-              aria-label={`Remove condition ${index + 1}`}
-              title="Remove condition"
-            >
-              <Trash2 size={16} aria-hidden="true" />
-            </Button>
           </div>
         );
       })}
       <Button
         type="button"
-        variant="outline"
+        variant="default"
         onClick={() =>
           onChange({
             ...value,

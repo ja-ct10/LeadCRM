@@ -248,4 +248,28 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/retired/);
     expect((await scope(() => workflows.getWorkflowById(workflow.id, tenantId))).actions).toEqual([{ type: 'create_notification', config: { title: 'Legacy' } }]);
   });
+  it('rejects incomplete activation even after saving a draft, and preserves previously active blank literals', async () => {
+    const conditions = { operator: 'AND' as const, conditions: [{ field: 'lead.firstName', operator: 'equals' as const, value: '' }] };
+    await expect(create({ conditions })).rejects.toThrow('Condition 1: Enter a value');
+    const draft = await create({ isActive: false, conditions });
+    await expect(scope(() => workflows.toggleWorkflow(draft.id, tenantId, actor.id, true))).rejects.toThrow('Condition 1: Enter a value');
+    await expect(scope(() => workflows.validateDraft(tenantId, actor.id, { name: draft.name, trigger: draft.trigger, conditions, actions: draft.actions, isActive: false, workflowId: draft.id }))).rejects.toThrow('Condition 1: Enter a value');
+    // Represents a historical workflow that used a valid literal empty-string comparison.
+    await scope(() => prisma.workflow.update({ where: { id: draft.id }, data: { status: 'PAUSED', activatedById: actor.id, conditions } }));
+    await expect(scope(() => workflows.toggleWorkflow(draft.id, tenantId, actor.id, true))).resolves.toMatchObject({ isActive: true, conditions });
+    await scope(() => fireWorkflowTrigger({ tenantId, actorId: actor.id, eventId: randomUUID(), triggerType: 'lead.updated', entityType: 'lead', entityId: lead.id, context: { 'event.changedFields': ['address'] } }));
+    expect((await runs(draft.id))[0].status).toBe('skipped');
+    await expect(scope(() => workflows.validateDraft(tenantId, actor.id, { name: draft.name, trigger: draft.trigger, conditions, actions: draft.actions, isActive: false, workflowId: draft.id }))).resolves.toMatchObject({ valid: true });
+    const previouslyActive = await create({ conditions: { operator: 'AND', conditions: [{ field: 'lead.firstName', operator: 'equals', value: 'Fixture' }] } });
+    const incomplete = await scope(() => workflows.updateWorkflow(previouslyActive.id, tenantId, actor.id, { isActive: false, conditions }));
+    expect(incomplete.status).toBe('PAUSED');
+    expect(incomplete.conditions).toMatchObject({ conditions: [{ value: '', incompleteValue: true }] });
+    // Stripping client metadata cannot turn this newly missing input into a legacy literal.
+    await scope(() => workflows.updateWorkflow(previouslyActive.id, tenantId, actor.id, { isActive: false, conditions }));
+    await expect(scope(() => workflows.toggleWorkflow(previouslyActive.id, tenantId, actor.id, true))).rejects.toThrow('Condition 1: Enter a value');
+    await expect(scope(() => workflows.validateDraft(tenantId, actor.id, { name: previouslyActive.name, trigger: previouslyActive.trigger, conditions, actions: previouslyActive.actions, isActive: false, workflowId: previouslyActive.id }))).rejects.toThrow('Condition 1: Enter a value');
+    await expect(scope(() => workflows.updateWorkflow(previouslyActive.id, tenantId, actor.id, { isActive: true, conditions: { operator: 'AND', conditions: [{ field: 'lead.firstName', operator: 'equals', value: 'Fixture' }] } }))).resolves.toMatchObject({ isActive: true, conditions: { conditions: [{ value: 'Fixture' }] } });
+    const foreign = await prisma.tenant.create({ data: { name: 'Foreign validation', slug: randomUUID() } });
+    await expect(tenantContext.run({ tenantId: foreign.id }, () => workflows.validateDraft(foreign.id, actor.id, { name: draft.name, trigger: draft.trigger, conditions, actions: draft.actions, isActive: false, workflowId: draft.id }))).rejects.toThrow('Workflow not found');
+  });
 });

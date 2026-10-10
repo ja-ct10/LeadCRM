@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
+exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
+exports.missingWorkflowConditionValues = missingWorkflowConditionValues;
 exports.workflowAssignmentTarget = workflowAssignmentTarget;
 exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
 exports.workflowOperators = workflowOperators;
@@ -12,10 +13,22 @@ exports.WorkflowConditionOperatorSchema = zod_1.z.enum([
 exports.WorkflowConditionRuleSchema = zod_1.z.object({
     field: zod_1.z.string().min(1), operator: exports.WorkflowConditionOperatorSchema,
     value: zod_1.z.union([zod_1.z.string(), zod_1.z.number().finite(), zod_1.z.boolean(), zod_1.z.null()]),
+    // Server-maintained draft state distinguishes new missing input from historical literals.
+    incompleteValue: zod_1.z.literal(true).optional(),
 }).strict();
 exports.WorkflowConditionSchema = zod_1.z.object({
     operator: zod_1.z.enum(['AND', 'OR']), conditions: zod_1.z.array(exports.WorkflowConditionRuleSchema).max(30),
 }).strict();
+/** Empty operators need no value. Preserve explicit blank literals in saved rules. */
+function missingWorkflowConditionValues(conditions, previous) {
+    return (conditions?.conditions ?? []).flatMap((rule, index) => {
+        if (['is_empty', 'is_not_empty'].includes(rule.operator))
+            return [];
+        const missing = rule.value == null || (typeof rule.value === 'string' && !rule.value.trim());
+        const savedLiteral = typeof rule.value === 'string' && previous?.conditions.some(saved => !saved.incompleteValue && saved.field === rule.field && saved.operator === rule.operator && saved.value === rule.value);
+        return missing && !savedLiteral ? [index] : [];
+    });
+}
 exports.WorkflowActionSchema = zod_1.z.object({
     type: zod_1.z.enum(['create_task', 'send_email', 'send_sms', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
     enabled: zod_1.z.boolean().optional(),
@@ -90,6 +103,7 @@ exports.WorkflowDraftSchema = zod_1.z.object({
     actions: zod_1.z.array(exports.WorkflowActionSchema).max(20),
     isActive: zod_1.z.boolean().default(false),
 }).strict();
+exports.WorkflowValidationSchema = exports.WorkflowDraftSchema.extend({ workflowId: zod_1.z.string().uuid().optional() });
 function workflowOperators(type) {
     if (['products', 'list', 'contacts', 'leads'].includes(type))
         return ['contains', 'not_contains', 'is_empty', 'is_not_empty'];

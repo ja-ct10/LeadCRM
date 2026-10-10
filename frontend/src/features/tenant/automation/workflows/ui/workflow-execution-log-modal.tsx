@@ -7,6 +7,8 @@ import { WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared'
 import { workflowActionLabel } from '../services/workflow-editor';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
+import { StatusBadge } from '@/shared/components/crm/record-drawer';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { useAuth } from '@/store/AuthContext';
@@ -70,7 +72,7 @@ export function WorkflowExecutionLogModal({
       <SheetContent showClose={false} aria-label={`Workflow details — ${workflow?.name ?? name}`} className={panelSurfaceClass}>
         <header className={panelHeaderClass + ' flex flex-wrap items-start gap-2'}>
           <div className="min-w-0 flex-1">
-            <p className="mb-1 text-xs font-medium text-muted-foreground">Workflow details{savedStatus ? ` · ${savedStatus}` : ''}{workflow?.version ? ` · v${workflow.version}` : ''}</p>
+            <p className="mb-1 flex flex-wrap items-center gap-1 text-xs font-medium text-muted-foreground">Workflow details{savedStatus && <> · <StatusBadge label={savedStatus} variant={savedStatus === 'Active' ? 'success' : savedStatus === 'Paused' ? 'warn' : 'neutral'} /></>}{workflow?.version ? ` · v${workflow.version}` : ''}</p>
             <h2 className={panelTitleClass}>{workflow?.name ?? name}</h2>
           </div>
           <div className="flex shrink-0 items-center gap-0.5">
@@ -168,7 +170,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                 <ChevronRight aria-hidden="true" size={16} className="mt-1 shrink-0 text-slate-400 transition-transform group-open:rotate-90" />
                 <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1.5">
                   <span className={'rounded-full px-2.5 py-1 text-xs font-semibold capitalize ' + runStatusClass(run.status)}>{run.status}</span>
-                  <span className="text-slate-600 dark:text-slate-300">{new Date(run.startedAt).toLocaleString()} · {run.entityType}</span>
+                  <span className="text-slate-600 dark:text-slate-300">{formatDateTime(run.startedAt, { seconds: true })} · {run.entityType}</span>
                   {run.workflowVersion != null && <span className="text-xs text-muted-foreground">v{run.workflowVersion}</span>}
                 </span>
               </summary>
@@ -180,7 +182,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                   <br />
                   Finished:{' '}
                   {run.completedAt
-                    ? new Date(run.completedAt).toLocaleString()
+                    ? formatDateTime(run.completedAt, { seconds: true })
                     : 'In progress or interrupted — review before replay'}
                 </p>
                 {run.errorMessage && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{run.errorMessage}</p>}

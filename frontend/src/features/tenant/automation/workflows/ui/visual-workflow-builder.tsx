@@ -30,6 +30,7 @@ import {
   FlaskConical,
 } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
+import { StatusBadge } from '@/shared/components/crm/record-drawer';
 import { Input } from '@/shared/components/ui/input';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
@@ -144,7 +145,7 @@ export default function WorkflowBuilder({
   const nameIssue = workflowNameIssue(draft.name, existingWorkflows, savedId) ||
     (nameCheck?.name === draft.name && nameCheck.available === false ? 'A workflow with this name already exists. Choose another name.' : '');
   const issues = [
-    ...editorIssues(document, triggers, definitions, options),
+    ...editorIssues(document, triggers, definitions, options, false, savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined),
     ...(nameIssue && draft.name.trim() ? [{ step: 'details' as const, message: nameIssue }] : []),
   ];
   const actionIndex = selected?.startsWith('action:')
@@ -435,6 +436,7 @@ export default function WorkflowBuilder({
       definitions,
       options,
       !activate && !validateOnly,
+      savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined,
     );
     if (local.length) {
       select(local[0].step);
@@ -461,7 +463,7 @@ export default function WorkflowBuilder({
     setBusy(true);
     try {
       if (validateOnly) {
-        const result = (await workflowsApi.validate(parsed.data)).data;
+        const result = (await workflowsApi.validate(parsed.data, savedId)).data;
         if (!result.valid) throw new Error(result.message || 'Review the workflow configuration.');
         setMessage(result.message);
         toast.success(result.message);
@@ -554,7 +556,7 @@ export default function WorkflowBuilder({
         {selected === 'details' && (
           <>
             <label className="block space-y-2 text-sm">
-              Workflow name
+              <span>Workflow name <span className="text-red-500" aria-hidden="true">*</span></span>
               <Input
                 aria-label="Workflow name"
                 aria-required="true"
@@ -685,7 +687,7 @@ export default function WorkflowBuilder({
       <p className="text-xs text-[var(--muted-foreground)]">
         Changes update the canvas immediately. Save the workflow to apply them.
       </p>
-      <Button variant="outline" onClick={closeInspector}>
+      <Button variant={selected === 'trigger' || selected === 'conditions' ? 'default' : 'outline'} onClick={closeInspector}>
         Done
       </Button>
     </div>
@@ -729,11 +731,7 @@ export default function WorkflowBuilder({
                 {draft.name || 'New workflow'}
               </button>
               <p className="text-xs text-[var(--muted-foreground)]">
-                {savedStatus === 'ACTIVE'
-                  ? 'Active'
-                  : savedStatus === 'PAUSED'
-                    ? 'Paused'
-                    : 'Draft'}{savedVersion ? ` · v${savedVersion}` : ''}{' '}
+                <StatusBadge label={savedStatus === 'ACTIVE' ? 'Active' : savedStatus === 'PAUSED' ? 'Paused' : 'Draft'} variant={savedStatus === 'ACTIVE' ? 'success' : savedStatus === 'PAUSED' ? 'warn' : 'neutral'} />{savedVersion ? ` · v${savedVersion}` : ''}{' '}
                 ·{' '}
                 {dirty
                   ? 'Unsaved changes'

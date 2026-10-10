@@ -26,6 +26,7 @@ import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
 import { CampaignStatusBadge } from './campaign-status-badge';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
@@ -170,7 +171,7 @@ export default function CampaignsPage() {
     { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique opened recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },
     { id: 'clicked', header: 'Clicked', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique clicking recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0}</span> },
     { id: 'engagement', header: 'Engagement', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130, cell: (_, row) => <span title="Unique opens / email submissions">{row.type.toUpperCase() === 'SMS' ? '—' : `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`}</span> },
-    { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 180 },
+    { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 210, cell: (_, row) => <span title={formatDateTime(row.createdAt)}>{formatDateTime(row.createdAt)}</span> },
   ];
   const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted', 'opened', 'clicked', 'engagement'].includes(column.id)));
 

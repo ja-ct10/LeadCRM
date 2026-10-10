@@ -63,7 +63,7 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive }, params.tenantId));
         if (!parsed.success) throw new ValidationError('This workflow uses an invalid configuration. Edit and save it before activating.');
         const draft: WorkflowDraft = parsed.data;
-        await validateWorkflow(draft, params.tenantId);
+        await validateWorkflow(draft, params.tenantId, workflow.conditions);
         if (!workflow.activatedById) throw new ValidationError('Reactivate this workflow to confirm its author permissions.');
         await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
         if (draft.conditions && !evaluateCondition(draft.conditions, context)) status = 'skipped';

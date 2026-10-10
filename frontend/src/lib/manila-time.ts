@@ -1,4 +1,5 @@
-const TASK_TIME_ZONE = "Asia/Manila";
+export const MANILA_TIME_ZONE = "Asia/Manila";
+const TASK_TIME_ZONE = MANILA_TIME_ZONE;
 
 type ZonedDateTimeParts = {
   year: number;

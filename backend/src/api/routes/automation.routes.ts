@@ -8,7 +8,7 @@ import { validate } from '../middleware/validate.middleware';
 import * as workflowController from '../../modules/automation/workflows/workflows.controller';
 import * as actionController   from '../../modules/automation/actions/actions.controller';
 import * as triggerController  from '../../modules/automation/triggers/triggers.controller';
-import { CreateWorkflowSchema, UpdateWorkflowSchema, TestWorkflowSchema, WorkflowStateSchema } from '../../modules/automation/workflows/workflows.dto';
+import { CreateWorkflowSchema, ValidateWorkflowSchema, UpdateWorkflowSchema, TestWorkflowSchema, WorkflowStateSchema } from '../../modules/automation/workflows/workflows.dto';
 
 const router = Router();
 
@@ -24,7 +24,7 @@ router.get(   '/workflows',                   authorize('workflows.view'),     w
 router.get(   '/workflows/:id',               authorize('workflows.view'),     workflowController.getWorkflowById);
 router.post('/workflows/:id/duplicate', authorize('workflows.duplicate'), workflowController.duplicateWorkflow);
 router.post(  '/workflows',                   authorize('workflows.create'),   validate(CreateWorkflowSchema), (req, res, next) => req.body.isActive ? authorize('workflows.activate')(req, res, next) : next(), workflowController.createWorkflow);
-router.post('/workflows/validate', authorize('workflows.view'), validate(CreateWorkflowSchema), workflowController.validateDraft);
+router.post('/workflows/validate', authorize('workflows.view'), validate(ValidateWorkflowSchema), workflowController.validateDraft);
 router.put(   '/workflows/:id',               authorize('workflows.edit'),     validate(UpdateWorkflowSchema), async (req, _res, next) => { try { if (req.body.isActive !== undefined && req.body.isActive !== (await workflowService.getWorkflowById(String(req.params.id), req.user!.tenantId)).isActive) await assertPermissions(req.user!, ['workflows.activate']); next(); } catch (error) { next(error); } }, workflowController.updateWorkflow);
 router.patch( '/workflows/:id/toggle',        authorize('workflows.activate'), validate(WorkflowStateSchema), workflowController.toggleWorkflow);
 router.patch( '/workflows/:id/archive',       authorize('workflows.archive'),   workflowController.archiveWorkflow);

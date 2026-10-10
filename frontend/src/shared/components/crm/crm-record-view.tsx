@@ -1,4 +1,5 @@
 'use client';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldDetails } from './record-custom-fields';
 import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
@@ -300,7 +301,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const statuses = [...CRM_STATUSES];
   const rows: [string, unknown][] = [
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
-    ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', record.createdAt ? new Date(String(record.createdAt)).toLocaleDateString() : '']] as [string, unknown][] : []),
+    ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', formatDateTime(record.createdAt as string | null | undefined)]] as [string, unknown][] : []),
     ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
     ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Assigned Agent', owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
   ];
@@ -322,7 +323,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
     { label: 'Industry', value: record.industry, apiField: 'industry' },
     { label: 'Address', value: record.address, apiField: 'address' },
-    { label: 'Created', value: record.createdAt },
+    { label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ] : [
     ...(module === 'accounts' ? [
       { label: 'Account name', value: record.name, apiField: 'name', required: true, maxLength: 255 },

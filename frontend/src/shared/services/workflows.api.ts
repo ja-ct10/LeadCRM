@@ -26,7 +26,7 @@ export const workflowsApi = {
   list: (query: WorkflowListQuery = {}) => apiClient.get<WorkflowsResponse>(`/automation/workflows?${new URLSearchParams(Object.entries(query).filter(([,value]) => value !== undefined).map(([key,value]) => [key,String(value)]))}`),
   get: (id: string) => apiClient.get<WorkflowResponse>(`/automation/workflows/${id}`),
   create: (draft: WorkflowDraft) => apiClient.post<WorkflowResponse>('/automation/workflows', draft),
-  validate: (draft: WorkflowDraft) => apiClient.post<{success:boolean;data:{valid:boolean;message:string}}>('/automation/workflows/validate', draft),
+  validate: (draft: WorkflowDraft, workflowId?: string) => apiClient.post<{success:boolean;data:{valid:boolean;message:string}}>('/automation/workflows/validate', { ...draft, ...(workflowId ? { workflowId } : {}) }),
   getExecution: (id: string, executionId: string) => apiClient.get<{success:boolean;data:WorkflowExecutionRun}>(`/automation/workflows/${id}/executions/${executionId}`),
   update: (id: string, draft: Partial<WorkflowDraft>) => apiClient.put<WorkflowResponse>(`/automation/workflows/${id}`, draft),
   toggle: (id: string, isActive: boolean) => apiClient.patch<WorkflowResponse>(`/automation/workflows/${id}/toggle`, { isActive }),

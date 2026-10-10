@@ -1,5 +1,6 @@
 import {
   workflowOperators,
+  missingWorkflowConditionValues,
   WORKFLOW_MESSAGE_VARIABLES,
   getWorkflowUpdateFields,
   getAvailableActions,
@@ -8,6 +9,7 @@ import {
   type TriggerDefinition,
   type WorkflowAction,
   type WorkflowConditionRule,
+  type WorkflowCondition,
   type WorkflowDraft,
   type WorkflowOptions,
 } from '@leadcrm/shared';
@@ -392,6 +394,7 @@ export function editorIssues(
   definitions: ActionDefinition[],
   options: WorkflowOptions,
   incomplete = false,
+  previousConditions?: WorkflowCondition | null,
 ): EditorIssue[] {
   const { draft, actionIds } = document;
   const trigger = triggers.find((entry) => entry.type === draft.trigger);
@@ -406,6 +409,7 @@ export function editorIssues(
       step: 'conditions' as const,
       message,
     })),
+    ...(!incomplete ? missingWorkflowConditionValues(draft.conditions, previousConditions).map(index => ({ step: 'conditions' as const, message: `Condition ${index + 1}: Enter a value or choose an empty-value operator.` })) : []),
     ...(!incomplete && !draft.actions.some((action) => action.enabled !== false)
       ? [
           {

@@ -15,6 +15,7 @@ import {
 } from "@/shared/components/data-grid";
 import { Eye, Edit, Archive } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { taskRecordOptions } from '../task-relations';
 interface Props {
   tasks: TaskRecord[];
@@ -165,7 +166,7 @@ export function TaskTable({
       case "assignedUser":
         return person(task.assignedUser) ?? "—";
       case "createdAt":
-        return new Date(task.createdAt).toLocaleString();
+        return <span title={formatDateTime(task.createdAt, { seconds: true })}>{formatDateTime(task.createdAt, { seconds: true })}</span>;
       case "completedAt":
         return task.completedAt
           ? new Date(task.completedAt).toLocaleString()
@@ -191,6 +192,7 @@ export function TaskTable({
       status: 145,
       priority: 120,
       dueDate: 240,
+      createdAt: 230,
     },
   });
   return (

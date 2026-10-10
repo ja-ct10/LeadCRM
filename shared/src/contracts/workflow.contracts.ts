@@ -9,6 +9,8 @@ export type WorkflowConditionOperator = z.infer<typeof WorkflowConditionOperator
 export const WorkflowConditionRuleSchema = z.object({
   field: z.string().min(1), operator: WorkflowConditionOperatorSchema,
   value: z.union([z.string(), z.number().finite(), z.boolean(), z.null()]),
+  // Server-maintained draft state distinguishes new missing input from historical literals.
+  incompleteValue: z.literal(true).optional(),
 }).strict();
 export type WorkflowConditionRule = z.infer<typeof WorkflowConditionRuleSchema>;
 export const WorkflowConditionSchema = z.object({
@@ -16,6 +18,16 @@ export const WorkflowConditionSchema = z.object({
 }).strict();
 export type WorkflowCondition = z.infer<typeof WorkflowConditionSchema>;
 export type WorkflowConditionGroup = WorkflowCondition;
+
+/** Empty operators need no value. Preserve explicit blank literals in saved rules. */
+export function missingWorkflowConditionValues(conditions?: WorkflowCondition | null, previous?: WorkflowCondition | null): number[] {
+  return (conditions?.conditions ?? []).flatMap((rule, index) => {
+    if (['is_empty', 'is_not_empty'].includes(rule.operator)) return [];
+    const missing = rule.value == null || (typeof rule.value === 'string' && !rule.value.trim());
+    const savedLiteral = typeof rule.value === 'string' && previous?.conditions.some(saved => !saved.incompleteValue && saved.field === rule.field && saved.operator === rule.operator && saved.value === rule.value);
+    return missing && !savedLiteral ? [index] : [];
+  });
+}
 export const WorkflowActionSchema = z.object({
   type: z.enum(['create_task', 'send_email', 'send_sms', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
   enabled: z.boolean().optional(),
@@ -91,6 +103,7 @@ export const WorkflowDraftSchema = z.object({
   isActive: z.boolean().default(false),
 }).strict();
 export type WorkflowDraft = z.infer<typeof WorkflowDraftSchema>;
+export const WorkflowValidationSchema = WorkflowDraftSchema.extend({ workflowId: z.string().uuid().optional() });
 export interface WorkflowOptions {
   customFields?: ClosingField[];
   users: Array<{id:string;name:string}>;

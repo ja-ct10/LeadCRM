@@ -76,6 +76,23 @@ function setup(
 }
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 describe('visual workflow editor', () => {
+  it('updates the canvas after deleting the middle condition and restores rules through undo and redo', () => {
+    setup({ initial: { ...initial, conditions: { operator: 'AND', conditions: [
+      { field: 'deal.title', operator: 'equals', value: 'First' },
+      { field: 'deal.title', operator: 'equals', value: 'Middle' },
+      { field: 'deal.title', operator: 'equals', value: 'Last' },
+    ] } } });
+    fireEvent.click(button(/Configure condition:/));
+    fireEvent.click(button('Remove condition 2'));
+    expect((screen.getByLabelText('Condition 2 value') as HTMLInputElement).value).toBe('Last');
+    expect(screen.queryByText('Deal Title is Middle')).toBeNull();
+    fireEvent.click(button('Undo'));
+    fireEvent.click(button(/Configure condition:/));
+    expect((screen.getByLabelText('Condition 2 value') as HTMLInputElement).value).toBe('Middle');
+    fireEvent.click(button('Redo'));
+    fireEvent.click(button(/Configure condition:/));
+    expect((screen.getByLabelText('Condition 2 value') as HTMLInputElement).value).toBe('Last');
+  });
   it('cancels activation without saving and submits only once with one success toast', async () => {
     let resolve!: () => void;
     const save = vi.fn().mockImplementation(() => new Promise<void>(done => { resolve = done; }));

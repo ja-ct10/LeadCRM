@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { Users } from 'lucide-react';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
+import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useRouter } from 'next/navigation';
 import { contactsV2Api, type ContactV2Query, type ContactsV2Response } from '@/shared/services/contacts-v2.api';
 import { CRM_STATUSES, normalizeCrmStatus, type FilterCondition } from '@leadcrm/shared';
@@ -40,6 +41,8 @@ export default function ContactsPage(): React.ReactElement {
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   const highlightId = getParam('highlight') || undefined;
+  const [manualRefreshing, setManualRefreshing] = useState(false);
+  const manualRefreshLock = useRef(false);
 
   // ── Column Preferences ────────────────────────────────────────────────
   const {
@@ -112,6 +115,13 @@ export default function ContactsPage(): React.ReactElement {
   const paginatedContacts = filteredContacts;
   const serverTotal = response?.meta.total ?? 0;
   const facets = response?.meta.facets ?? {};
+  const refreshContacts = async () => {
+    if (manualRefreshLock.current || isInitialLoad || isRefreshing) return;
+    manualRefreshLock.current = true;
+    setManualRefreshing(true);
+    try { await fetchContacts(); }
+    finally { manualRefreshLock.current = false; setManualRefreshing(false); }
+  };
   useEffect(() => { if (contactsError) toast.error(contactsError); }, [contactsError]);
   useEffect(() => {
     if (response && currentPage > Math.max(1, Math.ceil(serverTotal / pageSize))) setCurrentPage(Math.max(1, Math.ceil(serverTotal / pageSize)));
@@ -313,8 +323,8 @@ export default function ContactsPage(): React.ReactElement {
       searchTerm={searchTerm}
       onSearch={setSearchTerm}
       searchPlaceholder="Search contacts..."
-      onRefresh={fetchContacts}
-      refreshDisabled={isInitialLoad || isRefreshing}
+      onRefresh={refreshContacts}
+      refreshDisabled={isInitialLoad || isRefreshing || manualRefreshing}
       loading={isInitialLoad || isColumnsLoading}
       loadingLabel={isInitialLoad ? 'Loading contacts...' : 'Loading columns...'}
       onManageColumns={() => setIsManageColumnsOpen(true)}
@@ -325,56 +335,62 @@ export default function ContactsPage(): React.ReactElement {
         </div>}
       {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
-        <>
-          {filteredContacts.length === 0 && (
-            <ActionableEmptyState
-              icon={Users}
-              title={debouncedSearch ? 'No contacts match your search' : 'No contacts yet'}
-              description={
-                debouncedSearch
-                  ? `Try a different search term or clear your filters.`
-                  : 'Add your first contact to start building your CRM.'
-              }
-              actionLabel={!debouncedSearch && canCreate ? 'Add Contact' : undefined}
-              onAction={!debouncedSearch && canCreate ? () => { setEditingContact(undefined); setIsFormOpen(true); } : undefined}
-            />
-          )}
-          {filteredContacts.length > 0 && (
-        <ContactsDataGrid
-            sort={sort}
-            onSortChange={setSort}
-          contacts={paginatedContacts}
-          totalRecords={serverTotal}
-          effectiveColumns={effectiveColumns}
-          onRowClick={(contact) => setSelectedContact(contact)}
-          selectedIds={contactSelectedIds}
-          onSelectionChange={setContactSelectedIds}
-          getAccountName={getAccountName}
-          getAssignedUserName={(userId) => assignedAgentName(users, userId)}
-          canEdit={canEdit}
-          canArchive={canDelete}
-          onEdit={(contact) => { setEditingContact(contact); setIsFormOpen(true); }}
-          onArchive={(contact) => confirmArchive([contact.id], getName(contact))}
-          onHideColumn={async (columnId) => {
-            const updated = effectiveColumns.map((col) =>
-              col.id === columnId ? { ...col, visible: false } : col,
-            );
-            try {
-              await saveColumns(updated);
-            } catch {
-              toast.error('Failed to hide column. Reverted.');
-            }
-          }}
-          highlightRowId={highlightId}
-          viewMode={viewMode}
-        />
-          )}
-        </>
+        <div aria-busy={manualRefreshing} aria-label="Contacts table area">
+          {manualRefreshing && <TableLoadingState label="Loading contacts..." />}
+          <div hidden={manualRefreshing}>
+            {contactsError && !filteredContacts.length && <div role="alert" className="space-y-2 p-4 text-sm"><p>{contactsError}</p><Button variant="outline" onClick={refreshContacts} disabled={isRefreshing || manualRefreshing}>Retry</Button></div>}
+            {filteredContacts.length === 0 && !contactsError && (
+              <ActionableEmptyState
+                icon={Users}
+                title={debouncedSearch ? 'No contacts match your search' : 'No contacts yet'}
+                description={
+                  debouncedSearch
+                    ? `Try a different search term or clear your filters.`
+                    : 'Add your first contact to start building your CRM.'
+                }
+                actionLabel={!debouncedSearch && canCreate ? 'Add Contact' : undefined}
+                onAction={!debouncedSearch && canCreate ? () => { setEditingContact(undefined); setIsFormOpen(true); } : undefined}
+              />
+            )}
+            {filteredContacts.length > 0 && (
+              <ContactsDataGrid
+                sort={sort}
+                onSortChange={setSort}
+                contacts={paginatedContacts}
+                totalRecords={serverTotal}
+                effectiveColumns={effectiveColumns}
+                onRowClick={(contact) => setSelectedContact(contact)}
+                selectedIds={contactSelectedIds}
+                onSelectionChange={setContactSelectedIds}
+                getAccountName={getAccountName}
+                getAssignedUserName={(userId) => assignedAgentName(users, userId)}
+                canEdit={canEdit}
+                canArchive={canDelete}
+                onEdit={(contact) => { setEditingContact(contact); setIsFormOpen(true); }}
+                onArchive={(contact) => confirmArchive([contact.id], getName(contact))}
+                onHideColumn={async (columnId) => {
+                  const updated = effectiveColumns.map((col) =>
+                    col.id === columnId ? { ...col, visible: false } : col,
+                  );
+                  try {
+                    await saveColumns(updated);
+                  } catch {
+                    toast.error('Failed to hide column. Reverted.');
+                  }
+                }}
+                highlightRowId={highlightId}
+                viewMode={viewMode}
+              />
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Bottom Pagination + Per Page ─────────────────────── */}
       {filteredContacts.length > 0 && (
-        <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} refreshing={isRefreshing} />
+        <div hidden={manualRefreshing}>
+          <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} refreshing={isRefreshing} />
+        </div>
       )}
 
       {/* ── Tile View ─────────────────────────────────────────── */}

@@ -1,4 +1,4 @@
-import { workflowOperators, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
+import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
@@ -43,8 +43,11 @@ export async function validateConditionReferences(draft: WorkflowDraft, tenantId
   }
 }
 
-export async function validateWorkflow(draft: WorkflowDraft, tenantId: string): Promise<void> {
+export async function validateWorkflow(draft: WorkflowDraft, tenantId: string, previousConditions?: unknown): Promise<void> {
   await validateConditionReferences(draft, tenantId);
+  const previous = WorkflowConditionSchema.safeParse(previousConditions);
+  const missing = missingWorkflowConditionValues(draft.conditions, previous.success ? previous.data : undefined);
+  if (missing.length) throw new ValidationError(`Condition ${missing[0] + 1}: Enter a value or choose an empty-value operator.`);
   const trigger = findTrigger(draft.trigger)!;
   if (!draft.actions.some(action => action.enabled !== false)) throw new ValidationError('Enable at least one action before activating.');
   for (const [index, action] of draft.actions.entries()) {

@@ -1,17 +1,55 @@
 import React, { useState } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
-import { getAvailableActions, WORKFLOW_TRIGGERS, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { getAvailableActions, WORKFLOW_TRIGGERS, missingWorkflowConditionValues, type WorkflowCondition, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { ActionFields, ConditionFields } from './workflow-fields';
 import { duplicateWorkflowName, workflowNameIssue } from '../services/workflow-editor';
 import { prepareWorkflowRecipe, WORKFLOW_RECIPES, QUALIFIED_FOLLOW_UP_NAME } from '../services/workflow-recipes';
 const options = { users: [], pipelines: [], templates: [], campaigns: [], productInterests: [{ id: 'others', name: 'Others' }] };
+
+function ConditionsEditor() {
+  const [conditions, setConditions] = useState<WorkflowCondition>({ operator: 'AND', conditions: [
+    { field: 'deal.title', operator: 'equals', value: 'First' },
+    { field: 'deal.title', operator: 'equals', value: 'Middle' },
+    { field: 'deal.title', operator: 'equals', value: 'Last' },
+  ] });
+  return <><ConditionFields options={options} trigger={WORKFLOW_TRIGGERS.find(t => t.type === 'deal.created')} value={conditions} onChange={setConditions} /><output data-testid="conditions">{JSON.stringify(conditions)}</output></>;
+}
 afterEach(cleanup);
 function Editor({ entity, config }: { entity: WorkflowEntity; config: Record<string, unknown> }) {
   const [action, setAction] = useState<WorkflowAction>({ type: 'update_field', config });
   return <><ActionFields action={action} entity={entity} options={options} onChange={config => setAction({ ...action, config })} /><output data-testid="config">{JSON.stringify(action.config)}</output></>;
 }
 describe('workflow polish controls', () => {
+  it.each([1, 2, 3])('removes only condition %s, renumbers and keeps the delete button beside its heading', index => {
+    render(<ConditionsEditor />);
+    const remove = screen.getByRole('button', { name: `Remove condition ${index}` });
+    expect(remove.parentElement?.textContent).toBe(`Condition ${index}`);
+    expect(remove.className).toContain('text-destructive');
+    const field = screen.getByLabelText('Condition 1 field');
+    expect(field.getAttribute('aria-required')).toBe('true');
+    expect(field.closest('label')?.querySelector('.text-red-500')?.textContent).toBe('*');
+    expect(screen.getByLabelText('Condition 1 value').closest('label')?.querySelector('.text-red-500')?.textContent).toBe('*');
+    expect(screen.getByRole('button', { name: 'Add condition' }).style.backgroundColor).toBe('var(--primary)');
+    fireEvent.click(remove);
+    expect(JSON.parse(screen.getByTestId('conditions').textContent!).conditions.map((rule: { value: string }) => rule.value)).toEqual(['First', 'Middle', 'Last'].filter((_, i) => i !== index - 1));
+    expect(screen.getByLabelText('Condition 2 value')).toBeTruthy();
+    expect(screen.queryByLabelText('Condition 3 value')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add condition' }));
+    expect(screen.getByLabelText('Condition 3 field')).toBeTruthy();
+  });
+  it('requires new condition values while keeping zero, false, empty operators and saved blank literals', () => {
+    const conditions: WorkflowCondition = { operator: 'AND', conditions: [
+      { field: 'deal.title', operator: 'equals', value: '' },
+      { field: 'deal.value', operator: 'equals', value: 0 },
+      { field: 'deal.customFieldValues.boolean', operator: 'equals', value: false },
+      { field: 'deal.title', operator: 'is_empty', value: null },
+    ] };
+    expect(missingWorkflowConditionValues(conditions)).toEqual([0]);
+    expect(missingWorkflowConditionValues(conditions, conditions)).toEqual([]);
+    expect(missingWorkflowConditionValues(conditions, { ...conditions, conditions: [{ ...conditions.conditions[0], incompleteValue: true }] })).toEqual([0]);
+    expect(missingWorkflowConditionValues({ ...conditions, conditions: [{ field: 'deal.title', operator: 'contains', value: '' }] }, conditions)).toEqual([0]);
+  });
   it('preserves retired Lead details for review and removes them explicitly', () => {
     render(<Editor entity="lead" config={{ field: 'productInterestIds', value: ['others'], otherDetails: 'Saved service' }} />);
     expect(screen.queryByLabelText('Specify (optional)')).toBeNull();

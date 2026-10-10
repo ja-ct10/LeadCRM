@@ -1,4 +1,6 @@
 'use client';
+import { StatusBadge } from '@/shared/components/crm/record-drawer';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
@@ -77,8 +79,10 @@ export default function WorkflowsPage() {
   const columns: DataGridColumnDef<Workflow>[] = [
     { id: 'name', sortable: true, header: 'Name', accessor: row => row.name, width: 240 },
     { id: 'trigger', header: 'Trigger', accessor: row => triggerLabel(row.trigger), width: 210 },
-    { id: 'status', header: 'Status', accessor: row => row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused', width: 110 },
-    { id: 'lastRun', header: 'Last run', accessor: row => row.lastRunAt ? new Date(row.lastRunAt).toLocaleString() : '—', width: 190 },
+    { id: 'status', header: 'Status', accessor: row => row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused', width: 110,
+      cell: (_, row) => <StatusBadge label={row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused'} variant={row.status === 'DRAFT' ? 'neutral' : row.isActive ? 'success' : 'warn'} /> },
+    { id: 'lastRun', header: 'Last run', accessor: row => row.lastRunAt, width: 230,
+      cell: (_, row) => <span title={formatDateTime(row.lastRunAt, { seconds: true })}>{formatDateTime(row.lastRunAt, { seconds: true })}</span> },
     { id: 'runs', header: 'Runs', accessor: row => row.totalRuns ?? 0, width: 190,
       cell: (_, row) => <div><span>{row.totalRuns ?? 0} total</span><span className="block text-xs text-slate-500">{row.successfulRuns ?? 0} successful / {row.failedRuns ?? 0} failed</span></div> },
     { id: 'actions', header: 'Actions', accessor: row => row.id, width: 170,

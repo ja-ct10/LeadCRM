@@ -1,7 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { getWorkflowConditionFields } from '@leadcrm/shared';
-import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
+import { WorkflowBuilderSkeleton } from './workflow-builder-skeleton';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import type {
   WorkflowDraft,
@@ -130,7 +130,7 @@ export default function WorkflowBuilderPage() {
     canCreate,
     retry,
   ]);
-  if (isLoading) return <TableLoadingState label="Loading your workspace…" />;
+  if (isLoading) return <WorkflowBuilderSkeleton />;
   if (authError || !tenant?.id) return <div role="alert" className="p-6 space-y-3"><p>{authError || 'Your workspace is unavailable. Reload your session to continue.'}</p><Button onClick={() => void retryAuthInit()}>Retry</Button><Button variant="outline" onClick={() => router.push('/automation/workflows')}>Back to workflows</Button></div>;
   if (!canView || (!id && !canCreate))
     return (
@@ -146,7 +146,7 @@ export default function WorkflowBuilderPage() {
     );
   if (!loaded)
     return (
-      <TableLoadingState label="Loading workflow…" />
+      <WorkflowBuilderSkeleton />
     );
   return (
     <WorkflowBuilder

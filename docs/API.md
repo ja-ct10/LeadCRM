@@ -292,6 +292,16 @@ See the [workflow production report](workflows/workflow-production-report.md#c-a
 
 Duplicate uses `POST /automation/workflows/:id/duplicate` to create an inactive draft copy. Removal uses archive; there is no workflow DELETE endpoint.
 
+Validation accepts the shared workflow draft plus an optional `workflowId`. The
+server resolves that ID within the current tenant to preserve unchanged literal
+empty-string conditions from previously active workflows. New blank conditions
+must be completed or use `is_empty` / `is_not_empty` before activation. Saving an
+inactive draft retains the existing validation rules.
+The server recalculates `incompleteValue` metadata on saved condition rules so a
+new missing value cannot become a historical-literal exception after a paused
+draft save. This metadata does not change the condition's value or execution
+operator.
+
 Assignment configuration and versioned execution history are documented in
 [Workflow assignment and history](workflows/workflow-assignment-history.md).
 Role/Group assignment methods include round-robin, least workload, random,

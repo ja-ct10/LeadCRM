@@ -24,8 +24,10 @@ it('shows the executed version, snapshot and resolved assignee independently of 
     steps: [{ ...run.steps[0], output: { resolvedUserId: 'user', resolvedUserName: 'Ana', assignmentTargetName: 'Sales team', strategy: 'round_robin' } }],
   }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
   mount(); await settled();
-  expect(screen.getByText('Workflow details · Active · v4')).toBeTruthy();
+  expect(screen.getByText(/Workflow details/).textContent).toBe('Workflow details · Active · v4');
   expect(screen.getByText('Definition used in this run · v2')).toBeTruthy();
+  expect(screen.getByText(/Oct 1, 2026 08:00:00 PM/)).toBeTruthy();
+  expect(screen.getByText(/Finished:/).textContent).toContain('Oct 1, 2026 08:01:00 PM');
   expect(screen.getByText(/Assigned to Ana · Sales team · Round-robin/)).toBeTruthy();
   expect(screen.getByText(/Original follow-up/).textContent).toContain('Old title');
 });
@@ -67,7 +69,7 @@ it('orders header actions and toggles, dismisses and executes the existing workf
   menu(); fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' })); expect(push).toHaveBeenCalledWith('/automation/workflows/wf/edit');
   vi.mocked(workflowsApi.get).mockResolvedValue({ data: { ...workflow, isActive: false, status: 'PAUSED' } } as never);
   menu(); fireEvent.click(screen.getByRole('menuitem', { name: 'Pause' })); await settled();
-  expect(workflowsApi.toggle).toHaveBeenCalledWith('wf', false); await screen.findByText('Workflow details · Paused');
+  expect(workflowsApi.toggle).toHaveBeenCalledWith('wf', false); await waitFor(() => expect(screen.getByText(/Workflow details/).textContent).toBe('Workflow details · Paused'));
   menu(); expect(screen.queryByRole('menuitem', { name: 'Pause' })).toBeNull(); fireEvent.click(screen.getByRole('menuitem', { name: 'Resume' })); await settled();
   expect(workflowsApi.toggle).toHaveBeenCalledWith('wf', true);
   menu(); fireEvent.click(screen.getByRole('menuitem', { name: 'Duplicate' })); await settled(); expect(workflowsApi.duplicate).toHaveBeenCalledWith('wf');
