@@ -13,6 +13,7 @@ import { sendMail } from '../../../../shared/services/email.service';
 import { createCampaign } from '../../../marketing/campaigns/campaigns.service';
 import { dispatchTenantNotifications } from '../../../notifications/notification-events.service';
 import { prepareWorkflowRecipe, WORKFLOW_RECIPES } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-recipes';
+import { bindWorkflowTemplate, workflowTemplateDescriptor } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-template-bindings';
 
 vi.mock('../../../../shared/services/email.service', async importOriginal => ({
   ...await importOriginal<typeof import('../../../../shared/services/email.service')>(),
@@ -66,7 +67,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       email: `workflow-${name}-${stamp}@camxian.com`, firstName: name, lastName: 'Test', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date() } });
     actor = await user('actor'); owner = await user('owner', tenantId, 'Sales'); outsider = await user('outsider', otherTenantId);
     const salesRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales' } });
-    await prisma.rolePermission.createMany({ data: ['leads', 'deals', 'tasks'].map(module => ({ tenantId, roleId: salesRole.id, module, canView: true, canEdit: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'accounts', 'deals', 'tasks'].map(module => ({ tenantId, roleId: salesRole.id, module, canView: true, canEdit: true })) });
     await prisma.userRole.create({ data: { tenantId, userId: owner.id, roleId: salesRole.id } });
     const viewer = await user('viewer', tenantId, 'Workflow Viewer');
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Workflow Viewer', permissions: { create: {
@@ -136,29 +137,41 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     }
   });
   it.each(WORKFLOW_RECIPES)('executes configured catalog template: $name', async recipe => {
-    const draft = prepareWorkflowRecipe(recipe, { users: [{ id: owner.id, name: 'Assigned agent' }], templates: [], campaigns: [],
-      pipelines: [{ id: deal.pipelineId, name: 'Sales', stages: [{ id: required.id, name: 'Qualified' }] }] });
+    const options = (await call('/automation/workflow-options')).body.data;
+    const index = WORKFLOW_RECIPES.indexOf(recipe);
+    let draft = prepareWorkflowRecipe(recipe, options, index);
+    const descriptor = workflowTemplateDescriptor(index);
+    if (descriptor && descriptor.setup !== 'none') draft = bindWorkflowTemplate(draft, index, options, {
+      pipelineId: deal.pipelineId, sourceStageId: deal.stageId,
+      targetStageId: ['pipeline-routing', 'related-deal-routing'].includes(descriptor?.setup ?? '') ? contacted.id : required.id,
+    });
     for (const action of draft.actions) {
       if (action.type === 'assign_owner') action.config.userId = owner.id;
       if (action.type === 'send_email') action.config.senderUserId = actor.id;
       if (action.type === 'move_deal_stage') action.config.stageId = contacted.id;
     }
     const entity = draft.trigger.split('.')[0];
-    const status = draft.conditions?.conditions.find(rule => rule.field === `${entity}.status`)?.value;
+    const status = draft.conditions?.conditions.find(rule => rule.field === `${entity}.status` || rule.field === 'event.newStatus')?.value;
     const stageId = draft.trigger === 'deal.closed_won' ? won.id : draft.trigger === 'deal.closed_lost' ? lost.id
       : draft.trigger === 'deal.stage_changed' ? required.id : deal.stageId;
     const record = await scope(async () => {
       const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', assignedUserId: actor.id };
       if (entity === 'lead') return prisma.lead.create({ data: { ...customer, source: 'Website', status: String(status ?? 'Warm'), productInterest: [] } });
       if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'Warm').toUpperCase() as 'HOT', activeProducts: [], productInterests: [] } });
+      if (entity === 'account') return prisma.account.create({ data: { tenantId, name: 'Ownerless recipe Account' } });
       return prisma.deal.create({ data: { tenantId, title: 'Catalog opportunity', pipelineId: deal.pipelineId, stageId,
         assignedUserId: actor.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true } });
     });
+    const relatedDeal = ['lead', 'contact'].includes(entity) && draft.actions.some(action => action.type === 'move_deal_stage')
+      ? await prisma.deal.create({ data: { tenantId, title: 'Related recipe opportunity', pipelineId: deal.pipelineId, stageId: deal.stageId, assignedUserId: actor.id, wonHistoryVerified: true,
+        ...(entity === 'lead' ? { leadDeals: { create: { leadId: record.id, position: 0 } } } : { contactDeals: { create: { contactId: record.id, position: 0 } } }),
+      } }) : undefined;
     const workflow = await create(draft.actions, { ...draft, name: `${draft.name} ${randomUUID()}`, isActive: true });
     vi.mocked(sendEmail).mockImplementation(async () => ({ messageId: randomUUID(), threadId: randomUUID() }));
     const context = entity === 'deal' && draft.trigger !== 'deal.created'
       ? { 'event.previousStageId': deal.stageId, 'event.newStageId': stageId }
-      : draft.trigger.endsWith('.status_changed') ? { 'event.previousStatus': status === 'Cold' ? 'Warm' : 'Cold', 'event.newStatus': status } : {};
+      : draft.trigger.endsWith('.status_changed') ? { 'event.previousStatus': status === 'Cold' ? 'Warm' : 'Cold', 'event.newStatus': status }
+      : draft.trigger.endsWith('.updated') ? { 'event.changedFields': ['name'] } : {};
     const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: draft.trigger, context };
     await scope(() => fireWorkflowTrigger(event));
     // Delivery retries cannot duplicate tasks or emails from the same event.
@@ -179,8 +192,60 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
         const updated = entity === 'lead' ? await prisma.lead.findUniqueOrThrow({ where: { id: record.id } }) : await prisma.contact.findUniqueOrThrow({ where: { id: record.id } });
         expect(updated[action.config.field as keyof typeof updated]).toBe(action.config.value);
       }
-      if (action.type === 'move_deal_stage') expect((await prisma.deal.findUniqueOrThrow({ where: { id: record.id } })).stageId).toBe(contacted.id);
+      if (action.type === 'move_deal_stage') expect((await prisma.deal.findUniqueOrThrow({ where: { id: relatedDeal?.id ?? record.id } })).stageId).toBe(contacted.id);
+      if (action.type === 'assign_owner') {
+        const model = entity === 'lead' ? prisma.lead : entity === 'contact' ? prisma.contact : prisma.account;
+        expect((await (model as typeof prisma.account).findUniqueOrThrow({ where: { id: record.id } })).assignedUserId).toBe(owner.id);
+      }
     }
+  });
+  it('filters Account sizes through authenticated HTTP, preserves the legacy alias, and rejects unsupported operators', async () => {
+    const industry = randomUUID();
+    const expected = await prisma.account.create({ data: { tenantId, name: 'Matching size', size: 'SMB', industry, assignedUserId: actor.id } });
+    await prisma.account.create({ data: { tenantId, name: 'Other size', size: 'Enterprise', industry } });
+    await prisma.account.create({ data: { tenantId: otherTenantId, name: 'Foreign size', size: 'SMB', industry } });
+    for (const field of ['size', 'type']) {
+      const query = new URLSearchParams({ 'filter[industry]': 'equals:' + industry, [`filter[${field}]`]: 'in:SMB' });
+      const result = await call('/crm/accounts?' + query);
+      expect(result.status, JSON.stringify(result.body)).toBe(200);
+      expect(result.body.data.map((row: { id: string }) => row.id)).toEqual([expected.id]);
+      expect(result.body.meta.total).toBe(1);
+    }
+    const mine = await call('/crm/accounts?' + new URLSearchParams({ 'filter[industry]': 'equals:' + industry, 'filter[scope]': 'equals:my' }));
+    expect(mine.status, JSON.stringify(mine.body)).toBe(200);
+    expect(mine.body.data.map((row: { id: string }) => row.id)).toEqual([expected.id]);
+    expect(mine.body.meta.total).toBe(1);
+    const invalid = await call('/crm/accounts?' + new URLSearchParams({ 'filter[size]': 'greater_than:3' }));
+    expect(invalid.status).toBe(400);
+  });
+  it.each([
+    ['lead', 0, 'single_match'], ['contact', 0, 'single_match'],
+    ['lead', 2, 'single_match'], ['contact', 2, 'single_match'],
+    ['lead', 2, 'all_matching'], ['contact', 2, 'all_matching'],
+  ] as const)('handles %s related-deal routing with %s matches in %s mode through CRM HTTP', async (entity, count, targetMode) => {
+    const customer = { tenantId, firstName: 'Routing', lastName: 'Recipient', assignedUserId: actor.id };
+    const record = entity === 'lead' ? await prisma.lead.create({ data: { ...customer, status: 'Warm' } }) : await prisma.contact.create({ data: { ...customer, status: 'WARM' } });
+    const ids: string[] = [];
+    for (let index = 0; index < count; index++) {
+      const row = await prisma.deal.create({ data: { tenantId, title: 'Routing match ' + index, pipelineId: deal.pipelineId, stageId: deal.stageId, wonHistoryVerified: true,
+        ...(entity === 'lead' ? { leadDeals: { create: { leadId: record.id, position: 0 } } } : { contactDeals: { create: { contactId: record.id, position: 0 } } }),
+      } });
+      ids.push(row.id);
+    }
+    const workflow = await create([{ type: 'move_deal_stage', config: { stageId: contacted.id, currentStageId: deal.stageId, targetMode } }], {
+      trigger: `${entity}.status_changed`, conditions: { operator: 'AND', conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Hot' }] },
+    });
+    const changed = await call(`/crm/${entity === 'lead' ? 'leads' : 'contacts'}/${record.id}`, 'PUT', { status: 'Hot' });
+    expect(changed.status, JSON.stringify(changed.body)).toBe(200);
+    const history = await runs(workflow.id);
+    expect(history).toHaveLength(1);
+    const ambiguous = count > 1 && targetMode === 'single_match';
+    expect(history[0].status, JSON.stringify(history[0])).toBe(ambiguous ? 'failed' : 'completed');
+    if (ambiguous) expect(history[0].errorMessage).toContain('Multiple related Deals');
+    else expect(history[0].steps[0].output).toMatchObject({ matchedDealIds: expect.arrayContaining(ids), movedDealIds: expect.arrayContaining(ids), unchanged: count === 0 });
+    const rows = await prisma.deal.findMany({ where: { id: { in: ids }, tenantId } });
+    expect(rows.every(row => row.stageId === (ambiguous ? deal.stageId : contacted.id))).toBe(true);
+    expect(await prisma.task.count({ where: { tenantId, [entity + 'Links']: { some: { [entity + 'Id']: record.id } } } })).toBe(0);
   });
   it('persists disabled steps, skips their side effects, and validates them again when enabled', async () => {
     const workflow = await create([

@@ -1,13 +1,12 @@
 import type { WorkflowDraft, WorkflowOptions } from '@leadcrm/shared';
+import { prepareWorkflowTemplateBinding, WORKFLOW_TEMPLATE_DESCRIPTORS } from './workflow-template-bindings';
 
 export const QUALIFIED_FOLLOW_UP_NAME = 'Qualified Deal Follow-up';
 
-/** Resolve only an unambiguous stage; otherwise the existing condition editor asks for it. */
-export function prepareWorkflowRecipe(recipe: WorkflowDraft, options: WorkflowOptions): WorkflowDraft {
-  const draft = structuredClone(recipe);
-  if (draft.name !== QUALIFIED_FOLLOW_UP_NAME) return draft;
-  const qualified = options.pipelines.flatMap((pipeline) => pipeline.stages).filter((stage) => stage.name.trim().toLowerCase() === 'qualified');
-  if (qualified.length === 1) draft.conditions!.conditions[0].value = qualified[0].id;
+/** Editable display names never determine template preparation. */
+export function prepareWorkflowRecipe(recipe: WorkflowDraft, options: WorkflowOptions, identity?: number | string): WorkflowDraft {
+  const draft = prepareWorkflowTemplateBinding(recipe, identity ?? WORKFLOW_RECIPES.indexOf(recipe), options);
+  draft.isActive = false;
   return draft;
 }
 
@@ -58,7 +57,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Warm' }],
+      conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Warm' }],
     },
     actions: [
       { type: 'create_task', config: { title: 'Schedule discovery call with {{first_name}}', dueDaysFromNow: 2, priority: 'High', description: 'Prepare presentation deck and schedule qualification call.' } },
@@ -222,9 +221,13 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   },
   {
     name: 'Pipeline Stage Routing',
-    description: 'Move newly created deal into pipeline staging and set up qualification task.',
+    description: 'Move a newly created Deal from a selected source stage to a different open stage in the same pipeline, then create a qualification task. Choose the pipeline and both stages before activating.',
     trigger: 'deal.created',
     isActive: false,
+    conditions: { operator: 'AND', conditions: [
+      { field: 'deal.pipelineId', operator: 'equals', value: '' },
+      { field: 'deal.stageId', operator: 'equals', value: '' },
+    ] },
     actions: [
       { type: 'move_deal_stage', config: { stageId: '' } },
       { type: 'create_task', config: { title: 'Conduct initial qualification review', dueDaysFromNow: 2, priority: 'Medium' } },
@@ -283,20 +286,46 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       { field: 'event.newStageId', operator: 'equals', value: '' },
       { field: 'deal.hasEverBeenWon', operator: 'equals', value: false },
       { field: 'deal.wonHistoryVerified', operator: 'equals', value: true },
+      { field: 'deal.pipelineId', operator: 'equals', value: '' },
     ] },
     actions: [{ type: 'create_task', config: { title: 'Follow up on qualified deal', dueDaysFromNow: 1, priority: 'Medium' } }],
   },
+  {
+    name: 'Hot Lead → Move Related Deal',
+    description: 'When a Lead becomes Hot, move one matching persisted related open Deal from the selected source stage to a different open stage in the same pipeline. Choose both stages and optionally a Product. No matching Deal produces no movement or task; multiple matches require review.',
+    trigger: 'lead.status_changed',
+    isActive: false,
+    conditions: { operator: 'AND', conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Hot' }] },
+    actions: [{ type: 'move_deal_stage', config: { stageId: '', currentStageId: '', targetMode: 'single_match' } }],
+  },
+  {
+    name: 'Hot Contact → Move Related Deal',
+    description: 'When a Contact becomes Hot, move one matching persisted related open Deal from the selected source stage to a different open stage in the same pipeline. Choose both stages and optionally a Product. No matching Deal produces no movement or task; multiple matches require review.',
+    trigger: 'contact.status_changed',
+    isActive: false,
+    conditions: { operator: 'AND', conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Hot' }] },
+    actions: [{ type: 'move_deal_stage', config: { stageId: '', currentStageId: '', targetMode: 'single_match' } }],
+  },
+  {
+    name: 'Selected Stage Entry Follow-up',
+    description: 'Create a Deal task after an actual move into the selected pipeline stage. A later distinct entry can create another task. Creation directly in the stage and ordinary edits do not trigger this workflow. Review the task assignee, due interval and priority before activating.',
+    trigger: 'deal.stage_changed',
+    isActive: false,
+    conditions: { operator: 'AND', conditions: [
+      { field: 'deal.pipelineId', operator: 'equals', value: '' },
+      { field: 'event.newStageId', operator: 'equals', value: '' },
+    ] },
+    actions: [{ type: 'create_task', config: { title: 'Complete follow-up for entered Deal stage', dueDaysFromNow: 1, priority: 'Medium' } }],
+  },
+  {
+    name: 'Ownerless Account Routing',
+    description: 'Assign an eligible agent when an Account is updated with no assigned agent. Choose an agent, role or Group before activating. Existing assigned Accounts do not match; this is an update workflow, not a scheduled cleanup.',
+    trigger: 'account.updated',
+    isActive: false,
+    conditions: { operator: 'AND', conditions: [{ field: 'account.assignedUserId', operator: 'is_empty', value: null }] },
+    actions: [{ type: 'assign_owner', config: { userId: '' } }],
+  },
 ];
 
-/** The nine starter templates shown in the chooser, with their original URL indexes. */
-export const WORKFLOW_STARTER_TEMPLATES = [
-  0,  // New Lead Follow-up
-  1,  // Hot Lead Urgent Response
-  7,  // New Lead Email Welcome
-  8,  // Contact Onboarding Handoff
-  10, // At-Risk Contact Follow-up
-  22, // Qualified Deal Follow-up
-  13, // High-value Deal Review
-  18, // Won Deal Handoff
-  20, // Lost Deal Win/Loss Analysis
-].map(index => ({ index, recipe: WORKFLOW_RECIPES[index] }));
+/** Sixteen curated starters retain every existing numeric URL index. */
+export const WORKFLOW_STARTER_TEMPLATES = WORKFLOW_TEMPLATE_DESCRIPTORS.map(descriptor => ({ ...descriptor, recipe: WORKFLOW_RECIPES[descriptor.index] }));

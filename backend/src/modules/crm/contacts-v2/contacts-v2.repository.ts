@@ -9,7 +9,15 @@ import { salesTransaction } from '../leads/lead-automation.service';
 import { assertClosedStatus, cancelOpenDeals, contactStatusValue } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import { parseFilterParams, buildPrismaFilters } from '../../../shared/helpers/filter-parser';
+import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
+
+const CONTACT_FILTER_FIELDS: FilterFields = {
+  status: { kind: 'choice', operators: ['equals', 'in', 'not_in'] },
+  assignedUserId: { kind: 'reference' }, accountId: { kind: 'reference' },
+  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my', 'active'], handled: true },
+  system: { kind: 'choice', operators: ['in'], options: ['touched', 'untouched'], handled: true },
+  related: { kind: 'choice', operators: ['in'], options: ['has_deals'], handled: true },
+};
 
 /**
  * Contacts V2 Repository — queries the Contact table.
@@ -38,7 +46,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     statusFilter.value = values.map(value => CrmStatusSchema.parse(value).toUpperCase());
     if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
   }
-  const clauses = buildPrismaFilters(filters, new Set(['status', 'assignedUserId', 'accountId']));
+  const clauses = buildPrismaFilters(filters, CONTACT_FILTER_FIELDS);
   const scope = filters.find(filter => filter.field === 'scope')?.value;
   if (scope === 'my') clauses.push({ assignedUserId: String(query.currentUserId ?? '') });
   if (scope === 'active') clauses.push({ status: { in: ['HOT', 'WARM'] } });

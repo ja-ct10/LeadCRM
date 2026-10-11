@@ -9,6 +9,7 @@ import {
   type WorkflowEntity,
 } from '@leadcrm/shared';
 import { operatorLabels } from './workflow-editor';
+import { workflowTemplateDescriptor } from './workflow-template-bindings';
 
 export const workflowRecordLabels: Record<WorkflowEntity, string> = {
   lead: 'Leads', contact: 'Contacts', deal: 'Deals', account: 'Accounts',
@@ -41,8 +42,17 @@ export function templateAvailability(
   return [...new Set(issues)];
 }
 
-export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition | undefined, actions: ActionDefinition[]): string[] {
+export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition | undefined, actions: ActionDefinition[], identity?: number | string): string[] {
   const notes: string[] = [];
+  const descriptor = workflowTemplateDescriptor(identity);
+  if (descriptor?.trigger === recipe.trigger) {
+    if (descriptor.setup === 'pipeline-routing') notes.push('Choose one pipeline and different open source and target stages in linked setup. These choices connect the matching conditions and Move Deal Stage action.');
+    if (descriptor.setup === 'related-deal-routing') {
+      notes.push('Choose a pipeline and different open source and target stages in linked setup. Optionally narrow related Deals to a Product.');
+      notes.push('The default moves one matching persisted related open Deal. No matches produce no movement or task; multiple matches require review. All matching moves sequentially and can partially complete.');
+    }
+    if (descriptor.setup === 'stage-entry' || descriptor.setup === 'qualified-entry') notes.push('Choose the pipeline and entry stage in linked setup. An actual entry creates the task; a later distinct entry can create another task.');
+  }
   for (const action of recipe.actions) {
     const definition = actions.find(entry => entry.type === action.type);
     for (const [key, field] of Object.entries(definition?.configSchema ?? {})) {
@@ -59,7 +69,7 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
       const field = trigger && getWorkflowUpdateFields(trigger.entity).find(entry => entry.field === action.config.field);
       notes.push(`The ${field?.label.toLowerCase() ?? 'selected'} field will be replaced with the configured value.`);
     }
-    if (action.type === 'move_deal_stage') notes.push('Choose a stage in the deal’s pipeline. Existing pipeline transition rules still apply.');
+    if (action.type === 'move_deal_stage') notes.push('The destination must be in the Deal’s current pipeline. Stage entry requirements and existing transition rules still apply.');
   }
   for (const rule of recipe.conditions?.conditions ?? []) {
     const field = trigger?.fields.find(entry => entry.field === rule.field);
@@ -68,6 +78,13 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
     }
   }
   return [...new Set(notes)];
+}
+
+export function templateBehaviorLabel(recipe: WorkflowDraft): string {
+  if (recipe.actions.some(action => action.type === 'move_deal_stage')) return recipe.actions.some(action => action.type === 'create_task') ? 'Move Deal + create task' : 'Move related Deal';
+  if (recipe.actions.some(action => action.type === 'send_email')) return 'Send email + follow-up';
+  if (recipe.actions.some(action => action.type === 'assign_owner')) return recipe.actions.some(action => action.type === 'create_task') ? 'Assign agent + create task' : 'Assign agent';
+  return recipe.trigger === 'deal.stage_changed' ? 'Task on stage entry' : 'Create follow-up task';
 }
 
 export function templateConditionLabel(rule: NonNullable<WorkflowDraft['conditions']>['conditions'][number], trigger?: TriggerDefinition): string {

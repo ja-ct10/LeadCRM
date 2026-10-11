@@ -2,10 +2,12 @@ import { describe, expect, it } from 'vitest';
 import { CRM_STATUSES, getAvailableActions, WORKFLOW_TRIGGERS, WorkflowDraftSchema } from '@leadcrm/shared';
 import { editorDocument, editorIssues } from './workflow-editor';
 import { prepareWorkflowRecipe, WORKFLOW_RECIPES, WORKFLOW_STARTER_TEMPLATES } from './workflow-recipes';
-import { templateAvailability, templateConditionLabel, templateSetup } from './workflow-template-catalog';
+import { templateAvailability, templateBehaviorLabel, templateConditionLabel, templateSetup } from './workflow-template-catalog';
+import { bindWorkflowTemplate, workflowTemplateDescriptor, workflowTemplateSetupIssues } from './workflow-template-bindings';
 const userId = '30000000-0000-4000-8000-000000000001';
 const stageId = '30000000-0000-4000-8000-000000000002';
-const options = { senders: [{ id: userId, name: "Sender" }], users: [{ id: userId, name: 'Agent' }], pipelines: [{ id: '30000000-0000-4000-8000-000000000003', name: 'Sales', stages: [{ id: stageId, name: 'Qualified' }] }], templates: [], campaigns: [] };
+const sourceStageId = '30000000-0000-4000-8000-000000000004';
+const options = { senders: [{ id: userId, name: "Sender" }], users: [{ id: userId, name: 'Agent' }], pipelines: [{ id: '30000000-0000-4000-8000-000000000003', name: 'Sales', stages: [{ id: sourceStageId, name: 'Lead', isWon: false, isLost: false }, { id: stageId, name: 'Qualified', isWon: false, isLost: false }] }], templates: [], campaigns: [] };
 describe('complete workflow recipe catalog', () => {
   it('retains the approved starters in display order with stable template URL indexes', () => {
     expect(WORKFLOW_STARTER_TEMPLATES.map(({ index, recipe }) => [index, recipe.name])).toEqual([
@@ -18,6 +20,13 @@ describe('complete workflow recipe catalog', () => {
       [13, 'High-value Deal Review'],
       [18, 'Won Deal Handoff'],
       [20, 'Lost Deal Win/Loss Analysis'],
+      [2, 'Website Inbound Lead Triage'],
+      [3, 'Warm Lead Discovery Preparation'],
+      [17, 'Pipeline Stage Routing'],
+      [23, 'Hot Lead → Move Related Deal'],
+      [24, 'Hot Contact → Move Related Deal'],
+      [25, 'Selected Stage Entry Follow-up'],
+      [26, 'Ownerless Account Routing'],
     ]);
   });
   it.each(WORKFLOW_RECIPES)('$name matches supported metadata and validates after configuring references', recipe => {
@@ -30,13 +39,18 @@ describe('complete workflow recipe catalog', () => {
         expect(CRM_STATUSES.map(status => status.toLowerCase())).toContain(String(condition.value).toLowerCase());
       }
     }
-    const draft = prepareWorkflowRecipe(recipe, options);
+    const index = WORKFLOW_RECIPES.indexOf(recipe);
+    let draft = prepareWorkflowRecipe(recipe, options, index);
+    if (['pipeline-routing', 'related-deal-routing', 'stage-entry'].includes(workflowTemplateDescriptor(index)?.setup ?? '')) {
+      draft = bindWorkflowTemplate(draft, index, options, { pipelineId: options.pipelines[0].id, sourceStageId, targetStageId: stageId });
+    }
     draft.actions.forEach(action => {
       if (action.type === 'assign_owner') action.config.userId = userId;
       if (action.type === 'send_email') action.config.senderUserId = userId;
       if (action.type === 'move_deal_stage') action.config.stageId = stageId;
     });
     expect(editorIssues(editorDocument(draft), WORKFLOW_TRIGGERS, actions, options)).toEqual([]);
+    expect(workflowTemplateSetupIssues(draft, index, options)).toEqual([]);
     expect(recipe).toEqual(original);
     expect(draft.isActive).toBe(false);
   });
@@ -46,5 +60,24 @@ describe('complete workflow recipe catalog', () => {
     expect(templateSetup({ ...recipe, actions: [{ type: 'update_field', config: { field: 'address', value: 'New address' } }] }, trigger, getAvailableActions()).join(' ')).toContain('field will be replaced');
     expect(templateSetup(WORKFLOW_RECIPES[0], WORKFLOW_TRIGGERS[0], getAvailableActions()).join(' ')).toContain('Choose agent');
     expect(templateConditionLabel({ field: 'deal.hasEverBeenWon', operator: 'equals', value: false }, WORKFLOW_TRIGGERS.find(trigger => trigger.type === 'deal.stage_changed'))).toBe('Has ever reached Won is No');
+  });
+  it('labels actual movement separately from stage-entry tasks and explains related targeting', () => {
+    expect(templateBehaviorLabel(WORKFLOW_RECIPES[17])).toBe('Move Deal + create task');
+    expect(templateBehaviorLabel(WORKFLOW_RECIPES[22])).toBe('Task on stage entry');
+    expect(templateBehaviorLabel(WORKFLOW_RECIPES[23])).toBe('Move related Deal');
+    const notes = templateSetup(WORKFLOW_RECIPES[23], WORKFLOW_TRIGGERS.find(trigger => trigger.type === 'lead.status_changed'), getAvailableActions(), 23).join(' ');
+    expect(notes).toContain('No matches produce no movement or task');
+    expect(notes).toContain('multiple matches require review');
+    expect(notes).toContain('different open source and target stages');
+  });
+  it('keeps new related moves task-free and Account routing event-driven', () => {
+    for (const index of [23, 24]) {
+      expect(WORKFLOW_RECIPES[index].conditions?.conditions).toEqual([{ field: 'event.newStatus', operator: 'equals', value: 'Hot' }]);
+      expect(WORKFLOW_RECIPES[index].actions.map(action => action.type)).toEqual(['move_deal_stage']);
+      expect(WORKFLOW_RECIPES[index].actions[0].config.targetMode).toBe('single_match');
+    }
+    expect(WORKFLOW_RECIPES[26].trigger).toBe('account.updated');
+    expect(WORKFLOW_RECIPES[26].conditions?.conditions).toEqual([{ field: 'account.assignedUserId', operator: 'is_empty', value: null }]);
+    expect(WORKFLOW_RECIPES[26].actions.map(action => action.type)).toEqual(['assign_owner']);
   });
 });

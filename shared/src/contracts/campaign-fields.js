@@ -10,6 +10,7 @@ exports.campaignConditionField = campaignConditionField;
 exports.campaignFieldOperators = campaignFieldOperators;
 exports.campaignConditionError = campaignConditionError;
 const field_catalog_1 = require("./field-catalog");
+const condition_operators_1 = require("./condition-operators");
 exports.CAMPAIGN_VARIABLE_CATEGORIES = ['Standard Fields', 'Custom Fields', 'Sender'];
 function supportedModules(source) {
     if (!source)
@@ -84,16 +85,7 @@ function campaignConditionField(key, fields) {
     return fields.find(field => field.technicalKey === native || field.canonicalTechnicalKey === native);
 }
 function campaignFieldOperators(field) {
-    const presence = ['is_empty', 'is_not_empty'];
-    if (!field || field.type === 'file')
-        return presence;
-    if (field.type === 'date')
-        return ['any', 'gte', 'lte', 'between', ...presence];
-    if (field.type === 'number')
-        return ['equals', 'not_equals', 'gt', 'gte', 'lt', 'lte', ...presence];
-    if (['dropdown', 'reference', 'products', 'boolean'].includes(field.type))
-        return ['equals', 'not_equals', ...presence];
-    return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', ...presence];
+    return (0, condition_operators_1.conditionOperators)('audience', (0, condition_operators_1.conditionFieldKind)(field?.type));
 }
 function campaignConditionError(condition, fields) {
     const field = campaignConditionField(condition.field, fields);
@@ -105,9 +97,9 @@ function campaignConditionError(condition, fields) {
         return condition.value === null ? undefined : 'This operator has no value.';
     const value = condition.value;
     if (field.type === 'number')
-        return typeof value === 'number' && Number.isFinite(value) ? undefined : `Enter a number for ${field.label}.`;
+        return (0, condition_operators_1.validConditionScalar)('number', value) ? undefined : `Enter a number for ${field.label}.`;
     if (field.type === 'boolean')
-        return typeof value === 'boolean' ? undefined : `Select Yes or No for ${field.label}.`;
+        return (0, condition_operators_1.validConditionScalar)('boolean', value) ? undefined : `Select Yes or No for ${field.label}.`;
     if (field.type === 'products')
         return Array.isArray(value) && value.length && value.every(id => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id)) ? undefined : 'Select at least one product.';
     if (field.type === 'reference')

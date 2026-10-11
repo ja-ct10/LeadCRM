@@ -152,11 +152,11 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
   return newStage;
 }
 
-export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto) {
+export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto, guard?: import('./deal-lifecycle').RelatedDealMoveGuard) {
   const newStage = await validateDealStageMove(id, tenantId, dto);
   let result;
   try {
-    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason, dto.confirmation);
+    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason, dto.confirmation, undefined, guard);
   } catch (error) {
     mapRepositoryError(error, 'moveDealStage');
   }

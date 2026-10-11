@@ -1,5 +1,5 @@
 'use client';
-import { useState } from 'react';
+import { useId, useState, type ReactNode } from 'react';
 import { Trash2 } from 'lucide-react';
 import type {
   ActionDefinition,
@@ -8,13 +8,16 @@ import type {
   WorkflowOptions,
   TriggerDefinition,
   WorkflowEntity,
+  WorkflowDraft,
 } from '@leadcrm/shared';
-import { getWorkflowUpdateFields, getWorkflowMessageVariables, WORKFLOW_MODULES, workflowOperators } from '@leadcrm/shared';
+import { conditionOperatorLabel, conditionOperatorValueShape, missingWorkflowConditionValues, getWorkflowUpdateFields, getWorkflowMessageVariables, WORKFLOW_MODULES, workflowOperators } from '@leadcrm/shared';
+import { transitionConditionField, transitionConditionOperator } from '@/shared/services/condition-editor';
 import { Button } from '@/shared/components/ui/button';
 import { ConditionFieldSelect, ConditionOperatorSelect, ConditionScalarInput } from '@/shared/components/condition-controls';
 import { Input } from '@/shared/components/ui/input';
-import { operatorLabels, references, retiredActionLabels } from '../services/workflow-editor';
+import { conditionRuleIssue, newWorkflowCondition, references, retiredActionLabels } from '../services/workflow-editor';
 import { WorkflowAssignmentFields } from './workflow-assignment-fields';
+import { workflowTemplateBinding, workflowTemplateDescriptor, workflowTemplateStageChoices, type WorkflowTemplateBindingPatch } from '../services/workflow-template-bindings';
 export const workflowControl =
   'w-full min-w-0 rounded-lg border border-[var(--border)] bg-[var(--background)] p-2 text-sm text-[var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)]';
 export const emptyOptions: WorkflowOptions = {
@@ -24,6 +27,40 @@ export const emptyOptions: WorkflowOptions = {
   campaigns: [],
 };
 export const referenceOptions = references;
+
+export function WorkflowTemplateFields({ draft, templateIndex, options, onChange, onDetach }: {
+  draft: WorkflowDraft; templateIndex: number; options: WorkflowOptions;
+  onChange: (patch: WorkflowTemplateBindingPatch) => void; onDetach: () => void;
+}) {
+  const [localPipelineId, setLocalPipelineId] = useState(() => options.pipelines.length === 1 ? options.pipelines[0].id : '');
+  const descriptor = workflowTemplateDescriptor(templateIndex);
+  const binding = workflowTemplateBinding(draft, templateIndex, options, localPipelineId);
+  const routing = descriptor?.setup === 'pipeline-routing' || descriptor?.setup === 'related-deal-routing';
+  const stages = workflowTemplateStageChoices(options, binding.pipelineId, routing || descriptor?.setup === 'qualified-entry');
+  const stageSelect = (role: 'sourceStageId' | 'targetStageId', label: string) => <label className="block space-y-1">
+    {label}
+    <select aria-label={label} aria-required="true" className={workflowControl} value={binding[role]} disabled={!binding.pipelineId} onChange={event => onChange({ pipelineId: binding.pipelineId, [role]: event.target.value })}>
+      <option value="">Choose a stage</option>
+      {binding[role] && !stages.some(stage => stage.id === binding[role]) && <option value={binding[role]}>Unavailable selection — repair required</option>}
+      {stages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+    </select>
+  </label>;
+  return <fieldset className="space-y-3 rounded-xl border border-[var(--border)] p-3 text-sm">
+    <legend className="px-1 font-semibold">Template stage setup</legend>
+    <p className="text-xs text-[var(--muted-foreground)]">{routing ? 'Choose different open source and target stages in the same pipeline. These selections update the workflow rules and stage action together.' : 'Select the pipeline and entry stage. A new task is created for each matching stage-entry event.'}</p>
+    <label className="block space-y-1">Template pipeline
+      <select aria-label="Template pipeline" aria-required="true" className={workflowControl} value={binding.pipelineId} onChange={event => { setLocalPipelineId(event.target.value); onChange({ pipelineId: event.target.value }); }}>
+        <option value="">Choose a pipeline</option>
+        {binding.pipelineId && !options.pipelines.some(pipeline => pipeline.id === binding.pipelineId) && <option value={binding.pipelineId}>Unavailable pipeline — repair required</option>}
+        {options.pipelines.map(pipeline => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}
+      </select>
+    </label>
+    {routing && stageSelect('sourceStageId', 'Template source stage')}
+    {stageSelect('targetStageId', routing ? 'Template target stage' : 'Template entry stage')}
+    {descriptor?.setup === 'related-deal-routing' && <p className="text-xs text-[var(--muted-foreground)]">The default moves one matching related open Deal. Multiple matches need more filters or an explicit All matching selection.</p>}
+    <Button type="button" variant="link" className="h-auto px-0 text-xs" onClick={onDetach}>Customize without linked template setup</Button>
+  </fieldset>;
+}
 
 function UpdateFieldFields({ action, options, entity, onChange }: {
   action: WorkflowAction; options: WorkflowOptions; entity?: WorkflowEntity;
@@ -89,12 +126,16 @@ export function ConditionFields({
   trigger,
   options,
   onChange,
+  previousConditions,
 }: {
   value: WorkflowCondition;
   trigger?: TriggerDefinition;
   options: WorkflowOptions;
   onChange: (value: WorkflowCondition) => void;
+  previousConditions?: WorkflowCondition | null;
 }) {
+  const id = useId();
+  const missingValues = missingWorkflowConditionValues(value, previousConditions);
   return (
     <div className="space-y-4 text-sm">
       <label className="block space-y-1">
@@ -118,6 +159,10 @@ export function ConditionFields({
           field?.options?.map((option) => ({ id: option, name: field?.optionLabels?.[option] ?? option })) ??
           references(field?.type ?? '', options);
         const choices = rawChoices;
+        const operators = field ? workflowOperators(field.type) : [];
+        const supported = !!field && operators.includes(rule.operator);
+        const issue = conditionRuleIssue(rule, trigger, options) || (missingValues.includes(index) ? 'Enter a value or choose an empty-value operator.' : '');
+        const issueId = `${id}-condition-${index}-error`;
         const update = (patch: Partial<typeof rule>) =>
           onChange({
             ...value,
@@ -138,16 +183,17 @@ export function ConditionFields({
             </div>
             <label className="block">
               <span>Field <span className="text-red-500" aria-hidden="true">*</span></span>
-              <ConditionFieldSelect required label={`Condition ${index + 1} field`} className={workflowControl} value={rule.field} fields={(trigger?.fields ?? []).map(field => ({ key: field.field, label: field.label, group: field.group === 'custom' ? 'Custom Fields' : 'Standard Fields' }))} onChange={key => {
+              <ConditionFieldSelect required label={`Condition ${index + 1} field`} aria-required="true" aria-invalid={!field} aria-describedby={issue ? issueId : undefined} className={workflowControl} value={rule.field} fields={(trigger?.fields ?? []).map(field => ({ key: field.field, label: field.label, group: field.group === 'custom' ? 'Custom Fields' : 'Standard Fields' }))} onChange={key => {
                 const next = trigger?.fields.find(field => field.field === key);
-                update({ field: key, operator: workflowOperators(next?.type ?? 'string')[0], value: next?.type === 'number' ? 0 : next?.type === 'boolean' ? false : '' });
+                const changed = transitionConditionField(rule, next && { key: next.field, type: next.type }, next ? workflowOperators(next.type) : [], 'workflow');
+                update({ ...changed, operator: (changed.operator || 'equals') as typeof rule.operator, incompleteValue: undefined });
               }} />
             </label>
             <label className="block">
               Operator
-              <ConditionOperatorSelect label={`Condition ${index + 1} operator`} className={workflowControl} value={rule.operator} operators={workflowOperators(field?.type ?? 'string').map(key => ({ key, label: operatorLabels[key] }))} onChange={operator => update({ operator: operator as typeof rule.operator })} />
+              <ConditionOperatorSelect label={`Condition ${index + 1} operator`} aria-invalid={!!field && !supported} aria-describedby={issue ? issueId : undefined} disabled={!field} className={workflowControl} value={rule.operator} operators={operators.map(key => ({ key, label: conditionOperatorLabel(key) }))} onChange={operator => update({ ...transitionConditionOperator(rule, operator, field?.type, 'workflow'), operator: operator as typeof rule.operator, incompleteValue: undefined })} />
             </label>
-            {!['is_empty', 'is_not_empty'].includes(rule.operator) && (
+            {conditionOperatorValueShape(rule.operator) !== 'none' && (
               <label className="block">
                 <span>Value <span className="text-red-500" aria-hidden="true">*</span></span>
                 {field?.type === 'boolean' ? (
@@ -155,11 +201,15 @@ export function ConditionFields({
                     className={workflowControl}
                     aria-label={`Condition ${index + 1} value`}
                     aria-required="true"
-                    value={String(rule.value)}
+                    aria-invalid={!!issue}
+                    aria-describedby={issue ? issueId : undefined}
+                    disabled={!supported}
+                    value={typeof rule.value === 'boolean' ? String(rule.value) : ''}
                     onChange={(event) =>
-                      update({ value: event.target.value === 'true' })
+                      update({ value: event.target.value === '' ? '' : event.target.value === 'true' })
                     }
                   >
+                    <option value="">Choose…</option>
                     <option value="true">Yes</option>
                     <option value="false">No</option>
                   </select>
@@ -167,6 +217,9 @@ export function ConditionFields({
                   <select
                     aria-label={`Condition ${index + 1} value`}
                     aria-required="true"
+                    aria-invalid={!!issue}
+                    aria-describedby={issue ? issueId : undefined}
+                    disabled={!supported}
                     className={workflowControl}
                     value={String(rule.value ?? '')}
                     onChange={(event) => update({ value: event.target.value })}
@@ -179,11 +232,12 @@ export function ConditionFields({
                       </option>
                     ))}
                   </select>
-                ) : field?.multiline ? <textarea aria-label={`Condition ${index + 1} value`} aria-required="true" className={workflowControl} rows={4} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
-                  <ConditionScalarInput aria-label={`Condition ${index + 1} value`} aria-required="true" className={workflowControl} type={field?.type === 'number' ? 'number' : field?.type === 'date' ? 'date' : 'text'} maxLength={field?.maxLength ?? 1000} value={rule.value} onValueChange={value => update({ value })} />
+                ) : field?.multiline ? <textarea aria-label={`Condition ${index + 1} value`} aria-required="true" aria-invalid={!!issue} aria-describedby={issue ? issueId : undefined} disabled={!supported} className={workflowControl} rows={4} maxLength={field.maxLength} value={String(rule.value ?? '')} onChange={event => update({ value: event.target.value })} /> : (
+                  <ConditionScalarInput aria-label={`Condition ${index + 1} value`} aria-required="true" aria-invalid={!!issue} aria-describedby={issue ? issueId : undefined} disabled={!supported} className={workflowControl} type={!field ? typeof rule.value === 'number' ? 'number' : 'text' : field.type === 'number' ? 'number' : field.type === 'date' ? 'date' : 'text'} maxLength={field?.maxLength ?? 1000} value={rule.value} onValueChange={value => update({ value })} />
                 )}
               </label>
             )}
+            {issue && <p id={issueId} role="status" className="text-sm text-destructive">{issue}</p>}
           </div>
         );
       })}
@@ -195,11 +249,7 @@ export function ConditionFields({
             ...value,
             conditions: [
               ...value.conditions,
-              {
-                field: trigger?.fields[0]?.field ?? '',
-                operator: workflowOperators(trigger?.fields[0]?.type ?? 'string')[0],
-                value: trigger?.fields[0]?.type === 'number' ? 0 : '',
-              },
+              newWorkflowCondition(trigger?.fields[0]),
             ],
           })
         }
@@ -216,12 +266,14 @@ export function ActionFields({
   options,
   entity,
   onChange,
+  stageSetup,
 }: {
   action: WorkflowAction;
   definition?: ActionDefinition;
   options: WorkflowOptions;
   entity?: WorkflowEntity;
   onChange: (config: Record<string, unknown>) => void;
+  stageSetup?: ReactNode;
 }) {
   const [pipeline, setPipeline] = useState('');
   const selectedPipeline =
@@ -235,7 +287,8 @@ export function ActionFields({
       <p className="text-[var(--muted-foreground)]">{definition?.description}</p>
       {['create_task', 'assign_owner'].includes(action.type) && <WorkflowAssignmentFields action={action} entity={entity} options={options} className={workflowControl} onChange={onChange} />}
       {action.type === 'send_sms' && options.smsConfigured === false && <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">SMS is not configured. You can save this draft and connect SMS before activating it.</p>}
-      {action.type === 'move_deal_stage' && (
+      {action.type === 'move_deal_stage' && stageSetup}
+      {action.type === 'move_deal_stage' && !stageSetup && (
         <label className="block space-y-1">
           Pipeline
           <select
@@ -259,6 +312,7 @@ export function ActionFields({
         </label>
       )}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
+        if (action.type === 'move_deal_stage' && stageSetup && ['stageId', 'currentStageId'].includes(key)) return null;
         if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) return null;
         if (action.type === 'move_deal_stage' && entity === 'deal' && ['targetMode', 'productInterestId', 'currentStageId'].includes(key)) return null;
         let choices = key === 'senderUserId' ? options.senders ?? [] :

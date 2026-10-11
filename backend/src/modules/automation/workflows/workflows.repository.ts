@@ -13,7 +13,7 @@ import { isSmsConfigured } from '../../../shared/services/sms.service';
 export async function builderOptions(tenantId: string, marketing: boolean, access: { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles?: boolean; groups?: boolean } = { contacts: false, accounts: false, leads: false, deals: false, products: false, users: false }) {
   const [assignments, pipelines, templates, productInterests, accounts, contacts, leads, senders] = await Promise.all([
     access.users || access.roles || access.groups ? assignmentOptions(prisma, tenantId, { users: access.users, roles: !!access.roles, groups: !!access.groups }) : { users: [], taskAssignees: [], roles: [], groups: [] },
-    access.deals ? prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { select: { id: true, name: true }, orderBy: { order: 'asc' } } } }) : [],
+    access.deals ? prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { select: { id: true, name: true, isWon: true, isLost: true, requiredFields: true }, orderBy: { order: 'asc' } } } }) : [],
     marketing ? prisma.template.findMany({ where: { tenantId, isArchived: false, type: 'Email' }, select: { id: true, name: true } }) : [],
     access.products ? prisma.productInterest.findMany({ where: { tenantId, active: true }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
     access.accounts ? prisma.account.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],

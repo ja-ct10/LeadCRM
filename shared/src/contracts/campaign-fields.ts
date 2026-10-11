@@ -1,6 +1,7 @@
 import { getCrmFieldCatalog, type CrmFieldCatalogEntry, type FieldLayout } from './field-catalog';
 import type { ClosingField, CustomFieldModule } from './closing-requirements';
 import type { AudienceCondition } from './campaign-email';
+import { conditionFieldKind, conditionOperators, validConditionScalar } from './condition-operators';
 
 export const CAMPAIGN_VARIABLE_CATEGORIES = ['Standard Fields', 'Custom Fields', 'Sender'] as const;
 export interface CampaignVariableChoice {
@@ -75,12 +76,7 @@ export function campaignConditionField(key: string, fields: CrmFieldCatalogEntry
   return fields.find(field => field.technicalKey === native || field.canonicalTechnicalKey === native);
 }
 export function campaignFieldOperators(field?: CrmFieldCatalogEntry): AudienceCondition['operator'][] {
-  const presence: AudienceCondition['operator'][] = ['is_empty', 'is_not_empty'];
-  if (!field || field.type === 'file') return presence;
-  if (field.type === 'date') return ['any', 'gte', 'lte', 'between', ...presence];
-  if (field.type === 'number') return ['equals', 'not_equals', 'gt', 'gte', 'lt', 'lte', ...presence];
-  if (['dropdown', 'reference', 'products', 'boolean'].includes(field.type)) return ['equals', 'not_equals', ...presence];
-  return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', ...presence];
+  return conditionOperators('audience', conditionFieldKind(field?.type)) as AudienceCondition['operator'][];
 }
 export function campaignConditionError(condition: AudienceCondition, fields: CrmFieldCatalogEntry[]): string | undefined {
   const field = campaignConditionField(condition.field, fields);
@@ -88,8 +84,8 @@ export function campaignConditionError(condition: AudienceCondition, fields: Crm
   if (!campaignFieldOperators(field).includes(condition.operator)) return `Choose a supported operator for ${field.label}.`;
   if (['is_empty', 'is_not_empty', 'any'].includes(condition.operator)) return condition.value === null ? undefined : 'This operator has no value.';
   const value = condition.value;
-  if (field.type === 'number') return typeof value === 'number' && Number.isFinite(value) ? undefined : `Enter a number for ${field.label}.`;
-  if (field.type === 'boolean') return typeof value === 'boolean' ? undefined : `Select Yes or No for ${field.label}.`;
+  if (field.type === 'number') return validConditionScalar('number', value) ? undefined : `Enter a number for ${field.label}.`;
+  if (field.type === 'boolean') return validConditionScalar('boolean', value) ? undefined : `Select Yes or No for ${field.label}.`;
   if (field.type === 'products') return Array.isArray(value) && value.length && value.every(id => /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(id)) ? undefined : 'Select at least one product.';
   if (field.type === 'reference') return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f-]{27}$/i.test(value) ? undefined : `Select ${field.label}.`;
   if (field.type === 'date') {

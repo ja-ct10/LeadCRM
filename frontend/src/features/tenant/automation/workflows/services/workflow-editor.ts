@@ -1,5 +1,6 @@
 import {
   workflowOperators,
+  conditionOperatorLabel,
   missingWorkflowConditionValues,
   workflowMessageVariableKeys,
   WORKFLOW_MODULES,
@@ -13,7 +14,9 @@ import {
   type WorkflowCondition,
   type WorkflowDraft,
   type WorkflowOptions,
+  type WorkflowField,
 } from '@leadcrm/shared';
+import { initialConditionValue } from '@/shared/services/condition-editor';
 import { assignmentIssues, assignmentSummary } from './workflow-assignment';
 
 export type StepSelection =
@@ -195,23 +198,13 @@ export function referenceName(
         'Unavailable selection')
     : fallback;
 }
-export const operatorLabels: Record<WorkflowConditionRule['operator'], string> =
-  {
-    equals: 'is',
-    not_equals: 'is not',
-    greater_than: 'is greater than',
-    less_than: 'is less than',
-    greater_than_or_equal: 'is at least',
-    less_than_or_equal: 'is at most',
-    contains: 'contains',
-    not_contains: 'does not contain',
-    starts_with: 'starts with',
-    ends_with: 'ends with',
-    is_empty: 'is empty',
-    is_not_empty: 'is not empty',
-    before: 'is before',
-    after: 'is after',
-  };
+export const operatorLabels = Object.fromEntries(
+  ['equals', 'not_equals', 'greater_than', 'greater_than_or_equal', 'less_than', 'less_than_or_equal', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty', 'before', 'after'].map(key => [key, conditionOperatorLabel(key, 'summary')]),
+) as Record<WorkflowConditionRule['operator'], string>;
+export function newWorkflowCondition(field?: WorkflowField): WorkflowConditionRule {
+  const operator = field ? workflowOperators(field.type)[0] : 'equals';
+  return { field: field?.field ?? '', operator, value: initialConditionValue(field?.type, operator, 'workflow') };
+}
 export function conditionSummary(
   rule: WorkflowConditionRule,
   trigger: TriggerDefinition | undefined,
@@ -220,8 +213,8 @@ export function conditionSummary(
   const field = trigger?.fields.find((entry) => entry.field === rule.field);
   const value = references(field?.type ?? '', options)
     ? referenceName(field!.type, rule.value, options)
-    : field?.optionLabels?.[String(rule.value)] ?? (field?.type === 'boolean' ? rule.value ? 'Yes' : 'No' : String(rule.value ?? ''));
-  return `${field?.label ?? 'Choose a field'} ${operatorLabels[rule.operator]}${['is_empty', 'is_not_empty'].includes(rule.operator) ? '' : ` ${value || '…'}`}`;
+    : field?.optionLabels?.[String(rule.value)] ?? (field?.type === 'boolean' ? typeof rule.value === 'boolean' ? rule.value ? 'Yes' : 'No' : '' : String(rule.value ?? ''));
+  return `${field?.label ?? (rule.field ? 'Unavailable field' : 'Choose a field')} ${operatorLabels[rule.operator]}${['is_empty', 'is_not_empty'].includes(rule.operator) ? '' : ` ${value || '…'}`}`;
 }
 export function actionSummary(
   action: WorkflowAction,
@@ -276,9 +269,14 @@ export function conditionIssues(
   options: WorkflowOptions,
 ): string[] {
   return (draft.conditions?.conditions ?? []).flatMap((rule, index) => {
+    const message = conditionRuleIssue(rule, trigger, options);
+    return message ? [`Condition ${index + 1}: ${message}`] : [];
+  });
+}
+export function conditionRuleIssue(rule: WorkflowConditionRule, trigger: TriggerDefinition | undefined, options: WorkflowOptions): string {
     const field = trigger?.fields.find((entry) => entry.field === rule.field);
     let message = '';
-    if (!field) message = 'Choose an available field.';
+    if (!field) message = rule.field ? 'This field is unavailable. Choose a supported field or remove the condition.' : 'Choose an available field.';
     else if (!workflowOperators(field.type).includes(rule.operator))
       message = 'Choose an operator supported by this field.';
     else if (!['is_empty', 'is_not_empty'].includes(rule.operator)) {
@@ -303,8 +301,7 @@ export function conditionIssues(
       )
         message = 'Choose a valid date.';
     }
-    return message ? [`Condition ${index + 1}: ${message}`] : [];
-  });
+    return message;
 }
 // Immediate editing guidance. Server validation still owns permissions, references and integrations.
 export function actionIssues(

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { ClosingField } from './closing-requirements';
+import { conditionFieldKind, conditionOperators } from './condition-operators';
 
 export const WorkflowConditionOperatorSchema = z.enum([
   'equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal',
@@ -116,7 +117,7 @@ export interface WorkflowOptions {
   roles?: WorkflowAssignmentPoolOption[];
   groups?: WorkflowAssignmentPoolOption[];
   senders?: Array<{id:string;name:string}>;
-  pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string}>}>;
+  pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string;isWon?:boolean;isLost?:boolean;requiredFields?:string[]}>}>;
   templates: Array<{id:string;name:string}>;
   campaigns: Array<{id:string;name:string}>;
   productInterests?: Array<{id:string;name:string}>;
@@ -142,11 +143,8 @@ export interface WorkflowField {
   optionLabels?: Record<string, string>;
 }
 export function workflowOperators(type: WorkflowField['type']): WorkflowConditionOperator[] {
-  if (['products', 'list', 'contacts', 'leads'].includes(type)) return ['contains', 'not_contains', 'is_empty', 'is_not_empty'];
-  if (type === 'number') return ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'];
-  if (type === 'date') return ['equals', 'not_equals', 'before', 'after', 'is_empty', 'is_not_empty'];
-  if (type !== 'string') return type === 'boolean' ? ['equals', 'not_equals'] : ['equals', 'not_equals', 'is_empty', 'is_not_empty'];
-  return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+  const keys: Record<string, WorkflowConditionOperator> = { gt: 'greater_than', gte: 'greater_than_or_equal', lt: 'less_than', lte: 'less_than_or_equal' };
+  return conditionOperators('workflow', conditionFieldKind(type)).map(key => keys[key] ?? key as WorkflowConditionOperator);
 }
 export interface WorkflowActionDefinition {
   type: WorkflowActionType; label: string; description: string; entities: WorkflowEntity[];

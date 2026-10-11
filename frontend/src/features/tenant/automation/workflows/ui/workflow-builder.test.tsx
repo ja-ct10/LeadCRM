@@ -15,6 +15,7 @@ import {
   type WorkflowDraft,
 } from '@leadcrm/shared';
 import WorkflowBuilder from './visual-workflow-builder';
+import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
 import { toast } from 'sonner';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { workflowsApi } from '@/shared/services/workflows.api';
@@ -76,6 +77,21 @@ function setup(
 }
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 describe('visual workflow editor', () => {
+  it('links template source/target choices to persisted rules and action config from either inspector', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const options = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'pipeline', name: 'Sales', stages: [{ id: 'source', name: 'Lead', isWon: false, isLost: false }, { id: 'target', name: 'Contacted', isWon: false, isLost: false }, { id: 'won', name: 'Won', isWon: true, isLost: false }] }] };
+    render(<WorkflowBuilder initial={prepareWorkflowRecipe(WORKFLOW_RECIPES[17], options)} templateIndex={17} options={options} triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} canActivate onSave={save} onClose={vi.fn()} />);
+    fireEvent.click(button(/Configure action: 1. Move Deal Stage/));
+    expect([...((screen.getByLabelText('Template target stage') as HTMLSelectElement).options)].map(option => option.value)).toEqual(['', 'source', 'target']);
+    fireEvent.change(screen.getByLabelText('Template source stage'), { target: { value: 'source' } });
+    fireEvent.change(screen.getByLabelText('Template target stage'), { target: { value: 'target' } });
+    fireEvent.click(button(/Configure condition:/));
+    expect((screen.getByLabelText('Template source stage') as HTMLSelectElement).value).toBe('source');
+    expect((screen.getByLabelText('Template target stage') as HTMLSelectElement).value).toBe('target');
+    fireEvent.click(button('Save draft'));
+    await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+    expect(save.mock.calls[0][0]).toMatchObject({ isActive: false, conditions: { operator: 'AND', conditions: [{ field: 'deal.pipelineId', value: 'pipeline' }, { field: 'deal.stageId', value: 'source' }] }, actions: [{ type: 'move_deal_stage', config: { stageId: 'target' } }, { type: 'create_task' }] });
+  });
   it('updates the canvas after deleting the middle condition and restores rules through undo and redo', () => {
     setup({ initial: { ...initial, conditions: { operator: 'AND', conditions: [
       { field: 'deal.title', operator: 'equals', value: 'First' },

@@ -56,6 +56,9 @@ it('uses numeric serialization and reads a hidden active custom field', async ()
   await screen.findByRole('option', { name: 'Capacity' });
   fireEvent.change(screen.getByLabelText('Condition 1 field'), { target: { value: `customFieldValues.${definition.id}` } });
   expect((screen.getByLabelText('Condition 1 value') as HTMLInputElement).type).toBe('number');
+  expect((screen.getByLabelText('Condition 1 value') as HTMLInputElement).value).toBe('');
+  expect(Array.from((screen.getByLabelText('Condition 1 operator') as HTMLSelectElement).options).slice(0, 6).map(option => option.text)).toEqual(['Equals', 'Not equals', 'Greater than', 'Greater than or equal', 'Less than', 'Less than or equal']);
+  fireEvent.change(screen.getByLabelText('Condition 1 value'), { target: { value: '0' } });
   await waitFor(() => expect(api.preview).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: [{ field: `customFieldValues.${definition.id}`, operator: 'equals', value: 0 }] })));
 });
 it('keeps populated recipient rows visible during background preview refresh', async () => {
@@ -66,6 +69,7 @@ it('keeps populated recipient rows visible during background preview refresh', a
   fireEvent.change(screen.getByLabelText('Match conditions'), { target: { value: 'OR' } });
   await waitFor(() => expect(api.preview).toHaveBeenCalledTimes(2));
   expect(screen.getByText('Saved recipient')).toBeTruthy();
+  expect(screen.getByText(/These results are from the previous criteria/)).toBeTruthy();
   expect(screen.queryByRole('status', { name: 'Loading data' })).toBeNull();
   await act(async () => finish({ data: preview }));
 });
@@ -75,4 +79,19 @@ it('shows the authoritative eligible total below pagination without the estimate
   expect(screen.getByText('1 eligible recipient')).toBeTruthy();
   expect(screen.queryByText(/Matched:/)).toBeNull();
   expect(screen.queryByText(/Showing .* eligible recipients/)).toBeNull();
+});
+
+it('clears stale recipients for incomplete rules and ignores a previous preview that finishes late', async () => {
+  render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} />);
+  await screen.findByText('Saved recipient');
+  let finish!: (value: unknown) => void;
+  api.preview.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  fireEvent.change(screen.getByLabelText('Match conditions'), { target: { value: 'OR' } });
+  await waitFor(() => expect(api.preview).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByText('+ Add Condition'));
+  await waitFor(() => expect(screen.queryByText('Saved recipient')).toBeNull());
+  expect(screen.queryByText('1 eligible recipient')).toBeNull();
+  await act(async () => finish({ data: preview }));
+  expect(screen.queryByText('Saved recipient')).toBeNull();
+  expect(api.preview).toHaveBeenCalledTimes(2);
 });

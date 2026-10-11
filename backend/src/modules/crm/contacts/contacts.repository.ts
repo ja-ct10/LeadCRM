@@ -13,10 +13,17 @@ import prisma from '../../../config/database.config';
 import { resolveProducts, createAssignedLead, salesTransaction, afterSalesCommit, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import { parseFilterParams, buildPrismaFilters } from '../../../shared/helpers/filter-parser';
+import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
 
 // Allowed filter fields for leads/contacts — prevents arbitrary Prisma field injection
-const CONTACT_FILTER_FIELDS = new Set(['status', 'source', 'leadSource', 'assignedUserId', 'accountId']);
+const CONTACT_FILTER_FIELDS: FilterFields = {
+  status: { kind: 'choice', operators: ['equals', 'in', 'not_in'] },
+  source: { kind: 'choice' }, assignedUserId: { kind: 'reference' }, accountId: { kind: 'reference' },
+  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my', 'active'], handled: true },
+  system: { kind: 'choice', operators: ['in'], options: ['touched', 'untouched'], handled: true },
+  related: { kind: 'choice', operators: ['in'], options: ['has_email', 'has_phone'], handled: true },
+  createdAt: { kind: 'date', operators: ['gte', 'lte', 'between'], handled: true },
+};
 // Map frontend field names → Prisma field names where they differ
 const CONTACT_FIELD_ALIASES: Record<string, string> = {
   source: 'source',          // frontend sends 'source' (maps from leadSource client-side)
@@ -31,6 +38,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   // Parse filter[field]=operator:value params from the query string
   const parsedFilters = parseFilterParams(query);
+  const createdAt = parseLeadCreatedFilter(query);
   const presence = parsedFilters.find(f => f.field === 'related');
   const related = Array.isArray(presence?.value) ? presence.value : [];
   const system = parsedFilters.find(f => f.field === 'system');
@@ -49,7 +57,6 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   for (const field of ['email', 'phone']) if (related.includes('has_' + field)) filterClauses.push({ [field]: { not: null } }, { [field]: { not: '' } });
   if (systemValues.includes('touched') !== systemValues.includes('untouched')) filterClauses.push({ updatedAt: systemValues.includes('touched') ? { gt: prisma.lead.fields.createdAt } : { lte: prisma.lead.fields.createdAt } });
   if (query.status) filterClauses.push({ status: { in: [normalizeCrmStatus(String(query.status)), normalizeCrmStatus(String(query.status)).toUpperCase()] } });
-  const createdAt = parseLeadCreatedFilter(query);
   const where: Record<string, unknown> = {
     ...(createdAt ? { createdAt } : {}),
     tenantId,

@@ -12,7 +12,7 @@ import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
 import { saveRecordValues, type BatchFiles } from '../closing-requirements/custom-field-values.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
-import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
+import { assertDealStageTransition, dealHasEverBeenWon, type RelatedDealMoveGuard } from './deal-lifecycle';
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 
@@ -226,14 +226,26 @@ export async function moveDealStage(
   lostReason?: string,
   confirmation?: ClosedWonConfirmation,
   transaction?: Prisma.TransactionClient,
+  guard?: RelatedDealMoveGuard,
 ) {
   const transition = async (tx: Prisma.TransactionClient) => {
     await assertCrmRecordMutation(tx, 'deals', id);
     const scope = crmScope(tenantId);
-    const storedDeal = await tx.deal.findFirst({ where: { id, ...scope, isArchived: false, deletedAt: null }, include: { stage: true,
+    const eligibility = guard ? {
+      pipelineId: guard.pipelineId, stage: { isWon: false, isLost: false },
+      ...(guard.currentStageId ? { stageId: guard.currentStageId } : {}),
+      ...(guard.productInterestId ? { productInterestId: guard.productInterestId } : {}),
+      ...(guard.related.entity === 'lead'
+        ? { leadDeals: { some: { tenantId, leadId: guard.related.id } } }
+        : { contactDeals: { some: { tenantId, contactId: guard.related.id } } }),
+    } : {};
+    const storedDeal = await tx.deal.findFirst({ where: { id, ...scope, isArchived: false, deletedAt: null, ...eligibility }, include: { stage: true,
       leadDeals: { orderBy: participantOrder }, contactDeals: { orderBy: participantOrder } } });
     const deal = storedDeal ? withDealParticipants(storedDeal) : null;
-    if (!deal) return null;
+    if (!deal) {
+      if (guard) throw new ConflictError('Related Deal no longer matches the workflow filters.');
+      return null;
+    }
     const newStage = await tx.stage.findFirst({ where: { id: newStageId, ...scope, pipelineId: deal.pipelineId } });
     if (!newStage) throw new ValidationError("Stage must belong to this Deal’s pipeline.");
     let stageHistory = null;
@@ -250,7 +262,7 @@ export async function moveDealStage(
       if (missing.length) throw new ValidationError(`Missing stage requirements: ${missing.join(', ')}`);
       const now = new Date();
       const previous = await tx.dealStageHistory.findFirst({ where: { ...scope, dealId: id }, orderBy: { movedAt: 'desc' } });
-      await tx.deal.update({ where: { id, ...scope, isArchived: false, deletedAt: null, stageId: deal.stageId, updatedAt: deal.updatedAt }, data: { stageId: newStageId,
+      await tx.deal.update({ where: { id, ...scope, isArchived: false, deletedAt: null, ...eligibility, stageId: deal.stageId, updatedAt: deal.updatedAt }, data: { stageId: newStageId,
         hasEverBeenWon: hasEverBeenWon || newStage.isWon,
         ...(hasEverBeenWon || newStage.isWon ? { wonHistoryVerified: true } : {}),
         stageChangedAt: now,

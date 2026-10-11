@@ -9,10 +9,13 @@ import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
-import { parseFilterParams, buildPrismaFilters } from '../../../shared/helpers/filter-parser';
+import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
 
 // Allowed filter fields for accounts
-const COMPANY_FILTER_FIELDS = new Set(['industry', 'assignedUserId', 'city', 'size']);
+const COMPANY_FILTER_FIELDS: FilterFields = {
+  industry: { kind: 'text' }, assignedUserId: { kind: 'reference' }, city: { kind: 'text' }, size: { kind: 'choice' },
+  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my'], handled: true },
+};
 const COMPANY_FIELD_ALIASES: Record<string, string> = {
   type: 'size', // frontend filter sends 'type' (maps to size in Prisma)
 };

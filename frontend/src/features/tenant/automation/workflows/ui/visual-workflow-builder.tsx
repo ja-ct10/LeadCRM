@@ -12,7 +12,6 @@ import {
 } from '@dnd-kit/core';
 import {
   WorkflowDraftSchema,
-  workflowOperators,
   type Workflow,
   type WorkflowDraft,
   type ActionDefinition,
@@ -40,7 +39,9 @@ import {
   ConditionFields,
   emptyOptions,
   workflowControl,
+  WorkflowTemplateFields,
 } from './workflow-fields';
+import { bindWorkflowTemplate, workflowTemplateDescriptor, workflowTemplateSetupIssues } from '../services/workflow-template-bindings';
 import { WorkflowLibrary } from './workflow-library';
 import { WorkflowCanvas } from './workflow-canvas';
 import { WorkflowRuns } from './workflow-execution-log-modal';
@@ -49,6 +50,7 @@ import {
   canPlace,
   editorDocument,
   editorIssues,
+  newWorkflowCondition,
   insertAction,
   moveAction,
   toDraft,
@@ -64,6 +66,7 @@ import {
 interface Props {
   initial: WorkflowDraft;
   workflowId?: string;
+  templateIndex?: number;
   initialStatus?: Workflow['status'];
   initialVersion?: number;
   triggers: TriggerDefinition[];
@@ -85,6 +88,7 @@ interface History {
 export default function WorkflowBuilder({
   initial,
   workflowId,
+  templateIndex,
   initialStatus,
   initialVersion,
   triggers,
@@ -126,6 +130,7 @@ export default function WorkflowBuilder({
   const [changeTrigger, setChangeTrigger] = useState<string | null>(null),
     [exit, setExit] = useState<(() => void) | null>(null);
   const [confirmActivation, setConfirmActivation] = useState(false);
+  const [templateDetached, setTemplateDetached] = useState(false);
   const operation = useRef(false),
     focusOrigin = useRef<HTMLElement | null>(null),
     leaving = useRef(false);
@@ -140,12 +145,15 @@ export default function WorkflowBuilder({
   const { present: document } = history,
     { draft } = document;
   const trigger = triggers.find((entry) => entry.type === draft.trigger);
+  const template = !templateDetached ? workflowTemplateDescriptor(templateIndex) : undefined;
+  const linkedTemplate = template?.trigger === draft.trigger && template.setup !== 'none' ? template : undefined;
   const dirty = JSON.stringify(toDraft(draft)) !== JSON.stringify(saved);
   const locked = !!readOnly || busy;
   const nameIssue = workflowNameIssue(draft.name, existingWorkflows, savedId) ||
     (nameCheck?.name === draft.name && nameCheck.available === false ? 'A workflow with this name already exists. Choose another name.' : '');
   const issues = [
     ...editorIssues(document, triggers, definitions, options, false, savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined),
+    ...workflowTemplateSetupIssues(draft, linkedTemplate?.index, options).map(message => ({ step: 'conditions' as const, message })),
     ...(nameIssue && draft.name.trim() ? [{ step: 'details' as const, message: nameIssue }] : []),
   ];
   const actionIndex = selected?.startsWith('action:')
@@ -368,16 +376,7 @@ export default function WorkflowBuilder({
           operator: draft.conditions?.operator ?? 'AND',
           conditions: [
             ...(draft.conditions?.conditions ?? []),
-            {
-              field: field?.field ?? '',
-              operator: workflowOperators(field?.type ?? 'string')[0],
-              value:
-                field?.type === 'number'
-                  ? 0
-                  : field?.type === 'boolean'
-                    ? false
-                    : '',
-            },
+            newWorkflowCondition(field),
           ],
         },
       });
@@ -430,14 +429,14 @@ export default function WorkflowBuilder({
       if (confirmed) throw new Error(nameIssue);
       return;
     }
-    const local = editorIssues(
+    const local = [...editorIssues(
       document,
       triggers,
       definitions,
       options,
       !activate && !validateOnly,
       savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined,
-    );
+    ), ...workflowTemplateSetupIssues(draft, linkedTemplate?.index, options).map(message => ({ step: 'conditions' as const, message }))];
     if (local.length) {
       select(local[0].step);
       reportError(local[0].message);
@@ -624,6 +623,7 @@ export default function WorkflowBuilder({
         )}
         {selected === 'conditions' && (
           <>
+            {linkedTemplate && <WorkflowTemplateFields draft={draft} templateIndex={linkedTemplate.index} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.index, options, patch))} onDetach={() => setTemplateDetached(true)} />}
             <p className="text-sm text-[var(--muted-foreground)]">
               Check these rules before any action runs. Records that do not
               match exit the workflow.
@@ -632,6 +632,7 @@ export default function WorkflowBuilder({
               value={draft.conditions ?? { operator: 'AND', conditions: [] }}
               trigger={trigger}
               options={options}
+              previousConditions={savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined}
               onChange={(conditions) => updateDraft({ ...draft, conditions })}
             />
           </>
@@ -663,6 +664,7 @@ export default function WorkflowBuilder({
               )}
               entity={trigger?.entity}
               options={options}
+              stageSetup={linkedTemplate && ['pipeline-routing', 'related-deal-routing'].includes(linkedTemplate.setup) ? <WorkflowTemplateFields draft={draft} templateIndex={linkedTemplate.index} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.index, options, patch))} onDetach={() => setTemplateDetached(true)} /> : undefined}
               onChange={(config) =>
                 updateDraft({
                   ...draft,

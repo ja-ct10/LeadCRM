@@ -3,6 +3,18 @@ import prisma from '../../../config/database.config';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import { validateDealStageMove } from '../../crm/deals/deals.service';
 import { validateValues } from '../../crm/closing-requirements/closing-requirements.repository';
+import type { RelatedDealMoveGuard } from '../../crm/deals/deal-lifecycle';
+
+export async function relatedDealMoveGuard(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>): Promise<RelatedDealMoveGuard | undefined> {
+  if (entity === 'deal') return undefined;
+  if (entity !== 'lead' && entity !== 'contact') throw new ValidationError('Choose a Lead, Contact or Deal trigger.');
+  const stage = await prisma.stage.findFirst({ where: { tenantId, id: String(action.config.stageId) } });
+  if (!stage) throw new NotFoundError('Stage');
+  return { pipelineId: stage.pipelineId, related: { entity, id: String(context[`${entity}.id`]) },
+    ...(action.config.currentStageId ? { currentStageId: String(action.config.currentStageId) } : {}),
+    ...(action.config.productInterestId ? { productInterestId: String(action.config.productInterestId) } : {}),
+  };
+}
 
 /** Resolve from persisted tenant-owned relationships; never inject another triggering entity. */
 export async function resolveDealTargets(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {

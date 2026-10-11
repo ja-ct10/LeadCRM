@@ -35,6 +35,29 @@ beforeEach(() => {
 const move = () => moveDealStage('deal', 'tenant', state.next.id, 'actor');
 
 describe('governed Deal stage changes', () => {
+  const guard = { pipelineId: 'pipeline', currentStageId: 'Lead', productInterestId: 'product', related: { entity: 'lead' as const, id: 'lead' } };
+  const guardedMove = () => moveDealStage('deal', 'tenant', state.next.id, 'actor', undefined, undefined, undefined, undefined, undefined, guard);
+  it('rechecks related source, Product and relationship selection inside the transaction and conditional write', async () => {
+    await guardedMove();
+    const expected = { pipelineId: 'pipeline', stageId: 'Lead', productInterestId: 'product', stage: { isWon: false, isLost: false }, leadDeals: { some: { tenantId: 'tenant', leadId: 'lead' } } };
+    expect(state.tx.deal.findFirst.mock.calls[0][0].where).toMatchObject(expected);
+    expect(state.tx.deal.update.mock.calls[0][0].where).toMatchObject({ ...expected, updatedAt: new Date('2026-10-01') });
+  });
+  it('rejects a related Deal that stopped matching after selection before recording a transition', async () => {
+    state.tx.deal.findFirst.mockResolvedValue(null);
+    await expect(guardedMove()).rejects.toThrow('no longer matches');
+    expect(state.tx.deal.update).not.toHaveBeenCalled();
+    expect(state.tx.dealStageHistory.create).not.toHaveBeenCalled();
+  });
+  it('keeps a Product or relationship race in the conditional update predicate', async () => {
+    state.tx.deal.update.mockImplementation(async ({ where }) => {
+      if (where.productInterestId === 'product' && where.leadDeals?.some?.leadId === 'lead') throw new Prisma.PrismaClientKnownRequestError('Related Deal changed before the guarded write', { code: 'P2025', clientVersion: '5' });
+      return state.deal;
+    });
+    await expect(guardedMove()).rejects.toThrow('guarded write');
+    expect(state.tx.dealStageHistory.create).not.toHaveBeenCalled();
+    expect(state.tx.activity.create).not.toHaveBeenCalled();
+  });
   it('rejects an archival race at the conditional transfer write without recording history', async () => {
     state.next = { ...stage('target-stage'), pipelineId: 'target' };
     state.tx.pipeline.findFirst.mockResolvedValue({ id: 'target', name: 'Renewals' });

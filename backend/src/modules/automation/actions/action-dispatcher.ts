@@ -1,4 +1,4 @@
-import { resolveDealTargets } from './action-deal-targets';
+import { resolveDealTargets, relatedDealMoveGuard } from './action-deal-targets';
 import { WORKFLOW_MESSAGE_VARIABLES, getWorkflowMessageVariables, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -49,10 +49,11 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     if (action.type === 'send_email') return { success: true, output: await deliverEmail(action, context, tenantId) };
     if (action.type === 'move_deal_stage') {
       const ids = await resolveDealTargets(action, entity, tenantId, context);
+      const guard = ids.length ? await relatedDealMoveGuard(action, entity, tenantId, context) : undefined;
       const movedDealIds: string[] = [];
       for (const id of ids) {
         try {
-          const result = await moveDealStage(id, tenantId, actorId, { stageId: String(config.stageId), lostReason: config.lostReason ? String(config.lostReason) : undefined });
+          const result = await moveDealStage(id, tenantId, actorId, { stageId: String(config.stageId), lostReason: config.lostReason ? String(config.lostReason) : undefined }, guard);
           if (result.stageHistory) movedDealIds.push(id);
         } catch (error) {
           return { success: false, error: safeWorkflowError(error), output: { movedDealIds, failedDealId: id, matchedDealIds: ids } };

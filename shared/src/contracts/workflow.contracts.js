@@ -7,6 +7,7 @@ exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
 exports.normalizeSavedWorkflowAssignment = normalizeSavedWorkflowAssignment;
 exports.workflowOperators = workflowOperators;
 const zod_1 = require("zod");
+const condition_operators_1 = require("./condition-operators");
 exports.WorkflowConditionOperatorSchema = zod_1.z.enum([
     'equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal',
     'less_than_or_equal', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty', 'before', 'after',
@@ -108,13 +109,6 @@ exports.WorkflowDraftSchema = zod_1.z.object({
 }).strict();
 exports.WorkflowValidationSchema = exports.WorkflowDraftSchema.extend({ workflowId: zod_1.z.string().uuid().optional() });
 function workflowOperators(type) {
-    if (['products', 'list', 'contacts', 'leads'].includes(type))
-        return ['contains', 'not_contains', 'is_empty', 'is_not_empty'];
-    if (type === 'number')
-        return ['equals', 'not_equals', 'greater_than', 'less_than', 'greater_than_or_equal', 'less_than_or_equal'];
-    if (type === 'date')
-        return ['equals', 'not_equals', 'before', 'after', 'is_empty', 'is_not_empty'];
-    if (type !== 'string')
-        return type === 'boolean' ? ['equals', 'not_equals'] : ['equals', 'not_equals', 'is_empty', 'is_not_empty'];
-    return ['equals', 'not_equals', 'contains', 'not_contains', 'starts_with', 'ends_with', 'is_empty', 'is_not_empty'];
+    const keys = { gt: 'greater_than', gte: 'greater_than_or_equal', lt: 'less_than', lte: 'less_than_or_equal' };
+    return (0, condition_operators_1.conditionOperators)('workflow', (0, condition_operators_1.conditionFieldKind)(type)).map(key => keys[key] ?? key);
 }

@@ -10,7 +10,7 @@ beforeEach(() => {
 
 it('combines all Contact filters before paging and keeps tenant context in relationships', async () => {
   await findAllContacts('tenant', { page: 2, limit: 25, currentUserId: 'viewer', filter: {
-    scope: 'equals:my', status: 'in:Hot,Warm', assignedUserId: 'in:viewer,colleague', system: 'in:touched', related: 'in:has_deals', tenantId: 'equals:other',
+    scope: 'equals:my', status: 'in:Hot,Warm', assignedUserId: 'in:viewer,colleague', system: 'in:touched', related: 'in:has_deals',
   } });
   expect(db.contact.findMany).toHaveBeenCalledOnce();
   expect(db.contact.findMany.mock.calls[0][0]).toMatchObject({ skip: 25, take: 25, where: {
@@ -22,6 +22,11 @@ it('combines all Contact filters before paging and keeps tenant context in relat
     ]),
   } });
   expect(JSON.stringify(db.contact.findMany.mock.calls[0][0].where)).not.toContain('other');
+});
+
+it.each([{ tenantId: 'equals:other' }, { status: 'gte:Hot' }, { assignedUserId: 'contains:viewer' }, { related: 'in:has_password' }])('rejects unsupported Contact filters before querying: %j', async filter => {
+  await expect(findAllContacts('tenant', { filter })).rejects.toThrow();
+  expect(db.contact.findMany).not.toHaveBeenCalled();
 });
 
 it('keeps active tab status scope and handles both update choices as all records', async () => {

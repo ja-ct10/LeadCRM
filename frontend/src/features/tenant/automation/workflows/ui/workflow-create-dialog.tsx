@@ -9,7 +9,7 @@ import { Input } from '@/shared/components/ui/input';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/shared/components/ui/dialog';
 import { WORKFLOW_STARTER_TEMPLATES } from '../services/workflow-recipes';
 import { actionSummary, workflowActionLabel } from '../services/workflow-editor';
-import { templateAvailability, templateConditionLabel, templateSetup, workflowRecordLabels } from '../services/workflow-template-catalog';
+import { templateAvailability, templateBehaviorLabel, templateConditionLabel, templateSetup, workflowRecordLabels } from '../services/workflow-template-catalog';
 import { emptyOptions, workflowControl } from './workflow-fields';
 
 interface Props {
@@ -57,9 +57,9 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
     previousTemplate.current = selected;
   }, [selected]);
 
-  const catalog = useMemo(() => WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index }) => {
+  const catalog = useMemo(() => WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index, id: templateId }) => {
     const trigger = triggers.find(entry => entry.type === recipe.trigger);
-    return { recipe, index, trigger, issues: templateAvailability(recipe, triggers, actions) };
+    return { recipe, index, templateId, trigger, issues: templateAvailability(recipe, triggers, actions) };
   }), [triggers, actions]);
   const records = [...new Set(catalog.flatMap(entry => entry.trigger ? [entry.trigger.entity] : []))];
   const query = search.trim().toLowerCase();
@@ -99,14 +99,14 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
       <div ref={content} className="min-h-0 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6">
         {current ? <div className="space-y-5">
           <Button type="button" variant="ghost" className="-ml-2 min-h-11" data-template-back disabled={opening} onClick={() => { setSelected(null); setError(''); }}><ArrowLeft aria-hidden="true" />All templates</Button>
-          <div><p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">{current.trigger ? workflowRecordLabels[current.trigger.entity] : 'Template'}</p><h3 className="text-lg font-semibold">{current.recipe.name}</h3><p className="mt-2 text-sm leading-relaxed text-[var(--muted-foreground)]">{current.recipe.description}</p></div>
+          <div><p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">{current.trigger ? workflowRecordLabels[current.trigger.entity] : 'Template'} · {templateBehaviorLabel(current.recipe)}</p><h3 className="text-lg font-semibold">{current.recipe.name}</h3><p className="mt-2 text-sm leading-relaxed text-[var(--muted-foreground)]">{current.recipe.description}</p></div>
           {!!current.issues.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">{current.issues.join(' ')} Refresh workflow options before trying again.</div>}
           <ol aria-label="Template steps" className="space-y-3">
             <li className="flex gap-3 rounded-xl border border-[var(--border)] p-4"><Zap size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--primary)]" /><div><h4 className="text-sm font-semibold">Trigger</h4><p className="mt-1 text-sm text-[var(--muted-foreground)]">{current.trigger?.label ?? current.recipe.trigger}</p></div></li>
             {!!current.recipe.conditions?.conditions.length && <li className="flex gap-3 rounded-xl border border-[var(--border)] p-4"><GitBranch size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--primary)]" /><div className="min-w-0"><h4 className="text-sm font-semibold">{current.recipe.conditions.operator === 'AND' ? 'Match all conditions' : 'Match any condition'}</h4><ul className="mt-2 space-y-1 text-sm leading-relaxed text-[var(--muted-foreground)]">{current.recipe.conditions.conditions.map((rule, index) => <li key={index}>{templateConditionLabel(rule, current.trigger)}</li>)}</ul></div></li>}
             {current.recipe.actions.map((step, index) => <li key={index} className="flex gap-3 rounded-xl border border-[var(--border)] p-4"><span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-[var(--primary)]/10 text-xs font-semibold text-[var(--primary)]">{index + 1}</span><div className="min-w-0"><h4 className="text-sm font-semibold">{workflowActionLabel(step.type)}</h4><ul className="mt-1 space-y-1 break-words text-sm leading-relaxed text-[var(--muted-foreground)]">{actionSummary(step, emptyOptions).map((line, lineIndex) => <li key={lineIndex}>{line}</li>)}</ul></div></li>)}
           </ol>
-          <section className="rounded-xl border border-[var(--border)] bg-[var(--primary)]/5 p-4" aria-label="Template setup requirements"><h4 className="flex items-center gap-2 text-sm font-semibold"><Info size={16} aria-hidden="true" />Before you activate</h4><ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-[var(--muted-foreground)]">{templateSetup(current.recipe, current.trigger, actions).map(note => <li key={note}>{note}</li>)}<li>Review the workflow name and configuration. The builder validates workspace references, permissions, and connected services when you save or activate.</li></ul></section>
+          <section className="rounded-xl border border-[var(--border)] bg-[var(--primary)]/5 p-4" aria-label="Template setup requirements"><h4 className="flex items-center gap-2 text-sm font-semibold"><Info size={16} aria-hidden="true" />Before you activate</h4><ul className="mt-3 list-disc space-y-2 pl-5 text-sm leading-relaxed text-[var(--muted-foreground)]">{templateSetup(current.recipe, current.trigger, actions, current.templateId).map(note => <li key={note}>{note}</li>)}<li>Review the workflow name and configuration. The builder validates workspace references, permissions, and connected services when you save or activate.</li></ul></section>
         </div> : <div>
           <div className="mb-6 flex flex-col items-start justify-between gap-4 rounded-xl border border-[var(--border)] bg-[var(--primary)]/5 p-4 sm:flex-row sm:items-center sm:p-5">
             <div><h3 className="text-base font-semibold">Build your own workflow</h3><p className="mt-1 text-sm leading-relaxed text-[var(--muted-foreground)]">Choose a trigger, add conditions, and set your actions.</p></div>
@@ -125,7 +125,7 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
               return <button type="button" key={index} data-template-index={index} aria-label={`Preview ${recipe.name}`} disabled={opening} onClick={() => { setSelected(index); setError(''); }}
                 className="group flex min-w-0 flex-col rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 text-left transition-colors hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--ring)] focus-visible:ring-offset-2 disabled:opacity-50 motion-reduce:transition-none">
                 <span className="mb-3 flex items-center gap-2 text-xs text-[var(--muted-foreground)]"><Icon size={16} aria-hidden="true" className="text-[var(--primary)]" />{trigger ? workflowRecordLabels[trigger.entity] : 'Template'}</span>
-                <span className="text-sm font-semibold leading-relaxed">{recipe.name}</span><span className="mb-4 mt-2 line-clamp-3 text-sm leading-relaxed text-[var(--muted-foreground)]">{recipe.description}</span>
+                <span className="text-sm font-semibold leading-relaxed">{recipe.name}</span><span className="mt-1 text-xs font-medium text-[var(--primary)]">{templateBehaviorLabel(recipe)}</span><span className="mb-4 mt-2 line-clamp-3 text-sm leading-relaxed text-[var(--muted-foreground)]">{recipe.description}</span>
                 <span className="mt-auto flex items-center justify-between gap-2 border-t border-[var(--border)] pt-3 text-xs"><span className="text-[var(--muted-foreground)]">{issues.length ? 'Unavailable' : `${recipe.actions.length} ${recipe.actions.length === 1 ? 'action' : 'actions'}`}</span><span className="flex items-center gap-1 font-semibold text-[var(--primary)]">Preview<ArrowRight size={14} aria-hidden="true" /></span></span>
               </button>;
             })}

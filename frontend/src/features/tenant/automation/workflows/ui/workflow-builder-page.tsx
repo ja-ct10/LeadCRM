@@ -14,12 +14,17 @@ import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import {
   getWorkflowMetadata,
+  withWorkflowTimeout,
   workflowsApi,
 } from '@/shared/services/workflows.api';
+import { subscribePageCacheInvalidation } from '@/shared/cache/page-cache';
 import { Button } from '@/shared/components/ui/button';
 import WorkflowBuilder from './visual-workflow-builder';
 import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
-import { toast } from 'sonner';
+const workflowOptionModules = new Set(['settings', 'field-layout', 'leads', 'contacts', 'accounts', 'deals', 'pipeline', 'pipelines', 'products', 'users', 'groups', 'roles', 'templates']);
+function conditionTriggers(triggers: TriggerDefinition[], options: WorkflowOptions) {
+  return triggers.map(trigger => ({ ...trigger, fields: getWorkflowConditionFields(trigger.entity, trigger.type, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[trigger.entity]]) }));
+}
 export default function WorkflowBuilderPage() {
   const router = useRouter(),
     params = useParams<{ id?: string }>(),
@@ -27,6 +32,7 @@ export default function WorkflowBuilderPage() {
   const { tenant, user, userCan, isLoading, authError, retryAuthInit } = useAuth();
   const { addWorkflow, updateWorkflow } = useData();
   const [loaded, setLoaded] = useState<{
+    scope: string;
     initial: WorkflowDraft;
     options: WorkflowOptions;
     triggers: TriggerDefinition[];
@@ -36,27 +42,65 @@ export default function WorkflowBuilderPage() {
   } | null>(null);
   const [error, setError] = useState(''),
     [retry, setRetry] = useState(0);
+  const [optionsError, setOptionsError] = useState('');
   const canView = userCan('workflows', 'canView'),
     canEdit = userCan('workflows', 'canEdit'),
     canCreate = userCan('workflows', 'canCreate');
   const id = params.id === 'new' ? undefined : params.id,
     recipe = query.get('template');
   const createdId = useRef<string | undefined>(undefined);
+  const triggerCatalog = useRef<TriggerDefinition[]>([]);
+  const retryOptions = useRef<() => void>(() => {});
+  const scope = `${tenant?.id ?? ''}:${user?.id ?? ''}`;
+  const currentScope = useRef(scope);
+  currentScope.current = scope;
+  const optionsLoaded = loaded !== null;
   useEffect(() => {
-    if (!tenant?.id || !canView) return;
-    let cancelled = false, pending = false;
-    const refreshOptions = () => {
-      if (pending) return;
+    if (!tenant?.id || !canView || !optionsLoaded) return;
+    let cancelled = false, pending = false, queued = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refreshOptions = async () => {
+      if (cancelled || currentScope.current !== scope) return;
+      if (pending) { queued = true; return; }
       pending = true;
-      workflowsApi.options().then(response => {
-        if (!cancelled) setLoaded(current => current ? { ...current, options: response.data } : current);
-      }).catch(() => {
-        if (!cancelled) toast.error('Assignment choices could not refresh. Your workflow edits are preserved.');
-      }).finally(() => { pending = false; });
+      try {
+        const response = await withWorkflowTimeout(workflowsApi.options());
+        if (!cancelled && !queued && currentScope.current === scope) {
+          setLoaded(current => current ? { ...current, options: response.data, triggers: conditionTriggers(triggerCatalog.current, response.data) } : current);
+          setOptionsError('');
+        }
+      } catch (failure) {
+        if (!cancelled && !queued && currentScope.current === scope) {
+          const status = (failure as { status?: number })?.status;
+          if (status === 401 || status === 403) {
+            setLoaded(current => current ? { ...current, options: { users: [], pipelines: [], templates: [], campaigns: [], customFields: [] }, triggers: [] } : current);
+          }
+          setOptionsError('Workflow choices could not refresh. Your edits are preserved. Retry before saving.');
+        }
+      } finally {
+        pending = false;
+        if (queued && !cancelled) { queued = false; void refreshOptions(); }
+      }
     };
-    window.addEventListener('leadcrm:groups-changed', refreshOptions);
-    return () => { cancelled = true; window.removeEventListener('leadcrm:groups-changed', refreshOptions); };
-  }, [tenant?.id, canView]);
+    const scheduleRefresh = () => { if (pending) { queued = true; return; } clearTimeout(timer); timer = setTimeout(() => void refreshOptions(), 0); };
+    retryOptions.current = scheduleRefresh;
+    const wake = () => { if (document.visibilityState !== 'hidden') scheduleRefresh(); };
+    const unsubscribe = subscribePageCacheInvalidation((module, changedTenant) => {
+      if ((!changedTenant || changedTenant === tenant.id) && (module === '*' || workflowOptionModules.has(module))) scheduleRefresh();
+    });
+    window.addEventListener('leadcrm:groups-changed', scheduleRefresh);
+    window.addEventListener('leadcrm:users-changed', scheduleRefresh);
+    window.addEventListener('focus', wake);
+    document.addEventListener('visibilitychange', wake);
+    return () => {
+      cancelled = true; clearTimeout(timer); unsubscribe();
+      retryOptions.current = () => {};
+      window.removeEventListener('leadcrm:groups-changed', scheduleRefresh);
+      window.removeEventListener('leadcrm:users-changed', scheduleRefresh);
+      window.removeEventListener('focus', wake);
+      document.removeEventListener('visibilitychange', wake);
+    };
+  }, [tenant?.id, scope, canView, optionsLoaded]);
   useEffect(() => {
     if (!tenant?.id || !canView || (!id && !canCreate)) return;
     let cancelled = false;
@@ -66,6 +110,8 @@ export default function WorkflowBuilderPage() {
     }, 30000);
     setLoaded(null);
     setError('');
+    setOptionsError('');
+    triggerCatalog.current = [];
     createdId.current = undefined;
     Promise.all([
       getWorkflowMetadata(
@@ -75,7 +121,8 @@ export default function WorkflowBuilderPage() {
       id ? workflowsApi.get(id) : Promise.resolve(null),
     ])
       .then(([metadata, options, response]) => {
-        if (cancelled) return;
+        if (cancelled || currentScope.current !== scope) return;
+        triggerCatalog.current = metadata.triggers;
         const saved = response?.data;
         if (!saved && recipe !== null && (!/^(0|[1-9]\d*)$/.test(recipe) || !WORKFLOW_RECIPES[Number(recipe)])) {
           throw new Error('This workflow template is unavailable. Return to workflows and choose another template.');
@@ -101,16 +148,17 @@ export default function WorkflowBuilderPage() {
                 actions: [],
               };
         setLoaded({
+          scope,
           initial,
           initialStatus: saved?.status,
           initialVersion: saved?.version,
           options: options.data,
           ...metadata,
-          triggers: metadata.triggers.map(trigger => ({ ...trigger, fields: getWorkflowConditionFields(trigger.entity, trigger.type, options.data.customFields, options.data.fieldLayouts?.[WORKFLOW_MODULES[trigger.entity]]) })),
+          triggers: conditionTriggers(metadata.triggers, options.data),
         });
       })
       .catch((failure) => {
-        if (!cancelled)
+        if (!cancelled && currentScope.current === scope)
           setError(
             failure instanceof Error
               ? failure.message
@@ -144,14 +192,17 @@ export default function WorkflowBuilderPage() {
         <Button variant="outline" onClick={() => router.push('/automation/workflows')}>Back to workflows</Button>
       </div>
     );
-  if (!loaded)
+  if (!loaded || loaded.scope !== scope)
     return (
       <WorkflowBuilderSkeleton />
     );
   return (
+    <>
+    {optionsError && <div role="alert" className="px-5 py-3 text-sm">{optionsError} <Button variant="outline" size="sm" onClick={() => retryOptions.current()}>Retry choices</Button></div>}
     <WorkflowBuilder
-      key={`${tenant?.id}:${id ?? 'new'}:${retry}`}
+      key={`${scope}:${id ?? 'new'}:${retry}`}
       {...loaded}
+      templateIndex={!id && recipe !== null ? Number(recipe) : undefined}
       workflowId={id}
       onCheckName={async (name, excludeId) => (await workflowsApi.nameAvailability(name, excludeId)).data.available}
       canActivate={userCan('workflows', 'canActivate')}
@@ -168,5 +219,6 @@ export default function WorkflowBuilderPage() {
         return saved;
       }}
     />
+    </>
   );
 }

@@ -122,7 +122,7 @@ export default function AccountsPage(): React.ReactElement {
       conditions.push({ field: 'industry', operator: 'in', value: selectedIndustries });
     }
     if (selectedTypes.length > 0) {
-      conditions.push({ field: 'type', operator: 'in', value: selectedTypes });
+      conditions.push({ field: 'size', operator: 'in', value: selectedTypes });
     }
     if (selectedOwners.length > 0) {
       conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
@@ -149,8 +149,7 @@ export default function AccountsPage(): React.ReactElement {
       conditions.push({ field: 'industry', operator: 'in', value: selectedIndustries });
     }
     if (selectedTypes.length > 0) {
-      // Frontend sends 'type', backend field alias maps it to 'size'
-      conditions.push({ field: 'type', operator: 'in', value: selectedTypes });
+      conditions.push({ field: 'size', operator: 'in', value: selectedTypes });
     }
     if (selectedOwners.length > 0) {
       conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
@@ -304,8 +303,8 @@ export default function AccountsPage(): React.ReactElement {
         setSelectedIndustries((prev) =>
           prev.includes(ind) ? prev.filter((x) => x !== ind) : [...prev, ind],
         );
-      } else if (itemId.startsWith('type:')) {
-        const typ = itemId.replace('type:', '');
+      } else if (itemId.startsWith('size:')) {
+        const typ = itemId.replace('size:', '');
         setSelectedTypes((prev) =>
           prev.includes(typ) ? prev.filter((x) => x !== typ) : [...prev, typ],
         );

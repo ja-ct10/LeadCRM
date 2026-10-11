@@ -27,16 +27,16 @@ it.each(WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index }) => [recipe.name, inde
   expect(toast.success).not.toHaveBeenCalled();
 });
 
-it('shows only the nine approved starters and excludes removed templates from search', () => {
+it('shows the sixteen approved starters and excludes hidden recipes from search', () => {
   setup();
-  expect(screen.getByRole('status').textContent).toBe('9 templates available');
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(9);
+  expect(screen.getByRole('status').textContent).toBe('16 templates available');
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
   const starters = new Set(WORKFLOW_STARTER_TEMPLATES.map(entry => entry.index));
   WORKFLOW_RECIPES.forEach((recipe, index) => {
     if (starters.has(index)) return;
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: recipe.name } });
     expect(screen.queryByRole('button', { name: `Preview ${recipe.name}` })).toBeNull();
-    expect(screen.getByRole('status').textContent).toBe('0 templates of 9');
+    expect(screen.getByRole('status').textContent).toBe('0 templates of 16');
   });
 });
 
@@ -44,7 +44,7 @@ it('combines record, action, and text filters; returns to the same result and fo
   setup();
   fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'lead' } });
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_email' } });
-  expect(screen.getByRole('status').textContent).toBe('1 template of 9');
+  expect(screen.getByRole('status').textContent).toBe('1 template of 16');
   const name = 'Preview New Lead Email Welcome';
   fireEvent.click(screen.getByRole('button', { name }));
   expect(screen.getByText(/connect the selected sender to Gmail/)).toBeTruthy();
@@ -54,8 +54,22 @@ it('combines record, action, and text filters; returns to the same result and fo
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_sms' } });
   expect(screen.getByText(/No SMS templates are included yet/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(9);
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
   expect(document.activeElement).toBe(screen.getByRole('searchbox'));
+});
+
+it('finds actual movement templates and exposes related setup without creating a workflow', () => {
+  const { onChoose } = setup();
+  fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'move_deal_stage' } });
+  expect(screen.getByRole('status').textContent).toBe('3 templates of 16');
+  expect(screen.queryByRole('button', { name: 'Preview Qualified Deal Follow-up' })).toBeNull();
+  fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'contact' } });
+  expect(screen.getByRole('status').textContent).toBe('1 template of 16');
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Hot Contact → Move Related Deal' }));
+  expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('different open source and target stages');
+  expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('No matches produce no movement or task');
+  expect(screen.getByRole('list', { name: 'Template steps' }).textContent).not.toContain('Create Task');
+  expect(onChoose).not.toHaveBeenCalled();
 });
 
 it('keeps incompatible templates inspectable and prevents opening them', () => {

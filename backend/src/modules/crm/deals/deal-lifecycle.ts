@@ -4,6 +4,13 @@ import { ValidationError } from '../../../shared/errors/http-error';
 type StageState = { id: string; name: string; isWon: boolean; isLost: boolean };
 type DealState = { id: string; stageId: string; hasEverBeenWon?: boolean; wonHistoryVerified?: boolean; wonConfirmedAt?: Date | null; stage: StageState };
 
+export interface RelatedDealMoveGuard {
+  pipelineId: string;
+  currentStageId?: string;
+  productInterestId?: string;
+  related: { entity: 'lead' | 'contact'; id: string };
+}
+
 export const isQualifiedStage = (stage: Pick<StageState, 'name' | 'isWon' | 'isLost'>) =>
   !stage.isWon && !stage.isLost && stage.name.trim().toLowerCase() === 'qualified';
 
