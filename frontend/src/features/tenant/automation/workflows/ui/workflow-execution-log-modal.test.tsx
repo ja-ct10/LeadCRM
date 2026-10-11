@@ -40,6 +40,13 @@ it('does not claim a completed assignment when the action failed after resolving
   expect(screen.queryByText(/Assigned to Ana/)).toBeNull();
   expect(screen.getByText('Unable to create task.')).toBeTruthy();
 });
+it('preserves retired assignment labels in historical runs', async () => {
+  vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run,
+    steps: [{ ...run.steps[0], output: { resolvedUserId: 'user', resolvedUserName: 'Ana', assignmentTargetName: 'Sales team', strategy: 'sticky' } }],
+  }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
+  mount(); await settled();
+  expect(screen.getByText(/Assigned to Ana · Sales team · Previous assignee \/ Sticky assignment/)).toBeTruthy();
+});
 it('uses shared pagination, hides it while loading, and refreshes definition plus current run page', async () => {
   const close = vi.fn(); mount(close);
   expect(screen.getByRole('status', { name: 'Loading workflow runs' })).toBeTruthy();

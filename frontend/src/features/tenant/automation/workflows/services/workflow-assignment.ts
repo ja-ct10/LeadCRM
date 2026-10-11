@@ -1,7 +1,7 @@
-import { workflowAssignmentTarget, WorkflowAssignmentTargetSchema, WorkflowAssignmentStrategySchema, WORKFLOW_ASSIGNMENT_METHODS, type WorkflowAction, type WorkflowAssignmentTarget, type WorkflowOptions, type WorkflowAssignmentPoolOption } from '@leadcrm/shared';
+import { workflowAssignmentTarget, normalizeSavedWorkflowAssignment, WorkflowAssignmentTargetSchema, WorkflowAssignmentStrategySchema, WORKFLOW_ASSIGNMENT_METHODS, type WorkflowAction, type WorkflowAssignmentTarget, type WorkflowOptions, type WorkflowAssignmentPoolOption } from '@leadcrm/shared';
 
 export function assignmentSelection(action: WorkflowAction): WorkflowAssignmentTarget {
-  const target = workflowAssignmentTarget(action);
+  const target = workflowAssignmentTarget(normalizeSavedWorkflowAssignment(action));
   if (target && typeof target === 'object' && 'type' in target) {
     if (target.type === 'record_owner') return { type: 'record_owner' };
     const id = 'id' in target && typeof target.id === 'string' ? target.id : '';

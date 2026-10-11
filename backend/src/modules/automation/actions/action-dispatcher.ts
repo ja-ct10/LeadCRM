@@ -24,7 +24,6 @@ export function safeWorkflowError(error: unknown): string {
 }
 export async function dispatchAction(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, actorId: string, execution?: { workflowId: string; actionIndex: number }): Promise<ActionResult> {
   let assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>> | undefined;
-  let assignmentCommitted = false;
   try {
     const entity = actionEntity(context);
     await validateAction(action, entity, tenantId, context);
@@ -40,7 +39,6 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
         dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
         assignedUserId: assignment!.resolvedUserId,
         ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) });
-      assignmentCommitted = true;
       return { success: true, output: { taskId: task.id, ...assignmentOutput(assignment!) } };
     }
     if (action.type === 'send_sms') {
@@ -73,12 +71,11 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     } else {
       await updateCompany(entityId, tenantId, actorId, update);
     }
-    assignmentCommitted = action.type === 'assign_owner';
     await createActivity(tenantId, actorId, { type: 'workflow', title: action.type === 'assign_owner' ? 'Workflow assigned agent' : 'Workflow updated record fields',
       ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) });
     return { success: true, output: { entityId, updatedFields: Object.keys(update), ...(assignment ? assignmentOutput(assignment) : {}) } };
   } catch (error) { return { success: false, error: safeWorkflowError(error), ...(assignment ? { output: assignmentOutput(assignment) } : {}) }; }
-  finally { if (assignment) await completeWorkflowAssignment(tenantId, assignment, assignmentCommitted); }
+  finally { if (assignment) await completeWorkflowAssignment(tenantId, assignment); }
 }
 function render(content: string, context: Record<string, unknown>, entity: WorkflowEntity, html = true): string {
   const values: Record<string, unknown> = Object.fromEntries(WORKFLOW_MESSAGE_VARIABLES.map(variable => [variable.legacyToken,

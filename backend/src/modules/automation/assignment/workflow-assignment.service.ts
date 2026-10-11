@@ -1,10 +1,10 @@
 import { Prisma } from '@prisma/client';
-import { randomInt, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { WorkflowAssignmentTargetSchema, workflowAssignmentTarget, type WorkflowAction, type WorkflowAssignmentPurpose, type WorkflowAssignmentTarget, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { assignmentCandidates, assignmentPool, assignmentWorkloads } from './workflow-assignment.repository';
-import { liveReservations, memberAvailable, stickyAssignmentKey } from './workflow-assignment-policy';
+import { liveReservations, memberAvailable } from './workflow-assignment-policy';
 
 export function assignmentPurpose(action: WorkflowAction): WorkflowAssignmentPurpose {
   return action.type === 'create_task' ? 'task_assignee' : 'crm_owner';
@@ -67,8 +67,7 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
     let user = users[0];
     let reason = 'Direct assignment';
     let workload: number | undefined, capacityLimit: number | undefined;
-    let reservation: { key: string; token: string } | undefined, stickyKey: string | undefined;
-    let stickyLease: { key: string; token: string } | undefined;
+    let reservation: { key: string; token: string } | undefined;
     let candidateCount = users.length;
     if (target.type === 'role' || target.type === 'group') {
       if (!request.workflowId || !Number.isInteger(request.actionIndex) || request.actionIndex! < 0) throw new ValidationError('Workflow assignment context is missing.');
@@ -77,8 +76,7 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
       const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
       let available = target.availability ? users.filter(candidate => memberAvailable(candidate.id, target.availability!)) : users;
       if (!available.length) throw new ValidationError(`${targetName} has no eligible members available during the configured shifts.`);
-      const method = target.strategy === 'sticky' ? target.sticky?.fallback ?? 'round_robin' : target.strategy;
-      const needsWorkload = !!target.capacity || method === 'least_workload' || method === 'capacity';
+      const needsWorkload = !!target.capacity;
       const metric = request.purpose === 'task_assignee' ? 'task' : request.entity;
       if (needsWorkload && !metric) throw new ValidationError('The triggering record type is required for workload assignment.');
       const counts = needsWorkload ? await assignmentWorkloads(client, request.tenantId, available.map(candidate => candidate.id), request.purpose, request.entity, request.entityId) : new Map<string, number>();
@@ -89,30 +87,8 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
       available = available.filter(candidate => limit(candidate.id) === undefined || load(candidate.id) < limit(candidate.id)!);
       if (!available.length) throw new ValidationError(`${targetName} has no eligible members below their configured capacity. Complete or reassign work, or adjust the limits.`);
       candidateCount = available.length;
-      let previousId: string | undefined;
-      if (target.strategy === 'sticky') {
-        if (!request.entity || !request.entityId) throw new ValidationError('A triggering record is required for sticky assignment.');
-        stickyKey = stickyAssignmentKey(request.workflowId!, request.actionIndex!, target.type, target.id, request.entity, request.entityId);
-        const previous = await client.tenantPreference.findUnique({ where: { tenantId_module_key: { tenantId: request.tenantId, module: 'workflow-assignment-sticky', key: stickyKey } } });
-        const inflight = await client.tenantPreference.findUnique({ where: { tenantId_module_key: { tenantId: request.tenantId, module: 'workflow-assignment-sticky-pending', key: stickyKey } } });
-        const lease = inflight?.value;
-        const pendingUser = lease && typeof lease === 'object' && !Array.isArray(lease) && typeof lease.expiresAt === 'number' && lease.expiresAt > Date.now() && typeof lease.userId === 'string' ? lease.userId : undefined;
-        previousId = typeof previous?.value === 'string' ? previous.value : pendingUser ?? (target.sticky?.preferCurrentOwner !== false ? request.recordOwnerId : undefined);
-      }
-      const previous = available.find(candidate => candidate.id === previousId);
-      if (previous) { user = previous; reason = 'Previous assignee retained for this record'; }
-      else {
-        if (method === 'least_workload' || method === 'capacity') {
-          const minimum = Math.min(...available.map(candidate => load(candidate.id)));
-          available = available.filter(candidate => load(candidate.id) === minimum);
-        }
-        user = method === 'random' && !request.dryRun ? available[randomInt(available.length)] : available.find(candidate => candidate.id > lastId) ?? available[0];
-        reason = method === 'random' ? request.dryRun ? 'Random sample only; a live execution draws again' : 'Randomly selected from eligible members'
-          : method === 'least_workload' ? 'Lowest active workload; ties rotate'
-          : method === 'capacity' ? 'Lowest active workload below capacity; ties rotate'
-          : method === 'availability' ? 'Available during configured shift; eligible members rotate' : 'Next eligible member in rotation';
-        if (target.strategy === 'sticky') reason = `Previous assignee unavailable or unset. ${reason}`;
-      }
+      user = available.find(candidate => candidate.id > lastId) ?? available[0];
+      reason = 'Next active eligible member in rotation';
       if (needsWorkload) {
         workload = load(user.id); capacityLimit = limit(user.id);
         if (!request.dryRun) {
@@ -126,20 +102,13 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
           reservation = { key: pendingKey, token };
         }
       }
-      if (stickyKey && !request.dryRun) {
-        const token = randomUUID();
-        const scoped = { tenantId: request.tenantId, module: 'workflow-assignment-sticky-pending', key: stickyKey };
-        const value = { userId: user.id, token, expiresAt: Date.now() + 300000 };
-        await client.tenantPreference.upsert({ where: { tenantId_module_key: scoped }, create: { ...scoped, value }, update: { value } });
-        stickyLease = { key: stickyKey, token };
-      }
       if (!request.dryRun) await client.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: user.id }, update: { value: user.id } });
     }
     return { assignmentTargetType: target.type, ...(target.type !== 'record_owner' ? { assignmentTargetId: target.id } : {}),
       assignmentTargetName: targetName, resolvedUserId: user.id, resolvedUserName: `${user.firstName} ${user.lastName}`,
       candidateCount, strategy: target.type === 'role' || target.type === 'group' ? target.strategy : 'direct', reason,
       ...(workload !== undefined ? { workload } : {}), ...(capacityLimit !== undefined ? { capacityLimit } : {}),
-      ...(reservation ? { reservation } : {}), ...(stickyKey ? { stickyKey } : {}), ...(stickyLease ? { stickyLease } : {}) };
+      ...(reservation ? { reservation } : {}) };
   };
   if (request.dryRun || request.target.type === 'user' || request.target.type === 'record_owner') return resolve(prisma);
   for (let attempt = 0; ; attempt++) {
@@ -151,9 +120,9 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
   }
 }
 
-/** Remember only successful sticky assignments; release workload leases after the domain write. */
-export async function completeWorkflowAssignment(tenantId: string, assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>>, succeeded: boolean) {
-  if (!assignment.reservation && !assignment.stickyLease && !(assignment.stickyKey && succeeded)) return;
+/** Release capacity leases after the domain write, including failed actions. */
+export async function completeWorkflowAssignment(tenantId: string, assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>>) {
+  if (!assignment.reservation) return;
   for (let attempt = 0; ; attempt++) {
     try {
       await prisma.$transaction(async client => {
@@ -161,18 +130,6 @@ export async function completeWorkflowAssignment(tenantId: string, assignment: A
           const key = { tenantId, module: 'workflow-assignment-pending', key: assignment.reservation.key };
           const row = await client.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
           if (row) await client.tenantPreference.update({ where: { tenantId_module_key: key }, data: { value: liveReservations(row.value, Date.now()).filter(item => item.token !== assignment.reservation!.token) } });
-        }
-        if (assignment.stickyKey && succeeded) {
-          const key = { tenantId, module: 'workflow-assignment-sticky', key: assignment.stickyKey };
-          await client.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: assignment.resolvedUserId }, update: { value: assignment.resolvedUserId } });
-        }
-        if (assignment.stickyLease) {
-          const key = { tenantId, module: 'workflow-assignment-sticky-pending', key: assignment.stickyLease.key };
-          const row = await client.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
-          const lease = row?.value;
-          if (lease && typeof lease === 'object' && !Array.isArray(lease) && lease.token === assignment.stickyLease.token) {
-            await client.tenantPreference.delete({ where: { tenantId_module_key: key } });
-          }
         }
       }, { isolationLevel: 'Serializable' });
       return;
@@ -184,6 +141,6 @@ export async function completeWorkflowAssignment(tenantId: string, assignment: A
 }
 
 export function assignmentOutput(assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>>) {
-  const { reservation, stickyKey, stickyLease, ...output } = assignment;
+  const { reservation, ...output } = assignment;
   return output;
 }

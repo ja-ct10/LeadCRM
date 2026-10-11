@@ -10,9 +10,8 @@ Create Task and Assign Agent accept `config.assignmentTarget`:
 type WorkflowAssignmentTarget =
   | { type: 'record_owner' }
   | { type: 'user'; id: string }
-  | { type: 'role' | 'group'; id: string; strategy: WorkflowAssignmentStrategy;
-      availability?: WorkflowAvailability; capacity?: WorkflowCapacity;
-      sticky?: { fallback: 'round_robin' | 'least_workload' | 'random'; preferCurrentOwner: boolean } };
+  | { type: 'role' | 'group'; id: string; strategy: 'round_robin';
+      availability?: WorkflowAvailability; capacity?: WorkflowCapacity };
 ```
 
 `record_owner` is available only for Create Task. Omitted task assignments retain that behavior. Legacy `create_task.config.assignedUserId` and `assign_owner.config.userId` remain readable and executable. Explicit edits save the canonical shape; migration does not rewrite Workflow JSON. If both shapes are present, the explicit `assignmentTarget` takes precedence.
@@ -27,24 +26,17 @@ Dry-runs preview the next candidate without changing records or cursor state. Th
 
 ## Assignment methods and settings
 
-In Create Task or Assign Agent, choose Role/Group, then **Assignment method**. Settings belong to that action, save with its definition, increment the workflow version, and appear in historical snapshots. Existing round-robin definitions remain valid.
+In Create Task or Assign Agent, choose Role/Group. **Assignment method** offers only **Round-robin**: the next active, permission-eligible member in stable rotation. Inactive users are excluded from options and selection; membership, status and permissions are rechecked on every run. Reactivated eligible members rejoin the rotation. If no active member qualifies, the action fails without assigning outside the pool.
 
-| Method | Selection and configuration |
-| --- | --- |
-| Round-robin | Next eligible member in stable rotation. |
-| Least workload | Fewest active tasks for Create Task, or active records of the triggering CRM type for Assign Agent. Equal workloads rotate. |
-| Random | Cryptographically unbiased selection from the eligible pool. Dry tests show a sample; live execution draws again. |
-| Availability-based | Weekly default shift, IANA timezone and optional per-member shift/unavailable overrides. Available members rotate. |
-| Capacity-based | Required default maximum workload, optional per-member limits. Select the least-loaded member below their limit; ties rotate. |
-| Previous assignee / Sticky assignment | Reuse the previous successful assignment for the same tenant, workflow, action, pool and record. Optionally begin with the current record agent. Choose round-robin, least workload or random as fallback. |
+Saved definitions using least workload, random, availability-based, capacity-based or sticky assignment load and execute as round-robin. The read adapter removes retired sticky settings and preserves optional availability/capacity filters, target IDs and unknown fields so invalid references or configurations still fail validation. An explicit save persists the canonical definition. New API submissions accept only `round_robin`; historical stored definitions and execution snapshots are not rewritten by reads. No additional migration is needed.
 
-Availability and capacity filters can also be enabled for other methods, including sticky assignment. Limits are positive whole numbers up to 10,000. All schedules use the selected timezone and its daylight-saving rules. Overnight shifts belong to the starting weekday; shift end is exclusive. Members marked unavailable are skipped. New pool members inherit defaults; saved overrides for former members are retained and can be removed in the editor. Override references must belong to the current tenant.
+Availability and capacity remain optional filters on round-robin. Settings belong to the action and appear in execution snapshots. Limits are positive whole numbers up to 10,000. All schedules use the selected timezone and its daylight-saving rules. Overnight shifts belong to the starting weekday; shift end is exclusive. Members marked unavailable are skipped. New pool members inherit defaults; saved overrides for former members are retained and can be removed in the editor. Override references must belong to the current tenant.
 
 Task workload includes pending, in-progress and blocked tasks, excluding completed/cancelled/archived work. CRM workload counts unconverted, unarchived Leads, unarchived Contacts/Accounts, or Deals in non-Won/non-Lost stages. The record being reassigned is excluded so retaining its current owner does not consume a second slot. Workload is measured across the tenant, not just tasks created by this workflow. Manual assignment remains governed by the normal CRM/Task rules; action-level limits control automatic workflow assignments.
 
-Least-workload and capacity decisions reserve five-minute leases in `TenantPreference` (`workflow-assignment-pending`) in serializable transactions. Concurrent workflow/pool decisions include active reservations for that user and workload type. Existing domain services perform the actual write; success or failure releases the lease, while expired leases are ignored after interrupted processes. In-flight sticky selections use a separate short lease so concurrent initial selections agree; only successful assignments enter durable sticky history. These leases are internal, inaccessible through preference APIs and omitted from execution output. They do not provide a global limit on manual writes or a transaction spanning all workflow actions.
+Round-robin decisions with capacity filters reserve five-minute leases in `TenantPreference` (`workflow-assignment-pending`) in serializable transactions. Concurrent workflow/pool decisions include active reservations for that user and workload type. Existing domain services perform the actual write; success or failure releases the lease, while expired leases are ignored after interrupted processes. These leases are internal, inaccessible through preference APIs and omitted from execution output. They do not provide a global limit on manual writes or a transaction spanning all workflow actions.
 
-If nobody satisfies eligibility, availability or capacity, the action fails with an actionable message and remaining actions are skipped. There is no silent overflow or fallback outside the selected pool. A failed action releases workload reservations; the rotation turn remains consumed. Dry runs write no leases or sticky history and project earlier task workload into later steps. Run details record method, selection reason, prior workload and the applicable capacity limit.
+If nobody satisfies eligibility, availability or capacity, the action fails with an actionable message and remaining actions are skipped. There is no silent overflow or fallback outside the selected pool. A failed action releases workload reservations; the rotation turn remains consumed. Dry runs write no leases and project earlier task workload into later steps. Run details record method, selection reason, prior workload and the applicable capacity limit.
 
 These settings reuse Workflow JSON and TenantPreference; no additional database migration is needed beyond the assignment/history migration below.
 
@@ -83,12 +75,12 @@ Apply the additive migration before running the updated backend. Verification he
 
 | Area | Test type | Required behavior |
 | --- | --- | --- |
-| Contracts and selection | Unit | Legacy normalization, required settings, timezone/overnight shifts, workload/capacity, sticky completion, serialized conflict retries, dry-run immutability |
-| Assignment execution | Integration with full migration replay | User/Role/Group, one owner, current-owner projection, task-only staff, dynamic membership, admin exclusion, tenant isolation, RBAC denial, duplicate event suppression |
+| Contracts and selection | Unit | Round-robin only, saved-method compatibility, timezone/overnight shifts, capacity filters, serialized conflict retries, dry-run immutability |
+| Assignment execution | Integration with full migration replay | User/Role/Group, active-only rotation, deactivation/reactivation, empty pools, rejected retired methods, one owner, current-owner projection, task-only staff, dynamic membership, admin exclusion, tenant isolation, RBAC denial, duplicate event suppression |
 | Definition history | Integration | Execution changes increment versions, lifecycle changes do not, old snapshots remain stable, archived workflows cannot reactivate |
 | Migration | Disposable PostgreSQL via PGlite | Preserve legacy JSON/null history; reject duplicate steps and foreign authors; rollback without loss |
 | Builder and runs | Component | Canonical saves, task-specific choices, unavailable references, purpose-specific counts, summaries and historical versions |
-| Browser | Built app with disposable API/database | Each method saves, reloads, previews and executes; keyboard group selection, historical snapshots, real auth stream; 320/375/390/768/1024/1440 px overflow checks |
+| Browser | Built app with disposable API/database | Only round-robin is offered, saves/reloads/previews/executes with optional filters, inactive users and empty pools, keyboard group selection, historical snapshots, real auth stream; 320/375/390/768/1024/1440 px overflow checks |
 
 Useful commands from the repository root:
 
@@ -114,3 +106,10 @@ Production builds require an HTTPS `API_URL` ending in `/api/v1`; local validati
 - `git diff --check` passed. The configured CRM database was not changed; apply the additive migration before starting the updated backend.
 
 The browser script writes its local evidence to `data/outputs/workflow-browser/results.json` and screenshots in the same ignored output directory.
+
+## Round-robin verification — 2026-10-11
+
+- 105 backend tests passed on the updated main branch: 90 disposable-database integration tests and 15 assignment unit tests. Coverage includes active-only Role/Group rotation for both Create Task and Assign Agent, deactivation/reactivation, empty pools, rejected retired-method submissions, saved-definition compatibility, concurrent turns, filters, tenant isolation and permissions.
+- The full Workflow/Help frontend suite passed 152 of 155 tests. The three existing failures assert `aria-required` on the unchanged shared condition-field selector (`workflow-polish.test.tsx:30`); assignment, builder, saved-method compatibility and historical-run tests passed.
+- All three workspace lint checks and production builds passed. No tests changed the configured CRM database.
+- All 70 built-app browser checks passed with no page or transport errors, including the single Round-robin option, save/reload, read-only previews, actual Task creation, inactive-user exclusion, empty pools, historical runs and six viewport widths. The harness forwards the auth/CRM event streams directly to the disposable API so open streams are not buffered as ordinary request bodies.

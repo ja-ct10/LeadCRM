@@ -330,8 +330,9 @@ operator.
 
 Assignment configuration and versioned execution history are documented in
 [Workflow assignment and history](workflows/workflow-assignment-history.md).
-Role/Group assignment methods include round-robin, least workload, random,
-availability-based, capacity-based and sticky assignment. Availability schedules,
+Role/Group assignment supports only round-robin among active, permission-eligible
+users. Retired methods in saved definitions are adapted to round-robin on read;
+new API input rejects them. Optional availability schedules,
 capacity limits and member overrides are saved in `config.assignmentTarget`.
 The shared contract validates these settings; workflow options include eligible
 pool members for configuring overrides. Dry tests return the selection reason

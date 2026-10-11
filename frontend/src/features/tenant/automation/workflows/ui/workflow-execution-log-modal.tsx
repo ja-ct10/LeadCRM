@@ -24,6 +24,11 @@ import {
   panelTitleClass,
 } from '@/shared/components/side-panel-styles';
 import { ChevronRight, X, MoreHorizontal, Edit, Pause, Play, Copy, Archive } from 'lucide-react';
+// Historical runs retain the method that actually executed, including retired methods.
+const executionAssignmentMethods = new Map<string, string>(Object.entries({
+  ...WORKFLOW_ASSIGNMENT_METHODS, least_workload: 'Least workload', random: 'Random',
+  availability: 'Availability-based', capacity: 'Capacity-based', sticky: 'Previous assignee / Sticky assignment',
+}));
 interface WorkflowRunsProps {
   workflowId: string;
   name: string;
@@ -197,7 +202,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                       {step.status}
                       {typeof step.output?.resolvedUserId === 'string' && <p className="mt-1 text-xs text-muted-foreground">
                         {step.status === 'failed' ? 'Selected assignee:' : 'Assigned to'} {typeof step.output.resolvedUserName === 'string' ? step.output.resolvedUserName : step.output.resolvedUserId}
-                        {typeof step.output.strategy === 'string' && Object.entries(WORKFLOW_ASSIGNMENT_METHODS).some(([method]) => method === step.output!.strategy) && ` · ${String(step.output.assignmentTargetName ?? step.output.assignmentTargetType)} · ${Object.entries(WORKFLOW_ASSIGNMENT_METHODS).find(([method]) => method === step.output!.strategy)?.[1]}`}
+                        {typeof step.output.strategy === 'string' && executionAssignmentMethods.has(step.output.strategy) && ` · ${String(step.output.assignmentTargetName ?? step.output.assignmentTargetType)} · ${executionAssignmentMethods.get(step.output.strategy)}`}
                       </p>}
                       {typeof step.output?.resolvedUserId === 'string' && typeof step.output.reason === 'string' && <p className="mt-1 text-xs text-muted-foreground">{step.output.reason}</p>}
                       {typeof step.output?.workload === 'number' && <p className="mt-1 text-xs text-muted-foreground">Workload before assignment: {step.output.workload}{typeof step.output.capacityLimit === 'number' ? ` / ${step.output.capacityLimit}` : ''}</p>}

@@ -1,6 +1,7 @@
 import { compatibleWorkflow, supportedChangedFields } from './workflow-fields';
 import { AsyncLocalStorage } from 'node:async_hooks';
-import { WorkflowDraftSchema, CRM_STATUSES, type WorkflowDraft } from '@leadcrm/shared';
+import type { Prisma } from '@prisma/client';
+import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, type WorkflowDraft } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import * as repo from './workflows.repository';
@@ -48,9 +49,13 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
   for (const workflow of workflows) {
     if (visited.has(workflow.id)) continue;
     await chain.run(new Set([...visited, workflow.id]), async () => {
+      const actions = Array.isArray(workflow.actions) ? workflow.actions.map(action => {
+        const parsed = WorkflowActionSchema.safeParse(action);
+        return parsed.success ? normalizeSavedWorkflowAssignment(parsed.data) as Prisma.JsonObject : action;
+      }) : workflow.actions;
       const run = await repo.startRun({ tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType,
         workflowVersion: workflow.version, definitionSnapshot: { name: workflow.name, description: workflow.description, trigger: workflow.trigger,
-          conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive },
+          conditions: workflow.conditions, actions, isActive: workflow.isActive },
         entityType: trigger.entity, entityId: params.entityId, eventId, recordName: String(context[`${trigger.entity}.title`] ?? context[`${trigger.entity}.name`] ?? `${context[`${trigger.entity}.firstName`] ?? ''} ${context[`${trigger.entity}.lastName`] ?? ''}`).trim().slice(0, 255) });
       if (!run) return;
       let status = 'completed';

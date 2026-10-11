@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
-import { WorkflowAssignmentTargetSchema, normalizeWorkflowAssignment, type WorkflowAction, type WorkflowAssignmentTarget } from '@leadcrm/shared';
+import { WorkflowAssignmentTargetSchema, normalizeWorkflowAssignment, normalizeSavedWorkflowAssignment, type WorkflowAction, type WorkflowAssignmentTarget } from '@leadcrm/shared';
 import { parseAssignment, resolveWorkflowAssignee, completeWorkflowAssignment } from '../../assignment/workflow-assignment.service';
 import { memberAvailable } from '../../assignment/workflow-assignment-policy';
 import { workflowDefinitionChanged } from '../workflow-version';
@@ -33,14 +33,26 @@ describe('workflow assignment contracts and concurrent reservations', () => {
       expect(WorkflowAssignmentTargetSchema.safeParse(target).success).toBe(false);
     }
   });
-  it('validates strategy-specific settings, timezone, limits and duplicate overrides', () => {
+  it('accepts only round-robin and validates optional filters', () => {
     const pool = { type: 'group', id: targetId };
-    for (const strategy of ['round_robin', 'least_workload', 'random', 'sticky']) expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy }).success).toBe(true);
-    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'capacity' }).success).toBe(false);
-    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'availability' }).success).toBe(false);
-    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'capacity', capacity: { maxPerMember: 0, members: [] } }).success).toBe(false);
-    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'random', availability: { timeZone: 'Fake/City', schedule: { days: [1], start: '09:00', end: '17:00' }, members: [] } }).success).toBe(false);
-    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'capacity', capacity: { maxPerMember: 5, members: [{ userId, limit: 2 }, { userId, limit: 3 }] } }).success).toBe(false);
+    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'round_robin' }).success).toBe(true);
+    for (const strategy of ['least_workload', 'random', 'sticky', 'capacity', 'availability']) {
+      expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy }).success).toBe(false);
+      expect(() => parseAssignment({ type: 'create_task', config: { assignmentTarget: { ...pool, strategy } } })).toThrow('valid assignment target');
+    }
+    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'round_robin', capacity: { maxPerMember: 0, members: [] } }).success).toBe(false);
+    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'round_robin', availability: { timeZone: 'Fake/City', schedule: { days: [1], start: '09:00', end: '17:00' }, members: [] } }).success).toBe(false);
+    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'round_robin', capacity: { maxPerMember: 5, members: [{ userId, limit: 2 }, { userId, limit: 3 }] } }).success).toBe(false);
+    expect(WorkflowAssignmentTargetSchema.safeParse({ ...pool, strategy: 'round_robin', sticky: { fallback: 'round_robin', preferCurrentOwner: true } }).success).toBe(false);
+  });
+  it.each(['least_workload', 'random', 'availability', 'capacity', 'sticky'])('adapts saved %s definitions without mutating history or hiding unknown settings', strategy => {
+    const action: WorkflowAction = { type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: targetId, strategy, ...(strategy === 'sticky' ? { sticky: { fallback: 'random', preferCurrentOwner: true } } : {}) } } };
+    const normalized = normalizeSavedWorkflowAssignment(action);
+    expect(normalized.config.assignmentTarget).toEqual(request.target);
+    expect(action.config.assignmentTarget).toMatchObject({ strategy });
+    expect(parseAssignment(normalized)).toEqual(request.target);
+    const malformed = { ...action, config: { assignmentTarget: { type: 'group', id: targetId, strategy: 'weighted' } } };
+    expect(() => parseAssignment(normalizeSavedWorkflowAssignment(malformed))).toThrow('valid assignment target');
   });
   it('handles overnight shifts, local weekdays, unavailable members and daylight saving time', () => {
     const availability = { timeZone: 'Asia/Manila', schedule: { days: [1], start: '22:00', end: '06:00' }, members: [] };
@@ -52,47 +64,24 @@ describe('workflow assignment contracts and concurrent reservations', () => {
     expect(memberAvailable(userId, eastern, new Date('2026-07-06T13:00:00Z'))).toBe(true);
     expect(memberAvailable(userId, eastern, new Date('2026-01-05T13:00:00Z'))).toBe(false);
   });
-  it('selects lowest workload, counts active reservations and keeps previews read-only', async () => {
+  it('keeps round-robin order regardless of workload when no capacity filter is configured', async () => {
     mocks.workloads.mockResolvedValue(new Map([[userId, 2], [secondId, 0]]));
-    const target = { ...request.target, strategy: 'least_workload' as const };
-    const result = await resolveWorkflowAssignee({ ...request, target, dryRun: true });
-    expect(result).toMatchObject({ resolvedUserId: secondId, workload: 0 });
+    const result = await resolveWorkflowAssignee({ ...request, dryRun: true });
+    expect(result).toMatchObject({ resolvedUserId: userId, strategy: 'round_robin' });
+    expect(mocks.workloads).not.toHaveBeenCalled();
     expect(mocks.save).not.toHaveBeenCalled();
-    mocks.pending.mockResolvedValue([{ key: `task:${secondId}`, value: Array.from({ length: 3 }, (_, i) => ({ token: String(i), expiresAt: Date.now() + 60000 })) }]);
-    expect((await resolveWorkflowAssignee({ ...request, target })).resolvedUserId).toBe(userId);
   });
   it('enforces per-member capacity and fails rather than silently exceeding it', async () => {
     mocks.workloads.mockResolvedValue(new Map([[userId, 2], [secondId, 3]]));
-    const target: WorkflowAssignmentTarget = { ...request.target, strategy: 'capacity', capacity: { maxPerMember: 3, members: [{ userId, limit: 2 }] } };
+    const target: WorkflowAssignmentTarget = { ...request.target, capacity: { maxPerMember: 3, members: [{ userId, limit: 2 }] } };
     await expect(resolveWorkflowAssignee({ ...request, target })).rejects.toThrow('below their configured capacity');
     mocks.workloads.mockResolvedValue(new Map([[userId, 1], [secondId, 3]]));
     const assignment = await resolveWorkflowAssignee({ ...request, target });
     expect(assignment).toMatchObject({ resolvedUserId: userId, workload: 1, capacityLimit: 2 });
     expect(assignment.reservation).toBeDefined();
     mocks.cursor.mockResolvedValue({ value: [{ token: assignment.reservation!.token, expiresAt: Date.now() + 60000 }] });
-    await completeWorkflowAssignment(request.tenantId, assignment, false);
+    await completeWorkflowAssignment(request.tenantId, assignment);
     expect(mocks.update).toHaveBeenCalledWith(expect.objectContaining({ data: { value: [] } }));
-  });
-  it('retains an eligible sticky assignee, falls back after removal, and remembers successful assignments only', async () => {
-    const target = { ...request.target, strategy: 'sticky' as const, sticky: { fallback: 'round_robin' as const, preferCurrentOwner: false } };
-    mocks.cursor.mockImplementation(({ where }) => Promise.resolve(where.tenantId_module_key.module === 'workflow-assignment-sticky' ? { value: secondId } : null));
-    const input = { ...request, target, entity: 'lead' as const, entityId: 'record' };
-    const assignment = await resolveWorkflowAssignee(input);
-    expect(assignment).toMatchObject({ resolvedUserId: secondId, reason: 'Previous assignee retained for this record' });
-    const count = mocks.save.mock.calls.length;
-    await completeWorkflowAssignment(request.tenantId, assignment, false);
-    expect(mocks.save.mock.calls.length).toBe(count);
-    await completeWorkflowAssignment(request.tenantId, assignment, true);
-    expect(mocks.save).toHaveBeenLastCalledWith(expect.objectContaining({ create: expect.objectContaining({ module: 'workflow-assignment-sticky', value: secondId }) }));
-    mocks.candidates.mockResolvedValue([{ id: userId, firstName: 'First', lastName: 'User', role: 'Staff' }]);
-    expect((await resolveWorkflowAssignee(input)).resolvedUserId).toBe(userId);
-  });
-  it('random selections stay inside the eligible pool and previews leave state unchanged', async () => {
-    const input = { ...request, target: { ...request.target, strategy: 'random' as const } };
-    for (let index = 0; index < 12; index++) expect([userId, secondId]).toContain((await resolveWorkflowAssignee(input)).resolvedUserId);
-    mocks.save.mockClear();
-    expect((await resolveWorkflowAssignee({ ...input, dryRun: true })).reason).toContain('sample only');
-    expect(mocks.save).not.toHaveBeenCalled();
   });
   it.each(['P2034', 'P2002'])('retries a %s serialization/cursor-creation conflict before reserving the next turn', async code => {
     mocks.transaction.mockRejectedValueOnce(new Prisma.PrismaClientKnownRequestError('conflict', { code, clientVersion: '5.22.0' }));

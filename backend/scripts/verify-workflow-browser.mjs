@@ -64,8 +64,8 @@ try {
     const url = new URL(request.url());
     const localUrl = `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`;
     const headers = { ...request.headers(), authorization: `Bearer ${token}` };
-    // Keep the real auth event stream open; APIRequestContext buffers response bodies.
-    if (url.pathname === '/api/proxy/auth/events') return route.continue({ url: localUrl, headers });
+    // Keep real event streams open; APIRequestContext buffers response bodies.
+    if (['/api/proxy/auth/events', '/api/proxy/crm/record-events', '/api/proxy/crm/pipelines/events'].includes(url.pathname)) return route.continue({ url: localUrl, headers });
     if (failWorkflowRead && request.method() === 'GET' && url.pathname.endsWith('/automation/workflows/' + saved.lead.id)) {
       return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Acceptance: Workflow temporarily unavailable' } }) });
     }
@@ -155,6 +155,8 @@ try {
   await groupControl.focus(); await page.keyboard.press('End'); await page.keyboard.press('Enter');
   assert.equal(await groupControl.inputValue(), pool.id);
   await page.getByText('2 members · 1 eligible', { exact: true }).waitFor();
+  assert.deepEqual(await page.getByLabel('Assignment method', { exact: true }).locator('option').allTextContents(), ['Round-robin']);
+  await page.getByText('Inactive users are skipped.', { exact: false }).waitFor();
   record('Keyboard-only group selection shows eligibility and excludes Client Admin from the pool');
   await responsive('assignment-group');
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
@@ -185,11 +187,13 @@ try {
   await responsive('assignment-history');
   record('Run history retains the executed version, definition and concrete assignee after edits');
   await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));
-  for (const method of ['least_workload', 'random', 'availability', 'capacity', 'sticky']) {
+  for (const filter of ['none', 'availability', 'capacity']) {
+    await scope(() => workflows.updateWorkflow(assignment.id, tenant.id, admin.id, { actions: [{ type: 'create_task', config: { title: 'Round-robin follow-up', assignmentTarget: { type: 'group', id: pool.id, strategy: 'round_robin' } } }] }));
     await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
     await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
-    await page.getByLabel('Assignment method', { exact: true }).selectOption(method);
-    if (method === 'availability') {
+    assert.deepEqual(await page.getByLabel('Assignment method', { exact: true }).locator('option').allTextContents(), ['Round-robin']);
+    if (filter === 'availability') {
+      await page.getByLabel('Use availability schedule', { exact: true }).check();
       await page.getByLabel('Assignment timezone', { exact: true }).fill('UTC');
       const hour = new Date().getUTCHours();
       await page.getByLabel('Default shift start', { exact: true }).fill(`${String((hour + 23) % 24).padStart(2, '0')}:00`);
@@ -198,20 +202,20 @@ try {
       await page.getByText('Member settings (1)', { exact: true }).click();
       await page.getByLabel('Ana Specialist custom shift', { exact: true }).check();
     }
-    if (method === 'capacity') {
+    if (filter === 'capacity') {
+      await page.getByLabel('Enforce capacity limit', { exact: true }).check();
       await page.getByLabel('Default capacity limit', { exact: true }).fill('100');
       await page.getByText('Member settings (1)', { exact: true }).click();
       await page.getByLabel('Ana Specialist capacity limit', { exact: true }).fill('50');
     }
-    if (method === 'sticky') await page.getByLabel('Sticky fallback method', { exact: true }).selectOption('least_workload');
-    if (method === 'capacity' || method === 'availability') await responsive('assignment-' + method);
+    if (filter !== 'none') await responsive('assignment-' + filter);
     await page.getByRole('button', { name: 'Save changes', exact: true }).click();
     await page.getByText('Changes saved. This workflow is paused.', { exact: true }).waitFor();
     const definition = await prisma.workflow.findUniqueOrThrow({ where: { id: assignment.id } });
-    assert.equal(definition.actions[0].config.assignmentTarget.strategy, method);
+    assert.equal(definition.actions[0].config.assignmentTarget.strategy, 'round_robin');
     await page.reload();
     await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
-    assert.equal(await page.getByLabel('Assignment method', { exact: true }).inputValue(), method);
+    assert.equal(await page.getByLabel('Assignment method', { exact: true }).inputValue(), 'round_robin');
     await page.getByRole('button', { name: 'Test', exact: true }).click();
     await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
     await page.getByRole('button', { name: 'Run check', exact: true }).click();
@@ -220,10 +224,20 @@ try {
     await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
     const history = await scope(() => workflows.getWorkflowExecutions(assignment.id, tenant.id));
     assert.equal(history[0].status, 'completed');
-    assert.equal(history[0].steps[0].output.strategy, method);
+    assert.equal(history[0].steps[0].output.strategy, 'round_robin');
     await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));
-    record(method + ' config saves, reloads, previews and executes through real domain services');
+    record('Round-robin with ' + filter + ' filter saves, reloads, previews and executes through real domain services');
   }
+  await prisma.user.update({ where: { id: specialist.id }, data: { status: 'INACTIVE' } });
+  await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
+  await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
+  await page.getByText('2 members · 0 eligible', { exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+  await page.getByRole('button', { name: 'Run check', exact: true }).click();
+  await page.getByText('no active members eligible', { exact: false }).waitFor();
+  await assert.rejects(scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true)), /no active members/);
+  record('Inactive users disappear from eligibility and empty active pools fail preview and activation');
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors }, null, 2));
   console.log('Browser acceptance passed: ' + checks.length + ' checks.');

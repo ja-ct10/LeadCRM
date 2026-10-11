@@ -4,6 +4,7 @@ exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.Workflo
 exports.missingWorkflowConditionValues = missingWorkflowConditionValues;
 exports.workflowAssignmentTarget = workflowAssignmentTarget;
 exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
+exports.normalizeSavedWorkflowAssignment = normalizeSavedWorkflowAssignment;
 exports.workflowOperators = workflowOperators;
 const zod_1 = require("zod");
 exports.WorkflowConditionOperatorSchema = zod_1.z.enum([
@@ -35,10 +36,9 @@ exports.WorkflowActionSchema = zod_1.z.object({
     config: zod_1.z.record(zod_1.z.unknown()),
 }).strict();
 exports.WORKFLOW_ASSIGNMENT_METHODS = {
-    round_robin: 'Round-robin', least_workload: 'Least workload', random: 'Random',
-    availability: 'Availability-based', capacity: 'Capacity-based', sticky: 'Previous assignee / Sticky assignment',
+    round_robin: 'Round-robin',
 };
-exports.WorkflowAssignmentStrategySchema = zod_1.z.enum(['round_robin', 'least_workload', 'random', 'availability', 'capacity', 'sticky']);
+exports.WorkflowAssignmentStrategySchema = zod_1.z.enum(['round_robin']);
 const assignmentDays = zod_1.z.array(zod_1.z.number().int().min(0).max(6)).min(1).max(7).refine(days => new Set(days).size === days.length, 'Choose each day only once.');
 const assignmentTime = zod_1.z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid time.');
 const assignmentSchedule = zod_1.z.object({ days: assignmentDays, start: assignmentTime, end: assignmentTime }).strict()
@@ -63,23 +63,13 @@ exports.WorkflowCapacitySchema = zod_1.z.object({
 const poolAssignment = {
     id: zod_1.z.string().uuid(), strategy: exports.WorkflowAssignmentStrategySchema,
     availability: exports.WorkflowAvailabilitySchema.optional(), capacity: exports.WorkflowCapacitySchema.optional(),
-    sticky: zod_1.z.object({ fallback: zod_1.z.enum(['round_robin', 'least_workload', 'random']), preferCurrentOwner: zod_1.z.boolean() }).strict().optional(),
 };
 exports.WorkflowAssignmentTargetSchema = zod_1.z.discriminatedUnion('type', [
     zod_1.z.object({ type: zod_1.z.literal('record_owner') }).strict(),
     zod_1.z.object({ type: zod_1.z.literal('user'), id: zod_1.z.string().uuid() }).strict(),
     zod_1.z.object({ type: zod_1.z.literal('role'), ...poolAssignment }).strict(),
     zod_1.z.object({ type: zod_1.z.literal('group'), ...poolAssignment }).strict(),
-]).superRefine((target, ctx) => {
-    if (target.type !== 'role' && target.type !== 'group')
-        return;
-    if (target.strategy === 'availability' && !target.availability)
-        ctx.addIssue({ code: 'custom', path: ['availability'], message: 'Configure an availability schedule.' });
-    if (target.strategy === 'capacity' && !target.capacity)
-        ctx.addIssue({ code: 'custom', path: ['capacity'], message: 'Configure a capacity limit.' });
-    if (target.strategy !== 'sticky' && target.sticky)
-        ctx.addIssue({ code: 'custom', path: ['sticky'], message: 'Sticky settings require the sticky assignment method.' });
-});
+]);
 /** Read old definitions without rewriting stored workflows or hiding invalid new targets. */
 function workflowAssignmentTarget(action) {
     if (action.config.assignmentTarget !== undefined)
@@ -94,6 +84,19 @@ function normalizeWorkflowAssignment(action) {
     const config = { ...action.config };
     delete config[action.type === 'create_task' ? 'assignedUserId' : 'userId'];
     return { ...action, config: { ...config, ...(target === undefined ? {} : { assignmentTarget: target }) } };
+}
+/** Adapt saved retired methods on read; new API input still uses the strict target schema. */
+function normalizeSavedWorkflowAssignment(action) {
+    if (!['create_task', 'assign_owner'].includes(action.type))
+        return action;
+    const normalized = normalizeWorkflowAssignment(action);
+    const target = normalized.config.assignmentTarget;
+    if (!target || typeof target !== 'object' || !('type' in target) || !('strategy' in target) ||
+        !['role', 'group'].includes(String(target.type)) ||
+        !['least_workload', 'random', 'availability', 'capacity', 'sticky'].includes(String(target.strategy)))
+        return normalized;
+    const { sticky: _retired, ...pool } = target;
+    return { ...normalized, config: { ...normalized.config, assignmentTarget: { ...pool, strategy: 'round_robin' } } };
 }
 exports.WorkflowDraftSchema = zod_1.z.object({
     name: zod_1.z.string().regex(/^[^\x00-\x1f\x7f]*$/, 'Control characters are not allowed.').trim().min(1, 'Workflow name is required.').max(255),

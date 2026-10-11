@@ -105,6 +105,52 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: leadId } })).assignedUserId).toBe(output.resolvedUserId);
     expect(history.steps[1].output).toMatchObject({ resolvedUserId: output.resolvedUserId });
   });
+  it.each([
+    ['role', 'create_task'], ['group', 'create_task'], ['role', 'assign_owner'], ['group', 'assign_owner'],
+  ] as const)('rechecks active users for %s %s rotation, fails safely when empty, and resumes after reactivation', async (type, actionType) => {
+    const group = type === 'group' ? await prisma.tenantGroup.create({ data: { tenantId, name: `Active pool ${randomUUID()}`, members: { create: [salesUserId, secondSalesId].map(userId => ({ userId })) } } }) : undefined;
+    const pool = target(type, group?.id ?? salesRoleId);
+    const workflow = await create([{ type: actionType, config: { ...(actionType === 'create_task' ? { title: 'Active users only' } : {}), assignmentTarget: pool } }]);
+    await fire();
+    const firstRun = (await runs(workflow.id))[0];
+    const firstId = (firstRun.steps[0].output as Prisma.JsonObject).resolvedUserId as string;
+    const remainingId = firstId === salesUserId ? secondSalesId : salesUserId;
+    if (actionType === 'assign_owner') await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: actorId } });
+    await prisma.user.update({ where: { id: firstId }, data: { status: 'INACTIVE' } });
+    const options = await scope(() => workflows.getOptions(tenantId, actorId));
+    const option = (type === 'role' ? options.roles : options.groups).find(row => row.id === pool.id)!;
+    expect(option.eligibleMemberCounts).toEqual({ crm_owner: 1, task_assignee: 1 });
+    expect(option.members?.map(member => member.id)).toEqual([remainingId]);
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
+    expect(preview.actions[0].assignment).toMatchObject({ resolvedUserId: remainingId, candidateCount: 1 });
+    await fire();
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: remainingId, candidateCount: 1 } }] });
+    if (actionType === 'assign_owner') await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: actorId } });
+    await prisma.user.update({ where: { id: remainingId }, data: { status: 'INACTIVE' } });
+    const beforeTasks = await prisma.task.count({ where: { tenantId } });
+    const cursorKey = { tenantId, module: 'workflow-assignment', key: `${workflow.id}:0:${type}:${pool.id}` };
+    const beforeCursor = await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursorKey } });
+    await fire();
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('no active members') });
+    expect(await prisma.task.count({ where: { tenantId } })).toBe(beforeTasks);
+    expect((await prisma.tenantPreference.findUniqueOrThrow({ where: { tenantId_module_key: cursorKey } })).value).toEqual(beforeCursor.value);
+    if (actionType === 'assign_owner') expect((await prisma.lead.findUniqueOrThrow({ where: { id: leadId } })).assignedUserId).toBe(actorId);
+    await prisma.user.update({ where: { id: firstId }, data: { status: 'ACTIVE' } });
+    await fire();
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: firstId, candidateCount: 1 } }] });
+    if (actionType === 'create_task') {
+      const firstTaskId = (firstRun.steps[0].output as Prisma.JsonObject).taskId as string;
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: firstTaskId } })).assignedUserId).toBe(firstId);
+    }
+  });
+  it.each(['least_workload', 'random', 'availability', 'capacity', 'sticky'])('rejects new %s definitions on create, update, draft save and validation', async strategy => {
+    const workflow = await create([task(target('group', groupId))]);
+    const actions = [{ type: 'create_task', config: { title: 'Unsupported method', assignmentTarget: { type: 'group', id: groupId, strategy } } }];
+    await expect(scope(() => workflows.createWorkflow(tenantId, actorId, { name: `Rejected ${randomUUID()}`, trigger: 'lead.created', isActive: false, actions }))).rejects.toThrow('valid assignment target');
+    await expect(scope(() => workflows.createWorkflow(tenantId, actorId, { name: `Rejected active ${randomUUID()}`, trigger: 'lead.created', isActive: true, actions }))).rejects.toThrow('valid assignment target');
+    await expect(scope(() => workflows.updateWorkflow(workflow.id, tenantId, actorId, { actions }))).rejects.toThrow('valid assignment target');
+    await expect(scope(() => workflows.validateDraft(tenantId, actorId, { name: 'Rejected validation', trigger: 'lead.created', actions }))).rejects.toThrow('valid assignment target');
+  });
   it('keeps legacy user assignments working and saves the canonical target shape', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: salesUserId } }, { type: 'create_task', config: { title: 'Legacy', assignedUserId: taskUserId } }]);
     expect(workflow.actions).toMatchObject([{ config: { assignmentTarget: { type: 'user', id: salesUserId } } }, { config: { assignmentTarget: { type: 'user', id: taskUserId } } }]);

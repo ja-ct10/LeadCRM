@@ -1,7 +1,7 @@
 import { findTrigger, getWorkflowConditionFields, customFieldTechnicalKey, resolveCustomFieldReference, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
-import { normalizeWorkflowReferences } from '@leadcrm/shared';
+import { normalizeWorkflowReferences, WorkflowActionSchema, normalizeSavedWorkflowAssignment } from '@leadcrm/shared';
 
 export const workflowCustomFields = (tenantId: string) => readConfiguredFields(prisma, tenantId);
 export async function supportedChangedFields(entity: WorkflowEntity, fields: unknown, tenantId: string): Promise<string[]> {
@@ -30,7 +30,11 @@ export async function conditionFields(draft: WorkflowDraft, tenantId: string) {
 export async function compatibleWorkflow<T extends Pick<WorkflowDraft, 'trigger'> & { conditions?: unknown; actions?: unknown }>(draft: T, tenantId: string): Promise<T> {
   const products = /productInterest|activeProduct/.test(JSON.stringify([draft.conditions, draft.actions]))
     ? await prisma.productInterest.findMany({ where: { tenantId }, select: { id: true, name: true } }) : [];
-  const normalized = normalizeWorkflowReferences(draft, products);
+  const references = normalizeWorkflowReferences(draft, products);
+  const normalized = { ...references, actions: Array.isArray(references.actions) ? references.actions.map(action => {
+    const parsed = WorkflowActionSchema.safeParse(action);
+    return parsed.success ? normalizeSavedWorkflowAssignment(parsed.data) : action;
+  }) : references.actions };
   const entity = findTrigger(draft.trigger)?.entity;
   if (!entity || !JSON.stringify([draft.conditions, draft.actions]).includes('customFieldValues.')) return normalized;
   const definitions = await workflowCustomFields(tenantId);

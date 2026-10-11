@@ -36,10 +36,9 @@ export const WorkflowActionSchema = z.object({
 export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;
 export type WorkflowActionType = WorkflowAction['type'];
 export const WORKFLOW_ASSIGNMENT_METHODS = {
-  round_robin: 'Round-robin', least_workload: 'Least workload', random: 'Random',
-  availability: 'Availability-based', capacity: 'Capacity-based', sticky: 'Previous assignee / Sticky assignment',
+  round_robin: 'Round-robin',
 } as const;
-export const WorkflowAssignmentStrategySchema = z.enum(['round_robin', 'least_workload', 'random', 'availability', 'capacity', 'sticky']);
+export const WorkflowAssignmentStrategySchema = z.enum(['round_robin']);
 export type WorkflowAssignmentStrategy = z.infer<typeof WorkflowAssignmentStrategySchema>;
 const assignmentDays = z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(days => new Set(days).size === days.length, 'Choose each day only once.');
 const assignmentTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid time.');
@@ -60,19 +59,13 @@ export const WorkflowCapacitySchema = z.object({
 const poolAssignment = {
   id: z.string().uuid(), strategy: WorkflowAssignmentStrategySchema,
   availability: WorkflowAvailabilitySchema.optional(), capacity: WorkflowCapacitySchema.optional(),
-  sticky: z.object({ fallback: z.enum(['round_robin', 'least_workload', 'random']), preferCurrentOwner: z.boolean() }).strict().optional(),
 };
 export const WorkflowAssignmentTargetSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('record_owner') }).strict(),
   z.object({ type: z.literal('user'), id: z.string().uuid() }).strict(),
   z.object({ type: z.literal('role'), ...poolAssignment }).strict(),
   z.object({ type: z.literal('group'), ...poolAssignment }).strict(),
-]).superRefine((target, ctx) => {
-  if (target.type !== 'role' && target.type !== 'group') return;
-  if (target.strategy === 'availability' && !target.availability) ctx.addIssue({ code: 'custom', path: ['availability'], message: 'Configure an availability schedule.' });
-  if (target.strategy === 'capacity' && !target.capacity) ctx.addIssue({ code: 'custom', path: ['capacity'], message: 'Configure a capacity limit.' });
-  if (target.strategy !== 'sticky' && target.sticky) ctx.addIssue({ code: 'custom', path: ['sticky'], message: 'Sticky settings require the sticky assignment method.' });
-});
+]);
 export type WorkflowAssignmentTarget = z.infer<typeof WorkflowAssignmentTargetSchema>;
 export type WorkflowAssignmentPurpose = 'crm_owner' | 'task_assignee';
 export interface WorkflowAssignmentPoolOption {
@@ -92,6 +85,17 @@ export function normalizeWorkflowAssignment(action: WorkflowAction): WorkflowAct
   const config = { ...action.config };
   delete config[action.type === 'create_task' ? 'assignedUserId' : 'userId'];
   return { ...action, config: { ...config, ...(target === undefined ? {} : { assignmentTarget: target }) } };
+}
+/** Adapt saved retired methods on read; new API input still uses the strict target schema. */
+export function normalizeSavedWorkflowAssignment(action: WorkflowAction): WorkflowAction {
+  if (!['create_task', 'assign_owner'].includes(action.type)) return action;
+  const normalized = normalizeWorkflowAssignment(action);
+  const target = normalized.config.assignmentTarget;
+  if (!target || typeof target !== 'object' || !('type' in target) || !('strategy' in target) ||
+      !['role', 'group'].includes(String(target.type)) ||
+      !['least_workload', 'random', 'availability', 'capacity', 'sticky'].includes(String(target.strategy))) return normalized;
+  const { sticky: _retired, ...pool } = target as Record<string, unknown>;
+  return { ...normalized, config: { ...normalized.config, assignmentTarget: { ...pool, strategy: 'round_robin' } } };
 }
 export type WorkflowEntity = 'lead' | 'contact' | 'deal' | 'account';
 export const WorkflowDraftSchema = z.object({

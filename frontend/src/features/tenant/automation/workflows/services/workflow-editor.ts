@@ -5,7 +5,7 @@ import {
   WORKFLOW_MODULES,
   getWorkflowUpdateFields,
   getAvailableActions,
-  normalizeWorkflowAssignment,
+  normalizeSavedWorkflowAssignment,
   type ActionDefinition,
   type TriggerDefinition,
   type WorkflowAction,
@@ -74,7 +74,7 @@ export function toDraft(value: WorkflowDraft): WorkflowDraft {
     description: value.description,
     trigger: value.trigger,
     conditions: value.conditions,
-    actions: value.actions.map(normalizeWorkflowAssignment),
+    actions: value.actions.map(normalizeSavedWorkflowAssignment),
     isActive: value.isActive,
   };
 }

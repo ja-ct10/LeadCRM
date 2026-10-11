@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { getAvailableActions, type WorkflowAction, type WorkflowOptions } from '@leadcrm/shared';
 import { ActionFields } from './workflow-fields';
 import { actionIssues, actionSummary, toDraft } from '../services/workflow-editor';
@@ -26,19 +26,23 @@ describe('workflow assignment editor', () => {
     expect(screen.getByText('4 members · 2 eligible')).toBeTruthy();
     expect(JSON.parse(screen.getByTestId('config').textContent!)).toEqual({ title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin' } });
   });
-  it('saves all five methods and their settings without reverting the selected strategy on reload', () => {
-    render(<Editor initial={{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin' } } }} />);
-    for (const strategy of ['least_workload', 'random', 'availability', 'capacity', 'sticky']) {
-      fireEvent.change(screen.getByLabelText('Assignment method'), { target: { value: strategy } });
-      const config = JSON.parse(screen.getByTestId('config').textContent!);
-      expect(config.assignmentTarget.strategy).toBe(strategy);
-      expect((screen.getByLabelText('Assignment method') as HTMLSelectElement).value).toBe(strategy);
-    }
-    fireEvent.change(screen.getByLabelText('Sticky fallback method'), { target: { value: 'least_workload' } });
-    expect(JSON.parse(screen.getByTestId('config').textContent!).assignmentTarget.sticky.fallback).toBe('least_workload');
+  it.each(['create_task', 'assign_owner'] as const)('offers only round-robin for %s and explains active-user eligibility', type => {
+    render(<Editor initial={{ type, config: { assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin' } } }} />);
+    const method = screen.getByLabelText('Assignment method') as HTMLSelectElement;
+    expect(within(method).getAllByRole('option').map(option => option.textContent)).toEqual(['Round-robin']);
+    expect(method.value).toBe('round_robin');
+    expect(screen.getByText(/Inactive users are skipped/)).toBeTruthy();
+    expect(screen.queryByLabelText('Sticky fallback method')).toBeNull();
+  });
+  it.each(['least_workload', 'random', 'availability', 'capacity', 'sticky'])('loads and saves a retired %s method as round-robin', strategy => {
+    const draft = toDraft({ name: 'Saved', trigger: 'lead.created', isActive: false, actions: [{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy, ...(strategy === 'sticky' ? { sticky: { fallback: 'random', preferCurrentOwner: true } } : {}) } } }] });
+    render(<Editor initial={draft.actions[0]} />);
+    expect((screen.getByLabelText('Assignment method') as HTMLSelectElement).value).toBe('round_robin');
+    expect(draft.actions[0].config.assignmentTarget).toEqual({ type: 'group', id: groupId, strategy: 'round_robin' });
+    expect(actionIssues(draft.actions[0], getAvailableActions()[0], 'lead', options)).toEqual([]);
   });
   it('configures per-member availability, custom shifts, capacity overrides and validation', () => {
-    render(<Editor initial={{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy: 'availability', availability: { timeZone: 'Asia/Manila', schedule: { days: [1], start: '09:00', end: '17:00' }, members: [] } } } }} />);
+    render(<Editor initial={{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin', availability: { timeZone: 'Asia/Manila', schedule: { days: [1], start: '09:00', end: '17:00' }, members: [] } } } }} />);
     fireEvent.change(screen.getByLabelText('Assignment timezone'), { target: { value: 'UTC' } });
     fireEvent.click(screen.getByLabelText('Task specialist unavailable'));
     fireEvent.click(screen.getByLabelText('Task specialist custom shift'));

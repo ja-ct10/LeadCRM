@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import type { WorkflowAvailability } from '@leadcrm/shared';
 
 export function memberAvailable(userId: string, availability: WorkflowAvailability, now = new Date()): boolean {
@@ -12,9 +11,6 @@ export function memberAvailable(userId: string, availability: WorkflowAvailabili
   if (schedule.start < schedule.end) return schedule.days.includes(day) && time >= schedule.start && time < schedule.end;
   // An overnight shift belongs to its starting day, including the hours after midnight.
   return (schedule.days.includes(day) && time >= schedule.start) || (schedule.days.includes((day + 6) % 7) && time < schedule.end);
-}
-export function stickyAssignmentKey(workflowId: string, actionIndex: number, targetType: string, targetId: string, entity: string, entityId: string) {
-  return createHash('sha256').update(JSON.stringify([workflowId, actionIndex, targetType, targetId, entity, entityId])).digest('hex');
 }
 export type AssignmentReservation = { token: string; expiresAt: number; entityId?: string };
 export function liveReservations(value: unknown, now: number): AssignmentReservation[] {

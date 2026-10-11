@@ -11,10 +11,10 @@ import { assignmentWorkloads } from '../../assignment/workflow-assignment.reposi
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
-describe.skipIf(!disposable)('workflow assignment methods with real database and domain services', { timeout: 30000 }, () => {
+describe.skipIf(!disposable)('round-robin assignment filters with real database and domain services', { timeout: 30000 }, () => {
   let tenantId: string, actorId: string, firstId: string, secondId: string, groupId: string, leadId: string, roleId: string, foreignUserId: string;
   const scope = <T>(run: () => T) => tenantContext.run({ tenantId }, run);
-  const pool = (strategy: 'round_robin' | 'least_workload' | 'random' | 'availability' | 'capacity' | 'sticky', settings = {}): WorkflowAssignmentTarget => ({ type: 'group', id: groupId, strategy, ...settings });
+  const pool = (settings = {}): WorkflowAssignmentTarget => ({ type: 'group', id: groupId, strategy: 'round_robin', ...settings });
   const create = (target: WorkflowAssignmentTarget, assignOwner = false) => scope(() => workflows.createWorkflow(tenantId, actorId, { name: `Method ${randomUUID()}`, trigger: 'lead.created', isActive: true, actions: [{ type: assignOwner ? 'assign_owner' : 'create_task', config: { ...(assignOwner ? {} : { title: 'Strategy follow-up' }), assignmentTarget: target } }] }));
   const fire = () => scope(() => fireWorkflowTrigger({ tenantId, actorId, eventId: randomUUID(), triggerType: 'lead.created', entityType: 'lead', entityId: leadId, context: {} }));
   const runs = (workflowId: string) => scope(() => workflows.getWorkflowExecutions(workflowId, tenantId));
@@ -52,34 +52,35 @@ describe.skipIf(!disposable)('workflow assignment methods with real database and
   });
   afterAll(async () => { await prisma.$disconnect(); });
 
-  it('least workload ignores completed/cancelled/archived tasks, balances real work and retains history', async () => {
-    await openTask(firstId); await openTask(secondId, 'completed'); await openTask(secondId, 'cancelled'); await openTask(secondId, 'pending', true);
-    const workflow = await create(pool('least_workload'));
+  it('rotates in stable order rather than choosing the lowest workload and retains history', async () => {
+    const nextId = [firstId, secondId].sort()[0];
+    await openTask(nextId); await openTask(nextId, 'completed'); await openTask(nextId, 'cancelled'); await openTask(nextId, 'pending', true);
+    const workflow = await create(pool({ capacity: { maxPerMember: 100, members: [] } }));
     const before = await prisma.tenantPreference.count({ where: { tenantId } });
     const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
-    expect(preview.actions[0].assignment).toMatchObject({ resolvedUserId: secondId, workload: 0, strategy: 'least_workload' });
+    expect(preview.actions[0].assignment).toMatchObject({ resolvedUserId: nextId, workload: 1, strategy: 'round_robin' });
     expect(await prisma.tenantPreference.count({ where: { tenantId } })).toBe(before);
     await fire();
     const run = (await runs(workflow.id))[0];
-    expect(run).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId, workload: 0, strategy: 'least_workload' } }] });
+    expect(run).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: nextId, workload: 1, strategy: 'round_robin' } }] });
     const output = run.steps[0].output as Prisma.JsonObject;
-    expect(await prisma.task.findUniqueOrThrow({ where: { id: output.taskId as string } })).toMatchObject({ assignedUserId: secondId });
+    expect(await prisma.task.findUniqueOrThrow({ where: { id: output.taskId as string } })).toMatchObject({ assignedUserId: nextId });
     expect(output).not.toHaveProperty('reservation');
     const leases = await prisma.tenantPreference.findMany({ where: { tenantId, module: 'workflow-assignment-pending' } });
     expect(leases.every(row => Array.isArray(row.value) && row.value.length === 0)).toBe(true);
   });
   it('availability uses member overrides, and fails safely when all members are unavailable', async () => {
     const availability = { ...onDuty(), members: [{ userId: firstId, unavailable: true }] };
-    const workflow = await create(pool('availability', { availability }));
+    const workflow = await create(pool({ availability }));
     await fire();
-    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId, strategy: 'availability' } }] });
-    await scope(() => workflows.updateWorkflow(workflow.id, tenantId, actorId, { actions: [{ type: 'create_task', config: { title: 'Unavailable', assignmentTarget: pool('availability', { availability: { ...availability, members: [firstId, secondId].map(userId => ({ userId, unavailable: true })) } }) } }] }));
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId, strategy: 'round_robin' } }] });
+    await scope(() => workflows.updateWorkflow(workflow.id, tenantId, actorId, { actions: [{ type: 'create_task', config: { title: 'Unavailable', assignmentTarget: pool({ availability: { ...availability, members: [firstId, secondId].map(userId => ({ userId, unavailable: true })) } }) } }] }));
     await fire();
     expect((await runs(workflow.id)).some(run => run.status === 'failed' && run.errorMessage?.includes('configured shifts'))).toBe(true);
   });
   it('capacity respects per-member limits and stops assigning when the pool is full', async () => {
     await openTask(firstId);
-    const workflow = await create(pool('capacity', { capacity: { maxPerMember: 2, members: [{ userId: firstId, limit: 1 }] } }));
+    const workflow = await create(pool({ capacity: { maxPerMember: 2, members: [{ userId: firstId, limit: 1 }] } }));
     await fire(); await fire(); await fire();
     const history = await runs(workflow.id);
     expect(history.filter(run => run.status === 'completed')).toHaveLength(2);
@@ -87,23 +88,23 @@ describe.skipIf(!disposable)('workflow assignment methods with real database and
     expect(await prisma.task.count({ where: { tenantId, assignedUserId: secondId, status: 'pending' } })).toBe(2);
   });
   it('reserves workload across concurrent workflows and releases failed reservations', async () => {
-    const input = request(pool('capacity', { capacity: { maxPerMember: 1, members: [] } }));
+    const input = request(pool({ capacity: { maxPerMember: 1, members: [] } }));
     const attempts = await scope(() => Promise.allSettled(Array.from({ length: 3 }, () => resolveWorkflowAssignee({ ...input, workflowId: randomUUID() }))));
     const assigned = attempts.flatMap(result => result.status === 'fulfilled' ? [result.value] : []);
     expect(assigned).toHaveLength(2); expect(new Set(assigned.map(row => row.resolvedUserId)).size).toBe(2);
-    await scope(() => completeWorkflowAssignment(tenantId, assigned[0], false));
+    await scope(() => completeWorkflowAssignment(tenantId, assigned[0]));
     expect((await scope(() => resolveWorkflowAssignee(input))).resolvedUserId).toBe(assigned[0].resolvedUserId);
   });
-  it('random execution selects only eligible members and explains dry-run sampling', async () => {
+  it('skips inactive members in previews and live execution', async () => {
     await prisma.user.update({ where: { id: firstId }, data: { status: 'INACTIVE' } });
-    const workflow = await create(pool('random'));
+    const workflow = await create(pool());
     const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
-    expect(preview.actions[0].message).toContain('live execution draws again');
+    expect(preview.actions[0].assignment).toMatchObject({ resolvedUserId: secondId, candidateCount: 1, strategy: 'round_robin' });
     await fire();
-    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId, strategy: 'random' } }] });
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId, strategy: 'round_robin' } }] });
   });
   it('previews sequential workload changes without creating tasks or consuming capacity', async () => {
-    const target = pool('least_workload');
+    const target = pool({ capacity: { maxPerMember: 1, members: [] } });
     const workflow = await scope(() => workflows.createWorkflow(tenantId, actorId, { name: 'Sequential preview', trigger: 'lead.created', isActive: true, actions: [0, 1].map(index => ({ type: 'create_task', config: { title: `Task ${index}`, assignmentTarget: target } })) }));
     const before = await prisma.task.count({ where: { tenantId } });
     const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
@@ -112,40 +113,49 @@ describe.skipIf(!disposable)('workflow assignment methods with real database and
     await fire();
     expect(new Set((await runs(workflow.id))[0].steps.map(step => (step.output as Prisma.JsonObject).resolvedUserId)).size).toBe(2);
   });
-  it('sticky assignment persists across runs and reloads, then falls back if the assignee becomes ineligible', async () => {
-    const workflow = await create(pool('sticky', { sticky: { fallback: 'least_workload', preferCurrentOwner: false } }));
-    await fire();
-    const original = (await runs(workflow.id))[0].steps[0].output as Prisma.JsonObject;
-    await fire();
-    expect((await runs(workflow.id)).every(run => (run.steps[0].output as Prisma.JsonObject).resolvedUserId === original.resolvedUserId)).toBe(true);
-    await prisma.user.update({ where: { id: original.resolvedUserId as string }, data: { status: 'INACTIVE' } });
-    await fire();
-    expect((await runs(workflow.id)).some(run => (run.steps[0].output as Prisma.JsonObject).resolvedUserId !== original.resolvedUserId)).toBe(true);
+  it.each(['least_workload', 'random', 'availability', 'capacity', 'sticky'])('reads a saved %s workflow as round-robin, executes and saves it canonically', async strategy => {
+    const workflow = await create(pool());
+    const actions = [{ type: 'create_task', config: { title: 'Legacy method', assignmentTarget: { type: 'group', id: groupId, strategy, ...(strategy === 'sticky' ? { sticky: { fallback: 'random', preferCurrentOwner: true } } : {}) } } }];
+    await prisma.workflow.update({ where: { id: workflow.id }, data: { actions } });
+    const loaded = await scope(() => workflows.getWorkflowById(workflow.id, tenantId));
+    expect(loaded.actions).toMatchObject([{ config: { assignmentTarget: { strategy: 'round_robin' } } }]);
+    expect(await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } })).toMatchObject({ actions });
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
+    expect(preview.valid).toBe(true);
+    await fire(); await fire();
+    const history = await runs(workflow.id);
+    expect(history.every(run => run.status === 'completed' && (run.steps[0].output as Prisma.JsonObject).strategy === 'round_robin')).toBe(true);
+    expect(history.every(run => (run.definitionSnapshot as Prisma.JsonObject).actions && JSON.stringify(run.definitionSnapshot).includes('round_robin'))).toBe(true);
+    expect(new Set(history.map(run => (run.steps[0].output as Prisma.JsonObject).resolvedUserId)).size).toBe(2);
+    await scope(() => workflows.updateWorkflow(workflow.id, tenantId, actorId, { name: `Converted ${randomUUID()}` }));
+    const saved = await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } });
+    expect(saved.actions).toMatchObject([{ config: { assignmentTarget: { strategy: 'round_robin' } } }]);
+    expect(JSON.stringify(saved.actions)).not.toContain('sticky');
   });
-  it('sticky can start with the record agent and excludes a reassigned record from its capacity', async () => {
+  it('excludes a reassigned record from its capacity while rotating CRM owners', async () => {
     await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: firstId } });
-    const workflow = await create(pool('sticky', { capacity: { maxPerMember: 1, members: [] }, sticky: { fallback: 'round_robin', preferCurrentOwner: true } }), true);
+    const workflow = await create(pool({ capacity: { maxPerMember: 1, members: [] } }), true);
     await fire();
-    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: firstId, workload: 0, capacityLimit: 1 } }] });
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: [firstId, secondId].sort()[0], workload: 0, capacityLimit: 1 } }] });
   });
-  it('concurrent sticky executions agree on the initial assignee without remembering failures', async () => {
-    const input = request(pool('sticky', { sticky: { fallback: 'round_robin', preferCurrentOwner: false } }));
+  it('reserves distinct round-robin turns for concurrent executions', async () => {
+    const input = request(pool());
     const assignments = await scope(() => Promise.all([resolveWorkflowAssignee(input), resolveWorkflowAssignee(input)]));
-    expect(new Set(assignments.map(row => row.resolvedUserId)).size).toBe(1);
-    await scope(() => Promise.all(assignments.map(row => completeWorkflowAssignment(tenantId, row, false))));
+    expect(new Set(assignments.map(row => row.resolvedUserId)).size).toBe(2);
+    await scope(() => Promise.all(assignments.map(row => completeWorkflowAssignment(tenantId, row))));
     expect(await prisma.tenantPreference.count({ where: { tenantId, module: 'workflow-assignment-sticky' } })).toBe(0);
   });
   it('rejects foreign override references and malformed settings, including inactive drafts', async () => {
-    await expect(create(pool('random', { availability: { ...onDuty(), members: [{ userId: foreignUserId, unavailable: true }] } }))).rejects.toThrow('workspace user');
-    await expect(create(pool('capacity', { capacity: { maxPerMember: -1, members: [] } }))).rejects.toThrow();
-    await expect(create(pool('availability', { availability: { ...onDuty(), timeZone: 'Not/AZone' } }))).rejects.toThrow();
+    await expect(create(pool({ availability: { ...onDuty(), members: [{ userId: foreignUserId, unavailable: true }] } }))).rejects.toThrow('workspace user');
+    await expect(create(pool({ capacity: { maxPerMember: -1, members: [] } }))).rejects.toThrow();
+    await expect(create(pool({ availability: { ...onDuty(), timeZone: 'Not/AZone' } }))).rejects.toThrow();
   });
   it('CRM workload counts active records and ignores the record being reassigned', async () => {
     const extra = await prisma.lead.create({ data: { tenantId, firstName: 'Owned', lastName: 'Lead', assignedUserId: firstId } });
     await prisma.lead.create({ data: { tenantId, firstName: 'Archived', lastName: 'Lead', assignedUserId: secondId, isArchived: true } });
     const counts = await scope(() => assignmentWorkloads(prisma, tenantId, [firstId, secondId], 'crm_owner', 'lead', leadId));
     expect(counts.get(firstId)).toBe(1); expect(counts.get(secondId) ?? 0).toBe(0);
-    const workflow = await create(pool('least_workload'), true);
+    const workflow = await create(pool({ capacity: { maxPerMember: 1, members: [] } }), true);
     await fire();
     expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId } }] });
     await prisma.lead.update({ where: { id: extra.id }, data: { isArchived: true } });
