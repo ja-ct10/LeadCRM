@@ -99,6 +99,17 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
+  it.each(['lead', 'contact'] as const)('persists tasks with canonical and legacy variables for %s', async entity => {
+    const company = entity === 'lead' ? 'companyName' : 'company';
+    await create([{ type: 'create_task', config: { title: `Follow up with {{firstName}} {{lastName}} {{${company}}}`, description: 'Legacy {{first_name}} {{last_name}} {{company}} {{email}}', assignedUserId: actor.id } }], { trigger: `${entity}.created` });
+    const response = await call(entity === 'lead' ? '/crm/leads' : '/crm/contacts', 'POST', { firstName: 'Josh', lastName: 'Variable', email: `${randomUUID()}@example.test`, [company]: 'Catalog Company' });
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const task = await prisma.task.findFirstOrThrow({ where: { tenantId, [entity + 'Links']: { some: { [entity + 'Id']: response.body.data.id } } } });
+    expect(task.title).toBe('Follow up with Josh Variable Catalog Company');
+    expect(task.description).toContain('Legacy Josh Variable Catalog Company');
+    expect(task.description).not.toContain('{{');
+  });
+
   it('runs the real lead-created path through cookie-authenticated HTTP with ordered actions and persisted history', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Call lead', dueDaysFromNow: 0 } },
       { type: 'update_field', config: { field: 'address', value: 'Follow up requested' } }]);

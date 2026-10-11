@@ -20,11 +20,14 @@ export function normalizeSmsPhone(value: unknown): string {
   }
   return number;
 }
-export async function getSmsSenderEmail(tenantId: string, db: Prisma.TransactionClient = prisma): Promise<string | null> {
+export async function getSmsSenderIdentity(tenantId: string, db: Prisma.TransactionClient = prisma) {
   if (tenantContext.getStore()?.tenantId !== tenantId) throw new ValidationError('CRM tenant context is required for SMS.');
-  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { email: true } });
+  const tenant = await db.tenant.findUnique({ where: { id: tenantId }, select: { name: true, email: true } });
   const parsed = z.string().trim().email().safeParse(tenant?.email);
-  return parsed.success ? parsed.data : null;
+  return { organizationName: tenant?.name?.trim() || null, organizationEmail: parsed.success ? parsed.data : null };
+}
+export async function getSmsSenderEmail(tenantId: string, db: Prisma.TransactionClient = prisma): Promise<string | null> {
+  return (await getSmsSenderIdentity(tenantId, db)).organizationEmail;
 }
 export class SmsSubmissionError extends ValidationError {
   constructor(readonly outcome: 'rejected' | 'unconfirmed', readonly httpStatus?: number) {

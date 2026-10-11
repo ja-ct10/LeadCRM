@@ -22,6 +22,8 @@ export interface PaginationControlsProps {
   onPageSizeChange: (size: number) => void;
   /** Optional className for container */
   className?: string;
+  /** Hide the range and place the page size selector on the left. */
+  showRange?: boolean;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -49,6 +51,7 @@ export function PaginationControls({
   onPageChange,
   onPageSizeChange,
   className,
+  showRange = true,
 }: PaginationControlsProps): React.ReactElement {
   const totalPages = useMemo(
     () => (totalRecords > 0 ? Math.ceil(totalRecords / pageSize) : 0),
@@ -92,13 +95,13 @@ export function PaginationControls({
       aria-label="Pagination"
     >
       {/* Left: Total records + page range */}
-      <div className="hidden sm:flex items-center gap-3">
+      {showRange && <div className="hidden sm:flex items-center gap-3">
         <span className="text-[10px] sm:text-[12px] text-[#5A6B85] dark:text-slate-400">
           <span className="tabular-nums">
             {rangeStart} to {rangeEnd}
           </span>
         </span>
-      </div>
+      </div>}
 
       {/* Center: Page size selector */}
       <div className="flex items-center gap-1 sm:gap-2">

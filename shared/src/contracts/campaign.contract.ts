@@ -34,6 +34,10 @@ export interface CampaignEmailSettings {
   senderName: string;
   senderEmail: string | null;
 }
+export interface CampaignSmsSettings {
+  organizationName: string | null;
+  organizationEmail: string | null;
+}
 
 export interface CampaignRecipient {
   id: string;

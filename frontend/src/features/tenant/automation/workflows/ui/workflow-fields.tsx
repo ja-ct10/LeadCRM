@@ -9,7 +9,7 @@ import type {
   TriggerDefinition,
   WorkflowEntity,
 } from '@leadcrm/shared';
-import { getWorkflowUpdateFields, WORKFLOW_MODULES, workflowOperators, WORKFLOW_MESSAGE_VARIABLES } from '@leadcrm/shared';
+import { getWorkflowUpdateFields, getWorkflowMessageVariables, WORKFLOW_MODULES, workflowOperators } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
 import { ConditionFieldSelect, ConditionOperatorSelect, ConditionScalarInput } from '@/shared/components/condition-controls';
 import { Input } from '@/shared/components/ui/input';
@@ -347,7 +347,7 @@ export function ActionFields({
                 className="flex flex-wrap gap-1"
                 aria-label={`Personalize ${field.label}`}
               >
-                {WORKFLOW_MESSAGE_VARIABLES.map(({ token, label }) => (
+                {(entity ? getWorkflowMessageVariables(entity, options.fieldLayouts?.[WORKFLOW_MODULES[entity]]) : []).map(({ token, label }) => (
                   <button
                     key={token}
                     type="button"

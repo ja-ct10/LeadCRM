@@ -2,6 +2,41 @@ import { getCrmFieldCatalog, type CrmFieldCatalogEntry, type FieldLayout } from 
 import type { ClosingField } from './closing-requirements';
 import type { AudienceCondition } from './campaign-email';
 
+export const CAMPAIGN_VARIABLE_CATEGORIES = ['Standard Fields', 'Custom Fields', 'Sender'] as const;
+export interface CampaignVariableChoice {
+  id: string; technicalKey: string; label: string;
+  category: typeof CAMPAIGN_VARIABLE_CATEGORIES[number];
+  origins: CrmFieldCatalogEntry[];
+  personalizationAvailable: boolean; unavailableReason?: string;
+}
+export function campaignPersonalizationAvailable(field: CrmFieldCatalogEntry) {
+  return field.active && field.personalizationAvailable && (field.visibleInForm || field.visibleInDetails);
+}
+/** Same token is never a relationship binding. Custom definition identities stay separate. */
+export function campaignVariableChoices(fields: CrmFieldCatalogEntry[], source?: 'LEADS' | 'CONTACTS'): CampaignVariableChoice[] {
+  const module = source === 'LEADS' ? 'leads' : source === 'CONTACTS' ? 'contacts' : undefined;
+  const choices = new Map<string, CampaignVariableChoice>();
+  for (const field of fields) {
+    const id = field.customFieldId ? `${field.module}:${field.customFieldId}` : JSON.stringify([field.kind, field.technicalKey, field.label, field.type, field.reference]);
+    const existing = choices.get(id);
+    if (existing) existing.origins.push(field);
+    else choices.set(id, { id, technicalKey: field.technicalKey, label: field.label, category: field.kind === 'System' ? 'Standard Fields' : 'Custom Fields', origins: [field], personalizationAvailable: false });
+  }
+  for (const choice of choices.values()) {
+    const field = choice.origins.find(origin => origin.module === module);
+    choice.personalizationAvailable = !!field && campaignPersonalizationAvailable(field);
+    if (!choice.personalizationAvailable) choice.unavailableReason = !module ? 'Select a Lead or Contact audience to use this field.' : !field ? 'Unavailable for this audience. Related Account and Deal fields require an explicit supported binding.' : field.unavailableReason ?? (!field.active ? 'This field is disabled.' : !field.visibleInForm && !field.visibleInDetails ? 'This field is hidden.' : 'This field does not support personalization.');
+  }
+  return [...choices.values(), ...(['sender_name', 'sender_email'] as const).map(technicalKey => ({ id: technicalKey, technicalKey, label: technicalKey === 'sender_name' ? 'Sender Name' : 'Sender Email', category: 'Sender' as const, origins: [], personalizationAvailable: true }))];
+}
+/** Canonical IDs remain valid for saved content; legacy aliases are rendering compatibility only. */
+export function campaignApprovedVariableKeys(fields: CrmFieldCatalogEntry[]): Set<string> {
+  const keys = new Set(['sender_name', 'sender_email', ...fields.filter(campaignPersonalizationAvailable).flatMap(field => [field.technicalKey, ...(field.canonicalTechnicalKey ? [field.canonicalTechnicalKey] : [])])]);
+  const aliases = { first_name: ['firstName'], last_name: ['lastName'], company_name: ['companyName', 'company'], contact_number: ['phone'] };
+  for (const [alias, nativeKeys] of Object.entries(aliases)) if (nativeKeys.some(key => keys.has(key))) keys.add(alias);
+  return keys;
+}
+
 export function campaignFields(source: 'LEADS' | 'CONTACTS', definitions: ClosingField[] = [], layout?: FieldLayout): CrmFieldCatalogEntry[] {
   const module = source === 'LEADS' ? 'leads' : 'contacts';
   const fields = getCrmFieldCatalog(module, definitions, layout).filter(field => field.active);

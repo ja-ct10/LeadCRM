@@ -1,24 +1,40 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, EMAIL_VARIABLES, EMAIL_VARIABLE_TOKENS, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown, type CampaignEmailSettings } from '@leadcrm/shared';
-import { CampaignVariablePicker, useCampaignFields, campaignSampleValues } from './campaign-variable-picker';
+import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
+import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
+import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
 import { renderCampaignPreview, prepareCampaignBody } from '../services/campaign-html';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
+import { Button } from '@/shared/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/shared/components/ui/dialog';
+import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
+import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { toast } from 'sonner';
 import {
   ArrowLeft, Send, Mail, MessageSquare, Plus,
-  Wand2, Monitor, Smartphone, Zap, Tags, Loader2,
-  PanelRight, X,
+  Wand2, Monitor, Smartphone, Zap, Tags,
+  PanelRight, X, ChevronDown, CalendarClock,
 } from 'lucide-react';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 
 type CampaignType = 'Email' | 'SMS' | 'Multi-Channel';
+type SaveIntent = 'draft' | 'send' | 'schedule';
+
+function campaignScheduleInstant(value: string): string {
+  try {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error();
+    const instant = manilaTaskDueInstant(value);
+    if (CampaignScheduleSchema.safeParse({ scheduledFor: instant }).success) return instant;
+  } catch { /* Invalid calendar values and elapsed instants share the same message. */ }
+  throw new Error('Choose a valid future date and time in Asia/Manila.');
+}
 
 interface CampaignBuilderProps {
   onBack: () => void;
@@ -48,8 +64,10 @@ export function CampaignBuilder({
     (initialCampaign?.type === 'Sms' ? 'SMS' : initialCampaign?.type as CampaignType) || (initialType as CampaignType) || 'Email',
   );
   const scheduled = initialCampaign?.status.toLowerCase() === 'scheduled';
-  const [deliveryMode, setDeliveryMode] = useState<'now' | 'schedule'>(scheduled ? 'schedule' : 'now');
-  const [scheduledTime, setScheduledTime] = useState(initialCampaign?.scheduledFor ? new Date(new Date(initialCampaign.scheduledFor).getTime() + 8 * 3600000).toISOString().slice(0, 16) : '');
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [scheduleSession, setScheduleSession] = useState(0);
+  const [scheduledTime, setScheduledTime] = useState(initialCampaign?.scheduledFor ? manilaLocalDateTime(initialCampaign.scheduledFor) : '');
   const [targetAudience, setTargetAudience] = useState(initialCampaign?.targetAudienceId || initialCampaign?.audienceSource || '');
   const [messageContent, setMessageContent] = useState(initialCampaign?.body || initialContent || '');
   const [emailSubject, setEmailSubject] = useState(initialCampaign?.subject || initialSubject || '');
@@ -75,24 +93,13 @@ export function CampaignBuilder({
   }, [mobilePreview, isDesktop]);
   const [showVarDropdown, setShowVarDropdown] = useState(false);
   const [isSending, setIsSending] = useState(false);
+  const [pendingIntent, setPendingIntent] = useState<SaveIntent | null>(null);
   const subjectRef = useRef<HTMLInputElement>(null), bodyRef = useRef<HTMLTextAreaElement>(null);
   const activeField = useRef<'subject' | 'body'>('body');
-  const [organizationEmail, setOrganizationEmail] = useState<string | null>(null);
-  const [emailSender, setEmailSender] = useState<CampaignEmailSettings | null>(null);
+  const emailSettings = useCachedPage<CampaignEmailSettings>({ module: 'settings', params: { campaignSender: 'EMAIL' }, disabled: campaignType !== 'Email', revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.emailSettings()).data });
+  const smsSettings = useCachedPage<CampaignSmsSettings>({ module: 'settings', params: { campaignSender: 'SMS' }, disabled: campaignType !== 'SMS', revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.smsSettings()).data });
+  const emailSender = emailSettings.data;
   const { isDark: previewDark } = useTheme();
-  useEffect(() => {
-    let cancelled = false;
-    campaignsApi.emailSettings().then(res => { if (!cancelled) setEmailSender(res.data); })
-      .catch(() => { if (!cancelled) setEmailSender(null); });
-    return () => { cancelled = true; };
-  }, []);
-  useEffect(() => {
-    if (campaignType !== 'SMS') return;
-    let cancelled = false;
-    campaignsApi.smsSettings().then(res => { if (!cancelled) setOrganizationEmail(res.data.organizationEmail); })
-      .catch(() => { if (!cancelled) setOrganizationEmail(null); });
-    return () => { cancelled = true; };
-  }, [campaignType]);
   function insertVariable(token: string) {
     if (!canWrite || isSending) return;
     const field = campaignType === 'Email' ? activeField.current : 'body';
@@ -139,21 +146,47 @@ export function CampaignBuilder({
   }, [targetAudience, audiences, campaignType]);
   const chosenAudience = audiences.find(audience => audience.id === targetAudience);
   const selectedSource = scheduled ? initialCampaign?.scheduleConfig?.source : (chosenAudience?.source === 'LEADS' || chosenAudience?.source === 'CONTACTS' ? chosenAudience.source : targetAudience === 'LEADS' || targetAudience === 'CONTACTS' ? targetAudience : undefined);
-  const { fields: variableFields, error: variableError } = useCampaignFields(selectedSource);
-  const approvedVariables = new Set<string>([...EMAIL_VARIABLES, ...variableFields.filter(field => field.personalizationAvailable).map(field => field.technicalKey)]);
-  const invalidVariables = selectedSource ? campaignVariableKeys(emailSubject + '\n' + messageContent).filter(key => !approvedVariables.has(key)) : [];
+  const variableCatalog = useCampaignVariableFields();
+  const variableError = variableCatalog.error;
+  const variableFields = variableCatalog.fields.filter(field => field.module === (selectedSource === 'LEADS' ? 'leads' : selectedSource === 'CONTACTS' ? 'contacts' : ''));
+  const senderValues = { sender_name: campaignType === 'SMS' ? smsSettings.data?.organizationName : emailSender?.senderName, sender_email: campaignType === 'SMS' ? smsSettings.data?.organizationEmail : emailSender?.senderEmail };
+  const choices = campaignVariableChoices(variableCatalog.fields, selectedSource).map(choice => choice.category === 'Sender' && !senderValues[choice.technicalKey as keyof typeof senderValues] ? { ...choice, personalizationAvailable: false, unavailableReason: 'Sender configuration is unavailable. Configure the sender before using this variable.' } : choice);
+  const quickKeys = ['firstName', 'lastName', selectedSource === 'CONTACTS' ? 'company' : 'companyName', 'phone', 'status', 'sender_name', 'sender_email'];
+  const quickChoices = quickKeys.flatMap(key => { const choice = choices.find(choice => choice.technicalKey === key && (choice.category === 'Sender' || choice.origins.some(origin => origin.module === (selectedSource === 'CONTACTS' ? 'contacts' : 'leads')))); return choice ? [choice] : []; });
+  const approvedVariables = campaignApprovedVariableKeys(variableFields);
+  const invalidVariables = selectedSource && variableCatalog.data ? campaignVariableKeys(emailSubject + '\n' + messageContent).filter(key => !approvedVariables.has(key)) : [];
   const variableRepair = invalidVariables.length ? `Repair unavailable variables for this source: ${invalidVariables.map(key => '{{' + key + '}}').join(', ')}.` : '';
-  const previewVariables = { ...campaignSampleValues(variableFields), first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: emailSender?.senderName || 'Configured sender unavailable', sender_email: emailSender?.senderEmail || 'Sender email unavailable' };
+  const previewVariables = { ...campaignSampleValues(variableFields), firstName: 'John', lastName: 'Doe', email: 'jdoe@example.com', companyName: 'Example Company', company: 'Example Company', phone: '+639123456789', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: senderValues.sender_name || 'Configured sender unavailable', sender_email: senderValues.sender_email || 'Sender email unavailable' };
+  useEffect(() => {
+    const refresh = () => { void variableCatalog.refetch(); void emailSettings.refetch(); void smsSettings.refetch(); };
+    window.addEventListener('focus', refresh);
+    return () => window.removeEventListener('focus', refresh);
+  }, [variableCatalog.refetch, emailSettings.refetch, smsSettings.refetch]);
   const getPreviewText = (text: string) => renderEmailVariables(text, previewVariables);
   const previewSubject = () => getPreviewText(emailSubject) || campaignName || 'Email preview';
   const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><base target="_blank"><style>body{font:14px/1.6 system-ui;margin:0;overflow-wrap:anywhere;color:${previewDark ? '#cbd5e1' : '#334155'}}a{color:${previewDark ? '#60a5fa' : '#2563eb'}}img,table{max-width:100%}</style></head><body>${renderCampaignPreview(messageContent, previewVariables)}</body></html>`} />;
   let smsPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
-    smsPreview = buildFinalSms({ body: messageContent, variables: { ...previewVariables, first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: 'Camxian Technologies', sender_email: organizationEmail || '' } });
+    smsPreview = buildFinalSms({ body: messageContent, variables: previewVariables });
     if (smsPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit including personalization and the contact footer.`;
   }
-  async function save(send: boolean) {
+  function openSchedule() {
+    if (requestLock.current || !maySend) return;
+    let next = scheduledTime;
+    try { campaignScheduleInstant(next); }
+    catch { next = manilaLocalDateTime(new Date(Date.now() + 3600000)); }
+    setScheduledTime(next); setScheduleSession(previous => previous + 1); setErrors({}); setShowVarDropdown(false); setScheduleOpen(true);
+  }
+  function closeSchedule() { if (!requestLock.current) setScheduleOpen(false); }
+  async function save(intent: SaveIntent, scheduleValue?: string) {
+    const send = intent !== 'draft';
     if (requestLock.current || (send ? !maySend : !canWrite)) return;
+    if (send && initialCampaign && initialCampaign.status.toLowerCase() !== 'draft') return;
+    if (intent === 'schedule') {
+      try { campaignScheduleInstant(scheduleValue || ''); }
+      catch (error) { setErrors({ form: (error as Error).message }); return; }
+      setScheduledTime(scheduleValue!);
+    }
     const source = ['LEADS', 'CONTACTS'].includes(targetAudience) ? targetAudience : null;
     const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? prepareCampaignBody(messageContent) : messageContent,
       audienceSource: source, targetAudienceId: source ? null : targetAudience || null };
@@ -165,20 +198,20 @@ export function CampaignBuilder({
     }
     if (targetAudience === 'ALL' || chosenAudience?.source === 'ALL' || chosenAudience?.repairReason) { setErrors({ audienceSource: 'Repair this legacy audience by selecting Leads, Contacts, or a new single-source audience.' }); return; }
     if (send && variableRepair) { setErrors({ form: variableRepair }); return; }
-    if (send && deliveryMode === 'schedule') {
-      const date = new Date(scheduledTime + ':00+08:00');
-      const parsedTime = CampaignScheduleSchema.safeParse({ scheduledFor: Number.isFinite(date.getTime()) ? date.toISOString() : '' });
-      if (!parsedTime.success) { setErrors({ form: 'Choose a valid future date and time in Asia/Manila.' }); return; }
-    }
+    if (send && variableError) { setErrors({ form: variableError }); return; }
+    if (send && campaignVariableKeys(messageContent + '\n' + emailSubject).some(key => key in senderValues && !senderValues[key as keyof typeof senderValues])) { setErrors({ form: 'Configure the sender before using sender variables.' }); return; }
     if (send && campaignType === 'Multi-Channel') { setErrors({ form: 'Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.' }); return; }
     if (send && campaignType === 'SMS' && smsPreviewError) { setErrors({ form: smsPreviewError }); return; }
-    requestLock.current = true; setIsSending(true); setErrors({});
+    requestLock.current = true; setIsSending(true); setPendingIntent(intent); setErrors({});
+    let draftSaved = false;
     try {
       const res = !canWrite && savedId ? { data: { id: savedId } } : savedId ? await campaignsApi.update(savedId, parsed.data) : await campaignsApi.create(parsed.data);
       setSavedId(res.data.id);
-      if (send && deliveryMode === 'schedule') {
-        await campaignsApi.schedule(res.data.id, new Date(scheduledTime + ':00+08:00').toISOString());
-        toast.success('Campaign scheduled once in Asia/Manila.'); onBack(); return;
+      draftSaved = true;
+      if (intent === 'schedule') {
+        // Saving can take long enough for the selected minute to elapse.
+        await campaignsApi.schedule(res.data.id, campaignScheduleInstant(scheduleValue!));
+        toast.success('Campaign scheduled once in Asia/Manila.'); setScheduleOpen(false); onBack(); return;
       }
       if (send) {
         let result = (await campaignsApi.send(res.data.id)).data;
@@ -208,20 +241,24 @@ export function CampaignBuilder({
       const next: Record<string, string> = {};
       for (const [field, messages] of Object.entries(error.fieldErrors || {})) if (messages[0]) next[field] = messages[0];
       if (!Object.keys(next).length) next.form = error.message || 'Could not save campaign.';
+      if (intent === 'schedule' && draftSaved) next.form = `Campaign draft saved, but scheduling failed. ${error.message || 'Unable to schedule campaign.'}`;
       setErrors(next);
-    } finally { requestLock.current = false; setIsSending(false); }
+    } finally { requestLock.current = false; setIsSending(false); setPendingIntent(null); }
   }
-  async function manageSchedule(cancel: boolean) {
+  async function manageSchedule(cancel: boolean, value?: string) {
     if (requestLock.current || !initialCampaign || !maySend) return;
-    const due = scheduledTime ? new Date(scheduledTime + ':00+08:00') : null;
-    if (!cancel && (!due || !Number.isFinite(due.getTime()) || due.getTime() <= Date.now())) { setErrors({ form: 'Choose a valid future date and time in Asia/Manila.' }); return; }
+    let due = '';
+    if (!cancel) {
+      try { due = campaignScheduleInstant(value || ''); }
+      catch (error) { setErrors({ form: (error as Error).message }); return; }
+      setScheduledTime(value!);
+    }
     requestLock.current = true; setIsSending(true); setErrors({});
-    try { if (cancel) await campaignsApi.cancelSchedule(initialCampaign.id); else await campaignsApi.schedule(initialCampaign.id, due!.toISOString()); toast.success(cancel ? 'Schedule cancelled. The campaign is now a draft.' : 'Campaign rescheduled.'); onBack(); }
+    try { if (cancel) await campaignsApi.cancelSchedule(initialCampaign.id); else await campaignsApi.schedule(initialCampaign.id, due); toast.success(cancel ? 'Schedule cancelled. The campaign is now a draft.' : 'Campaign rescheduled.'); setScheduleOpen(false); onBack(); }
     catch (error) { setErrors({ form: error instanceof Error ? error.message : 'Unable to change schedule.' }); }
     finally { requestLock.current = false; setIsSending(false); }
   }
-  const handleSend = () => save(true);
-  const handleSaveDraft = () => save(false);
+  const handleSaveDraft = () => save('draft');
 
   const inputCls = 'w-full h-9 rounded-md border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200';
 
@@ -321,10 +358,17 @@ export function CampaignBuilder({
           <button aria-label="Save Draft" onClick={handleSaveDraft} disabled={isSending || !canWrite} className="whitespace-nowrap px-2 min-[375px]:px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 rounded-lg border border-gray-200 dark:border-white/10 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed">
             Save<span className="hidden min-[375px]:inline"> Draft</span>
           </button>
-          <button onClick={handleSend} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="flex items-center whitespace-nowrap gap-1.5 sm:gap-2 px-2 min-[375px]:px-3 sm:px-5 py-2 bg-primary hover:bg-primary/90 text-white text-xs sm:text-sm font-semibold rounded-xl shadow-md shadow-primary/20 active:scale-95 transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-300 disabled:opacity-50 disabled:cursor-not-allowed">
-            {isSending ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
-            {isSending ? deliveryMode === 'schedule' ? 'Scheduling...' : 'Sending...' : deliveryMode === 'schedule' ? 'Schedule Once' : 'Send Now'}
-          </button>
+          <DropdownMenu open={sendMenuOpen} onOpenChange={setSendMenuOpen}>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" aria-busy={isSending} disabled={isSending || !maySend || (!!initialCampaign && initialCampaign.status.toLowerCase() !== 'draft')} className="gap-1.5 sm:gap-2 px-2 min-[375px]:px-3 sm:px-5 text-xs sm:text-sm font-semibold shadow-md shadow-primary/20">
+                <span>{pendingIntent === 'send' ? 'Sending...' : 'Send'}</span><ChevronDown size={14} className={`opacity-60 transition-transform ${sendMenuOpen ? 'rotate-180' : ''}`} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" sideOffset={6} className="w-48 rounded-lg py-1">
+              <DropdownMenuItem disabled={isSending || !maySend} onSelect={() => void save('send')} className="gap-2.5 px-3.5 py-2.5 text-[13px]"><Send size={15} className="text-muted-foreground" />Send Now</DropdownMenuItem>
+              <DropdownMenuItem disabled={isSending || !maySend} onSelect={openSchedule} className="gap-2.5 px-3.5 py-2.5 text-[13px]"><CalendarClock size={15} className="text-muted-foreground" />Schedule Send</DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <button type="button" onClick={() => isDesktop ? setShowPreview(previous => !previous) : setMobilePreview(previous => !previous)}
             aria-label={(isDesktop ? showPreview : mobilePreview) ? 'Hide live preview' : 'Show live preview'} aria-expanded={isDesktop ? showPreview : mobilePreview} aria-controls="campaign-live-preview"
             className="shrink-0 rounded-lg border border-gray-200 dark:border-white/10 p-2 text-slate-600 dark:text-slate-300 bg-white dark:bg-white/5 hover:bg-slate-50 dark:hover:bg-white/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
@@ -333,9 +377,9 @@ export function CampaignBuilder({
         </div>
       </div>
 
-      <FieldError message={errors.form || variableError || variableRepair || undefined} />
+      <FieldError message={scheduleOpen ? undefined : errors.form || variableError || variableRepair || undefined} />
       {initialCampaign?.scheduleConfig?.scheduleFailureReason && <p role="status" className="m-3 rounded border border-amber-300 p-3 text-sm text-amber-800">Schedule failed: {initialCampaign.scheduleConfig.scheduleFailureReason}</p>}
-      {scheduled && <div className="m-3 space-y-2 rounded border p-3 text-sm"><p>Approved content and audience rules are fixed. Cancel the schedule to edit them.</p><label>Schedule Once (Asia/Manila)<input aria-label="Scheduled date and time" type="datetime-local" value={scheduledTime} onChange={event => setScheduledTime(event.target.value)} className="ml-2 rounded border bg-transparent p-2" /></label><div className="flex gap-2"><button disabled={isSending || !maySend} onClick={() => void manageSchedule(false)} className="rounded border px-3 py-2">Reschedule</button><button disabled={isSending || !maySend} onClick={() => void manageSchedule(true)} className="rounded border px-3 py-2">Cancel schedule</button></div></div>}
+      {scheduled && <div className="m-3 space-y-2 rounded border p-3 text-sm"><p>Approved content and audience rules are fixed. Cancel the schedule to edit them.</p><p>Scheduled for {manilaLocalDateTime(initialCampaign.scheduledFor || '').replace('T', ' ')} (Asia/Manila)</p><div className="flex flex-wrap gap-2"><Button type="button" variant="outline" disabled={isSending || !maySend} onClick={openSchedule}>Reschedule</Button><Button type="button" variant="outline" disabled={isSending || !maySend} onClick={() => void manageSchedule(true)}>Cancel schedule</Button></div></div>}
       {/* Split Layout */}
       <div ref={formScrollRef} className="min-h-0 flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden">
         {/* Editor */}
@@ -380,8 +424,6 @@ export function CampaignBuilder({
           </div>
 
           <div className="border-t border-gray-100 dark:border-white/3" />
-          <label className="block text-sm">Delivery<select aria-label="Delivery" className={inputCls} value={deliveryMode} onChange={event => setDeliveryMode(event.target.value as 'now' | 'schedule')}><option value="now">Send Now</option><option value="schedule">Schedule Once</option></select></label>
-          {deliveryMode === 'schedule' && <label className="block text-sm">Schedule Once (Asia/Manila)<input aria-label="Schedule Once (Asia/Manila)" type="datetime-local" className={inputCls} value={scheduledTime} onChange={event => setScheduledTime(event.target.value)} /><span className="text-xs text-slate-500">Sends once after the due time, within the backend polling interval while it is running.</span></label>}
           <AudienceCounts counts={counts} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} />
 
           {/* Message Content */}
@@ -391,12 +433,12 @@ export function CampaignBuilder({
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Content <span className="text-red-500">*</span></label>
                   <div className="relative">
-                    <button type="button" onClick={() => setShowVarDropdown(!showVarDropdown)} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary dark:text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors duration-200 border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+                    <button type="button" aria-expanded={showVarDropdown} onClick={() => { if (!showVarDropdown) { void variableCatalog.refetch(); void emailSettings.refetch(); void smsSettings.refetch(); } setShowVarDropdown(!showVarDropdown); }} onKeyDown={event => { if (event.key === 'Escape') setShowVarDropdown(false); }} className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary dark:text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors duration-200 border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
                       <Wand2 size={14} /> Insert Variable
                     </button>
                     {showVarDropdown && (
-                      <div className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
-                        <CampaignVariablePicker fields={variableFields} onInsert={insertVariable} />
+                      <div onKeyDown={event => { if (event.key === 'Escape') setShowVarDropdown(false); }} className="absolute right-0 top-full mt-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
+                        <CampaignVariablePicker choices={choices} onInsert={insertVariable} />
                       </div>
                     )}
                   </div>
@@ -404,12 +446,12 @@ export function CampaignBuilder({
                 {campaignType === 'Email' && (
                   <div className="mb-3">
                     <label htmlFor="builder-subject" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Subject Line <span className="text-red-500">*</span></label>
-                    <input ref={subjectRef} onFocus={() => { activeField.current = 'subject'; }} id="builder-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors" placeholder="e.g. Welcome to LeadCRM, {{first_name}}!" />
+                    <input ref={subjectRef} onFocus={() => { activeField.current = 'subject'; }} id="builder-subject" value={emailSubject} onChange={(e) => setEmailSubject(e.target.value)} className="w-full h-9 rounded-md border border-gray-200 dark:border-white/8 bg-white dark:bg-white/3 px-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary transition-colors" placeholder="e.g. Welcome to LeadCRM, {{firstName}}!" />
                     <FieldError message={errors.subject} />
                   </div>
                 )}
                 <label htmlFor="builder-body" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Body <span className="text-red-500">*</span></label>
-                <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{first_name}}, ...' : 'Hi {{first_name}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
+                <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{firstName}}, ...' : 'Hi {{firstName}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
                 <FieldError message={errors.body || (campaignType === 'SMS' ? smsPreviewError : '')} />
                 {campaignType === 'SMS' && (
                   <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 dark:text-slate-400">
@@ -419,8 +461,8 @@ export function CampaignBuilder({
                 <div className="mt-2.5">
                   <span className="text-xs text-slate-500 dark:text-slate-400 font-medium block mb-1.5">Quick fields:</span>
                   <div className="flex flex-wrap gap-1.5">
-                    {EMAIL_VARIABLE_TOKENS.map(tag => (
-                      <button key={tag} type="button" draggable onDragStart={event => dragVariable(event, tag)} onClick={() => insertVariable(tag)} className="text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-medium px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/5 transition-colors duration-150 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{tag}</button>
+                    {quickChoices.map(choice => (
+                      <button key={choice.id} type="button" disabled={!choice.personalizationAvailable} title={choice.unavailableReason || choice.label} draggable={choice.personalizationAvailable} onDragStart={event => dragVariable(event, `{{${choice.technicalKey}}}`)} onClick={() => insertVariable(`{{${choice.technicalKey}}}`)} className="text-[11px] bg-slate-100 hover:bg-slate-200 dark:bg-white/5 dark:hover:bg-white/10 text-slate-700 dark:text-slate-300 font-medium px-2.5 py-1 rounded-md border border-gray-200 dark:border-white/5 transition-colors duration-150 cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">{`{{${choice.technicalKey}}}`}</button>
                     ))}
                   </div>
                 </div>
@@ -435,6 +477,18 @@ export function CampaignBuilder({
           </SheetContent>
         </Sheet>}
       </div>
+      <Dialog open={scheduleOpen} onOpenChange={open => { if (!open) closeSchedule(); }}>
+        <DialogContent showClose={false} aria-labelledby="campaign-schedule-title" aria-describedby="campaign-schedule-description" aria-busy={isSending} className="space-y-3 p-3 sm:p-5">
+          <DialogHeader>
+            <DialogTitle id="campaign-schedule-title">{scheduled ? 'Reschedule Campaign' : 'Schedule Send'}</DialogTitle>
+            <DialogDescription id="campaign-schedule-description">Choose a future date and time in Asia/Manila.</DialogDescription>
+          </DialogHeader>
+          {scheduleOpen && <fieldset disabled={isSending} className="min-w-0">
+            <ManilaDateTimePicker key={scheduleSession} value={scheduledTime} rollPastToday={false} busy={isSending} onCancel={closeSchedule} onDone={value => { if (scheduled) void manageSchedule(false, value); else void save('schedule', value); }} />
+          </fieldset>}
+          <FieldError message={Object.values(errors).filter(Boolean).join(' ') || undefined} />
+        </DialogContent>
+      </Dialog>
       {showAudiencePanel && <AudiencePanel initialAudience={editingAudience} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => prev.some(item => item.id === audience.id) ? prev.map(item => item.id === audience.id ? audience : item) : [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
     </div>
   );

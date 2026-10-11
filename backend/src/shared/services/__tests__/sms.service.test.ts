@@ -3,7 +3,7 @@ import { buildFinalSms, smsMessageStats } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 vi.mock('../../../config/database.config', () => ({ default: { tenant: { findUnique: vi.fn() } } }));
 import prisma from '../../../config/database.config';
-import { isSmsConfigured, normalizeSmsPhone, sendSms } from '../sms.service';
+import { isSmsConfigured, normalizeSmsPhone, sendSms, getSmsSenderIdentity } from '../sms.service';
 const batchId = '66f7c3a8b1c2d3e4f5a6b7c0';
 const accepted = () => new Response(JSON.stringify({ data: { success: true, smsBatchId: batchId, recipientCount: 1 } }));
 const send = (body = 'Hello') => tenantContext.run({ tenantId: 'test-tenant' }, () => sendSms('+639171234567', body));
@@ -14,6 +14,13 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('TextBee shared SMS transport', () => {
+  it('reads current tenant contact identity without fabricating missing values or crossing tenant scope', async () => {
+    vi.mocked(prisma.tenant.findUnique).mockResolvedValue({ name: 'Configured organization', email: 'contact@example.test' } as never);
+    expect(await tenantContext.run({ tenantId: 'test-tenant' }, () => getSmsSenderIdentity('test-tenant'))).toEqual({ organizationName: 'Configured organization', organizationEmail: 'contact@example.test' });
+    vi.mocked(prisma.tenant.findUnique).mockResolvedValue({ name: 'Renamed organization', email: 'invalid' } as never);
+    expect(await tenantContext.run({ tenantId: 'test-tenant' }, () => getSmsSenderIdentity('test-tenant'))).toEqual({ organizationName: 'Renamed organization', organizationEmail: null });
+    await expect(tenantContext.run({ tenantId: 'other-tenant' }, () => getSmsSenderIdentity('test-tenant'))).rejects.toThrow('tenant context');
+  });
   it('normalizes local and international PH numbers and blocks invalid numbers before HTTP', async () => {
     for (const input of ['9123456789', '09123456789', '+639123456789']) expect(normalizeSmsPhone(input)).toBe('+639123456789');
     for (const input of ['0917123456', '+631234567890', 'letters', '']) await expect(tenantContext.run({ tenantId: 'test-tenant' }, () => sendSms(input, 'Hello'))).rejects.toThrow();

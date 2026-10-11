@@ -1,7 +1,7 @@
 import {
   workflowOperators,
   missingWorkflowConditionValues,
-  WORKFLOW_MESSAGE_VARIABLES,
+  workflowMessageVariableKeys,
   WORKFLOW_MODULES,
   getWorkflowUpdateFields,
   getAvailableActions,
@@ -368,7 +368,7 @@ export function actionIssues(
       typeof value === 'string' &&
       [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].some(
         (match) =>
-          !WORKFLOW_MESSAGE_VARIABLES.some(variable => variable.token === match[1]),
+          !workflowMessageVariableKeys(entity).has(match[1]),
       )
     )
       issues.push(

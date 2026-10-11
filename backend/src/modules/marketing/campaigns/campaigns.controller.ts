@@ -2,7 +2,7 @@ import { assertPermissions } from '../../../core/permissions/permission.service'
 import { AppError } from '../../../shared/errors/app-error';
 import { Request, Response, NextFunction } from 'express';
 import * as service from './campaigns.service';
-import { getOrganizationSettings } from '../../administration/organization-settings/organization-settings.service';
+import { getSmsSenderIdentity } from '../../../shared/services/sms.service';
 import { getBrevoSenderIdentity } from '../../../shared/services/email.service';
 
 export function getEmailSettings(_req: Request, res: Response) {
@@ -11,8 +11,7 @@ export function getEmailSettings(_req: Request, res: Response) {
 
 export async function getSmsSettings(req: Request, res: Response, next: NextFunction) {
   try {
-    const settings = await getOrganizationSettings(req.user!.tenantId);
-    res.json({ success: true, data: { organizationEmail: settings.email } });
+    res.json({ success: true, data: await getSmsSenderIdentity(req.user!.tenantId) });
   } catch (error) { next(error); }
 }
 

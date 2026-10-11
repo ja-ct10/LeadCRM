@@ -22,6 +22,7 @@ const sendLimiter = rateLimit({ windowMs: 60000, limit: 5, standardHeaders: true
 router.get('/campaigns/metrics', authorize('campaigns.view_reports'), campaignController.getCampaignMetrics);
 router.get('/campaigns/sms-settings', authorize('campaigns.view'), campaignController.getSmsSettings);
 router.get('/campaigns/email-settings', authorize('campaigns.view'), campaignController.getEmailSettings);
+router.get('/campaigns/variable-fields', authorize('campaigns.view'), audienceController.campaignVariableFields);
 router.get('/audiences/fields', authorize('campaigns.view'), audienceController.audienceFields);
 router.get('/audiences/companies', authorize('campaigns.view'), audienceController.audienceCompanies);
 router.get('/audiences', authorize('campaigns.view'), audienceController.getAudiences);

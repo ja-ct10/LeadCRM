@@ -3,7 +3,7 @@
 import { apiClient } from '@/lib/api/client';
 import type { Campaign as ApiCampaign, CampaignDetailResponse as ApiCampaignDetailResponse, CampaignReportResponse as ApiCampaignReportResponse, CreateCampaignInput, CampaignSendResult } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
-import type { CampaignMetricsSummary, CampaignEmailSettings } from '@leadcrm/shared';
+import type { CampaignMetricsSummary, CampaignEmailSettings, CampaignSmsSettings, CrmFieldCatalogEntry } from '@leadcrm/shared';
 
 export interface CampaignsResponse { success: boolean; data: Campaign[]; meta: { total: number; page: number; limit: number; hasMore: boolean }; }
 export interface CampaignResponse  { success: boolean; data: Campaign; }
@@ -25,7 +25,8 @@ function normalize(c: ApiCampaign & { targetAudience?: { name: string }; deliver
 }
 export const campaignsApi = {
   emailSettings: () => apiClient.get<{ success: boolean; data: CampaignEmailSettings }>('/marketing/campaigns/email-settings'),
-  smsSettings: () => apiClient.get<{ success: boolean; data: { organizationEmail: string | null } }>('/marketing/campaigns/sms-settings'),
+  variableFields: () => apiClient.get<{ success: boolean; data: CrmFieldCatalogEntry[] }>('/marketing/campaigns/variable-fields'),
+  smsSettings: () => apiClient.get<{ success: boolean; data: CampaignSmsSettings }>('/marketing/campaigns/sms-settings'),
   duplicate: (id: string, audienceSource?: 'LEADS' | 'CONTACTS') => apiClient.post('/marketing/campaigns/' + id + '/duplicate', audienceSource ? { audienceSource } : {}),
   report: async (id: string, signal?: AbortSignal): Promise<CampaignReportResponse> => {
     const res = await apiClient.get<ApiCampaignReportResponse>('/marketing/campaigns/' + id + '/report', { signal });

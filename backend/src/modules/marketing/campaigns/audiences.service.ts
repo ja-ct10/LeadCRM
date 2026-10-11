@@ -7,6 +7,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import { resolveProducts, validateSalesOwner } from '../../crm/leads/lead-automation.service';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
 import { normalizeSmsPhone } from '../../../shared/services/sms.service';
+import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, campaignPersonalizationAvailable, campaignApprovedVariableKeys } from '@leadcrm/shared';
 
 export function campaignScope(tenantId: string) {
   const context = tenantContext.getStore();
@@ -40,6 +41,17 @@ export async function audienceFields(tenantId: string, sourceInput: unknown, db:
   const [definitions, preference] = await Promise.all([readConfiguredFields(db, tenantId), db.tenantPreference.findFirst({ where: { tenantId, module, key: 'field-layout' } })]);
   const layout = FieldLayoutSchema.safeParse(preference?.value);
   return campaignFields(source, definitions, layout.success ? layout.data : undefined);
+}
+export async function campaignVariableFields(tenantId: string, db: Prisma.TransactionClient = prisma) {
+  campaignScope(tenantId);
+  const [definitions, preferences] = await Promise.all([
+    readConfiguredFields(db, tenantId),
+    db.tenantPreference.findMany({ where: { tenantId, module: { in: [...CUSTOM_FIELD_MODULES] }, key: 'field-layout' } }),
+  ]);
+  return CUSTOM_FIELD_MODULES.flatMap(module => {
+    const layout = FieldLayoutSchema.safeParse(preferences.find(row => row.module === module)?.value);
+    return getCrmFieldCatalog(module, definitions, layout.success && layout.data.module === module ? layout.data : undefined);
+  });
 }
 async function readDefinition(tenantId: string, source: string, rows: { field: string; operator: string; value: string }[], db: Prisma.TransactionClient, matchMode: string = 'AND'): Promise<AudienceInput> {
   const conditions = await Promise.all(rows.map(async row => {
@@ -167,16 +179,17 @@ function personalized(row: Record<string, unknown>, fields: CrmFieldCatalogEntry
   const scalar = (value: unknown, date = false): string => value == null ? '' : date ? value instanceof Date ? new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit' }).format(value) : String(value).slice(0, 10) : typeof value === 'boolean' ? value ? 'Yes' : 'No' : String(value);
   const custom = new Map((row.customFieldValues as { fieldId: string; value: unknown }[] ?? []).map(value => [value.fieldId, value.value]));
   const products = row.productLinks as { product: { name: string }; interested?: boolean; activeProduct?: boolean }[] ?? [];
-  for (const field of fields.filter(entry => entry.personalizationAvailable)) {
+  for (const field of fields.filter(campaignPersonalizationAvailable)) {
     let value: unknown = field.customFieldId ? custom.get(field.customFieldId) : row[field.technicalKey];
-    if (field.technicalKey === 'company') value = (row.account as { name: string } | null)?.name || row.company;
     if (field.reference === 'user') { const user = row.assignedUser as { firstName: string; lastName: string } | null; value = user ? `${user.firstName} ${user.lastName}`.trim() : ''; }
     if (field.reference === 'account') value = (row.account as { name: string } | null)?.name;
     if (field.type === 'products') value = products.filter(product => field.technicalKey === 'activeProductIds' ? product.activeProduct : product.interested !== false).map(product => product.product.name).join(', ');
     values[field.technicalKey] = scalar(value, field.type === 'date');
     if (field.canonicalTechnicalKey) values[field.canonicalTechnicalKey] = values[field.technicalKey];
   }
-  return { ...values, first_name: scalar(row.firstName), last_name: scalar(row.lastName), company_name: (row.account as { name: string } | null)?.name || scalar(row.companyName ?? row.company), contact_number: scalar(row.phone), status: scalar(row.status) };
+  const legacy = { first_name: scalar(row.firstName), last_name: scalar(row.lastName), company_name: (row.account as { name: string } | null)?.name || scalar(row.companyName ?? row.company), contact_number: scalar(row.phone) };
+  const approved = campaignApprovedVariableKeys(fields);
+  return { ...values, ...Object.fromEntries(Object.entries(legacy).filter(([key]) => approved.has(key))) };
 }
 export interface ResolvedRecipient { leadId?: string; contactId?: string; email: string | null; phone?: string | null; personalization: EmailVariables; reason: string | null }
 const emptyBreakdown = (): AudienceBreakdown => ({ matched: 0, eligible: 0, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, missingPhone: 0, invalidPhone: 0, duplicatePhone: 0, doNotContact: 0 });
@@ -240,7 +253,7 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   if (dto.source !== 'LEADS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.contact.findMany({ where: { ...scope, ...audiencePredicate(dto, false, fields, companies), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...recipientProjection, company: true, jobTitle: true, notes: true, doNotContact: true, productLinks: { ...recipientProjection.productLinks, select: { ...recipientProjection.productLinks.select, interested: true, activeProduct: true } } } });
+      const rows = await db.contact.findMany({ where: { ...scope, ...audiencePredicate(dto, false, fields, companies), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...recipientProjection, customFieldValues: { ...recipientProjection.customFieldValues, where: { tenantId, module: 'contacts' } }, company: true, jobTitle: true, notes: true, doNotContact: true, productLinks: { ...recipientProjection.productLinks, select: { ...recipientProjection.productLinks.select, interested: true, activeProduct: true } } } });
       for (const c of rows) retain({ contactId: c.id, email: c.email, phone: c.phone, reason: c.doNotContact ? (channel === 'SMS' ? 'DO_NOT_CONTACT' : 'UNSUBSCRIBED') : c.isArchived || c.deletedAt || c.status === 'CANCELLED' ? 'INACTIVE' : null, personalization: personalized(c, fields) });
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;
@@ -249,7 +262,7 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   if (dto.source !== 'CONTACTS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.lead.findMany({ where: { ...scope, ...audiencePredicate(dto, true, fields, companies), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...recipientProjection, companyName: true, convertedAt: true } });
+      const rows = await db.lead.findMany({ where: { ...scope, ...audiencePredicate(dto, true, fields, companies), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...recipientProjection, customFieldValues: { ...recipientProjection.customFieldValues, where: { tenantId, module: 'leads' } }, companyName: true, convertedAt: true } });
       for (const l of rows) retain({ leadId: l.id, email: l.email, phone: l.phone, reason: l.isArchived || l.deletedAt || l.convertedAt || ['archived', 'converted', 'cancelled'].includes(l.status.toLowerCase()) ? 'INACTIVE' : null, personalization: personalized(l, fields) });
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;

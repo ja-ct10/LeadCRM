@@ -2,15 +2,25 @@ import type { ActionDefinition, WorkflowEntity, WorkflowField, WorkflowTriggerDe
 import { CRM_STATUSES, LEAD_SOURCES, COMPANY_SIZE_OPTIONS } from './record-experience';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { isClosedWonField, type ClosingField, type CustomFieldModule } from './closing-requirements';
-import type { FieldLayout } from './field-catalog';
+import { getCrmFieldCatalog, type FieldLayout } from './field-catalog';
 
 export const WORKFLOW_MODULES: Record<WorkflowEntity, CustomFieldModule> = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 export const WORKFLOW_MESSAGE_VARIABLES = [
-  { token: 'first_name', label: 'First name', fields: ['firstName'] },
-  { token: 'last_name', label: 'Last name', fields: ['lastName'] },
-  { token: 'email', label: 'Email', fields: ['email'] },
-  { token: 'company', label: 'Company', fields: ['company', 'companyName'] },
+  { token: 'firstName', label: 'First Name', fields: ['firstName'], legacyToken: 'first_name' },
+  { token: 'lastName', label: 'Last Name', fields: ['lastName'], legacyToken: 'last_name' },
+  { token: 'email', label: 'Email', fields: ['email'], legacyToken: 'email' },
+  { token: 'company', label: 'Company Name', fields: ['company', 'companyName'], legacyToken: 'company' },
 ] as const;
+export function getWorkflowMessageVariables(entity: WorkflowEntity, layout?: FieldLayout) {
+  const catalog = getCrmFieldCatalog(WORKFLOW_MODULES[entity], [], layout);
+  return WORKFLOW_MESSAGE_VARIABLES.flatMap(variable => {
+    const field = catalog.find(field => variable.fields.some(key => key === field.technicalKey));
+    return field ? [{ token: field.technicalKey, label: field.label, legacyToken: variable.legacyToken, fields: [field.technicalKey] }] : [];
+  });
+}
+export function workflowMessageVariableKeys(entity: WorkflowEntity) {
+  return new Set<string>([...WORKFLOW_MESSAGE_VARIABLES.map(variable => variable.legacyToken), ...getWorkflowMessageVariables(entity).map(variable => variable.token)]);
+}
 const text = (field: string, label: string, required = false, maxLength = 2000): WorkflowField => ({ field, label, type: 'string', required, maxLength });
 const choice = (field: string, label: string, options: readonly string[]): WorkflowField => ({ field, label, type: 'enum', options: [...options] });
 export function getWorkflowCustomFields(entity: WorkflowEntity, definitions: ClosingField[] = []): WorkflowField[] {

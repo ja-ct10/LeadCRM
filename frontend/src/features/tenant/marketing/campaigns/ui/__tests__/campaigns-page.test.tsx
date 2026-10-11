@@ -1,19 +1,21 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), permitted: true, initial: false, refreshing: false }));
+import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog } from '@leadcrm/shared';
+import { clearPageCache } from '@/shared/cache/page-cache';
+const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { tenantId: 'tenant', } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
-vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [campaign], total: 1, templates: [], metrics: { activeCampaigns: 1, sent: 10, emailSent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
-vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive } }));
+vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [campaign], total: 1, templates: mocks.templates, metrics: { activeCampaigns: 1, sent: 10, emailSent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
+vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive, variableFields: mocks.variableFields, emailSettings: mocks.emailSettings, smsSettings: mocks.smsSettings } }));
 vi.mock('../campaign-builder', () => ({ CampaignBuilder: () => <div>Campaign editor</div> }));
 vi.mock('../campaign-report-view', () => ({ CampaignReportView: () => <div>Campaign report</div> }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ replace: vi.fn() }) }));
 import CampaignsPage from '../campaigns-page';
-beforeEach(() => { vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} })); vi.clearAllMocks(); mocks.permitted = true; mocks.initial = false; mocks.refreshing = false; mocks.archive.mockResolvedValue({ success: true }); mocks.refresh.mockResolvedValue(undefined); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
-afterEach(cleanup);
+beforeEach(() => { clearPageCache(); vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} })); vi.clearAllMocks(); mocks.templates = []; mocks.permitted = true; mocks.initial = false; mocks.refreshing = false; mocks.archive.mockResolvedValue({ success: true }); mocks.refresh.mockResolvedValue(undefined); mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module)) }); mocks.emailSettings.mockResolvedValue({ success: true, data: { senderName: 'Provider sender', senderEmail: 'provider@example.test' } }); mocks.smsSettings.mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'contact@example.test' } }); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
+afterEach(() => { cleanup(); clearPageCache(); });
 it('keeps the email open rate independent of submitted SMS volume', () => {
   render(<CampaignsPage />);
   expect(screen.getByRole('progressbar', { name: 'Average open rate: 50.0%' })).toBeTruthy();
@@ -67,4 +69,37 @@ it('offers persisted outcome statuses including interrupted submissions and Emai
   render(<CampaignsPage />); fireEvent.click(screen.getByLabelText('Filter campaigns'));
   const filters = screen.getAllByRole('checkbox').filter(el => !el.getAttribute('aria-label')?.startsWith('Select'));
   expect([...new Set(filters.map(el => el.closest('label')?.textContent))]).toEqual(['Sent', 'Partially Sent', 'Interrupted', 'Delivered', 'Failed', 'Draft', 'Scheduled', 'Email', 'SMS']);
+});
+
+it('replaces the active template selection with the exact catalog token and restores focus', async () => {
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Email Templates' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create First Email Template' }));
+  const subject = screen.getByLabelText(/Subject Line/) as HTMLInputElement;
+  const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
+  fireEvent.change(subject, { target: { value: 'Hello customer!' } });
+  fireEvent.change(content, { target: { value: 'Keep this body.' } });
+  fireEvent.focus(subject); subject.setSelectionRange(6, 14);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+  const firstName = await screen.findByRole('button', { name: /First Name.*firstName/ });
+  fireEvent.click(firstName);
+  expect(subject.value).toBe('Hello {{firstName}}!');
+  expect(content.value).toBe('Keep this body.');
+  await waitFor(() => expect(document.activeElement).toBe(subject));
+  expect(subject.selectionStart).toBe(19);
+  fireEvent.focus(content); content.setSelectionRange(5, 9);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+  fireEvent.click(screen.getByRole('button', { name: /Sender Email.*sender_email/ }));
+  expect(content.value).toBe('Keep {{sender_email}} body.');
+  expect(screen.queryByLabelText('Search variables')).toBeNull();
+  await waitFor(() => expect(document.activeElement).toBe(content));
+});
+
+it.each(['Email', 'SMS'] as const)('previews %s templates with current configured sender identity and compatible tokens', async type => {
+  mocks.templates = [{ id: 'template', name: 'Sender template', type, category: 'Marketing', subject: 'Hello {{firstName}}', content: '{{firstName}} {{first_name}} {{sender_name}} {{sender_email}}' }];
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: type === 'Email' ? 'Email Templates' : 'SMS Templates' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  const text = type === 'Email' ? 'John John Provider sender provider@example.test' : 'John John SMS organization contact@example.test';
+  await screen.findByText(text);
 });

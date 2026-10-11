@@ -11,8 +11,9 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCampaignsData } from '../hooks/use-campaigns-data';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { templatesApi } from '@/shared/services/templates.api';
-import { CampaignVariablePicker, useCampaignFields, campaignSampleValues } from './campaign-variable-picker';
-import { MarketingTemplateSchema, renderEmailVariables } from '@leadcrm/shared';
+import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
+import { MarketingTemplateSchema, renderEmailVariables, campaignVariableChoices, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
+import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { FieldError } from './audience-panel';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
@@ -97,13 +98,27 @@ export default function CampaignsPage() {
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
   const [templateSource, setTemplateSource] = useState<'LEADS' | 'CONTACTS'>('LEADS');
-  const { fields: templateFields } = useCampaignFields(isTemplateModalOpen || previewTemplate ? templateSource : undefined);
+  const templateCatalog = useCampaignVariableFields(isTemplateModalOpen || !!previewTemplate);
+  const templateFields = templateCatalog.fields.filter(field => field.module === (templateSource === 'LEADS' ? 'leads' : 'contacts'));
+  const templateEmailSettings = useCachedPage<CampaignEmailSettings>({ module: 'settings', params: { campaignSender: 'EMAIL' }, disabled: !(isTemplateModalOpen && newTemplateType === 'Email' || previewTemplate?.type === 'Email'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.emailSettings()).data });
+  const templateSmsSettings = useCachedPage<CampaignSmsSettings>({ module: 'settings', params: { campaignSender: 'SMS' }, disabled: !(isTemplateModalOpen && newTemplateType === 'SMS' || previewTemplate?.type === 'SMS'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.smsSettings()).data });
+  const templateSubjectRef = useRef<HTMLInputElement>(null), templateBodyRef = useRef<HTMLTextAreaElement>(null);
+  const templateActiveField = useRef<'subject' | 'content'>('content');
+  const templateChoices = campaignVariableChoices(templateCatalog.fields, templateSource);
   const [showVarDropdown, setShowVarDropdown] = useState(false);
 
 
   useEffect(() => { setShowBuilder(false); setEditingCampaign(undefined); setSelectedCampaignForReport(null); setIsTemplateModalOpen(false); setPreviewTemplate(null); setNewTemplate({ name: '', subject: '', content: '', category: 'Marketing' }); }, [user?.tenantId]);
 
-  const getPreviewText = (text: string) => renderEmailVariables(text, { ...campaignSampleValues(templateFields), first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: 'Configured sender', sender_email: 'sender@example.com', contact_number: '+639123456789', status: 'HOT' });
+  const getPreviewText = (text: string) => renderEmailVariables(text, { ...campaignSampleValues(templateFields), firstName: 'John', lastName: 'Doe', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: (previewTemplate?.type === 'SMS' ? templateSmsSettings.data?.organizationName : templateEmailSettings.data?.senderName) || 'Configured sender unavailable', sender_email: (previewTemplate?.type === 'SMS' ? templateSmsSettings.data?.organizationEmail : templateEmailSettings.data?.senderEmail) || 'Sender email unavailable', contact_number: '+639123456789', status: 'HOT' });
+  function insertTemplateVariable(token: string) {
+    const field = newTemplateType === 'Email' ? templateActiveField.current : 'content';
+    const input = field === 'subject' ? templateSubjectRef.current : templateBodyRef.current;
+    const value = newTemplate[field], start = input?.selectionStart ?? value.length, end = input?.selectionEnd ?? start;
+    setNewTemplate(previous => ({ ...previous, [field]: value.slice(0, start) + token + value.slice(end) }));
+    setShowVarDropdown(false);
+    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + token.length, start + token.length); });
+  }
   // ── KPI computations (real data, no hardcoded numbers) ─────────────────────
   const activeCampaignCount = metrics.activeCampaigns;
   const totalMessagesSent = metrics.sent;
@@ -541,7 +556,7 @@ export default function CampaignsPage() {
               <EmptyState
                 type="sms"
                 title="No SMS Templates Found"
-                description="Draft quick SMS templates with dynamic placeholders like {{first_name}} to let your representatives reply to prospects instantly."
+                description="Draft quick SMS templates with dynamic placeholders like {{firstName}} to let your representatives reply to prospects instantly."
                 actionLabel="Create First SMS Template"
                 onAction={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
               />
@@ -581,7 +596,7 @@ export default function CampaignsPage() {
             <div>
               <label htmlFor="template-subject" className={panelLabelClass + " mb-1.5"}>Subject Line <span className="text-red-500">*</span></label>
               <input
-                id="template-subject" className={panelInputClass}
+                ref={templateSubjectRef} onFocus={() => { templateActiveField.current = 'subject'; }} id="template-subject" className={panelInputClass}
                 placeholder="Welcome to LeadCRM!"
                 value={newTemplate.subject}
                 onChange={(e) => setNewTemplate({ ...newTemplate, subject: e.target.value })}
@@ -603,15 +618,15 @@ export default function CampaignsPage() {
                 </button>
                 {showVarDropdown && (
                   <div className="absolute right-0 bottom-full mb-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
-                    <CampaignVariablePicker fields={templateFields} onInsert={token => { setNewTemplate(previous => ({ ...previous, content: previous.content + token })); setShowVarDropdown(false); }} />
+                    <CampaignVariablePicker choices={templateChoices} onInsert={insertTemplateVariable} />
                   </div>
                 )}
               </div>
             </div>
             <textarea
-              id="template-content" rows={8}
+              ref={templateBodyRef} onFocus={() => { templateActiveField.current = 'content'; }} id="template-content" rows={8}
               className={panelInputClass + " resize-none"}
-              placeholder={`Hi {{first_name}},\n\n...`}
+              placeholder={`Hi {{firstName}},\n\n...`}
               value={newTemplate.content}
               onChange={(e) => setNewTemplate({ ...newTemplate, content: e.target.value })}
             ></textarea>

@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { Prisma, CampaignStatus, CampaignType } from '@prisma/client';
 import { z } from 'zod';
-import { campaignLinkDestination, campaignHtmlLinks, CreateCampaignDraftSchema, CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, isWorkspaceAccessible, isOnboardingComplete, type CampaignSendResult, AudiencePreviewSchema, CampaignScheduleSchema, CampaignScheduleConfigSchema, campaignVariableKeys, EMAIL_VARIABLES, type AudienceInput } from '@leadcrm/shared';
+import { campaignLinkDestination, campaignHtmlLinks, CreateCampaignDraftSchema, CampaignDraftSchema, CampaignSendSchema, buildFinalSms, SMS_MAX_LENGTH, isWorkspaceAccessible, isOnboardingComplete, type CampaignSendResult, AudiencePreviewSchema, CampaignScheduleSchema, CampaignScheduleConfigSchema, campaignVariableKeys, campaignApprovedVariableKeys, type AudienceInput } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissionError } from '../../../shared/services/email.service';
-import { sendSms, assertSmsConfigured, getSmsSenderEmail, SmsSubmissionError } from '../../../shared/services/sms.service';
+import { sendSms, assertSmsConfigured, getSmsSenderIdentity, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience } from './audiences.service';
 import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
 import { findCampaignReport } from './campaigns.repository';
@@ -183,9 +183,21 @@ async function effectiveContent(campaign: { type: CampaignType; subject: string 
 }
 async function validateCampaignVariables(tenantId: string, definition: AudienceInput, subject: string, body: string, tx: Prisma.TransactionClient) {
   const fields = await validateAudienceReferences(tenantId, definition, tx);
-  const available = new Set<string>([...EMAIL_VARIABLES, ...fields.filter(field => field.personalizationAvailable).flatMap(field => [field.technicalKey, ...(field.canonicalTechnicalKey ? [field.canonicalTechnicalKey] : [])])]);
+  const available = campaignApprovedVariableKeys(fields);
   const unavailable = campaignVariableKeys(subject + '\n' + body).filter(key => !available.has(key));
   if (unavailable.length) throw new AppError(`Repair unavailable campaign variables: ${unavailable.map(key => '{{' + key + '}}').join(', ')}.`, 400);
+}
+async function campaignSender(tenantId: string, channel: 'EMAIL' | 'SMS', content: string, tx: Prisma.TransactionClient) {
+  if (channel === 'EMAIL') {
+    assertBrevoConfigured();
+    const identity = getBrevoSenderIdentity();
+    return { sender_name: identity.senderName, sender_email: identity.senderEmail! };
+  }
+  assertSmsConfigured();
+  const identity = await getSmsSenderIdentity(tenantId, tx);
+  const keys = campaignVariableKeys(content);
+  if (keys.includes('sender_name') && !identity.organizationName || keys.includes('sender_email') && !identity.organizationEmail) throw new AppError('Configure the organization name and valid contact email before using SMS sender variables.', 400);
+  return { sender_name: identity.organizationName ?? '', sender_email: identity.organizationEmail ?? '' };
 }
 export async function scheduleCampaign(id: string, tenantId: string, userId: string, input: unknown) {
   const { scheduledFor } = CampaignScheduleSchema.parse(input), due = new Date(scheduledFor), scope = campaignScope(tenantId);
@@ -205,6 +217,7 @@ export async function scheduleCampaign(id: string, tenantId: string, userId: str
       CampaignSendSchema.parse({ name: row.name, type: row.type, ...content, audienceSource: configuration.source });
     }
     await validateCampaignVariables(tenantId, configuration, content.subject, content.body, tx);
+    await campaignSender(tenantId, row.type as 'EMAIL' | 'SMS', content.subject + '\n' + content.body, tx);
     const changed = await tx.campaign.updateMany({ where: { id, ...scope, status: row.status, updatedAt: row.updatedAt, scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, submissionStartedAt: null, isArchived: false }, data: { status: 'SCHEDULED', scheduledFor: due, scheduledById: userId, scheduleConfig: { source: configuration.source, matchMode: configuration.matchMode, conditions: configuration.conditions, timezone: 'Asia/Manila' }, ...content } });
     if (!changed.count) throw new AppError('The campaign changed while scheduling. Reload its current state.', 409);
   });
@@ -235,11 +248,11 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     if (campaign.type === 'EMAIL') assertBrevoConfigured();
     else if (campaign.type === 'SMS') assertSmsConfigured();
     else throw new AppError('Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.', 400);
-    const organizationEmail = campaign.type === 'SMS' ? await getSmsSenderEmail(tenantId, tx) : undefined;
     const content = expected ? { subject: campaign.subject || '', body: campaign.body || '' } : await effectiveContent(campaign, tenantId, tx);
     const definition = expected?.definition ?? await audienceDefinition(tenantId, campaign.targetAudienceId, campaign.audienceSource, tx);
     CampaignSendSchema.parse({ name: campaign.name, type: campaign.type, ...content, audienceSource: definition.source });
     await validateCampaignVariables(tenantId, definition, content.subject, content.body, tx);
+    const sender = await campaignSender(tenantId, campaign.type, content.subject + '\n' + content.body, tx);
     const resolved = await resolveAudience(tenantId, definition, tx, campaign.type);
     const eligible = resolved.records.filter(r => !r.reason);
     if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions.', 400);
@@ -251,8 +264,6 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     const reserved = await tx.campaignEmailQuota.updateMany({ where: { day, reserved: { lte: limit - eligible.length } }, data: { reserved: { increment: eligible.length } } });
     if (!reserved.count) throw new AppError(`This campaign has ${eligible.length} eligible recipients, exceeding the available campaign allowance under the configured ${limit}/day limit. Reduce the audience or try another day.`, 409);
     }
-    const emailSender = getBrevoSenderIdentity();
-    const sender = { sender_name: campaign.type === 'SMS' ? 'Camxian Technologies' : emailSender.senderName, sender_email: campaign.type === 'EMAIL' ? emailSender.senderEmail! : organizationEmail ?? '' };
     const sends = eligible.map(r => ({ ...r, personalization: { ...r.personalization, ...sender }, id: randomUUID(), logId: randomUUID(), channel: campaign.type,
       ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: buildFinalSms({ body: content.body, variables: { ...r.personalization, ...sender } }) }
         : { ...renderCampaignMessage(content.subject, content.body, { ...r.personalization, ...sender }), sms: '' }) }));

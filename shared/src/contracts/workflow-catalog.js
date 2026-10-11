@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RETIRED_WORKFLOW_ACTIONS = exports.findTrigger = exports.WORKFLOW_TRIGGERS = exports.WORKFLOW_MESSAGE_VARIABLES = exports.WORKFLOW_MODULES = void 0;
+exports.getWorkflowMessageVariables = getWorkflowMessageVariables;
+exports.workflowMessageVariableKeys = workflowMessageVariableKeys;
 exports.getWorkflowCustomFields = getWorkflowCustomFields;
 exports.getWorkflowUpdateFields = getWorkflowUpdateFields;
 exports.getWorkflowConditionFields = getWorkflowConditionFields;
@@ -9,13 +11,24 @@ exports.getAvailableActions = getAvailableActions;
 const record_experience_1 = require("./record-experience");
 const company_industries_1 = require("../constants/company-industries");
 const closing_requirements_1 = require("./closing-requirements");
+const field_catalog_1 = require("./field-catalog");
 exports.WORKFLOW_MODULES = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 exports.WORKFLOW_MESSAGE_VARIABLES = [
-    { token: 'first_name', label: 'First name', fields: ['firstName'] },
-    { token: 'last_name', label: 'Last name', fields: ['lastName'] },
-    { token: 'email', label: 'Email', fields: ['email'] },
-    { token: 'company', label: 'Company', fields: ['company', 'companyName'] },
+    { token: 'firstName', label: 'First Name', fields: ['firstName'], legacyToken: 'first_name' },
+    { token: 'lastName', label: 'Last Name', fields: ['lastName'], legacyToken: 'last_name' },
+    { token: 'email', label: 'Email', fields: ['email'], legacyToken: 'email' },
+    { token: 'company', label: 'Company Name', fields: ['company', 'companyName'], legacyToken: 'company' },
 ];
+function getWorkflowMessageVariables(entity, layout) {
+    const catalog = (0, field_catalog_1.getCrmFieldCatalog)(exports.WORKFLOW_MODULES[entity], [], layout);
+    return exports.WORKFLOW_MESSAGE_VARIABLES.flatMap(variable => {
+        const field = catalog.find(field => variable.fields.some(key => key === field.technicalKey));
+        return field ? [{ token: field.technicalKey, label: field.label, legacyToken: variable.legacyToken, fields: [field.technicalKey] }] : [];
+    });
+}
+function workflowMessageVariableKeys(entity) {
+    return new Set([...exports.WORKFLOW_MESSAGE_VARIABLES.map(variable => variable.legacyToken), ...getWorkflowMessageVariables(entity).map(variable => variable.token)]);
+}
 const text = (field, label, required = false, maxLength = 2000) => ({ field, label, type: 'string', required, maxLength });
 const choice = (field, label, options) => ({ field, label, type: 'enum', options: [...options] });
 function getWorkflowCustomFields(entity, definitions = []) {

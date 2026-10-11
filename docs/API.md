@@ -269,6 +269,8 @@ All paths are relative to `/api/v1`. Protected operations require a ready worksp
 | PATCH | `/marketing/campaigns/:id/archive` | Archive Campaign | `campaigns.archive` |
 | POST | `/marketing/campaigns/:id/duplicate` | Create draft copy | `campaigns.duplicate` |
 | GET | `/marketing/campaigns/:id/report`, `/marketing/campaigns/metrics` | Delivery reports | `campaigns.view_reports` |
+| GET | `/marketing/campaigns/variable-fields` | Tenant-scoped field catalogs for Leads, Contacts, Accounts and Deals | `campaigns.view` |
+| GET | `/marketing/campaigns/email-settings`, `/marketing/campaigns/sms-settings` | Public configured sender/contact identity | `campaigns.view` |
 | GET / POST | `/marketing/audiences` | Read/save audiences | `campaigns.view` / `campaigns.create` |
 | POST | `/marketing/audiences/preview` | Resolve audience preview | `campaigns.view` |
 | GET | `/marketing/audiences/companies` | Audience company options | `campaigns.view` |
@@ -285,6 +287,8 @@ All paths are relative to `/api/v1`. Protected operations require a ready worksp
 | POST | `/public/forms/:publicId/submissions` | Validated public submission | Guest; rate-limited |
 
 Campaign sends use Brevo email or TextBee SMS, not the removed placeholder scheduler. Durable leases/recipient attempt markers let recovery finalize expired submissions as `INTERRUPTED`. Known unsent recipients are failed; uncertain provider outcomes remain reviewable without an automatic resend. No new recovery endpoint is exposed.
+
+The variable catalog returns existing `CrmFieldCatalogEntry` metadata; field presence does not authorize recipient values or provide related Account/Deal binding. Send and schedule validate variables against the effective Lead/Contact source. Email settings return configured Brevo `senderName` and `senderEmail`; SMS settings return tenant `organizationName` and validated `organizationEmail`. These public identities contain no provider credentials. Template tokens remain `sender_name` and `sender_email`. See the [variable consistency report](campaign-workflow-variable-consistency-report.md) for availability and verification details.
 
 Forms editing and publishing are distinct permissions. Company Website is explicitly submission-only; it is retained in submission history and is not advertised as a saved Lead field.
 

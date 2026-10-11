@@ -1,6 +1,6 @@
 import { validateDealTargets } from './action-deal-targets';
 import { z } from 'zod';
-import { WORKFLOW_MESSAGE_VARIABLES, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { workflowMessageVariableKeys, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { fieldUpdatePatch } from './action-fields';
 import { smsRecipient, validateSmsRecipientMode } from './action-sms';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
@@ -46,7 +46,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (key === 'title' && (String(value).length > 255 || /[\r\n\t]/.test(String(value)))) throw new ValidationError('Title must be at most 255 characters without control characters.');
     if (['user', 'stage', 'template', 'campaign', 'products'].includes(field.type) && !z.string().uuid().safeParse(value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
     if (key === 'subject' && !EmailSubjectSchema.safeParse(value).success) throw new ValidationError('Email subject must not contain line breaks or control characters.');
-    if (['title', 'description', 'subject', 'body', 'message'].includes(key)) validateVariables(String(value));
+    if (['title', 'description', 'subject', 'body', 'message'].includes(key)) validateVariables(String(value), entity);
     if (field.options && !field.options.includes(String(value))) throw new ValidationError(`Choose a supported ${field.label.toLowerCase()}.`);
     if (field.type === 'user' && !await repo.findUser(String(value), tenantId)) throw new NotFoundError('Active workspace user');
     if (field.type === 'products' && !await prisma.productInterest.findFirst({ where: { tenantId, id: String(value), active: true } })) throw new NotFoundError('Product Interest');
@@ -84,7 +84,7 @@ export async function validateEmail(action: WorkflowAction, entity: WorkflowEnti
   const content = String(action.config.body || template?.content || '');
   if (!subject.trim() || !sanitizeCampaignHtml(content).trim()) throw new ValidationError('Choose a complete template or enter an email subject and message.');
   if (!EmailSubjectSchema.safeParse(subject).success) throw new ValidationError('Email subject must be at most 200 characters without line breaks or control characters.');
-  validateVariables(`${subject} ${content}`);
+  validateVariables(`${subject} ${content}`, entity);
   const senderUserId = String(action.config.senderUserId);
   if (!await repo.findSender(senderUserId, tenantId)) throw new ValidationError('Connect the selected sender to Gmail before activating.');
   if (!context) {
@@ -111,8 +111,8 @@ export async function validateEmail(action: WorkflowAction, entity: WorkflowEnti
 }
 
 
-function validateVariables(value: string) {
+function validateVariables(value: string, entity: WorkflowEntity) {
   for (const match of value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)) {
-    if (!WORKFLOW_MESSAGE_VARIABLES.some(variable => variable.token === match[1])) throw new ValidationError('Use only the supported message variables.');
+    if (!workflowMessageVariableKeys(entity).has(match[1])) throw new ValidationError('Use only the supported message variables.');
   }
 }
