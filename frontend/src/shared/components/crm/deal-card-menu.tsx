@@ -22,7 +22,7 @@ import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
 import { TaskEditor } from '@/features/tenant/operations/tasks/ui/task-editor';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import { CrmRecordPanel } from './crm-record-view';
-import { DealPipelineDialog } from './deal-pipeline-dialog';
+import { DealStageDialog } from './deal-stage-dialog';
 import { DealLostDialog } from './deal-lost-dialog';
 
 interface DealCardMenuProps {
@@ -41,7 +41,7 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
   const canEmailLead = useHasPermission('leads.edit') && canLead && canEdit, canEmailContact = useHasPermission('contacts.edit') && canContact && canEdit;
   const { dialogProps, confirm } = useConfirmDialog();
   const [open, setOpen] = useState(false);
-  const [action, setAction] = useState<'edit' | 'task' | 'note' | 'won' | 'lost' | 'pipeline' | 'recipient' | null>(null);
+  const [action, setAction] = useState<'edit' | 'task' | 'note' | 'won' | 'lost' | 'stage' | 'recipient' | null>(null);
   const [editSnapshot, setEditSnapshot] = useState<Deal>();
   const [pending, setPending] = useState(false);
   const submitting = useRef(false);
@@ -56,7 +56,7 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
   const unavailable = !USE_MOCK_DATA && query.isInitialLoad ? 'Loading deal…' : deal?.isArchived ? 'This deal is archived.' : query.error || (!deal ? 'Loading deal…' : '');
   const wonReason = unavailable || (won.length !== 1 ? 'Configure exactly one Won stage.' : stage?.isWon ? 'This deal is already won.' : stage?.isLost ? 'Reopen the lost deal in Qualified first.' : stage?.name.trim().toLowerCase() !== 'qualified' ? 'Move this deal to Qualified first.' : '');
   const lostReason = unavailable || (lost.length !== 1 ? 'Configure exactly one Lost stage.' : closed ? 'This deal is already closed.' : '');
-  const transferReason = unavailable || (closed ? 'Only open deals can change pipeline.' : !data.pipelines.some(p => !p.isArchived && p.id !== deal?.pipelineId && p.stages.some(s => !s.isWon && !s.isLost)) ? 'No other pipeline has an open stage.' : '');
+  const stageReason = unavailable || (!pipeline || !stage ? 'Current pipeline or stage is unavailable. Refresh Deals and try again.' : closed ? 'Only open deals can change stage here.' : '');
   useEffect(() => {
     if (!open || !deal || closed || !(canEmailLead || canEmailContact)) return;
     const controller = new AbortController();
@@ -97,7 +97,7 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
     finally { submitting.current = false; setPending(false); }
   };
   const emailReason = unavailable || (closed ? 'Contextual email is available for open deals. Use Inbox for follow-up email.' : recipientStatus);
-  const item = (label: string, Icon: typeof Pencil, select: () => void, reason = '') => <DropdownMenuItem disabled={pending || !!reason} title={reason || undefined} onSelect={select}><Icon className="h-4 w-4 shrink-0" /><span className="min-w-0">{label}{reason && <span className="block text-[11px] font-normal text-muted-foreground">{reason}</span>}</span></DropdownMenuItem>;
+  const item = (label: string, Icon: typeof Pencil, select: () => void, reason = '', description = '') => <DropdownMenuItem disabled={pending || !!reason} title={reason || description || undefined} onSelect={select}><Icon className="h-4 w-4 shrink-0" /><span className="min-w-0">{label}{(reason || description) && <span className="block text-[11px] font-normal text-muted-foreground">{reason || description}</span>}</span></DropdownMenuItem>;
   return <div onClick={event => event.stopPropagation()} onPointerDown={event => event.stopPropagation()}>
     <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label={'Actions for ' + dealTitle}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
@@ -106,7 +106,7 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
         {canTask && item('Add a task', ListPlus, () => show('task'), unavailable)}
         {canEdit && item('Add a note', StickyNote, () => show('note'), unavailable)}
         {(canEmailLead || canEmailContact) && item('Send an email', Mail, () => recipients.length === 1 ? send(recipients[0]) : show('recipient'), emailReason)}
-        {canEdit && <><DropdownMenuSeparator />{item('Mark as won', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as lost', XCircle, () => show('lost'), lostReason)}{item('Change pipeline', ArrowLeftRight, () => show('pipeline'), transferReason)}</>}
+        {canEdit && <><DropdownMenuSeparator />{item('Mark as won', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as lost', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason, pipeline ? 'Current pipeline: ' + pipeline.name : '')}</>}
         {canArchive && <><DropdownMenuSeparator /><DropdownMenuItem destructive disabled={pending || !!unavailable} onSelect={() => {
           setOpen(false); confirm({ title: 'Archive deal?', description: 'This Deal will leave active views. You can restore it from Archived Data.', confirmLabel: 'Archive', variant: 'destructive', onConfirm: async () => { await (onArchive ?? data.deleteDeal)(dealId); changed(deal ? { ...deal, isArchived: true } : undefined); toast.success('Deal archived'); } });
         }}><Archive className="h-4 w-4" />Archive</DropdownMenuItem></>}
@@ -115,7 +115,7 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
     {action === 'edit' && deal && <DealFormSheet isOpen mode="edit" initialData={editSnapshot ?? deal} onClose={() => setAction(null)} onSubmit={async values => { const next = await data.updateDeal(dealId, values as Partial<Deal>); changed(next); setAction(null); toast.success('Deal updated'); }} />}
     {action === 'task' && <TaskEditor links={{ dealIds: [dealId] }} preserveContextLinks onClose={() => setAction(null)} />}
     {(action === 'note' || action === 'won') && <CrmRecordPanel module="deals" id={dealId} open onOpenChange={value => { if (!value) { setAction(null); changed(); } }} focusNote={action === 'note'} focusClosing={action === 'won'} />}
-    {action === 'pipeline' && deal && <DealPipelineDialog deal={deal} pipelines={data.pipelines} onClose={() => setAction(null)} onMove={async input => { const next = await data.moveDealPipeline(dealId, input); changed(next); toast.success('Deal moved to new pipeline'); }} />}
+    {action === 'stage' && deal && <DealStageDialog deal={deal} pipelines={data.pipelines} onClose={() => setAction(null)} onMove={async input => { const samePipeline = input.pipelineId === deal.pipelineId; const next = samePipeline ? await data.moveDealStage(dealId, input.stageId) : await data.moveDealPipeline(dealId, input); changed(next); toast.success(samePipeline ? 'Deal stage updated' : 'Deal moved to new pipeline'); }} />}
     {action === 'lost' && lost.length === 1 && <DealLostDialog onClose={() => setAction(null)} onSave={async reason => { const next = await data.moveDealStage(dealId, lost[0].id, undefined, reason); changed(next); toast.success('Deal closed as lost'); }} />}
     {action === 'recipient' && <Dialog open onOpenChange={value => { if (!value) setAction(null); }}><DialogContent aria-label="Choose an email recipient" className="max-w-sm"><DialogHeader><DialogTitle>Choose an email recipient</DialogTitle></DialogHeader><div className="space-y-2">{recipients.map(person => <Button key={person.email} variant="outline" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => send(person)}>{person.name} · {person.email}</Button>)}</div><Button variant="ghost" onClick={() => setAction(null)}>Cancel</Button></DialogContent></Dialog>}
     <ConfirmActionDialog {...dialogProps} />
