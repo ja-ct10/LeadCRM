@@ -5,8 +5,8 @@ import ComposeModal from './compose-modal';
 import EmailConversationView from './email-conversation-view';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 
-const mocks = vi.hoisted(() => ({ schedule: vi.fn(), send: vi.fn(), save: vi.fn(), remove: vi.fn(), thread: vi.fn(), read: vi.fn() }));
-vi.mock('../services/gmail.service', () => ({ scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
+const mocks = vi.hoisted(() => ({ schedule: vi.fn(), send: vi.fn(), save: vi.fn(), remove: vi.fn(), thread: vi.fn(), read: vi.fn(), associate: vi.fn() }));
+vi.mock('../services/gmail.service', () => ({ associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const email = { id: 'message1', threadId: 'thread1', from: 'Customer <customer@example.test>', to: ['staff@camxian.com'], subject: 'Telephone inquiry', body: '<p>Question</p><script>bad()</script>', snippet: 'Question', date: '2026-10-07T00:00:00Z', labels: ['INBOX'], isRead: false, direction: 'inbound' as const };
 beforeEach(() => { vi.clearAllMocks(); mocks.schedule.mockResolvedValue({ id: 'scheduled', status: 'pending' }); mocks.read.mockResolvedValue({ success: true }); mocks.thread.mockResolvedValue({ emails: [email], dealOptions: [], canAssociateDeal: false }); });
@@ -92,4 +92,21 @@ it('removes a formerly selected message when the authorized thread changes', asy
   await waitFor(() => expect(screen.queryByText('Loading conversation…')).toBeNull());
   view.rerender(<EmailConversationView {...props} revision={1} />);
   await screen.findByRole('heading', { name: 'Still authorized' }); expect(screen.queryByRole('heading', { name: email.subject })).toBeNull();
+});
+
+it('retains the originating Deal and retries failed association without delivering a second email', async () => {
+  mocks.send.mockResolvedValue({ messageId: 'sent', threadId: 'thread-for-source' });
+  mocks.associate.mockRejectedValueOnce(new Error('Link unavailable')).mockResolvedValueOnce({ success: true });
+  const close = vi.fn(), sent = vi.fn(), linkResult = vi.fn();
+  render(<ComposeModal isOpen onClose={close} onSent={sent} onDealLinkResult={linkResult} initialDraft={{ to: 'customer@example.test', subject: 'Inquiry', body: '<p>Details</p>', sourceDealId: 'originating-deal' }} />);
+  await waitFor(() => expect(screen.getByRole('textbox', { name: 'Email body' }).textContent).toBe('Details'));
+  expect((screen.getByLabelText('Schedule send options') as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(screen.getByLabelText('Send email'));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Email sent, but linking to the Deal failed.');
+  expect(mocks.associate).toHaveBeenCalledWith('thread-for-source', 'originating-deal');
+  expect(close).not.toHaveBeenCalled(); expect(sent).toHaveBeenCalledOnce(); expect(mocks.send).toHaveBeenCalledOnce();
+  expect(linkResult).toHaveBeenCalledWith({ threadId: 'thread-for-source', sourceDealId: 'originating-deal' }, false);
+  fireEvent.click(screen.getByLabelText('Retry deal link'));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(mocks.associate).toHaveBeenCalledTimes(2); expect(mocks.send).toHaveBeenCalledOnce(); expect(sent).toHaveBeenCalledOnce();
 });

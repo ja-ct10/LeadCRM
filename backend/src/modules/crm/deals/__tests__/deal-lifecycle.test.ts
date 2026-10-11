@@ -1,8 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 const state = vi.hoisted(() => ({
   deal: {} as Record<string, any>, next: {} as Record<string, any>, legacyWon: false,
-  tx: { deal: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn() }, stage: { findFirst: vi.fn() },
+  tx: { deal: { findFirst: vi.fn(), findFirstOrThrow: vi.fn(), update: vi.fn(), updateMany: vi.fn() }, stage: { findFirst: vi.fn() },
+    pipeline: { findFirst: vi.fn() }, auditLog: { create: vi.fn() },
     dealStageHistory: { findFirst: vi.fn(), create: vi.fn() }, activity: { create: vi.fn() },
     leadDeal: { findMany: vi.fn() }, contactDeal: { findMany: vi.fn() } },
 }));
@@ -12,7 +14,7 @@ vi.mock('../../closing-requirements/closing-requirements.repository', () => ({ c
 vi.mock('../won-conversion.service', () => ({ resolveWonRelationships: vi.fn() }));
 vi.mock('../../engagement.service', () => ({ changeCustomerStatus: vi.fn() }));
 
-import { moveDealStage } from '../deals.repository';
+import { moveDealStage, moveDealPipeline } from '../deals.repository';
 import { dealHasEverBeenWon } from '../deal-lifecycle';
 
 const stage = (id: string, isWon = false, isLost = false) => ({ id, name: id, tenantId: 'tenant', pipelineId: 'pipeline', isWon, isLost, requiredFields: [] });
@@ -33,6 +35,36 @@ beforeEach(() => {
 const move = () => moveDealStage('deal', 'tenant', state.next.id, 'actor');
 
 describe('governed Deal stage changes', () => {
+  it('rejects an archival race at the conditional transfer write without recording history', async () => {
+    state.next = { ...stage('target-stage'), pipelineId: 'target' };
+    state.tx.pipeline.findFirst.mockResolvedValue({ id: 'target', name: 'Renewals' });
+    state.tx.deal.updateMany.mockImplementation(async ({ where, data }) => {
+      state.deal.isArchived = true;
+      if (where.isArchived === false) return { count: 0 };
+      Object.assign(state.deal, data);
+      return { count: 1 };
+    });
+    await expect(moveDealPipeline('deal', 'tenant', 'actor', { pipelineId: 'target', stageId: 'target-stage' })).rejects.toThrow('Deal changed');
+    expect(state.deal).toMatchObject({ pipelineId: 'pipeline', stageId: 'Lead', isArchived: true });
+    expect(state.tx.dealStageHistory.create).not.toHaveBeenCalled();
+    expect(state.tx.activity.create).not.toHaveBeenCalled();
+    expect(state.tx.auditLog.create).not.toHaveBeenCalled();
+  });
+  it.each([{ isArchived: true }, { deletedAt: new Date('2026-10-11') }])('rejects a record deactivated after validation but before the conditional write: %j', async deactivated => {
+    state.tx.deal.update.mockImplementation(async ({ where, data }) => {
+      // Model another session winning the archival/deletion race at the write boundary.
+      Object.assign(state.deal, deactivated);
+      if (where.isArchived === false && state.deal.isArchived || where.deletedAt === null && state.deal.deletedAt) {
+        throw new Prisma.PrismaClientKnownRequestError('Record no longer matches the active write condition', { code: 'P2025', clientVersion: '5' });
+      }
+      state.deal = { ...state.deal, ...data };
+      return state.deal;
+    });
+    await expect(move()).rejects.toThrow('active write condition');
+    expect(state.deal.stageId).toBe('Lead');
+    expect(state.tx.dealStageHistory.create).not.toHaveBeenCalled();
+    expect(state.tx.activity.create).not.toHaveBeenCalled();
+  });
   it('validates legacy singular requirements against canonical participants', async () => {
     state.next.requiredFields = ['leadId', 'contactId'];
     await expect(move()).rejects.toThrow('Missing stage requirements');

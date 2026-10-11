@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Search, X, ChevronsUpDown, Check, AlertCircle, RefreshCw } from 'lucide-react';
+import { ThemedPortal } from '@/shared/components/theme-scope';
 import { cn } from '@/lib/utils';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
@@ -133,6 +134,8 @@ function useDebounce(value: string, delay: number): string {
 
 export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
   const errorId = React.useId();
+  const listId = React.useId();
+  const [position, setPosition] = useState({ top: 0, left: 8, width: 200, maxHeight: 256 });
   const {
     entityType,
     placeholder,
@@ -216,14 +219,13 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
   // Filter entities based on debounced search
   const filteredOptions = useMemo((): EntityOption[] => {
     if (debouncedSearch.length < minSearchChars) {
-      return rawEntities.slice(0, MAX_RESULTS);
+      return entityType === 'users' ? rawEntities : rawEntities.slice(0, MAX_RESULTS);
     }
 
     const searchLower = debouncedSearch.toLowerCase();
-    return rawEntities
-      .filter((option) => option.label.toLowerCase().includes(searchLower))
-      .slice(0, MAX_RESULTS);
-  }, [rawEntities, debouncedSearch, minSearchChars]);
+    const matches = rawEntities.filter(option => [option.label, option.sublabel].filter(Boolean).join(' ').toLowerCase().includes(searchLower));
+    return entityType === 'users' ? matches : matches.slice(0, MAX_RESULTS);
+  }, [rawEntities, debouncedSearch, minSearchChars, entityType]);
 
   // Determine if "No results found" should show
   const showNoResults = debouncedSearch.length >= minSearchChars && filteredOptions.length === 0 && !loadError;
@@ -238,13 +240,50 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
   // Close on outside click
   useEffect(() => {
     function handleClickOutside(event: MouseEvent): void {
-      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node) && !listRef.current?.contains(event.target as Node)) {
         setIsOpen(false);
       }
     }
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  React.useLayoutEffect(() => {
+    if (!isOpen) return;
+    const align = () => {
+      const anchor = inputRef.current ?? wrapperRef.current;
+      const rect = anchor?.getBoundingClientRect();
+      if (!rect) return;
+      const viewport = window.visualViewport;
+      const height = viewport?.height ?? window.innerHeight;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const offsetTop = viewport?.offsetTop ?? 0, offsetLeft = viewport?.offsetLeft ?? 0;
+      const width = Math.max(0, Math.min(rect.width, viewportWidth - 16));
+      const below = height + offsetTop - rect.bottom - 14, above = rect.top - offsetTop - 14;
+      const useAbove = below < 180 && above > below;
+      const maxHeight = Math.max(0, Math.min(256, height - 16, Math.max(40, useAbove ? above : below)));
+      const actualHeight = Math.min(listRef.current?.scrollHeight ?? maxHeight, maxHeight);
+      const desiredTop = useAbove ? rect.top - actualHeight - 6 : rect.bottom + 6;
+      // The anchor can leave the visible area as a mobile keyboard opens.
+      // Clamp both popup edges even while the drawer adjusts its scroll position.
+      setPosition({
+        left: Math.max(offsetLeft + 8, Math.min(rect.left, offsetLeft + viewportWidth - width - 8)), width,
+        top: Math.max(offsetTop + 8, Math.min(desiredTop, offsetTop + height - actualHeight - 8)), maxHeight,
+      });
+    };
+    const resize = () => {
+      if (inputRef.current === document.activeElement) inputRef.current?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
+      align();
+    };
+    align();
+    window.addEventListener('resize', resize); window.addEventListener('scroll', align, true);
+    window.visualViewport?.addEventListener('resize', resize); window.visualViewport?.addEventListener('scroll', align);
+    return () => {
+      window.removeEventListener('resize', resize); window.removeEventListener('scroll', align, true);
+      window.visualViewport?.removeEventListener('resize', resize); window.visualViewport?.removeEventListener('scroll', align);
+    };
+  }, [isOpen, filteredOptions.length, loadError]);
+  const returnFocus = () => requestAnimationFrame(() => wrapperRef.current?.querySelector<HTMLElement>('[role="combobox"]')?.focus({ preventScroll: true }));
 
   // Focus search input on open
   useEffect(() => {
@@ -267,7 +306,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
       }
     } else {
       props.onChange(optionId);
-      setIsOpen(false);
+      setIsOpen(false); returnFocus();
     }
   }, [props]);
 
@@ -294,11 +333,17 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
     }
   }, [disabled]);
 
-  const handleSearchKeyDown = useCallback((e: React.KeyboardEvent): void => {
-    if (e.key === 'Escape') {
-      setIsOpen(false);
-    }
-  }, []);
+  const handleSearchKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setIsOpen(false); returnFocus(); return; }
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) return;
+    if ((e.key === 'Home' || e.key === 'End') && e.target === inputRef.current) return;
+    e.preventDefault(); e.stopPropagation();
+    const options = Array.from(listRef.current?.querySelectorAll<HTMLButtonElement>('[role="option"]') ?? []);
+    if (!options.length) return;
+    const current = options.indexOf(document.activeElement as HTMLButtonElement);
+    const next = e.key === 'Home' ? 0 : e.key === 'End' ? options.length - 1 : current < 0 ? (e.key === 'ArrowUp' ? options.length - 1 : 0) : (current + (e.key === 'ArrowUp' ? -1 : 1) + options.length) % options.length;
+    options[next]?.focus(); options[next]?.scrollIntoView?.({ block: 'nearest' });
+  };
 
   // Determine placeholder text
   const defaultPlaceholder = `Search ${entityType}...`;
@@ -357,6 +402,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           tabIndex={disabled ? -1 : 0}
           aria-expanded={isOpen}
           aria-haspopup="listbox"
+          aria-controls={listId}
           aria-label={displayPlaceholder}
           aria-disabled={disabled}
           aria-invalid={!!error}
@@ -393,7 +439,10 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           <input
             ref={inputRef}
             type="text"
-            role="searchbox"
+            role="combobox"
+            aria-expanded={isOpen}
+            aria-controls={listId}
+            aria-autocomplete="list"
             aria-label={`Search ${entityType}`}
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
@@ -416,11 +465,15 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
 
       {/* Dropdown List */}
       {isOpen && (
-        <div
+        <ThemedPortal><div
           ref={listRef}
+          id={listId}
+          onKeyDown={handleSearchKeyDown}
+          style={position}
           role="listbox"
+          aria-multiselectable={multiple}
           aria-label={`${entityType} options`}
-          className="absolute z-50 w-full mt-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-lg overflow-hidden max-h-64 overflow-y-auto py-1"
+          className="fixed z-[300] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-lg overflow-y-auto overscroll-contain py-1"
         >
           {/* Error state with retry */}
           {loadError && (
@@ -487,7 +540,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
               })}
             </div>
           )}
-        </div>
+        </div></ThemedPortal>
       )}
 
       {/* Field-level error */}

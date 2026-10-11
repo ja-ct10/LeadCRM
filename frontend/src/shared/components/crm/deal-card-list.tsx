@@ -179,7 +179,7 @@ export function DealCardList({
   // Memoized computations
   const activeCount = useMemo(() => computeActiveCount(deals), [deals]);
   const pipelineTotal = useMemo(() => computePipelineTotal(deals), [deals]);
-  const filteredDeals = useMemo(() => filterDealsByStatus(deals, statusFilter), [deals, statusFilter]);
+  const filteredDeals = useMemo(() => filterDealsByStatus(deals.filter(deal => !deal.isArchived), statusFilter), [deals, statusFilter]);
   const visibleDeals = useMemo(() => filteredDeals.slice(0, maxVisible), [filteredDeals, maxVisible]);
   const hasMore = filteredDeals.length > maxVisible;
 

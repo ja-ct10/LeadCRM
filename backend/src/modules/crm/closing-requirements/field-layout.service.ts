@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, customFieldNameKey, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
+import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, upgradeAssignmentLayout, customFieldNameKey, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { readFields } from './closing-requirements.repository';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -13,7 +13,12 @@ const preferenceKey = (tenantId: string, module: CustomFieldModule) => ({ tenant
 export async function readFieldLayout(tx: Tx, tenantId: string, module: CustomFieldModule, definitions?: ClosingField[]): Promise<FieldLayout> {
   const where = preferenceKey(tenantId, module);
   const existing = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: where } });
-  if (existing) return FieldLayoutSchema.parse(existing.value);
+  if (existing) {
+    const original = FieldLayoutSchema.parse(existing.value);
+    const layout = upgradeAssignmentLayout(original, definitions ?? await readFields(tx, tenantId));
+    if (JSON.stringify(original) !== JSON.stringify(layout)) await tx.tenantPreference.update({ where: { tenantId_module_key: where }, data: { value: layout as unknown as Prisma.InputJsonValue } });
+    return layout;
+  }
   const layout = defaultFieldLayout(module);
   const fields = definitions ?? await readFields(tx, tenantId);
   for (const field of fields.filter(field => field.module === module)) {

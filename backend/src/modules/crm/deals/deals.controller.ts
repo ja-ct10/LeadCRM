@@ -61,6 +61,13 @@ export async function moveDealStage(req: Request, res: Response, next: NextFunct
   } catch (err) { next(err); }
 }
 
+export async function moveDealPipeline(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await service.moveDealPipeline(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body);
+    res.json({ success: true, data: result });
+  } catch (err) { next(err); }
+}
+
 export async function archiveDeal(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     await service.archiveDeal(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body?.archiveReason);

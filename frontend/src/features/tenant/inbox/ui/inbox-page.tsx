@@ -1,11 +1,12 @@
 'use client';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 
+import { useAuth } from '@/store/AuthContext';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mail, Check, Filter, ArrowDownAZ, Loader2, Pencil, Search } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { getGmailStatus, fetchGmailEmails, fetchGmailThread, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
+import { associateThreadDeal, getGmailStatus, fetchGmailEmails, fetchGmailThread, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
 import InboxCurrentEmpty from './inbox-current-empty';
 import InboxEmailList from './inbox-email-list';
 import EmailConversationView from './email-conversation-view';
@@ -22,6 +23,33 @@ const SORTS = [{ id: 'newest', label: 'Newest first' }, { id: 'oldest', label: '
 const control = 'inline-flex min-h-9 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-xs font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--primary)] disabled:opacity-50';
 
 export default function InboxPage(): React.ReactElement {
+  const { user, tenant } = useAuth();
+  type PendingLink = { threadId: string; sourceDealId: string };
+  const linkStorageKey = 'leadcrm:pending-deal-links:v1:' + tenant?.id + ':' + user?.id;
+  const [pendingLinks, setPendingLinks] = useState<PendingLink[]>([]);
+  const linkState = useRef({ key: linkStorageKey, links: [] as PendingLink[] });
+  const [linking, setLinking] = useState<string>();
+  const linkingRequest = useRef(false);
+  useEffect(() => {
+    let links: PendingLink[] = [];
+    try { const rows = JSON.parse(sessionStorage.getItem(linkStorageKey) || '[]'); links = Array.isArray(rows) ? rows.filter(row => typeof row?.threadId === 'string' && typeof row?.sourceDealId === 'string') : []; }
+    catch { /* An unavailable browser store starts with no retained retries. */ }
+    linkState.current = { key: linkStorageKey, links }; setPendingLinks(links);
+  }, [linkStorageKey]);
+  const dealLinkResult = (link: PendingLink, linked: boolean) => {
+    if (linkState.current.key !== linkStorageKey) return;
+    const next = linkState.current.links.filter(row => row.threadId !== link.threadId);
+    if (!linked) next.push(link);
+    linkState.current = { key: linkStorageKey, links: next }; setPendingLinks(next);
+    try { sessionStorage.setItem(linkStorageKey, JSON.stringify(next)); } catch { /* The mounted Inbox still retains the retry IDs. */ }
+  };
+  const retryDealLink = async (link: PendingLink) => {
+    if (linkingRequest.current) return;
+    linkingRequest.current = true; setLinking(link.threadId);
+    try { await associateThreadDeal(link.threadId, link.sourceDealId); dealLinkResult(link, true); toast.success('Email linked to deal'); }
+    catch { toast.error('Email sent, but linking to the Deal failed.'); }
+    finally { linkingRequest.current = false; setLinking(undefined); }
+  };
   const searchParams = useSearchParams(), router = useRouter();
   const [filter, setFilter] = useState<NonNullable<MailboxListOptions['filter']>>('all');
   const [sort, setSort] = useState<NonNullable<MailboxListOptions['sort']>>('newest');
@@ -36,7 +64,7 @@ export default function InboxPage(): React.ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState(''), [debouncedSearch, setDebouncedSearch] = useState('');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [composeDraft, setComposeDraft] = useState<{ to: string; subject: string; body: string; draftId?: string } | null>(null);
+  const [composeDraft, setComposeDraft] = useState<{ to: string; subject: string; body: string; draftId?: string; sourceDealId?: string } | null>(null);
   useEffect(() => {
     const request = consumeRecordEmailCompose(new URL(window.location.href));
     if (!request) return;
@@ -45,7 +73,7 @@ export default function InboxPage(): React.ReactElement {
     // Keep Next's canonical URL in sync so a later render cannot restore the consumed query.
     router.replace(`${request.url.pathname}${request.url.search}${request.url.hash}`, { scroll: false });
     if (!request.to) { toast.error('Please enter a valid email address'); return; }
-    setComposeDraft({ to: request.to, subject: request.subject, body: '' });
+    setComposeDraft({ to: request.to, subject: request.subject, sourceDealId: request.sourceDealId, body: '' });
     setIsComposeOpen(true);
   }, [searchParams, router]);
 
@@ -262,6 +290,7 @@ export default function InboxPage(): React.ReactElement {
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
     {connectionStatus?.isConnected && selectedSchedule && <ScheduledEmailDialog key={selectedSchedule} id={selectedSchedule} onClose={() => setSelectedSchedule(undefined)} onCancelled={() => { void loadEmails(tokenRef.current, pageRef.current); toast.success('Scheduled send cancelled. The email is available in Drafts.'); }} />}
-    <ComposeModal isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
+    {pendingLinks.map(link => <div key={link.threadId} role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"><span>Email sent, but linking to the Deal failed.</span><button className={control} disabled={!!linking} onClick={() => void retryDealLink(link)}>{linking === link.threadId ? 'Linking…' : 'Retry deal link'}</button></div>)}
+    <ComposeModal onDealLinkResult={dealLinkResult} isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
   </motion.div>;
 }

@@ -123,8 +123,9 @@ interface DataContextType {
   updateOrganization: (id: string, updates: Partial<Organization>) => Promise<void>;
   addDeals: (deal: Record<string, unknown>) => Promise<void>;
   addDeal: (deal: Omit<Deal, "id" | "tenantId" | "createdAt">) => Promise<void>;
-  updateDeal: (id: string, updates: Partial<Deal>) => Promise<void>;
-  moveDealStage: (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any) => Promise<void>;
+  updateDeal: (id: string, updates: Partial<Deal>) => Promise<Deal>;
+  moveDealStage: (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any) => Promise<Deal>;
+  moveDealPipeline: (id: string, input: import("@leadcrm/shared").MoveDealPipelineInput) => Promise<Deal>;
   deleteDeal: (id: string) => Promise<void>;
   addPipeline: (pipeline: Omit<Pipeline, "id" | "tenantId">) => Promise<void>;
   updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<void>;
@@ -963,13 +964,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
   };
 
-  const updateDeal = async (id: string, updates: Partial<Deal>): Promise<void> => {
+  const updateDeal = async (id: string, updates: Partial<Deal>): Promise<Deal> => {
     if (!USE_MOCK_DATA) {
       try {
         const dto = toBackendUpdateDeal(updates as Record<string, any>) as any;
         const res = await pipelineService.updateDeal(id, dto);
         const deal = toFrontendDeal((res as any).data ?? res) as Deal;
-        setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
+        setDeals(prev => prev.some(d => d.id === id) ? prev.map(d => d.id === id ? deal : d) : [...prev, deal]);
 
         if (updates.stageId) {
           const pLine = pipelines.find((p) => p.id === updates.pipelineId || p.id === deal.pipelineId);
@@ -987,16 +988,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
         } else {
            addAuditLog("Deal Updated", `Modified deal details for '${deal.title}'.`, id);
         }
+        invalidatePageCache('deals', tenant?.id || user?.tenantId || '');
+        return deal;
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to update deal');
       }
-      return;
     }
 
-    const original = deals.find((d) => d.id === id);
+    const original = deals.find((d) => d.id === id && !d.isArchived);
+    if (!original) throw new Error('Deal is no longer active.');
     const newDeals = deals.map((d) => {
       if (d.id === id) {
-        const updated = { ...d, ...updates };
+        const updated = { ...d, ...updates, ...(updates.assignedUserId !== undefined ? { assignedUser: users.find(u => u.id === updates.assignedUserId) } : {}) };
 
         // Track stage change
         if (updates.stageId && updates.stageId !== d.stageId) {
@@ -1090,9 +1093,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
           : `Modified deal details for '${original.title}'.`;
       addAuditLog("Deal Updated", details, id, changeset);
     }
+    return newDeals.find(d => d.id === id)!;
   };
 
-  const moveDealStage = async (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any): Promise<void> => {
+  const moveDealStage = async (id: string, stageId: string, note?: string, lostReason?: string, handoff?: any): Promise<Deal> => {
     const targetStage = pipelines.flatMap(pipeline => pipeline.stages).find(stage => stage.id === stageId);
     if (!USE_MOCK_DATA) {
       try {
@@ -1100,12 +1104,13 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const responseData = (res as any).data ?? res;
         const rawDeal = responseData.deal ?? responseData;
         const deal = toFrontendDeal(rawDeal) as Deal;
-        setDeals((prev) => prev.map((d) => (d.id === id ? deal : d)));
+        setDeals(prev => prev.some(d => d.id === id) ? prev.map(d => d.id === id ? deal : d) : [...prev, deal]);
 
         // The stage API commits activity and history in the same transaction.
         for (const module of ['deals', 'activities', 'leads', 'contacts', 'accounts']) {
           invalidatePageCache(module, tenant?.id || user?.tenantId || '');
         }
+        return deal;
       } catch (err) {
         console.error("Failed to move deal stage", err);
         if (targetStage?.isWon && (err as { status?: number }).status === 400) {
@@ -1117,13 +1122,19 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     } else {
       const original = deals.find((d) => d.id === id);
-      if (!original) return;
+      if (!original || original.isArchived || !targetStage || !pipelines.find(p => p.id === original.pipelineId)?.stages.some(s => s.id === stageId)) throw new Error('Deal or stage is unavailable.');
+      const sourceStage = pipelines.flatMap(p => p.stages).find(s => s.id === original.stageId);
+      if (original.stageId === stageId) return original;
+      if (sourceStage?.isWon || sourceStage?.isLost && targetStage.name.trim().toLowerCase() !== 'qualified') throw new Error('This outcome cannot be changed.');
+      if (targetStage.isWon) throw new Error('Closing evidence requires a connected backend.');
+      if (targetStage.isLost && !lostReason?.trim()) throw new Error('Lost reason is required.');
 
       const newDeals = deals.map((d) => {
         if (d.id === id) {
           const updated = {
             ...d,
             stageId,
+            lostReason: targetStage?.isLost ? lostReason : undefined,
             lastStageChangeDate: new Date().toISOString(),
             history: [
               ...(d.history || []),
@@ -1154,7 +1165,34 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
       saveAndSet("leadcrm_deals", newDeals, setDeals);
       addAuditLog("Deal Stage Changed", `Moved deal '${original.title}' to stage '${stageId}'.`, id);
+      return newDeals.find(d => d.id === id)!;
     }
+  };
+
+  const moveDealPipeline = async (id: string, input: import('@leadcrm/shared').MoveDealPipelineInput): Promise<Deal> => {
+    const parsed = input;
+    if (!USE_MOCK_DATA) {
+      const response = await pipelineService.moveDealPipeline(id, parsed);
+      const deal = toFrontendDeal(response.data!.deal) as Deal;
+      setDeals(previous => previous.some(d => d.id === id) ? previous.map(d => d.id === id ? deal : d) : [...previous, deal]);
+      for (const module of ['deals', 'activities', 'leads', 'contacts', 'accounts']) invalidatePageCache(module, tenant?.id || user?.tenantId || '');
+      return deal;
+    }
+    const original = deals.find(d => d.id === id && !d.isArchived);
+    const source = pipelines.find(p => p.id === original?.pipelineId)?.stages.find(s => s.id === original?.stageId);
+    const destination = pipelines.find(p => p.id === parsed.pipelineId && !p.isArchived);
+    const stage = destination?.stages.find(s => s.id === parsed.stageId && !s.isWon && !s.isLost);
+    if (!original || !source || source.isWon || source.isLost || !stage) throw new Error('Choose an open Deal and nonterminal destination stage.');
+    if (original.pipelineId === parsed.pipelineId && original.stageId === parsed.stageId) return original;
+    if (original.pipelineId === parsed.pipelineId) throw new Error('Choose a different pipeline.');
+    const missing = (stage.requiredFields ?? []).filter(key => { const value = (original as unknown as Record<string, unknown>)[key]; return value == null || value === '' || Array.isArray(value) && !value.length; });
+    if (missing.length) throw new Error('Missing stage requirements: ' + missing.join(', '));
+    const now = new Date().toISOString();
+    const deal = { ...original, ...parsed, updatedAt: now, lastStageChangeDate: now, history: [...(original.history ?? []), { stageId: stage.id, previousStageId: original.stageId, timestamp: now, userId: user?.id || 'system', note: 'Pipeline changed' }] };
+    saveAndSet('leadcrm_deals', deals.map(d => d.id === id ? deal : d), setDeals);
+    addAuditLog('Deal Pipeline Changed', 'Moved Deal to ' + destination!.name, id);
+    await addActivity({ type: 'stage_change', relatedToType: 'deal', relatedToId: id, title: 'Deal moved to ' + destination!.name + ' / ' + stage.name, createdBy: user?.id || 'system', createdAt: now });
+    return deal;
   };
 
   const deleteDeal = async (id: string): Promise<void> => {
@@ -1164,6 +1202,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setDeals((prev) =>
           prev.map((d) => (d.id === id ? { ...d, isArchived: true } : d)),
         );
+        invalidatePageCache('deals', tenant?.id || user?.tenantId || '');
         addAuditLog("Deal Archived", `Archived deal id '${id}'.`);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to archive deal');
@@ -1891,6 +1930,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     addDeals,
     updateDeal,
     moveDealStage,
+    moveDealPipeline,
     deleteDeal,
     addPipeline,
     updatePipeline,

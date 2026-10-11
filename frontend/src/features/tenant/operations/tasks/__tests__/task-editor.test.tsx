@@ -245,3 +245,16 @@ it('keeps picker changes as a draft until Done and discards them on Cancel', () 
   expect(trigger.textContent).toContain(':23');
   expect(screen.queryByRole('group', { name: 'Choose due date and time' })).toBeNull();
 });
+
+it('retains the originating Deal when contextual task relationship choices change', async () => {
+  mocks.options.mockResolvedValue({ data: [{ id: 'new-lead', label: 'New Lead' }] });
+  mocks.addTask.mockResolvedValue(undefined);
+  render(<TaskEditor links={{ dealIds: ['originating-deal'] }} preserveContextLinks onClose={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Deal follow up' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Associate task to lead' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'New Lead' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
+  await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ dealIds: ['originating-deal'], assignedUserId: 'owner', title: 'Deal follow up' })));
+  expect(mocks.addTask.mock.calls[0][0]).not.toHaveProperty('dealId');
+});

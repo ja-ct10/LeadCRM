@@ -8,7 +8,7 @@ import {
   pointerWithin,
   rectIntersection,
   KeyboardSensor,
-  PointerSensor,
+  MouseSensor,
   TouchSensor,
   useSensor,
   useSensors,
@@ -18,6 +18,7 @@ import {
   defaultDropAnimationSideEffects,
   useDroppable,
   type CollisionDetection,
+  type KeyboardCoordinateGetter,
 } from '@dnd-kit/core';
 import {
   SortableContext,
@@ -37,8 +38,31 @@ import {
   Plus,
 } from 'lucide-react';
 import { AlertTriangle } from 'lucide-react';
+import { DealCardMenu } from '@/shared/components/crm/deal-card-menu';
 import { formatCurrency, type CurrencyConfig, DEFAULT_CURRENCY } from '@/shared/utils/currency';
 import type { Deal, Stage, Pipeline, User as UserType } from '@/store/types';
+
+// Horizontal keyboard movement must select a stage, not the enclosing column
+// of the active sortable card (which sits slightly to its left).
+const stageKeyboardCoordinates: KeyboardCoordinateGetter = (event, args) => {
+  if (event.code !== 'ArrowLeft' && event.code !== 'ArrowRight') return sortableKeyboardCoordinates(event, args);
+  event.preventDefault();
+  const { active, over, collisionRect, droppableContainers, droppableRects } = args.context;
+  if (!active || !collisionRect) return;
+  const columns = droppableContainers.getEnabled().filter(entry => entry.data.current?.type === 'Stage').flatMap(entry => {
+    const rect = droppableRects.get(entry.id);
+    return rect ? [{ entry, rect }] : [];
+  }).sort((a, b) => a.rect.left - b.rect.left);
+  const currentStageId = over?.data.current?.type === 'Stage' ? over.id : over?.data.current?.sortable?.containerId ?? active.data.current?.sortable?.containerId;
+  const currentIndex = columns.findIndex(column => column.entry.id === currentStageId);
+  if (currentIndex < 0) return;
+  const target = columns[currentIndex + (event.code === 'ArrowLeft' ? -1 : 1)];
+  if (!target) return;
+  return {
+    x: target.rect.left + Math.max(0, (target.rect.width - collisionRect.width) / 2),
+    y: Math.max(target.rect.top, Math.min(collisionRect.top, target.rect.bottom - collisionRect.height)),
+  };
+};
 
 // ─── Props ───────────────────────────────────────────────────────────────────
 
@@ -51,6 +75,7 @@ interface PipelineKanbanBoardProps {
   canDelete: boolean;
   currencyConfig?: CurrencyConfig;
   onDealClick: (deal: Deal) => void;
+  onDealMutated?: (deal?: Deal) => void;
   onDealDragEnd: (dealId: string, newStageId: string) => Promise<void>;
   onAddDeal: (stageId: string) => void;
   onLoadMore: (stageId: string) => void;
@@ -68,6 +93,7 @@ interface DealCardContentProps {
   attributes?: React.HTMLAttributes<HTMLElement>;
   listeners?: DraggableSyntheticListeners;
   isDragOverlay?: boolean;
+  onMutated?: (deal?: Deal) => void;
 }
 
 function DealCardContent({
@@ -78,6 +104,7 @@ function DealCardContent({
   attributes,
   listeners,
   isDragOverlay = false,
+  onMutated,
 }: DealCardContentProps): React.ReactElement {
   const stageDateStr = deal.lastStageChangeDate || deal.updatedAt || deal.createdAt || Date.now();
   const daysSinceUpdate = Math.floor(
@@ -91,14 +118,17 @@ function DealCardContent({
       <div className="flex justify-between items-start gap-2">
         <div className="flex min-w-0 items-start gap-2 flex-1">
           {canDrag && !isAutomatedOnly && !isDragOverlay ? (
-            <div
+            <button
+              type="button"
               {...attributes}
               {...listeners}
-              className="mt-0.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition-colors cursor-grab active:cursor-grabbing"
+              aria-label={`Drag ${deal.title}`}
+              title="Hold and drag to move deal"
+              className="-ml-2 flex h-11 w-11 shrink-0 touch-none items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 focus-visible:ring-2 focus-visible:ring-primary transition-colors cursor-grab active:cursor-grabbing sm:ml-0 sm:h-8 sm:w-6"
               onClick={(e) => e.stopPropagation()}
             >
-              <GripVertical size={14} />
-            </div>
+              <GripVertical size={16} />
+            </button>
           ) : isAutomatedOnly && !isDragOverlay ? (
             <div
               className="mt-0.5 text-blue-500/50 dark:text-blue-400/40 flex items-center justify-center shrink-0"
@@ -123,6 +153,7 @@ function DealCardContent({
             </div>}
           </div>
         </div>
+        {!isDragOverlay && <DealCardMenu dealId={deal.id} dealTitle={deal.title} deal={deal} onMutated={onMutated} />}
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
@@ -207,6 +238,7 @@ interface SortableDealCardProps {
   deal: Deal;
   assignedUser?: Pick<UserType, 'id' | 'firstName' | 'lastName'>;
   onClick: (deal: Deal) => void;
+  onMutated?: (deal?: Deal) => void;
   canDrag?: boolean;
   isAutomatedOnly?: boolean;
 }
@@ -215,6 +247,7 @@ function SortableDealCard({
   deal,
   assignedUser,
   onClick,
+  onMutated,
   canDrag = true,
   isAutomatedOnly = false,
 }: SortableDealCardProps): React.ReactElement {
@@ -267,6 +300,7 @@ function SortableDealCard({
         isAutomatedOnly={isAutomatedOnly}
         attributes={attributes}
         listeners={listeners}
+        onMutated={onMutated}
       />
     </div>
   );
@@ -302,7 +336,7 @@ function DroppableStage({
   return (
     <div
       ref={setNodeRef}
-      className={`w-80 flex flex-col bg-white dark:bg-white/[0.02] rounded-2xl border flex-shrink-0 max-h-full backdrop-blur-sm transition-all duration-200 ${
+      className={`w-[min(20rem,calc(100vw-2rem))] sm:w-80 flex flex-col bg-white dark:bg-white/[0.02] rounded-2xl border flex-shrink-0 max-h-full backdrop-blur-sm transition-all duration-200 ${
         isOver
           ? 'border-blue-500/60 bg-blue-500/[0.08] shadow-[0_0_30px_rgba(59,130,246,0.2)] scale-[1.02] z-10 ring-2 ring-blue-500/30'
           : isDraggingAny
@@ -362,6 +396,7 @@ export function PipelineKanbanBoard({
   canDelete: _canDelete,
   currencyConfig,
   onDealClick,
+  onDealMutated,
   onDealDragEnd,
   onAddDeal,
   onLoadMore,
@@ -372,17 +407,17 @@ export function PipelineKanbanBoard({
   const [optimisticStageMap, setOptimisticStageMap] = React.useState<Record<string, string>>({});
 
   const sensors = useSensors(
-    useSensor(PointerSensor, {
+    useSensor(MouseSensor, {
       activationConstraint: { distance: 8 },
     }),
     useSensor(TouchSensor, {
       activationConstraint: {
-        delay: 250,
-        tolerance: 5,
+        delay: 180,
+        tolerance: 8,
       },
     }),
     useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
+      coordinateGetter: stageKeyboardCoordinates,
     })
   );
 
@@ -402,125 +437,37 @@ export function PipelineKanbanBoard({
     }
   };
 
+  const [pendingDeals, setPendingDeals] = React.useState<Set<string>>(new Set());
+  const targetStage = (event: DragOverEvent | DragEndEvent) => {
+    if (!event.over) return undefined;
+    const id = String(event.over.id);
+    if (id === String(event.active.id)) return optimisticStageMap[String(event.active.id)] ?? deals.find(d => d.id === id)?.stageId;
+    return pipeline.stages.find(s => s.id === id)?.id ?? optimisticStageMap[id] ?? deals.find(d => d.id === id)?.stageId;
+  };
+  const clearPreview = (id: string) => setOptimisticStageMap(previous => {
+    const next = { ...previous }; delete next[id]; return next;
+  });
   const handleDragOver = (event: DragOverEvent): void => {
     if (!canEdit) return;
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const activeId = String(active.id);
-    const overId = String(over.id);
-    const dragged = deals.find((d) => d.id === activeId);
-    if (!dragged) return;
-
-    let targetStageId: string | null = null;
-
-    const stageMatch = pipeline.stages.find((s) => s.id === overId);
-    if (stageMatch) {
-      targetStageId = stageMatch.id;
-    } else {
-      const overDeal = deals.find((d) => d.id === overId);
-      if (overDeal && overDeal.stageId !== dragged.stageId) {
-        targetStageId = overDeal.stageId;
-      }
-    }
-
-    if (targetStageId && targetStageId !== dragged.stageId) {
-      const targetStage = pipeline.stages.find((s) => s.id === targetStageId);
-      if (targetStage?.isWon || targetStage?.isLost) return;
-
-      setOptimisticStageMap((prev) => {
-        if (prev[activeId] !== targetStageId) {
-          return { ...prev, [activeId]: targetStageId! };
-        }
-        return prev;
-      });
-    }
+    const id = String(event.active.id), target = targetStage(event);
+    const dragged = deals.find(d => d.id === id);
+    const stage = pipeline.stages.find(s => s.id === target);
+    if (!dragged || !stage || stage.id === dragged.stageId || stage.isWon || stage.isLost) { clearPreview(id); return; }
+    setOptimisticStageMap(previous => previous[id] === stage.id ? previous : { ...previous, [id]: stage.id });
   };
-
-  // Clear optimistic entries once deals state confirms the stage move
-  React.useEffect(() => {
-    if (Object.keys(optimisticStageMap).length === 0) return;
-    setOptimisticStageMap((prev) => {
-      const next: Record<string, string> = {};
-      for (const [dealId, targetStageId] of Object.entries(prev)) {
-        const deal = deals.find((d) => d.id === dealId);
-        // Keep entry only if the deal's stageId hasn't caught up yet
-        if (deal && deal.stageId !== targetStageId) {
-          next[dealId] = targetStageId;
-        }
-      }
-      return Object.keys(next).length === Object.keys(prev).length ? prev : next;
-    });
-  }, [deals, optimisticStageMap]);
-
   const handleDragEnd = (event: DragEndEvent): void => {
-    const { active, over } = event;
-    const activeId = String(active.id);
-    const draggedDeal = deals.find((d) => d.id === activeId);
-
-    const optimisticTarget = optimisticStageMap[activeId] ?? null;
-
+    const id = String(event.active.id), target = targetStage(event);
+    const dragged = deals.find(d => d.id === id);
     setActiveDeal(null);
-
-    if (!over || !draggedDeal || !canEdit) {
-      // Drag cancelled — clear optimistic entry for this deal only
-      setOptimisticStageMap((prev) => {
-        const { [activeId]: _, ...rest } = prev;
-        return rest;
-      });
-      return;
-    }
-
-    const overId = String(over.id);
-
-    // Use optimistic target if dropped on self
-    if (activeId === overId && optimisticTarget && optimisticTarget !== draggedDeal.stageId) {
-      onDealDragEnd(activeId, optimisticTarget).catch(() => {
-        setOptimisticStageMap((prev) => {
-          const { [activeId]: _, ...rest } = prev;
-          return rest;
-        });
-      });
-      return;
-    }
-
-    if (activeId === overId) {
-      // No move — clear optimistic entry for this deal
-      setOptimisticStageMap((prev) => {
-        const { [activeId]: _, ...rest } = prev;
-        return rest;
-      });
-      return;
-    }
-
-    // Determine target stage
-    let targetStageId: string | null = null;
-    const stageMatch = pipeline.stages.find((s) => s.id === overId);
-    if (stageMatch) {
-      targetStageId = stageMatch.id;
-    } else {
-      const overDeal = deals.find((d) => d.id === overId);
-      if (overDeal) {
-        targetStageId = overDeal.stageId;
-      }
-    }
-
-    if (targetStageId && targetStageId !== draggedDeal.stageId) {
-      // Keep optimistic entry — it will be cleared by the useEffect once deals confirms
-      setOptimisticStageMap((prev) => ({ ...prev, [activeId]: targetStageId! }));
-      onDealDragEnd(activeId, targetStageId).catch(() => {
-        setOptimisticStageMap((prev) => {
-          const { [activeId]: _, ...rest } = prev;
-          return rest;
-        });
-      });
-    } else {
-      // No actual move — clear optimistic entry
-      setOptimisticStageMap((prev) => {
-        const { [activeId]: _, ...rest } = prev;
-        return rest;
-      });
-    }
+    if (!canEdit || !event.over || !dragged || !target || target === dragged.stageId || pendingDeals.has(id)) { clearPreview(id); return; }
+    const stage = pipeline.stages.find(s => s.id === target);
+    if (stage?.isWon || stage?.isLost) clearPreview(id);
+    else setOptimisticStageMap(previous => ({ ...previous, [id]: target }));
+    setPendingDeals(previous => new Set(previous).add(id));
+    void onDealDragEnd(id, target).catch(() => { /* The page/dialog owns error feedback. */ }).finally(() => {
+      clearPreview(id);
+      setPendingDeals(previous => { const next = new Set(previous); next.delete(id); return next; });
+    });
   };
 
   return (
@@ -530,8 +477,9 @@ export function PipelineKanbanBoard({
       onDragStart={handleDragStart}
       onDragOver={handleDragOver}
       onDragEnd={handleDragEnd}
+      onDragCancel={event => { setActiveDeal(null); clearPreview(String(event.active.id)); }}
     >
-      <div className="flex-1 overflow-x-auto pb-4 custom-scrollbar">
+      <div role="region" aria-label="Deal pipeline" className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain pb-4 custom-scrollbar">
         <div className="flex gap-6 h-full min-w-max items-start">
           {pipeline.stages.map((stage) => {
             const stageDeals = deals
@@ -565,8 +513,9 @@ export function PipelineKanbanBoard({
                         deal={deal}
                         assignedUser={deal.assignedUser ?? users.find((u) => u.id === deal.assignedUserId)}
                         onClick={onDealClick}
-                        canDrag={canEdit}
-                        isAutomatedOnly={!canEdit}
+                        canDrag={canEdit && !pendingDeals.has(deal.id)}
+                         onMutated={onDealMutated}
+                         isAutomatedOnly={!canEdit}
                       />
                     ))}
                     {stageDeals.length === 0 && (

@@ -10,7 +10,7 @@ import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
 import { saveRecordValues, type BatchFiles } from '../closing-requirements/custom-field-values.repository';
-import { ValidationError } from '../../../shared/errors/http-error';
+import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle';
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
@@ -226,7 +226,7 @@ export async function moveDealStage(
 ) {
   const transition = async (tx: Prisma.TransactionClient) => {
     const scope = crmScope(tenantId);
-    const storedDeal = await tx.deal.findFirst({ where: { id, ...scope }, include: { stage: true,
+    const storedDeal = await tx.deal.findFirst({ where: { id, ...scope, isArchived: false, deletedAt: null }, include: { stage: true,
       leadDeals: { orderBy: participantOrder }, contactDeals: { orderBy: participantOrder } } });
     const deal = storedDeal ? withDealParticipants(storedDeal) : null;
     if (!deal) return null;
@@ -246,7 +246,7 @@ export async function moveDealStage(
       if (missing.length) throw new ValidationError(`Missing stage requirements: ${missing.join(', ')}`);
       const now = new Date();
       const previous = await tx.dealStageHistory.findFirst({ where: { ...scope, dealId: id }, orderBy: { movedAt: 'desc' } });
-      await tx.deal.update({ where: { id, ...scope }, data: { stageId: newStageId,
+      await tx.deal.update({ where: { id, ...scope, isArchived: false, deletedAt: null, stageId: deal.stageId, updatedAt: deal.updatedAt }, data: { stageId: newStageId,
         hasEverBeenWon: hasEverBeenWon || newStage.isWon,
         ...(hasEverBeenWon || newStage.isWon ? { wonHistoryVerified: true } : {}),
         stageChangedAt: now,
@@ -275,6 +275,48 @@ export async function moveDealStage(
     return { deal: withDealParticipants(fullDeal), stageHistory, previousDeal: deal };
   };
   return transaction ? transition(transaction) : salesTransaction(transition);
+}
+
+export async function moveDealPipeline(id: string, tenantId: string, actorId: string, input: import('@leadcrm/shared').MoveDealPipelineInput) {
+  return salesTransaction(async tx => {
+    const previousDeal = await tx.deal.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null },
+      include: { stage: true, pipeline: true, organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
+        leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } } } });
+    if (!previousDeal) throw new NotFoundError('Deal');
+    if (previousDeal.stage.isWon || previousDeal.stage.isLost || previousDeal.closedAt) throw new ValidationError('Only open Deals can change pipeline.');
+    const pipeline = await tx.pipeline.findFirst({ where: { id: input.pipelineId, tenantId, isArchived: false } });
+    if (!pipeline) throw new ValidationError('Target pipeline is unavailable in this workspace.');
+    const stage = await tx.stage.findFirst({ where: { id: input.stageId, tenantId, pipelineId: pipeline.id } });
+    if (!stage || stage.isWon || stage.isLost) throw new ValidationError('Choose a nonterminal stage in the target pipeline.');
+    // A replay of a committed destination creates no second history or workflow event.
+    if (previousDeal.pipelineId === pipeline.id && previousDeal.stageId === stage.id) {
+      return { deal: withDealParticipants(previousDeal), previousDeal, stageHistory: null };
+    }
+    if (previousDeal.pipelineId === pipeline.id) throw new ValidationError('Choose a different target pipeline.');
+    const participantDeal = withDealParticipants(previousDeal);
+    const missing = stage.requiredFields.filter(field => {
+      const value = (participantDeal as Record<string, unknown>)[field];
+      return value == null || value === '' || Array.isArray(value) && !value.length;
+    });
+    if (missing.length) throw new ValidationError('Missing stage requirements: ' + missing.join(', '));
+    const now = new Date();
+    const written = await tx.deal.updateMany({ where: { id, tenantId, isArchived: false, deletedAt: null,
+      pipelineId: previousDeal.pipelineId, stageId: previousDeal.stageId, updatedAt: previousDeal.updatedAt },
+      data: { pipelineId: pipeline.id, stageId: stage.id, stageChangedAt: now } });
+    if (written.count !== 1) throw new ConflictError('This Deal changed. Reopen it before moving it.');
+    const note = 'Moved from ' + previousDeal.pipeline.name + ' / ' + previousDeal.stage.name + ' to ' + pipeline.name + ' / ' + stage.name;
+    const stageHistory = await tx.dealStageHistory.create({ data: { tenantId, dealId: id, movedById: actorId,
+      previousStageId: previousDeal.stageId, newStageId: stage.id, movedAt: now, note,
+      timeInPrevStage: Math.floor((now.getTime() - (previousDeal.stageChangedAt ?? previousDeal.createdAt).getTime()) / 60000) } });
+    const context = { sourcePipelineId: previousDeal.pipelineId, sourceStageId: previousDeal.stageId, targetPipelineId: pipeline.id, targetStageId: stage.id };
+    await tx.activity.create({ data: { tenantId, dealId: id, createdById: actorId, type: 'stage_change', title: note, metadata: context } });
+    await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.pipeline_changed', entityType: 'Deal', entityId: id,
+      changeset: { before: { pipelineId: previousDeal.pipelineId, stageId: previousDeal.stageId }, after: { pipelineId: pipeline.id, stageId: stage.id } } } });
+    const deal = await tx.deal.findFirstOrThrow({ where: { id, tenantId }, include: { stage: true, pipeline: true,
+      organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
+      leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } } } });
+    return { deal: withDealParticipants(deal), previousDeal, stageHistory };
+  });
 }
 
 export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {

@@ -107,25 +107,28 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
 
   // Note: stageId and pipelineId are intentionally excluded.
   // Stage changes MUST go through moveDealStage (PATCH /deals/:id/stage).
-  // Pipeline changes are handled by moving to a stage in the target pipeline.
+  // Pipeline changes use the atomic PATCH /deals/:id/pipeline action.
   if (data.title !== undefined) updateData.title = data.title;
   if (data.value !== undefined) updateData.value = data.value;
   if (data.priority !== undefined) updateData.priority = toBackendPriority(data.priority);
-  if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = toISODatetime(data.expectedCloseDate);
+  if (data.expectedCloseDate !== undefined) updateData.expectedCloseDate = toISODatetime(data.expectedCloseDate) ?? null;
   if (data.leadSource !== undefined) updateData.leadSource = data.leadSource;
 
   // Strip empty strings for optional UUID fields
   const orgId = data.accountId || data.companyId || data.organizationId;
-  if (orgId) updateData.accountId = orgId;
+  if (data.accountId !== undefined || data.companyId !== undefined || data.organizationId !== undefined) updateData.accountId = orgId || null;
   if (data.productInterestIds !== undefined) updateData.productInterestIds = data.productInterestIds;
   if (data.productInterests !== undefined) updateData.productInterests = data.productInterests;
 
-  if (data.assignedUserId) updateData.assignedUserId = data.assignedUserId;
+  if (data.assignedUserId !== undefined) updateData.assignedUserId = data.assignedUserId || null;
+  if (data.industry !== undefined) updateData.industry = data.industry;
+  if (data.address !== undefined) updateData.address = data.address;
+  if (data.leadIds !== undefined) updateData.leadIds = data.leadIds.filter(Boolean);
 
   // Strip empty contact IDs from the array before sending
   if (data.contactIds !== undefined) {
     const filtered = data.contactIds.filter(Boolean);
-    if (filtered.length > 0) updateData.contactIds = filtered;
+    updateData.contactIds = filtered;
   } else if (data.contactId) {
     updateData.contactIds = [data.contactId];
   }
@@ -233,16 +236,17 @@ export function toFrontendDeal(backendDeal: any): any {
     companyName: companyName,
     contactPerson: contactPerson || (leadPerson ? [leadPerson.firstName, leadPerson.lastName].filter(Boolean).join(' ') : ''),
     productInterests: Array.isArray(backendDeal.productInterests) ? backendDeal.productInterests : [],
-    value: typeof backendDeal.value === 'number' ? backendDeal.value : 0,
+    value: Number.isFinite(Number(backendDeal.value)) ? Number(backendDeal.value) : 0,
     priority: toFrontendPriority(backendDeal.priority),
     expectedCloseDate: backendDeal.expectedCloseDate || '',
-    assignedUserId: backendDeal.assignedUserId || backendDeal.ownerId || '',
+    assignedUserId: backendDeal.assignedUserId || '',
     assignedUser: backendDeal.assignedUser || undefined,
     lostReason: backendDeal.lostReason || undefined,
     order: typeof backendDeal.order === 'number' ? backendDeal.order : 0,
     createdAt: backendDeal.createdAt || new Date().toISOString(),
     updatedAt: backendDeal.updatedAt || undefined,
-    lastStageChangeDate: lastStageChangeDate,
+    lastStageChangeDate: lastStageChangeDate || backendDeal.stageChangedAt || undefined,
+    address: backendDeal.address || undefined,
     leadSource: backendDeal.leadSource || undefined,
     industry: backendDeal.industry || undefined,
     

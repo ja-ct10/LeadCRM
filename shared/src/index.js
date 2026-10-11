@@ -46,6 +46,7 @@ __exportStar(require("./contracts/module-table-columns"), exports);
 __exportStar(require("./contracts/group.contract"), exports);
 __exportStar(require("./constants/company-industries"), exports);
 __exportStar(require("./contracts/deal-batch"), exports);
+__exportStar(require("./contracts/deal-pipeline"), exports);
 __exportStar(require("./contracts/lead.contract"), exports);
 __exportStar(require("./contracts/dashboard.contract"), exports);
 __exportStar(require("./contracts/pipeline-stage.contract"), exports);

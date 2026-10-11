@@ -50,6 +50,7 @@ export interface Deal extends Omit<SharedDeal, 'priority' | 'value' | 'order'> {
   order: number;
   // Priority uses display-friendly casing in frontend
   priority: SharedDealPriority | 'Low' | 'Medium' | 'High';
+  accountId?: string;
   companyId?: string;
   companyName: string;
   contactPerson: string;

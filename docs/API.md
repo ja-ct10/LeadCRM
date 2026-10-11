@@ -168,12 +168,15 @@ for migration verification and deployment requirements.
 | `POST` | `/crm/deals/batch` | Atomically create one Lead-stage Deal per selected canonical Product; requires `deals.create` |
 | `PUT` | `/crm/deals/:id` | Update deal |
 | `PATCH` | `/crm/deals/:id/stage` | Move deal to new stage |
+| `PATCH` | `/crm/deals/:id/pipeline` | Atomically transfer an active open Deal to another pipeline; requires `deals.edit` |
 | `GET` | `/crm/pipelines` | List pipelines |
 | `GET` | `/crm/pipelines/:id` | Read pipeline including ordered stages |
 | `POST` | `/crm/stages` | Add a stage to the existing pipeline |
 | `PUT` | `/crm/stages/:id` | Rename/update a stage |
 | `DELETE` | `/crm/stages/:id` | Remove an unused, unprotected stage |
 | `PATCH` | `/crm/pipelines/:id/stages/reorder` | Reorder all stages in that pipeline |
+
+Pipeline transfer accepts only `{ pipelineId, stageId }`. Both targets must belong to the authenticated tenant; the pipeline must be active and the stage nonterminal, with its entry requirements satisfied. Archived, deleted, Won and Lost Deals cannot transfer. Pipeline and stage commit together with history, activity and audit; Product/value snapshots, assignment, closing evidence and child relationships are preserved. A replay at the same destination succeeds without duplicate history or workflow triggers. Ordinary stage changes remain within the Deal's current pipeline.
 
 Stage removal rejects default/won/lost stages and stages referenced by any Deal
 (including archived Deals) or stage history. It does not reassign or orphan Deals.

@@ -17,12 +17,12 @@ export interface CrmFieldCatalogEntry {
 }
 export const defaultFieldGroupId = (module: CustomFieldModule, label: string) => module === 'deals' && customFieldNameKey(label) === 'closed won requirements' ? CLOSED_WON_GROUP_ID : `${module}:section:${CUSTOM_FIELD_BUILT_IN_GROUPS[module].findIndex(group => customFieldNameKey(group) === customFieldNameKey(label))}`;
 type NativeInput = [key: string, label: string, type: CrmFieldType, group: number, mandatory?: boolean, options?: readonly string[], reference?: CrmFieldCatalogEntry['reference']];
-const person: NativeInput[] = [['firstName', 'First Name', 'text', 0, true], ['lastName', 'Last Name', 'text', 0, true], ['email', 'Email', 'text', 0, true], ['phone', 'Phone', 'text', 0], ['status', 'Status', 'dropdown', 1, false, CRM_STATUSES], ['productInterestIds', 'Product Interest', 'products', 1], ['source', 'Lead Source', 'dropdown', 3, false, LEAD_SOURCES], ['assignedUserId', 'Assigned Agent', 'reference', 3, false, undefined, 'user'], ['address', 'Full Address', 'longText', 3]];
+const person: NativeInput[] = [['firstName', 'First Name', 'text', 0, true], ['lastName', 'Last Name', 'text', 0, true], ['email', 'Email', 'text', 0, true], ['phone', 'Phone', 'text', 0], ['status', 'Status', 'dropdown', 1, false, CRM_STATUSES], ['productInterestIds', 'Product Interest', 'products', 1], ['source', 'Lead Source', 'dropdown', 3, false, LEAD_SOURCES], ['assignedUserId', 'Assigned Agent', 'reference', 4, false, undefined, 'user'], ['address', 'Full Address', 'longText', 3]];
 const native: Record<CustomFieldModule, NativeInput[]> = {
   leads: [...person, ['companyName', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account']],
-  contacts: [...person.map(field => field[0] === 'assignedUserId' ? [field[0], field[1], field[2], 2, ...field.slice(4)] as NativeInput : field), ['company', 'Company Name', 'text', 0], ['jobTitle', 'Job Title', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account'], ['activeProductIds', 'Active Products', 'products', 1], ['notes', 'Notes', 'longText', 3]],
+  contacts: [...person, ['company', 'Company Name', 'text', 0], ['jobTitle', 'Job Title', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account'], ['activeProductIds', 'Active Products', 'products', 1], ['notes', 'Notes', 'longText', 3]],
   accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Street Address', 'longText', 1], ['city', 'City', 'text', 1], ['province', 'Province', 'text', 1], ['country', 'Country', 'text', 1], ['assignedUserId', 'Assigned Agent', 'reference', 2, false, undefined, 'user'], ['productInterestIds', 'Product Interest', 'products', 3], ['activeProductIds', 'Active Products', 'products', 3], ['notes', 'Notes', 'longText', 4], ['internalNotes', 'Internal Notes', 'longText', 4]],
-  deals: [['title', 'Title', 'text', 0, true], ['value', 'Deal Value', 'number', 0], ['productInterestIds', 'Product Interest', 'products', 0, true], ['pipelineId', 'Pipeline', 'reference', 0, true, undefined, 'pipeline'], ['stageId', 'Stage', 'reference', 0, true, undefined, 'stage'], ['priority', 'Priority', 'dropdown', 0, false, ['LOW', 'MEDIUM', 'HIGH']], ['expectedCloseDate', 'Expected Close Date', 'date', 2], ['assignedUserId', 'Assigned Agent', 'reference', 1, false, undefined, 'user'], ['accountId', 'Account', 'reference', 1, false, undefined, 'account'], ['leadSource', 'Lead Source', 'dropdown', 2, false, LEAD_SOURCES], ['industry', 'Industry', 'dropdown', 2, false, COMPANY_INDUSTRIES], ['address', 'Address', 'longText', 2]],
+  deals: [['title', 'Title', 'text', 0, true], ['value', 'Deal Value', 'number', 0], ['productInterestIds', 'Product Interest', 'products', 0, true], ['pipelineId', 'Pipeline', 'reference', 0, true, undefined, 'pipeline'], ['stageId', 'Stage', 'reference', 0, true, undefined, 'stage'], ['priority', 'Priority', 'dropdown', 0, false, ['LOW', 'MEDIUM', 'HIGH']], ['expectedCloseDate', 'Expected Close Date', 'date', 2], ['assignedUserId', 'Assigned Agent', 'reference', 4, false, undefined, 'user'], ['accountId', 'Account', 'reference', 1, false, undefined, 'account'], ['leadSource', 'Lead Source', 'dropdown', 2, false, LEAD_SOURCES], ['industry', 'Industry', 'dropdown', 2, false, COMPANY_INDUSTRIES], ['address', 'Address', 'longText', 2]],
 };
 export const CRM_SYSTEM_FIELDS = Object.fromEntries(CUSTOM_FIELD_MODULES.map(module => [module, [...native[module], ['createdAt', 'Created', 'date', 0] as NativeInput].map(([technicalKey, label, type, groupIndex, mandatory = false, options, reference], order): CrmFieldCatalogEntry => ({ technicalKey, label: module === 'contacts' && technicalKey === 'source' ? 'Source' : label, module, kind: 'System', type, groupId: defaultFieldGroupId(module, CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex]), group: CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex], order, required: mandatory, mandatory, active: true, visibleInForm: !['value', 'createdAt'].includes(technicalKey), visibleInDetails: true, conditionAvailable: true, personalizationAvailable: true, ...(options ? { options } : {}), ...(reference ? { reference } : {}) }))])) as Record<CustomFieldModule, CrmFieldCatalogEntry[]>;
 
@@ -42,5 +42,32 @@ export function getCrmFieldCatalog(module: CustomFieldModule, definitions: Closi
 }
 export function defaultFieldLayout(module: CustomFieldModule): FieldLayout {
   return { version: 1, module, groups: CUSTOM_FIELD_BUILT_IN_GROUPS[module].map((label, order) => ({ id: defaultFieldGroupId(module, label), label, order, ...(module === 'deals' && order === 3 ? { protected: true } : {}) })), fields: {} };
+}
+/** Upgrade only untouched built-in assignment defaults, identified by stable IDs. */
+export function upgradeAssignmentLayout(layout: FieldLayout, definitions: ClosingField[] = []): FieldLayout {
+  const next = structuredClone(layout);
+  const module = layout.module;
+  if (layout.fields.assignedUserId || layout.module !== 'accounts' && layout.groups.some(group => group.id === layout.module + ':section:4')) return next;
+  const sourceIndex = module === 'deals' ? 1 : module === 'leads' ? 3 : 2;
+  const sourceLabel = module === 'leads' ? 'Additional Information' : 'Relationships';
+  const source = next.groups.find(group => group.id === module + ':section:' + sourceIndex);
+  const preservePlacement = () => {
+    const field = CRM_SYSTEM_FIELDS[module].find(field => field.technicalKey === 'assignedUserId')!;
+    if (source && module !== 'accounts') next.fields.assignedUserId = { label: field.label, groupId: source.id, order: field.order, visibleInForm: true, visibleInDetails: true };
+    return next;
+  };
+  if (!source || source.label !== sourceLabel || source.order !== sourceIndex) return preservePlacement();
+  if (module === 'accounts') {
+    // Custom fields keep their administrator's section title and placement.
+    if (definitions.some(field => field.module === module && (field.groupId === source.id || !field.groupId && field.group === sourceLabel))) return next;
+    source.label = 'Assigned Agent';
+  } else {
+    const targetId = module + ':section:4';
+    if (!next.groups.some(group => group.id === targetId)) {
+      if (next.groups.length >= 100 || next.groups.some(group => group.label === 'Assigned Agent')) return preservePlacement();
+      next.groups.push({ id: targetId, label: 'Assigned Agent', order: Math.max(...next.groups.map(group => group.order)) + 1 });
+    }
+  }
+  return next;
 }
 export function resolveCrmField(module: CustomFieldModule, key: string, layout?: FieldLayout) { return getCrmFieldCatalog(module, [], layout).find(field => field.technicalKey === key); }

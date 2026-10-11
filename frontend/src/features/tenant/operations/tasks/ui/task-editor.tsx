@@ -51,11 +51,13 @@ export function TaskEditor({
   task,
   links = {},
   readOnly = false,
+  preserveContextLinks = false,
   onClose,
 }: {
   task?: TaskRecord;
   links?: TaskLinks;
   readOnly?: boolean;
+  preserveContextLinks?: boolean;
   onClose: () => void;
 }) {
   const { user } = useAuth();
@@ -96,11 +98,11 @@ export function TaskEditor({
   const [associationNotice, setAssociationNotice] = useState("");
   const changeRelations = (kind: TaskLinkKind, ids: string[]) => {
     if (kind === "lead") {
-      setRelations({ lead: ids, contact: [], deal: [], account: [] });
+      setRelations({ lead: ids, contact: [], deal: preserveContextLinks ? taskAssociationIds(links, "deal") : [], account: [] });
       setAssociationNotice(
         "Lead selection changed. Choose related contacts, deals, and accounts again.",
       );
-    } else setRelations((previous) => ({ ...previous, [kind]: ids }));
+    } else setRelations((previous) => ({ ...previous, [kind]: kind === "deal" && preserveContextLinks ? [...new Set([...ids, ...taskAssociationIds(links, "deal")])] : ids }));
   };
   const [creating, setCreating] = useState<Exclude<
     TaskOptionKind,
@@ -140,7 +142,7 @@ export function TaskEditor({
         assignedUserId,
         leadIds: relations.lead,
         contactIds: relations.contact,
-        dealIds: relations.deal,
+        dealIds: [...new Set([...relations.deal, ...(preserveContextLinks ? taskAssociationIds(links, "deal") : [])])],
         accountIds: relations.account,
       };
       if (task) {

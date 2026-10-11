@@ -53,6 +53,10 @@ export function DropdownMenuTrigger({
     if (!e.defaultPrevented) setOpen(!open);
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    props.onKeyDown?.(e);
+    if (!e.defaultPrevented && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) { e.preventDefault(); setOpen(true); }
+  };
   if (asChild && React.isValidElement(children)) {
     return React.cloneElement(children as React.ReactElement<any>, {
       ref: (node: HTMLButtonElement | null) => {
@@ -61,6 +65,7 @@ export function DropdownMenuTrigger({
         if (typeof childRef === 'function') childRef(node);
         else if (childRef) childRef.current = node;
       },
+      onKeyDown: (e: React.KeyboardEvent<HTMLButtonElement>) => { (children as React.ReactElement<React.ButtonHTMLAttributes<HTMLButtonElement>>).props.onKeyDown?.(e); handleKeyDown(e); },
       'aria-expanded': open,
       'aria-haspopup': 'menu',
       onClick: (e: any) => {
@@ -78,6 +83,7 @@ export function DropdownMenuTrigger({
       aria-haspopup="true"
       {...props}
       onClick={handleClick}
+      onKeyDown={handleKeyDown}
     >
       {children}
     </button>
@@ -114,6 +120,13 @@ export function DropdownMenuContent({
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (contentRef.current?.contains(e.target as Node) && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+        e.preventDefault(); e.stopPropagation();
+        const items = Array.from(contentRef.current.querySelectorAll<HTMLElement>('[role="menuitem"][aria-disabled="false"]'));
+        const current = items.indexOf(document.activeElement as HTMLElement);
+        const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (current + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
+        items[next]?.focus(); items[next]?.scrollIntoView?.({ block: 'nearest' });
+      }
       if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); setOpen(false); triggerRef.current?.focus(); }
     };
 
@@ -125,6 +138,17 @@ export function DropdownMenuContent({
     };
   }, [open, setOpen, triggerRef]);
 
+  React.useEffect(() => {
+    if (!open || !mounted) return;
+    const frame = requestAnimationFrame(() => {
+      const menu = contentRef.current;
+      // An async read can enable items after opening. Move focus only while
+      // the user is still on the trigger, preserving navigation within the menu.
+      if (!menu || document.activeElement !== triggerRef.current) return;
+      menu.querySelector<HTMLElement>('[role="menuitem"][aria-disabled="false"]')?.focus({ preventScroll: true });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [open, mounted, children, triggerRef]);
   React.useLayoutEffect(() => {
     if (!mounted || !open) return;
     const updatePosition = () => {
@@ -193,13 +217,16 @@ export function DropdownMenuItem({
   children,
   ...props
 }: DropdownMenuItemProps) {
-  const { setOpen } = useDropdownMenu();
+  const { setOpen, triggerRef } = useDropdownMenu();
 
   const handleClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (disabled) return;
+    e.stopPropagation();
     onClick?.(e);
-    onSelect?.();
+    if (e.defaultPrevented) return;
     setOpen(false);
+    triggerRef.current?.focus({ preventScroll: true });
+    onSelect?.();
   };
 
   return (
@@ -210,8 +237,8 @@ export function DropdownMenuItem({
       onClick={handleClick}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          e.preventDefault();
           handleClick(e as any);
+          e.preventDefault();
         }
       }}
       className={cn(

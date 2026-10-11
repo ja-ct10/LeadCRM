@@ -111,7 +111,7 @@ export function DealForm({
   const customFields = useRecordCustomFields('deals', initialData?.id);
   const { products, loading: productsLoading, error: productsError, refresh: refreshProducts } = useProductInterests();
   const { pipelines: allPipelines } = useData();
-  const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
+  const pipelines = useMemo(() => allPipelines.filter(p => !p.isArchived), [allPipelines]);
   const canCreate = useHasPermission('deals.create');
   const canEdit = useHasPermission('deals.edit');
   const isCreateMode = mode === 'create';
@@ -120,9 +120,10 @@ export function DealForm({
   // Build default values from initialData (edit) or preselect (create)
   const defaultValues = useMemo(() => {
     if (isCreateMode) {
+      const initialPipeline = pipelines.find(p => p.id === preselect?.pipelineId) ?? pipelines.find(p => p.name.trim().toLowerCase() === 'sales pipeline') ?? pipelines[0];
       return {
-        pipelineId: preselect?.pipelineId || pipelines[0]?.id || '',
-        stageId: pipelines[0]?.stages.find(s => s.name.toLowerCase() === 'lead' && !s.isWon && !s.isLost)?.id || '',
+        pipelineId: initialPipeline?.id || '',
+        stageId: initialPipeline?.stages.find(s => s.name.toLowerCase() === 'lead' && !s.isWon && !s.isLost)?.id || '',
         title: '',
         value: undefined,
         priority: 'MEDIUM' as const,
@@ -218,14 +219,14 @@ export function DealForm({
         ? data.expectedCloseDate.includes('T')
           ? data.expectedCloseDate
           : `${data.expectedCloseDate}T00:00:00.000Z`
-        : undefined,
-      leadSource: data.leadSource || undefined,
-      organizationId: data.organizationId || undefined,
-      assignedUserId: data.assignedUserId || undefined,
-      contactIds: data.contactIds?.length ? data.contactIds : undefined,
-      leadIds: (data as any).leadIds?.length ? (data as any).leadIds : undefined,
-      industry: data.industry || undefined,
-      address: data.address || undefined,
+        : isCreateMode ? undefined : '',
+      leadSource: isCreateMode ? data.leadSource || undefined : data.leadSource,
+      organizationId: isCreateMode ? data.organizationId || undefined : data.organizationId,
+      assignedUserId: isCreateMode ? data.assignedUserId || undefined : data.assignedUserId,
+      contactIds: isCreateMode ? data.contactIds?.length ? data.contactIds : undefined : data.contactIds,
+      leadIds: isCreateMode ? data.leadIds?.length ? data.leadIds : undefined : data.leadIds,
+      industry: isCreateMode ? data.industry || undefined : data.industry,
+      address: isCreateMode ? data.address || undefined : data.address,
       productInterests: undefined,
     };
     if (submitting.current) return;
@@ -257,7 +258,7 @@ export function DealForm({
           <div className="space-y-4">
             <SectionHeader num={1} title="Pipeline & Stage" />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div data-crm-field-key="pipelineId"><span className="block text-xs text-muted-foreground">Pipeline</span><p className="py-2 text-sm">Sales Pipeline</p><input type="hidden" {...register('pipelineId')} /></div>
+              <div data-crm-field-key="pipelineId"><span className="block text-xs text-muted-foreground">Pipeline</span><p className="py-2 text-sm">{pipelines.find(p => p.id === selectedPipelineId)?.name || 'Selected pipeline'}</p><input type="hidden" {...register('pipelineId')} /></div>
               <div data-crm-field-key="stageId"><span className="block text-xs text-muted-foreground">Starting Stage</span><p className="py-2 text-sm">Lead</p><input type="hidden" {...register('stageId')} />{errors.stageId && <p role="alert">{errors.stageId.message}</p>}</div>
             </div>
           </div>
@@ -350,7 +351,7 @@ export function DealForm({
               />
             )}
           />
-          <FieldWrap fieldKey="assignedUserId" label="Assigned User">
+          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent">
             <Controller
               name="assignedUserId"
               control={control}

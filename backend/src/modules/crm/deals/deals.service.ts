@@ -1,6 +1,7 @@
 import { resolveProducts, salesTransaction } from '../leads/lead-automation.service';
 import { validateSalesOwner } from '../leads/lead-automation.service';
 import { Prisma } from '@prisma/client';
+import { MoveDealPipelineSchema } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
@@ -19,6 +20,7 @@ import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle'
  */
 function mapRepositoryError(error: unknown, context: string): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    if (error.code === 'P2025') throw new ConflictError('This Deal is no longer active or has changed. Reopen it before editing.');
     if (error.code === 'P2002') {
       const target = (error.meta?.target as string[])?.join(', ') || 'field';
       throw new ConflictError(`A deal with the same ${target} already exists`);
@@ -121,7 +123,7 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
   });
   if (!newStage) throw new NotFoundError('Stage');
 
-  const deal = await prisma.deal.findFirst({ where: { id, tenantId }, include: { stage: true } });
+  const deal = await prisma.deal.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null }, include: { stage: true } });
   if (!deal) throw new NotFoundError('Deal');
   if (deal.pipelineId !== newStage.pipelineId) throw new ValidationError('Stage must belong to this Deal’s pipeline.');
   if (deal.stageId === newStage.id) return newStage;
@@ -183,6 +185,19 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
   if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, eventId: result.stageHistory.id,
     record: result.deal, changedFields: changes.changedFields, changes });
 
+  return { deal: result.deal, stageHistory: result.stageHistory };
+}
+
+export async function moveDealPipeline(id: string, tenantId: string, actorId: string, input: unknown) {
+  const dto = MoveDealPipelineSchema.parse(input);
+  const result = await repo.moveDealPipeline(id, tenantId, actorId, dto);
+  if (result.stageHistory) {
+    await fireDealStageChanged({ tenantId, actorId, eventId: result.stageHistory.id, deal: result.deal,
+      newStageId: result.deal.stage.id, newStageName: result.deal.stage.name, isWon: false, isLost: false,
+      prevStageId: result.previousDeal.stageId });
+    const changes = recordChanges(result.previousDeal, result.deal);
+    await fireDealUpdated({ tenantId, actorId, eventId: result.stageHistory.id, record: result.deal, changedFields: changes.changedFields, changes });
+  }
   return { deal: result.deal, stageHistory: result.stageHistory };
 }
 

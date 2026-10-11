@@ -7,7 +7,8 @@ import { useReducedMotion } from 'motion/react';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { SendMailboxEmailSchema } from '@leadcrm/shared';
-import { sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft } from '../services/gmail.service';
+import { toast } from 'sonner';
+import { associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft } from '../services/gmail.service';
 import EmojiPicker from './emoji-picker';
 import { safeMailboxHtml } from '../services/email-html';
 import type { MailboxComposeDraft } from '../services/email-presentation';
@@ -22,11 +23,13 @@ interface ComposeModalProps {
   onSent: () => void;
   initialDraft?: MailboxComposeDraft | null;
   retryAt?: number;
+  onDealLinkResult?: (link: { threadId: string; sourceDealId: string }, linked: boolean) => void;
 }
 
-export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, retryAt = 0 }: ComposeModalProps): React.ReactElement | null {
+export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, retryAt = 0, onDealLinkResult }: ComposeModalProps): React.ReactElement | null {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
+  const [sentLink, setSentLink] = useState<{ threadId: string; sourceDealId: string } | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionRetryAt, setActionRetryAt] = useState(0);
@@ -78,6 +81,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   useEffect(() => {
     if (isOpen) {
       setError(null); setShowScheduleMenu(false); scheduleRequest.current = null; sendRequest.current = null;
+      setSentLink(null);
       setTo(initialDraft?.to ?? '');
       setSubject(initialDraft?.subject ?? '');
       setCurrentDraftId(initialDraft?.draftId);
@@ -148,6 +152,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
 
   const handleSend = async (scheduledAt?: string): Promise<void> => {
     if (mutationPending.current || paused) return;
+    if (sentLink) {
+      mutationPending.current = true; setIsSending(true);
+      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId); onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal'); }
+      catch { setError('Email sent, but linking to the Deal failed.'); }
+      finally { mutationPending.current = false; setIsSending(false); }
+      return;
+    }
     if (!to.trim()) {
       setError('Please specify at least one recipient');
       return;
@@ -183,7 +194,13 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
       } else {
         const key = JSON.stringify([recipients, subject, htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId]);
         if (sendRequest.current?.key !== key) sendRequest.current = { key, id: crypto.randomUUID() };
-        await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId, sendRequest.current.id);
+        const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId, sendRequest.current.id);
+        if (initialDraft?.sourceDealId) {
+          const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId };
+          try { await associateThreadDeal(link.threadId, link.sourceDealId); onDealLinkResult?.(link, true); }
+          catch { setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent'); return; }
+        }
+        toast.success('Email sent');
       }
       resetForm();
       onSent();
@@ -213,7 +230,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   };
 
   const handleSaveDraft = async (): Promise<void> => {
-    if (mutationPending.current || paused) return;
+    if (mutationPending.current || paused || sentLink) return;
     const htmlBody = getEditorContent();
     if (!to.trim() && !subject.trim() && !htmlBody.trim()) {
       return; // Nothing to save
@@ -362,6 +379,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             id="compose-to"
             type="email"
             multiple
+            readOnly={!!sentLink || !!initialDraft?.sourceDealId}
             value={to}
             onChange={(e) => {
               setTo(e.target.value);
@@ -393,6 +411,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
         <input
           id="compose-subject"
           type="text"
+          readOnly={!!sentLink}
           value={subject}
           onChange={(e) => setSubject(e.target.value)}
           placeholder="Subject"
@@ -404,7 +423,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
       <div className="flex-1 overflow-hidden flex flex-col">
         <div
           ref={editorRef}
-          contentEditable
+          contentEditable={!sentLink}
           role="textbox"
           aria-label="Email body"
           aria-multiline="true"
@@ -434,17 +453,17 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
               onClick={() => void handleSend()}
               disabled={isSending || isSavingDraft || paused}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
-              aria-label="Send email"
+              aria-label={sentLink ? "Retry deal link" : "Send email"}
             >
               {isSending ? (
                 <Loader2 className="w-4 h-4 animate-spin" />
               ) : (
                 <Send className="w-4 h-4" />
               )}
-              <span>{isSending ? 'Sending...' : 'Send'}</span>
+              <span>{isSending ? (sentLink ? 'Linking…' : 'Sending...') : sentLink ? 'Retry deal link' : 'Send'}</span>
             </button>
             <button
-              disabled={isSending || isSavingDraft || paused}
+              disabled={isSending || isSavingDraft || paused || !!initialDraft?.sourceDealId || !!sentLink}
               onClick={() => setShowScheduleMenu(value => !value)}
               aria-expanded={showScheduleMenu}
               title="Schedule send"

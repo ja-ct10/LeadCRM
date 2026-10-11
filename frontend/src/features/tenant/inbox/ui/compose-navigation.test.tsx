@@ -4,16 +4,17 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import InboxPage from './inbox-page';
 import { recordEmailComposeHref } from '../services/compose-navigation';
 
-const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), replace: vi.fn() }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, tenant: { id: 'tenant' } }) }));
+const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), replace: vi.fn(), associate: vi.fn() }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(window.location.search), useRouter: () => ({ replace: mocks.replace }) }));
 vi.mock('../services/gmail.service', () => ({
   getGmailStatus: async () => ({ isConnected: true, email: 'staff@example.test' }),
   fetchGmailEmails: async () => ({ emails: [] }), syncGmail: vi.fn(), disconnectGmail: vi.fn(),
-  sendGmailEmail: mocks.send, saveGmailDraft: mocks.save,
+  sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, associateThreadDeal: mocks.associate,
 }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 
-beforeEach(() => { vi.clearAllMocks(); window.history.replaceState({}, '', '/inbox'); });
+beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); window.history.replaceState({}, '', '/inbox'); });
 afterEach(cleanup);
 
 it('consumes a Lead action once, preserves exact recipient, clears fresh compose and refresh, and never sends', async () => {
@@ -65,4 +66,20 @@ it.each(['Electric Fence', 'Laptop/Server/Data Cabinets', 'Access & Alarm + Secu
   await screen.findByRole('button', { name: 'Compose new email' });
   expect(screen.queryByLabelText('To')).toBeNull();
   expect(mocks.send).not.toHaveBeenCalled(); expect(mocks.save).not.toHaveBeenCalled();
+});
+
+it('retains a delivered email link retry across Inbox remount and never resends', async () => {
+  const key = 'leadcrm:pending-deal-links:v1:tenant:actor';
+  sessionStorage.setItem(key, JSON.stringify([{ threadId: 'delivered-thread', sourceDealId: 'source-deal' }]));
+  mocks.associate.mockRejectedValueOnce(new Error('Link unavailable')).mockResolvedValueOnce({ success: true });
+  const first = render(<InboxPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry deal link' }));
+  await waitFor(() => expect(mocks.associate).toHaveBeenCalledOnce());
+  expect(JSON.parse(sessionStorage.getItem(key)!)).toHaveLength(1);
+  first.unmount(); render(<InboxPage />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Retry deal link' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry deal link' })).toBeNull());
+  expect(mocks.associate).toHaveBeenLastCalledWith('delivered-thread', 'source-deal');
+  expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual([]);
+  expect(mocks.send).not.toHaveBeenCalled();
 });

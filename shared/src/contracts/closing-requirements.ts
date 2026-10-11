@@ -8,10 +8,10 @@ export const CUSTOM_FIELD_MODULE_LABELS: Record<CustomFieldModule, string> = { l
 export const CLOSED_WON_GROUP = 'Closed Won Requirements';
 export const CLOSED_WON_GROUP_ID = 'deals:closing-evidence';
 export const CUSTOM_FIELD_BUILT_IN_GROUPS: Record<CustomFieldModule, readonly string[]> = {
-  leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information'],
-  contacts: ['Basic Information', 'Status & Classification', 'Relationships', 'Additional Information'],
-  accounts: ['Basic Information', 'Address', 'Relationships', 'Products & Interests', 'Notes'],
-  deals: ['Deal Information', 'Relationships', 'Additional Details', CLOSED_WON_GROUP],
+  leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent'],
+  contacts: ['Basic Information', 'Status & Classification', 'Relationships', 'Additional Information', 'Assigned Agent'],
+  accounts: ['Basic Information', 'Address', 'Assigned Agent', 'Products & Interests', 'Notes'],
+  deals: ['Deal Information', 'Relationships', 'Additional Details', CLOSED_WON_GROUP, 'Assigned Agent'],
 };
 export const customFieldGroupOptions = (module: CustomFieldModule, previous?: { module: CustomFieldModule; group: string }): string[] =>
   [...new Set([...CUSTOM_FIELD_BUILT_IN_GROUPS[module], ...(previous?.module === module ? [previous.group] : [])])];

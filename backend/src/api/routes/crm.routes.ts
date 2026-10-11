@@ -1,3 +1,4 @@
+import { MoveDealPipelineSchema } from '@leadcrm/shared';
 import { CreateDealBatchSchema } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { NotFoundError } from '../../shared/errors/http-error';
@@ -136,6 +137,7 @@ router.get('/deals/:id/closing-requirements', authorize('deals.view'), closingRe
 router.patch('/deals/:id/closing-requirements', authorize('deals.edit'), closingRequirements.saveValues);
 router.post(  '/deals',              authorize('deals.create'), validate(ManualCreateDealSchema),    dealController.createDeal);
 router.put(   '/deals/:id',          authorize('deals.edit'),   validate(UpdateDealSchema),    dealController.updateDeal);
+router.patch('/deals/:id/pipeline', authorize('deals.edit'), validate(MoveDealPipelineSchema), dealController.moveDealPipeline);
 router.patch( '/deals/:id/stage',    authorize('deals.edit'),   validate(MoveDealStageSchema), dealController.moveDealStage);
 router.patch( '/deals/:id/archive',  authorize('deals.archive'), dealController.archiveDeal);
 router.patch( '/deals/:id/restore',  authorizeAll('archived_data.restore', 'deals.view'),   dealController.restoreDeal);

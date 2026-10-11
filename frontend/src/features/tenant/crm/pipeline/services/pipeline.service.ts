@@ -28,6 +28,9 @@ export const pipelineService = {
   moveDealStage: (id: string, data: { stageId: string; note?: string; lostReason?: string; handoff?: any; confirmation?: ClosedWonConfirmation }): Promise<ApiResponse<Deal>> =>
     apiClient.patch<ApiResponse<Deal>>(`/crm/deals/${id}/stage`, data),
 
+  moveDealPipeline: (id: string, data: import('@leadcrm/shared').MoveDealPipelineInput): Promise<ApiResponse<{ deal: Deal }>> =>
+    apiClient.patch('/crm/deals/' + encodeURIComponent(id) + '/pipeline', data),
+
   archiveDeal: (id: string): Promise<void> =>
     apiClient.patch<void>(`/crm/deals/${id}/archive`),
 

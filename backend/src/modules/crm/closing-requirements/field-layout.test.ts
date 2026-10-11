@@ -104,3 +104,23 @@ describe('field configuration identity and preservation', () => {
     expect(tx.tenantPreference.update).not.toHaveBeenCalled();
   });
 });
+
+it('upgrades untouched legacy assignment defaults using stable IDs while retaining real relationship fields', async () => {
+  const layout = defaultFieldLayout('deals'); layout.groups = layout.groups.filter(group => group.id !== 'deals:section:4');
+  state.preferences.push({ tenantId: 'tenant', module: 'deals', key: 'field-layout', value: layout });
+  const result = await getFieldLayout('tenant', 'deals');
+  expect(result.fields.find(field => field.technicalKey === 'assignedUserId')).toMatchObject({ groupId: 'deals:section:4', group: 'Assigned Agent' });
+  expect(result.fields.find(field => field.technicalKey === 'accountId')).toMatchObject({ groupId: 'deals:section:1', group: 'Relationships' });
+  const saved = structuredClone(result.layout); saved.groups.find(group => group.id === 'deals:section:4')!.label = 'My staff';
+  state.preferences.find(row => row.module === 'deals')!.value = saved;
+  expect((await getFieldLayout('tenant', 'deals')).fields.find(field => field.technicalKey === 'assignedUserId')?.group).toBe('My staff');
+});
+it('preserves administrator assignment labels, visibility, order, and group placement in legacy layouts', async () => {
+  const layout = defaultFieldLayout('contacts'); layout.groups = layout.groups.filter(group => group.id !== 'contacts:section:4');
+  layout.groups[2].label = 'Client team';
+  layout.fields.assignedUserId = { label: 'Case manager', groupId: 'contacts:section:2', order: 42, visibleInForm: false, visibleInDetails: true };
+  state.preferences.push({ tenantId: 'tenant', module: 'contacts', key: 'field-layout', value: layout });
+  const result = await getFieldLayout('tenant', 'contacts');
+  expect(result.layout).toEqual(layout);
+  expect(result.fields.find(field => field.technicalKey === 'assignedUserId')).toMatchObject({ label: 'Case manager', group: 'Client team', order: 42, visibleInForm: false });
+});

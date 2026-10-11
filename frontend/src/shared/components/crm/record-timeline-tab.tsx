@@ -36,6 +36,7 @@ import { activityEmail, EmailActivity, EmailThread, groupEmailActivities } from 
 export interface RecordTimelineTabProps {
   /** Compact layout shared by the CRM record panels. */
   compact?: boolean;
+  focusNote?: boolean;
   tasks?: React.ReactNode;
   /** Activities from the useRecordDetail hook */
   activities: TimelineActivity[];
@@ -103,12 +104,18 @@ function formatRelativeTime(isoDate: string): string {
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-function NoteComposer({ module, recordId, onCreated }: { module: RecordModule; recordId: string; onCreated?: (activity?: TimelineActivity) => void }) {
+function NoteComposer({ module, recordId, onCreated, focusNote }: { focusNote?: boolean; module: RecordModule; recordId: string; onCreated?: (activity?: TimelineActivity) => void }) {
   const { addActivity } = useData();
   const { user } = useAuth();
   const [draft, setDraft] = useState('');
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
+  const input = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (!focusNote) return;
+    const frame = requestAnimationFrame(() => { input.current?.scrollIntoView({ block: 'nearest' }); input.current?.focus({ preventScroll: true }); });
+    return () => cancelAnimationFrame(frame);
+  }, [focusNote]);
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
     const value = draft.trim();
@@ -128,7 +135,7 @@ function NoteComposer({ module, recordId, onCreated }: { module: RecordModule; r
     finally { submitting.current = false; setSaving(false); }
   };
   return <form onSubmit={save} className="space-y-2 rounded-xl border border-border bg-card p-3">
-    <Textarea aria-label="Note" placeholder="Write a note..." value={draft} onChange={event => setDraft(event.target.value)} disabled={saving} className="min-h-20 resize-y" />
+    <Textarea ref={input} aria-label="Note" placeholder="Write a note..." value={draft} onChange={event => setDraft(event.target.value)} disabled={saving} className="min-h-20 resize-y" />
     <div className="flex justify-end"><Button type="submit" size="sm" disabled={!draft.trim() || saving}>{saving ? 'Saving…' : 'Save note'}</Button></div>
   </form>;
 }
@@ -174,7 +181,7 @@ function TimelineEntry({ activity, compact = false }: TimelineEntryProps): React
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange }: RecordTimelineTabProps): React.ReactElement {
+export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange, focusNote }: RecordTimelineTabProps): React.ReactElement {
   const canEdit = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey);
   const { user, tenant } = useAuth();
   const editorIdentity = JSON.stringify([tenant?.id, user?.id, user?.role, module, recordId]);
@@ -207,7 +214,7 @@ export function RecordTimelineTab({ activities, module, recordId, onActivityCrea
   return <div className={cn('w-full min-w-0 space-y-4', compact ? 'px-3 py-4 sm:px-4 sm:py-5' : 'px-[var(--panel-gutter,1.5rem)] py-5')}>
     <section aria-label="Notes" className="space-y-3">
       <h3 className={heading}>Notes</h3>
-      {canEdit && <NoteComposer key={editorIdentity} module={module} recordId={recordId} onCreated={activity => {
+      {canEdit && <NoteComposer focusNote={focusNote} key={editorIdentity} module={module} recordId={recordId} onCreated={activity => {
         if (activity) setSaved(previous => ({ identity, rows: [...(previous.identity === identity ? previous.rows : []).filter(row => row.id !== activity.id), activity] }));
         onActivityCreated?.(activity);
       }} />}

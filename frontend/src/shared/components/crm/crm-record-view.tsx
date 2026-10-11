@@ -39,6 +39,8 @@ import type { Account } from '@/features/tenant/crm/accounts/types/account.types
 import { CatalogProductInterestSelect } from './product-interest-select';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { CrmEmailSchema } from '@leadcrm/shared';
+import { DealCardMenu } from './deal-card-menu';
+import { duplicateDeal } from '@/shared/services/deals-actions.api';
 import { RecordBackButton } from './record-back-button';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
@@ -172,13 +174,14 @@ function RecordRows({ rows }: { rows: [string, unknown][] }) {
 }
 
 function RelatedRecords({ records, module, empty }: { records: RecordData[]; module: string; empty: string }) {
+  if (module === 'deals') return records.length ? <div className="divide-y divide-border/60">{records.filter(record => !record.isArchived).map(record => <div key={text(record.id)} className="flex min-w-0 items-center gap-2 px-3 py-2"><Link href={'/crm/deals/' + encodeURIComponent(text(record.id))} className="min-w-0 flex-1 py-2 text-sm font-medium [overflow-wrap:anywhere]">{text(record.title)}<span className="mt-1 block text-xs text-muted-foreground">{text(object(record.stage)?.name)}</span></Link><DealCardMenu dealId={text(record.id)} dealTitle={text(record.title)} /></div>)}</div> : <p className="p-4 text-sm text-muted-foreground">{empty}</p>;
   return records.length ? <div className="divide-y divide-border/60">{records.map(record => <Link key={text(record.id)} href={`/crm/${module}/${encodeURIComponent(text(record.id))}`} className="flex min-w-0 items-center gap-3 px-3 py-3 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
     <div className="min-w-0 flex-1 [overflow-wrap:anywhere]"><p className="text-sm font-medium">{text(record.name) || text(record.title) || personName(record)}</p><p className="mt-0.5 text-xs text-muted-foreground">{text(record.email) || text(record.industry) || text(object(record.stage)?.name)}</p></div><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
   </Link>)}</div> : <p className="px-4 py-7 text-center text-sm text-muted-foreground">{empty}</p>;
 }
 
 /** The drawer and route render this same record reader, actions and content. */
-export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean }) {
+export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false, focusNote = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean }) {
   const router = useRouter();
   const fieldLayout = useFieldLayout(module);
   const { user, tenant } = useAuth();
@@ -346,7 +349,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     productRow,
     ...(module === 'contacts' || module === 'accounts' ? [{ technicalKey: 'activeProductIds', label: 'Active Products', value: record.activeProducts }] : []),
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
-    { technicalKey: 'assignedUserId', label: 'Assigned Agent', value: owner },
+    { technicalKey: 'assignedUserId', label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
     ...(module === 'leads' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
     ...(module === 'accounts' ? [{ label: 'Internal Notes', value: record.internalNotes, apiField: 'internalNotes', type: 'textarea' as const }] : []),
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
@@ -372,6 +375,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       </DropdownMenuTrigger></TooltipTrigger><TooltipContent>Record actions</TooltipContent></Tooltip></TooltipProvider>
       <DropdownMenuContent align="end">
         {canEdit && <DropdownMenuItem onSelect={edit}><Pencil size={14} />Edit {label.toLowerCase()}</DropdownMenuItem>}
+        {module === 'deals' && canCreateDeal && !USE_MOCK_DATA && <DropdownMenuItem onSelect={() => { void duplicateDeal(id).then(next => router.push('/crm/deals/' + next.id)).catch(() => {}); }}>Duplicate deal</DropdownMenuItem>}
         {canEdit && !USE_MOCK_DATA && module === 'leads' && !record.contactId && <DropdownMenuItem onSelect={() => setConverting(true)}><UserPlus size={14} />Convert to contact</DropdownMenuItem>}
         {canArchive && <DropdownMenuItem onSelect={() => setArchiving(true)}><Archive size={14} />Archive {label.toLowerCase()}</DropdownMenuItem>}
       </DropdownMenuContent>
@@ -431,7 +435,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       <div data-record-scroll className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain', onClose ? 'bg-white dark:bg-slate-900' : 'bg-muted/20')}>
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
-            <RecordTimelineTab compact activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters}
+            <RecordTimelineTab compact focusNote={focusNote && tab === 'activity'} activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters}
               tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
@@ -490,9 +494,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   </div>;
 }
 
-export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit, focusClosing }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean }) {
+export function CrmRecordPanel({ module, id, open, onOpenChange, onEdit, focusClosing, focusNote }: { module: CrmRecordModule; id?: string; open: boolean; onOpenChange: (open: boolean) => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean }) {
   const { user } = useAuth();
   return <Sheet open={open} onOpenChange={onOpenChange}><SheetContent showClose={false} aria-label={`${labels[module]} details`} className={panelSurfaceClass}>
-    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} focusClosing={focusClosing} />}
+    {open && id && <CrmRecordView key={`${module}:${id}:${user?.id}`} module={module} id={id} onClose={() => onOpenChange(false)} onEdit={onEdit} focusClosing={focusClosing} focusNote={focusNote} />}
   </SheetContent></Sheet>;
 }
