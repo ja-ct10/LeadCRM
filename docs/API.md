@@ -54,7 +54,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | POST | /auth/login | Password verification and a normal HttpOnly session cookie |
 | GET | /auth/me | Current database-backed account state, including mustChangePassword, passwordChangedAt, and read-only Group summaries |
 | PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle; returns the canonical user |
-| POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private Supabase Storage and returns the canonical user |
+| POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private persistent storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | POST | /auth/logout | Revoke session and expire cookie |
 | POST | /auth/change-password | Use authenticated session, store strong password, clear first-login flag and revoke other sessions |
@@ -73,11 +73,12 @@ Profile updates use a strict shared Zod whitelist and derive both user and tenan
 from the session. Email and privilege fields are not editable. Avatar references are only
 written by the upload service; JSON profile patches cannot supply arbitrary avatar URLs.
 Group membership is administrator-managed; self-profile patches reject `groupIds` and the retired `department` field. Both updates are audited. Existing `GET /auth/me` restores saved profile values after reload.
-Storage requires server-only `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` and
-`SUPABASE_AVATAR_BUCKET`. Use a private bucket accepting `image/webp`, with a 5 MB limit.
+Storage requires server-only `STORAGE_ROOT`, pointing to an existing private persistent
+directory, and optional `AVATAR_STORAGE_BUCKET` (default `avatars`). Files are served only
+through authenticated routes. See [Coolify private storage](setup/coolify-private-storage.md).
 The browser crops before upload; the server decodes, validates and re-encodes the image,
 generates a UUID key under the authenticated tenant/user, and saves a durable authenticated
-avatar reference in `User.avatarUrl`. Do not expose the service key as a `NEXT_PUBLIC_*` value.
+avatar reference in `User.avatarUrl`. The storage directory must not be publicly served.
 
 
 ---

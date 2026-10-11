@@ -3,8 +3,9 @@ import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { PrismaClient } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { createServer, type Server } from 'node:http';
+import { type Server } from 'node:http';
 import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
+import { createPrivateStorageFixture } from '../../../../tests/private-storage-fixture';
 
 // Always use an isolated in-memory PostgreSQL database, never DATABASE_URL.
 vi.mock('../../../../config/database.config', async () => {
@@ -15,8 +16,7 @@ vi.mock('../../../../config/database.config', async () => {
   return { default: client };
 });
 
-let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, storageServer: Server;
-const storedObjects = new Map<string, Buffer>();
+let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, storage: Awaited<ReturnType<typeof createPrivateStorageFixture>>;
 let base: string, tenantId: string, otherTenantId: string, adminCookie: string, viewerCookie: string;
 const legacyId = randomUUID();
 const modules = ['leads', 'contacts', 'accounts'] as const;
@@ -48,18 +48,7 @@ beforeAll(async () => {
   await socket.start();
   process.env.CRM_ARCHIVE_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
   db = (await import('../../../../config/database.config')).default;
-  storageServer = createServer((req, res) => {
-    const parts = new URL(req.url!, 'http://storage.test').pathname.split('/').filter(Boolean);
-    const bucketIndex = parts.indexOf('crm-record-files-test');
-    const key = parts.slice(bucketIndex + 1).map(decodeURIComponent).join('/').replace(/^authenticated\//, '');
-    if (req.method === 'POST') { const chunks: Buffer[] = []; req.on('data', chunk => chunks.push(Buffer.from(chunk))); req.on('end', () => { storedObjects.set(key, Buffer.concat(chunks)); res.writeHead(200, { 'Content-Type': 'application/json' }).end('{}'); }); return; }
-    const bytes = storedObjects.get(key); if (!bytes) { res.writeHead(404).end(); return; }
-    res.writeHead(200, { 'Content-Type': 'application/octet-stream' }).end(bytes);
-  });
-  await new Promise<void>(resolve => storageServer.listen(0, '127.0.0.1', resolve));
-  process.env.SUPABASE_URL = `http://127.0.0.1:${(storageServer.address() as { port: number }).port}`;
-  process.env.SUPABASE_SERVICE_ROLE_KEY = 'isolated-test-only';
-  process.env.SUPABASE_RECORD_FILES_BUCKET = 'crm-record-files-test';
+  storage = await createPrivateStorageFixture();
   const tenant = await db.tenant.create({ data: { name: 'Archive test', slug: 'archive-test', status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   tenantId = tenant.id;
   otherTenantId = (await db.tenant.create({ data: { name: 'Other tenant', slug: 'other-archive-test' } })).id;
@@ -76,7 +65,7 @@ beforeAll(async () => {
 }, 60_000);
 afterAll(async () => {
   if (server) await new Promise<void>(resolve => server.close(() => resolve()));
-  if (storageServer) await new Promise<void>(resolve => storageServer.close(() => resolve()));
+  await storage?.cleanup();
   await db?.$disconnect(); await socket?.stop(); await pg?.close();
 });
 

@@ -44,8 +44,8 @@ and do not prevent the rest of the CRM from starting.
 | NEXT_PUBLIC_FORM_ORIGIN | frontend/src/features/tenant/marketing/forms/services/forms.service.ts | Public URL, optional | Current browser origin when unset | Current browser origin when unset; deliberate public Forms origin otherwise |
 | NODE_ENV | frontend flags/cookies; backend/server.ts, config, auth, email, middleware, webhooks | Flag, core production | development | production |
 | PORT | Next start; backend/src/server.ts and config/app.config.ts | Infrastructure, optional | Frontend 3000; backend 4000 | Match each container's exposed port; need not match another host |
-| DATABASE_URL | backend/prisma/schema.prisma; config/database.config.ts; config/validate-env.ts | Secret, core required | Intended development database | Same production resource/value as Render |
-| DIRECT_URL | backend/prisma/schema.prisma; scripts/deploy-crm-imports.cjs | Secret, deployment required | Development migration connection | Same production migration connection as Render |
+| DATABASE_URL | backend/prisma/schema.prisma; config/database.config.ts; config/validate-env.ts | Secret, core required | Intended development database | Private Coolify PostgreSQL `leadcrm`, restricted application role and verified TLS |
+| DIRECT_URL | backend/prisma/schema.prisma; scripts/deploy-crm-imports.cjs | Secret, deployment required | Development migration connection | Same private Coolify database, restricted migration role and verified TLS |
 | JWT_SECRET | backend/src/config/app.config.ts; core/auth/jwt.service.ts; api/middleware/auth.middleware.ts | Secret, core required | Local secret may differ | Preserve Render secret and existing sessions |
 | APP_URL | backend/src/config/validate-env.ts; core/auth/password-reset.service.ts; shared/services/email.service.ts; integrations/gmail/gmail.controller.ts | Public URL, core required in production | `http://localhost:3000` | Exact HTTPS frontend origin; no login path |
 | ALLOWED_ORIGINS | backend/src/app.ts; config/validate-env.ts | Public origins, core required in production | `http://localhost:3000` | Explicit HTTPS frontend origins; no wildcard |
@@ -70,10 +70,9 @@ and do not prevent the rest of the CRM from starting.
 | TEXTBEE_API_KEY | backend/src/shared/services/sms.service.ts | Secret, SMS feature required | Test sending only when authorized | Exact existing Render key |
 | TEXTBEE_DEVICE_ID | backend/src/shared/services/sms.service.ts; modules/marketing/campaigns/textbee-webhook.ts | Device identifier, optional | Empty uses provider default | Preserve selected production device |
 | TEXTBEE_WEBHOOK_SECRET | backend/src/modules/marketing/campaigns/textbee-webhook.ts | Secret, delivery webhook required | Signed delivery events only | Preserve signature secret; update provider URL; inbound SMS remains disabled |
-| SUPABASE_URL | backend/src/core/auth/profile.service.ts; modules/crm/record-files/record-files.service.ts | Resource URL, storage feature required | Development storage | Same existing production storage |
-| SUPABASE_SERVICE_ROLE_KEY | backend/src/core/auth/profile.service.ts; modules/crm/record-files/record-files.service.ts | Secret, storage feature required | Development storage credential | Exact Render credential; never expose to frontend |
-| SUPABASE_AVATAR_BUCKET | backend/src/core/auth/profile.service.ts | Resource name, avatar feature required | Existing development bucket | Existing production bucket; no new bucket |
-| SUPABASE_RECORD_FILES_BUCKET | backend/src/modules/crm/record-files/record-files.service.ts | Resource name, CRM files feature required | Existing development bucket | Existing production bucket; no new bucket |
+| STORAGE_ROOT | backend/src/shared/services/private-object-storage.ts | Server path, uploads required | Existing absolute private directory | `/var/lib/leadcrm/files`; persistent directory mount required |
+| AVATAR_STORAGE_BUCKET | backend/src/core/auth/profile.service.ts | Directory name, optional | Defaults to `avatars` | `avatars`, migrated with original keys |
+| RECORD_FILES_STORAGE_BUCKET | backend/src/modules/crm/record-files/record-files.service.ts | Directory name, optional | Defaults to `crm-record-files` | `crm-record-files`, migrated with original keys |
 | LEADCRM_TEST_AUTH_ENABLED | backend/src/core/auth/account-access.ts | Access policy, optional | Explicit development Gmail exception | Ignored in production; set false |
 | LEADCRM_TEST_EMAIL_ALLOWLIST | backend/src/core/auth/account-access.ts | Private access policy, optional | Exact approved Gmail addresses only | Ignored in production |
 | LEADCRM_PRODUCTION_AUTH_ENABLED | backend/src/core/auth/account-access.ts | Access policy, feature required for approved Gmail accounts | Ignored outside production | Preserve explicit approved Render policy |

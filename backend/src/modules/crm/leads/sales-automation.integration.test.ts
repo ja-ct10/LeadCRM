@@ -442,18 +442,8 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
 
   it('persists Deal file history through the shared file service with tenant and permission checks', async () => {
-    const { createServer } = await import('node:http');
-    const objects = new Map<string, Buffer>();
-    const storage = createServer((req, res) => {
-      const key = req.url!.replace('/authenticated/', '/');
-      if (req.method === 'POST') { const chunks: Buffer[] = []; req.on('data', chunk => chunks.push(chunk)); req.on('end', () => { objects.set(key, Buffer.concat(chunks)); res.end('{}'); }); }
-      else if (objects.has(key)) res.end(objects.get(key));
-      else { res.statusCode = 404; res.end(); }
-    });
-    storage.listen(0, '127.0.0.1'); await new Promise<void>(resolve => storage.once('listening', resolve));
-    const old = [process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_ROLE_KEY, process.env.SUPABASE_RECORD_FILES_BUCKET];
-    process.env.SUPABASE_URL = `http://127.0.0.1:${(storage.address() as { port: number }).port}`;
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'isolated-test'; process.env.SUPABASE_RECORD_FILES_BUCKET = 'files';
+    const { createPrivateStorageFixture } = await import('../../../tests/private-storage-fixture');
+    const storage = await createPrivateStorageFixture();
     try {
       const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
       const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Files' } });
@@ -466,8 +456,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       expect(await downloaded.text()).toBe('%PDF-1.7 file test');
       expect((await request(`/crm/deals/${deal.id}/files`, 'GET', undefined, deniedToken)).status).toBe(403);
     } finally {
-      ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'SUPABASE_RECORD_FILES_BUCKET'].forEach((key, i) => { if (old[i] === undefined) delete process.env[key]; else process.env[key] = old[i]; });
-      await new Promise<void>(resolve => storage.close(() => resolve()));
+      await storage.cleanup();
     }
   });
 

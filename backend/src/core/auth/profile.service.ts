@@ -4,6 +4,7 @@ import { AVATAR_MAX_BYTES, AVATAR_MIME_TYPES, UpdateSelfProfileSchema, type Upda
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { readAuthUser } from './auth-user';
+import { privateObjectStorage } from '../../shared/services/private-object-storage';
 
 export async function updateSelfProfile(userId: string, tenantId: string, input: UpdateSelfProfile) {
   const data = UpdateSelfProfileSchema.parse(input);
@@ -24,11 +25,7 @@ async function saveProfile(userId: string, tenantId: string, data: UpdateSelfPro
 }
 
 function storageConfig() {
-  const url = process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  const bucket = process.env.SUPABASE_AVATAR_BUCKET;
-  if (!url || !key || !bucket) throw new AppError('Profile image storage is not configured.', 503);
-  return { base: `${url.replace(/\/$/, '')}/storage/v1`, bucket: encodeURIComponent(bucket), headers: { Authorization: `Bearer ${key}`, apikey: key } };
+  return privateObjectStorage(process.env.AVATAR_STORAGE_BUCKET || 'avatars');
 }
 
 function objectKey(tenantId: string, userId: string, id: string) {
@@ -55,18 +52,8 @@ export async function uploadSelfAvatar(userId: string, tenantId: string, bytes: 
   } catch { throw new AppError('The selected file is not a valid supported image.', 400); }
   const id = randomUUID();
   const key = objectKey(tenantId, userId, id);
-  const response = await fetch(`${storage.base}/object/${storage.bucket}/${key}`, {
-    method: 'POST', headers: { ...storage.headers, 'Content-Type': 'image/webp', 'x-upsert': 'false' },
-    body: new Uint8Array(optimized), signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new AppError('Unable to store profile image. Please try again.', 502);
-  const remove = async (avatarId: string) => {
-    const deleted = await fetch(`${storage.base}/object/${storage.bucket}`, {
-      method: 'DELETE', headers: { ...storage.headers, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prefixes: [objectKey(tenantId, userId, avatarId)] }), signal: AbortSignal.timeout(15000),
-    });
-    if (!deleted.ok) throw new Error('Avatar cleanup failed');
-  };
+  await storage.put(key, optimized);
+  const remove = (avatarId: string) => storage.remove([objectKey(tenantId, userId, avatarId)]);
   let user;
   try { user = await saveProfile(userId, tenantId, { avatarUrl: `${avatarPrefix}${id}` }); }
   catch (error) { await remove(id).catch(() => console.warn('Unable to clean up uncommitted avatar')); throw error; }
@@ -79,9 +66,5 @@ export async function readSelfAvatar(userId: string, tenantId: string, id: strin
   const user = await readAuthUser(userId, tenantId);
   if (!id || storedAvatarId(user.avatarUrl) !== id) throw new AppError('Profile image not found', 404);
   const storage = storageConfig();
-  const response = await fetch(`${storage.base}/object/authenticated/${storage.bucket}/${objectKey(tenantId, userId, id)}`, {
-    headers: storage.headers, signal: AbortSignal.timeout(15000),
-  });
-  if (!response.ok) throw new AppError('Unable to load profile image.', response.status === 404 ? 404 : 502);
-  return Buffer.from(await response.arrayBuffer());
+  return storage.read(objectKey(tenantId, userId, id));
 }

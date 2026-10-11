@@ -4,6 +4,7 @@ import { RECORD_FILE_MAX_BYTES } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { AppError } from '../../../shared/errors/app-error';
 import { recordText } from '../record-validation';
+import { privateObjectStorage } from '../../../shared/services/private-object-storage';
 
 export type FileModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 const links = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' } as const;
@@ -12,9 +13,7 @@ const types = ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'text
 export const UploadMetadataSchema = z.object({ name: recordText(255).pipe(z.string().min(1)).transform(value => value.replace(/[\\/]/g, '_')), type: z.union([z.enum(types), z.literal('application/octet-stream')]) });
 
 function storage() {
-  const { SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key, SUPABASE_RECORD_FILES_BUCKET: bucket } = process.env;
-  if (!url || !key || !bucket) throw new AppError('Record file storage is not configured. Contact your administrator.', 503);
-  return { base: `${url.replace(/\/$/, '')}/storage/v1/object`, bucket: encodeURIComponent(bucket), headers: { Authorization: `Bearer ${key}`, apikey: key } };
+  return privateObjectStorage(process.env.RECORD_FILES_STORAGE_BUCKET || 'crm-record-files');
 }
 async function requireRecord(module: FileModule, id: string, tenantId: string) {
   const where = { id, tenantId, isArchived: false, deletedAt: null };
@@ -54,15 +53,16 @@ export async function uploadFile(module: FileModule, id: string | null, tenantId
     // drafts; record attachments and historical values are never cleanup targets.
     const expired = await prisma.recordFile.findMany({ where: { tenantId, uploadedById: userId, pendingModule: { not: null }, uploadedAt: { lte: new Date(Date.now() - 86400000) } }, take: 100 });
     if (expired.length) {
-      const removed = await fetch(`${config.base}/${config.bucket}`, { method: 'DELETE', headers: { ...config.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: expired.map(file => file.objectKey) }), signal: AbortSignal.timeout(15000) });
-      if (removed.ok) await prisma.recordFile.deleteMany({ where: { tenantId, uploadedById: userId, pendingModule: { not: null }, id: { in: expired.map(file => file.id) } } });
+      try {
+        await config.remove(expired.map(file => file.objectKey));
+        await prisma.recordFile.deleteMany({ where: { tenantId, uploadedById: userId, pendingModule: { not: null }, id: { in: expired.map(file => file.id) } } });
+      } catch { console.warn('Unable to clean up expired record files'); }
     }
     if (await prisma.recordFile.count({ where: { tenantId, uploadedById: userId, pendingModule: { not: null } } }) >= 100) throw new AppError('Too many unfinished file uploads. Save your current records or retry after old drafts expire.', 400);
   }
   const fileId = randomUUID();
   const key = `${encodeURIComponent(tenantId)}/${module}/${encodeURIComponent(id ?? `pending-${userId}`)}/${fileId}`;
-  const response = await fetch(`${config.base}/${config.bucket}/${key}`, { method: 'POST', headers: { ...config.headers, 'Content-Type': data.type, 'x-upsert': 'false' }, body: new Uint8Array(bytes), signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new AppError('Unable to upload file. Please try again.', 502);
+  await config.put(key, bytes);
   try {
     const file = await prisma.$transaction(async tx => {
       const saved = await tx.recordFile.create({ data: { id: fileId, tenantId, ...(id ? { [links[module]]: id } : { pendingModule: module }), uploadedById: userId, name: data.name, size: bytes.length, type: data.type, objectKey: key }, include: actor });
@@ -71,7 +71,7 @@ export async function uploadFile(module: FileModule, id: string | null, tenantId
     });
     return { ...metadata(file, module, id ?? ''), ...(!id ? { url: '' } : {}) };
   } catch (error) {
-    await fetch(`${config.base}/${config.bucket}`, { method: 'DELETE', headers: { ...config.headers, 'Content-Type': 'application/json' }, body: JSON.stringify({ prefixes: [key] }), signal: AbortSignal.timeout(15000) }).catch(() => console.warn('Unable to clean up uncommitted record file'));
+    await config.remove([key]).catch(() => console.warn('Unable to clean up uncommitted record file'));
     throw error;
   }
 }
@@ -80,7 +80,5 @@ export async function downloadFile(module: FileModule, id: string, tenantId: str
   const file = await prisma.recordFile.findFirst({ where: { id: fileId, tenantId, [links[module]]: id } });
   if (!file) throw new AppError('File not found.', 404);
   const config = storage();
-  const response = await fetch(`${config.base}/authenticated/${config.bucket}/${file.objectKey}`, { headers: config.headers, signal: AbortSignal.timeout(30000) });
-  if (!response.ok) throw new AppError('Unable to download file. Please try again.', 502);
-  return { name: file.name, bytes: Buffer.from(await response.arrayBuffer()) };
+  return { name: file.name, bytes: await config.read(file.objectKey) };
 }

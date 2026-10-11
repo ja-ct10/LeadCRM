@@ -17,7 +17,9 @@ Copy from `backend/.env.example`. Required before running the backend.
 | `PAYMONGO_SECRET_KEY` | Optional | PayMongo secret key for payment processing. |
 | `PAYMONGO_PUBLIC_KEY` | Optional | PayMongo public key. |
 | `PAYMONGO_WEBHOOK_SECRET` | Optional | For verifying webhook signatures. |
-| `SUPABASE_RECORD_FILES_BUCKET` | Required for CRM file uploads | Private Supabase Storage bucket used for Lead, Contact, and Account attachments (separate from the WebP-only avatar bucket). Allow the CRM attachment MIME types and set the maximum file size to 10 MB. |
+| `STORAGE_ROOT` | Required for uploads | Absolute path to an existing private persistent directory; `/var/lib/leadcrm/files` in the Coolify backend. |
+| `AVATAR_STORAGE_BUCKET` | Optional | Subdirectory for normalized avatars; default `avatars`. |
+| `RECORD_FILES_STORAGE_BUCKET` | Optional | Subdirectory for CRM attachments; default `crm-record-files`. |
 
 ## Frontend (`frontend/.env.local`)
 

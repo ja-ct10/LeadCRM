@@ -139,15 +139,21 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
 
   it('uses secure upload validation and claims only uploader-owned module files', async () => {
     const document = await field('accounts', 'Site plan', { type: 'File Upload', required: true });
-    vi.stubEnv('SUPABASE_URL', 'https://storage.example.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-only'); vi.stubEnv('SUPABASE_RECORD_FILES_BUCKET', 'test');
-    const originalFetch = globalThis.fetch;
-    const storage = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => String(input).startsWith('https://storage.example.test') ? Promise.resolve(new Response('stored', { status: 200 })) : originalFetch(input, init));
+    const { createPrivateStorageFixture } = await import('../../../tests/private-storage-fixture');
+    const storage = await createPrivateStorageFixture();
     try {
       const upload = async (bytes: string) => {
         const response = await fetch(`${base}/crm/accounts/custom-field-uploads?name=site.pdf&type=application/pdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, body: bytes });
         return { status: response.status, body: await response.json() };
       };
       expect((await upload('not a PDF')).status).toBe(400);
+      const fs = await import('node:fs/promises');
+      const path = await import('node:path');
+      const beforeFiles = await prisma.recordFile.count({ where: { tenantId } });
+      await fs.writeFile(path.join(storage.root, 'files'), 'blocked storage directory');
+      expect((await upload('%PDF-storage failure')).status).toBe(502);
+      expect(await prisma.recordFile.count({ where: { tenantId } })).toBe(beforeFiles);
+      await fs.rm(path.join(storage.root, 'files'));
       const pending = await upload('%PDF-test fixture'); expect(pending.status).toBe(201);
       const id = pending.body.data.id;
       expect((await prisma.recordFile.findUniqueOrThrow({ where: { id } })).pendingModule).toBe('accounts');
@@ -165,7 +171,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       const expired = await upload('%PDF-expired fixture');
       await prisma.recordFile.update({ where: { id: expired.body.data.id }, data: { uploadedAt: new Date(Date.now() - 2 * 86400000) } });
       expect((await call('/crm/accounts', 'POST', { name: 'Expired file', customFieldValues: { [document.id]: expired.body.data.id } })).status).toBe(400);
-    } finally { storage.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { await storage.cleanup(); }
   });
 
   it('attaches one pending upload to every Deal in an atomic, replayable product batch', async () => {
@@ -173,9 +179,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const products = await Promise.all(['Camera', 'Recorder'].map(name => prisma.productInterest.create({ data: { tenantId, name, dealValue: 100 } })));
     const pipeline = await tenantContext.run({ tenantId }, () => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: pipeline.pipeline.id, name: 'Lead' } });
-    vi.stubEnv('SUPABASE_URL', 'https://storage.example.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-only'); vi.stubEnv('SUPABASE_RECORD_FILES_BUCKET', 'test');
-    const originalFetch = globalThis.fetch;
-    const storage = vi.spyOn(globalThis, 'fetch').mockImplementation((input, init) => String(input).startsWith('https://storage.example.test') ? Promise.resolve(new Response('stored', { status: 200 })) : originalFetch(input, init));
+    const { createPrivateStorageFixture } = await import('../../../tests/private-storage-fixture');
+    const storage = await createPrivateStorageFixture();
     try {
       const upload = await fetch(`${base}/crm/deals/custom-field-uploads?name=site.pdf&type=application/pdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, body: '%PDF-batch fixture' });
       expect(upload.status).toBe(201);
@@ -191,7 +196,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       const replay = await call('/crm/deals/batch', 'POST', input);
       expect(replay.status).toBe(200); expect(replay.body.data.replayed).toBe(true);
       expect(await prisma.recordFile.count({ where: { tenantId } })).toBe(2);
-    } finally { storage.mockRestore(); vi.unstubAllEnvs(); }
+    } finally { await storage.cleanup(); }
   });
   it('preserves legacy groups on edit but prevents creating arbitrary or mismatched groups', async () => {
     const existing = await field('contacts', 'Legacy note');

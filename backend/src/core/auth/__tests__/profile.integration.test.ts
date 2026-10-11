@@ -1,16 +1,15 @@
 import { beforeAll, afterAll, describe, expect, it } from 'vitest';
-import { createServer, type Server } from 'node:http';
+import { type Server } from 'node:http';
 import sharp from 'sharp';
 import prisma from '../../../config/database.config';
 import { issueAuthSession } from '../auth-session';
 import app from '../../../app';
+import { createPrivateStorageFixture } from '../../../tests/private-storage-fixture';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|account_test_\d+)$/.test(url.pathname);
 describe.skipIf(!disposable)('profile and sorting persistence through authenticated HTTP', () => {
-  let server: Server, storage: Server, base: string, tenantId: string, userId: string, token: string;
-  const objects = new Map<string, Buffer>();
-  const oldStorage = { url: process.env.SUPABASE_URL, key: process.env.SUPABASE_SERVICE_ROLE_KEY, bucket: process.env.SUPABASE_AVATAR_BUCKET };
+  let server: Server, storage: Awaited<ReturnType<typeof createPrivateStorageFixture>>, base: string, tenantId: string, userId: string, token: string;
   async function request(path: string, method = 'GET', body?: unknown, auth = true) {
     const response = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${token}` } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, body: await response.json() };
@@ -20,28 +19,13 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     tenantId = tenant.id;
     const user = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email: 'profile-test@camxian.com', firstName: 'Before', lastName: 'Test', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     userId = user.id; token = (await issueAuthSession(user)).token;
-    storage = createServer(async (req, res) => {
-      const chunks: Buffer[] = []; for await (const chunk of req) chunks.push(Buffer.from(chunk));
-      const bytes = Buffer.concat(chunks);
-      if (req.headers.authorization !== 'Bearer fixture-key') { res.writeHead(401).end(); return; }
-      const key = req.url!.replace('/storage/v1/object/authenticated/', '').replace('/storage/v1/object/', '');
-      if (req.method === 'POST') { objects.set(key, bytes); res.end('{}'); }
-      else if (req.method === 'DELETE') { for (const prefix of JSON.parse(bytes.toString()).prefixes) objects.delete(`avatars/${prefix}`); res.end('{}'); }
-      else if (objects.has(key)) { res.setHeader('Content-Type', 'image/webp'); res.end(objects.get(key)); }
-      else res.writeHead(404).end('{}');
-    }).listen(0, '127.0.0.1');
-    await new Promise<void>(resolve => storage.once('listening', resolve));
-    process.env.SUPABASE_URL = `http://127.0.0.1:${(storage.address() as any).port}`;
-    process.env.SUPABASE_SERVICE_ROLE_KEY = 'fixture-key'; process.env.SUPABASE_AVATAR_BUCKET = 'avatars';
+    storage = await createPrivateStorageFixture();
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as any).port}/api/v1`;
   }, 30000);
   afterAll(async () => {
     if (server) await new Promise<void>(resolve => server.close(() => resolve()));
-    if (storage) await new Promise<void>(resolve => storage.close(() => resolve()));
-    for (const [key, value] of Object.entries({ SUPABASE_URL: oldStorage.url, SUPABASE_SERVICE_ROLE_KEY: oldStorage.key, SUPABASE_AVATAR_BUCKET: oldStorage.bucket })) {
-      if (value === undefined) delete process.env[key]; else process.env[key] = value;
-    }
+    await storage?.cleanup();
     await prisma.$disconnect();
   });
   it('persists safe fields across fresh auth reads and sessions, rejecting privileged changes', async () => {
@@ -70,7 +54,7 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     expect(image.status).toBe(200);
     expect(await sharp(Buffer.from(await image.arrayBuffer())).metadata()).toMatchObject({ width: 512, height: 512, format: 'webp' });
     expect((await request(reference.replace('/api/proxy', ''), 'GET', undefined, false)).status).toBe(401);
-    expect(objects.size).toBe(1);
+    expect(await storage.countAvatars()).toBe(1);
   });
   it('serves saved team avatars only to authorized users in the same tenant', async () => {
     const owner = await prisma.user.findUniqueOrThrow({ where: { id: userId } });
@@ -95,7 +79,7 @@ describe.skipIf(!disposable)('profile and sorting persistence through authentica
     const response = await fetch(base + '/auth/profile/avatar', { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'image/png' }, body: Buffer.alloc(5 * 1024 * 1024 + 1) });
     expect(response.status).toBe(413);
     expect((await response.json()).error).toContain('5 MB');
-    expect(objects.size).toBe(1);
+    expect(await storage.countAvatars()).toBe(1);
   });
   it('sorts all seven lead columns across server pages with filters, search without a dataset selection', async () => {
     for (const [index, name] of ['zulu', 'Alpha', 'beta'].entries()) {

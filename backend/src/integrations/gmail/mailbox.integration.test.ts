@@ -543,6 +543,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const foreignToken = (await issueAuthSession(foreignUser)).token;
     const c = await customer(2), dealId = c.deals[0].id;
     const endpoint = `/crm/deals/${dealId}/closing-requirements`;
+    let cleanupStorage: (() => Promise<void>) | undefined;
     try {
       expect((await call('/administration/closing-requirements', 'GET', undefined, denied)).status).toBe(403);
       expect((await call(endpoint, 'PATCH', { values: { 'confirmation-type': 'Approved Quotation' } }, denied)).status).toBe(403);
@@ -573,13 +574,19 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       expect(await prisma.deal.count({ where: { tenantId, title: 'Cannot import Won' } })).toBe(0);
       const foreignFile = await prisma.recordFile.create({ data: { tenantId, dealId: c.deals[1].id, name: 'other.pdf', type: 'application/pdf', size: 10, objectKey: randomUUID(), uploadedById: userId } });
       expect((await call(endpoint, 'PATCH', { values: { 'required-document': foreignFile.id } })).status).toBe(400);
-      vi.stubEnv('SUPABASE_URL', 'https://storage.example.test'); vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test'); vi.stubEnv('SUPABASE_RECORD_FILES_BUCKET', 'files');
-      let uploadFails = true;
-      vi.stubGlobal('fetch', vi.fn(async () => new Response('', { status: uploadFails ? 503 : 200 })));
+      const { createPrivateStorageFixture } = await import('../../tests/private-storage-fixture');
+      const storage = await createPrivateStorageFixture();
+      cleanupStorage = storage.cleanup;
+      const { mkdir, rm } = await import('node:fs/promises');
+      const path = await import('node:path');
+      await mkdir(path.join(storage.root, 'files'));
+      // A file in place of the tenant directory makes a real filesystem write fail.
+      const blocked = path.join(storage.root, 'files', tenantId);
+      await (await import('node:fs/promises')).writeFile(blocked, 'blocked');
       const upload = () => realFetch(`${base}/crm/deals/${dealId}/files?name=approved.pdf&type=application%2Fpdf`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/octet-stream' }, body: '%PDF-1.4\nTest document' });
       expect((await upload()).status).toBe(502);
       expect(await prisma.recordFile.count({ where: { tenantId, dealId } })).toBe(0);
-      uploadFails = false;
+      await rm(blocked);
       const response = await upload(); expect(response.status).toBe(201); const file = (await response.json()).data;
       const close = await call(endpoint, 'PATCH', { values: { 'required-document': file.id } });
       expect(close.status).toBe(200); expect(close.body.data.locked).toBe(true);
@@ -589,6 +596,6 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       await call('/administration/closing-requirements/required-document', 'PATCH', { ...document, name: 'New document label', required: false });
       expect((await prisma.deal.findUniqueOrThrow({ where: { id: dealId } })).closingSnapshot).toEqual(snapshot);
       expect((await call(endpoint, 'PATCH', { values: { 'closing-notes': 'rewrite' } })).status).toBe(400);
-    } finally { vi.unstubAllEnvs(); /* The disposable database preserves referenced field definitions until teardown. */ }
+    } finally { await cleanupStorage?.(); vi.unstubAllEnvs(); /* The disposable database preserves referenced field definitions until teardown. */ }
   });
 });
