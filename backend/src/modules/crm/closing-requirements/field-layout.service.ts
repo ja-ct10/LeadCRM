@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, upgradeAssignmentLayout, customFieldNameKey, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
+import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, FieldLayoutActionSchema, upgradeAssignmentLayout, customFieldNameKey, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { readFields } from './closing-requirements.repository';
-import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
+import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 
 type Tx = Prisma.TransactionClient;
 export const FieldModuleSchema = z.enum(CUSTOM_FIELD_MODULES);
@@ -16,7 +16,7 @@ export async function readFieldLayout(tx: Tx, tenantId: string, module: CustomFi
   if (existing) {
     const original = FieldLayoutSchema.parse(existing.value);
     const layout = upgradeAssignmentLayout(original, definitions ?? await readFields(tx, tenantId));
-    if (JSON.stringify(original) !== JSON.stringify(layout)) await tx.tenantPreference.update({ where: { tenantId_module_key: where }, data: { value: layout as unknown as Prisma.InputJsonValue } });
+    if (JSON.stringify(original) !== JSON.stringify(layout)) await bumpFieldLayoutRevision(tx, tenantId, layout);
     return layout;
   }
   const layout = defaultFieldLayout(module);
@@ -31,20 +31,32 @@ export const getFieldLayout = (tenantId: string, module: CustomFieldModule) => s
   const fields = await readFields(tx, tenantId), layout = await readFieldLayout(tx, tenantId, module, fields);
   return { layout, fields: getCrmFieldCatalog(module, fields, layout) };
 });
-const ActionSchema = z.discriminatedUnion('action', [
-  z.object({ action: z.literal('add'), label: z.string().trim().min(1).max(100) }).strict(),
-  z.object({ action: z.literal('rename'), groupId: z.string(), label: z.string().trim().min(1).max(100) }).strict(),
-  z.object({ action: z.literal('moveGroup'), groupId: z.string(), direction: z.enum(['up', 'down']) }).strict(),
-  z.object({ action: z.literal('delete'), groupId: z.string(), moveToGroupId: z.string().optional() }).strict(),
-  z.object({ action: z.literal('field'), technicalKey: z.string(), label: z.string().trim().min(1).max(100).optional(), groupId: z.string().optional(), visibleInForm: z.boolean().optional(), visibleInDetails: z.boolean().optional(), direction: z.enum(['up', 'down']).optional() }).strict(),
-]);
+export async function bumpFieldLayoutRevision(tx: Tx, tenantId: string, layout: FieldLayout) {
+  layout.revision = (layout.revision ?? 0) + 1;
+  await tx.tenantPreference.update({ where: { tenantId_module_key: preferenceKey(tenantId, layout.module) }, data: { value: layout as unknown as Prisma.InputJsonValue } });
+}
 export async function updateFieldLayout(tenantId: string, actorId: string, module: CustomFieldModule, input: unknown) {
-  const action = ActionSchema.parse(input);
+  const action = FieldLayoutActionSchema.parse(input);
   return salesTransaction(async tx => {
     const definitions = await readFields(tx, tenantId), layout = await readFieldLayout(tx, tenantId, module, definitions);
+    if (action.expectedRevision !== undefined && action.expectedRevision !== (layout.revision ?? 0)) throw new ConflictError('Field configuration changed. Refresh and retry your change.');
     const before = structuredClone(layout), catalog = getCrmFieldCatalog(module, definitions, layout);
     const group = 'groupId' in action ? layout.groups.find(group => group.id === action.groupId) : undefined;
-    if (action.action !== 'add' && action.action !== 'field' && !group) throw new NotFoundError('Field group');
+    if (!['add', 'field', 'reorderGroups'].includes(action.action) && !group) throw new NotFoundError('Field group');
+    if (action.action === 'reorderGroups') {
+      if (new Set(action.groupIds).size !== action.groupIds.length || action.groupIds.length !== layout.groups.length || action.groupIds.some(id => !layout.groups.some(group => group.id === id))) throw new ValidationError('Supply every group in this module exactly once.');
+      action.groupIds.forEach((id, order) => { layout.groups.find(group => group.id === id)!.order = order; });
+    }
+    if (action.action === 'reorderFields') {
+      const contained = catalog.filter(field => field.groupId === group!.id);
+      const ordered = action.technicalKeys.map(key => contained.find(field => field.technicalKey === key || field.canonicalTechnicalKey === key));
+      if (ordered.some(field => !field) || ordered.length !== contained.length || new Set(ordered.map(field => field?.technicalKey)).size !== contained.length) throw new ValidationError('Supply every field in this group exactly once; fields cannot move between groups by sorting.');
+      ordered.forEach((item, order) => {
+        const field = item!;
+        if (field.customFieldId) definitions.find(definition => definition.id === field.customFieldId)!.order = order;
+        else layout.fields[field.technicalKey] = { label: field.label, groupId: field.groupId, order, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails };
+      });
+    }
     if ((action.action === 'add' || action.action === 'rename') && layout.groups.some(group => group.id !== ('groupId' in action ? action.groupId : '') && customFieldNameKey(group.label) === customFieldNameKey(action.label))) throw new ValidationError('Group names must be unique within this module.');
     if (action.action === 'add') {
       if (layout.groups.length >= 100) throw new ValidationError('A module can contain at most 100 field groups.');
@@ -59,7 +71,7 @@ export async function updateFieldLayout(tenantId: string, actorId: string, modul
     if (action.action === 'delete') {
       if (group!.id === CLOSED_WON_GROUP_ID || group!.protected) throw new ValidationError('Closing evidence is a protected section and cannot be deleted.');
       const contained = catalog.filter(field => field.groupId === group!.id);
-      const target = layout.groups.find(group => group.id === action.moveToGroupId && group.id !== action.groupId && group.id !== CLOSED_WON_GROUP_ID);
+      const target = layout.groups.find(group => group.id === action.moveToGroupId && group.id !== action.groupId && group.id !== CLOSED_WON_GROUP_ID && !group.protected);
       if (contained.length && !target) throw new ValidationError('Choose another section in this module to move the fields before deleting this group.');
       if (layout.groups.length === 1) throw new ValidationError('Keep at least one field group.');
       for (const field of contained) {
@@ -69,7 +81,7 @@ export async function updateFieldLayout(tenantId: string, actorId: string, modul
       layout.groups = layout.groups.filter(item => item.id !== action.groupId);
     }
     if (action.action === 'field') {
-      const field = catalog.find(field => field.technicalKey === action.technicalKey);
+      const field = catalog.find(field => field.technicalKey === action.technicalKey || field.canonicalTechnicalKey === action.technicalKey);
       if (!field) throw new ValidationError('Choose a supported field in this module.');
       const target = action.groupId ? layout.groups.find(group => group.id === action.groupId) : layout.groups.find(group => group.id === field.groupId);
       if (!target) throw new ValidationError('Choose a section in this module.');
@@ -97,8 +109,8 @@ export async function updateFieldLayout(tenantId: string, actorId: string, modul
       await tx.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: definition.id } }, data: { definition: definition as unknown as Prisma.InputJsonValue } });
     }
     if (Object.keys(layout.fields).some(key => !CRM_SYSTEM_FIELDS[module].some(field => field.technicalKey === key))) throw new ValidationError('Unsupported system field.');
-    await tx.tenantPreference.update({ where: { tenantId_module_key: preferenceKey(tenantId, module) }, data: { value: layout as unknown as Prisma.InputJsonValue } });
-    await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'field_layout.updated', entityType: module, entityId: module, changeset: { before, after: layout } as unknown as Prisma.InputJsonValue } });
+    await bumpFieldLayoutRevision(tx, tenantId, layout);
+    await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'field_layout.updated', entityType: module, entityId: module, changeset: { before, after: layout, command: action } as unknown as Prisma.InputJsonValue } });
     return { layout, fields: getCrmFieldCatalog(module, definitions, layout) };
   });
 }

@@ -1,4 +1,4 @@
-import { getWorkflowUpdateFields, closingValueError, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { getWorkflowUpdateFields, closingValueError, resolveCustomFieldReference, WORKFLOW_MODULES, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { workflowCustomFields } from '../workflows/workflow-fields';
 import { z } from 'zod';
 import prisma from '../../../config/database.config';
@@ -22,7 +22,9 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
     throw new ValidationError('Deal Product and value are historical snapshots. Disable or remove this action.');
   }
   const customFields = String(config.field).startsWith('customFieldValues.') ? await workflowCustomFields(tenantId) : [];
-  const field = getWorkflowUpdateFields(entity, customFields).find(f => f.field === config.field);
+  const custom = resolveCustomFieldReference(WORKFLOW_MODULES[entity], String(config.field), customFields);
+  const key = custom ? `customFieldValues.${custom.id}` : config.field;
+  const field = getWorkflowUpdateFields(entity, customFields).find(f => f.field === key);
   if (!field) {
     const retired = entity === 'lead' ? ['website', 'description', 'tags', 'productInterest']
       : entity === 'contact' ? ['jobTitle', 'notes', 'tags', 'productInterests', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason']

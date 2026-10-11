@@ -7,6 +7,10 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { salesPipeline, salesTransaction } from '../leads/lead-automation.service';
 import { CUSTOM_FIELD_BUILT_IN_GROUPS, type ClosingField, type CustomFieldModule } from '@leadcrm/shared';
 import app from '../../../app';
+import { fieldUpdatePatch } from '../../automation/actions/action-fields';
+import { compatibleWorkflow, conditionFields } from '../../automation/workflows/workflow-fields';
+import { entityContext } from '../../automation/workflows/workflows.repository';
+import { resolveAudience } from '../../marketing/campaigns/audiences.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custom_fields_test')('module custom fields with real SQL and authenticated HTTP', () => {
@@ -262,4 +266,112 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     expect(await prisma.customFieldValue.count({ where: { tenantId, fieldId: budget.id } })).toBe(1);
   });
 
+  it('backfills the existing Age identity idempotently and preserves its stored row through rename and reorder', async () => {
+    const id = '2857e8ec-456d-4503-b955-46db45560974';
+    const definition = { id, name: 'Age', type: 'Number', module: 'leads', group: 'Basic Information', groupId: 'leads:section:0', active: true, visibleInForm: true, visibleInDetails: true, required: false, options: [], description: '', order: 0, version: 7 };
+    await prisma.closingFieldDefinition.create({ data: { tenantId, id, definition } });
+    const record = await prisma.lead.create({ data: { tenantId, ...person() } });
+    const stored = await prisma.customFieldValue.create({ data: { tenantId, fieldId: id, module: 'leads', leadId: record.id, value: 37 } });
+    const first = (await call('/administration/closing-requirements/layout/leads')).body.data;
+    expect(first.fields.find((field: { customFieldId: string }) => field.customFieldId === id).technicalKey).toBe('customFieldValues.age');
+    const metadata = (await prisma.closingFieldDefinition.findUniqueOrThrow({ where: { tenantId_id: { tenantId, id } } })).definition;
+    await call('/administration/closing-requirements/layout/leads');
+    expect((await prisma.closingFieldDefinition.findUniqueOrThrow({ where: { tenantId_id: { tenantId, id } } })).definition).toEqual(metadata);
+    expect((await call(`/administration/closing-requirements/${id}`, 'PATCH', { name: 'Customer Age' })).status).toBe(200);
+    const layout = (await call('/administration/closing-requirements/layout/leads')).body.data;
+    const keys = layout.fields.filter((field: { groupId: string }) => field.groupId === definition.groupId).map((field: { technicalKey: string }) => field.technicalKey).reverse();
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'reorderFields', groupId: definition.groupId, technicalKeys: keys, expectedRevision: layout.layout.revision ?? 0 })).status).toBe(200);
+    expect(await prisma.customFieldValue.findUniqueOrThrow({ where: { id: stored.id } })).toEqual(stored);
+    const reloaded = (await call(`/crm/leads/${record.id}/custom-fields`)).body.data;
+    expect(reloaded.values[id]).toBe(37); expect(reloaded.fields.find((field: ClosingField) => field.id === id)).toMatchObject({ name: 'Customer Age', technicalAlias: 'age' });
+    expect((await call(`/crm/leads/${record.id}`, 'PUT', { customFieldValues: { 'customFieldValues.age': 38 } })).status).toBe(200);
+    expect((await call(`/crm/leads/${record.id}`, 'PUT', { customFieldValues: { [id]: 39 } })).status).toBe(200);
+    expect((await call(`/crm/leads/${record.id}/custom-fields`)).body.data.values[id]).toBe(39);
+    expect((await call(`/crm/leads/${record.id}`, 'PUT', { customFieldValues: { age: 40, [id]: 41 } })).status).toBe(400);
+  });
+
+  it('allocates distinct aliases for simultaneous creates and scopes identical aliases to their module and tenant', async () => {
+    const [one, two] = await Promise.all([field('leads', 'Age!'), field('leads', 'Age?')]);
+    expect(new Set([one.technicalAlias, two.technicalAlias])).toEqual(new Set(['age', 'age-2']));
+    const contact = await field('contacts', 'Age'); expect(contact.technicalAlias).toBe('age');
+    const created = await call('/crm/leads', 'POST', { ...person(), customFieldValues: { [contact.id]: 'Wrong module' } }); expect(created.status).toBe(400);
+    const otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
+    const otherFieldId = randomUUID();
+    await prisma.closingFieldDefinition.create({ data: { tenantId: otherTenant, id: otherFieldId, definition: { ...one, id: otherFieldId, technicalAlias: 'private-age' } } });
+    expect((await call('/crm/leads', 'POST', { ...person(), customFieldValues: { 'customFieldValues.private-age': 'Wrong tenant' } })).status).toBe(400);
+    expect((await call('/administration/closing-requirements', 'POST', { module: 'leads', group: 'Basic Information', name: 'Constructor', type: 'Text', required: false })).status).toBe(400);
+  });
+
+  it('resolves readable and legacy Workflow conditions/actions and Campaign audiences/personalization to the same values', async () => {
+    const age = await field('leads', 'Age', { type: 'Number' });
+    const created = await call('/crm/leads', 'POST', { ...person(), customFieldValues: { 'customFieldValues.age': 37 } }); expect(created.status).toBe(201);
+    const run = <T>(fn: () => Promise<T>) => tenantContext.run({ tenantId }, fn);
+    for (const key of ['customFieldValues.age', `customFieldValues.${age.id}`]) {
+      expect(await run(() => fieldUpdatePatch({ type: 'update_field', config: { field: key, value: 40 } }, 'lead', tenantId))).toEqual({ customFieldValues: { [age.id]: 40 } });
+      const fields = await run(() => conditionFields({ name: 'Check', trigger: 'lead.updated', conditions: { operator: 'AND', conditions: [{ field: 'lead.' + key, operator: 'equals', value: 37 }] }, actions: [] }, tenantId));
+      expect(fields.some(field => field.field === 'lead.' + key)).toBe(true);
+      expect((await run(() => entityContext('lead', created.body.data.id, tenantId)))?.['lead.' + key]).toBe(37);
+      const audience = await run(() => resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: key, operator: 'equals', value: 37 }] }));
+      expect(audience.records).toHaveLength(1); expect(audience.records[0].personalization[key]).toBe('37');
+    }
+    const stored = await prisma.workflow.create({ data: { tenantId, name: 'Alias editor', trigger: 'lead.updated', conditions: { operator: 'AND', conditions: [{ field: 'lead.customFieldValues.age', operator: 'equals', value: 37 }] }, actions: [{ type: 'update_field', config: { field: 'customFieldValues.age', value: 40 } }] } });
+    const adapted = await run(() => compatibleWorkflow(stored, tenantId));
+    expect(adapted.conditions).toMatchObject({ conditions: [{ field: `lead.customFieldValues.${age.id}` }] });
+    expect(adapted.actions).toMatchObject([{ config: { field: `customFieldValues.${age.id}` } }]);
+    expect((await prisma.workflow.findUniqueOrThrow({ where: { id: stored.id } })).conditions).toEqual(stored.conditions);
+    await call(`/administration/closing-requirements/${age.id}`, 'PATCH', { active: false });
+    await expect(run(() => fieldUpdatePatch({ type: 'update_field', config: { field: 'customFieldValues.age', value: 40 } }, 'lead', tenantId))).rejects.toThrow('editable');
+  });
+
+  it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('authorizes %s inline partial updates by record permission, preserving other values and identities', async module => {
+    const count = await field(module, 'Inline Count', { type: 'Number' });
+    const note = await field(module, 'Inline Note');
+    let id: string;
+    if (module === 'deals') {
+      const product = await prisma.productInterest.create({ data: { tenantId, name: 'Inline product', dealValue: 100 } });
+      const pipeline = await tenantContext.run({ tenantId }, () => salesTransaction(tx => salesPipeline(tx, tenantId)));
+      const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: pipeline.pipeline.id, name: 'Lead' } });
+      const created = await call('/crm/deals/batch', 'POST', { title: 'Inline Deal', pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: [product.id], idempotencyKey: randomUUID(), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
+      expect(created.status, JSON.stringify(created.body)).toBe(201); id = created.body.data.deals[0].id;
+    } else {
+      const created = await call(`/crm/${module}`, 'POST', { ...(module === 'accounts' ? { name: 'Inline Account' } : person()), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
+      expect(created.status).toBe(201); id = created.body.data.id;
+    }
+    const userFor = async (name: string, canEdit: boolean, configEditor: boolean) => {
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name } });
+      const user = await prisma.user.create({ data: { tenantId, firstName: name, lastName: 'Tester', email: `${randomUUID()}@camxian.com`, role: name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+      await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canEdit } });
+      if (configEditor) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'custom_fields', canView: true, canEdit: true } });
+      await prisma.userRole.create({ data: { tenantId, userId: user.id, roleId: role.id } });
+      return (await issueAuthSession(user)).token;
+    };
+    const reader = await userFor('Configuration editor', false, true);
+    expect((await call(`/crm/${module}/${id}/custom-fields`, 'GET', undefined, reader)).status).toBe(200);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [count.id]: 3 } }, reader)).status).toBe(403);
+    const editor = await userFor('Record editor', true, false);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [count.id]: 0 } }, editor)).status).toBe(200);
+    let state = (await call(`/crm/${module}/${id}/custom-fields`)).body.data;
+    expect(state.values[count.id]).toBe(0); expect(state.values[note.id]).toBe('Keep');
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [count.id]: null } }, editor)).status).toBe(200);
+    state = (await call(`/crm/${module}/${id}/custom-fields`)).body.data;
+    expect(state.values[count.id]).toBeNull(); expect(state.values[note.id]).toBe('Keep');
+    const column = module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : module === 'accounts' ? 'accountId' : 'dealId';
+    expect(await prisma.customFieldValue.count({ where: { tenantId, module, fieldId: count.id, [column]: id } })).toBe(1);
+    expect(state.fields.find((field: ClosingField) => field.id === count.id).technicalAlias).toBe(count.technicalAlias);
+  });
+
+  it('rejects stale layout revisions and protects group deletion with delete permission', async () => {
+    expect((await call('/administration/closing-requirements', 'POST', [])).status).toBe(400);
+    const initial = (await call('/administration/closing-requirements/layout/leads')).body.data.layout;
+    const groupIds = [...initial.groups].reverse().map((group: { id: string }) => group.id);
+    const input = { action: 'reorderGroups', groupIds, expectedRevision: initial.revision ?? 0 };
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', input)).status).toBe(200);
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', input)).status).toBe(409);
+    expect((await call('/administration/closing-requirements', 'POST', { module: 'leads', group: 'Basic Information', name: 'Stale draft', type: 'Text', required: false, expectedRevision: initial.revision ?? 0 })).status).toBe(409);
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Layout editor' } });
+    await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'custom_fields', canView: true, canEdit: true } });
+    const editor = await prisma.user.create({ data: { tenantId, firstName: 'Layout', lastName: 'Editor', email: `${randomUUID()}@camxian.com`, role: role.name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId: editor.id } }); const auth = (await issueAuthSession(editor)).token;
+    expect((await call('/administration/closing-requirements/layout/leads', 'PATCH', { action: 'delete', groupId: initial.groups[0].id, moveToGroupId: initial.groups[1].id }, auth)).status).toBe(403);
+  });
 });

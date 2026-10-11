@@ -1,16 +1,28 @@
 import { z } from 'zod';
+import { customFieldTechnicalKey } from './custom-field-identity';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { CRM_STATUSES, LEAD_SOURCES, COMPANY_SIZE_OPTIONS } from './record-experience';
 import { CLOSED_WON_GROUP_ID, CUSTOM_FIELD_BUILT_IN_GROUPS, CUSTOM_FIELD_MODULES, customFieldNameKey, isClosedWonField, isSystemClosingField, normalizeCustomField, type ClosingField, type CustomFieldModule } from './closing-requirements';
 
 export const FieldGroupSchema = z.object({ id: z.string().min(1).max(100), label: z.string().trim().min(1).max(100), order: z.number().int().min(0).max(100000), protected: z.boolean().optional() }).strict();
 export const NativeFieldOverrideSchema = z.object({ label: z.string().trim().min(1).max(100), groupId: z.string().min(1).max(100), order: z.number().int().min(0).max(100000), visibleInForm: z.boolean(), visibleInDetails: z.boolean() }).strict();
-export const FieldLayoutSchema = z.object({ version: z.literal(1), module: z.enum(CUSTOM_FIELD_MODULES), groups: z.array(FieldGroupSchema).min(1).max(100), fields: z.record(z.string(), NativeFieldOverrideSchema) }).strict();
+export const FieldLayoutSchema = z.object({ version: z.literal(1), revision: z.number().int().nonnegative().optional(), module: z.enum(CUSTOM_FIELD_MODULES), groups: z.array(FieldGroupSchema).min(1).max(100), fields: z.record(z.string(), NativeFieldOverrideSchema) }).strict();
 export type FieldGroup = z.infer<typeof FieldGroupSchema>;
 export type FieldLayout = z.infer<typeof FieldLayoutSchema>;
+const layoutRevision = z.number().int().nonnegative();
+export const FieldLayoutActionSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('add'), label: z.string().trim().min(1).max(100), expectedRevision: layoutRevision.optional() }).strict(),
+  z.object({ action: z.literal('rename'), groupId: z.string(), label: z.string().trim().min(1).max(100), expectedRevision: layoutRevision.optional() }).strict(),
+  z.object({ action: z.literal('moveGroup'), groupId: z.string(), direction: z.enum(['up', 'down']), expectedRevision: layoutRevision.optional() }).strict(),
+  z.object({ action: z.literal('delete'), groupId: z.string(), moveToGroupId: z.string().optional(), expectedRevision: layoutRevision.optional() }).strict(),
+  z.object({ action: z.literal('field'), technicalKey: z.string(), label: z.string().trim().min(1).max(100).optional(), groupId: z.string().optional(), visibleInForm: z.boolean().optional(), visibleInDetails: z.boolean().optional(), direction: z.enum(['up', 'down']).optional(), expectedRevision: layoutRevision.optional() }).strict(),
+  z.object({ action: z.literal('reorderGroups'), groupIds: z.array(z.string().min(1)).min(1).max(100), expectedRevision: layoutRevision }).strict(),
+  z.object({ action: z.literal('reorderFields'), groupId: z.string().min(1), technicalKeys: z.array(z.string().min(1)).min(1).max(200), expectedRevision: layoutRevision }).strict(),
+]);
+export type FieldLayoutAction = z.infer<typeof FieldLayoutActionSchema>;
 export type CrmFieldType = 'text' | 'longText' | 'number' | 'date' | 'dropdown' | 'reference' | 'products' | 'file' | 'boolean';
 export interface CrmFieldCatalogEntry {
-  technicalKey: string; label: string; module: CustomFieldModule; kind: 'System' | 'Custom'; type: CrmFieldType;
+  technicalKey: string; canonicalTechnicalKey?: string; label: string; module: CustomFieldModule; kind: 'System' | 'Custom'; type: CrmFieldType;
   groupId: string; group: string; order: number; required: boolean; mandatory: boolean; active: boolean;
   visibleInForm: boolean; visibleInDetails: boolean; conditionAvailable: boolean; personalizationAvailable: boolean;
   unavailableReason?: string; options?: readonly string[]; customFieldId?: string; reference?: 'account' | 'user' | 'stage' | 'pipeline';
@@ -36,7 +48,7 @@ export function getCrmFieldCatalog(module: CustomFieldModule, definitions: Closi
   });
   const custom = definitions.map(normalizeCustomField).filter(field => field.module === module && !field.deletedAt).map((field): CrmFieldCatalogEntry => {
     const groupId = field.groupId ?? groups.find(group => customFieldNameKey(group.label) === customFieldNameKey(field.group))?.id ?? defaultFieldGroupId(module, field.group);
-    return { technicalKey: `customFieldValues.${field.id}`, customFieldId: field.id, label: field.name, module, kind: isSystemClosingField(field) ? 'System' : 'Custom', type: field.type === 'Text' ? 'text' : field.type === 'Long Text' ? 'longText' : field.type === 'Number' ? 'number' : field.type === 'Date' ? 'date' : field.type === 'Dropdown' ? 'dropdown' : 'file', groupId, group: groups.find(group => group.id === groupId)?.label ?? field.group, order: field.order, required: field.required, mandatory: false, active: field.active, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, conditionAvailable: field.active && !isClosedWonField(field), personalizationAvailable: field.active && field.type !== 'File Upload' && !isClosedWonField(field), options: field.options, ...(field.type === 'File Upload' ? { unavailableReason: 'Private files support presence conditions only; file links cannot be personalized.' } : {}) };
+    return { technicalKey: customFieldTechnicalKey(field), canonicalTechnicalKey: `customFieldValues.${field.id}`, customFieldId: field.id, label: field.name, module, kind: isSystemClosingField(field) ? 'System' : 'Custom', type: field.type === 'Text' ? 'text' : field.type === 'Long Text' ? 'longText' : field.type === 'Number' ? 'number' : field.type === 'Date' ? 'date' : field.type === 'Dropdown' ? 'dropdown' : 'file', groupId, group: groups.find(group => group.id === groupId)?.label ?? field.group, order: field.order, required: field.required, mandatory: false, active: field.active, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, conditionAvailable: field.active && !isClosedWonField(field), personalizationAvailable: field.active && field.type !== 'File Upload' && !isClosedWonField(field), options: field.options, ...(field.type === 'File Upload' ? { unavailableReason: 'Private files support presence conditions only; file links cannot be personalized.' } : {}) };
   });
   return [...standard, ...custom].sort((a, b) => (groups.find(group => group.id === a.groupId)?.order ?? 100000) - (groups.find(group => group.id === b.groupId)?.order ?? 100000) || a.order - b.order || a.technicalKey.localeCompare(b.technicalKey));
 }

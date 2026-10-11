@@ -117,7 +117,7 @@ it.each((['leads', 'contacts', 'accounts', 'deals'] as const).flatMap(module => 
   render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
   await screen.findByText('Agent: Actual Agent');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  expect(screen.getByText('Assigned Agent')).toBeTruthy();
+  expect(screen.getByText('Assigned Agent', { selector: 'dt' })).toBeTruthy();
   expect(screen.queryByText(/Owner \/ Representative|Assigned user|Rep:/)).toBeNull();
 });
 

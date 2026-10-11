@@ -37,7 +37,7 @@ export const ClosingFieldInputSchema = z.object({
   }
 });
 export type ClosingFieldInput = z.infer<typeof ClosingFieldInputSchema>;
-export type ClosingField = ClosingFieldInput & { id: string; version: number; deletedAt?: string; deletedById?: string };
+export type ClosingField = ClosingFieldInput & { id: string; version: number; technicalAlias?: string; deletedAt?: string; deletedById?: string };
 export type ClosingValues = Record<string, string | number | null>;
 export const CustomFieldValuesSchema = z.record(z.string().min(1).max(100), z.union([z.string().max(10000), z.number().finite(), z.null()])).refine(v => Object.keys(v).length <= 100, 'Supply at most 100 field values.');
 export interface CustomFieldState { fields: ClosingField[]; values: ClosingValues; files: { id: string; name: string; url: string }[]; layout?: import('./field-catalog').FieldLayout }

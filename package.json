@@ -18,6 +18,7 @@
   ],
   "scripts": {
     "dev": "turbo run dev",
+    "dev:local": "node scripts/dev-local.cjs",
     "build": "turbo run build",
     "lint": "turbo run lint"
   },

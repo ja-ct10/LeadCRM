@@ -183,7 +183,7 @@ async function effectiveContent(campaign: { type: CampaignType; subject: string 
 }
 async function validateCampaignVariables(tenantId: string, definition: AudienceInput, subject: string, body: string, tx: Prisma.TransactionClient) {
   const fields = await validateAudienceReferences(tenantId, definition, tx);
-  const available = new Set<string>([...EMAIL_VARIABLES, ...fields.filter(field => field.personalizationAvailable).map(field => field.technicalKey)]);
+  const available = new Set<string>([...EMAIL_VARIABLES, ...fields.filter(field => field.personalizationAvailable).flatMap(field => [field.technicalKey, ...(field.canonicalTechnicalKey ? [field.canonicalTechnicalKey] : [])])]);
   const unavailable = campaignVariableKeys(subject + '\n' + body).filter(key => !available.has(key));
   if (unavailable.length) throw new AppError(`Repair unavailable campaign variables: ${unavailable.map(key => '{{' + key + '}}').join(', ')}.`, 400);
 }

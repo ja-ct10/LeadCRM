@@ -41,8 +41,25 @@ const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
 try {
   const root = resolve(import.meta.dirname, '..');
-  const child = spawn(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', 'src/modules/crm/closing-requirements/custom-fields.integration.test.ts', '--maxWorkers=1'], {
-    cwd: root, stdio: 'inherit', windowsHide: true, env: { ...process.env, DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_custom_fields_test?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex') },
-  });
+  const url = `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_custom_fields_test?connection_limit=1&statement_cache_size=0`;
+  const env = { ...process.env, DATABASE_URL: url, DIRECT_URL: url, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex') };
+  const child = spawn(process.execPath, [resolve(root, '../node_modules/vitest/vitest.mjs'), 'run', 'src/modules/crm/closing-requirements/custom-fields.integration.test.ts', '--maxWorkers=1'], { cwd: root, stdio: 'inherit', windowsHide: true, env });
   process.exitCode = await new Promise(done => child.on('exit', code => done(code ?? 1)));
+  if (!process.exitCode) {
+    await db.exec(`INSERT INTO "User" ("id","tenantId","firstName","lastName","email","role","status","updatedAt") VALUES ('custom-alias-admin','custom-migration','Alias','Admin','alias-maintenance@example.test','Client Admin','ACTIVE',now())`);
+    const preserved = (await db.query(`SELECT "closingValues", "closingSnapshot" FROM "Deal" WHERE "id"='custom-deal'`)).rows;
+    const retainedRows = (await db.query(`SELECT * FROM "CustomFieldValue" WHERE "tenantId"='custom-migration' ORDER BY "id"`)).rows;
+    let metadata;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const backfill = spawn(process.execPath, ['-r', 'ts-node/register', 'scripts/custom-field-aliases.ts', '--apply', '--tenant', 'custom-migration', '--actor', 'custom-alias-admin'], { cwd: root, stdio: 'inherit', windowsHide: true, env });
+      assert.equal(await new Promise(done => backfill.on('exit', code => done(code ?? 1))), 0);
+      const current = (await db.query(`SELECT "id", "definition" FROM "ClosingFieldDefinition" WHERE "tenantId"='custom-migration'`)).rows;
+      assert.equal(current[0].id, 'legacy-reference'); assert.equal(current[0].definition.version, 7); assert.equal(current[0].definition.technicalAlias, 'reference');
+      if (metadata) assert.deepEqual(current, metadata); metadata = current;
+      assert.deepEqual((await db.query(`SELECT * FROM "CustomFieldValue" WHERE "tenantId"='custom-migration' ORDER BY "id"`)).rows, retainedRows);
+      assert.deepEqual((await db.query(`SELECT "closingValues", "closingSnapshot" FROM "Deal" WHERE "id"='custom-deal'`)).rows, preserved);
+    }
+    assert.equal((await db.query(`SELECT count(*)::integer AS total FROM "AuditLog" WHERE "tenantId"='custom-migration' AND "action"='custom_field.alias_backfill_v1'`)).rows[0].total, 1);
+    console.log('Alias maintenance applied twice: immutable metadata, values, history, and single audit attribution verified.');
+  }
 } finally { await socket.stop(); await db.close(); }

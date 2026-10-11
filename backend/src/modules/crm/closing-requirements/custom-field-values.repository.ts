@@ -1,12 +1,24 @@
 import { Prisma, type RecordFile } from '@prisma/client';
 import { z } from 'zod';
-import { CustomFieldValuesSchema, closingValueError, isClosedWonField, CLOSING_FILE_MAX_BYTES, type ClosingValues, type CustomFieldModule } from '@leadcrm/shared';
+import { CustomFieldValuesSchema, closingValueError, resolveCustomFieldReference, isClosedWonField, CLOSING_FILE_MAX_BYTES, type ClosingField, type ClosingValues, type CustomFieldModule } from '@leadcrm/shared';
 import { readFields } from './closing-requirements.repository';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 
 type Tx = Prisma.TransactionClient;
 export const recordLinks = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' } as const;
 export type BatchFiles = Map<string, RecordFile>;
+
+/** Canonicalize only at a validated, tenant-scoped write boundary. Responses retain IDs. */
+export function canonicalFieldValues(module: CustomFieldModule, input: ClosingValues, fields: ClosingField[]): ClosingValues {
+  const result: ClosingValues = {};
+  for (const [reference, value] of Object.entries(input)) {
+    const field = resolveCustomFieldReference(module, reference, fields);
+    if (!field) throw new ValidationError('Choose an available custom field belonging to this module.');
+    if (Object.prototype.hasOwnProperty.call(result, field.id)) throw new ValidationError('Supply each custom field once; do not combine its alias and canonical ID.');
+    Object.defineProperty(result, field.id, { value, enumerable: true, configurable: true, writable: true });
+  }
+  return result;
+}
 
 export async function requireCustomFieldRecord(tx: Tx, tenantId: string, module: CustomFieldModule, id: string, editing = false) {
   const where = { tenantId, id, ...(editing || module === 'leads' ? { isArchived: false, deletedAt: null } : {}) };
@@ -34,8 +46,8 @@ export async function persistValues(tx: Tx, tenantId: string, module: CustomFiel
 /** Called inside the record mutation's transaction: invalid values roll back the entire save. */
 export async function saveRecordValues(tx: Tx, tenantId: string, module: CustomFieldModule, recordId: string, input: unknown, actorId?: string, batchFiles?: BatchFiles) {
   await requireCustomFieldRecord(tx, tenantId, module, recordId, true);
-  const patch = CustomFieldValuesSchema.parse(input ?? {});
   const fields = (await readFields(tx, tenantId)).filter(field => field.module === module && !isClosedWonField(field));
+  const patch = canonicalFieldValues(module, CustomFieldValuesSchema.parse(input ?? {}), fields);
   const editable = fields.filter(field => field.active && field.visibleInForm);
   if (Object.keys(patch).some(id => !editable.some(field => field.id === id))) throw new ValidationError('Choose an active, visible custom field belonging to this module.');
   const previous = await readRecordValues(tx, tenantId, module, recordId);

@@ -10,7 +10,7 @@ export function campaignFields(source: 'LEADS' | 'CONTACTS', definitions: Closin
 }
 export function campaignConditionField(key: string, fields: CrmFieldCatalogEntry[]) {
   const native = key === 'productInterest' ? 'productInterestIds' : key === 'company' ? (fields[0]?.module === 'leads' ? 'companyName' : 'company') : key;
-  return fields.find(field => field.technicalKey === native);
+  return fields.find(field => field.technicalKey === native || field.canonicalTechnicalKey === native);
 }
 export function campaignFieldOperators(field?: CrmFieldCatalogEntry): AudienceCondition['operator'][] {
   const presence: AudienceCondition['operator'][] = ['is_empty', 'is_not_empty'];

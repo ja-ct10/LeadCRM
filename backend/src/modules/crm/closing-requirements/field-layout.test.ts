@@ -3,10 +3,12 @@ import { CLOSED_WON_GROUP_ID, DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrm
 
 const state = vi.hoisted(() => ({ definitions: [] as Array<{ tenantId: string; id: string; definition: unknown }>, preferences: [] as Array<{ tenantId: string; module: string; key: string; value: unknown }>, values: [] as Array<{ fieldId: string; value: unknown }>, workflows: [] as unknown[], forms: [] as unknown[], audiences: [] as unknown[], templates: [] as unknown[], campaigns: [] as unknown[], audits: [] as unknown[] }));
 const tx = vi.hoisted(() => ({
+  $queryRaw: vi.fn(async () => []),
   closingFieldDefinition: {
     findMany: vi.fn(async ({ where }: any) => structuredClone(state.definitions.filter(row => row.tenantId === where.tenantId))),
     createMany: vi.fn(async ({ data }: any) => { state.definitions.push(...data); }),
     create: vi.fn(async ({ data }: any) => { state.definitions.push(data); return data; }),
+    findUniqueOrThrow: vi.fn(async ({ where }: any) => structuredClone(state.definitions.find(row => row.id === where.tenantId_id.id && row.tenantId === where.tenantId_id.tenantId)!)),
     update: vi.fn(async ({ where, data }: any) => { const row = state.definitions.find(row => row.id === where.tenantId_id.id && row.tenantId === where.tenantId_id.tenantId)!; Object.assign(row, data); return row; }),
   },
   tenantPreference: {
@@ -24,6 +26,8 @@ vi.mock('../deals/deals.repository', () => ({ moveDealStage: vi.fn() }));
 import { getFieldLayout, updateFieldLayout } from './field-layout.service';
 import { deleteField, referencesCustomField, saveField } from './closing-requirements.service';
 import { readFields } from './closing-requirements.repository';
+import { canonicalFieldValues } from './custom-field-values.repository';
+import { customFieldAliasBase, resolveCustomFieldReference } from '@leadcrm/shared';
 
 beforeEach(() => { for (const values of Object.values(state)) values.length = 0; state.definitions.push(...DEFAULT_CLOSING_FIELDS.map(definition => ({ tenantId: 'tenant', id: definition.id, definition }))); vi.clearAllMocks(); });
 const createField = (extra = {}) => saveField('tenant', 'actor', { module: 'leads', group: 'Basic Information', type: 'Number', name: 'Budget', required: false, ...extra });
@@ -39,7 +43,7 @@ describe('field configuration identity and preservation', () => {
     await updateFieldLayout('tenant', 'actor', 'leads', { action: 'moveGroup', groupId: group.id, direction: 'up' });
     await saveField('tenant', 'actor', { name: 'Project value', visibleInDetails: false }, budget.id);
     const next = await getFieldLayout('tenant', 'leads'), entry = next.fields.find(field => field.customFieldId === budget.id)!;
-    expect(entry).toMatchObject({ label: 'Project value', technicalKey: `customFieldValues.${budget.id}`, groupId: group.id, group: 'Project information', visibleInDetails: false });
+    expect(entry).toMatchObject({ label: 'Project value', technicalKey: 'customFieldValues.budget', canonicalTechnicalKey: `customFieldValues.${budget.id}`, groupId: group.id, group: 'Project information', visibleInDetails: false });
     expect(state.values).toEqual([{ fieldId: budget.id, value: 0 }]);
     expect(next.layout.groups.find(item => item.id === group.id)?.order).toBe(first.layout.groups.length - 1);
     await updateFieldLayout('tenant', 'actor', 'leads', { action: 'field', technicalKey: 'email', label: 'Work email' });
@@ -123,4 +127,67 @@ it('preserves administrator assignment labels, visibility, order, and group plac
   const result = await getFieldLayout('tenant', 'contacts');
   expect(result.layout).toEqual(layout);
   expect(result.fields.find(field => field.technicalKey === 'assignedUserId')).toMatchObject({ label: 'Case manager', group: 'Client team', order: 42, visibleInForm: false });
+});
+
+it('backfills the legacy Age ID once, preserves values and keeps its alias after renaming', async () => {
+  const id = '2857e8ec-456d-4503-b955-46db45560974';
+  const legacy = { ...DEFAULT_CLOSING_FIELDS[2], id, module: 'leads', group: 'Basic Information', groupId: 'leads:section:0', name: 'Age', type: 'Number', version: 7 } as ClosingField;
+  state.definitions.push({ tenantId: 'tenant', id, definition: legacy }); state.values.push({ fieldId: id, value: 37 });
+  const first = await readFields(tx as any, 'tenant');
+  expect(first.find(field => field.id === id)).toMatchObject({ id, technicalAlias: 'age', version: 7 });
+  const writes = tx.closingFieldDefinition.update.mock.calls.length;
+  await readFields(tx as any, 'tenant'); expect(tx.closingFieldDefinition.update.mock.calls).toHaveLength(writes);
+  await saveField('tenant', 'actor', { name: 'Customer Age' }, id);
+  const next = await readFields(tx as any, 'tenant');
+  expect(resolveCustomFieldReference('leads', 'customFieldValues.age', next)?.id).toBe(id);
+  expect(resolveCustomFieldReference('leads', `customFieldValues.${id}`, next)?.id).toBe(id);
+  expect(resolveCustomFieldReference('contacts', 'customFieldValues.age', next)).toBeUndefined();
+  expect(state.values).toEqual([{ fieldId: id, value: 37 }]);
+  await expect(saveField('tenant', 'actor', { technicalAlias: 'customer-age' }, id)).rejects.toThrow();
+});
+
+it('normalizes readable aliases and reserves collisions, canonical identifiers and retired aliases', async () => {
+  expect(customFieldAliasBase('  Fávöríte  Number!? ')).toBe('favorite-number');
+  const one = await createField({ name: 'Favorite Number!' }), two = await createField({ name: 'Favorite Number?' });
+  expect(one.technicalAlias).toBe('favorite-number'); expect(two.technicalAlias).toBe('favorite-number-2');
+  await deleteField('tenant', 'actor', one.id);
+  expect((await createField({ name: 'Favorite Number#' })).technicalAlias).toBe('favorite-number-3');
+  for (const name of ['!!!', 'constructor']) await expect(createField({ name })).rejects.toThrow('technical alias');
+});
+
+it('canonicalizes alias values without mixing duplicate identities or modules', async () => {
+  const field = await createField();
+  expect(canonicalFieldValues('leads', { 'customFieldValues.budget': 42 }, [field])).toEqual({ [field.id]: 42 });
+  expect(() => canonicalFieldValues('leads', { [field.id]: 42, budget: 43 }, [field])).toThrow('once');
+  expect(() => canonicalFieldValues('contacts', { budget: 42 }, [field])).toThrow('this module');
+});
+
+it('atomically reorders a complete group and rejects stale, duplicate, incomplete and cross-group orders', async () => {
+  const field = await createField(), original = await getFieldLayout('tenant', 'leads');
+  const contained = original.fields.filter(item => item.groupId === field.groupId).map(item => item.canonicalTechnicalKey ?? item.technicalKey);
+  const input = { action: 'reorderFields', groupId: field.groupId, technicalKeys: [...contained].reverse(), expectedRevision: original.layout.revision ?? 0 };
+  const saved = await updateFieldLayout('tenant', 'actor', 'leads', input);
+  expect(saved.fields.filter(item => item.groupId === field.groupId).map(item => item.canonicalTechnicalKey ?? item.technicalKey)).toEqual(input.technicalKeys);
+  expect(saved.layout.revision).toBe((original.layout.revision ?? 0) + 1);
+  await expect(updateFieldLayout('tenant', 'actor', 'leads', input)).rejects.toThrow('changed');
+  for (const technicalKeys of [contained.slice(1), [...contained, contained[0]], [...contained.slice(1), 'status']]) {
+    await expect(updateFieldLayout('tenant', 'actor', 'leads', { ...input, technicalKeys, expectedRevision: saved.layout.revision })).rejects.toThrow('every field');
+  }
+  expect((await readFields(tx as any, 'tenant')).find(item => item.id === field.id)?.technicalAlias).toBe('budget');
+});
+
+it('validates complete module group orders and keeps stable IDs on reload', async () => {
+  const original = await getFieldLayout('tenant', 'leads');
+  const groupIds = [...original.layout.groups].reverse().map(group => group.id);
+  const saved = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'reorderGroups', groupIds, expectedRevision: original.layout.revision ?? 0 });
+  expect((await getFieldLayout('tenant', 'leads')).layout.groups.sort((a, b) => a.order - b.order).map(group => group.id)).toEqual(groupIds);
+  for (const ids of [groupIds.slice(1), [...groupIds.slice(1), groupIds[1]], [...groupIds.slice(1), 'contacts:section:0']]) await expect(updateFieldLayout('tenant', 'actor', 'leads', { action: 'reorderGroups', groupIds: ids, expectedRevision: saved.layout.revision })).rejects.toThrow('exactly once');
+});
+
+it('protects saved readable references from deletion and rejects stale field edits', async () => {
+  const field = await createField();
+  state.templates.push({ id: 'template', name: 'Readable budget', content: '{{customFieldValues.budget}}' });
+  await expect(deleteField('tenant', 'actor', field.id)).rejects.toThrow('Readable budget');
+  await saveField('tenant', 'actor', { name: 'Budget revised', expectedVersion: field.version }, field.id);
+  await expect(saveField('tenant', 'actor', { name: 'Stale label', expectedVersion: field.version }, field.id)).rejects.toThrow('changed');
 });

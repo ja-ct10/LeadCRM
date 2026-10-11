@@ -9,9 +9,22 @@ vi.mock('@/shared/components/side-sheet', () => ({ SideSheet: ({ children }: { c
 vi.mock('@/shared/components/crm/product-interest-select', () => ({ CatalogProductInterestSelect: () => <button>Products</button> }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <button>Agents</button> }));
 import { AudiencePanel } from '../audience-panel';
+import { campaignSampleValues } from '../campaign-variable-picker';
 const preview = { matched: 1, eligible: 1, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [{ id: 'person', name: 'Saved recipient', recordType: 'Lead', email: 'one@example.test', company: '', phone: null }], meta: { page: 1, limit: 25, total: 1, hasMore: false } };
 beforeEach(() => { vi.clearAllMocks(); api.fields.mockImplementation(async source => ({ data: campaignFields(source) })); api.preview.mockResolvedValue({ data: preview }); });
 afterEach(cleanup);
+it('displays the readable option for a saved UUID rule without rewriting the rule and previews both tokens', async () => {
+  const id = '2857e8ec-456d-4503-b955-46db45560974';
+  const fields = campaignFields('LEADS', [{ id, technicalAlias: 'age', name: 'Age', module: 'leads', type: 'Number', group: 'Basic Information', required: false, active: true, visibleInForm: true, visibleInDetails: true, order: 0, options: [], description: '', version: 1 }]);
+  api.fields.mockResolvedValue({ data: fields });
+  render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} initialAudience={{ id: 'saved', name: 'Existing ages', source: 'LEADS', matchMode: 'AND', conditions: [{ field: `customFieldValues.${id}`, operator: 'equals', value: 37 }] } as never} />);
+  await screen.findByRole('option', { name: 'Age' });
+  expect((screen.getByLabelText('Condition 1 field') as HTMLSelectElement).value).toBe('customFieldValues.age');
+  expect(screen.queryByRole('option', { name: /Unavailable field/ })).toBeNull();
+  await waitFor(() => expect(api.preview).toHaveBeenLastCalledWith(expect.objectContaining({ conditions: [{ field: `customFieldValues.${id}`, operator: 'equals', value: 37 }] })));
+  const sample = campaignSampleValues(fields);
+  expect(sample['customFieldValues.age']).toBe('0'); expect(sample[`customFieldValues.${id}`]).toBe('0');
+});
 it('offers one source, flat typed rules, and AND/OR rather than a mixed audience', async () => {
   render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} />);
   expect(screen.queryByRole('option', { name: /All Leads.*Contacts/ })).toBeNull();

@@ -198,6 +198,8 @@ instructions are documented in [engagement and Deal creation](engagement-deal-cr
 
 Module-scoped field definitions, record values, uploads, permissions and the
 preserving migration are documented in [Custom Fields](custom-fields.md).
+The same guide specifies immutable readable aliases, canonical UUID compatibility,
+complete revision-checked reorder commands, and separate group deletion permission.
 
 Lead and Contact create requests require a trimmed, valid email of at most 254
 characters. Updates may omit email, but cannot submit an empty or invalid email.

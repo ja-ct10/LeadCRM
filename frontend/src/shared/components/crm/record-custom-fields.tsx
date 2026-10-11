@@ -1,12 +1,20 @@
 'use client';
-import { useEffect, useId, useState } from 'react';
-import { CUSTOM_FIELD_BUILT_IN_GROUPS, CLOSING_FILE_MAX_BYTES, closingValueError, customFieldNameKey, defaultFieldLayout, type ClosingField, type ClosingValues, type CustomFieldModule, type CustomFieldState, type RecordFileMetadata, type FieldLayout } from '@leadcrm/shared';
-import { apiClient } from '@/lib/api/client';
+import { useEffect, useId, useRef, useState } from 'react';
+import { CUSTOM_FIELD_BUILT_IN_GROUPS, isClosedWonField, CLOSING_FILE_MAX_BYTES, closingValueError, customFieldNameKey, defaultFieldLayout, type ClosingField, type ClosingValues, type CustomFieldModule, type CustomFieldState, type RecordFileMetadata, type FieldLayout } from '@leadcrm/shared';
+import { apiClient, type ApiRequestError } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { PanelSectionHeading, panelInputClass } from '@/shared/components/side-panel-styles';
 import { Button } from '@/shared/components/ui/button';
 import { toast } from 'sonner';
+import { InlineEditRows } from './inline-edit-rows';
+
+async function uploadCustomFieldFile(module: CustomFieldModule, recordId: string | undefined, file: File) {
+  if (!file.size || file.size > CLOSING_FILE_MAX_BYTES) throw new Error('Choose a nonempty file no larger than 10 MB.');
+  const params = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
+  const path = recordId ? `/crm/${module}/${encodeURIComponent(recordId)}/files` : `/crm/${module}/custom-field-uploads`;
+  return (await apiClient.upload<{ data: RecordFileMetadata }>(`${path}?${params}`, new Blob([file], { type: 'application/octet-stream' }))).data;
+}
 
 export function useRecordCustomFields(module: CustomFieldModule, recordId?: string) {
   const query = useCachedPage<CustomFieldState>({ module, params: { customFields: true, recordId }, revalidateOnInvalidation: true, fetchFn: async signal => {
@@ -42,10 +50,8 @@ export function useRecordCustomFields(module: CustomFieldModule, recordId?: stri
     if (!file.size || file.size > CLOSING_FILE_MAX_BYTES) { setErrors(prev => ({ ...prev, [field.id]: 'Choose a nonempty file no larger than 10 MB.' })); return; }
     setUploadCount(count => count + 1);
     try {
-      const params = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
-      const path = recordId ? `/crm/${module}/${recordId}/files` : `/crm/${module}/custom-field-uploads`;
-      const result = await apiClient.upload<{ data: RecordFileMetadata }>(`${path}?${params}`, new Blob([file], { type: 'application/octet-stream' }));
-      setUploads(prev => ({ ...prev, [result.data.id]: result.data })); update(field.id, result.data.id);
+      const uploaded = await uploadCustomFieldFile(module, recordId, file);
+      setUploads(prev => ({ ...prev, [uploaded.id]: uploaded })); update(field.id, uploaded.id);
     } catch (error) { setErrors(prev => ({ ...prev, [field.id]: error instanceof Error ? error.message : 'Upload failed.' })); }
     finally { setUploadCount(count => count - 1); }
   };
@@ -53,21 +59,40 @@ export function useRecordCustomFields(module: CustomFieldModule, recordId?: stri
 }
 type FieldForm = ReturnType<typeof useRecordCustomFields>;
 
+/** The same typed controls serve record forms and Details inline rows. */
+export function CustomFieldControl({ field, module, value, onChange, onUpload, files, disabled = false, uploading = false, error = '', inline = false, describedBy, onSave, onCancel }: {
+  field: ClosingField; module: CustomFieldModule; value: string; onChange: (value: string) => void;
+  onUpload: (file: File) => void; files: CustomFieldState['files']; disabled?: boolean; uploading?: boolean;
+  error?: string; inline?: boolean; describedBy?: string; onSave?: () => void; onCancel?: () => void;
+}) {
+  const id = `custom-field-${module}-${field.id}`;
+  const props = { id, name: `customFieldValues.${field.id}`, value, disabled, autoFocus: inline,
+    'aria-label': inline ? field.name : undefined, 'aria-invalid': !!error, 'aria-describedby': describedBy,
+    required: field.required, 'aria-required': field.required,
+    className: inline ? 'w-full min-w-0 max-w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring' : panelInputClass + ' min-w-0 max-w-full',
+    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      const next = event.target.value;
+      if (field.type === 'Number' && !/^-?\d*\.?\d*$/.test(next)) return;
+      onChange(next);
+    },
+    onKeyDown: (event: React.KeyboardEvent) => {
+      if (!inline || disabled || uploading) return;
+      if (event.key === 'Escape') { event.preventDefault(); onCancel?.(); }
+      if (event.key === 'Enter' && field.type !== 'Long Text') { event.preventDefault(); onSave?.(); }
+    },
+  };
+  const file = files.find(file => file.id === value);
+  if (field.type === 'File Upload') return <div className="min-w-0 space-y-2"><input id={id} aria-label={inline ? field.name : undefined} aria-describedby={describedBy} aria-invalid={!!error} type="file" autoFocus={inline} className="block w-full min-w-0 max-w-full text-xs" disabled={disabled || uploading} accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx" onChange={event => { const selected = event.target.files?.[0]; if (selected) onUpload(selected); }} />{value && <div className="flex min-w-0 items-center gap-2 text-xs"><span className="min-w-0 [overflow-wrap:anywhere]">{file?.name ?? 'Saved file'}</span><button type="button" disabled={disabled || uploading} className="shrink-0 text-primary" onClick={() => onChange('')}>Clear</button></div>}<p className="text-xs text-muted-foreground">{uploading ? 'Uploading…' : 'Maximum 10 MB.'}</p></div>;
+  if (field.type === 'Long Text') return <textarea {...props} rows={3} maxLength={10000} />;
+  if (field.type === 'Dropdown') return <select {...props}><option value="">Select an option</option>{value && !field.options.includes(value) && <option value={value} disabled>{value} (previous choice)</option>}{field.options.map(option => <option key={option}>{option}</option>)}</select>;
+  return <input {...props} type={field.type === 'Date' ? 'date' : 'text'} inputMode={field.type === 'Number' ? 'decimal' : undefined} maxLength={field.type === 'Number' ? 100 : 1000} />;
+}
+
 export function CustomFieldInput({ field, form }: { field: ClosingField; form: FieldForm }) {
-  const id = `custom-field-${form.module}-${field.id}`, value = form.value(field.id), error = form.errors[field.id];
-  const helpId = useId();
-  const props = { id, name: `customFieldValues.${field.id}`, value, onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const next = event.target.value;
-    if (field.type === 'Number' && !/^-?\d*\.?\d*$/.test(next)) return;
-    form.update(field.id, next);
-  }, className: panelInputClass + ' min-w-0 max-w-full', required: field.required, 'aria-invalid': !!error, 'aria-describedby': helpId };
-  const file = form.files.find(file => file.id === value);
+  const id = `custom-field-${form.module}-${field.id}`, error = form.errors[field.id], helpId = useId();
   return <div className="min-w-0 space-y-1.5">
     <label htmlFor={id} className="block text-xs font-semibold text-slate-600 dark:text-slate-400 [overflow-wrap:anywhere]">{field.name}{field.required && <span className="text-red-500"> *</span>}</label>
-    {field.type === 'File Upload' ? <div className="min-w-0 space-y-2"><input id={id} aria-describedby={helpId} aria-invalid={!!error} type="file" className="block w-full min-w-0 max-w-full text-xs" disabled={form.uploadCount > 0} accept=".pdf,.png,.jpg,.jpeg,.webp,.txt,.csv,.zip,.doc,.docx,.xls,.xlsx" onChange={event => { const selected = event.target.files?.[0]; if (selected) void form.upload(field, selected); }} />{value && <div className="flex min-w-0 items-center gap-2 text-xs"><span className="min-w-0 [overflow-wrap:anywhere]">{file?.name ?? 'Saved file'}</span><button type="button" className="shrink-0 text-primary" onClick={() => form.update(field.id, '')}>Clear</button></div>}<p className="text-xs text-muted-foreground">{form.uploadCount > 0 ? 'Uploading…' : 'Maximum 10 MB.'}</p></div>
-      : field.type === 'Long Text' ? <textarea {...props} rows={3} maxLength={10000} />
-      : field.type === 'Dropdown' ? <select {...props}><option value="">Select an option</option>{value && !field.options.includes(value) && <option value={value}>{value} (previous choice)</option>}{field.options.map(option => <option key={option}>{option}</option>)}</select>
-      : <input {...props} type={field.type === 'Date' ? 'date' : 'text'} inputMode={field.type === 'Number' ? 'decimal' : undefined} maxLength={field.type === 'Number' ? 100 : 1000} />}
+    <CustomFieldControl field={field} module={form.module} value={form.value(field.id)} onChange={next => form.update(field.id, next)} onUpload={file => void form.upload(field, file)} files={form.files} uploading={form.uploadCount > 0} error={error} describedBy={helpId} />
     <div id={helpId}>{field.description && <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{field.description}</p>}{error && <p role="alert" className="text-xs text-destructive [overflow-wrap:anywhere]">{error}</p>}</div>
   </div>;
 }
@@ -83,38 +108,60 @@ export function CustomFieldExtraGroups({ form, startNumber }: { form: FieldForm;
   return <>{form.query.error ? <div role="alert" className="text-sm text-destructive">{form.query.error}<Button type="button" variant="ghost" onClick={() => void form.query.refetch()}>Retry custom fields</Button></div> : form.query.isInitialLoad ? <p role="status" className="text-xs text-muted-foreground">Loading custom fields…</p> : null}{groups.map((group, index) => <section key={group} className="min-w-0 space-y-4"><PanelSectionHeading number={startNumber + index}><span className="[overflow-wrap:anywhere]">{group}</span></PanelSectionHeading><CustomFieldGroup form={form} group={group} /></section>)}</>;
 }
 
-function RecordCustomFieldEditor({ module, recordId, onClose, onSaved }: { module: CustomFieldModule; recordId: string; onClose: () => void; onSaved: () => void }) {
-  const form = useRecordCustomFields(module, recordId);
-  const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const groups = [...form.layout.groups].sort((a, b) => a.order - b.order).filter(group => form.fields.some(field => field.groupId === group.id || customFieldNameKey(field.group) === customFieldNameKey(group.label)));
-  return <form aria-label="Edit custom fields" noValidate className="min-w-0 space-y-4 rounded-xl border border-border p-4" onSubmit={async event => {
-    event.preventDefault(); if (busy || !form.validate()) return;
-    setBusy(true); setError('');
-    try { await apiClient.put(`/crm/${module}/${encodeURIComponent(recordId)}`, { customFieldValues: form.payload() }); toast.success('Custom fields updated'); onSaved(); }
-    catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to save custom fields.'); }
-    finally { setBusy(false); }
-  }}>
-    {groups.map((group, index) => <section key={group.id} className="min-w-0 space-y-4"><PanelSectionHeading number={index + 1}><span className="[overflow-wrap:anywhere]">{group.label}</span></PanelSectionHeading><CustomFieldGroup form={form} group={group.label} /></section>)}
-    {form.query.error && <p role="alert" className="text-xs text-destructive">{form.query.error}<Button type="button" variant="ghost" onClick={() => void form.query.refetch()}>Retry custom fields</Button></p>}
-    {error && <p role="alert" className="text-xs text-destructive [overflow-wrap:anywhere]">{error}</p>}
-    <div className="flex flex-wrap justify-end gap-2"><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button type="submit" disabled={busy || form.blocked}>{busy ? 'Saving…' : 'Save custom fields'}</Button></div>
-  </form>;
+/** One authorized query per record, shared by every ordinary Details row. */
+export function useRecordCustomFieldDetails(module: CustomFieldModule, recordId: string) {
+  const query = useCachedPage<CustomFieldState>({ module, params: { customFields: true, recordId }, revalidateOnInvalidation: true,
+    fetchFn: async signal => (await apiClient.get<{ data: CustomFieldState }>(`/crm/${module}/${encodeURIComponent(recordId)}/custom-fields`, { signal })).data });
+  const fields = (query.data?.fields ?? []).filter(field => field.module === module && !isClosedWonField(field) && field.visibleInDetails !== false &&
+    (field.active && !field.deletedAt || query.data?.values[field.id] != null && query.data.values[field.id] !== ''));
+  const latest = useRef({ module, recordId, query });
+  latest.current = { module, recordId, query };
+  const save = async (field: ClosingField, value: string | number | null) => {
+    try { await apiClient.put(`/crm/${module}/${encodeURIComponent(recordId)}`, { customFieldValues: { [field.id]: value } }); }
+    catch (error) {
+      const status = (error as { status?: number }).status;
+      if (latest.current.module === module && latest.current.recordId === recordId && [401, 403, 404].includes(status ?? 0)) {
+        latest.current.query.setData({ fields: [], values: {}, files: [] });
+        void latest.current.query.refetch();
+      }
+      const messages = (error as ApiRequestError).fieldErrors?.customFieldValues;
+      if (messages?.length) throw new Error(messages.join(' '));
+      throw error;
+    }
+    if (latest.current.module !== module || latest.current.recordId !== recordId) return;
+    const current = latest.current.query;
+    if (current.data) current.setData({ ...current.data, values: { ...current.data.values, [field.id]: value } });
+    // apiClient's successful-write invalidation schedules the shared refresh.
+  };
+  return { module, recordId, query, fields, save };
 }
+type RecordCustomFieldDetailsState = ReturnType<typeof useRecordCustomFieldDetails>;
+const inlineValue = (field: ClosingField, raw: string) => !raw.trim() ? null : field.type === 'Number' ? Number(raw) : raw.trim();
 
-/** Hidden/disabled definitions remain available for reading retained record values. */
-export function RecordCustomFieldDetails({ module, recordId, canEdit = false, groupId, fieldId, embedded = false, editorOnly = false }: { module: CustomFieldModule; recordId: string; canEdit?: boolean; groupId?: string; fieldId?: string; embedded?: boolean; editorOnly?: boolean }) {
-  const [editing, setEditing] = useState(false);
-  const query = useCachedPage<CustomFieldState>({ module, params: { customFields: true, recordId }, revalidateOnInvalidation: true, fetchFn: async signal => (await apiClient.get<{ data: CustomFieldState }>(`/crm/${module}/${recordId}/custom-fields`, { signal })).data });
-  const state = query.data;
-  if (editing && canEdit) return <RecordCustomFieldEditor module={module} recordId={recordId} onClose={() => setEditing(false)} onSaved={() => setEditing(false)} />;
-  const refreshError = query.error ? <div role="alert" className="text-xs text-destructive">{query.error}<Button variant="ghost" onClick={() => void query.refetch()}>Retry custom fields</Button></div> : null;
-  if (query.error && !state) return refreshError;
-  if (!state) return null;
-  if (editorOnly) return <>{refreshError}{canEdit && state.fields.some(field => field.active && field.visibleInForm) ? <div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit custom fields</Button></div> : null}</>;
-  const fields = state.fields.filter(field => field.visibleInDetails !== false && (!fieldId || field.id === fieldId) && (!groupId || field.groupId === groupId || state.layout?.groups.find(group => group.id === groupId)?.label === field.group) && state.values[field.id] != null && state.values[field.id] !== '').sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
-  if (embedded) return <>{refreshError}<dl className="divide-y divide-border/60">{fields.map(field => { const file = state.files.find(file => file.id === state.values[field.id]); return <div key={field.id} className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-3 py-2.5 text-xs"><dt className="text-muted-foreground">{field.name}{field.deletedAt ? ' · Retired' : !field.active ? ' · Disabled' : ''}</dt><dd className="min-w-0 whitespace-pre-wrap text-right [overflow-wrap:anywhere]">{field.type === 'File Upload' ? file ? <a className="text-primary underline" href={file.url}>{file.name}</a> : 'File unavailable' : String(state.values[field.id])}</dd></div>; })}</dl></>;
-  return <>{refreshError}{canEdit && state.fields.some(field => field.active && field.visibleInForm) && <div className="flex justify-end"><Button variant="outline" size="sm" onClick={() => setEditing(true)}>Edit custom fields</Button></div>}{[...new Set(fields.map(field => field.group))].map(group => <section key={group} className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"><h3 className="border-b border-border p-4 text-sm font-semibold [overflow-wrap:anywhere]">{group}</h3><dl className="space-y-3 p-4">{fields.filter(field => field.group === group).map(field => {
-    const file = state.files.find(file => file.id === state.values[field.id]);
-    return <div key={field.id} className="min-w-0"><dt className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{field.name}{!field.active ? ' · Disabled' : !field.visibleInForm ? ' · Hidden in forms' : ''}</dt><dd className="mt-1 whitespace-pre-wrap text-sm [overflow-wrap:anywhere]">{field.type === 'File Upload' ? file ? <a className="text-primary underline" href={file.url}>{file.name}</a> : 'File unavailable' : String(state.values[field.id])}</dd></div>;
-  })}</dl></section>)}</>;
+export function RecordCustomFieldInlineRow({ details, fieldId, canEdit }: { details: RecordCustomFieldDetailsState; fieldId: string; canEdit: boolean }) {
+  const field = details.fields.find(field => field.id === fieldId);
+  const [uploads, setUploads] = useState<CustomFieldState['files']>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  if (!field || !details.query.data) return null;
+  const value = details.query.data.values[field.id];
+  const files = [...details.query.data.files, ...uploads];
+  const file = files.find(file => file.id === value);
+  const editable = canEdit && field.active && !field.deletedAt && field.visibleInForm;
+  return <InlineEditRows canEdit={editable} rows={[{
+    technicalKey: field.id, label: `${field.name}${field.deletedAt ? ' · Retired' : !field.active ? ' · Disabled' : !field.visibleInForm ? ' · Hidden in forms' : ''}`,
+    value, apiField: field.id, required: field.required, alwaysVisible: true, preserveWhitespace: true,
+    validate: raw => closingValueError(field, inlineValue(field, raw)), editorDisabled: uploading || !!details.query.error, editorError: uploadError,
+    renderValue: () => <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{value == null || value === '' ? '—' : field.type === 'File Upload' ? file?.name ?? 'File unavailable' : String(value)}</span>,
+    valueHref: field.type === 'File Upload' ? file?.url : undefined,
+    renderEditor: props => <CustomFieldControl field={field} module={details.module} value={props.value} onChange={next => { setUploadError(''); props.onChange(next); }} files={files} disabled={props.disabled} uploading={uploading} error={props.error || uploadError} inline onSave={props.onSave} onCancel={() => { setUploadError(''); props.onCancel(); }} onUpload={async selected => {
+      setUploading(true); setUploadError('');
+      try { const uploaded = await uploadCustomFieldFile(details.module, details.recordId, selected); setUploads(previous => [...previous, uploaded]); props.onChange(uploaded.id); }
+      catch (error) { setUploadError(error instanceof Error ? error.message : 'Upload failed. Try again.'); }
+      finally { setUploading(false); }
+    }} />,
+  }]} onSave={async (_id, raw) => {
+    await details.save(field, inlineValue(field, String(raw)));
+    toast.success('Field updated');
+  }} />;
 }

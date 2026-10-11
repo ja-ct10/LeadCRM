@@ -1,14 +1,15 @@
 'use client';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
-import { RecordCustomFieldDetails } from './record-custom-fields';
+import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
+import { InlineEditRows, type InlineRowDef } from './inline-edit-rows';
 import { useFieldLayout } from '@/shared/hooks/use-field-layout';
 import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
-import React, { useEffect, useId, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { DealClosingRequirements } from './deal-closing-requirements';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Loader2, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
+import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -36,8 +37,6 @@ export { RecordSection } from './record-section';
 import { InlineDealForm } from './inline-deal-form';
 import { RelatedTasks } from '@/features/tenant/operations/tasks/ui/related-tasks';
 import type { Account } from '@/features/tenant/crm/accounts/types/account.types';
-import { CatalogProductInterestSelect } from './product-interest-select';
-import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { CrmEmailSchema } from '@leadcrm/shared';
 import { DealCardMenu } from './deal-card-menu';
 import { duplicateDeal } from '@/shared/services/deals-actions.api';
@@ -62,7 +61,6 @@ const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account', deals:
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 const personName = (record?: RecordData | null) => record ? [text(record.firstName), text(record.lastName)].filter(Boolean).join(' ') : '';
 const object = (value: unknown): RecordData | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordData : undefined;
-const displayText = (value: unknown): string => Array.isArray(value) ? value.join(', ') || '—' : String(value ?? '') || '—';
 const present = (value: unknown) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
 
 
@@ -76,94 +74,6 @@ function RecordQuickInfo({ items, actions }: { items: { value: string; icon: Luc
     })}
     {actions}
   </div>;
-}
-
-// ── InlineEditRows — click-to-edit About section ─────────────────────────────
-interface InlineRowDef {
-  technicalKey?: string;
-  label: string;
-  value: unknown;
-  apiField?: string;
-  required?: boolean;
-  maxLength?: number;
-  type?: 'text' | 'email' | 'tel' | 'url' | 'select' | 'textarea' | 'date' | 'products' | 'users' | 'accounts' | 'contacts' | 'leads';
-  valueMode?: 'id' | 'name';
-  displayValue?: unknown;
-  productLabels?: Record<string, string>;
-  options?: string[];
-}
-
-function InlineEditRows({ rows, canEdit, onSave }: {
-  rows: InlineRowDef[];
-  canEdit: boolean;
-  onSave: (field: string, value: string | string[]) => Promise<void>;
-}) {
-  const [editingLabel, setEditingLabel] = useState<string | null>(null);
-  const [editValue, setEditValue] = useState<string | string[]>('');
-  const [isSaving, setIsSaving] = useState(false);
-  const [fieldError, setFieldError] = useState('');
-
-  const startEdit = (label: string, value: unknown) => {
-    setFieldError('');
-    setEditingLabel(label);
-    setEditValue(Array.isArray(value) ? value : String(value ?? ''));
-  };
-  const cancelEdit = () => { setEditingLabel(null); setEditValue(''); };
-  const commitEdit = async (apiField: string) => {
-    if (isSaving) return;
-    setFieldError('');
-    const row = rows.find(row => row.apiField === apiField);
-    if (row?.required && (typeof editValue !== 'string' || !editValue.trim())) { setFieldError(`${row.label} is required`); return; }
-    if (row?.required && typeof editValue === 'string' && editValue.trim().length > (row.maxLength ?? 100)) { setFieldError(`Max ${row.maxLength ?? 100} characters`); return; }
-    if (rows.find(row => row.apiField === apiField)?.type === 'email') {
-      const result = CrmEmailSchema.safeParse(editValue);
-      if (!result.success) { setFieldError(result.error.issues[0].message); return; }
-    }
-    setIsSaving(true);
-    try { await onSave(apiField, typeof editValue === 'string' ? editValue.trim() : editValue); setEditingLabel(null); }
-    catch (error) { setFieldError(error instanceof Error ? error.message : 'Unable to save field'); }
-    finally { setIsSaving(false); }
-  };
-
-  return (
-    <dl className="divide-y divide-border/60">
-      {rows.filter(({ value, displayValue, apiField, label, required }) => required || present(displayValue ?? value) || (canEdit && !!apiField) || editingLabel === label).map(({ label, value, apiField, type, options, valueMode, displayValue, productLabels, required, maxLength }) => {
-        const isEditing = editingLabel === label;
-        const editable = canEdit && !!apiField;
-        return (
-          <div key={label} className={cn('grid min-w-0 gap-3 px-3 py-2.5 text-xs', required ? 'grid-cols-[minmax(max-content,2fr)_minmax(0,3fr)]' : 'grid-cols-[minmax(0,2fr)_minmax(0,3fr)]')}>
-            <dt className="text-muted-foreground self-start pt-0.5">{label}{(required || type === 'email' && editable) && <span className="text-red-500"> *</span>}</dt>
-            <dd className="min-w-0">
-              {isEditing && apiField ? (
-                <div className="flex flex-col gap-1.5">
-                  {type === 'products' ? <CatalogProductInterestSelect values={Array.isArray(editValue) ? editValue : []} onChange={setEditValue} valueMode={valueMode} labels={productLabels} disabled={isSaving} /> : type === 'users' || type === 'accounts' ? <EntityCombobox entityType={type} multiple={false} disabled={isSaving} value={String(editValue) || null} onChange={value => setEditValue(value || '')} /> : type === 'contacts' || type === 'leads' ? <EntityCombobox entityType={type} multiple disabled={isSaving} values={Array.isArray(editValue) ? editValue : []} onMultiChange={setEditValue} /> : type === 'select' ? (
-                    <select aria-label={label} disabled={isSaving} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
-                      {options?.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  ) : type === 'textarea' ? (
-                    <textarea aria-label={label} disabled={isSaving} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} rows={3} autoFocus onKeyDown={e => { if (e.key === 'Escape') cancelEdit(); }} className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring resize-none" />
-                  ) : (
-                    <input aria-label={label} disabled={isSaving} type={type ?? 'text'} required={required || type === 'email'} aria-required={required || type === 'email'} aria-invalid={!!fieldError} maxLength={type === 'email' ? 254 : required ? maxLength ?? 100 : undefined} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus onKeyDown={e => { if (e.key === 'Enter') void commitEdit(apiField); if (e.key === 'Escape') cancelEdit(); }} className={cn("w-full rounded-md border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring", fieldError ? "border-red-500" : "border-input")} />
-                  )}
-                  {fieldError && <p role="alert" className="text-xs text-destructive">{fieldError}</p>}
-                  <div className="flex flex-wrap justify-end gap-1">
-                    <button type="button" onClick={() => void commitEdit(apiField)} disabled={isSaving} className="inline-flex items-center rounded-md bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors">{isSaving ? <><Loader2 className="mr-1 h-3 w-3 animate-spin" />Saving…</> : 'Save'}</button>
-                    <button type="button" onClick={cancelEdit} disabled={isSaving} className="inline-flex items-center rounded-md border border-border px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:bg-accent disabled:opacity-50 transition-colors">Cancel</button>
-                  </div>
-                </div>
-              ) : (
-                <button type="button" disabled={!editable || isSaving} aria-label={editable ? `Edit ${label}` : undefined}
-                  className={cn('group flex w-full items-start justify-end gap-1.5 text-right [overflow-wrap:anywhere] focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default', editable && 'hover:text-primary hover:underline')}
-                  onClick={() => startEdit(label, value)}>
-                  <span className="min-w-0">{displayText(displayValue ?? value)}</span>{editable && <Pencil aria-hidden="true" className="mt-0.5 h-3 w-3 shrink-0 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100" />}
-                </button>
-              )}
-            </dd>
-          </div>
-        );
-      })}
-    </dl>
-  );
 }
 
 function RecordRows({ rows }: { rows: [string, unknown][] }) {
@@ -184,6 +94,7 @@ function RelatedRecords({ records, module, empty }: { records: RecordData[]; mod
 export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false, focusNote = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean }) {
   const router = useRouter();
   const fieldLayout = useFieldLayout(module);
+  const customFields = useRecordCustomFieldDetails(module, id);
   const { user, tenant } = useAuth();
   const data = useData();
   const canEdit = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : module === 'leads' ? 'leads.edit' : 'contacts.edit');
@@ -354,10 +265,11 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ...(module === 'accounts' ? [{ label: 'Internal Notes', value: record.internalNotes, apiField: 'internalNotes', type: 'textarea' as const }] : []),
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ];
-  const catalog = fieldLayout.data?.fields ?? getCrmFieldCatalog(module, [], fieldLayout.layout);
+  // Saved retired values remain readable; closing evidence uses its specialized component.
+  const catalog = getCrmFieldCatalog(module, customFields.fields.map(field => ({ ...field, deletedAt: undefined })), fieldLayout.layout);
   const configuredRows = aboutRows.map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
 
-  const customFields = object(record.customFields);
+  const mockCustomFields = object(record.customFields);
   const deals = relationships?.deals ?? [];
   const links = module === 'deals' ? { dealId: id } : module === 'leads' ? { leadId: id } : module === 'contacts' ? { contactId: id } : { accountId: id };
   const activityLoading = timeline.isInitialLoad;
@@ -440,10 +352,10 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
-            {!USE_MOCK_DATA && <RecordCustomFieldDetails module={module} recordId={id} canEdit={canEdit} editorOnly />}
+            {!USE_MOCK_DATA && customFields.query.error && <div role="alert" className="text-xs text-destructive">{customFields.query.error}<Button variant="ghost" size="sm" onClick={() => void customFields.query.refetch()}>Retry custom fields</Button></div>}
             {[...fieldLayout.layout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => <RecordSection key={group.id} title={group.label}>
               {catalog.filter(field => field.groupId === group.id && field.visibleInDetails).map(field => {
-                if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldDetails key={field.technicalKey} module={module} recordId={id} fieldId={field.customFieldId} embedded />;
+                if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldInlineRow key={field.customFieldId} details={customFields} fieldId={field.customFieldId} canEdit={canEdit} />;
                 const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
                 return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
               })}
@@ -465,7 +377,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               {module === 'contacts' && relationships.sourceLead && canReadLeads && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
             </>}
 
-            {USE_MOCK_DATA && customFields && Object.keys(customFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(customFields).length}><RecordRows rows={Object.entries(customFields)} /></RecordSection>}
+            {USE_MOCK_DATA && mockCustomFields && Object.keys(mockCustomFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(mockCustomFields).length}><RecordRows rows={Object.entries(mockCustomFields)} /></RecordSection>}
           </div></TabsContent>
           <TabsContent value="files" className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordFilesTab files={filesQuery.data ?? []} loading={filesQuery.isInitialLoad} error={filesQuery.error} onRetry={() => void filesQuery.refetch()}

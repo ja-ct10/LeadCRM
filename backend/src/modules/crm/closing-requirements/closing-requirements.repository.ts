@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { DEFAULT_CLOSING_FIELDS, closingValueError, CLOSING_FILE_MAX_BYTES, normalizeCustomField, isClosedWonField, type ClosingField, type ClosingValues } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
+import { backfillTechnicalAliases, lockFieldConfiguration } from './custom-field-aliases';
 
 type Tx = Prisma.TransactionClient;
 export const configurationKey = (tenantId: string) => ({ tenantId, module: 'closing-requirements', key: 'fields' });
@@ -10,13 +11,15 @@ export async function readConfiguredFields(tx: Tx, tenantId: string): Promise<Cl
   return rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField)).filter(field => !field.deletedAt).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 export async function readFields(tx: Tx, tenantId: string, includeRetired = false): Promise<ClosingField[]> {
+  await lockFieldConfiguration(tx, tenantId);
   let rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
   if (!rows.length) {
     const now = Date.now();
     await tx.closingFieldDefinition.createMany({ data: DEFAULT_CLOSING_FIELDS.map((field, index) => ({ tenantId, id: field.id, definition: field as unknown as Prisma.InputJsonValue, createdAt: new Date(now - DEFAULT_CLOSING_FIELDS.length + index) })), skipDuplicates: true });
     rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
   }
-  return rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField)).filter(field => includeRetired || !field.deletedAt).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+  const fields = await backfillTechnicalAliases(tx, tenantId, rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField)));
+  return fields.filter(field => includeRetired || !field.deletedAt).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
 export async function readClosingFields(tx: Tx, tenantId: string) { return (await readFields(tx, tenantId)).filter(isClosedWonField); }
 export async function validateValues(tx: Tx, tenantId: string, dealId: string, fields: ClosingField[], values: ClosingValues) {

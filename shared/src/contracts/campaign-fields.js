@@ -14,7 +14,7 @@ function campaignFields(source, definitions = [], layout) {
 }
 function campaignConditionField(key, fields) {
     const native = key === 'productInterest' ? 'productInterestIds' : key === 'company' ? (fields[0]?.module === 'leads' ? 'companyName' : 'company') : key;
-    return fields.find(field => field.technicalKey === native);
+    return fields.find(field => field.technicalKey === native || field.canonicalTechnicalKey === native);
 }
 function campaignFieldOperators(field) {
     const presence = ['is_empty', 'is_not_empty'];

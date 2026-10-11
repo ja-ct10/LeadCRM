@@ -44,3 +44,4 @@ export * from './contracts/dashboard.contract';
 export * from './contracts/pipeline-stage.contract';
 export * from './contracts/workspace-access';
 export * from './contracts/campaign-fields';
+export * from './contracts/custom-field-identity';

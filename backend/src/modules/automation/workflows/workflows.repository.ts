@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import { getWorkflowConditionFields, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
+import { getWorkflowConditionFields, customFieldTechnicalKey, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
 import { workflowCustomFields } from './workflow-fields';
 import { readRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -163,7 +163,11 @@ export async function entityContext(entity: WorkflowEntity, id: string, tenantId
   }
   const definitions = await workflowCustomFields(tenantId);
   const values = await readRecordValues(prisma, tenantId, WORKFLOW_MODULES[entity], id);
-  for (const field of getWorkflowConditionFields(entity, undefined, definitions).filter(f => f.customFieldId)) context[field.field] = values[field.customFieldId!] ?? null;
+  for (const field of getWorkflowConditionFields(entity, undefined, definitions).filter(f => f.customFieldId)) {
+    context[field.field] = values[field.customFieldId!] ?? null;
+    const definition = definitions.find(item => item.id === field.customFieldId)!;
+    context[`${entity}.${customFieldTechnicalKey(definition)}`] = context[field.field];
+  }
   return context;
 }
 export function findActor(id: string, tenantId: string) {

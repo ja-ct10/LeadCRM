@@ -174,6 +174,7 @@ function personalized(row: Record<string, unknown>, fields: CrmFieldCatalogEntry
     if (field.reference === 'account') value = (row.account as { name: string } | null)?.name;
     if (field.type === 'products') value = products.filter(product => field.technicalKey === 'activeProductIds' ? product.activeProduct : product.interested !== false).map(product => product.product.name).join(', ');
     values[field.technicalKey] = scalar(value, field.type === 'date');
+    if (field.canonicalTechnicalKey) values[field.canonicalTechnicalKey] = values[field.technicalKey];
   }
   return { ...values, first_name: scalar(row.firstName), last_name: scalar(row.lastName), company_name: (row.account as { name: string } | null)?.name || scalar(row.companyName ?? row.company), contact_number: scalar(row.phone), status: scalar(row.status) };
 }

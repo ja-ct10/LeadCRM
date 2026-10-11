@@ -10,6 +10,7 @@ export interface PageHeaderProps {
   backButtonProps?: BackButtonProps;
   actions?: ReactNode;
   className?: string;
+  titleClassName?: string;
   badge?: ReactNode;
   /** Keep actions beside the title at every width, with the subtitle below (default). */
   actionsInlineWithTitle?: boolean;
@@ -21,6 +22,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
   backButtonProps,
   actions,
   className = '',
+  titleClassName,
   badge,
   actionsInlineWithTitle = true,
 }) => {
@@ -36,7 +38,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         )}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className="text-xl font-bold leading-7 tracking-tight text-slate-900 dark:text-white [overflow-wrap:anywhere]">
+            <h1 className={cn('text-xl font-bold leading-7 tracking-tight text-slate-900 dark:text-white [overflow-wrap:anywhere]', titleClassName)}>
               {title}
             </h1>
             {badge}

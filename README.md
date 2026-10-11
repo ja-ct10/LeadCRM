@@ -39,6 +39,8 @@ Use the project-pinned npm version from `package.json` and a supported Node vers
 4. Start `npm --prefix backend run dev` and `npm --prefix frontend run dev` in separate terminals, or use `npm run dev`.
 5. Provision local accounts using the documented [authentication flow](docs/authentication.md). Startup does not run seeds automatically.
 
+For a connected UI preview, use `npm run dev:local`. It builds the current backend/shared code, starts the existing API-only launcher on loopback port 4000, and starts the frontend on port 3000 with its proxy explicitly pointing to that local API. It uses the database configured in `backend/.env`, keeps normal authentication/RBAC, and starts no seeders or scheduled jobs. Existing local previews must be stopped first. This avoids testing new frontend contracts against an older hosted API, which can expose legacy UUID keys and reject drag-and-drop layout commands. See [Custom Fields](docs/custom-fields.md#metadata-rollout).
+
 Mock auth and data are separate development-only switches, `NEXT_PUBLIC_USE_MOCK_AUTH` and `NEXT_PUBLIC_USE_MOCK_DATA`. They are disabled in production. Mocks support UI work; they do not verify database, permission, or provider behavior.
 
 ## Checks

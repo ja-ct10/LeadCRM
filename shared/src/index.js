@@ -52,3 +52,4 @@ __exportStar(require("./contracts/dashboard.contract"), exports);
 __exportStar(require("./contracts/pipeline-stage.contract"), exports);
 __exportStar(require("./contracts/workspace-access"), exports);
 __exportStar(require("./contracts/campaign-fields"), exports);
+__exportStar(require("./contracts/custom-field-identity"), exports);
