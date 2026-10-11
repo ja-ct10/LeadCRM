@@ -9,6 +9,8 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import { salesTransaction, salesPipeline } from '../leads/lead-automation.service';
 import app from '../../../app';
 import { purgeExpiredImportUploads } from './import-cleanup.service';
+import { importHandlers, importValidationErrors } from './import-rows.service';
+import { ValidationError } from '../../../shared/errors/http-error';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && url.pathname === '/leadcrm_forms_test_2';
@@ -26,9 +28,16 @@ describe('shared CSV contract', () => {
     for (const content of ['Name,name\nA,B', 'Name,\nA,B', 'A,B\nx', 'A\n"unclosed']) expect(() => parseImportCsv(content)).toThrow();
     expect(() => mapImportCsv('accounts', { ...csv([{ name: 'Acme' }]), mappings: {} })).toThrow('Missing required');
     expect(() => parseImportCsv('Name\n' + Array(5001).fill('a').join('\n'))).toThrow('5000');
+    expect(() => parseImportCsv(Array.from({ length: 101 }, (_, i) => `Column ${i}`).join(','))).toThrow('100 CSV columns');
+    expect(() => mapImportCsv('leads', { ...csv([person('a@example.com')]), mappings: { firstName: 0, lastName: 1, email: 1 } })).toThrow('mapped once');
+    expect(() => mapImportCsv('accounts', { ...csv([{ name: 'Acme' }]), mappings: { name: 1 } })).toThrow('Invalid column mapping');
+    expect(() => mapImportCsv('accounts', { ...csv([{ name: 'Acme' }]), mappings: { name: 0, unsupported: 1 } })).toThrow('Unsupported import field');
     expect(CreateCrmImportSchema.safeParse({ ...csv([{ name: 'Acme' }]), fileName: 'test.exe' }).success).toBe(false);
     expect(CreateCrmImportSchema.safeParse({ ...csv([{ name: 'Acme' }]), csvText: 'a'.repeat(10 * 1024 * 1024 + 1) }).success).toBe(false);
     expect(importRowSchemas.deals.safeParse({ title: 'A', pipeline: 'Sales', stage: 'Lead', productInterest: 'CCTV', value: '999' }).success).toBe(false);
+    const invalidPhone = importRowSchemas.leads.safeParse({ ...person('phone@example.com'), phone: '123' });
+    expect(invalidPhone.success).toBe(false);
+    if (!invalidPhone.success) expect(importValidationErrors(invalidPhone.error)?.join()).toContain('Phone Number: Philippine mobile number must start with 9.');
   });
 });
 
@@ -228,6 +237,15 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
       const history = await request(module, '?limit=100');
       expect(history.body.data.every((job: { module: string }) => job.module === modules[module])).toBe(true);
       expect(history.body.meta.total).toBe(await prisma.crmImportJob.count({ where: { tenantId, module: modules[module] } }));
+      const page1 = await request(module, '?limit=2&page=1'), page2 = await request(module, '?limit=2&page=2');
+      expect(page1.body.data.map((job: { id: string }) => job.id)).toEqual(history.body.data.slice(0, 2).map((job: { id: string }) => job.id));
+      expect(page2.body.data.map((job: { id: string }) => job.id)).toEqual(history.body.data.slice(2, 4).map((job: { id: string }) => job.id));
+      expect(page2.body.meta.total).toBe(history.body.meta.total);
+      for (const status of ['completed', 'completed_with_errors']) {
+        const filtered = await request(module, `?status=${status}&limit=2`);
+        expect(filtered.body.data.every((job: { status: string }) => job.status === status)).toBe(true);
+        expect(filtered.body.meta.total).toBe(await prisma.crmImportJob.count({ where: { tenantId, module: modules[module], status } }));
+      }
       for (const other of Object.keys(modules).filter(m => m !== module) as CrmImportModule[]) {
         expect((await request(other, `/${first.id}`)).status).toBe(404);
         expect((await request(other, `/${first.id}/results`)).status).toBe(404);
@@ -251,6 +269,110 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(await prisma.crmImportChunk.count({ where: { uploadId: active.id } })).toBe(1);
     expect(await purgeExpiredImportUploads()).toBe(0);
     await prisma.crmImportUpload.delete({ where: { id: active.id } });
+  });
+  it('persists the applicable ten-row outcome matrix for every module', async () => {
+    const customer = `matrix-${randomUUID()}@example.com`;
+    await prisma.contact.create({ data: { tenantId, firstName: 'Matrix', lastName: 'Customer', email: customer } });
+    const scenarios = [[10, 0, 0], [7, 3, 0], [8, 0, 2], [6, 2, 2], [0, 10, 0], [0, 0, 10], [0, 6, 4]];
+    for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) {
+      for (const [valid, duplicate, invalid] of scenarios) {
+        // Deals have no global identity. A fresh file cannot consist entirely of duplicates.
+        if (module === 'deals' && duplicate === 10) continue;
+        const seed = randomUUID();
+        const make = (i: number): Record<string, string> => module === 'accounts' ? { name: `Matrix ${seed} ${i}`, productInterest: 'Biometrics' }
+          : module === 'deals' ? { title: `Matrix ${seed} ${i}`, customer, productInterest: 'Biometrics', pipeline, stage }
+            : person(`matrix-${seed}-${i}@example.com`, 'Biometrics');
+        const rows = Array.from({ length: valid }, (_, i) => make(i));
+        const invalidRow = (i: number) => ({ ...make(valid + i), productInterest: 'Missing Matrix Product' });
+        if (!valid && module !== 'deals' && duplicate) await run(module, csv([make(0)]));
+        if (!valid && module === 'deals' && duplicate) rows.push(invalidRow(0));
+        const repeated = rows[0] ?? make(0);
+        rows.push(...Array.from({ length: duplicate }, () => ({ ...repeated })));
+        rows.push(...Array.from({ length: invalid - (!valid && module === 'deals' && duplicate ? 1 : 0) }, (_, i) => invalidRow(i + 1)));
+        const input = csv(rows);
+        const preview = await request(module, '/preview', 'POST', input);
+        expect(preview.status).toBe(200);
+        expect(preview.body.data.filter((row: { status: string }) => row.status === 'valid')).toHaveLength(valid);
+        // With no valid Deal row or global identity, invalid repeated Deals remain invalid.
+        const actualDuplicate = module === 'deals' && !valid ? 0 : duplicate;
+        const actualInvalid = invalid + duplicate - actualDuplicate;
+        expect(preview.body.data.filter((row: { status: string }) => row.status === 'duplicate')).toHaveLength(actualDuplicate);
+        const job = await run(module, input);
+        expect([job.successfulRecords, job.duplicateRecords, job.failedRecords]).toEqual([valid, actualDuplicate, actualInvalid]);
+        expect(job.totalRecords).toBe(10); expect(job.completedAt).toBeTruthy();
+        expect(job.status).toBe(!valid ? 'failed' : duplicate + invalid ? 'completed_with_errors' : 'completed');
+        const outcomes = await request(module, `/${job.id}/results?limit=100`);
+        expect(outcomes.body.data).toHaveLength(10);
+        expect(outcomes.body.data.filter((row: { recordId: string | null }) => row.recordId)).toHaveLength(valid);
+        const failed = await request(module, `/${job.id}/results?status=failed`);
+        expect(failed.body.meta.total).toBe(actualInvalid);
+        expect((await run(module, input)).id).toBe(job.id);
+        const history = await request(module, `?status=${job.status}&limit=100`);
+        expect(history.body.data.some((row: { id: string }) => row.id === job.id)).toBe(true);
+      }
+    }
+  }, 60000);
+  it('rolls back a rejected creation and its automatic Deals, records failure, and continues', async () => {
+    const bad = `rollback-${randomUUID()}@example.com`, good = `after-${randomUUID()}@example.com`;
+    let rolledBackId = '';
+    const create = importHandlers.leads.create;
+    const spy = vi.spyOn(importHandlers.leads, 'create').mockImplementation(async (...args) => {
+      const id = await create(...args);
+      if (args[4].rowNumber === 2) { rolledBackId = id; throw new ValidationError('Required relationship is unavailable.'); }
+      return id;
+    });
+    try {
+      const job = await run('leads', csv([person(bad), person(bad), person(good)]));
+      expect(job.status).toBe('completed_with_errors'); expect(job.successfulRecords).toBe(2); expect(job.failedRecords).toBe(1);
+      expect(job.duplicateRecords).toBe(0);
+      expect(await prisma.lead.count({ where: { tenantId, email: bad } })).toBe(1);
+      const saved = await prisma.crmImportRowResult.findMany({ where: { importJobId: job.id }, orderBy: { rowNumber: 'asc' } });
+      expect(saved[0].recordId).toBeNull(); expect(saved[0].remarks).toContain('Row 2: Required relationship');
+      expect(saved[1].recordId).toBeTruthy(); expect(saved[1].status).toBe('imported');
+      const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: good }, include: { leadDeals: true } });
+      expect(lead.leadDeals).toHaveLength(2);
+      expect(rolledBackId).toBeTruthy();
+      expect(await prisma.deal.count({ where: { tenantId, automationKey: { startsWith: rolledBackId } } })).toBe(0);
+      expect(await prisma.leadDeal.count({ where: { tenantId, leadId: rolledBackId } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { tenantId, entityId: rolledBackId } })).toBe(0);
+    } finally { spy.mockRestore(); }
+  });
+  it('keeps infrastructure interruption resumable with truthful committed progress', async () => {
+    const input = csv([{ name: `Before interruption ${randomUUID()}` }, { name: `After interruption ${randomUUID()}` }]);
+    const create = importHandlers.accounts.create;
+    const spy = vi.spyOn(importHandlers.accounts, 'create').mockImplementation(async (...args) => {
+      if (args[4].rowNumber === 3) throw new Error('Simulated database outage');
+      return create(...args);
+    });
+    try {
+      expect((await request('accounts', '', 'POST', input)).status).toBe(500);
+      const job = await prisma.crmImportJob.findFirstOrThrow({ where: { tenantId, idempotencyKey: input.idempotencyKey } });
+      expect(job.status).toBe('importing'); expect(job.completedAt).toBeNull();
+      expect([job.successfulRecords, job.failedRecords, job.duplicateRecords]).toEqual([1, 0, 0]);
+    } finally { spy.mockRestore(); }
+    const done = await run('accounts', input);
+    expect(done.status).toBe('completed'); expect(done.successfulRecords).toBe(2);
+    expect(await prisma.account.count({ where: { tenantId, name: { in: input.csvText.match(/"([^"\n]+)"/g)!.map(v => v.slice(1, -1)) } } })).toBe(2);
+  });
+  it('protects archived/converted identities and serializes cross-module people and Account creation', async () => {
+    const email = `archived-${randomUUID()}@example.com`;
+    await prisma.contact.create({ data: { tenantId, firstName: 'Archived', lastName: 'Contact', email: ` ${email.toUpperCase()} `, isArchived: true, deletedAt: new Date() } });
+    for (const module of ['leads', 'contacts'] as const) expect((await run(module, csv([person(email)]))).duplicateRecords).toBe(1);
+    const cross = person(`cross-${randomUUID()}@example.com`, 'Biometrics');
+    const people = await Promise.all([run('leads', csv([cross])), run('contacts', csv([cross]))]);
+    expect(people.map(job => job.successfulRecords).sort()).toEqual([0, 1]);
+    const name = `Concurrent ${randomUUID()} Account`;
+    const accounts = await Promise.all([run('accounts', csv([{ name }])), run('accounts', csv([{ name: ` ${name.toUpperCase().replace(/ /g, '   ')} ` }]))]);
+    expect(accounts.map(job => job.successfulRecords).sort()).toEqual([0, 1]);
+    await prisma.account.updateMany({ where: { tenantId, name }, data: { isArchived: true, deletedAt: new Date() } });
+    expect((await run('accounts', csv([{ name: ` ${name.toUpperCase()} ` }]))).duplicateRecords).toBe(1);
+    const invalidFirst = csv([{ ...person(`valid-after-${randomUUID()}@example.com`), firstName: '' }]);
+    const mapped = mapImportCsv('leads', invalidFirst)[0].data;
+    expect((await run('leads', csv([mapped, { ...mapped, firstName: 'Valid' }]))).successfulRecords).toBe(1);
+    const productFirst = person(`product-after-${randomUUID()}@example.com`, 'Missing Product');
+    const input = csv([productFirst, { ...productFirst, productInterest: 'Biometrics' }]);
+    expect((await request('leads', '/preview', 'POST', input)).body.data.map((r: { status: string }) => r.status)).toEqual(['invalid', 'valid']);
+    expect((await run('leads', input)).successfulRecords).toBe(1);
   });
   it.skipIf(!process.env.CRM_IMPORT_ROLLOUT_TEST)('verifies migrated History through deployed APIs before approving retirement', async () => {
     const { verifyImportRollout } = require('../../../../scripts/verify-crm-import-rollout.cjs');

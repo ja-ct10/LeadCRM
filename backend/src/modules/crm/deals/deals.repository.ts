@@ -1,4 +1,5 @@
 import { participantOrder, withDealParticipants } from './deal-participants';
+import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { resolveProducts } from '../leads/lead-automation.service';
 import { normalizeProductOther } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
@@ -102,6 +103,7 @@ export async function findDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, ownerId: string, dto: CreateDealDto, db: Prisma.TransactionClient = prisma, batchFiles?: BatchFiles) {
+  await assertCrmCreateAssignment(db, tenantId, dto.assignedUserId);
   const stage = await db.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage || stage.isWon) throw new ValidationError('New Deals require an available open stage. Confirm Closed Won through the stage action.');
   const { leadIds, contactIds, customFieldValues, ...dealData } = dto as CreateDealDto & { leadIds?: string[]; contactIds?: string[] };
@@ -159,6 +161,7 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
 export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDto, actorId?: string) {
   try {
     await salesTransaction(async tx => {
+      await assertCrmRecordMutation(tx, 'deals', id, 'edit', dto);
       const { leadIds: _leadIds, contactIds: _contactIds, customFieldValues, ...updateData } = dto as UpdateDealDto & { leadIds?: string[]; contactIds?: string[] };
       const existing = await tx.deal.findFirst({ where: { id, tenantId } });
       if (!existing) throw new Prisma.PrismaClientKnownRequestError('Deal not found', { code: 'P2025', clientVersion: '5' });
@@ -225,6 +228,7 @@ export async function moveDealStage(
   transaction?: Prisma.TransactionClient,
 ) {
   const transition = async (tx: Prisma.TransactionClient) => {
+    await assertCrmRecordMutation(tx, 'deals', id);
     const scope = crmScope(tenantId);
     const storedDeal = await tx.deal.findFirst({ where: { id, ...scope, isArchived: false, deletedAt: null }, include: { stage: true,
       leadDeals: { orderBy: participantOrder }, contactDeals: { orderBy: participantOrder } } });
@@ -279,6 +283,7 @@ export async function moveDealStage(
 
 export async function moveDealPipeline(id: string, tenantId: string, actorId: string, input: import('@leadcrm/shared').MoveDealPipelineInput) {
   return salesTransaction(async tx => {
+    await assertCrmRecordMutation(tx, 'deals', id);
     const previousDeal = await tx.deal.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null },
       include: { stage: true, pipeline: true, organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
         leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } } } });
@@ -400,6 +405,7 @@ export async function syncContactAssociations(
   dealId: string, tenantId: string, contactIds: string[], userId?: string, client?: Prisma.TransactionClient
 ): Promise<void> {
   const work = async (tx: Prisma.TransactionClient) => {
+    await assertCrmRecordMutation(tx, 'deals', dealId);
     await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true } });
     // Current ContactDeal associations for this deal
     const current = await tx.contactDeal.findMany({
@@ -453,6 +459,7 @@ export async function syncLeadAssociations(
   dealId: string, tenantId: string, leadIds: string[], userId?: string, client?: Prisma.TransactionClient
 ): Promise<void> {
   const work = async (tx: Prisma.TransactionClient) => {
+    await assertCrmRecordMutation(tx, 'deals', dealId);
     await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true } });
     // Current LeadDeal associations for this deal
     const current = await tx.leadDeal.findMany({

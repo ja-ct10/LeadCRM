@@ -7,6 +7,7 @@ import type {
   FormDesign,
   FormSettings,
 } from '@/features/tenant/marketing/forms/types/form.types';
+import type { CrmFieldCatalogEntry } from '@leadcrm/shared';
 
 // ─── Response Contracts ───────────────────────────────────────────────────────
 
@@ -40,6 +41,7 @@ export const formsApi = {
    */
   list: (page = 1) =>
     apiClient.get<FormsListResponse>(`/marketing/forms?page=${page}&limit=100`),
+  fieldCatalog: () => apiClient.get<{ success: boolean; data: CrmFieldCatalogEntry[] }>('/marketing/forms/field-catalog'),
   duplicate: (id: string) => apiClient.post<FormResponse>(`/marketing/forms/${id}/duplicate`, {}),
   submissions: (id: string, page = 1, signal?: AbortSignal) => apiClient.get<{ data: import('@leadcrm/shared').FormSubmissionRecord[]; meta: { hasMore: boolean } }>(`/marketing/forms/${id}/submissions?page=${page}&limit=20`, { signal }),
 

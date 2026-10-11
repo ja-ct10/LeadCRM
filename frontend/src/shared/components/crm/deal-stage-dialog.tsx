@@ -1,4 +1,5 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useRef, useState } from 'react';
 import type { Deal, Pipeline } from '@/store/types';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/components/ui/dialog';
@@ -32,7 +33,7 @@ export function DealStageDialog({ deal, pipelines, onClose, onMove }: {
         if (pending.current || !validTarget) return;
         pending.current = true; setBusy(true); setError('');
         try { await onMove({ pipelineId, stageId }); onClose(); }
-        catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to change stage.'); }
+        catch (failure) { if ((failure as { status?: number })?.status === 403) showCrmMutationError(failure, 'Unable to change stage.'); setError(failure instanceof Error ? failure.message : 'Unable to change stage.'); }
         finally { pending.current = false; setBusy(false); }
       }}>
         <label className="block text-sm">Choose the target pipeline

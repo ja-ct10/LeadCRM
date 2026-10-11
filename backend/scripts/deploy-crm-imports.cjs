@@ -92,6 +92,8 @@ function deploymentPlan(records, localNames) {
     '20261121000000_task_creator_sales_group',
     '20261123000000_campaign_schedule',
     '20261124000000_crm_content_revisions',
+    // Additive server-managed Sales classification; preserves all CRM history.
+    '20261125000000_crm_assignment_policy',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

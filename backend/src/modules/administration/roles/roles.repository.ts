@@ -3,6 +3,7 @@ import { ForbiddenError, NotFoundError, ConflictError } from '../../../shared/er
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
+import { isSalesRoleName } from '../../crm/access/crm-record-access.service';
 
 // ── Read ──────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export async function createRole(
       throw new ConflictError('A role with this name already exists.');
     }
     const role = await tx.roleDefinition.create({
-      data: { tenantId, name: data.name, description: data.description, isSystemRole: false },
+      data: { tenantId, name: data.name, description: data.description, isSystemRole: false, crmAssignmentRestricted: isSalesRoleName(data.name) },
     });
     if (permissions.length > 0) {
       await tx.rolePermission.createMany({
@@ -100,7 +101,8 @@ export async function updateRoleAndPermissions(
     if (data.name && await tx.roleDefinition.findFirst({ where: { tenantId, id: { not: id }, name: { equals: data.name, mode: 'insensitive' } } })) {
       throw new ConflictError('A role with this name already exists.');
     }
-    const role = Object.keys(data).length ? await tx.roleDefinition.update({ where: { id, tenantId }, data }) : existing;
+    const role = Object.keys(data).length ? await tx.roleDefinition.update({ where: { id, tenantId },
+      data: { ...data, crmAssignmentRestricted: existing.crmAssignmentRestricted || isSalesRoleName(existing.name) || !!data.name && isSalesRoleName(data.name) } }) : existing;
     if (data.name && data.name !== existing.name) {
       await tx.user.updateMany({ where: { tenantId, role: existing.name }, data: { role: data.name } });
     }

@@ -15,6 +15,8 @@
  */
 
 'use client';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
@@ -98,6 +100,7 @@ export function ContactsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: ContactsDataGridProps): React.ReactElement {
+  const recordAccess = useCrmRecordAccess();
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Contact> = useMemo(() => ({
@@ -209,10 +212,10 @@ export function ContactsDataGrid({
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/contacts/${contact.id}`);
       },
-      canEdit,
-      canArchive,
+      canEdit: canEdit && recordAccess.canMutate(contact),
+      canArchive: canArchive && recordAccess.canMutate(contact),
     });
-  }, [onRowClick, onEdit, onArchive, canEdit, canArchive]);
+  }, [onRowClick, onEdit, onArchive, canEdit, canArchive, recordAccess.canMutate]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_SETTINGS = exports.DEFAULT_DESIGN = exports.PublicSubmissionSchema = exports.UpdateFormSchema = exports.CreateFormSchema = exports.FormDefinitionSchema = exports.FormSettingsSchema = exports.FormDesignSchema = exports.FormFieldSchema = exports.FORM_MAPPINGS = exports.FormFieldTypeSchema = exports.FORM_TRACKING_KEYS = exports.FORM_PRODUCT_INTERESTS = void 0;
+exports.leadCatalogFormField = leadCatalogFormField;
 exports.getFormProductValues = getFormProductValues;
 exports.defaultContactForm = defaultContactForm;
 exports.validateFormValues = validateFormValues;
@@ -15,14 +16,14 @@ exports.FORM_PRODUCT_INTERESTS = [
 ];
 exports.FORM_TRACKING_KEYS = ['utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content'];
 const text = (max) => zod_1.z.string().max(max).refine(v => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').transform(v => v.trim());
-exports.FormFieldTypeSchema = zod_1.z.enum(['heading', 'paragraph', 'divider', 'single-line', 'multi-line', 'email', 'phone', 'number', 'date', 'checkbox', 'radio', 'dropdown', 'url', 'rating', 'file', 'contact-name', 'contact-email', 'contact-phone', 'company-name', 'company-website']);
-exports.FORM_MAPPINGS = ['firstName', 'lastName', 'fullName', 'email', 'phone', 'companyName', 'website', 'productInterest', 'address'];
+exports.FormFieldTypeSchema = zod_1.z.enum(['header', 'heading', 'paragraph', 'divider', 'single-line', 'multi-line', 'email', 'phone', 'number', 'date', 'checkbox', 'radio', 'dropdown', 'url', 'rating', 'file', 'contact-name', 'contact-email', 'contact-phone', 'company-name', 'company-website']);
+exports.FORM_MAPPINGS = ['firstName', 'lastName', 'fullName', 'email', 'phone', 'companyName', 'website', 'productInterest', 'address', 'source'];
 exports.FormFieldSchema = zod_1.z.object({
     id: zod_1.z.string().regex(/^[a-zA-Z][a-zA-Z0-9_-]{0,79}$/).refine(id => !['constructor', 'prototype', 'toString', 'hasOwnProperty'].includes(id), 'Reserved field ID.'), type: exports.FormFieldTypeSchema,
     label: text(500), placeholder: text(500).optional(), required: zod_1.z.boolean().optional(),
     optionLabels: zod_1.z.record(zod_1.z.string().uuid(), text(200)).optional(),
     options: zod_1.z.array(text(200).pipe(zod_1.z.string().min(1))).max(100).optional(),
-    mapToField: zod_1.z.enum(['', ...exports.FORM_MAPPINGS]).optional(), width: zod_1.z.enum(['half', 'full']).optional(),
+    mapToField: zod_1.z.enum(['', ...exports.FORM_MAPPINGS]).optional(), customFieldId: zod_1.z.string().min(1).max(100).optional(), width: zod_1.z.enum(['half', 'full']).optional(),
 }).strict();
 const color = zod_1.z.string().regex(/^(?:|#[\da-fA-F]{3}|#[\da-fA-F]{6}|#[\da-fA-F]{8})$/, 'Use a hex color, such as #3B82F6.').default('');
 exports.FormDesignSchema = zod_1.z.object({ generalBg: color, generalBorder: color, generalText: color, fieldBg: color, fieldBorder: color, fieldText: color,
@@ -41,6 +42,13 @@ exports.FormDefinitionSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.str
         ids.add(f.id);
         if (f.type === 'file')
             issue('File Upload is not supported. Remove this field before saving or publishing.');
+        if (f.mapToField && f.customFieldId)
+            issue('A field cannot use both a CRM mapping and a Custom Field.');
+        if (f.customFieldId) {
+            if (mappings.has(`custom:${f.customFieldId}`))
+                issue('Each Custom Field can only be used once.');
+            mappings.add(`custom:${f.customFieldId}`);
+        }
         if (f.mapToField) {
             if (mappings.has(f.mapToField))
                 issue('Each CRM mapping can only be used once.');
@@ -50,7 +58,9 @@ exports.FormDefinitionSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.str
             issue('Add at least one option.');
         if (f.mapToField === 'productInterest' && f.type !== 'dropdown')
             issue('Product Interest must use the approved dropdown options.');
-        const allowed = { email: ['email', 'contact-email'], phone: ['phone', 'contact-phone'], website: ['url', 'company-website'], firstName: ['single-line'], lastName: ['single-line'], fullName: ['contact-name', 'single-line'], companyName: ['company-name', 'single-line'], address: ['multi-line', 'single-line'] };
+        if (['header', 'heading', 'paragraph', 'divider'].includes(f.type) && (f.mapToField || f.customFieldId))
+            issue('Layout blocks cannot map to CRM fields.');
+        const allowed = { email: ['email', 'contact-email'], phone: ['phone', 'contact-phone'], website: ['url', 'company-website'], firstName: ['single-line'], lastName: ['single-line'], fullName: ['contact-name', 'single-line'], companyName: ['company-name', 'single-line'], address: ['multi-line', 'single-line'], status: ['dropdown'], source: ['dropdown'] };
         if (f.mapToField && allowed[f.mapToField] && !allowed[f.mapToField].includes(f.type))
             issue('This CRM mapping is incompatible with the field type.');
     });
@@ -62,10 +72,45 @@ exports.UpdateFormSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.string(
 exports.PublicSubmissionSchema = zod_1.z.object({
     requestId: zod_1.z.string().uuid().optional(),
     version: zod_1.z.number().int().positive(),
-    values: zod_1.z.record(zod_1.z.string().max(80), zod_1.z.union([zod_1.z.string().max(4000), zod_1.z.boolean(), zod_1.z.array(zod_1.z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
+    values: zod_1.z.record(zod_1.z.string().max(80), zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.boolean(), zod_1.z.array(zod_1.z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
     tracking: zod_1.z.record(zod_1.z.enum(exports.FORM_TRACKING_KEYS), text(200)).default({}),
     website: zod_1.z.string().max(200).default(''), // honeypot; never CRM data
 }).strict();
+/** Adapt eligible canonical Lead definitions; labels never determine identity or input type. */
+function leadCatalogFormField(field) {
+    if (field.module !== 'leads' || !field.active || !field.visibleInForm || field.unavailableReason)
+        return;
+    const mapToField = field.kind === 'System' && !field.customFieldId
+        ? field.technicalKey === 'productInterestIds' ? 'productInterest'
+            : ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address', 'source'].find(key => key === field.technicalKey)
+        : undefined;
+    if ((field.kind === 'System' && !mapToField) || (field.kind === 'Custom' && !field.customFieldId))
+        return;
+    let type;
+    switch (field.type) {
+        case 'text':
+            type = mapToField === 'email' ? 'email' : mapToField === 'phone' ? 'phone' : 'single-line';
+            break;
+        case 'longText':
+            type = 'multi-line';
+            break;
+        case 'number':
+            type = 'number';
+            break;
+        case 'date':
+            type = 'date';
+            break;
+        case 'dropdown':
+        case 'products':
+            type = 'dropdown';
+            break;
+        case 'boolean':
+            type = 'checkbox';
+            break;
+        default: return; // References and private file uploads have no public Forms integration.
+    }
+    return { label: field.label, type, required: field.required, ...(mapToField ? { mapToField } : { customFieldId: field.customFieldId }), ...(type === 'dropdown' ? { options: [...field.options ?? []] } : {}) };
+}
 /** Product selections were historically stored as arrays or comma-separated IDs. */
 function getFormProductValues(value) {
     return (Array.isArray(value) ? value : typeof value === 'string' ? value.split(',') : [])
@@ -87,7 +132,7 @@ function defaultContactForm(name = 'Contact Us') {
 /** Same field rules in the public UI and authoritative server validation. Text stays plain text. */
 function validateFormValues(fields, values) {
     const errors = {}, clean = {};
-    const inputs = fields.filter(f => !['heading', 'paragraph', 'divider'].includes(f.type));
+    const inputs = fields.filter(f => !['header', 'heading', 'paragraph', 'divider'].includes(f.type));
     for (const key of Object.keys(values))
         if (!inputs.some(f => f.id === key))
             errors[key] = 'Unknown field.';
@@ -107,7 +152,7 @@ function validateFormValues(fields, values) {
                 clean[f.id] = raw;
             continue;
         }
-        const parsed = text(f.mapToField === 'firstName' || f.mapToField === 'lastName' ? 100 : f.type === 'multi-line' ? 4000 : 254).safeParse(raw);
+        const parsed = text(f.mapToField === 'firstName' || f.mapToField === 'lastName' ? 100 : f.customFieldId ? f.type === 'multi-line' ? 10000 : 1000 : f.type === 'multi-line' ? 4000 : 254).safeParse(raw);
         if (!parsed.success) {
             errors[f.id] = parsed.error.issues[0].message;
             continue;

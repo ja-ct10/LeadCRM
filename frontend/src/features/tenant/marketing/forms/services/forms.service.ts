@@ -6,6 +6,7 @@ export async function getFormsByTenant(_tenantId: string): Promise<FormRecord[]>
   do { const res = await formsApi.list(page); forms.push(...res.data); if (!res.meta.hasMore) break; page++; } while (true);
   return forms;
 }
+export async function getLeadFormFieldCatalog() { return (await formsApi.fieldCatalog()).data; }
 export async function getFormById(id: string) { return (await formsApi.getById(id)).data; }
 export async function createForm(input: CreateFormInput) { return (await formsApi.create(input.name)).data; }
 export async function updateForm(id: string, updates: Pick<FormRecord, 'revision'> & Partial<Pick<FormRecord, 'name' | 'fields' | 'design' | 'settings'>>) { return (await formsApi.update(id, updates)).data; }

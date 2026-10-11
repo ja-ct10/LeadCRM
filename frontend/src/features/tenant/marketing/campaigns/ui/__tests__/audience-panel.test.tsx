@@ -69,3 +69,10 @@ it('keeps populated recipient rows visible during background preview refresh', a
   expect(screen.queryByRole('status', { name: 'Loading data' })).toBeNull();
   await act(async () => finish({ data: preview }));
 });
+it('shows the authoritative eligible total below pagination without the estimate breakdown', async () => {
+  render(<AudiencePanel onClose={vi.fn()} onCreated={vi.fn()} />);
+  await screen.findByText('Saved recipient');
+  expect(screen.getByText('1 eligible recipient')).toBeTruthy();
+  expect(screen.queryByText(/Matched:/)).toBeNull();
+  expect(screen.queryByText(/Showing .* eligible recipients/)).toBeNull();
+});

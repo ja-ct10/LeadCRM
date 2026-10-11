@@ -49,7 +49,7 @@ export function InlineEditRows({ rows, canEdit, onSave }: {
   };
   const cancelEdit = () => { setEditingKey(null); setEditValue(''); };
   const commitEdit = async (apiField: string) => {
-    if (isSaving) return;
+    if (isSaving || !canEdit) return;
     setFieldError('');
     const row = rows.find(row => row.apiField === apiField);
     if (row?.editorDisabled) return;

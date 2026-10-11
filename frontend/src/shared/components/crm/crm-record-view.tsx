@@ -21,6 +21,8 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useRecordRelationships } from '@/shared/hooks/use-record-relationships';
 import { useRecordActivities, type RecordActivityFilters, type TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { Button } from '@/shared/components/ui/button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
@@ -97,9 +99,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const customFields = useRecordCustomFieldDetails(module, id);
   const { user, tenant } = useAuth();
   const data = useData();
-  const canEdit = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : module === 'leads' ? 'leads.edit' : 'contacts.edit');
+  const hasEditPermission = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : module === 'leads' ? 'leads.edit' : 'contacts.edit');
+  const recordAccess = useCrmRecordAccess();
   const hasArchivePermission = useHasPermission(module === 'deals' ? 'deals.archive' : module === 'accounts' ? 'accounts.archive' : module === 'leads' ? 'leads.archive' : 'contacts.archive');
-  const canArchive = hasArchivePermission && !USE_MOCK_DATA;
   const canCreateDeal = useHasPermission('deals.create');
   const canReadDeals = useHasPermission('deals.view');
   const canReadContacts = useHasPermission('contacts.view');
@@ -124,6 +126,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
+  const canEdit = hasEditPermission && recordAccess.canMutate(record);
+  const canArchive = hasArchivePermission && recordAccess.canMutate(record) && !USE_MOCK_DATA;
   useEffect(() => {
     const focus = (event: Event) => {
       if (module !== 'deals' || (event as CustomEvent<string>).detail !== id) return;
@@ -156,7 +160,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         else await data.updateContact(id, payload);
       } else { const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, payload); if (response.data) recordQuery.setData(response.data); }
       toast.success(`${label} updated`);
-    } catch (error) { toast.error(error instanceof Error ? error.message : `Failed to update ${label.toLowerCase()}`); }
+    } catch (error) { showCrmMutationError(error, `Failed to update ${label.toLowerCase()}`); }
     finally { setSaving(false); }
   };
 
@@ -177,7 +181,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       }
       toast.success('Field updated');
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update field');
+      showCrmMutationError(error, 'Failed to update field');
       throw error;
     } finally {
       setSavingField(null);
@@ -190,7 +194,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const title = module === 'deals' ? text(record.title) : module === 'accounts' ? text(record.name) : personName(record);
   const person = module === 'deals' ? object((record.contactDeals as RecordData[] | undefined)?.[0]?.contact) ?? object((record.leadDeals as RecordData[] | undefined)?.[0]?.lead) : record;
   const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
-  const owner = personName(object(record.assignedUser)) || personName(object(record.owner));
+  const owner = personName(object(record.assignedUser)) || 'Unassigned';
   const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
   const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
@@ -210,7 +214,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const changeStage = async (stageId: string, reason?: string) => {
     setSaving(true);
     try { await data.moveDealStage(id, stageId, undefined, reason); setLostStage(undefined); }
-    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to move Deal'); }
+    catch (error) { showCrmMutationError(error, 'Unable to move Deal'); }
     finally { setSaving(false); }
   };
   const statuses = [...CRM_STATUSES];
@@ -348,7 +352,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
             <RecordTimelineTab compact focusNote={focusNote && tab === 'activity'} activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters}
-              tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
+              canEditRecord={canEdit} tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
@@ -357,7 +361,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               {catalog.filter(field => field.groupId === group.id && field.visibleInDetails).map(field => {
                 if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldInlineRow key={field.customFieldId} details={customFields} fieldId={field.customFieldId} canEdit={canEdit} />;
                 const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
-                return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
+                return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label, apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
               })}
             </RecordSection>)}
             {detailsVisited && relatedQuery.isInitialLoad && <p role="status" className="animate-pulse p-3 text-sm text-muted-foreground">Loading related records…</p>}
@@ -401,7 +405,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     {converting && <ConvertLeadDialog isOpen lead={formRecord as unknown as Lead} onClose={() => setConverting(false)} onSuccess={() => setConverting(false)} />}
     <ConfirmActionDialog open={archiving} onOpenChange={setArchiving} title={`Archive ${label}`} description={`${title} will be moved to Archived Data.`} warning="You can restore this record later from Settings → Archived Data." confirmLabel="Archive" variant="destructive" onConfirm={async () => {
       try { await apiClient.patch(`/crm/${module}/${encodeURIComponent(id)}/archive`); toast.success(`${label} archived`); setArchiving(false); if (onClose) onClose(); else router.push(`/crm/${module}`); }
-      catch (error) { throw new Error(error instanceof Error ? error.message : 'Failed to archive record'); }
+      catch (error) { throw error instanceof Error ? error : new Error('Failed to archive record'); }
     }} />
   </div>;
 }

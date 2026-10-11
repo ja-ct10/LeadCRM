@@ -9,6 +9,7 @@ import { appConfig } from '../../config/app.config';
 import { AppError } from '../../shared/errors/app-error';
 import { validateSession } from '../../core/auth/session.service';
 import { tenantContext } from '../../core/tenant/tenant-context';
+import { crmActor } from '../../modules/crm/access/crm-record-access.service';
 
 export interface AuthenticatedUser {
   userId:   string;
@@ -66,7 +67,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     }
     req.authUser = user;
     req.user = { ...payload, role: user.role, email: user.email };
-    tenantContext.run({ tenantId: user.tenantId }, () => notificationActor.run(user.id, next));
+    tenantContext.run({ tenantId: user.tenantId }, () => crmActor.run({ userId: user.id, tenantId: user.tenantId }, () => notificationActor.run(user.id, next)));
   } catch (err) {
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.NotBeforeError) {
       return next(new AppError('Invalid or expired token', 401));

@@ -1,12 +1,13 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ImportResultsQuerySchema = exports.ImportListQuerySchema = exports.CsvUploadChunkSchema = exports.CreateCrmImportSchema = exports.importRequiredFields = exports.importRowSchemas = exports.ImportDealRowSchema = exports.ImportAccountRowSchema = exports.ImportContactRowSchema = exports.ImportLeadRowSchema = exports.splitProductInterests = exports.importIdentity = exports.CSV_MAX_ROWS = exports.CSV_MAX_BYTES = void 0;
+exports.ImportResultsQuerySchema = exports.ImportListQuerySchema = exports.CsvUploadChunkSchema = exports.CreateCrmImportSchema = exports.importRequiredFields = exports.importRowSchemas = exports.ImportDealRowSchema = exports.ImportAccountRowSchema = exports.ImportContactRowSchema = exports.ImportLeadRowSchema = exports.splitProductInterests = exports.importIdentity = exports.CSV_MAX_COLUMNS = exports.CSV_MAX_ROWS = exports.CSV_MAX_BYTES = void 0;
 exports.parseImportCsv = parseImportCsv;
 exports.mapImportCsv = mapImportCsv;
 const zod_1 = require("zod");
 const lead_contract_1 = require("../contracts/lead.contract");
 exports.CSV_MAX_BYTES = 10 * 1024 * 1024;
 exports.CSV_MAX_ROWS = 5000;
+exports.CSV_MAX_COLUMNS = 100;
 const importIdentity = (value) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 exports.importIdentity = importIdentity;
 const splitProductInterests = (value) => [...new Map(value.split(';').map(v => v.trim()).filter(Boolean).map(v => [(0, exports.importIdentity)(v), v])).values()];
@@ -79,7 +80,7 @@ exports.ImportResultsQuerySchema = exports.ImportListQuerySchema.omit({ status: 
 function parseImportCsv(source) {
     const records = [], rowNumbers = [];
     let row = [], cell = '', quoted = false, closed = false, line = 1, start = 1;
-    const finishCell = () => { row.push(cell.trim()); cell = ''; closed = false; if (row.length > 100)
+    const finishCell = () => { row.push(cell.trim()); cell = ''; closed = false; if (row.length > exports.CSV_MAX_COLUMNS)
         throw new Error('Maximum 100 CSV columns.'); };
     const finishRow = () => { finishCell(); if (row.some(Boolean)) {
         records.push(row);

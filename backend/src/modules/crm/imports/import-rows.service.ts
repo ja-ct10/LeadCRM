@@ -6,11 +6,30 @@ import { createAssignedLead, validateSalesOwner } from '../leads/lead-automation
 import { CreateDealSchema, type CreateDealDto } from '../deals/deals.dto';
 import { createDeal } from '../deals/deals.repository';
 import sanitizeHtml from 'sanitize-html';
+import { ZodError, type ZodIssue } from 'zod';
 
 type Tx = Prisma.TransactionClient;
 export type MappedRow = { rowNumber: number; data: Record<string, string> };
 type Product = { id: string; name: string; dealValue: Prisma.Decimal; active: boolean };
 export interface ResolvedRow extends ImportReviewRow { products: Product[]; deal?: CreateDealDto }
+const plainTextFields = new Set(['firstName', 'lastName', 'title', 'name', 'companyName', 'address', 'description', 'city', 'province', 'country', 'source', 'industry']);
+const parseRow = (module: CrmImportModule, data: Record<string, string>) => importRowSchemas[module].safeParse(
+  Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
+    plainTextFields.has(key) ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value])),
+);
+export function importValidationErrors(error: unknown): string[] | null {
+  if (error instanceof ValidationError) return [error.message];
+  if (error instanceof ZodError) {
+    // Optional phone validation is a union; expose its real phone rule, not "Invalid input".
+    const issues = error.issues.flatMap<ZodIssue>(issue => issue.code === 'invalid_union'
+      ? issue.unionErrors.flatMap(branch => branch.issues).filter(detail => detail.code !== 'invalid_literal') : [issue]);
+    const labels: Record<string, string> = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone Number',
+      companyName: 'Company Name', address: 'Full Address', productInterest: 'Product Interest', assignedUser: 'Assigned Agent',
+      title: 'Deal Title', expectedCloseDate: 'Expected Close Date', name: 'Company Name' };
+    return [...new Set(issues.map(issue => `${labels[String(issue.path[0])] ?? issue.path.join('.')}: ${issue.message}`))];
+  }
+  return null;
+}
 
 function unique<T>(matches: T[], label: string, value: string): T {
   if (!matches.length) throw new ValidationError(`Unknown ${label}: "${value}".`);
@@ -26,20 +45,6 @@ export async function resolveImportProducts(tx: Tx, tenantId: string, input: str
     if (!product.active) throw new ValidationError(`Inactive Product Interest: "${product.name}".`);
     return [product.id, product] as const;
   })).values()];
-}
-
-/** File identities do not include Products for people/accounts; Deals compare every input. */
-export function duplicateCsvRows(module: CrmImportModule, rows: MappedRow[]) {
-  const seen = new Map<string, number>(), duplicates = new Map<number, string>();
-  for (const row of rows) {
-    const handler = importHandlers[module];
-    const key = handler.identity(row.data);
-    if (!key) continue;
-    const first = seen.get(key);
-    if (first !== undefined) duplicates.set(row.rowNumber, `Duplicate CSV ${handler.duplicateLabel} (first appears on row ${first}).`);
-    else seen.set(key, row.rowNumber);
-  }
-  return duplicates;
 }
 
 async function resolveAccount(tx: Tx, tenantId: string, value: string) {
@@ -98,15 +103,11 @@ async function resolveDeal(tx: Tx, tenantId: string, data: Record<string, string
 }
 
 export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantId: string, raw: MappedRow, duplicate?: string): Promise<ResolvedRow> {
-  const plainTextFields = new Set(['firstName', 'lastName', 'title', 'name', 'companyName', 'address', 'description', 'city', 'province', 'country', 'source', 'industry']);
-  const plain = Object.fromEntries(Object.entries(raw.data).map(([key, value]) => [key,
-    plainTextFields.has(key) ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value,
-  ]));
-  const parsed = importRowSchemas[module].safeParse(plain);
+  const parsed = parseRow(module, raw.data);
   const result: ResolvedRow = { ...raw, data: parsed.success ? parsed.data : raw.data, products: [], isValid: false, status: 'invalid', errors: [] };
-  if (!parsed.success) result.errors = parsed.error.issues.map(i => `${i.path.join('.')}: ${i.message}`);
-  if (duplicate) { result.status = 'duplicate'; result.errors.push(duplicate); return result; }
+  if (!parsed.success) result.errors = importValidationErrors(parsed.error)!;
   if (!parsed.success) return result;
+  if (duplicate) { result.status = 'duplicate'; result.errors.push(duplicate); return result; }
   try {
     const handler = importHandlers[module];
     result.errors.push(...await handler.duplicates(tx, tenantId, result.data));
@@ -116,10 +117,49 @@ export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantI
     if (handler.resolve) await handler.resolve(tx, tenantId, result);
     result.isValid = true; result.status = 'valid';
   } catch (error) {
-    if (!(error instanceof ValidationError)) throw error;
-    result.errors.push(error.message);
+    const errors = importValidationErrors(error);
+    if (!errors) throw error;
+    result.errors.push(...errors);
   }
   return result;
+}
+
+/** Validate earlier matching candidates so an invalid Product/relationship cannot hide a valid row. */
+export function csvRowValidator(module: CrmImportModule, tenantId: string, rows: MappedRow[],
+  failedRow?: (tx: Tx, rowNumber: number) => Promise<boolean>) {
+  const candidates = new Map<string, MappedRow[]>();
+  for (const row of rows) {
+    const parsed = parseRow(module, row.data);
+    if (!parsed.success) continue;
+    const key = importHandlers[module].identity(parsed.data);
+    if (key) {
+      const matches = candidates.get(key) ?? [];
+      matches.push(row); candidates.set(key, matches);
+    }
+  }
+  const reviews = new WeakMap<Tx, Map<number, Promise<ResolvedRow>>>();
+  const candidateReview = (tx: Tx, row: MappedRow) => {
+    let cache = reviews.get(tx);
+    if (!cache) { cache = new Map(); reviews.set(tx, cache); }
+    let review = cache.get(row.rowNumber);
+    if (!review) { review = validateImportRow(tx, module, tenantId, row); cache.set(row.rowNumber, review); }
+    return review;
+  };
+  return async (tx: Tx, raw: MappedRow): Promise<ResolvedRow> => {
+    const parsed = parseRow(module, raw.data);
+    if (parsed.success) {
+      const earlier = candidates.get(importHandlers[module].identity(parsed.data)) ?? [];
+      for (const first of earlier) {
+        if (first.rowNumber >= raw.rowNumber) break;
+        // A creation rejected after validation rolled back and must not reserve this identity.
+        if (failedRow && await failedRow(tx, first.rowNumber)) continue;
+        const review = await candidateReview(tx, first);
+        if (review.isValid || review.status === 'duplicate') return validateImportRow(tx, module, tenantId, raw,
+          `Duplicate ${importHandlers[module].duplicateLabel}. First occurrence: Row ${first.rowNumber}.`);
+      }
+    }
+    return validateImportRow(tx, module, tenantId, raw);
+  };
 }
 
 async function createLead(tx: Tx, tenantId: string, actorId: string, jobId: string, row: ResolvedRow) {
@@ -131,13 +171,13 @@ async function createLead(tx: Tx, tenantId: string, actorId: string, jobId: stri
   }, actorId)).id;
 }
 async function createContact(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
-  const d = row.data, names = row.products.map(p => p.name);
+  const d = row.data;
   return (await tx.contact.create({ data: { tenantId, firstName: d.firstName, lastName: d.lastName,
     email: d.email, phone: d.phone, company: d.companyName, address: d.address, status: 'WARM', ...await productRelationData(tx, 'contact', tenantId, { ids: row.products.map(p => p.id) }),
   } })).id;
 }
 async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
-  const d = row.data, names = row.products.map(p => p.name);
+  const d = row.data;
   return (await tx.account.create({ data: { tenantId, name: d.name, industry: d.industry, website: d.website,
     address: d.address, city: d.city, province: d.province, country: d.country || 'Philippines', size: d.size || null,
     ...await productRelationData(tx, 'account', tenantId, { ids: row.products.map(p => p.id) }), tags: [],
@@ -184,8 +224,8 @@ interface ImportHandler {
 const personIdentity = (data: Record<string, string>) => importIdentity(data.email || '');
 /** Business strategies are independent of jobs, result storage, uploads and history. */
 export const importHandlers: Record<CrmImportModule, ImportHandler> = {
-  leads: { identity: personIdentity, duplicateLabel: 'email', duplicates: personDuplicates, create: createLead },
-  contacts: { identity: personIdentity, duplicateLabel: 'email', duplicates: personDuplicates, create: createContact },
+  leads: { identity: personIdentity, duplicateLabel: 'email address', duplicates: personDuplicates, create: createLead },
+  contacts: { identity: personIdentity, duplicateLabel: 'email address', duplicates: personDuplicates, create: createContact },
   accounts: {
     identity: data => importIdentity(data.name || ''), duplicateLabel: 'Account Name', create: createAccount,
     duplicates: async (tx, tenantId, data) => {

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { Prisma } from '@prisma/client';
 import { ClosingFieldInputSchema, ClosingValuesPatchSchema, customFieldNameKey, getCrmFieldCatalog, isClosedWonField, isSystemClosingField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
@@ -110,6 +111,7 @@ export const getRequirements = (tenantId: string, dealId: string) => salesTransa
 export async function saveValues(tenantId: string, actorId: string, dealId: string, input: unknown) {
   const patch = ClosingValuesPatchSchema.parse(input);
   const result = await salesTransaction(async tx => {
+    await assertCrmRecordMutation(tx, 'deals', dealId);
     const deal = await tx.deal.findFirst({ where: { id: dealId, tenantId, isArchived: false, deletedAt: null }, include: { stage: true } });
     if (!deal) throw new NotFoundError('Deal');
     if (deal.stage.isWon || deal.stage.isLost || deal.closingSnapshot) throw new ValidationError('Closed Deal evidence is preserved and cannot be edited.');

@@ -7,6 +7,8 @@
  */
 
 'use client';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
@@ -98,6 +100,7 @@ export function DealsDataGrid({
   viewMode = 'clip',
   currencyConfig,
 }: DealsDataGridProps): React.ReactElement {
+  const recordAccess = useCrmRecordAccess();
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Deal> = useMemo(() => ({
@@ -215,10 +218,10 @@ export function DealsDataGrid({
       onView: () => onRowClick(deal),
       onEdit: onEdit ? () => onEdit(deal) : undefined,
       onDelete: onDelete ? () => onDelete(deal) : undefined,
-      canEdit,
-      canDelete,
+      canEdit: canEdit && recordAccess.canMutate(deal),
+      canDelete: canDelete && recordAccess.canMutate(deal),
     });
-  }, [onRowClick, onEdit, onDelete, canEdit, canDelete]);
+  }, [onRowClick, onEdit, onDelete, canEdit, canDelete, recordAccess.canMutate]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

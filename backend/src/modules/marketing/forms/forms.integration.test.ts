@@ -8,7 +8,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import * as service from './forms.service';
 import { getPublicForm, submitPublicForm } from './public-forms.service';
 import app from '../../../app';
-import { FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
+import { ClosingFieldInputSchema, FORM_PRODUCT_INTERESTS, leadCatalogFormField, type FormField } from '@leadcrm/shared';
 import { ensureSalesGroup } from '../../administration/groups/sales-group';
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_forms_test_\d+$/.test(url.pathname);
@@ -42,6 +42,110 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     server = app.listen(0); await new Promise<void>(r => server.once('listening', r)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(r => server.close(() => r())); await prisma.$disconnect(); });
+  async function customField(name: string, type: 'Text' | 'Long Text' | 'Number' | 'Date' | 'Dropdown' = 'Number', module = 'leads', owner = tenantId, extra = {}) {
+    const definition = { ...ClosingFieldInputSchema.parse({ name, type, module, group: 'Basic Information', required: false, ...(type === 'Dropdown' ? { options: ['One', 'Two'] } : {}), ...extra }), id: 'qa_' + randomUUID(), version: 1, technicalAlias: 'qa_' + randomUUID().replaceAll('-', '') };
+    await prisma.closingFieldDefinition.create({ data: { tenantId: owner, id: definition.id, definition } });
+    return definition;
+  }
+  async function removeFields(ids: string[]) {
+    await prisma.customFieldValue.deleteMany({ where: { fieldId: { in: ids } } });
+    await prisma.closingFieldDefinition.deleteMany({ where: { id: { in: ids } } });
+  }
+  it('enforces trimmed names over HTTP without clearing saved fields or publishing invalid definitions', async () => {
+    expect((await request('/marketing/forms', 'POST', { name: '   ' })).status).toBe(400);
+    const form = await draft();
+    const invalid = await request('/marketing/forms/' + form.id, 'PUT', { name: '   ', revision: 0 });
+    expect(invalid.status).toBe(400);
+    expect((await service.getFormById(form.id, tenantId)).fields).toEqual(form.fields);
+    await prisma.marketingForm.update({ where: { id: form.id }, data: { name: ' ' } });
+    expect((await request('/marketing/forms/' + form.id + '/publish', 'PATCH')).status).toBe(400);
+  });
+  it('returns current Lead labels only and enforces catalog authentication, permissions and availability', async () => {
+    const age = await customField('Age'), contact = await customField('Contact Only', 'Text', 'contacts'), hidden = await customField('Hidden', 'Text', 'leads', tenantId, { visibleInForm: false }), disabled = await customField('Disabled', 'Text', 'leads', tenantId, { active: false });
+    try {
+      expect((await request('/marketing/forms/field-catalog', 'GET', undefined, '')).status).toBe(401);
+      expect((await request('/marketing/forms/field-catalog', 'GET', undefined, denied)).status).toBe(403);
+      const result = await request('/marketing/forms/field-catalog'); expect(result.status).toBe(200);
+      expect(result.body.data.every((field: { module: string }) => field.module === 'leads')).toBe(true);
+      expect(result.body.data.map((field: { label: string }) => field.label)).toContain('First Name');
+      expect(result.body.data.map((field: { label: string }) => field.label)).toContain('Age');
+      expect(result.body.data.map((field: { label: string }) => field.label)).not.toEqual(expect.arrayContaining(['Contact Only', 'Hidden', 'Disabled']));
+      await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: age.id } }, data: { definition: { ...age, name: 'Age in years' } } });
+      const refreshed = await request('/marketing/forms/field-catalog');
+      expect(refreshed.body.data).toContainEqual(expect.objectContaining({ label: 'Age in years', customFieldId: age.id }));
+    } finally { await removeFields([age.id, contact.id, hidden.id, disabled.id]); }
+  });
+  it('persists every supported Lead Custom type, layout content and order through reload, publish and repeat submission', async () => {
+    const definitions = await Promise.all([customField('Age', 'Number', 'leads', tenantId, { required: true }), customField('Nickname', 'Text'), customField('Details', 'Long Text'), customField('Birthday', 'Date'), customField('Choice', 'Dropdown')]);
+    try {
+      const form = await draft(), catalog = await scoped(() => service.getLeadFormFieldCatalog(tenantId));
+      const custom = definitions.map((definition, index) => ({ ...leadCatalogFormField(catalog.find(field => field.customFieldId === definition.id)!)!, id: `custom${index}` }));
+      const fields: FormField[] = [{ id: 'header', type: 'header', label: 'Welcome' }, ...custom, ...(form.fields as FormField[]).slice().reverse(), { id: 'separator', type: 'divider', label: 'Separator line' }, { id: 'paragraph', type: 'paragraph', label: 'Please send your details.' }];
+      const updated = await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: form.revision, fields }));
+      expect((await service.getFormById(form.id, tenantId)).fields).toEqual(updated.fields);
+      const published = await publish(form.id), publicForm = await getPublicForm(form.publicId);
+      expect(publicForm.fields.map(field => field.id)).toEqual(fields.map(field => field.id));
+      const answers = { ...values(), custom0: '29', custom1: 'Anne', custom2: 'Long details', custom3: '1997-10-11', custom4: 'One' };
+      await submit(form.publicId, answers, published.publishedVersion);
+      await submit(form.publicId, { ...answers, custom0: '30' }, published.publishedVersion);
+      const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: answers.email } });
+      expect(lead).toMatchObject({ firstName: 'Test', lastName: 'Visitor', address: 'Makati' });
+      const rows = await prisma.customFieldValue.findMany({ where: { tenantId, module: 'leads', leadId: lead.id } });
+      expect(rows).toHaveLength(5); expect(rows.find(row => row.fieldId === definitions[0].id)?.value).toBe(30);
+      expect(rows.map(row => row.fieldId).sort()).toEqual(definitions.map(field => field.id).sort());
+      expect(await prisma.lead.count({ where: { tenantId, email: answers.email } })).toBe(1);
+      expect(await prisma.auditLog.count({ where: { tenantId, entityId: lead.id, action: 'custom_field.values_updated' } })).toBe(2);
+      await vi.waitFor(async () => {
+        const history = await prisma.auditLog.findMany({ where: { tenantId, entityId: form.id }, select: { action: true } });
+        expect(history.map(entry => entry.action)).toEqual(expect.arrayContaining(['form.created', 'form.updated', 'form.published']));
+      });
+      const submission = await prisma.formSubmission.findFirstOrThrow({ where: { tenantId, formId: form.id } });
+      expect(submission.values).not.toHaveProperty('header'); expect(submission.values).not.toHaveProperty('paragraph');
+      expect(submission.values).not.toHaveProperty('separator');
+      await expect(submit(form.publicId, { ...answers, custom0: '' }, published.publishedVersion)).rejects.toHaveProperty('fieldErrors.custom0');
+      await expect(submit(form.publicId, { ...answers, custom4: 'Injected' }, published.publishedVersion)).rejects.toHaveProperty('fieldErrors.custom4');
+      await expect(submit(form.publicId, { ...answers, header: 'Injected' }, published.publishedVersion)).rejects.toHaveProperty('fieldErrors.header');
+      await expect(submit(form.publicId, { ...answers, separator: 'Injected' }, published.publishedVersion)).rejects.toHaveProperty('fieldErrors.separator');
+    } finally { await removeFields(definitions.map(field => field.id)); }
+  });
+  it('rejects foreign tenant/module, inactive, hidden and incompatible custom identities at save and submission boundaries', async () => {
+    const definitions = await Promise.all([customField('Other tenant', 'Number', 'leads', otherTenant), customField('Contact age', 'Number', 'contacts'), customField('Account age', 'Number', 'accounts'), customField('Deal age', 'Number', 'deals'), customField('Disabled age', 'Number', 'leads', tenantId, { active: false }), customField('Hidden age', 'Number', 'leads', tenantId, { visibleInForm: false }), customField('Age')]);
+    try {
+      const form = await draft(), age = definitions.at(-1)!;
+      for (const definition of definitions.slice(0, -1)) {
+        expect((await request('/marketing/forms/' + form.id, 'PUT', { revision: 0, fields: [...form.fields as FormField[], { id: 'age', type: 'number', label: 'Age', customFieldId: definition.id }] })).status).toBe(400);
+      }
+      expect((await request('/marketing/forms/' + form.id, 'PUT', { revision: 0, fields: [...form.fields as FormField[], { id: 'age', type: 'single-line', label: 'Age', customFieldId: age.id }] })).status).toBe(400);
+      await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: 0, fields: [...form.fields as FormField[], { id: 'age', type: 'number', label: 'Age', customFieldId: age.id }] }));
+      await publish(form.id);
+      await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: age.id } }, data: { definition: { ...age, active: false } } });
+      const answer = { ...values(), age: '25' };
+      await expect(submit(form.publicId, answer)).rejects.toMatchObject({ statusCode: 400 });
+      expect(await prisma.lead.count({ where: { tenantId, email: answer.email } })).toBe(0);
+    } finally { await removeFields(definitions.map(field => field.id)); }
+  });
+  it('requires configured Lead Custom Fields before publishing and prevents downgrading their validators', async () => {
+    const age = await customField('Required Age', 'Number', 'leads', tenantId, { required: true });
+    try {
+      const form = await draft();
+      await expect(publish(form.id)).rejects.toThrow('Required Age');
+      await expect(scoped(() => service.updateForm(form.id, tenantId, userId, { revision: 0, fields: [...form.fields as FormField[], { id: 'age', type: 'number', label: 'Age', customFieldId: age.id, required: false }] }))).rejects.toThrow('required');
+      expect((await service.getFormById(form.id, tenantId)).revision).toBe(0);
+    } finally { await removeFields([age.id]); }
+  });
+  it('preserves returning Contact inquiries without duplicating Leads or substituting Lead Custom definitions into Contacts', async () => {
+    const age = await customField('Age');
+    try {
+      const form = await draft(), answers = { ...values(), age: '35' };
+      const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Existing', lastName: 'Customer', email: answers.email } });
+      await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: 0, fields: [...form.fields as FormField[], { id: 'age', type: 'number', label: 'Age', customFieldId: age.id }] }));
+      await publish(form.id); await submit(form.publicId, answers);
+      const inquiry = await prisma.formSubmission.findFirstOrThrow({ where: { tenantId, formId: form.id } });
+      expect(inquiry.contactId).toBe(contact.id); expect(inquiry.values).toHaveProperty('age', '35');
+      expect(await prisma.lead.count({ where: { tenantId, email: answers.email } })).toBe(0);
+      expect(await prisma.customFieldValue.count({ where: { tenantId, fieldId: age.id } })).toBe(0);
+    } finally { await removeFields([age.id]); }
+  });
   it('permanently deletes a draft over HTTP and enforces authentication, permission and ownership', async () => {
     const form = await draft();
     expect((await request('/marketing/forms/' + form.id, 'DELETE', undefined, '')).status).toBe(401);
@@ -211,11 +315,22 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   });
   it('enforces auth/RBAC and exposes only published public data', async () => {
     expect((await request('/marketing/forms', 'GET', undefined, '')).status).toBe(401);
+    expect((await request('/marketing/forms', 'GET', undefined, denied)).status).toBe(403);
     expect((await request('/marketing/forms', 'POST', { name: 'Denied' }, denied)).status).toBe(403);
     const f = await publish((await draft()).id), r = await request('/public/forms/' + f.publicId, 'GET', undefined, '');
+    expect((await request('/marketing/forms/' + f.id, 'PUT', { name: 'Denied edit', revision: f.revision }, denied)).status).toBe(403);
+    expect((await request('/marketing/forms/' + f.id + '/publish', 'PATCH', undefined, denied)).status).toBe(403);
+    const outsider = await prisma.user.create({ data: { tenantId: otherTenant, firstName: 'Other', lastName: 'Admin', email: 'forms-other-admin@camxian.com', role: 'Client Admin', mustChangePassword: false, emailVerified: new Date(), onboardingCompletedAt: new Date() } });
+    const outsiderToken = (await issueAuthSession(outsider)).token;
+    expect((await request('/marketing/forms/' + f.id, 'GET', undefined, outsiderToken)).status).toBe(404);
+    expect((await request('/marketing/forms/' + f.id, 'PUT', { name: 'Cross-tenant edit', revision: f.revision }, outsiderToken)).status).toBe(404);
+    expect((await request('/marketing/forms/' + f.id + '/publish', 'PATCH', undefined, outsiderToken)).status).toBe(404);
     expect(r.status).toBe(200); expect(r.body.data).not.toHaveProperty('tenantId'); expect(r.body.data).not.toHaveProperty('settings');
     const bad = await request('/public/forms/' + f.publicId + '/submissions', 'POST', { version: 1, values: { ...values(), firstName: ' ' } }, '');
     expect(bad.status).toBe(400); expect(bad.body.fieldErrors.firstName).toBeTruthy();
+    const bot = values();
+    await expect(submitPublicForm(f.publicId, { version: 1, values: bot, website: 'bot-filled-honeypot' })).rejects.toMatchObject({ statusCode: 400 });
+    expect(await prisma.lead.count({ where: { tenantId, email: bot.email } })).toBe(0);
   });
   it('rotates only eligible Sales members, preserves request idempotency and inquiry/Deal ownership', async () => {
     const group = await scoped(() => prisma.$transaction(tx => ensureSalesGroup(tx, tenantId), { isolationLevel: 'Serializable' }));

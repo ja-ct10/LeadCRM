@@ -27,7 +27,7 @@ it('renders exactly three categories with all four origins, immutable aliases an
   expect(ageChoices).toHaveLength(4);
   expect(ageChoices.filter(button => !button.disabled)).toHaveLength(1);
   expect(ageChoices.find(button => !button.disabled)?.textContent).toContain('Customer Age');
-  expect(screen.getByRole('button', { name: /Deal Value.*value/ }).getAttribute('disabled')).toBe('');
+  expect(screen.getByRole('button', { name: /Deal Value.*value/ }).getAttribute('disabled')).toBeNull();
 });
 it.each(['firstName', 'Customer Age', 'sender', 'Custom Fields', 'Deals'])('searches labels, keys, classification and module metadata for %s', search => {
   render(<CampaignVariablePicker choices={campaignVariableChoices(fields, 'LEADS')} onInsert={vi.fn()} />);

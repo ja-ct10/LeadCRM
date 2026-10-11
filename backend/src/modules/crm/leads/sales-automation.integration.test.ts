@@ -48,6 +48,10 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       if (index === 2) inactiveId = agent.id; else agentIds.push(agent.id);
     }
     agentIds.sort();
+    // Public Forms intentionally rotate through the configured Sales Group.
+    // Manual CRM creation continues to use the role-eligible rotation above.
+    await prisma.tenantGroup.create({ data: { tenantId, name: 'Sales', systemKey: 'SALES',
+      members: { create: agentIds.map(userId => ({ userId })) } } });
     const denied = await prisma.user.create({ data: { tenantId, firstName: 'No', lastName: 'Permissions', email: 'denied@camxian.com', role: 'Viewer', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     deniedId = denied.id; deniedToken = (await issueAuthSession(denied)).token;
     await prisma.user.create({ data: { tenantId: otherTenant, firstName: 'Foreign', lastName: 'Agent', email: 'foreign@camxian.com', role: 'Client Admin' } });

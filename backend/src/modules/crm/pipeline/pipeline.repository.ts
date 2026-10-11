@@ -122,12 +122,13 @@ export async function reorderDeals(pipelineId: string, tenantId: string, dealIds
   const pipeline = await prisma.pipeline.findFirst({ where: { id: pipelineId, tenantId } });
   if (!pipeline) return null;
 
-  await prisma.$transaction(
-    dealIds.map((dealId, index) =>
-      // SEC: filter by both id and tenantId — prevents cross-tenant deal writes
-      prisma.deal.update({ where: { id: dealId, tenantId }, data: { order: index } }),
-    ),
-  );
+  await salesTransaction(async tx => {
+    for (const [index, dealId] of dealIds.entries()) {
+      const deal = await tx.deal.findFirst({ where: { id: dealId, tenantId, pipelineId, isArchived: false } });
+      if (!deal) throw new ValidationError('Choose active Deals in this pipeline.');
+      await tx.deal.update({ where: { id: dealId, tenantId, pipelineId }, data: { order: index } });
+    }
+  });
 
   return { reordered: dealIds.length };
 }

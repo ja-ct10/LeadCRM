@@ -31,6 +31,11 @@ export async function getForms(
   }
 }
 
+export async function getLeadFormFieldCatalog(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try { res.json({ success: true, data: await service.getLeadFormFieldCatalog(req.user!.tenantId) }); }
+  catch (err) { next(err); }
+}
+
 export async function getFormById(
   req: Request,
   res: Response,

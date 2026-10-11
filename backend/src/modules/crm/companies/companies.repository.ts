@@ -1,4 +1,5 @@
 import { ValidationError } from '../../../shared/errors/http-error';
+import { assertCrmRecordMutation, assertCrmCreateAssignment, runCrmAutomaticCreation } from '../access/crm-record-access.service';
 import { resolveSalesAgent } from '../leads/lead-automation.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
@@ -25,6 +26,7 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   // Parse filter[field]=operator:value params
   const parsedFilters = parseFilterParams(query);
   const filterClauses = buildPrismaFilters(parsedFilters, COMPANY_FILTER_FIELDS, COMPANY_FIELD_ALIASES);
+  if (parsedFilters.find(filter => filter.field === 'scope')?.value === 'my') filterClauses.push({ assignedUserId: String(query.currentUserId ?? '') });
 
   const where = {
     tenantId,
@@ -70,12 +72,13 @@ export async function findCompanyById(id: string, tenantId: string) {
 }
 
 export async function createCompany(tenantId: string, dto: CreateCompanyDto, actorId?: string) {
+  await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
   const { customFieldValues, ...data } = dto;
   return salesTransaction(async tx => {
     const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId);
-    const account = await tx.account.create({ data: { ...data, assignedUserId: agent?.id ?? null, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never });
+    const account = await runCrmAutomaticCreation(tx, 'accounts', agent?.id ?? null, async () => await tx.account.create({ data: { ...data, assignedUserId: agent?.id ?? null, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never }));
     await saveRecordValues(tx, tenantId, 'accounts', account.id, customFieldValues, actorId);
     return account;
   });
@@ -89,6 +92,7 @@ export async function updateCompany(id: string, tenantId: string, dto: UpdateCom
     : (await prisma.productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
   normalizeProductOther(dto, interestNames, previous?.productInterestOther);
   return salesTransaction(async tx => {
+      await assertCrmRecordMutation(tx, 'accounts', id, 'edit', dto);
       const current = await tx.account.findFirst({ where: { id, tenantId } });
       if (!current) return null;
       const relations = dto.productInterests === undefined && dto.activeProducts === undefined && dto.productInterestIds === undefined && dto.activeProductIds === undefined ? {} : await productRelationData(tx, 'account', tenantId, { ids: dto.productInterestIds, activeIds: dto.activeProductIds, names: dto.productInterests, activeNames: dto.activeProducts }, current, true);

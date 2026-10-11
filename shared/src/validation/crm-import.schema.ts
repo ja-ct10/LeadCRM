@@ -3,6 +3,7 @@ import { LeadNameSchema, LeadPhoneSchema, OptionalLeadSourceSchema } from '../co
 
 export const CSV_MAX_BYTES = 10 * 1024 * 1024;
 export const CSV_MAX_ROWS = 5000;
+export const CSV_MAX_COLUMNS = 100;
 export type CrmImportModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 export const importIdentity = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 export const splitProductInterests = (value: string) => [...new Map(value.split(';').map(v => v.trim()).filter(Boolean).map(v => [importIdentity(v), v])).values()];
@@ -79,7 +80,7 @@ export interface ImportReviewRow {
 export function parseImportCsv(source: string) {
   const records: string[][] = [], rowNumbers: number[] = [];
   let row: string[] = [], cell = '', quoted = false, closed = false, line = 1, start = 1;
-  const finishCell = () => { row.push(cell.trim()); cell = ''; closed = false; if (row.length > 100) throw new Error('Maximum 100 CSV columns.'); };
+  const finishCell = () => { row.push(cell.trim()); cell = ''; closed = false; if (row.length > CSV_MAX_COLUMNS) throw new Error('Maximum 100 CSV columns.'); };
   const finishRow = () => { finishCell(); if (row.some(Boolean)) { records.push(row); rowNumbers.push(start); } row = []; };
   const text = source.replace(/^\uFEFF/, '');
   for (let i = 0; i < text.length; i++) {

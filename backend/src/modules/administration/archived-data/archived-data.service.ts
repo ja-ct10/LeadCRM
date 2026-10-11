@@ -7,6 +7,21 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import type { PermissionKey } from '../../../shared/constants/permissions';
 import { loadArchiveDatePage } from './archive-date-page';
+import { resolveCrmActor } from '../../crm/access/crm-record-access.service';
+
+async function applyAssignmentRestorePolicy(actor: Actor, rows: ArchivedRecord[]) {
+  const policy = await resolveCrmActor(prisma, actor);
+  if (!policy.assignmentRestricted) return rows;
+  const models = { Lead: prisma.lead, Contact: prisma.contact, Account: prisma.account, Deal: prisma.deal };
+  const assigned = new Set<string>();
+  await Promise.all(Object.entries(models).map(async ([type, model]) => {
+    const ids = rows.filter(row => row.type === type && row.canRestore).map(row => row.id);
+    if (!ids.length) return;
+    const records = await (model as typeof prisma.lead).findMany({ where: { tenantId: actor.tenantId, id: { in: ids }, assignedUserId: actor.userId }, select: { id: true } });
+    for (const record of records) assigned.add(`${type}:${record.id}`);
+  }));
+  return rows.map(row => row.type in models ? { ...row, canRestore: row.canRestore && assigned.has(`${row.type}:${row.id}`) } : row);
+}
 
 type Actor = { userId: string; tenantId: string; role: string };
 const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchema>['type'], [PermissionKey, PermissionKey]> = {
@@ -79,7 +94,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     const data: ArchivedRecord[] = rows.map(row => ({ type: row.type, id: row.id, name: row.name, detail: row.detail,
       archivedAt: row.archivedAt?.toISOString() ?? null,
       canRestore: restorePermissions.get(row.type) === true && (row.type !== 'Role' || !row.isSystemRole && !protectedRole(row.name)) }));
-    return { data, meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
+    return { data: await applyAssignmentRestorePolicy(actor, data), meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
   }
   // Merge archive identities before pagination so All types has a global ordering.
   const all: ArchivedRecord[] = [];
@@ -104,7 +119,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     field === 'archivedAt' ? b.archivedAt ? new Date(b.archivedAt) : null : b[field], direction) || a.type.localeCompare(b.type) || a.id.localeCompare(b.id));
   const skip = (query.page - 1) * query.limit;
   const data = all.slice(skip, skip + query.limit);
-  return { data, meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
+  return { data: await applyAssignmentRestorePolicy(actor, data), meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
 }
 
 export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestoreParamsSchema>) {

@@ -52,6 +52,7 @@ router.patch( '/templates/:id/archive', authorize('campaigns.archive'), template
 // ── Forms ──────────────────────────────────────────────
 // Forms have independent permissions and retain permanent draft deletion.
 router.get(   '/forms',                 authorize('forms.view'),   formController.getForms);
+router.get(   '/forms/field-catalog',   authorize('forms.view'),   formController.getLeadFormFieldCatalog);
 router.get('/forms/:id/submissions', authorize('forms.view_submissions'), formController.getSubmissions);
 router.post('/forms/:id/duplicate', authorize('forms.duplicate'), writeLimiter, formController.duplicateForm);
 router.get(   '/forms/:id',             authorize('forms.view'),   formController.getFormById);

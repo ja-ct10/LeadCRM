@@ -1,21 +1,31 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { defaultContactForm, withProductOptions } from '@leadcrm/shared';
+import { ClosingFieldInputSchema, defaultContactForm, getCrmFieldCatalog, withProductOptions } from '@leadcrm/shared';
 import { FormBuilderPage } from './form-builder-page';
 import PublicFormPage from './public-form-page';
 import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
-vi.mock('../services/forms.service', () => ({ updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
+vi.mock('../services/forms.service', () => ({ getLeadFormFieldCatalog: vi.fn(), updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 const permissions = vi.hoisted(() => ({ edit: true, publish: true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { }, userCan: (_module: string, permission: string) => permission === 'canEdit' ? permissions.edit : permission === 'canPublish' ? permissions.publish : true }) }));
 const products = [{ id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Smart Lock', dealValue: 5000, active: true, createdAt: '', updatedAt: '' }];
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false, error: '' }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: getCrmFieldCatalog('leads', [{ ...ClosingFieldInputSchema.parse({ name: 'Age', type: 'Number', module: 'leads', group: 'Basic Information', required: false }), id: 'age', version: 1 }]), isInitialLoad: false, error: null, refetch: vi.fn() }) }));
 const form = { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
 beforeEach(() => { vi.resetAllMocks(); permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
+  it('shows the required name indicator and retains all fields after whitespace name validation', async () => {
+    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
+    const name = screen.getByLabelText('Form name') as HTMLInputElement;
+    expect(name.required).toBe(true); expect(name.parentElement?.querySelector('.text-red-600')?.textContent).toContain('*');
+    fireEvent.change(name, { target: { value: '   ' } }); fireEvent.click(screen.getByText('Publish'));
+    expect(screen.getByRole('alert').textContent).toContain('Form name is required.');
+    expect(screen.getAllByLabelText(/^Drag /)).toHaveLength(form.fields.length);
+    expect(service.updateForm).not.toHaveBeenCalled(); expect(service.publishForm).not.toHaveBeenCalled();
+  });
   it('lets an edit-only employee save a draft while publishing stays disabled', async () => {
     permissions.publish = false;
     vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));
@@ -37,15 +47,12 @@ describe('Forms UI', () => {
     await waitFor(() => expect(service.publishForm).toHaveBeenCalledWith('form'));
     expect(service.updateForm).not.toHaveBeenCalled();
   });
-  it('saves Company Website as a submission-only answer without an ineffective CRM mapping', async () => {
+  it('keeps legacy Company Website readable as a submission-only answer', async () => {
     vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));
-    render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
-    fireEvent.click(screen.getByText('Add fields or change design'));
-    const dialog = await screen.findByRole('dialog'); fireEvent.click(within(dialog).getByText('Company Website'));
-    fireEvent.keyDown(window, { key: 'Escape' });
+    render(<FormBuilderPage form={{ ...form, fields: [...form.fields, { id: 'website', type: 'company-website', label: 'Company Website' }] }} onBack={() => {}} onFormUpdate={() => {}} />);
     fireEvent.click(screen.getByLabelText('Edit Company Website'));
     expect(screen.getByText('Website answers are saved in submission history. They do not update the CRM record.')).toBeTruthy();
-    expect(within(screen.getByLabelText('CRM mapping')).queryByRole('option', { name: 'website' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Legacy form' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(service.updateForm).toHaveBeenCalled());
     const added = vi.mocked(service.updateForm).mock.calls[0][1].fields?.find(field => field.type === 'company-website');
@@ -138,19 +145,32 @@ describe('Forms UI', () => {
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
     const trigger = screen.getByText('Add fields or change design'); trigger.focus(); fireEvent.click(trigger);
     const dialog = await screen.findByRole('dialog'); expect(dialog.getAttribute('aria-label')).toBe('Form tools');
-    fireEvent.click(within(dialog).getByText('Single Line')); fireEvent.keyDown(window, { key: 'Escape' });
-    expect(screen.getByLabelText('Move Short answer up')).toBeTruthy(); expect(screen.getByText('Unsaved changes')).toBeTruthy(); expect(service.updateForm).not.toHaveBeenCalled();
+    expect(within(dialog).getByText('STANDARD FIELDS')).toBeTruthy(); expect(within(dialog).getByText('CUSTOM FIELDS')).toBeTruthy();
+    expect(within(dialog).queryByText('Single Line')).toBeNull(); expect(within(dialog).queryByText('Number')).toBeNull();
+    expect(dialog.querySelector('.lucide-grip-vertical')).toBeNull();
+    const separator = within(dialog).getByRole('button', { name: /Separator line/ });
+    expect(separator.getAttribute('title')).toBe('Add Separator line');
+    expect(separator.getAttribute('aria-roledescription')).toBeNull();
+    fireEvent.click(separator);
+    fireEvent.click(within(dialog).getByText('Age')); fireEvent.keyDown(window, { key: 'Escape' });
+    expect(screen.getByRole('separator')).toBeTruthy();
+    expect(screen.getByLabelText('Drag Separator line')).toBeTruthy();
+    expect(screen.getByLabelText('Drag Age')).toBeTruthy(); expect(screen.queryByLabelText(/Move .* up/)).toBeNull(); expect(screen.getByText('Unsaved changes')).toBeTruthy(); expect(service.updateForm).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(document.body.style.overflow).toBe(originalOverflow);
     expect(document.activeElement).toBe(trigger);
   });
-  it('persists reordered fields before publishing and passes the saved revision', async () => {
+  it('persists added canonical fields before publishing and passes the saved revision', async () => {
     vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...form, ...dto, revision: 1 }));
     vi.mocked(service.publishForm).mockResolvedValue({ ...form, revision: 1, publishedRevision: 1, publishedVersion: 1, status: 'published' });
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
-    fireEvent.click(screen.getByLabelText('Move Last Name up')); fireEvent.click(screen.getByText('Publish'));
+    fireEvent.click(screen.getByText('Add fields or change design'));
+    fireEvent.click(within(await screen.findByRole('dialog')).getByText('Age'));
+    fireEvent.click(within(screen.getByRole('dialog')).getByText('Separator line'));
+    fireEvent.keyDown(window, { key: 'Escape' }); fireEvent.click(screen.getByText('Publish'));
     await waitFor(() => expect(service.publishForm).toHaveBeenCalledWith('form'));
-    expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.[0].id).toBe('lastName');
+    expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.at(-2)).toMatchObject({ label: 'Age', type: 'number', customFieldId: 'age' });
+    expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.at(-1)).toMatchObject({ label: 'Separator line', type: 'divider' });
     expect(service.updateForm).toHaveBeenCalledWith('form', expect.objectContaining({ revision: 0 }));
     expect(vi.mocked(service.updateForm).mock.invocationCallOrder[0]).toBeLessThan(vi.mocked(service.publishForm).mock.invocationCallOrder[0]);
   });
@@ -161,12 +181,14 @@ describe('Forms UI', () => {
     await screen.findByText('Save failed'); expect(service.publishForm).not.toHaveBeenCalled(); expect(screen.getByText('Unsaved changes')).toBeTruthy();
   });
   it('shows one error per public field, limits phone digits, submits and thanks the visitor', async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), version: 1, trackUrlParams: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...defaultContactForm(), fields: [...withProductOptions(defaultContactForm().fields, products), { id: 'separator', type: 'divider', label: 'Separator line' }], version: 1, trackUrlParams: true } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
     vi.stubGlobal('fetch', fetchMock); render(<PublicFormPage publicId="public" />); await screen.findByText('Contact Us');
+    expect(screen.getByRole('separator')).toBeTruthy();
     fireEvent.click(screen.getByText('Submit')); expect(screen.getAllByText('First Name is required.')).toHaveLength(1);
     fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } }); fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: "O'Connor" } });
     fireEvent.change(screen.getByLabelText(/Email Address/), { target: { value: 'anne@example.com' } }); fireEvent.click(screen.getByRole('checkbox', { name: 'Smart Lock' }));
     const phone = screen.getByLabelText('Contact Number') as HTMLInputElement; fireEvent.change(phone, { target: { value: '9123456789123' } }); expect(phone.value).toBe('9123456789');
     fireEvent.click(screen.getByText('Submit')); await screen.findByText('Thank you!'); expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(JSON.parse(fetchMock.mock.calls[1][1].body).values).not.toHaveProperty('separator');
   });
 });

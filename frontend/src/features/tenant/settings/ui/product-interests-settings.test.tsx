@@ -5,7 +5,7 @@ import { ProductInterestsSettings } from './product-interests-settings';
 import { ProductsPage } from './products-page';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
-import { DEFAULT_CLOSING_FIELDS } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout } from '@leadcrm/shared';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'one' }, user: { id: 'tester', tenantId: 'one' } }) }));
@@ -22,10 +22,12 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 it('keeps field configuration separate from product management', async () => {
-  vi.mocked(apiClient.get).mockResolvedValue({ data: DEFAULT_CLOSING_FIELDS });
+  vi.mocked(apiClient.get).mockImplementation(async path => path.includes('/layout/')
+    ? { data: { layout: defaultFieldLayout(path.endsWith('deals') ? 'deals' : 'leads') } } as any : { data: DEFAULT_CLOSING_FIELDS } as any);
   render(<ProductInterestsSettings />);
+  fireEvent.change(screen.getByLabelText('Module'), { target: { value: 'deals' } });
   expect(await screen.findByText(DEFAULT_CLOSING_FIELDS[0].name)).toBeTruthy();
-  expect(screen.queryByText('Product Interest')).toBeNull();
+  expect(screen.getByText('Product Interest')).toBeTruthy(); // CRM field configuration retains the canonical field.
   expect(apiClient.get).not.toHaveBeenCalledWith('/administration/product-interests', expect.anything());
   expect(screen.queryByRole('button', { name: 'Add Product' })).toBeNull();
 });

@@ -1,4 +1,5 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useEffect, useId, useRef, useState } from 'react';
 import { CUSTOM_FIELD_BUILT_IN_GROUPS, isClosedWonField, CLOSING_FILE_MAX_BYTES, closingValueError, customFieldNameKey, defaultFieldLayout, type ClosingField, type ClosingValues, type CustomFieldModule, type CustomFieldState, type RecordFileMetadata, type FieldLayout } from '@leadcrm/shared';
 import { apiClient, type ApiRequestError } from '@/lib/api/client';
@@ -52,7 +53,7 @@ export function useRecordCustomFields(module: CustomFieldModule, recordId?: stri
     try {
       const uploaded = await uploadCustomFieldFile(module, recordId, file);
       setUploads(prev => ({ ...prev, [uploaded.id]: uploaded })); update(field.id, uploaded.id);
-    } catch (error) { setErrors(prev => ({ ...prev, [field.id]: error instanceof Error ? error.message : 'Upload failed.' })); }
+    } catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Upload failed.'); setErrors(prev => ({ ...prev, [field.id]: error instanceof Error ? error.message : 'Upload failed.' })); }
     finally { setUploadCount(count => count - 1); }
   };
   return { module, fields, layout: query.data?.layout ?? defaultFieldLayout(module), value, update, payload, validate, errors, blocked, uploadCount, upload, query, files: [...(query.data?.files ?? []), ...Object.values(uploads)] };
@@ -120,8 +121,10 @@ export function useRecordCustomFieldDetails(module: CustomFieldModule, recordId:
     try { await apiClient.put(`/crm/${module}/${encodeURIComponent(recordId)}`, { customFieldValues: { [field.id]: value } }); }
     catch (error) {
       const status = (error as { status?: number }).status;
+      if (status === 403) showCrmMutationError(error, 'Unable to save field.');
       if (latest.current.module === module && latest.current.recordId === recordId && [401, 403, 404].includes(status ?? 0)) {
-        latest.current.query.setData({ fields: [], values: {}, files: [] });
+        // An assignment denial does not revoke the separately authorized read.
+        if (status !== 403) latest.current.query.setData({ fields: [], values: {}, files: [] });
         void latest.current.query.refetch();
       }
       const messages = (error as ApiRequestError).fieldErrors?.customFieldValues;
@@ -157,7 +160,7 @@ export function RecordCustomFieldInlineRow({ details, fieldId, canEdit }: { deta
     renderEditor: props => <CustomFieldControl field={field} module={details.module} value={props.value} onChange={next => { setUploadError(''); props.onChange(next); }} files={files} disabled={props.disabled} uploading={uploading} error={props.error || uploadError} inline onSave={props.onSave} onCancel={() => { setUploadError(''); props.onCancel(); }} onUpload={async selected => {
       setUploading(true); setUploadError('');
       try { const uploaded = await uploadCustomFieldFile(details.module, details.recordId, selected); setUploads(previous => [...previous, uploaded]); props.onChange(uploaded.id); }
-      catch (error) { setUploadError(error instanceof Error ? error.message : 'Upload failed. Try again.'); }
+      catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Upload failed.'); setUploadError(error instanceof Error ? error.message : 'Upload failed. Try again.'); }
       finally { setUploading(false); }
     }} />,
   }]} onSave={async (_id, raw) => {

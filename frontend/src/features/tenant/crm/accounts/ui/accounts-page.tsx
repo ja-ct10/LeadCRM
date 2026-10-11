@@ -1,4 +1,5 @@
 ﻿'use client';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { Button } from '@/shared/components/ui/button';
@@ -41,6 +42,7 @@ export default function AccountsPage(): React.ReactElement {
   const canImport = useHasPermission('accounts.import');
   const canEdit = useHasPermission('accounts.edit');
   const canDelete = useHasPermission('accounts.archive');
+  const recordAccess = useCrmRecordAccess();
 
   const { deals, users } = useData();
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('accounts');
@@ -142,6 +144,7 @@ export default function AccountsPage(): React.ReactElement {
   // selectedRelated (has_deals) stays client-side — no direct DB field.
   const serverFilters = useMemo((): import('@leadcrm/shared').FilterCondition[] => {
     const conditions: import('@leadcrm/shared').FilterCondition[] = [];
+    if (activeTab === 'my') conditions.push({ field: 'scope', operator: 'equals', value: 'my' });
     if (selectedIndustries.length > 0) {
       conditions.push({ field: 'industry', operator: 'in', value: selectedIndustries });
     }
@@ -153,7 +156,7 @@ export default function AccountsPage(): React.ReactElement {
       conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
     }
     return conditions;
-  }, [selectedIndustries, selectedTypes, selectedOwners]);
+  }, [selectedIndustries, selectedTypes, selectedOwners, activeTab]);
 
   const {
     accounts,
@@ -357,7 +360,7 @@ export default function AccountsPage(): React.ReactElement {
     <>
       <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
-        bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
+        bulkSelection={{ count: accountSelectedIds.size, onClear: () => setAccountSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...accountSelectedIds].some(id => !recordAccess.canMutate(accounts.find(record => record.id === id)))} onClick={() => confirmArchive([...accountSelectedIds], `${accountSelectedIds.size} accounts`)}>Archive</Button> }}
         moduleId="accounts"
         title="Accounts"
         description="Manage companies and organizations linked to CRM records."

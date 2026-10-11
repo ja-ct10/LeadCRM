@@ -1,4 +1,5 @@
 import { setNotificationActor } from '../../notifications/notification-actor';
+import { assertCrmCreateAssignment, isCrmTransactionConflict, runCrmAutomaticCreation } from '../access/crm-record-access.service';
 import { cancelOpenDeals } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
@@ -30,7 +31,7 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
       return work(tx);
     }, { isolationLevel: 'Serializable', timeout: 20000 })); }
     catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code) && attempt < 4) continue;
+      if ((isCrmTransactionConflict(error) || error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') && attempt < 4) continue;
       throw error;
     }
     for (const effect of effects) await effect();
@@ -99,9 +100,9 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
       }
       continue;
     }
-    const deal = await tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
+    const deal = await runCrmAutomaticCreation(tx, 'deals', lead.assignedUserId, () => tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
       productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
-      pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } });
+      pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } }));
     afterSalesCommit(() => fireDealCreated({ tenantId, actorId, deal }));
     await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
     if (actorId || lead.assignedUserId) await tx.activity.create({ data: { ...scope, dealId: deal.id, createdById: (actorId ?? lead.assignedUserId)!,
@@ -140,6 +141,7 @@ export async function resolveFormSalesAgent(tx: Tx, tenantId: string) {
 }
 
 export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCreateInput, actorId?: string, assignment: 'default' | 'public-form' = 'default') {
+  await assertCrmCreateAssignment(tx, input.tenantId, input.assignedUserId);
   const scope = crmScope(input.tenantId);
   if (input.creationKey) {
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });

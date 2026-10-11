@@ -258,12 +258,12 @@ it('keeps a draft across label/cache updates, then clears it on permission revoc
   view.rerender(<RecordCustomFieldDetails module="leads" recordId="record" />);
   expect(screen.queryByLabelText('Renamed')).toBeNull(); expect(screen.getByText('4')).toBeTruthy();
 });
-it('clears restricted custom values after an authoritative write denial', async () => {
+it('retains readable custom values and refreshes after an assignment write denial', async () => {
   fixture.data = { fields: [field('leads')], values: { field: 99 }, files: [] };
   api.put.mockRejectedValueOnce(Object.assign(new Error('Access revoked'), { status: 403 }));
   render(<RecordCustomFieldDetails module="leads" recordId="record" canEdit />);
   fireEvent.click(screen.getByRole('button', { name: 'Edit Project Budget' })); fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(screen.queryByText('99')).toBeNull()); expect(fixture.data.values).toEqual({});
+  await waitFor(() => expect(api.refetch).toHaveBeenCalled()); expect(fixture.data.values).toEqual({ field: 99 });
 });
 it('uploads through the authorized record endpoint and cancel never deletes the saved file', async () => {
   const saved = 'ffed816d-5250-40d4-a116-8d5d6b5f7844', uploaded = 'afed816d-5250-40d4-a116-8d5d6b5f7844';

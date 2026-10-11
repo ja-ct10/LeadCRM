@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { assertCrmRecordMutation } from '../access/crm-record-access.service';
+import { salesTransaction } from '../leads/lead-automation.service';
 import { z } from 'zod';
 import { RECORD_FILE_MAX_BYTES } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
@@ -31,6 +33,7 @@ export async function listFiles(module: FileModule, id: string, tenantId: string
 }
 export async function uploadFile(module: FileModule, id: string | null, tenantId: string, userId: string, input: unknown, bytes: Buffer) {
   if (id) await requireRecord(module, id, tenantId);
+  if (id) await salesTransaction(tx => assertCrmRecordMutation(tx, module, id));
   const submitted = UploadMetadataSchema.parse(input);
   const extension = submitted.name.split('.').pop()?.toLowerCase();
   const inferred: Record<string, string> = { pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', txt: 'text/plain', csv: 'text/csv', zip: 'application/zip', doc: 'application/msword', xls: 'application/vnd.ms-excel', docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' };

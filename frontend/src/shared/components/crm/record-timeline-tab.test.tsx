@@ -15,7 +15,7 @@ beforeEach(() => { vi.resetAllMocks(); mocks.canEdit = true; mocks.actor = 'acto
 afterEach(cleanup);
 it.each([['leads','leadId'],['contacts','contactId'],['accounts','accountId'],['deals','dealId']] as const)('saves one trimmed %s note, applies server identity and clears only after success', async (module,key) => {
   mocks.create.mockResolvedValue({ data: note });
-  render(<RecordTimelineTab activities={[]} module={module} recordId="record" onActivityCreated={mocks.onCreated} />);
+  render(<RecordTimelineTab canEditRecord activities={[]} module={module} recordId="record" onActivityCreated={mocks.onCreated} />);
   fireEvent.change(screen.getByLabelText('Note'), { target: { value: '  Follow-up note  ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
   await waitFor(() => expect(mocks.onCreated).toHaveBeenCalledExactlyOnceWith(note));
@@ -26,7 +26,7 @@ it.each([['leads','leadId'],['contacts','contactId'],['accounts','accountId'],['
 it('keeps a failed draft and excludes duplicate clicks while saving', async () => {
   let reject!: (error: Error) => void;
   mocks.create.mockReturnValue(new Promise((_,fail) => { reject = fail; }));
-  render(<RecordTimelineTab activities={[]} module="deals" recordId="deal" />);
+  render(<RecordTimelineTab canEditRecord activities={[]} module="deals" recordId="deal" />);
   fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Unsaved note' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
   fireEvent.click(screen.getByRole('button', { name: 'Saving…' }));
@@ -37,7 +37,7 @@ it('keeps a failed draft and excludes duplicate clicks while saving', async () =
 });
 it('keeps Notes and actual Tasks before Timeline independent of filters', () => {
   const onFiltersChange = vi.fn();
-  render(<RecordTimelineTab activities={[note, { id: 'call', type: 'call', title: 'Historical call', createdAt: note.createdAt }]} notes={[note]} tasks={<section aria-label="Tasks">Actual Task</section>} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
+  render(<RecordTimelineTab canEditRecord activities={[note, { id: 'call', type: 'call', title: 'Historical call', createdAt: note.createdAt }]} notes={[note]} tasks={<section aria-label="Tasks">Actual Task</section>} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
   expect(screen.getAllByRole('region').map(region => region.getAttribute('aria-label'))).toEqual(['Notes','Tasks','Activity Timeline']);
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
   expect(within(screen.getByRole('region', { name: 'Notes' })).getByText(note.title)).toBeTruthy();
@@ -48,27 +48,32 @@ it('keeps Notes and actual Tasks before Timeline independent of filters', () => 
 });
 it('loads older Notes and Timeline from their separate readers', () => {
   const olderNotes = vi.fn(), olderEvents = vi.fn();
-  render(<RecordTimelineTab activities={[]} notes={[]} module="contacts" recordId="contact" hasMore hasMoreNotes onLoadMore={olderEvents} onLoadMoreNotes={olderNotes} />);
+  render(<RecordTimelineTab canEditRecord activities={[]} notes={[]} module="contacts" recordId="contact" hasMore hasMoreNotes onLoadMore={olderEvents} onLoadMoreNotes={olderNotes} />);
   fireEvent.click(screen.getByRole('button', { name: 'Load older notes' })); fireEvent.click(screen.getByRole('button', { name: 'Load older activity' }));
   expect(olderNotes).toHaveBeenCalledOnce(); expect(olderEvents).toHaveBeenCalledOnce();
 });
 it('withholds the note editor without record edit permission', () => {
   mocks.canEdit = false;
-  render(<RecordTimelineTab activities={[]} module="accounts" recordId="account" />);
+  render(<RecordTimelineTab canEditRecord activities={[]} module="accounts" recordId="account" />);
   expect(screen.queryByLabelText('Note')).toBeNull();
 });
 it('discards local saved notes after cache clearing, preserves a same-user draft and clears it on identity change', async () => {
   mocks.create.mockResolvedValue({ data: note });
-  const view = render(<RecordTimelineTab activities={[]} module="leads" recordId="record" />);
+  const view = render(<RecordTimelineTab canEditRecord activities={[]} module="leads" recordId="record" />);
   fireEvent.change(screen.getByLabelText('Note'), { target: { value: note.title } });
   fireEvent.click(screen.getByRole('button', { name: 'Save note' }));
   await waitFor(() => expect(within(screen.getByRole('region', { name: 'Notes' })).getByText(note.title)).toBeTruthy());
   fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Private draft' } });
   clearPageCache();
-  view.rerender(<RecordTimelineTab activities={[]} module="leads" recordId="record" />);
+  view.rerender(<RecordTimelineTab canEditRecord activities={[]} module="leads" recordId="record" />);
   expect(screen.queryByText(note.title)).toBeNull();
   expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Private draft');
   mocks.actor = 'other-user';
-  view.rerender(<RecordTimelineTab activities={[]} module="leads" recordId="record" />);
+  view.rerender(<RecordTimelineTab canEditRecord activities={[]} module="leads" recordId="record" />);
   expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('');
+});
+
+it('withholds the note editor when assignment is denied despite Edit permission', () => {
+  render(<RecordTimelineTab canEditRecord={false} activities={[]} module="leads" recordId="record" />);
+  expect(screen.queryByLabelText('Note')).toBeNull();
 });

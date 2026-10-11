@@ -1,4 +1,8 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 import { LEAD_SOURCES } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
@@ -59,6 +63,9 @@ interface ContactFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormInnerProps): React.ReactElement {
+  const recordAccess = useCrmRecordAccess();
+  const actionAllowed = useHasPermission(initialData ? 'contacts.edit' : 'contacts.create');
+  const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('contacts', initialData?.id);
   const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
@@ -121,6 +128,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
 
   const [saveError, setSaveError] = useState('');
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
+    if (!canSubmit) return;
     if (!customFields.validate()) return;
     setSaveError('');
     // contactsV2Api translates the display aliases to Contact API columns.
@@ -146,7 +154,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     if (isEdit && !data.assignedUserId) (cleaned as Record<string, unknown>).assignedUserId = null;
 
     try { await onSave(cleaned); }
-    catch (error) { setSaveError(error instanceof Error ? error.message : 'Unable to save Contact. Please try again.'); }
+    catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Unable to save Contact.'); setSaveError(error instanceof Error ? error.message : 'Unable to save Contact. Please try again.'); }
   };
 
   // Style classes
@@ -299,7 +307,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
                   name={field.name}
                   onBlur={field.onBlur}
                   onChange={field.onChange}
-                  users={users}
+                  users={recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
                   placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
                   className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
                   invalid={!!errors.assignedUserId}
@@ -366,7 +374,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
         </button>
         <button
           type="submit"
-          disabled={customFields.blocked || isSubmitting}
+          disabled={!canSubmit || customFields.blocked || isSubmitting}
           className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Contact'}

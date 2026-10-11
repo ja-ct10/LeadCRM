@@ -38,6 +38,7 @@ interface ApiResultRow {
   status: 'imported' | 'failed' | 'duplicate';
   remarks: string | null;
   createdAt: string;
+  recordId?: string | null;
   [key: string]: unknown;
 }
 
@@ -46,6 +47,7 @@ interface ApiResultRow {
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
   return date.toLocaleDateString('en-US', {
+    timeZone: 'Asia/Manila',
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -57,9 +59,9 @@ function formatDate(dateStr: string): string {
 function getStatusBadge(status: string): { label: string; className: string } {
   switch (status) {
     case 'completed':
-      return { label: 'Completed', className: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' };
+      return { label: 'Succeeded', className: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' };
     case 'completed_with_errors':
-      return { label: 'Completed with Errors', className: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' };
+      return { label: 'Partially Succeeded', className: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' };
     case 'failed':
       return { label: 'Failed', className: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400' };
     case 'pending':
@@ -339,6 +341,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
                         </td>
                         <td className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400">
                           {row.status === 'imported' ? ('Successfully imported' + (row.resolvedValue === undefined ? '' : ' · Product value: ₱' + Number(row.resolvedValue).toLocaleString('en-PH')))  : (row.remarks || '—')}
+                          {row.status === 'imported' && row.recordId && <a className="ml-2 text-primary underline" href={`/crm/${moduleKey}/${encodeURIComponent(row.recordId)}`}>View {config.moduleSingular}</a>}
                         </td>
                       </tr>
                     ))}

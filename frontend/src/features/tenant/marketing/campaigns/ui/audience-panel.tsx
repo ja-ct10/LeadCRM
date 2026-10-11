@@ -2,7 +2,7 @@
 import { panelBodyClass, panelFooterClass, panelInputClass, panelLabelClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import React, { useEffect, useRef, useState } from 'react';
 import { Trash2 } from 'lucide-react';
-import { campaignConditionField, campaignConditionError, campaignFieldOperators, type AudienceCondition, AudienceConditionSchema, AudiencePreviewSchema, CreateAudienceSchema, type AudienceInput, type AudienceBreakdown, type AudiencePreviewResult, type SavedAudience } from '@leadcrm/shared';
+import { campaignConditionField, campaignConditionError, campaignFieldOperators, type AudienceCondition, AudienceConditionSchema, AudiencePreviewSchema, CreateAudienceSchema, type AudienceInput, type AudiencePreviewResult, type SavedAudience } from '@leadcrm/shared';
 import { useCampaignFields } from './campaign-variable-picker';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { SideSheet } from '@/shared/components/side-sheet';
@@ -15,11 +15,6 @@ import { Button } from '@/shared/components/ui/button';
 
 export function FieldError({ message }: { message?: string }) {
   return message ? <p role="alert" className="mt-1 text-xs text-red-600">{message}</p> : null;
-}
-export function AudienceCounts({ counts, channel = 'EMAIL' }: { counts: AudienceBreakdown | null; channel?: 'EMAIL' | 'SMS' }) {
-  return <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-3 text-xs text-blue-700" aria-live="polite">
-    {counts ? <><strong>{counts.eligible} eligible recipients</strong><p className="mt-1">Matched: {counts.matched} · {channel === 'SMS' ? <>Missing phone: {counts.missingPhone ?? 0} · Invalid phone: {counts.invalidPhone ?? 0} · Duplicates: {counts.duplicatePhone ?? 0} · Do not contact: {counts.doNotContact ?? 0}</> : <>Missing email: {counts.missingEmail} · Invalid: {counts.invalidEmail} · Duplicates: {counts.duplicateEmail} · Staff: {counts.staffEmail} · Unsubscribed: {counts.unsubscribed} · Blocked: {counts.blocked}</>} · Inactive: {counts.inactive} · Delivery restricted: {counts.recipientNotAllowed}</p></> : 'Audience estimate unavailable.'}
-  </div>;
 }
 const operatorLabels: Record<string, string> = { equals: 'equals', not_equals: 'not equals', contains: 'contains', not_contains: 'does not contain', starts_with: 'starts with', ends_with: 'ends with', any: 'Any date', gt: 'Greater than', lt: 'Less than', lte: 'Less than or equal', gte: 'Greater than or equal', between: 'Date range', is_empty: 'is empty', is_not_empty: 'is not empty' };
 type ConditionDraft = AudienceCondition & { key: number };
@@ -82,8 +77,8 @@ export function AudiencePanel({ onClose, onCreated, channel = 'EMAIL', initialAu
           <button type="button" className="min-h-10 self-start rounded p-2 text-red-600" aria-label="Remove condition" onClick={() => setConditions(rows => rows.filter(row => row.key !== condition.key))}><Trash2 size={16} /></button>
         </div>;
       })}
-      <AudienceCounts counts={preview} channel={channel} /><FieldError message={previewError || errors.form || fieldsError || undefined} />
-      <section aria-label="Eligible Recipients" className="min-w-0 space-y-2"><h3 className="text-sm font-semibold">Eligible Recipients</h3>{loading && !preview ? <DataLoadingSkeleton rowCount={3} columnCount={2} /> : preview && <><p className="text-xs text-slate-500">Showing {preview.recipients.length} of {preview.eligible} eligible recipients</p><ul className="max-h-60 divide-y overflow-y-auto rounded-lg border">{preview.recipients.map(recipient => <li key={recipient.id} className="space-y-1 p-3 text-xs"><strong>{recipient.name || 'Unnamed recipient'}</strong> · {recipient.recordType}<p>{recipient.company}</p><p>{channel === 'SMS' ? recipient.phone : recipient.email}</p></li>)}</ul>{!preview.recipients.length && <p className="text-xs">No eligible recipients match these conditions.</p>}<PaginationControls currentPage={page} totalRecords={preview.meta.total} pageSize={limit} onPageChange={setPage} onPageSizeChange={size => { setPage(1); setLimit(size); }} showRange={false} /></>}</section>
+      <FieldError message={previewError || errors.form || fieldsError || undefined} />
+      <section aria-label="Eligible Recipients" className="min-w-0 space-y-2"><h3 className="text-sm font-semibold">Eligible Recipients</h3>{loading && !preview ? <DataLoadingSkeleton rowCount={3} columnCount={2} /> : preview && <><ul className="max-h-60 divide-y overflow-y-auto rounded-lg border">{preview.recipients.map(recipient => <li key={recipient.id} className="space-y-1 p-3 text-xs"><strong>{recipient.name || 'Unnamed recipient'}</strong> · {recipient.recordType}<p>{recipient.company}</p><p>{channel === 'SMS' ? recipient.phone : recipient.email}</p></li>)}</ul>{!preview.recipients.length && <p className="text-xs">No eligible recipients match these conditions.</p>}<PaginationControls currentPage={page} totalRecords={preview.meta.total} pageSize={limit} onPageChange={setPage} onPageSizeChange={size => { setPage(1); setLimit(size); }} showRange={false} /><p className="text-xs font-semibold text-slate-600 dark:text-slate-300" aria-live="polite">{preview.eligible} eligible recipient{preview.eligible === 1 ? '' : 's'}</p></>}</section>
     </div><div className={panelFooterClass + ' shrink-0 justify-end'}><button className={panelSecondaryActionClass} onClick={onClose} disabled={busy}>Cancel</button><button onClick={save} disabled={busy} className={panelPrimaryActionClass}>{busy ? 'Saving...' : initialAudience ? 'Save Audience' : 'Create Audience'}</button></div></div>
   </SideSheet>;
 }

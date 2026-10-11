@@ -1,3 +1,6 @@
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [], activities: [], contacts: [], deals: [], organizations: [] }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined, isInitialLoad: false, refetch: vi.fn() }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' } }) }));
 import { describe, it, expect, vi } from 'vitest';
 import React from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';

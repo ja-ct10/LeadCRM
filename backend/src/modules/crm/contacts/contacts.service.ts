@@ -1,4 +1,5 @@
 import * as repo from './contacts.repository';
+import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema, CreateContactDto, UpdateContactDto, ConvertContactDto } from './contacts.dto';
@@ -59,6 +60,7 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
 export async function convertContact(id: string, tenantId: string, userId: string, dto: ConvertContactDto) {
   dto = ConvertContactSchema.parse(dto);
   const committed = await salesTransaction(async tx => {
+    await assertCrmRecordMutation(tx, 'leads', id);
     const lead = await tx.lead.findFirst({ where: { tenantId, id, isArchived: false, deletedAt: null } });
     if (!lead) throw new NotFoundError('Lead');
     if (dto.createDeal) throw new ValidationError('Complete an existing Deal before converting this Lead.');

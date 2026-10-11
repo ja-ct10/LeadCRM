@@ -1,3 +1,4 @@
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
@@ -56,7 +57,7 @@ it('keeps one associated selector error when opening the account search', () => 
   expect(trigger.compareDocumentPosition(error) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(trigger);
   expect(screen.getAllByText('Invalid account')).toHaveLength(1);
-  expect(screen.getByRole('searchbox').getAttribute('aria-describedby')).toBe(error.id);
+  expect(screen.getByRole('combobox', { name: 'Search accounts' }).getAttribute('aria-describedby')).toBe(error.id);
 });
 
 

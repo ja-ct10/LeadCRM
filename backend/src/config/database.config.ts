@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { installTenantScoping } from '../core/tenant/tenant-prisma';
 import { installProductProjections } from '../core/tenant/product-projections';
+import { installCrmRecordAccess } from '../modules/crm/access/crm-record-access.service';
 
 // ── Singleton raw Prisma client ───────────────────────
 // This is the default export used by all repositories and services.
@@ -12,6 +13,7 @@ const prisma = new PrismaClient({
 });
 installProductProjections(prisma);
 installTenantScoping(prisma);
+installCrmRecordAccess(prisma);
 
 export default prisma;
 

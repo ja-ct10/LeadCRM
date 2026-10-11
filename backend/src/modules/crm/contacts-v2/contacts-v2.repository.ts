@@ -1,4 +1,5 @@
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
+import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
 import { productRelationData } from '../leads/product-relations';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -124,6 +125,7 @@ export async function findContactById(id: string, tenantId: string) {
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
+  await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
@@ -146,6 +148,7 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     : (await prisma.productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
   normalizeProductOther(dto, interestNames, previous?.productInterestOther);
   return salesTransaction(async tx => {
+    await assertCrmRecordMutation(tx, 'contacts', id, 'edit', dto);
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
     if (dto.productInterests !== undefined || dto.productInterestIds !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined }, current, true));
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);

@@ -4,7 +4,7 @@ import * as service from './companies.service';
 
 export async function getCompanies(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await service.getCompanies(req.user!.tenantId, req.query as Record<string, unknown>);
+    const result = await service.getCompanies(req.user!.tenantId, { ...req.query, currentUserId: req.user!.userId });
     res.json({ success: true, ...result });
   } catch (err) { next(err); }
 }

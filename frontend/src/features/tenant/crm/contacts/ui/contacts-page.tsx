@@ -1,4 +1,5 @@
 ﻿'use client';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
@@ -39,6 +40,7 @@ export default function ContactsPage(): React.ReactElement {
   const canImport = useHasPermission('contacts.import');
   const canEdit   = useHasPermission('contacts.edit');
   const canDelete = useHasPermission('contacts.archive');
+  const recordAccess = useCrmRecordAccess();
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('contacts');
 
   const highlightId = getParam('highlight') || undefined;
@@ -295,7 +297,7 @@ export default function ContactsPage(): React.ReactElement {
     <>
     <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
-      bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
+      bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...contactSelectedIds].some(id => !recordAccess.canMutate(filteredContacts.find(record => record.id === id)))} onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
       moduleId="contacts"
       title="Contacts"
         description="Manage customer and business contact information."

@@ -1,4 +1,5 @@
 import type { Lead as LeadRecord } from '@prisma/client';
+import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
 import { normalizeCrmStatus } from '@leadcrm/shared';
@@ -121,6 +122,7 @@ export async function createContact(
   createdById?: string,
 ) {
   const { requestId, productInterest, customFieldValues, ...fields } = dto;
+  await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   return salesTransaction(async tx => {
     const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
@@ -148,6 +150,7 @@ export async function updateContact(
       data.lastStatusChangedAt = new Date();
     }
     return await salesTransaction(async tx => {
+      await assertCrmRecordMutation(tx, 'leads', id, 'edit', dto);
       const current = await tx.lead.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null } });
       if (!current) throw new NotFoundError('Active Lead');
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
@@ -227,6 +230,7 @@ export async function archiveContact(id: string, tenantId: string, userId: strin
 
 export async function restoreContact(id: string, tenantId: string) {
   return salesTransaction(async tx => {
+    await assertCrmRecordMutation(tx, 'leads', id, 'restore');
     const lead = await tx.lead.findFirst({ where: { id, tenantId, isArchived: true } });
     if (!lead) return { count: 0 };
     if (lead.assignedUserId && !lead.convertedAt) {

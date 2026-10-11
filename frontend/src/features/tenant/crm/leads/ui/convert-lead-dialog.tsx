@@ -1,4 +1,5 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
 import React, { useState, useCallback } from 'react';
@@ -108,7 +109,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       onClose();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to convert lead';
-      toast.error(message);
+      showCrmMutationError(err, message);
     } finally {
       setIsSubmitting(false);
     }

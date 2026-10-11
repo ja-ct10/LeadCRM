@@ -131,8 +131,9 @@ export async function createActivity(
   tenantId:    string,
   createdById: string,
   dto:         CreateActivityDto,
+  db: Prisma.TransactionClient = prisma,
 ) {
-  return prisma.activity.create({
+  return db.activity.create({
     data:    { ...dto, tenantId, createdById },
     include: ACTIVITY_INCLUDE,
   });
@@ -142,9 +143,10 @@ export async function updateActivity(
   id:       string,
   tenantId: string,
   dto:      UpdateActivityDto,
+  db: Prisma.TransactionClient = prisma,
 ) {
   try {
-    return await prisma.activity.update({
+    return await db.activity.update({
       where:   { id, tenantId },
       data:    dto,
       include: ACTIVITY_INCLUDE,
@@ -154,9 +156,9 @@ export async function updateActivity(
   }
 }
 
-export async function deleteActivity(id: string, tenantId: string) {
+export async function deleteActivity(id: string, tenantId: string, db: Prisma.TransactionClient = prisma) {
   try {
-    return await prisma.activity.delete({ where: { id, tenantId } });
+    return await db.activity.delete({ where: { id, tenantId } });
   } catch {
     return null;
   }

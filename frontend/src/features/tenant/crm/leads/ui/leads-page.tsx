@@ -1,4 +1,6 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { LEAD_SOURCES } from '@leadcrm/shared';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
@@ -57,6 +59,7 @@ export default function LeadsPage(): React.ReactElement {
   const canImport = useHasPermission('leads.import');
   const canEdit = useHasPermission('leads.edit');
   const canDelete = useHasPermission('leads.archive');
+  const recordAccess = useCrmRecordAccess();
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('leads');
 
   // ── Column Preferences ────────────────────────────────────────────────
@@ -478,7 +481,7 @@ export default function LeadsPage(): React.ReactElement {
                 onClear: () => setSelectedIds(new Set()),
                 actions: (
                   canDelete && (
-                    <Button variant="outline"
+                    <Button variant="outline" disabled={[...selectedIds].some(id => !recordAccess.canMutate(leads.find(record => record.id === id)))}
                       onClick={() => confirmArchive([...selectedIds], `${selectedIds.size} leads`)}
                     >
                       Archive
@@ -603,7 +606,7 @@ export default function LeadsPage(): React.ReactElement {
             }
             refetchLeads();
           } catch (err: unknown) {
-            toast.error(err instanceof Error ? err.message : 'Failed to save lead');
+            showCrmMutationError(err, 'Failed to save lead');
           }
           setIsFormOpen(false);
           setEditingLead(undefined);

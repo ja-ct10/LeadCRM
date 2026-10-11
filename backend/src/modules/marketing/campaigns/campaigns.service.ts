@@ -9,7 +9,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissionError } from '../../../shared/services/email.service';
 import { sendSms, assertSmsConfigured, getSmsSenderIdentity, SmsSubmissionError } from '../../../shared/services/sms.service';
-import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience } from './audiences.service';
+import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience, campaignFieldsForAudienceSource } from './audiences.service';
 import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
 import { findCampaignReport } from './campaigns.repository';
 import { recalculateCampaignDelivery, recipientDeliveryFailed } from './campaign-delivery-status';
@@ -182,10 +182,21 @@ async function effectiveContent(campaign: { type: CampaignType; subject: string 
   return { subject: campaign.subject || template?.subject || '', body: campaign.body || template?.content || '' };
 }
 async function validateCampaignVariables(tenantId: string, definition: AudienceInput, subject: string, body: string, tx: Prisma.TransactionClient) {
-  const fields = await validateAudienceReferences(tenantId, definition, tx);
+  await validateAudienceReferences(tenantId, definition, tx);
+  const fields = await campaignFieldsForAudienceSource(tenantId, definition.source, tx);
   const available = campaignApprovedVariableKeys(fields);
   const unavailable = campaignVariableKeys(subject + '\n' + body).filter(key => !available.has(key));
   if (unavailable.length) throw new AppError(`Repair unavailable campaign variables: ${unavailable.map(key => '{{' + key + '}}').join(', ')}.`, 400);
+}
+async function resolveCampaignRecipients(tenantId: string, definition: AudienceInput, tx: Prisma.TransactionClient, channel: 'EMAIL' | 'SMS', subject: string, body: string) {
+  const requiredVariables = new Set(campaignVariableKeys(subject + '\n' + body));
+  const resolved = await resolveAudience(tenantId, { source: definition.source, matchMode: definition.matchMode, conditions: definition.conditions }, tx, channel, undefined, requiredVariables);
+  const unresolved = resolved.records.filter(record => !record.reason && record.unresolvedVariables?.length);
+  if (unresolved.length) {
+    const reasons = new Set(unresolved.flatMap(record => record.unresolvedVariables ?? []).map(value => value.endsWith(':multiple-deals') ? 'multiple linked Deals' : value.endsWith(':missing-account') ? 'missing linked Accounts' : 'missing linked Deals'));
+    throw new AppError(`Resolve recipient relationships for campaign variables before scheduling or sending. ${[...reasons].join(' and ')} make ${unresolved.length} recipient message${unresolved.length === 1 ? '' : 's'} unresolved.`, 400);
+  }
+  return resolved;
 }
 async function campaignSender(tenantId: string, channel: 'EMAIL' | 'SMS', content: string, tx: Prisma.TransactionClient) {
   if (channel === 'EMAIL') {
@@ -218,6 +229,7 @@ export async function scheduleCampaign(id: string, tenantId: string, userId: str
     }
     await validateCampaignVariables(tenantId, configuration, content.subject, content.body, tx);
     await campaignSender(tenantId, row.type as 'EMAIL' | 'SMS', content.subject + '\n' + content.body, tx);
+    await resolveCampaignRecipients(tenantId, configuration, tx, row.type as 'EMAIL' | 'SMS', content.subject, content.body);
     const changed = await tx.campaign.updateMany({ where: { id, ...scope, status: row.status, updatedAt: row.updatedAt, scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, submissionStartedAt: null, isArchived: false }, data: { status: 'SCHEDULED', scheduledFor: due, scheduledById: userId, scheduleConfig: { source: configuration.source, matchMode: configuration.matchMode, conditions: configuration.conditions, timezone: 'Asia/Manila' }, ...content } });
     if (!changed.count) throw new AppError('The campaign changed while scheduling. Reload its current state.', 409);
   });
@@ -253,7 +265,7 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     CampaignSendSchema.parse({ name: campaign.name, type: campaign.type, ...content, audienceSource: definition.source });
     await validateCampaignVariables(tenantId, definition, content.subject, content.body, tx);
     const sender = await campaignSender(tenantId, campaign.type, content.subject + '\n' + content.body, tx);
-    const resolved = await resolveAudience(tenantId, definition, tx, campaign.type);
+    const resolved = await resolveCampaignRecipients(tenantId, definition, tx, campaign.type, content.subject, content.body);
     const eligible = resolved.records.filter(r => !r.reason);
     if (!eligible.length) throw new AppError('No eligible recipients. Check audience exclusions.', 400);
     if (campaign.type === 'EMAIL') {

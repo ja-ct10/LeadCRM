@@ -1,3 +1,4 @@
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'agent', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: false } }) }));
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -32,8 +33,10 @@ it('requires a catalog product and submits its ID array without a manual value',
   fireEvent.click(screen.getByRole('button', { name: 'Create Deal' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ productInterestIds: [product.id, 'e47c3b8e-0b85-4f11-b9a6-2aafdd587fe5'], value: undefined, productInterests: undefined, currency: 'PHP' })));
 });
-it('keeps a historical Deal value when the catalog price is different', () => {
-  render(<DealForm mode="edit" initialData={{ title: 'History', value: 1200, productInterestId: product.id, productInterests: ['CCTV'] }} onSubmit={vi.fn()} onCancel={() => {}} />);
-  expect((screen.getByLabelText('Value') as HTMLInputElement).value).toBe('1,200.00');
-  expect((screen.getByLabelText('Value') as HTMLInputElement).readOnly).toBe(true);
+it('does not send a catalog repricing or manual value when editing a historical Deal', async () => {
+  const save = vi.fn();
+  render(<DealForm mode="edit" initialData={{ title: 'History', value: 1200, productInterestId: product.id, productInterests: ['CCTV'] }} onSubmit={save} onCancel={() => {}} />);
+  expect(screen.queryByLabelText('Deal Value')).toBeNull();
+  fireEvent.submit(screen.getByLabelText(/Title/).closest('form')!);
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ value: undefined })));
 });

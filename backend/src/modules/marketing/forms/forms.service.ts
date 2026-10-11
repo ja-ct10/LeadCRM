@@ -29,6 +29,10 @@ export async function getForms(
   return paginate(data, total, { page, limit });
 }
 
+export async function getLeadFormFieldCatalog(tenantId: string) {
+  return repo.getLeadFormFieldCatalog(tenantId);
+}
+
 /**
  * Return a single form by id, scoped to the tenant.
  * Throws 404 if the form does not exist or belongs to another tenant.

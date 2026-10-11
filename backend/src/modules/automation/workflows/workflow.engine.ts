@@ -1,4 +1,5 @@
 import { compatibleWorkflow, supportedChangedFields } from './workflow-fields';
+import { runAuthorizedWorkflow } from '../../crm/access/crm-record-access.service';
 import { AsyncLocalStorage } from 'node:async_hooks';
 import type { Prisma } from '@prisma/client';
 import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, type WorkflowDraft } from '@leadcrm/shared';
@@ -95,7 +96,7 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
-          const result = freshContext ? await dispatchAction(action, freshContext, params.tenantId, workflow.activatedById, { workflowId: workflow.id, actionIndex: index })
+          const result = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index }))
             : { success: false, error: 'The triggering record is no longer available.' };
           await repo.finishExecutionStep(step.id, params.tenantId, { status: result.success ? 'success' : 'failed', output: result.output, error: result.error });
           pendingStepId = undefined;

@@ -1,4 +1,7 @@
 import prisma from '../../../config/database.config';
+import { assertCrmRecordMutation, crmActor } from '../access/crm-record-access.service';
+import { salesTransaction, validateSalesOwner } from '../leads/lead-automation.service';
+import { AppError } from '../../../shared/errors/app-error';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { moveDealStage } from './deals.service';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -22,7 +25,9 @@ export async function bulkArchive(
   userId: string,
   dto: BulkArchiveDto,
 ): Promise<BulkOperationResult> {
+  await authorizeBatch(dto.dealIds, 'archive');
   const result: BulkOperationResult = { succeeded: 0, failed: 0, errors: [] };
+  let authorizationDenial: AppError | undefined;
 
   for (const dealId of dto.dealIds) {
     try {
@@ -49,13 +54,14 @@ export async function bulkArchive(
       });
 
       result.succeeded += 1;
-    } catch {
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 403) authorizationDenial = error;
       result.failed += 1;
-      result.errors.push({ id: dealId, reason: 'Internal error' });
+      result.errors.push({ id: dealId, reason: error instanceof AppError ? error.message : 'Internal error' });
     }
   }
 
-  return result;
+  return finish(result, authorizationDenial);
 }
 
 /**
@@ -69,6 +75,8 @@ export async function bulkReassign(
   userId: string,
   dto: BulkReassignDto,
 ): Promise<BulkOperationResult> {
+  await authorizeBatch(dto.dealIds, 'edit', { assignedUserId: dto.assignedUserId });
+  if (crmActor.getStore()) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
   // Verify target user belongs to tenant
   const targetUser = await prisma.user.findFirst({
     where: { id: dto.assignedUserId, tenantId },
@@ -78,6 +86,7 @@ export async function bulkReassign(
   }
 
   const result: BulkOperationResult = { succeeded: 0, failed: 0, errors: [] };
+  let authorizationDenial: AppError | undefined;
 
   for (const dealId of dto.dealIds) {
     try {
@@ -112,13 +121,14 @@ export async function bulkReassign(
       if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: updated, changedFields: changes.changedFields, changes });
 
       result.succeeded += 1;
-    } catch {
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 403) authorizationDenial = error;
       result.failed += 1;
-      result.errors.push({ id: dealId, reason: 'Internal error' });
+      result.errors.push({ id: dealId, reason: error instanceof AppError ? error.message : 'Internal error' });
     }
   }
 
-  return result;
+  return finish(result, authorizationDenial);
 }
 
 /**
@@ -134,6 +144,7 @@ export async function bulkStageChange(
   userId: string,
   dto: BulkStageChangeDto,
 ): Promise<BulkOperationResult> {
+  await authorizeBatch(dto.dealIds, 'edit');
   // Verify target stage belongs to tenant
   const targetStage = await prisma.stage.findFirst({
     where: { id: dto.stageId, tenantId },
@@ -149,6 +160,7 @@ export async function bulkStageChange(
   }
 
   const result: BulkOperationResult = { succeeded: 0, failed: 0, errors: [] };
+  let authorizationDenial: AppError | undefined;
 
   for (const dealId of dto.dealIds) {
     try {
@@ -180,6 +192,7 @@ export async function bulkStageChange(
 
       // Reuse the governed transition: transactional history, pipeline consistency,
       // stage requirements, audit, notifications, and the existing Workflow events.
+      if (deal.stageId === dto.stageId && crmActor.getStore()) await salesTransaction(tx => assertCrmRecordMutation(tx, 'deals', dealId));
       if (deal.stageId !== dto.stageId) {
         await moveDealStage(dealId, tenantId, userId, {
           stageId: dto.stageId,
@@ -188,11 +201,26 @@ export async function bulkStageChange(
         });
       }
       result.succeeded += 1;
-    } catch {
+    } catch (error) {
+      if (error instanceof AppError && error.statusCode === 403) authorizationDenial = error;
       result.failed += 1;
-      result.errors.push({ id: dealId, reason: 'Internal error' });
+      result.errors.push({ id: dealId, reason: error instanceof AppError ? error.message : 'Internal error' });
     }
   }
 
+  return finish(result, authorizationDenial);
+}
+
+async function authorizeBatch(ids: string[], operation: 'edit' | 'archive', data = {}) {
+  if (!crmActor.getStore()) return;
+  await salesTransaction(async tx => {
+    for (const id of [...new Set(ids)].sort()) await assertCrmRecordMutation(tx, 'deals', id, operation, data);
+  });
+}
+function finish(result: BulkOperationResult, authorizationDenial?: AppError) {
+  if (!result.succeeded && authorizationDenial) throw authorizationDenial;
+  if (!result.succeeded && result.errors.some(error => /assigned to you|cannot reassign/.test(error.reason))) {
+    throw new AppError('You can only edit Deals assigned to you.', 403, 'CRM_ASSIGNMENT_REQUIRED');
+  }
   return result;
 }

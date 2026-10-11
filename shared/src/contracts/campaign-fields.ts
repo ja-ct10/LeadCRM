@@ -1,5 +1,5 @@
 import { getCrmFieldCatalog, type CrmFieldCatalogEntry, type FieldLayout } from './field-catalog';
-import type { ClosingField } from './closing-requirements';
+import type { ClosingField, CustomFieldModule } from './closing-requirements';
 import type { AudienceCondition } from './campaign-email';
 
 export const CAMPAIGN_VARIABLE_CATEGORIES = ['Standard Fields', 'Custom Fields', 'Sender'] as const;
@@ -8,6 +8,16 @@ export interface CampaignVariableChoice {
   category: typeof CAMPAIGN_VARIABLE_CATEGORIES[number];
   origins: CrmFieldCatalogEntry[];
   personalizationAvailable: boolean; unavailableReason?: string;
+}
+function supportedModules(source?: 'LEADS' | 'CONTACTS'): CustomFieldModule[] {
+  if (!source) return [];
+  return [source === 'LEADS' ? 'leads' : 'contacts', 'accounts', 'deals'];
+}
+function originKey(field: CrmFieldCatalogEntry) {
+  return field.customFieldId ? `${field.module}:${field.customFieldId}` : `${field.module}:${field.kind}:${field.technicalKey}`;
+}
+function originSupported(field: CrmFieldCatalogEntry, source?: 'LEADS' | 'CONTACTS') {
+  return !!source && supportedModules(source).includes(field.module);
 }
 export function campaignPersonalizationAvailable(field: CrmFieldCatalogEntry) {
   return field.active && field.personalizationAvailable && (field.visibleInForm || field.visibleInDetails);
@@ -22,19 +32,36 @@ export function campaignVariableChoices(fields: CrmFieldCatalogEntry[], source?:
     if (existing) existing.origins.push(field);
     else choices.set(id, { id, technicalKey: field.technicalKey, label: field.label, category: field.kind === 'System' ? 'Standard Fields' : 'Custom Fields', origins: [field], personalizationAvailable: false });
   }
+  const supportedByToken = new Map<string, CrmFieldCatalogEntry[]>();
+  for (const field of fields) if (originSupported(field, source)) supportedByToken.set(field.technicalKey, [...(supportedByToken.get(field.technicalKey) ?? []), field]);
   for (const choice of choices.values()) {
-    const field = choice.origins.find(origin => origin.module === module);
-    choice.personalizationAvailable = !!field && campaignPersonalizationAvailable(field);
-    if (!choice.personalizationAvailable) choice.unavailableReason = !module ? 'Select a Lead or Contact audience to use this field.' : !field ? 'Unavailable for this audience. Related Account and Deal fields require an explicit supported binding.' : field.unavailableReason ?? (!field.active ? 'This field is disabled.' : !field.visibleInForm && !field.visibleInDetails ? 'This field is hidden.' : 'This field does not support personalization.');
+    const tokenOrigins = supportedByToken.get(choice.technicalKey) ?? [];
+    const direct = tokenOrigins.find(origin => origin.module === module && choice.origins.includes(origin));
+    const related = tokenOrigins.filter(origin => origin.module !== module);
+    // A direct field is the only unambiguous meaning for a colliding token. A
+    // related token with two possible modules is disabled until a binding is
+    // available; this prevents an Account value being taken for a Deal value.
+    const field = direct ?? (related.length === 1 ? related[0] : undefined);
+    const ambiguous = !direct && related.length > 1;
+    choice.personalizationAvailable = !!field && campaignPersonalizationAvailable(field) && !ambiguous;
+    if (!choice.personalizationAvailable) choice.unavailableReason = !module ? 'Select a Lead or Contact audience to use this field.' : ambiguous ? 'This related field is ambiguous for the selected audience. Resolve its relationship binding before sending.' : !field ? 'Unavailable for this audience. Related Account and Deal fields require an explicit supported binding.' : field.unavailableReason ?? (!field.active ? 'This field is disabled.' : !field.visibleInForm && !field.visibleInDetails ? 'This field is hidden.' : 'This field does not support personalization.');
   }
   return [...choices.values(), ...(['sender_name', 'sender_email'] as const).map(technicalKey => ({ id: technicalKey, technicalKey, label: technicalKey === 'sender_name' ? 'Sender Name' : 'Sender Email', category: 'Sender' as const, origins: [], personalizationAvailable: true }))];
 }
 /** Canonical IDs remain valid for saved content; legacy aliases are rendering compatibility only. */
-export function campaignApprovedVariableKeys(fields: CrmFieldCatalogEntry[]): Set<string> {
-  const keys = new Set(['sender_name', 'sender_email', ...fields.filter(campaignPersonalizationAvailable).flatMap(field => [field.technicalKey, ...(field.canonicalTechnicalKey ? [field.canonicalTechnicalKey] : [])])]);
+export function campaignApprovedVariableKeys(fields: CrmFieldCatalogEntry[], source?: 'LEADS' | 'CONTACTS'): Set<string> {
+  const selected = source ? campaignVariableChoices(fields, source).filter(choice => choice.personalizationAvailable).flatMap(choice => choice.origins.filter(origin => originSupported(origin, source))) : fields.filter(campaignPersonalizationAvailable);
+  const keys = new Set(['sender_name', 'sender_email', ...selected.flatMap(field => [field.technicalKey, ...(field.canonicalTechnicalKey ? [field.canonicalTechnicalKey] : [])])]);
   const aliases = { first_name: ['firstName'], last_name: ['lastName'], company_name: ['companyName', 'company'], contact_number: ['phone'] };
   for (const [alias, nativeKeys] of Object.entries(aliases)) if (nativeKeys.some(key => keys.has(key))) keys.add(alias);
   return keys;
+}
+
+/** Selects direct and safely resolvable related fields for one audience source. */
+export function campaignFieldsForSource(fields: CrmFieldCatalogEntry[], source: 'LEADS' | 'CONTACTS') {
+  const choices = campaignVariableChoices(fields, source);
+  const allowed = new Set(choices.filter(choice => choice.personalizationAvailable).flatMap(choice => choice.origins.filter(origin => originSupported(origin, source)).map(originKey)));
+  return fields.filter(field => allowed.has(originKey(field)));
 }
 
 export function campaignFields(source: 'LEADS' | 'CONTACTS', definitions: ClosingField[] = [], layout?: FieldLayout): CrmFieldCatalogEntry[] {

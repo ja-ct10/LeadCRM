@@ -230,6 +230,8 @@ model RoleDefinition {
   name         String
   description  String?
   isSystemRole Boolean  @default(false)
+  // Server-managed Sales classification survives role renames.
+  crmAssignmentRestricted Boolean @default(false)
   isArchived   Boolean  @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt

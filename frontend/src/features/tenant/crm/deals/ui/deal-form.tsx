@@ -1,4 +1,5 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { LEAD_SOURCES } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
@@ -15,6 +16,7 @@ import { COMPANY_INDUSTRIES, DealIndustrySchema } from '@leadcrm/shared';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useData } from '@/store/DataContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { DealAccountField } from './deal-account-field';
 import { DealContactsField } from './deal-contacts-field';
 import { DealLeadsField } from './deal-leads-field';
@@ -115,7 +117,8 @@ export function DealForm({
   const canCreate = useHasPermission('deals.create');
   const canEdit = useHasPermission('deals.edit');
   const isCreateMode = mode === 'create';
-  const hasPermission = isCreateMode ? canCreate : canEdit;
+  const recordAccess = useCrmRecordAccess();
+  const hasPermission = isCreateMode ? canCreate : canEdit && recordAccess.canMutate(initialData);
 
   // Build default values from initialData (edit) or preselect (create)
   const defaultValues = useMemo(() => {
@@ -206,6 +209,7 @@ export function DealForm({
   }, [errors, setFocus]);
 
   const onFormSubmit = async (data: CreateDealFormData): Promise<void> => {
+    if (!hasPermission) return;
     if (!customFields.validate()) return;
     // Clean optional empty strings before submission.
     // currency is always PHP — not user-editable, injected here for backend compatibility.
@@ -232,7 +236,7 @@ export function DealForm({
     if (submitting.current) return;
     submitting.current = true; setSubmitError('');
     try { await onSubmit(cleaned as DealFormData); }
-    catch (error) { setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
+    catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
     finally { submitting.current = false; }
   };
 
@@ -358,6 +362,7 @@ export function DealForm({
               render={({ field }) => (
                 <EntityCombobox
                   entityType="users"
+                  disabled={!recordAccess.policy || !recordAccess.canReassign}
                   multiple={false}
                   value={field.value || null}
                   onChange={(id) => field.onChange(id || '')}

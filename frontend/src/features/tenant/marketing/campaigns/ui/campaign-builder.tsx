@@ -1,12 +1,15 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type AudienceBreakdown, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
+import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
 import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { audiencesApi } from '@/shared/services/audiences.api';
-import { AudiencePanel, AudienceCounts, FieldError } from './audience-panel';
+import { AudiencePanel, FieldError } from './audience-panel';
 import type { Campaign } from '@/store/types';
+import type { AudiencePreviewResult } from '@leadcrm/shared';
+import { PaginationControls } from '@/shared/components/crm/pagination-controls';
+import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { renderCampaignPreview, prepareCampaignBody } from '../services/campaign-html';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -126,7 +129,8 @@ export function CampaignBuilder({
   const [audiences, setAudiences] = useState<SavedAudience[]>([]);
   const [editingAudience, setEditingAudience] = useState<SavedAudience | undefined>();
   const [showAudiencePanel, setShowAudiencePanel] = useState(false);
-  const [counts, setCounts] = useState<AudienceBreakdown | null>(null);
+  const [counts, setCounts] = useState<AudiencePreviewResult | null>(null);
+  const [recipientPage, setRecipientPage] = useState(1), [recipientLimit, setRecipientLimit] = useState(25);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const requestLock = useRef(false);
   useEffect(() => {
@@ -134,6 +138,7 @@ export function CampaignBuilder({
     audiencesApi.list().then(res => { if (!cancelled) setAudiences(res.data); }).catch(e => { if (!cancelled) setErrors({ targetAudienceId: e.message }); });
     return () => { cancelled = true; };
   }, []);
+  useEffect(() => { setRecipientPage(1); }, [targetAudience, audiences, campaignType]);
   useEffect(() => {
     let cancelled = false;
     setCounts(null);
@@ -141,9 +146,9 @@ export function CampaignBuilder({
     const source = ['LEADS', 'CONTACTS'].includes(targetAudience) ? targetAudience as 'LEADS' | 'CONTACTS' : undefined;
     if ((!source && !audience) || audience?.source === 'ALL' || audience?.repairReason) return;
     const definition = audience ? { source: audience.source, matchMode: audience.matchMode, conditions: audience.conditions } : { source: source!, conditions: [] };
-    const timer = setTimeout(() => audiencesApi.preview({ ...definition, channel: campaignType === 'SMS' ? 'SMS' : 'EMAIL' }).then(res => { if (!cancelled) setCounts(res.data); }).catch(e => { if (!cancelled) setErrors(prev => ({ ...prev, targetAudienceId: e.message })); }), 400);
+    const timer = setTimeout(() => audiencesApi.preview({ ...definition, channel: campaignType === 'SMS' ? 'SMS' : 'EMAIL', page: recipientPage, limit: recipientLimit }).then(res => { if (!cancelled) setCounts(res.data); }).catch(e => { if (!cancelled) setErrors(prev => ({ ...prev, targetAudienceId: e.message })); }), 400);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [targetAudience, audiences, campaignType]);
+  }, [targetAudience, audiences, campaignType, recipientPage, recipientLimit]);
   const chosenAudience = audiences.find(audience => audience.id === targetAudience);
   const selectedSource = scheduled ? initialCampaign?.scheduleConfig?.source : (chosenAudience?.source === 'LEADS' || chosenAudience?.source === 'CONTACTS' ? chosenAudience.source : targetAudience === 'LEADS' || targetAudience === 'CONTACTS' ? targetAudience : undefined);
   const variableCatalog = useCampaignVariableFields();
@@ -153,10 +158,11 @@ export function CampaignBuilder({
   const choices = campaignVariableChoices(variableCatalog.fields, selectedSource).map(choice => choice.category === 'Sender' && !senderValues[choice.technicalKey as keyof typeof senderValues] ? { ...choice, personalizationAvailable: false, unavailableReason: 'Sender configuration is unavailable. Configure the sender before using this variable.' } : choice);
   const quickKeys = ['firstName', 'lastName', selectedSource === 'CONTACTS' ? 'company' : 'companyName', 'phone', 'status', 'sender_name', 'sender_email'];
   const quickChoices = quickKeys.flatMap(key => { const choice = choices.find(choice => choice.technicalKey === key && (choice.category === 'Sender' || choice.origins.some(origin => origin.module === (selectedSource === 'CONTACTS' ? 'contacts' : 'leads')))); return choice ? [choice] : []; });
-  const approvedVariables = campaignApprovedVariableKeys(variableFields);
+  const approvedVariables = campaignApprovedVariableKeys(variableCatalog.fields, selectedSource);
   const invalidVariables = selectedSource && variableCatalog.data ? campaignVariableKeys(emailSubject + '\n' + messageContent).filter(key => !approvedVariables.has(key)) : [];
   const variableRepair = invalidVariables.length ? `Repair unavailable variables for this source: ${invalidVariables.map(key => '{{' + key + '}}').join(', ')}.` : '';
-  const previewVariables = { ...campaignSampleValues(variableFields), firstName: 'John', lastName: 'Doe', email: 'jdoe@example.com', companyName: 'Example Company', company: 'Example Company', phone: '+639123456789', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: senderValues.sender_name || 'Configured sender unavailable', sender_email: senderValues.sender_email || 'Sender email unavailable' };
+  const previewFields = selectedSource ? variableCatalog.fields.filter(field => [selectedSource === 'LEADS' ? 'leads' : 'contacts', 'accounts', 'deals'].includes(field.module)) : variableFields;
+  const previewVariables = { ...campaignSampleValues(previewFields), firstName: 'John', lastName: 'Doe', email: 'jdoe@example.com', companyName: 'Example Company', company: 'Example Company', phone: '+639123456789', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: senderValues.sender_name || 'Configured sender unavailable', sender_email: senderValues.sender_email || 'Sender email unavailable' };
   useEffect(() => {
     const refresh = () => { void variableCatalog.refetch(); void emailSettings.refetch(); void smsSettings.refetch(); };
     window.addEventListener('focus', refresh);
@@ -424,7 +430,18 @@ export function CampaignBuilder({
           </div>
 
           <div className="border-t border-gray-100 dark:border-white/3" />
-          <AudienceCounts counts={counts} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} />
+          <section aria-label="Eligible Recipients" className="min-w-0 space-y-2">
+            <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-200">Eligible Recipients</h3>
+            {!counts && targetAudience && <DataLoadingSkeleton rowCount={3} columnCount={2} />}
+            {counts && <>
+              <ul className="max-h-52 divide-y overflow-y-auto rounded-lg border border-slate-200 dark:border-white/10">
+                {counts.recipients.map(recipient => <li key={recipient.id} className="space-y-1 p-3 text-xs"><strong>{recipient.name || 'Unnamed recipient'}</strong> · {recipient.recordType}<p>{recipient.company}</p><p>{campaignType === 'SMS' ? recipient.phone : recipient.email}</p></li>)}
+              </ul>
+              {!counts.recipients.length && <p className="text-xs text-slate-500">No eligible recipients match these conditions.</p>}
+              <PaginationControls currentPage={recipientPage} totalRecords={counts.meta.total} pageSize={recipientLimit} onPageChange={setRecipientPage} onPageSizeChange={size => { setRecipientPage(1); setRecipientLimit(size); }} showRange={false} />
+              <p className="text-xs font-semibold text-slate-600 dark:text-slate-300" aria-live="polite">{counts.eligible} eligible recipient{counts.eligible === 1 ? '' : 's'}</p>
+            </>}
+          </section>
 
           {/* Message Content */}
           <div className="space-y-3">

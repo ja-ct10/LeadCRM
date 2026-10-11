@@ -5,8 +5,9 @@ import prisma from '../../../config/database.config';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { createImportRow, duplicateCsvRows, validateImportRow } from './import-rows.service';
+import { createImportRow, csvRowValidator, importValidationErrors, type MappedRow } from './import-rows.service';
 import { importStore, type ImportQuery } from './imports.repository';
+import type { Prisma } from '@prisma/client';
 
 async function prepare(module: CrmImportModule, tenantId: string, actorId: string, input: CreateCrmImportInput) {
   const dto = CreateCrmImportSchema.parse(input);
@@ -27,10 +28,10 @@ export function moduleImportService(module: CrmImportModule) {
   return {
     uploadCsv: (tenantId: string, actorId: string, input: unknown) => saveCsvChunk(tenantId, actorId, module, input),
     async previewImport(tenantId: string, actorId: string, input: CreateCrmImportInput, offset = 0): Promise<ImportReviewRow[]> {
-      const { rows } = await prepare(module, tenantId, actorId, input), duplicates = duplicateCsvRows(module, rows);
+      const { rows } = await prepare(module, tenantId, actorId, input), validate = csvRowValidator(module, tenantId, rows);
       const result: ImportReviewRow[] = [];
       for (const raw of rows.slice(offset, offset + 25)) {
-        const { products, deal, ...review } = await validateImportRow(prisma, module, tenantId, raw, duplicates.get(raw.rowNumber));
+        const { products, deal, ...review } = await validate(prisma, raw);
         result.push(review);
       }
       return result;
@@ -58,31 +59,44 @@ export function moduleImportService(module: CrmImportModule) {
           idempotencyKey: dto.idempotencyKey, requestHash, status: 'importing', uploadId: dto.uploadId });
       });
       if (job.completedAt) { await releaseCsvSource(tenantId, actorId, module, dto.uploadId); return job; }
-      const duplicates = duplicateCsvRows(module, rows);
+      const validate = csvRowValidator(module, tenantId, rows, async (tx, rowNumber) =>
+        (await importStore(tx, module, tenantId).row(job.id, rowNumber))?.status === 'failed');
       const committed = new Set((await storeFor(tenantId).rows(job.id)).map(r => r.rowNumber));
+      const saveOutcome = async (tx: Prisma.TransactionClient, raw: MappedRow, status: string, errors: string[], entityId?: string, resolvedValue?: number) => {
+        const db = importStore(tx, module, tenantId);
+        await db.save({ importId: job.id, rowNumber: raw.rowNumber, entityId, status,
+          remarks: errors.length ? `Row ${raw.rowNumber}: ${errors.join('; ')}` : undefined,
+          data: { ...raw.data, ...(resolvedValue === undefined ? {} : { resolvedValue: String(resolvedValue) }) },
+        });
+        // The record, its required side effects, result, and progress share one commit.
+        const outcomes = await db.rows(job.id);
+        const successfulRecords = outcomes.filter(r => r.status === 'imported').length;
+        const failedRecords = outcomes.filter(r => r.status === 'failed').length;
+        const duplicateRecords = outcomes.filter(r => r.status === 'duplicate').length;
+        const done = outcomes.length === rows.length;
+        const jobStatus = !done ? 'importing' : failedRecords + duplicateRecords === 0 ? 'completed' : successfulRecords ? 'completed_with_errors' : 'failed';
+        await db.update(job.id, { successfulRecords, failedRecords, duplicateRecords, status: jobStatus, completedAt: done ? new Date() : null });
+        if (done) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: `${module}.import`, entityType: 'CrmImportJob', entityId: job.id,
+          metadata: { module, totalRecords: rows.length, successfulRecords, failedRecords, duplicateRecords, status: jobStatus } } });
+      };
       // Bounded, resumable requests avoid holding one transaction or HTTP request for 5000 rows.
       for (const raw of rows.filter(r => !committed.has(r.rowNumber)).slice(0, 25)) {
-        await salesTransaction(async tx => {
-          const db = importStore(tx, module, tenantId);
-          if (await db.row(job.id, raw.rowNumber)) return;
-          const review = await validateImportRow(tx, module, tenantId, raw, duplicates.get(raw.rowNumber));
-          const entityId = review.isValid ? await createImportRow(tx, module, tenantId, actorId, job.id, review) : undefined;
-          await db.save({ importId: job.id, rowNumber: raw.rowNumber, entityId,
-            status: review.isValid ? 'imported' : review.status === 'duplicate' ? 'duplicate' : 'failed',
-            remarks: review.errors.length ? review.errors.join('; ') : undefined,
-            data: { ...review.data, ...(review.resolvedValue === undefined ? {} : { resolvedValue: String(review.resolvedValue) }) },
+        try {
+          await salesTransaction(async tx => {
+            if (await importStore(tx, module, tenantId).row(job.id, raw.rowNumber)) return;
+            const review = await validate(tx, raw);
+            const entityId = review.isValid ? await createImportRow(tx, module, tenantId, actorId, job.id, review) : undefined;
+            await saveOutcome(tx, raw, review.isValid ? 'imported' : review.status === 'duplicate' ? 'duplicate' : 'failed', review.errors, entityId, review.resolvedValue);
           });
-          // Persist accurate progress atomically with each record (including automatic Deals).
-          const outcomes = await db.rows(job.id);
-          const successfulRecords = outcomes.filter(r => r.status === 'imported').length;
-          const failedRecords = outcomes.filter(r => r.status === 'failed').length;
-          const duplicateRecords = outcomes.filter(r => r.status === 'duplicate').length;
-          const done = outcomes.length === rows.length;
-          const status = !done ? 'importing' : failedRecords + duplicateRecords === 0 ? 'completed' : successfulRecords ? 'completed_with_errors' : 'failed';
-          await db.update(job.id, { successfulRecords, failedRecords, duplicateRecords, status, completedAt: done ? new Date() : null });
-          if (done) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: `${module}.import`, entityType: 'CrmImportJob', entityId: job.id,
-            metadata: { module, totalRecords: rows.length, successfulRecords, failedRecords, duplicateRecords, status } } });
-        });
+        } catch (error) {
+          const errors = importValidationErrors(error);
+          // Infrastructure failures keep the original job resumable, with committed progress intact.
+          if (!errors) throw error;
+          // Creation may have written relationships before rejecting the row. Roll back first.
+          await salesTransaction(async tx => {
+            if (!await importStore(tx, module, tenantId).row(job.id, raw.rowNumber)) await saveOutcome(tx, raw, 'failed', errors);
+          });
+        }
       }
       const result = (await storeFor(tenantId).find(job.id))!;
       if (result.completedAt) await releaseCsvSource(tenantId, actorId, module, dto.uploadId);

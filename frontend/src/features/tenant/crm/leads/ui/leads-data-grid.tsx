@@ -10,6 +10,8 @@
  */
 
 'use client';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import { useRouter } from 'next/navigation';
@@ -131,6 +133,7 @@ export function LeadsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: LeadsDataGridProps): React.ReactElement {
+  const recordAccess = useCrmRecordAccess();
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const router = useRouter();
@@ -341,17 +344,17 @@ export function LeadsDataGrid({
       onView: () => onRowClick(lead),
       onEdit: onEdit ? () => onEdit(lead) : undefined,
       onSendEmail: lead.email ? () => router.push(recordEmailComposeHref(lead.email ?? '') ?? '/inbox') : undefined,
-      onConvert: canEdit && onConvert ? () => onConvert(lead) : undefined,
+      onConvert: canEdit && recordAccess.canMutate(lead) && onConvert ? () => onConvert(lead) : undefined,
       onArchive: onArchive ? () => onArchive(lead) : undefined,
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/leads/${lead.id}`);
       },
-      canEdit,
-      canArchive,
+      canEdit: canEdit && recordAccess.canMutate(lead),
+      canArchive: canArchive && recordAccess.canMutate(lead),
     });
 
     // Add Merge action (if user can edit)
-    if (onMerge && canEdit) {
+    if (onMerge && canEdit && recordAccess.canMutate(lead)) {
       const convertIdx = actions.findIndex((a) => a.id === 'convert');
       const insertAt = convertIdx >= 0 ? convertIdx + 1 : actions.length - 1;
       actions.splice(insertAt, 0, {
@@ -363,7 +366,7 @@ export function LeadsDataGrid({
     }
 
     return actions;
-  }, [onRowClick, onEdit, onArchive, onConvert, onMerge, canEdit, canArchive]);
+  }, [onRowClick, onEdit, onArchive, onConvert, onMerge, canEdit, canArchive, recordAccess.canMutate]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

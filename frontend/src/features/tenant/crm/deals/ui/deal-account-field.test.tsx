@@ -114,7 +114,7 @@ describe('DealAccountField', () => {
     await act(async () => { fireEvent.click(trigger); });
 
     // Type search term
-    const searchInput = screen.getByRole('searchbox');
+    const searchInput = screen.getByRole('combobox', { name: 'Search accounts' });
     await act(async () => { fireEvent.change(searchInput, { target: { value: 'acme' } }); });
 
     // Wait for debounce (300ms) and verify filtering

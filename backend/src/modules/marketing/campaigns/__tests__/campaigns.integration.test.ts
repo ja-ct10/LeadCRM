@@ -1095,6 +1095,39 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     });
   });
 
+  it('requires one eligible linked Deal for related variables at scheduling and sending', async () => {
+    await scoped(async () => {
+      const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Related', lastName: 'Deal', email: `${randomUUID()}@example.test` } });
+      const audience = await createAudience(tenantId, { name: randomUUID(), source: 'LEADS', conditions: [{ field: 'email', operator: 'equals', value: lead.email }] });
+      const create = () => createCampaign(tenantId, userId, { name: randomUUID(), type: 'EMAIL', targetAudienceId: audience.id, subject: 'Deal {{value}}', body: 'Hello {{firstName}}' });
+      const due = () => ({ scheduledFor: new Date(Date.now() + 60000).toISOString() });
+      const missing = await create();
+      await expect(scheduleCampaign(missing.id, tenantId, userId, due())).rejects.toThrow('missing linked Deals');
+      await expect(sendCampaign(missing.id, tenantId, userId)).rejects.toThrow('missing linked Deals');
+      expect((await getCampaignById(missing.id, tenantId)).status).toBe('DRAFT');
+      expect(await prisma.campaignContact.count({ where: { campaignId: missing.id } })).toBe(0);
+      expect(sendMail).not.toHaveBeenCalled();
+      const pipeline = await prisma.pipeline.create({ data: { tenantId, name: randomUUID() } });
+      const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0, requiredFields: [] } });
+      const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, title: 'Single binding', value: 250, productInterests: [], tags: [] } });
+      await prisma.leadDeal.create({ data: { tenantId, leadId: lead.id, dealId: deal.id } });
+      const valid = await create();
+      expect((await scheduleCampaign(valid.id, tenantId, userId, due())).status).toBe('SCHEDULED');
+      const immediate = await create();
+      await sendCampaign(immediate.id, tenantId, userId);
+      expect(sendMail).toHaveBeenLastCalledWith(expect.objectContaining({ subject: 'Deal 250' }));
+      const second = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, title: 'Ambiguous binding', value: 500, productInterests: [], tags: [] } });
+      await prisma.leadDeal.create({ data: { tenantId, leadId: lead.id, dealId: second.id } });
+      const ambiguous = await create();
+      const submitted = vi.mocked(sendMail).mock.calls.length;
+      await expect(scheduleCampaign(ambiguous.id, tenantId, userId, due())).rejects.toThrow('multiple linked Deals');
+      await expect(sendCampaign(ambiguous.id, tenantId, userId)).rejects.toThrow('multiple linked Deals');
+      expect((await getCampaignById(ambiguous.id, tenantId)).status).toBe('DRAFT');
+      expect(await prisma.campaignContact.count({ where: { campaignId: ambiguous.id } })).toBe(0);
+      expect(vi.mocked(sendMail).mock.calls).toHaveLength(submitted);
+    });
+  });
+
   it('uses current configured sender identities and rejects missing SMS contact tokens before scheduling or sending', async () => {
     await scoped(async () => {
       const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Sender', lastName: 'Fixture', email: `${randomUUID()}@example.test`, phone: '+639181234567' } });

@@ -1,4 +1,5 @@
 'use client';
+import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 
 import React, { useEffect, useState, useRef } from 'react';
 import {
@@ -34,6 +35,7 @@ import { activityEmail, EmailActivity, EmailThread, groupEmailActivities } from 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface RecordTimelineTabProps {
+  canEditRecord?: boolean;
   /** Compact layout shared by the CRM record panels. */
   compact?: boolean;
   focusNote?: boolean;
@@ -131,7 +133,7 @@ function NoteComposer({ module, recordId, onCreated, focusNote }: { focusNote?: 
         activity = response.data;
       }
       onCreated?.(activity); setDraft(''); toast.success('Note saved');
-    } catch (error) { toast.error(error instanceof Error ? error.message : 'Failed to save note'); }
+    } catch (error) { showCrmMutationError(error, 'Failed to save note'); }
     finally { submitting.current = false; setSaving(false); }
   };
   return <form onSubmit={save} className="space-y-2 rounded-xl border border-border bg-card p-3">
@@ -181,8 +183,8 @@ function TimelineEntry({ activity, compact = false }: TimelineEntryProps): React
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange, focusNote }: RecordTimelineTabProps): React.ReactElement {
-  const canEdit = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey);
+export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange, focusNote, canEditRecord = false }: RecordTimelineTabProps): React.ReactElement {
+  const canEdit = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey) && canEditRecord;
   const { user, tenant } = useAuth();
   const editorIdentity = JSON.stringify([tenant?.id, user?.id, user?.role, module, recordId]);
   const identity = JSON.stringify([editorIdentity, getPageCacheGeneration()]);

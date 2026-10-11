@@ -25,19 +25,19 @@ interface ImportHistoryListProps {
   onStartNew?: () => void;
 }
 
-type StatusFilter = 'all' | 'completed' | 'completed_with_errors' | 'failed';
+type StatusFilter = 'all' | 'completed' | 'completed_with_errors';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleDateString('en-US', { timeZone: 'Asia/Manila', month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
 function getStatusBadge(status: ImportSummary['status']): { label: string; className: string } {
   switch (status) {
-    case 'completed': return { label: 'Success', className: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' };
-    case 'completed_with_errors': return { label: 'Partial', className: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' };
+    case 'completed': return { label: 'Succeeded', className: 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400' };
+    case 'completed_with_errors': return { label: 'Partially Succeeded', className: 'bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400' };
     case 'failed': return { label: 'Failed', className: 'bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400' };
     case 'pending': case 'importing': return { label: 'In Progress', className: 'bg-blue-100 dark:bg-primary/20 text-blue-700 dark:text-primary' };
     default: return { label: status, className: 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400' };
@@ -60,6 +60,11 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
   const requestVersion = useRef(0);
 
   const pageSize = 10;
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    for (const key of ['status', 'filter']) if (url.searchParams.get(key) === 'failed') url.searchParams.delete(key);
+    window.history.replaceState(null, '', url);
+  }, []);
 
   const fetchImports = useCallback(async () => {
     const version = ++requestVersion.current;
@@ -82,8 +87,6 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
   }, [page, statusFilter, config.importApiPath]);
 
   useEffect(() => { fetchImports(); return () => { requestVersion.current++; }; }, [fetchImports]);
-
-  const filteredImports = imports;
 
   // ── Loading ────────────────────────────────────────────────────────────
   if (isLoading) {
@@ -141,8 +144,8 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
           <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">Every {config.moduleSingular.toLowerCase()} import from this workspace and how it turned out.</p>
         </div>
         <div className="flex flex-wrap items-center gap-0.5 border border-slate-200 dark:border-slate-700 rounded-lg p-[2px] shrink-0">
-          {(['all', 'completed', 'completed_with_errors', 'failed'] as const).map((filter) => {
-            const labels: Record<StatusFilter, string> = { all: 'All', completed: 'Success', completed_with_errors: 'Partial', failed: 'Failed' };
+          {(['all', 'completed', 'completed_with_errors'] as const).map((filter) => {
+            const labels: Record<StatusFilter, string> = { all: 'All Imports', completed: 'Succeeded', completed_with_errors: 'Partially Succeeded' };
             return (
               <button key={filter} onClick={() => { setPage(1); setStatusFilter(filter); }} className={cn('px-2.5 py-1 text-[11px] font-medium rounded-md transition-colors cursor-pointer', statusFilter === filter ? 'bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300')}>
                 {labels[filter]}
@@ -153,7 +156,7 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
       </div>
 
       {/* Table */}
-      {filteredImports.length === 0 ? (
+      {imports.length === 0 ? (
         <div className="border border-slate-200 dark:border-slate-700 rounded-lg py-10 text-center">
           <p className="text-[13px] text-slate-500 dark:text-slate-400">No {statusFilter === 'completed_with_errors' ? 'partial' : statusFilter} imports found.</p>
         </div>
@@ -169,7 +172,7 @@ export function ImportHistoryList({ moduleKey, onStartNew }: ImportHistoryListPr
             <th scope="col" className="px-4 py-2.5 text-left font-semibold text-slate-600 dark:text-slate-400">Imported By</th>
           </tr></thead>
           <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-            {filteredImports.map((imp) => {
+            {imports.map((imp) => {
               const badge = getStatusBadge(imp.status);
               const userName = imp.createdBy ? `${imp.createdBy.firstName} ${imp.createdBy.lastName}` : '—';
               return (

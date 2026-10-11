@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/shared/compo
 import { ConfirmActionDialog } from './confirm-action-dialog';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { apiClient } from '@/lib/api/client';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
@@ -36,9 +37,10 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
   const router = useRouter();
   const data = useData();
   const { user, tenant } = useAuth();
-  const canEdit = useHasPermission('deals.edit'), canArchive = useHasPermission('deals.archive');
+  const hasEditPermission = useHasPermission('deals.edit'), hasArchivePermission = useHasPermission('deals.archive');
+  const recordAccess = useCrmRecordAccess();
   const canTask = useHasPermission('tasks.create'), canLead = useHasPermission('leads.view'), canContact = useHasPermission('contacts.view');
-  const canEmailLead = useHasPermission('leads.edit') && canLead && canEdit, canEmailContact = useHasPermission('contacts.edit') && canContact && canEdit;
+  const canEmailLead = useHasPermission('leads.edit') && canLead && hasEditPermission, canEmailContact = useHasPermission('contacts.edit') && canContact && hasEditPermission;
   const { dialogProps, confirm } = useConfirmDialog();
   const [open, setOpen] = useState(false);
   const [action, setAction] = useState<'edit' | 'task' | 'note' | 'won' | 'lost' | 'stage' | 'recipient' | null>(null);
@@ -49,6 +51,8 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
   const query = useCachedPage<Record<string, unknown>>({ module: 'deals', params: { recordId: dealId }, disabled: USE_MOCK_DATA || (!open && !action), revalidateOnInvalidation: true,
     fetchFn: async signal => (await apiClient.get<{ data: Record<string, unknown> }>('/crm/deals/' + encodeURIComponent(dealId), { signal })).data });
   const deal = USE_MOCK_DATA ? data.deals.find(d => d.id === dealId) ?? cardDeal : query.data ? toFrontendDeal(query.data) as Deal : cardDeal;
+  const canEdit = hasEditPermission && recordAccess.canMutate(deal);
+  const canArchive = hasArchivePermission && recordAccess.canMutate(deal);
   const pipeline = data.pipelines.find(p => p.id === deal?.pipelineId);
   const stage = pipeline?.stages.find(s => s.id === deal?.stageId);
   const won = pipeline?.stages.filter(s => s.isWon) ?? [], lost = pipeline?.stages.filter(s => s.isLost) ?? [];

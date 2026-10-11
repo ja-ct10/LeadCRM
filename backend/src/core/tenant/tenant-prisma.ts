@@ -2,6 +2,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { tenantContext } from './tenant-context';
 import { tenantModels, tenantChildren } from './tenant-models';
 import { AppError } from '../../shared/errors/app-error';
+import { isCrmAccessQuery } from '../../modules/crm/access/crm-record-access.service';
 
 type Args = Record<string, any>;
 const models = new Map(Prisma.dmmf.datamodel.models.map(model => [model.name, model]));
@@ -91,7 +92,10 @@ function scopeData(model: string, data: Args, create: boolean, inheritedTenant =
 export function installTenantScoping(prisma: PrismaClient): void {
   prisma.$use(async (params, next) => {
     if (!tenantContext.getStore()) return next(params); // platform operations / explicit background discovery
-    if (!params.model) throw new AppError('Raw database operations are not allowed in CRM requests.', 403);
+    if (!params.model) {
+      if (isCrmAccessQuery()) return next(params);
+      throw new AppError('Raw database operations are not allowed in CRM requests.', 403);
+    }
     const model = params.model;
     params.args ??= {};
     const args = params.args;

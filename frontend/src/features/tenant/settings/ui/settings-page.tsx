@@ -258,8 +258,9 @@ export default function SettingsPage(): React.ReactElement {
           activeTab === 'roles' ||
           activeTab === 'forms';
 
+        // Contain absolute descendants (including sr-only toggle labels) within this scroller.
         return (
-          <div className={`flex-1 min-w-0 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
+          <div className={`relative flex-1 min-h-0 min-w-0 overflow-y-auto custom-scrollbar ${isFullPane ? '' : 'px-4 sm:px-6 py-5'}`}>
             {!isFullPane && !hasOwnHeader && (
               <PageHeader title={activeItem?.label ?? 'Settings'} />
             )}

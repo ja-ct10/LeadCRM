@@ -1,4 +1,6 @@
 'use client';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 
 import React from 'react';
 import {
@@ -403,6 +405,7 @@ export function PipelineKanbanBoard({
   loadingStages,
   hasMoreByStage,
 }: PipelineKanbanBoardProps): React.ReactElement {
+  const recordAccess = useCrmRecordAccess();
   const [activeDeal, setActiveDeal] = React.useState<Deal | null>(null);
   const [optimisticStageMap, setOptimisticStageMap] = React.useState<Record<string, string>>({});
 
@@ -432,7 +435,7 @@ export function PipelineKanbanBoard({
   const handleDragStart = (event: DragStartEvent): void => {
     if (!canEdit) return;
     const deal = deals.find((d) => d.id === event.active.id);
-    if (deal) {
+    if (deal && recordAccess.canMutate(deal)) {
       setActiveDeal(deal);
     }
   };
@@ -452,14 +455,14 @@ export function PipelineKanbanBoard({
     const id = String(event.active.id), target = targetStage(event);
     const dragged = deals.find(d => d.id === id);
     const stage = pipeline.stages.find(s => s.id === target);
-    if (!dragged || !stage || stage.id === dragged.stageId || stage.isWon || stage.isLost) { clearPreview(id); return; }
+    if (!dragged || !recordAccess.canMutate(dragged) || !stage || stage.id === dragged.stageId || stage.isWon || stage.isLost) { clearPreview(id); return; }
     setOptimisticStageMap(previous => previous[id] === stage.id ? previous : { ...previous, [id]: stage.id });
   };
   const handleDragEnd = (event: DragEndEvent): void => {
     const id = String(event.active.id), target = targetStage(event);
     const dragged = deals.find(d => d.id === id);
     setActiveDeal(null);
-    if (!canEdit || !event.over || !dragged || !target || target === dragged.stageId || pendingDeals.has(id)) { clearPreview(id); return; }
+    if (!canEdit || !event.over || !dragged || !recordAccess.canMutate(dragged) || !target || target === dragged.stageId || pendingDeals.has(id)) { clearPreview(id); return; }
     const stage = pipeline.stages.find(s => s.id === target);
     if (stage?.isWon || stage?.isLost) clearPreview(id);
     else setOptimisticStageMap(previous => ({ ...previous, [id]: target }));
@@ -513,7 +516,7 @@ export function PipelineKanbanBoard({
                         deal={deal}
                         assignedUser={deal.assignedUser ?? users.find((u) => u.id === deal.assignedUserId)}
                         onClick={onDealClick}
-                        canDrag={canEdit && !pendingDeals.has(deal.id)}
+                        canDrag={canEdit && recordAccess.canMutate(deal) && !pendingDeals.has(deal.id)}
                          onMutated={onDealMutated}
                          isAutomatedOnly={!canEdit}
                       />

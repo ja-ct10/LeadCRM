@@ -1,4 +1,7 @@
 'use client';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 import { CreateLeadSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
@@ -66,6 +69,9 @@ interface AddLeadFormProps {
 }
 
 export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps) {
+  const recordAccess = useCrmRecordAccess();
+  const actionAllowed = useHasPermission(initialData ? 'leads.edit' : 'leads.create');
+  const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('leads', initialData?.id);
   const { users } = useData();
   const isEdit = !!initialData;
@@ -165,6 +171,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   }, [initialData, reset]);
 
   const onFormSubmit = (data: LeadFormData): void => {
+    if (!canSubmit) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate()) return;
     // Build phone in E.164 format from local 10-digit number
@@ -356,7 +363,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                     name={field.name}
                     onBlur={field.onBlur}
                     onChange={field.onChange}
-                    users={users}
+                    users={recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
                     placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
                     className={selectCls}
                     invalid={!!errors.assignedUserId}
@@ -403,7 +410,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         </button>
         <button
           type="submit"
-          disabled={customFields.blocked || productsLoading || !!productError}
+          disabled={!canSubmit || customFields.blocked || productsLoading || !!productError}
           className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
         >
           {isEdit ? 'Save Changes' : 'Create Lead'}

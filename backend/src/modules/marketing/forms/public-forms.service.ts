@@ -12,6 +12,8 @@ import { ConflictError, NotFoundError, ValidationError } from '../../../shared/e
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
 import { afterSalesCommit, createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
+import { normalizeFormDefinitionForTenant } from './forms.repository';
+import { saveRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 
 export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>) { super('Please check the highlighted fields.'); }
@@ -20,9 +22,11 @@ const publicWhere = (publicId: string) => ({ publicId, isArchived: false, status
 export async function getPublicForm(publicId: string): Promise<PublicFormDefinition> {
   const form = await prisma.marketingForm.findFirst({ where: publicWhere(publicId) });
   if (!form?.publishedConfig) throw new NotFoundError('Form');
-  const config = FormDefinitionSchema.parse(form.publishedConfig);
-  const products = await salesTransaction(tx => productConfiguration(tx, form.tenantId));
-  return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams };
+  return tenantContext.run({ tenantId: form.tenantId }, () => salesTransaction(async tx => {
+    const config = await normalizeFormDefinitionForTenant(tx, form.tenantId, FormDefinitionSchema.parse(form.publishedConfig));
+    const products = await productConfiguration(tx, form.tenantId);
+    return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams };
+  }));
 }
 
 export async function submitPublicForm(publicId: string, body: unknown) {
@@ -44,7 +48,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             const previous = await tx.formSubmission.findFirst({ where: { ...scope, formId: live.id, requestKey: input.requestId } });
             if (previous) return { submission: previous, notificationEmail: '' };
           }
-          const config = FormDefinitionSchema.parse(live.publishedConfig);
+          const config = await normalizeFormDefinitionForTenant(tx, scope.tenantId, FormDefinitionSchema.parse(live.publishedConfig));
           config.fields = withProductOptions(config.fields, await productConfiguration(tx, scope.tenantId));
           const validated = validateFormValues(config.fields, input.values);
           if (Object.keys(validated.errors).length) throw new SubmissionValidationError(validated.errors);
@@ -115,8 +119,18 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             const names = (mapped.fullName || '').split(/\s+/);
             const created = await createAssignedLead(tx, { ...scope, firstName: mapped.firstName || names[0] || 'Website', lastName: mapped.lastName || names.slice(1).join(' ') || 'Inquiry',
               email, phone, companyName: mapped.companyName || null, address: mapped.address || null,
-              productInterestIds: selectedProducts, source: 'Website' }, live.createdById, 'public-form');
+              productInterestIds: selectedProducts, source: mapped.source || 'Website' }, live.createdById, 'public-form');
             leadId = created.id;
+          }
+          const customFields = config.fields.filter(field => field.customFieldId);
+          if (customFields.length && leadId) {
+            // Returning Contacts retain answers in the inquiry snapshot. Lead definitions
+            // never become Contact values or revive a converted Lead during duplicate matching.
+            const customValues = Object.fromEntries(customFields.map(field => {
+              const answer = validated.values[field.id];
+              return [field.customFieldId!, field.type === 'number' && typeof answer === 'string' && answer ? Number(answer) : answer || null];
+            }));
+            await saveRecordValues(tx, scope.tenantId, 'leads', leadId, customValues, live.createdById);
           }
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
             publishedConfig: { name: config.name, fields: config.fields, design: config.design }, leadId, contactId, email, phone,

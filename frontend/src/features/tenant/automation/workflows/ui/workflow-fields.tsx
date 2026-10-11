@@ -138,7 +138,7 @@ export function ConditionFields({
             </div>
             <label className="block">
               <span>Field <span className="text-red-500" aria-hidden="true">*</span></span>
-              <ConditionFieldSelect label={`Condition ${index + 1} field`} className={workflowControl} value={rule.field} fields={(trigger?.fields ?? []).map(field => ({ key: field.field, label: field.label, group: field.group === 'custom' ? 'Custom Fields' : 'Standard Fields' }))} onChange={key => {
+              <ConditionFieldSelect required label={`Condition ${index + 1} field`} className={workflowControl} value={rule.field} fields={(trigger?.fields ?? []).map(field => ({ key: field.field, label: field.label, group: field.group === 'custom' ? 'Custom Fields' : 'Standard Fields' }))} onChange={key => {
                 const next = trigger?.fields.find(field => field.field === key);
                 update({ field: key, operator: workflowOperators(next?.type ?? 'string')[0], value: next?.type === 'number' ? 0 : next?.type === 'boolean' ? false : '' });
               }} />

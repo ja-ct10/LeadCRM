@@ -14,6 +14,7 @@ export function AssignedAgentSelect({
   invalid = false,
   describedBy,
   name,
+  disabled = false,
   onBlur,
   onChange,
 }: {
@@ -25,6 +26,7 @@ export function AssignedAgentSelect({
   invalid?: boolean;
   describedBy?: string;
   name?: string;
+  disabled?: boolean;
   onBlur?: () => void;
   onChange: (value: string) => void;
 }): ReactElement {
@@ -33,6 +35,7 @@ export function AssignedAgentSelect({
   return (
     <div className="relative">
       <select
+        disabled={disabled}
         id={id}
         value={value}
         aria-invalid={invalid}

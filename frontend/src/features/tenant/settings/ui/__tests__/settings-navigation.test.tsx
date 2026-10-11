@@ -27,7 +27,7 @@ it('keeps the required groups and sections with no Account category or Details i
   render(<SettingsPage />);
   const select = screen.getByLabelText('Settings section') as HTMLSelectElement;
   expect([...select.querySelectorAll('optgroup')].map(group => group.label)).toEqual(['GENERAL', 'ORGANIZATION', 'CUSTOMIZATION', 'CONNECT']);
-  expect([...select.options].map(option => option.text)).toEqual(['Profile Settings', 'Appearance', 'General', 'Team Management', 'Roles & Permissions', 'Custom Fields', 'Products', 'Archived Data', 'Forms']);
+  expect([...select.options].map(option => option.text)).toEqual(['Profile Settings', 'Appearance', 'General', 'Team Management', 'Roles & Permissions', 'Customize Fields', 'Products', 'Archived Data', 'Forms']);
   expect(screen.queryByText('Account Details')).toBeNull(); expect(screen.queryByText('ACCOUNT')).toBeNull();
   fireEvent.change(select, { target: { value: 'org-general' } });
   expect(screen.getByText('Authoritative organization')).toBeTruthy();

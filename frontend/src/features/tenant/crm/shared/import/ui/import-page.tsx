@@ -1,7 +1,7 @@
 'use client';
 import { RecordBackButton } from '@/shared/components/crm/record-back-button';
 
-import React, { useState, useCallback, useMemo, useRef } from 'react';
+import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import {
@@ -26,19 +26,19 @@ import {
 import { cn } from '@/lib/utils';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useData } from '@/store/DataContext';
-import { apiClient } from '@/lib/api/client';
+import { apiClient, type ApiRequestError } from '@/lib/api/client';
 import { getImportConfig } from '../configs';
 import { parseCsv, autoMapColumns, createEmptyMappings } from '../utils';
 import { ImportHistoryList } from './import-history-list';
+import { finalImportNotice, importStatusLabel, summarizeReview, zeroEligibleNotice } from '../utils/import-outcome';
 import type {
   ImportModuleConfig,
   CsvColumn,
   ColumnMapping,
-  ValidatedRow,
   ImportSummary,
   FieldDefinition,
 } from '../types/import.types';
-import type { ImportReviewRow, CreateCrmImportInput, PermissionKey } from '@leadcrm/shared';
+import { CSV_MAX_BYTES, CSV_MAX_ROWS, type ImportReviewRow, type CreateCrmImportInput, type PermissionKey } from '@leadcrm/shared';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -62,6 +62,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
   const [file, setFile] = useState<File | null>(null);
   const [csvHeaders, setCsvHeaders] = useState<string[]>([]);
   const [csvRows, setCsvRows] = useState<string[][]>([]);
+  const [csvRowNumbers, setCsvRowNumbers] = useState<number[]>([]);
   const [mappings, setMappings] = useState<Record<string, ColumnMapping>>(() => createEmptyMappings(config));
   const [isImporting, setIsImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportSummary | null>(null);
@@ -77,9 +78,14 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
   const submission = useRef<CreateCrmImportInput | null>(null);
   const idempotencyKey = useRef('');
   const uploadedSource = useRef<{ text: string; uploadId: string } | null>(null);
+  const notifiedJobs = useRef(new Set<string>());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const allFields = useMemo(() => [...config.requiredFields, ...config.optionalFields], [config]);
+  useEffect(() => {
+    const params = new URL(window.location.href).searchParams;
+    if (params.get('status') === 'failed' || params.get('filter') === 'failed') setActiveView('history');
+  }, []);
 
   // ── Derived State ──────────────────────────────────────────────────────
 
@@ -141,6 +147,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
     setFile(null);
     setCsvHeaders([]);
     setCsvRows([]);
+    setCsvRowNumbers([]);
     setMappings(createEmptyMappings(config));
     setIsImporting(false);
     setImportResult(null);
@@ -158,7 +165,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
         toast.error('Please upload a CSV file.');
         return;
       }
-      if (selectedFile.size > 10 * 1024 * 1024) {
+      if (selectedFile.size > CSV_MAX_BYTES) {
         toast.error('File size exceeds 10MB limit.');
         return;
       }
@@ -167,24 +174,28 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
       reader.onload = (e) => {
         if (version !== readVersion.current) return;
         setIsParsing(false);
-        const text = e.target?.result as string;
+        let text: string;
+        try { text = new TextDecoder('utf-8', { fatal: true }).decode(e.target?.result as ArrayBuffer); }
+        catch { toast.error('The CSV must use valid UTF-8 encoding. Please save it as UTF-8 and try again.'); return; }
         if (!text || text.trim().length === 0) { toast.error('The uploaded CSV file does not contain any data.'); return; }
         let parsed;
         try { parsed = parseCsv(text); } catch (error) { toast.error(error instanceof Error ? error.message : 'Malformed CSV.'); return; }
-        const { headers, rows } = parsed;
-        if (rows.length > 5000) { toast.error('Maximum 5000 rows per import.'); return; }
+        const { headers, rows, rowNumbers } = parsed;
+        if (rows.length > CSV_MAX_ROWS) { toast.error('Maximum 5000 rows per import.'); return; }
         if (headers.length === 0) { toast.error("We couldn't read this CSV file. Please check its formatting."); return; }
         if (rows.length === 0) { toast.error('The uploaded CSV file does not contain any data rows.'); return; }
         setFile(selectedFile);
         setCsvText(text); setServerRows(null); submission.current = null;
+        setCanResume(false); setImportResult(null); setProgress(0);
         setCsvHeaders(headers);
         setCsvRows(rows);
+        setCsvRowNumbers(rowNumbers);
         const columns: CsvColumn[] = headers.map((name, index) => ({ index, name }));
         setMappings(autoMapColumns(config, columns));
         setStep(2);
       };
       reader.onerror = () => { if (version !== readVersion.current) return; setIsParsing(false); toast.error("We couldn't read this CSV file."); };
-      reader.readAsText(selectedFile);
+      reader.readAsArrayBuffer(selectedFile);
     },
     [config],
   );
@@ -204,7 +215,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
 
   const handleMappingChange = useCallback((fieldKey: string, value: string) => {
     if (busyRef.current) return;
-    setServerRows(null); submission.current = null;
+    setServerRows(null); submission.current = null; setCanResume(false);
     setMappings((prev) => {
       const updated = { ...prev };
       if (value === '') {
@@ -264,7 +275,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
   const handleContinue = useCallback(async () => {
     if (busyRef.current) return;
     if (step === 1) { setStep(2); return; }
-    busyRef.current = true; setIsValidating(true); setServerRows(null);
+    busyRef.current = true; setIsValidating(true); setServerRows(null); setCanResume(false); submission.current = null;
     try {
       const payload = await buildRequest();
       const reviewed: ImportReviewRow[] = [];
@@ -272,19 +283,36 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
         const response = await apiClient.post<{ data: ImportReviewRow[]; import?: ImportSummary }>(config.importApiPath + '/preview?offset=' + offset, payload);
         if (response.import) {
           if (response.import.completedAt) setImportResult(response.import);
-          else setCanResume(true);
-          break;
+          else {
+            setCanResume(true);
+            setProgress(response.import.successfulRecords + response.import.duplicateRecords + response.import.failedRecords);
+          }
+          submission.current = payload; setStep(3);
+          return;
         }
+        summarizeReview(response.data, csvRowNumbers.slice(offset, offset + 25));
         reviewed.push(...response.data);
       }
+      summarizeReview(reviewed, csvRowNumbers);
       setServerRows(reviewed); submission.current = payload; setStep(3);
     } catch (error) { toast.error(error instanceof Error ? error.message : 'Validation failed. Please retry.'); }
     finally { busyRef.current = false; setIsValidating(false); }
-  }, [step, config.importApiPath, buildRequest, csvRows.length]);
+  }, [step, config.importApiPath, buildRequest, csvRows.length, csvRowNumbers]);
 
   const handleImport = useCallback(async () => {
     if (!submission.current || busyRef.current) return;
+    if (!canResume) {
+      try {
+        const summary = summarizeReview(serverRows ?? [], csvRowNumbers);
+        if (summary.valid === 0) {
+          const notice = zeroEligibleNotice(summary);
+          toast.error(notice.title, { description: notice.description, id: `crm-import-review-${idempotencyKey.current}` });
+          return;
+        }
+      } catch (error) { toast.error(error instanceof Error ? error.message : 'Please complete Review before importing.'); return; }
+    }
     busyRef.current = true; setIsImporting(true);
+    setCanResume(true);
     try {
       let result: ImportSummary;
       do {
@@ -292,15 +320,29 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
         result = response.data;
         setProgress(result.successfulRecords + result.failedRecords + (result.duplicateRecords ?? 0));
       } while (result.status === 'importing');
+      const notice = finalImportNotice(result);
+      if (!notice) throw new Error('The backend has not confirmed a complete import result.');
       setImportResult(result);
-      if (moduleKey === 'deals' || moduleKey === 'leads') await refreshDeals();
-      if (moduleKey === 'accounts') await refreshOrganizations();
-      else if (moduleKey !== 'deals') await refreshContacts();
-      toast.success('Import completed — ' + result.successfulRecords + ' records imported.');
+      setCanResume(false);
+      if (!notifiedJobs.current.has(result.id)) {
+        notifiedJobs.current.add(result.id);
+        toast[notice.type](notice.title, { description: notice.description, id: `crm-import-${result.id}` });
+      }
+      // A list-refresh failure cannot change a confirmed, committed import outcome.
+      void Promise.allSettled([
+        ...(moduleKey === 'deals' || moduleKey === 'leads' ? [refreshDeals()] : []),
+        ...(moduleKey === 'accounts' ? [refreshOrganizations()] : moduleKey !== 'deals' ? [refreshContacts()] : []),
+      ]);
     } catch (err) {
-      toast.error((err instanceof Error ? err.message : 'Import interrupted') + ' Retry to resume the same import safely.');
+      const status = (err as ApiRequestError | undefined)?.status;
+      if (status && [400, 401, 403, 409].includes(status)) {
+        toast.error('Import Request Rejected', { description: err instanceof Error ? err.message : 'Please check the file, mapping, and permissions.' });
+      } else {
+        toast.error('Import Interrupted', { description: (err instanceof Error ? err.message + ' ' : '') +
+          'Committed records are preserved. Retry to resume the same import safely.' });
+      }
     } finally { busyRef.current = false; setIsImporting(false); }
-  }, [config.importApiPath, moduleKey, refreshDeals, refreshContacts, refreshOrganizations]);
+  }, [config.importApiPath, moduleKey, refreshDeals, refreshContacts, refreshOrganizations, canResume, serverRows, csvRowNumbers]);
 
   const firstUnmappedRequired = useMemo(
     () => config.requiredFields.find((f) => mappings[f.key]?.csvColumnIndex === null),
@@ -375,14 +417,15 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                 {moduleKey === 'deals' && <p className="mb-4 text-sm text-slate-500">Each row creates one Deal for one active Product. Deal Value comes from Settings &gt; Products. Use pipeline and stage names or IDs. Accounts accept names or IDs; customers and assigned agents accept email addresses or IDs. Dates use YYYY-MM-DD. Relationships must already exist in this workspace.</p>}
                 {step === 1 && <Step1Upload config={config} file={file} recordCount={csvRows.length} isDragging={isDragging} fileInputRef={fileInputRef} onFileChange={handleFileChange} onDrop={handleDrop} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onReplaceFile={() => fileInputRef.current?.click()} onDownloadTemplate={handleDownloadTemplate} />}
                 {step === 2 && <Step2MapColumns config={config} csvHeaders={csvHeaders} mappings={mappings} unmappedColumns={unmappedColumns} allRequiredMapped={allRequiredMapped} previewRows={previewRows} firstUnmappedRequired={firstUnmappedRequired} onMappingChange={handleMappingChange} mappedRequiredCount={mappedRequiredCount} totalRecords={csvRows.length} />}
-                {step === 3 && <Step3Review config={config} validatedRows={validatedRows} validCount={validCount} totalCount={csvRows.length} />}
+                {step === 3 && serverRows !== null && <Step3Review config={config} validatedRows={validatedRows} validCount={validCount} totalCount={csvRows.length} />}
+                {step === 3 && canResume && <p role="status" className="mt-3 text-sm text-slate-500">{progress} row results saved. Resume to recheck and process the remaining rows.</p>}
 
                 {/* ── Footer (inside content card) ──────────────────── */}
                 <div className="mt-6 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between gap-3">
                   {step === 1 ? (
                     <button onClick={() => router.push(config.backRoute)} className="inline-flex items-center gap-1.5 text-[13px] font-medium text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer">Cancel</button>
                   ) : (
-                    <button disabled={isImporting || isValidating} onClick={() => { setServerRows(null); setStep((s) => Math.max(1, s - 1) as WizardStep); }} className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+                    <button disabled={isImporting || isValidating} onClick={() => { setServerRows(null); submission.current = null; setCanResume(false); setStep((s) => Math.max(1, s - 1) as WizardStep); }} className="inline-flex items-center gap-1.5 h-9 px-4 text-[13px] font-medium text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors cursor-pointer">
                       <ArrowLeft size={14} /> Back
                     </button>
                   )}
@@ -391,7 +434,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                       {isValidating ? <><Loader2 size={14} className="animate-spin" /> Validating…</> : <>Continue <ArrowRight size={14} /></>}
                     </button>
                   ) : (
-                    <button onClick={handleImport} disabled={isImporting || (!canResume && validCount === 0)} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-white bg-primary cursor-not-allowed')}>
+                    <button onClick={handleImport} disabled={isImporting || (!canResume && serverRows === null)} className={cn('inline-flex items-center gap-2 h-10 px-6 text-[13px] font-semibold rounded-lg transition-colors', !isImporting ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-white bg-primary cursor-not-allowed')}>
                       {isImporting ? <><Loader2 size={14} className="animate-spin" /> Importing {progress}/{csvRows.length}…</> : <><Sparkles size={14} /> {canResume ? 'Resume import' : 'Import ' + validCount + ' ' + config.moduleLabel.toLowerCase()}</>}
                     </button>
                   )}
@@ -701,15 +744,19 @@ function Step3Review({ config, validatedRows, validCount, totalCount }: { config
 // ── Import Result ────────────────────────────────────────────────────────────
 
 function ImportResultView({ config, result, onViewDetails, onStartNew }: { config: ImportModuleConfig; result: ImportSummary; onViewDetails: () => void; onStartNew: () => void }): React.ReactElement {
+  const notice = finalImportNotice(result);
+  const tone = notice?.type === 'success' ? 'bg-emerald-100 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+    : notice?.type === 'warning' ? 'bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+      : 'bg-red-100 dark:bg-red-500/10 text-red-600 dark:text-red-400';
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6 space-y-5">
       <div className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-500/10 flex items-center justify-center">
-          <CheckCircle2 size={28} className="text-emerald-600 dark:text-emerald-400" />
+        <div className={cn('w-14 h-14 rounded-full flex items-center justify-center shrink-0', tone)}>
+          {notice?.type === 'success' ? <CheckCircle2 size={28} /> : <AlertCircle size={28} />}
         </div>
         <div>
-          <h3 className="text-[17px] font-bold text-slate-900 dark:text-white">{result.successfulRecords ? 'Import Complete' : 'No records imported'}</h3>
-          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">{result.successfulRecords} {config.moduleLabel.toLowerCase()} imported successfully.</p>
+          <h3 className="text-[17px] font-bold text-slate-900 dark:text-white">{notice?.title ?? importStatusLabel(result.status)}</h3>
+          <p className="text-[13px] text-slate-500 dark:text-slate-400 mt-0.5">{notice?.description ?? `${result.successfulRecords} records imported. View Details to inspect saved progress and errors.`}</p>
         </div>
       </div>
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

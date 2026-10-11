@@ -1,6 +1,7 @@
 import { MoveDealPipelineSchema } from '@leadcrm/shared';
 import { CreateDealBatchSchema } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
+import { resolveCrmActor } from '../../modules/crm/access/crm-record-access.service';
 import { NotFoundError } from '../../shared/errors/http-error';
 import { assertPermissions } from '../../core/permissions/permission.service';
 import * as activitiesService from '../../modules/crm/activities/activities.service';
@@ -52,6 +53,12 @@ router.use(authMiddleware);
 router.use(tenantMiddleware);
 router.use(workspaceReadyMiddleware);
 router.use(authorizeArchivedQuery);
+router.get('/record-access', async (req, res, next) => {
+  try {
+    const { permissions: _permissions, ...policy } = await resolveCrmActor(prisma, req.user!);
+    res.set('Cache-Control', 'no-store').json({ success: true, data: policy });
+  } catch (error) { next(error); }
+});
 router.use(recordFilesRouter);
 router.use(customFieldsRouter);
 router.get('/pipelines/events', authorize('deals.view'), pipelineEvents);

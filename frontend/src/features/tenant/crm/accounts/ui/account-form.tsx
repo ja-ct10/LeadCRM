@@ -1,4 +1,7 @@
 'use client';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
@@ -51,6 +54,9 @@ interface AccountFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormInnerProps): React.ReactElement {
+  const recordAccess = useCrmRecordAccess();
+  const actionAllowed = useHasPermission(initialData ? 'accounts.edit' : 'accounts.create');
+  const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('accounts', initialData?.id);
   const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const PRODUCTS = productRecords.map(p => p.name);
@@ -100,6 +106,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
   const selectedActiveProducts = watch('activeProducts') || [];
 
   const onSubmit = (data: AccountFormValues): void => {
+    if (!canSubmit) return;
     if (!customFields.validate()) return;
     // Build payload matching backend CreateCompanySchema field names
     const payload: Partial<Account> = {
@@ -290,14 +297,14 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
             <div className="relative">
               <select
-                {...register('assignedUserId')}
+                {...register('assignedUserId')} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
                 id={`${fieldId}-assignedUserId`}
                 aria-invalid={!!errors.assignedUserId}
                 aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
                 className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
               >
                 <option value="">{isEdit ? 'Unassigned' : 'Assign automatically'}</option>
-                {getAssignableAgents(users).map((u) => (
+                {getAssignableAgents(recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users).map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.firstName} {u.lastName}
                   </option>
@@ -413,7 +420,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         </button>
         <button
           type="submit"
-          disabled={customFields.blocked || isSubmitting}
+          disabled={!canSubmit || customFields.blocked || isSubmitting}
           className="h-[42px] px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Account'}

@@ -1,6 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 import { Prisma } from '@prisma/client';
+// This unit suite isolates Prisma error mapping from custom-field validation.
+vi.mock('../../closing-requirements/custom-field-values.repository', () => ({ saveRecordValues: vi.fn() }));
 
 /**
  * Property-based test for repository error classification.

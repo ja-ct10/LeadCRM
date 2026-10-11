@@ -197,12 +197,12 @@ describe('InlineDealForm', () => {
     expect(mockOnSubmit).not.toHaveBeenCalled();
   });
 
-  it('renders value, expected close and priority without retired fields', () => {
+  it('keeps expected close and priority without an editable historical value', () => {
     render(
       <InlineDealForm onSubmit={mockOnSubmit} />
     );
 
-    expect(screen.getByText('Value')).toBeDefined();
+    expect(screen.queryByLabelText('Value')).toBeNull();
     expect(screen.getByText('Expected Close Date')).toBeDefined();
     expect(screen.queryByText('Confidence (%)')).toBeNull();
     expect(screen.getByLabelText('Priority')).toBeDefined();

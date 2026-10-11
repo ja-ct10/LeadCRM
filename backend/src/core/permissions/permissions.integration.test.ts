@@ -32,7 +32,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
-  it('enforces each of the 75 grants independently and requires its module View', async () => {
+  it('enforces each of the 76 grants independently and requires its module View', async () => {
     const actor = await roleUser('Catalog QA', []);
     let count = 0;
     for (const module of PERMISSION_MODULES) {
@@ -46,14 +46,14 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
         await prisma.rolePermission.delete({ where: { id: row.id } }); count++;
       }
     }
-    expect(count).toBe(75);
+    expect(count).toBe(76);
     for (const key of ['roles.manage','settings.create','settings.delete','reports.view','billing.view','leads.delete']) {
       await expect(assertPermissions({ ...actor.user, role: 'Client Admin' }, [key as PermissionKey])).rejects.toMatchObject({ statusCode: 403 });
     }
   }, 60000);
   it('Sales Staff can create/edit Leads but cannot archive, import, manage roles or settings', async () => {
-    const actor = await roleUser('Sales Staff', [{ module: 'leads', canView: true, canCreate: true, canEdit: true }]);
-    const created = await call('/crm/leads', actor.token, 'POST', { firstName: 'Test', lastName: 'Lead', email: 'qa-lead@example.com' });
+    const actor = await roleUser('Sales Staff', [{ module: 'leads', canView: true, canCreate: true, canEdit: true }, { module: 'deals', canView: true, canEdit: true }]);
+    const created = await call('/crm/leads', actor.token, 'POST', { firstName: 'Test', lastName: 'Lead', email: 'qa-lead@example.com', assignedUserId: actor.user.userId });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     expect((await call(`/crm/leads/${created.body.data.id}`, actor.token, 'PUT', { firstName: 'Updated' })).status).toBe(200);
     for (const path of ['/administration/roles','/administration/organization-settings','/crm/contacts']) expect((await call(path, actor.token)).status).toBe(403);
@@ -103,7 +103,7 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
       expect((await call('/administration/roles', adminToken, 'POST', { name: 'Bad permission', permissions: [{ ...EMPTY_PERMISSION_FLAGS, ...permission }] })).status).toBe(400);
     }
     const admin = await prisma.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: 'Client Admin' } }, include: { permissions: true } });
-    expect(admin.permissions.reduce((sum, row) => sum + PERMISSION_MODULES.find(m => m.key === row.module)!.actions.filter(action => row[action]).length, 0)).toBe(75);
+    expect(admin.permissions.reduce((sum, row) => sum + PERMISSION_MODULES.find(m => m.key === row.module)!.actions.filter(action => row[action]).length, 0)).toBe(76);
     expect((await call(`/administration/roles/${admin.id}`, adminToken, 'PUT', { permissions: [] })).status).toBe(403);
     expect((await call(`/administration/roles/${admin.id}/archive`, adminToken, 'PATCH')).status).toBe(403);
   });

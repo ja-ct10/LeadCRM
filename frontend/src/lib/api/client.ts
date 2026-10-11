@@ -1,6 +1,7 @@
 'use client';
 
 import { invalidateApiPageCache } from '@/shared/cache/invalidate-api-page-cache';
+import { invalidatePageCache } from '@/shared/cache/page-cache';
 import type { ApiError } from '@leadcrm/shared';
 
 export type ApiRequestError = Error & Partial<Pick<ApiError['error'], 'code' | 'retryAt'>> & { status?: number; fieldErrors?: Record<string, string[]> };
@@ -83,6 +84,10 @@ async function request<T>(
       }
     }
     error.fieldErrors = errorData.fieldErrors;
+    if (res.status === 403 && method !== 'GET' && path.startsWith('/crm/')) {
+      invalidateApiPageCache(path);
+      invalidatePageCache('crm-record-access');
+    }
     throw error;
   }
 
