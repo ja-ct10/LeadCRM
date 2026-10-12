@@ -584,6 +584,34 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(dry.valid).toBe(false); expect(dry.actions[0].message).toContain('expectedCloseDate');
     await fire('deal', deal); expect((await runs(workflow.id))[0].status).toBe('failed');
   });
+  it.each([
+    ['lead', 'leads'], ['contact', 'contacts'], ['account', 'accounts'], ['deal', 'deals'],
+  ] as const)('validates %s Assigned Agent conditions using combined grants for that module', async (entity, module) => {
+    const viewRole = await prisma.roleDefinition.create({ data: { tenantId, name: `View ${module} ${randomUUID()}`,
+      permissions: { create: { module, canView: true } } } });
+    const editRole = await prisma.roleDefinition.create({ data: { tenantId, name: `Edit ${module} ${randomUUID()}`,
+      permissions: { create: { module, canEdit: true } } } });
+    const moduleAgent = await prisma.user.create({ data: { tenantId, role: 'Module staff', firstName: 'Module', lastName: 'Agent', email: `${randomUUID()}@camxian.com`,
+      userRoles: { create: [{ roleId: viewRole.id }, { roleId: editRole.id }] } } });
+    const configuration = (userId: string) => ({ trigger: entity === 'account' ? 'account.updated' : `${entity}.created`, conditions: {
+      operator: 'AND' as const, conditions: [{ field: `${entity}.assignedUserId`, operator: 'equals' as const, value: userId }],
+    } });
+    const actions: WorkflowAction[] = [{ type: 'assign_owner', config: { userId: moduleAgent.id } }];
+    const workflow = await create(actions, configuration(moduleAgent.id));
+    expect(workflow).toMatchObject({ isActive: true, status: 'ACTIVE' });
+    await prisma.rolePermission.updateMany({ where: { tenantId, roleId: editRole.id, module }, data: { canEdit: false } });
+    await expect(create(actions, configuration(moduleAgent.id))).rejects.toThrow(/eligible agent/);
+    await prisma.rolePermission.updateMany({ where: { tenantId, roleId: editRole.id, module }, data: { canEdit: true } });
+    await prisma.user.update({ where: { id: moduleAgent.id }, data: { status: 'INACTIVE' } });
+    await expect(create(actions, configuration(moduleAgent.id))).rejects.toThrow(/eligible agent/);
+    await prisma.user.update({ where: { id: moduleAgent.id }, data: { status: 'ACTIVE' } });
+    for (const unavailableId of [actor.id, outsider.id]) {
+      await expect(create(actions, configuration(unavailableId))).rejects.toThrow(/eligible agent/);
+    }
+    await prisma.user.update({ where: { id: moduleAgent.id }, data: { role: 'Guest', status: 'INACTIVE' } });
+    await expect(create(actions, configuration(moduleAgent.id))).rejects.toThrow(/eligible agent/);
+    await expect(prisma.user.update({ where: { id: moduleAgent.id }, data: { status: 'ACTIVE' } })).rejects.toThrow(/User_no_active_guest/);
+  });
   it('records an uncertain email outcome as interrupted and never replays the same source event', async () => {
     const workflow = await create([{ type: 'send_email', config: { templateId: template.id, senderUserId: actor.id } }]);
     const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: 'lead', entityId: lead.id, triggerType: 'lead.created', context: {} };
@@ -597,6 +625,45 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(stored.resolvedInput).toMatchObject({ messageId: `<workflow-${stored.id}@leadcrm.local>` });
     expect(stored.output).toMatchObject({ outcomeUnknown: true });
     expect(await prisma.emailDeliveryLog.count({ where: { tenantId, status: 'uncertain', leadId: lead.id } })).toBe(1);
+  });
+  it('retries undispatched work after a transient preparation failure without losing its queued event', async () => {
+    const sample = await prisma.lead.create({ data: { tenantId, firstName: 'Queued', lastName: 'Label', email: `${randomUUID()}@example.test`, assignedUserId: actor.id } });
+    const workflow = await create([{ type: 'send_email', config: { templateId: template.id, senderUserId: actor.id } }]);
+    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: 'lead', entityId: sample.id, triggerType: 'lead.created', context: {} };
+    await scope(() => salesTransaction(tx => enqueueWorkflowTrigger(tx, event)));
+    await prisma.lead.update({ where: { id: sample.id }, data: { firstName: 'Current' } });
+    const loading = vi.spyOn(prisma.workflow, 'findFirst').mockRejectedValueOnce(new Error('Transient database read failure'));
+    try { await dispatchQueuedWorkflows(); }
+    finally { loading.mockRestore(); }
+    const queued = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, workflowId: workflow.id }, include: { steps: true } });
+    expect(queued).toMatchObject({ status: 'queued', dispatchStartedAt: null, completedAt: null, leaseId: null, leaseUntil: null });
+    expect(queued.steps).toHaveLength(0); expect(sendEmail).not.toHaveBeenCalled();
+    const history = await runs(workflow.id);
+    expect(history[0].trigger.payload).toMatchObject({ recordName: 'Queued Label' });
+    expect(history[0]).not.toHaveProperty('dispatchContext');
+    vi.mocked(sendEmail).mockResolvedValueOnce({ messageId: `recovered-${randomUUID()}`, threadId: `recovered-thread-${randomUUID()}` });
+    await dispatchQueuedWorkflows();
+    expect(await prisma.workflowExecutionRun.findUniqueOrThrow({ where: { id: queued.id } })).toMatchObject({ status: 'completed' });
+    expect(await prisma.workflowExecutionRun.count({ where: { tenantId, workflowId: workflow.id } })).toBe(1);
+    expect(sendEmail).toHaveBeenCalledOnce();
+    await dispatchQueuedWorkflows(); expect(sendEmail).toHaveBeenCalledOnce();
+  });
+  it('uses the committed dispatch marker after its acknowledgement is lost and never requeues started work', async () => {
+    const workflow = await create([{ type: 'send_email', config: { templateId: template.id, senderUserId: actor.id } }]);
+    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: 'lead', entityId: lead.id, triggerType: 'lead.created', context: {} };
+    await scope(() => salesTransaction(tx => enqueueWorkflowTrigger(tx, event)));
+    const update = prisma.workflowExecutionRun.updateMany.bind(prisma.workflowExecutionRun);
+    const acknowledgement = vi.spyOn(prisma.workflowExecutionRun, 'updateMany')
+      .mockImplementationOnce(update)
+      .mockImplementationOnce(args => update(args).then(() => { throw new Error('Lost committed dispatch acknowledgement'); }) as ReturnType<typeof update>);
+    try { await dispatchQueuedWorkflows(); }
+    finally { acknowledgement.mockRestore(); }
+    const interrupted = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, workflowId: workflow.id }, include: { steps: true } });
+    expect(interrupted).toMatchObject({ status: 'interrupted', leaseId: null, leaseUntil: null });
+    expect(interrupted.dispatchStartedAt).not.toBeNull(); expect(interrupted.steps).toHaveLength(0);
+    expect(sendEmail).not.toHaveBeenCalled();
+    await dispatchQueuedWorkflows(); expect(sendEmail).not.toHaveBeenCalled();
+    expect((await prisma.workflowExecutionRun.findUniqueOrThrow({ where: { id: interrupted.id } })).status).toBe('interrupted');
   });
   it.each(['before provider write', 'after provider acceptance'] as const)('fences a suspended workflow %s after another worker interrupts its expired lease', async boundary => {
     const sample = await prisma.lead.create({ data: { tenantId, firstName: 'Lease', lastName: 'Recipient', email: `lease-${randomUUID()}@example.test`, assignedUserId: actor.id } });

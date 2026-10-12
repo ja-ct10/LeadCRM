@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { mailboxProviderQueries, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
-import { mailboxChanged, storedEmail } from './mailbox-store';
+import { authorizedMailbox, mailboxChanged, storedEmail } from './mailbox-store';
 import { runScheduledMailboxEmails } from './scheduled-mailbox.service';
 import { randomUUID } from 'node:crypto';
 import prisma from '../../config/database.config';
@@ -35,12 +35,19 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
 }
 
 export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string): Promise<GmailEmail[]> {
-  permissions = await mailboxPermissions(tenantId, userId);
-  const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
-  if (!account) return emails;
-  const scope = await resolveMailboxScope(account, permissions);
+  const changed = () => new AppError('Mailbox access changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
+  const access = async () => {
+    try { return await authorizedMailbox(tenantId, userId); }
+    catch (error) { if (error instanceof AppError && error.statusCode < 500) throw changed(); throw error; }
+  };
+  const { account, scope, permissions: currentPermissions } = await access();
+  permissions = currentPermissions;
   if (expectedScopeHash && expectedScopeHash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } }, select: { providerMessageId: true, direction: true, leadId: true, contactId: true, dealId: true, needsDealAssociation: true } });
+  // Lists already hold bodies and counts. Revocation during decoration must reject
+  // the whole response, including disconnects that do not change the CRM scope hash.
+  const current = await access();
+  if (current.account.id !== account.id || current.scope.hash !== scope.hash) throw changed();
   return emails.map<GmailEmail>(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
     ...email, bcc: undefined, replyToAddresses: undefined, authorizationHeadersValid: undefined, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,

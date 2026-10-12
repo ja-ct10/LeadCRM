@@ -26,11 +26,13 @@ export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, param
   const savedContext = await entityContext(trigger.entity, params.entityId, params.tenantId, tx);
   if (!savedContext) throw new ValidationError('The triggering CRM record is unavailable.');
   const eventContext = JSON.parse(JSON.stringify({ ...savedContext, ...context })) as Prisma.InputJsonObject;
+  const recordName = String(eventContext[`${trigger.entity}.title`] ?? eventContext[`${trigger.entity}.name`] ??
+    `${eventContext[`${trigger.entity}.firstName`] ?? ''} ${eventContext[`${trigger.entity}.lastName`] ?? ''}`).trim().slice(0, 255);
   for (const workflow of workflows) {
     if (ancestry.includes(workflow.id)) continue;
     const triggerId = randomUUID();
     // PostgreSQL uniqueness errors abort transactions: use ON CONFLICT, never catch-and-continue.
-    const inserted = await tx.workflowTriggerRecord.createMany({ data: [{ id: triggerId, tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType, entityType: params.entityType, entityId: params.entityId, eventId, payload: { queueVersion: 1 } }], skipDuplicates: true });
+    const inserted = await tx.workflowTriggerRecord.createMany({ data: [{ id: triggerId, tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType, entityType: params.entityType, entityId: params.entityId, eventId, payload: { queueVersion: 1, recordName } }], skipDuplicates: true });
     if (!inserted.count) continue;
     await tx.workflowExecutionRun.create({ data: { tenantId: params.tenantId, workflowId: workflow.id, triggerId, entityType: params.entityType, entityId: params.entityId,
       status: 'queued', workflowVersion: workflow.version,
@@ -65,7 +67,15 @@ export async function dispatchQueuedWorkflows() {
       await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: 'running', leaseUntil: { gt: new Date() } }, data: { status: 'skipped', completedAt: new Date(), errorMessage: 'The triggering state changed before dispatch.' } });
       await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: { not: 'running' } }, data: { leaseId: null, leaseUntil: null } });
     } catch {
-      await prisma.$transaction(tx => interruptWorkflowRun(tx, item, { leaseId, status: { in: ['queued', 'running'] } }));
+      await prisma.$transaction(async tx => {
+        // Read persisted state through conditional writes: the dispatch marker's
+        // acknowledgement may have been lost even though the write committed.
+        const undispatched = await tx.workflowExecutionRun.updateMany({ where: {
+          id: item.id, tenantId: item.tenantId, leaseId, status: 'queued', dispatchStartedAt: null,
+        }, data: { leaseId: null, leaseUntil: null } });
+        if (undispatched.count) return; // The next bounded tick may safely retry preparation.
+        await interruptWorkflowRun(tx, item, { leaseId, status: 'running', dispatchStartedAt: { not: null } });
+      });
     }
   });
 }

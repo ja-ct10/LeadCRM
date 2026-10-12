@@ -1,4 +1,4 @@
-import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, retiredContactReferences, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
+import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, retiredContactReferences, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
@@ -7,7 +7,7 @@ import * as refs from '../actions/actions.repository';
 import { z } from 'zod';
 import { conditionFields } from './workflow-fields';
 import prisma from '../../../config/database.config';
-import { validateSalesOwner } from '../../crm/leads/lead-automation.service';
+import { assertEligibleAssignedAgent, crmAssignmentRequirements } from '../../crm/access/assigned-agent-eligibility';
 
 export function validateWorkflowConditions(draft: WorkflowDraft, fields?: WorkflowField[]): void {
   const trigger = findTrigger(draft.trigger);
@@ -32,10 +32,11 @@ export function validateWorkflowConditions(draft: WorkflowDraft, fields?: Workfl
 export async function validateConditionReferences(draft: WorkflowDraft, tenantId: string): Promise<void> {
   const fields = await conditionFields(draft, tenantId);
   validateWorkflowConditions(draft, fields);
+  const entity = findTrigger(draft.trigger)!.entity;
   for (const rule of draft.conditions?.conditions ?? []) {
     if (['is_empty', 'is_not_empty'].includes(rule.operator)) continue;
     const field = fields.find(field => field.field === rule.field)!;
-    if (field.type === 'user') await validateSalesOwner(prisma, tenantId, String(rule.value));
+    if (field.type === 'user') await assertEligibleAssignedAgent(prisma, tenantId, String(rule.value), crmAssignmentRequirements(WORKFLOW_MODULES[entity]));
     if (field.type === 'products' && !await prisma.productInterest.findFirst({ where: { id: String(rule.value), tenantId, active: true } })) throw new ValidationError('Condition Product is unavailable.');
     if (field.type === 'contacts' && !await prisma.contact.findFirst({ where: { id: String(rule.value), tenantId, isArchived: false } })) throw new ValidationError('Condition Contact is unavailable.');
     if (field.type === 'leads' && !await prisma.lead.findFirst({ where: { id: String(rule.value), tenantId, isArchived: false } })) throw new ValidationError('Condition Lead is unavailable.');

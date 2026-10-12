@@ -5,7 +5,7 @@ import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox, mailboxChanged } from './mailbox-store';
-import { assertStoredMessages, messageInScope, resolveMailboxScope } from './mailbox-scope';
+import { assertStoredMessages, mailboxAddress, messageInScope, resolveMailboxScope } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
 import { fetchMessageDetail, getValidAccessToken, saveDraft, parseGmailMessage, GmailApiMessage } from './gmail.service';
 import { readGmailJson, writeGmailJson, withMailboxWorkerReadBudget } from './gmail-read';
@@ -180,7 +180,8 @@ async function runScheduledMailboxPass() {
         }
         const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(found.messages[0].id)}?format=metadata&${MAILBOX_METADATA_HEADERS}`));
         const current = await authorizeMailboxOperation(account, context);
-        if (metadata.rfcMessageId !== rfcMessageId || !metadata.labels.includes('SENT') || !messageInScope(metadata, account.email, current.scope) ||
+        if (metadata.rfcMessageId !== rfcMessageId || mailboxAddress(metadata.from) !== mailboxAddress(account.email) ||
+          (metadata.bcc?.length ?? 0) > 0 || !metadata.labels.includes('SENT') || !messageInScope(metadata, account.email, current.scope) ||
           JSON.stringify(normalizedRecipients([...metadata.to, ...(metadata.cc ?? [])])) !== JSON.stringify(normalizedRecipients(item.recipients))) throw new AppError('Scheduled delivery remains unconfirmed.', 409, 'GMAIL_OUTCOME_UNKNOWN');
         result = found.messages[0];
       } else {
@@ -190,7 +191,7 @@ async function runScheduledMailboxPass() {
         if (draft.message.payload?.headers?.some(header => header.name.toLowerCase() === 'bcc' && header.value.trim())) throw new AppError('Scheduled draft has unsupported recipients. Review it in Gmail.', 403);
         const current = await authorizeMailboxOperation(account, context);
         await assertStoredMessages(current.account, current.scope, [storedDraft.providerMessageId]);
-        if (email.rfcMessageId !== rfcMessageId || !messageInScope(email, account.email, current.scope) ||
+        if (email.rfcMessageId !== rfcMessageId || mailboxAddress(email.from) !== mailboxAddress(account.email) || !messageInScope(email, account.email, current.scope) ||
           JSON.stringify(normalizedRecipients([...email.to, ...(email.cc ?? [])])) !== JSON.stringify(normalizedRecipients(item.recipients))) throw new AppError('Scheduled draft changed or recipient is no longer assigned to you.', 403);
         await assertMailboxRecipients(current.account, current.scope, current.permissions, [...email.to, ...(email.cc ?? [])], email.threadId);
         await prisma.$transaction(async tx => {
@@ -202,6 +203,9 @@ async function runScheduledMailboxPass() {
         result = await writeGmailJson(token, 'drafts/send', 'POST', { id: item.draftId });
       }
       accepted = true;
+      if (![result?.id, result?.threadId].every(value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value))) {
+        throw new AppError('Gmail returned an incomplete scheduled delivery receipt. Verify this operation before resending.', 503, 'GMAIL_OUTCOME_UNKNOWN');
+      }
       await update({ status: 'sent', sentAt: new Date(), providerMessageId: result.id, providerThreadId: result.threadId, lastError: null });
       committed = true;
       await prisma.mailboxSendReceipt.updateMany({ where: { accountId: item.accountId, requestId: item.requestId, operation: 'schedule', status: { in: ['queued', 'sending', 'uncertain'] } }, data: { status: 'sent', providerMessageId: result.id, providerThreadId: result.threadId, leaseId: null, leaseUntil: null } });

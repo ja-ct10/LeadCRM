@@ -85,6 +85,35 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/threads/duplicate-scope')).status).toBe(404);
   });
 
+  it.each(['disconnect', 'reassignment'] as const)('rejects the entire mailbox list after %s during its decoration query', async revocation => {
+    const privateBody = 'Confidential body awaiting mailbox decoration';
+    await scope(() => ingestMailboxMessages(account, [{ ...mail(leadEmail, 'decoration-race'), body: `<p>${privateBody}</p>` }], permissions));
+    const actualFindMany = prisma.mailboxMessage.findMany.bind(prisma.mailboxMessage);
+    let release!: () => void, read!: () => void, delayed = false;
+    const waiting = new Promise<void>(resolve => { release = resolve; }), ready = new Promise<void>(resolve => { read = resolve; });
+    const decoration = vi.spyOn(prisma.mailboxMessage, 'findMany').mockImplementation(args => {
+      if (!args?.select?.needsDealAssociation || delayed) return actualFindMany(args);
+      delayed = true;
+      const pendingRead = (async () => {
+        const rows = await actualFindMany(args);
+        expect(rows).toEqual(expect.arrayContaining([expect.objectContaining({ providerMessageId: 'decoration-race' })]));
+        read(); await waiting; return rows;
+      })();
+      return pendingRead as unknown as ReturnType<typeof prisma.mailboxMessage.findMany>;
+    });
+    const pending = call('/emails');
+    try {
+      await Promise.race([ready, pending.then(() => { throw new Error('Mailbox list completed before its delayed decoration query'); })]);
+      if (revocation === 'disconnect') await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false } });
+      else await prisma.lead.update({ where: { id: leadId, tenantId }, data: { assignedUserId: otherId } });
+      release();
+      const response = await pending;
+      expect(response.status).toBe(409); expect(response.cache).toBe('no-store'); expect(response.body.error.code).toBe('MAILBOX_SCOPE_CHANGED');
+      expect(JSON.stringify(response.body)).not.toContain(privateBody);
+      for (const key of ['emails', 'unreadCount', 'nextPageToken']) expect(response.body).not.toHaveProperty(key);
+    } finally { release(); await pending; decoration.mockRestore(); }
+  });
+
   it.each(['/send', '/drafts'])('recovers an accepted %s after a lost response without repeating the provider write', async path => {
     const requestId = randomUUID(), payload = { requestId, to: leadEmail, subject: 'Recover once', body: '<p>Retained body</p>' };
     let identity = '', writes = 0;
@@ -918,6 +947,32 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/emails?filter=sent')).body.emails).toHaveLength(1);
     expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: test.item.id } })).status).toBe('sent');
   });
+
+  it.each([
+    ['missing message ID', { threadId: 'sent-schedule' }],
+    ['missing thread ID', { id: 'sent-schedule' }],
+    ['invalid message ID', { id: 'invalid/message', threadId: 'sent-schedule' }],
+    ['invalid thread ID', { id: 'sent-schedule', threadId: 'invalid/thread' }],
+    ['null response', null],
+  ])('keeps a malformed scheduled acknowledgement uncertain (%s) and recovers without resending', async (_case, acknowledgement) => {
+    const queued = await queuedEmail();
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
+    let sends = 0;
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL, init?: RequestInit) => {
+      if (String(input).endsWith('/drafts/send')) { sends++; return Response.json(acknowledgement); }
+      return queued.provider(input, init);
+    }));
+    await runScheduledMailboxEmails();
+    const unknown = await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } });
+    expect(unknown).toMatchObject({ status: 'uncertain', providerMessageId: null, providerThreadId: null, sentAt: null });
+    expect(await prisma.mailboxSendReceipt.findUniqueOrThrow({ where: { accountId_requestId: { accountId: account.id, requestId: queued.input.requestId } } })).toMatchObject({ status: 'uncertain', providerMessageId: 'draft-message', providerThreadId: null });
+    expect((await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, draftId: unknown.draftId } })).labels).toContain('DRAFT');
+    await prisma.scheduledMailboxEmail.update({ where: { id: unknown.id }, data: { retryAt: new Date(0) } });
+    await runScheduledMailboxEmails();
+    expect(sends).toBe(1);
+    expect(await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: unknown.id } })).toMatchObject({ status: 'sent', providerMessageId: 'sent-schedule', providerThreadId: 'sent-schedule' });
+  });
+
   it('reviews a pending schedule from persisted data, cancels it once, and preserves its editable draft', async () => {
     const queued = await queuedEmail(); queued.provider.mockClear();
     const detail = await call('/scheduled/' + queued.item.id);
@@ -969,6 +1024,35 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(queued.provider).not.toHaveBeenCalled(); expect(queued.sends()).toBe(0);
     expect((await call('/emails?filter=scheduled')).body.emails).toHaveLength(0);
   });
+
+  it.each(['From', 'Bcc'])('does not confirm a scheduled recovery with provider-edited %s metadata', async header => {
+    const queued = await queuedEmail();
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0), status: 'uncertain' } });
+    const changed = apiMail({ ...mail(header === 'From' ? 'info@camxian.com' : account.email, 'edited-recovery', ['SENT']), to: [leadEmail] }, [
+      { name: 'Message-ID', value: scheduleMessageId(queued.item.id) }, ...(header === 'Bcc' ? [{ name: 'Bcc', value: contactEmail }] : []),
+    ]);
+    const provider = vi.fn(async (input: string | URL) => String(input).includes('/messages?')
+      ? Response.json({ messages: [{ id: changed.id, threadId: changed.threadId }] }) : Response.json(changed));
+    vi.stubGlobal('fetch', provider);
+    await runScheduledMailboxEmails();
+    expect(provider).toHaveBeenCalledTimes(2);
+    expect(provider.mock.calls.every(([input]) => /\/messages\?|format=metadata/.test(String(input)))).toBe(true);
+    expect(await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).toMatchObject({ status: 'uncertain', providerMessageId: null, providerThreadId: null });
+    expect(await prisma.mailboxSendReceipt.findUniqueOrThrow({ where: { accountId_requestId: { accountId: account.id, requestId: queued.input.requestId } } })).toMatchObject({ status: 'uncertain', providerMessageId: 'draft-message' });
+  });
+
+  it('does not send a pending schedule after its provider From changes to an approved incoming sender', async () => {
+    const queued = await queuedEmail();
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
+    const changed = apiMail({ ...mail('info@camxian.com', 'edited-sender', ['DRAFT']), to: [leadEmail] }, [
+      { name: 'Message-ID', value: scheduleMessageId(queued.item.id) },
+    ]);
+    const provider = vi.fn(async () => Response.json({ message: changed })); vi.stubGlobal('fetch', provider);
+    await runScheduledMailboxEmails();
+    expect(provider).toHaveBeenCalledTimes(1); expect(queued.sends()).toBe(0);
+    expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).status).toBe('failed');
+  });
+
   it.each(['To', 'Cc', 'Bcc'])('rejects a provider-edited scheduled %s recipient using only metadata', async header => {
     const queued = await queuedEmail();
     await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
