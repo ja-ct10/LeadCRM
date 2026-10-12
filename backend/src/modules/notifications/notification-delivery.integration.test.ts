@@ -138,17 +138,17 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await prisma.userRole.create({ data: { tenantId, userId: obsolete.id, roleId: obsoleteRole.id } });
     await prisma.contact.update({ where: { id: row.id }, data: { status: 'HOT' } });
     await processEvents();
-    expect((await notifications(row.id, adminId)).some(n => n.type === 'customer_hot')).toBe(true);
+    expect((await notifications(row.id, adminId)).some(n => n.type === 'customer_hot')).toBe(false);
     expect(await notifications(row.id, obsolete.id)).toHaveLength(0);
     expect(await notifications(row.id, otherId)).toHaveLength(0);
   });
 
-  it('redacts historical customer data after reassignment, archive and permission revocation', async () => {
+  it('keeps CRM history viewable after reassignment and redacts archive or permission loss', async () => {
     const row = await contact(); await processEvents(); const [notice] = await notifications(row.id);
     await prisma.contact.update({ where: { id: row.id }, data: { assignedUserId: otherId } });
-    expect((await request('/notifications/' + notice.id + '/destination')).body.destination).toBeNull();
+    expect((await request('/notifications/' + notice.id + '/destination')).body.destination).toBe('/crm/contacts/' + row.id);
     const feed = await findNotifications(tenantId, agentId, { limit: '100' });
-    expect(feed.data.find(n => n.id === notice.id)).toMatchObject({ available: false, entityType: null, entityId: null });
+    expect(feed.data.find(n => n.id === notice.id)).toMatchObject({ available: true, entityType: 'Contact', entityId: row.id });
     expect((await request('/notifications/' + notice.id + '/read', 'PATCH')).status).toBe(200);
     const next = await contact(); await processEvents(); const [newNotice] = await notifications(next.id);
     await prisma.rolePermission.update({ where: { roleId_module: { roleId, module: 'contacts' } }, data: { canView: false } });
@@ -232,7 +232,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   it('deduplicates inbound message identity, enforces mailbox access, excludes history and resolves recovery incidents', async () => {
     const owner = await prisma.user.findUniqueOrThrow({ where: { id: agentId } });
     const now = new Date(), customer = await contact();
-    const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: owner.email, accessToken: 'test-encrypted', scopes: [], connectedAt: new Date(+now - 60000) } });
+    const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: owner.email, accessToken: 'test-encrypted', scopes: [], syncCursor: 'initialized', connectedAt: new Date(+now - 60000) } });
     const messageData = { tenantId, accountId: account.id, providerMessageId: 'one', threadId: 'thread', direction: 'inbound',
       from: customer.email!, fromAddress: customer.email!, recipients: [owner.email], recipientAddresses: [owner.email],
       subject: 'Private subject', body: 'Private body', snippet: 'Private preview', labels: ['INBOX','UNREAD'], sentAt: now, contactId: customer.id, rfcMessageId: 'canonical' };
@@ -296,7 +296,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const deal = await prisma.deal.create({ data: { tenantId, pipelineId, stageId, title: 'Transferred Deal', assignedUserId: staff.id } });
     await processEvents();
     expect(await notifications(lead.id, staff.id)).toHaveLength(1);
-    expect(await notifications(lead.id, adminId)).toHaveLength(1);
+    expect(await notifications(lead.id, adminId)).toHaveLength(0);
     expect(await notifications(account.id, staff.id)).toHaveLength(1);
     const oldCount = await prisma.notification.count({ where: { tenantId, userId: staff.id } });
     await notificationActor.run(adminId, () => deactivateUser(staff.id, tenantId, adminId, otherId));

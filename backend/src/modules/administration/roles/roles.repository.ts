@@ -179,8 +179,9 @@ export async function countActiveUserRoles(roleId: string, tenantId: string): Pr
 export async function findUserEffectivePermissions(
   userId: string,
   tenantId: string,
+  db: Prisma.TransactionClient = prisma,
 ): Promise<ResolvedPermissions> {
-  const userRoles = await prisma.userRole.findMany({
+  const userRoles = await db.userRole.findMany({
     where: { userId, tenantId, user: { tenantId }, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } },
     include: { role: { include: { permissions: { where: { tenantId } } } } },
   });

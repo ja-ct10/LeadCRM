@@ -7,7 +7,7 @@ export function notificationDestination(notification: Pick<NotificationRecord, '
   const paths: Record<string, string> = { Lead: '/crm/leads', Contact: '/crm/contacts', Account: '/crm/accounts', Deal: '/crm/deals' };
   if (notification.entityType && paths[notification.entityType] && notification.entityId) return `${paths[notification.entityType]}/${encodeURIComponent(notification.entityId)}`;
   if (notification.entityType === 'Task') return `/operations/taskboard?taskId=${encodeURIComponent(notification.entityId ?? '')}`;
-  return ({ User: '/settings?tab=users', Workflow: '/automation/workflows', Campaign: '/marketing/campaigns', Mailbox: '/inbox', Form: '/settings?tab=forms' } as Record<string, string>)[notification.entityType ?? ''];
+  return ({ User: '/settings?tab=users', RoleDefinition: '/settings?tab=roles', Workflow: '/automation/workflows', Campaign: '/marketing/campaigns', Mailbox: '/inbox', Form: '/marketing/forms' } as Record<string, string>)[notification.entityType ?? ''];
 }
 
 /** Reauthorize at click time, including after ownership or permission changes. */

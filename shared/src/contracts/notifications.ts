@@ -29,6 +29,7 @@ export const NotificationTypes = [
   'closing_requirements_needed', 'closing_requirements_completed', 'task_due', 'task_overdue',
   'customer_reply', 'campaign_failed', 'workflow_failed', 'user_created', 'user_status_changed',
   'mailbox_disconnected', 'mailbox_sync_failed', 'form_processing_failed', 'record_archived', 'record_restored',
+  'website_lead', 'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
 ] as const;
 export type NotificationType = typeof NotificationTypes[number];
 export const NotificationQuerySchema = z.object({

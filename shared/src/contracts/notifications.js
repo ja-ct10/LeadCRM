@@ -11,6 +11,7 @@ exports.NotificationTypes = [
     'closing_requirements_needed', 'closing_requirements_completed', 'task_due', 'task_overdue',
     'customer_reply', 'campaign_failed', 'workflow_failed', 'user_created', 'user_status_changed',
     'mailbox_disconnected', 'mailbox_sync_failed', 'form_processing_failed', 'record_archived', 'record_restored',
+    'website_lead', 'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
 ];
 exports.NotificationQuerySchema = zod_1.z.object({
     page: zod_1.z.coerce.number().int().min(1).max(10000).default(1),

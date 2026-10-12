@@ -5,32 +5,106 @@ import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
 import { activeAdminWhere } from './notification-access';
 import { deliverNotification, type CreateNotificationParams } from './notifications.service';
+import { adminNotifications, assignmentNotifications, staffNotifications } from './notification-policy';
+import { requireEmployeeAccount } from '../../core/auth/account-access';
+import { AppError } from '../../shared/errors/app-error';
 
 type Event = Omit<CreateNotificationParams, 'userId'> & { ownerId?: string | null; actorId?: string | null; admins?: boolean };
 export async function deliverEvent({ ownerId, actorId, admins, ...event }: Event) {
-  const recipients = new Set<string>(ownerId && ownerId !== actorId ? [ownerId] : []);
-  if (admins) {
+  const recipients = new Set<string>(staffNotifications.has(event.type) && ownerId
+    && !(assignmentNotifications.has(event.type) && ownerId === actorId) ? [ownerId] : []);
+  if (admins && adminNotifications.has(event.type)) {
     const users = await prisma.user.findMany({ where: activeAdminWhere(event.tenantId), select: { id: true } });
     users.forEach(user => recipients.add(user.id));
   }
-  for (const userId of recipients) await deliverNotification({ ...event, userId });
+  for (const userId of recipients) await deliverNotification({ ...event, actorId, userId });
 }
 
 const titles: Record<NotificationType, string> = {
-  lead_assigned: 'Lead assigned to you', contact_assigned: 'Contact assigned to you', account_assigned: 'Account assigned to you',
-  deal_assigned: 'Deal assigned to you', task_assigned: 'Task assigned to you', customer_hot: 'Customer became Hot',
+  lead_assigned: 'Lead Assigned to You', contact_assigned: 'Contact Assigned to You', account_assigned: 'Account Assigned to You',
+  deal_assigned: 'Deal Assigned to You', task_assigned: 'New Task Assigned', customer_hot: 'Customer Became Hot',
   customer_cold: 'Customer became Cold', customer_cancelled: 'Customer became Cancelled', deal_progressed: 'Deal progressed',
-  deal_won: 'Deal moved to Closed Won', deal_lost: 'Deal moved to Closed Lost', closing_requirements_needed: 'Closing requirements need attention',
+  deal_won: 'Deal Closed Won', deal_lost: 'Deal Closed Lost', closing_requirements_needed: 'Closing Requirements Need Attention',
   closing_requirements_completed: 'Closing requirements completed', task_due: 'Task reminder', task_overdue: 'Task overdue',
-  customer_reply: 'Customer sent a new reply', campaign_failed: 'Campaign delivery failed', workflow_failed: 'Workflow execution failed',
-  user_created: 'Team member created', user_status_changed: 'Team member account status changed', mailbox_disconnected: 'Gmail mailbox disconnected',
+  customer_reply: 'New Customer Reply', campaign_failed: 'Campaign Failed', workflow_failed: 'Workflow Failed',
+  user_created: 'New Team Member', user_status_changed: 'Team Member Account Status Changed', mailbox_disconnected: 'Gmail Disconnected',
   mailbox_sync_failed: 'Persistent Gmail sync failure', form_processing_failed: 'Form processing failed',
   record_archived: 'Record archived', record_restored: 'Record restored',
+  website_lead: 'New Website Lead', role_created: 'Role Created', role_archived: 'Role Archived',
+  role_permissions_changed: 'Role Permissions Updated', user_role_changed: 'User Role Updated',
 };
+
+type Facts = { version?: number; incidentId?: string; stage?: string; status?: string; name?: string;
+  assignedName?: string; value?: number; currency?: string; before?: unknown; after?: unknown; hasAccess?: boolean };
+const safeName = (value: unknown, fallback: string) => typeof value === 'string' && value.trim()
+  ? value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || fallback : fallback;
+
+async function presentation(event: NotificationEvent, facts: Facts) {
+  const type = event.type as NotificationType;
+  const scope = { tenantId: event.tenantId, id: event.entityId };
+  let stored: { name?: string; value?: number; currency?: string } = {};
+  // Older pending events have no presentation snapshot. Read only approved fields.
+  if (!facts.name) {
+    if (event.entityType === 'Lead' || event.entityType === 'Contact' || event.entityType === 'User') {
+      const row = event.entityType === 'Lead' ? await prisma.lead.findFirst({ where: scope, select: { firstName: true, lastName: true } })
+        : event.entityType === 'Contact' ? await prisma.contact.findFirst({ where: scope, select: { firstName: true, lastName: true } })
+        : await prisma.user.findFirst({ where: scope, select: { firstName: true, lastName: true } });
+      if (row) stored.name = `${row.firstName} ${row.lastName}`.trim();
+    } else if (event.entityType === 'Deal') {
+      const row = await prisma.deal.findFirst({ where: scope, select: { title: true } });
+      if (row) stored.name = row.title; // Never infer a historical closing amount from a later edit.
+    } else if (event.entityType === 'Task') {
+      const row = await prisma.task.findFirst({ where: scope, select: { title: true } }); if (row) stored.name = row.title;
+    } else if (event.entityType === 'Campaign') {
+      const row = await prisma.campaign.findFirst({ where: scope, select: { name: true } }); if (row) stored.name = row.name;
+    } else if (event.entityType === 'Workflow') {
+      const row = await prisma.workflow.findFirst({ where: scope, select: { name: true } }); if (row) stored.name = row.name;
+    }
+  }
+  const name = safeName(facts.name ?? stored.name, event.entityType === 'Lead' || event.entityType === 'Contact' ? 'A customer' : `The ${event.entityType.toLowerCase()}`);
+  let title = titles[type], body = 'Open the related record for details.';
+  if (assignmentNotifications.has(type)) body = `${name} has been assigned to you.`;
+  else if (type === 'website_lead') body = `${name} submitted a new inquiry.${facts.assignedName ? ` Assigned to ${safeName(facts.assignedName, 'an agent')}.` : ''}`;
+  else if (['customer_hot', 'customer_cold', 'customer_cancelled'].includes(type)) {
+    const status = type.slice('customer_'.length); const label = status[0].toUpperCase() + status.slice(1);
+    title = `${event.entityType} Became ${label}`; body = `${name} was ${status === 'cancelled' ? 'marked' : 'updated to'} ${label}.`;
+  } else if (type === 'deal_won' || type === 'deal_lost') {
+    body = `${name} was marked Closed ${type === 'deal_won' ? 'Won' : 'Lost'}.`;
+    if (type === 'deal_won' && typeof facts.value === 'number' && Number.isFinite(facts.value) && /^[A-Z]{3}$/.test(facts.currency ?? '')) {
+      try { body += ` Value: ${new Intl.NumberFormat('en-PH', { style: 'currency', currency: facts.currency, minimumFractionDigits: 0 }).format(facts.value)}.`; } catch { /* Unknown currency: retain the accurate outcome. */ }
+    }
+    if (facts.assignedName) body += ` Responsible agent: ${safeName(facts.assignedName, 'assigned staff')}.`;
+  } else if (type === 'closing_requirements_needed') body = `${name} requires closing information.`;
+  else if (type === 'task_due' || type === 'task_overdue') body = `${name} is ${type === 'task_due' ? 'due soon' : 'overdue'}.`;
+  else if (type === 'customer_reply') body = facts.name ? `${name} replied to a conversation assigned to you.` : 'A customer replied to a conversation assigned to you.';
+  else if (type === 'campaign_failed') body = `${name} encountered a delivery failure. Review the Campaign.`;
+  else if (type === 'workflow_failed') body = `${name} encountered an execution failure.`;
+  else if (type === 'form_processing_failed') body = 'A published Form submission could not be processed.';
+  else if (type === 'mailbox_disconnected') body = 'A connected Gmail mailbox requires reconnection.';
+  else if (type === 'mailbox_sync_failed') body = 'A connected Gmail mailbox has a persistent synchronization failure. Review the connection.';
+  else if (type === 'user_created') body = `${name} was added to your organization.`;
+  else if (type === 'user_status_changed') {
+    const status = facts.status === 'ACTIVE' ? 'Reactivated' : 'Deactivated'; title = `User ${status}`; body = `${name}'s account was ${status.toLowerCase()}.`;
+  } else if (type === 'role_created') body = `${name} was created with access permissions.`;
+  else if (type === 'role_archived') body = `${name} was archived.`;
+  else if (type === 'role_permissions_changed') body = `${name} permissions were updated.`;
+  else if (type === 'user_role_changed') body = `${name}'s role assignment was updated.`;
+  return { title, body };
+}
 
 async function project(event: NotificationEvent, now: Date) {
   if (!NotificationTypes.includes(event.type as NotificationType)) throw new Error('INVALID_EVENT_TYPE');
-  const facts = event.payload as { version?: number; incidentId?: string; stage?: string; status?: string };
+  const facts = event.payload as Facts;
+  const type = event.type as NotificationType;
+  if (!adminNotifications.has(type) && !staffNotifications.has(type)) return;
+  if (['role_permissions_changed', 'user_role_changed'].includes(type) && JSON.stringify(facts.before) === JSON.stringify(facts.after)) return;
+  if (['role_created', 'role_archived'].includes(type) && !facts.hasAccess) return;
+  if (type === 'user_created') {
+    const user = await prisma.user.findFirst({ where: { tenantId: event.tenantId, id: event.entityId }, select: { email: true, role: true } });
+    if (!user) return;
+    try { requireEmployeeAccount(user); } catch (error) { if (error instanceof AppError) return; throw error; }
+  }
+  if (type === 'user_status_changed' && !['ACTIVE', 'INACTIVE'].includes(facts.status ?? '')) return;
   if (['task_due', 'task_overdue'].includes(event.type)) {
     const task = await prisma.task.findFirst({ where: { tenantId: event.tenantId, id: event.entityId, isArchived: false,
       assignedUserId: event.ownerId ?? '', status: { notIn: ['completed', 'cancelled'] }, notificationVersion: facts.version } });
@@ -40,16 +114,11 @@ async function project(event: NotificationEvent, now: Date) {
     const account = await prisma.emailAccount.findFirst({ where: { tenantId: event.tenantId, id: event.entityId, notificationIncidentId: facts.incidentId } });
     if (!account || (!account.syncError && account.isActive) || (event.type === 'mailbox_sync_failed' && !account.isActive)) return;
   }
-  const type = event.type as NotificationType;
-  const title = type.startsWith('customer_') && type !== 'customer_reply'
-    ? event.entityType + titles[type].slice('Customer'.length)
-    : type === 'deal_progressed' && facts.stage ? 'Deal moved to ' + facts.stage
-    : type === 'user_status_changed' && facts.status ? 'Team member is now ' + facts.status.toLowerCase()
-    : titles[type];
-  await deliverEvent({ tenantId: event.tenantId, eventKey: event.eventKey, type, title,
-    body: 'Open the related record for details.', entityType: event.entityType, entityId: event.entityId,
+  const content = await presentation(event, facts);
+  await deliverEvent({ tenantId: event.tenantId, eventKey: event.eventKey, type, ...content,
+    entityType: event.entityType, entityId: event.entityId,
     ownerId: event.ownerId, actorId: event.actorId, admins: event.admins, occurredAt: event.occurredAt,
-    taskVersion: facts.version, eligibilityAt: now });
+    taskVersion: facts.version, incidentId: facts.incidentId, eligibilityAt: now });
 }
 
 /** A bounded lease claim never advances past unprocessed work. Expired leases recover on restart. */

@@ -14,6 +14,7 @@ import { scheduleMailboxEmail, runScheduledMailboxEmails, scheduleMessageId } fr
 import { fetchEmails, sendEmailWithToken, parseGmailMessage } from './gmail.service';
 import type { GmailEmail } from './gmail.types';
 import { salesPipeline, salesTransaction } from '../../modules/crm/leads/lead-automation.service';
+import { crmActor } from '../../modules/crm/access/crm-record-access.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -379,7 +380,9 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   it('stops a correspondent bulk action if assignment is revoked between provider writes', async () => {
     await persistHistorical(mail(leadEmail, 'mid-action-a')); await persistHistorical(mail(leadEmail, 'mid-action-b'));
     const row = (await call('/emails')).body.emails[0];
-    const provider = vi.fn(async () => { await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } }); return Response.json({}); });
+    // This models a separate administrator's committed write, not the Gmail
+    // request actor performing a CRM reassignment from inside the provider mock.
+    const provider = vi.fn(async () => { await crmActor.exit(async () => await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } })); return Response.json({}); });
     vi.stubGlobal('fetch', provider);
     expect((await call('/trash', 'POST', { conversationIds: [row.conversationId] })).status).toBe(404);
     expect(provider).toHaveBeenCalledOnce();
@@ -534,7 +537,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   it('rejects attachment access after reassignment during a provider read', async () => {
     await scope(() => ingestMailboxMessages(account, [{ ...mail(leadEmail, 'file-race'), attachments: [{ id: 'file-id', filename: 'private.pdf', mimeType: 'application/pdf', size: 1 }] }], permissions));
     vi.stubGlobal('fetch', vi.fn(async () => {
-      await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } });
+      await crmActor.exit(async () => await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } }));
       return Response.json({ data: 'YQ', size: 1 });
     }));
     expect((await call('/messages/file-race/attachments/file-id')).status).toBe(404);

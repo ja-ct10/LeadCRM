@@ -26,4 +26,10 @@ try {
   start();await until(async()=>await prisma.notificationEvent.count({where:{tenantId:tenant.id,processedAt:null}})===0);
   assert.equal(await prisma.notification.count({where:{tenantId:tenant.id,entityId:contact.id}}),0);
   console.log('PASS compiled standalone worker starts, delivers, restarts, and preserves deleted-event identity.');
+  if(process.argv.includes('--release-acceptance')) {
+    const fixture=spawn(process.execPath,[resolve(root,'backend/scripts/verify-notification-release.cjs'),'--isolated-fixture'],{
+      cwd:root,windowsHide:true,stdio:'inherit',env:process.env,
+    });
+    assert.equal(await new Promise(done=>fixture.once('exit',done)),0,'Isolated release acceptance must pass');
+  }
 }finally{await stop();await prisma.$disconnect();pg.stop();}

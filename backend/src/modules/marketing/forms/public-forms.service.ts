@@ -86,6 +86,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           }
           if (lead?.isArchived || contact?.isArchived) throw conflict();
           let leadId: string | null = lead?.id ?? null, contactId: string | null = contact?.id ?? null;
+          let newWebsiteLead = false;
           if (lead && !lead.convertedAt) {
             const won = await tx.deal.findFirst({ where: { ...scope, AND: [
               { leadDeals: { some: { ...scope, leadId: lead.id } } },
@@ -121,6 +122,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
               email, phone, companyName: mapped.companyName || null, address: mapped.address || null,
               productInterestIds: selectedProducts, source: mapped.source || 'Website' }, live.createdById, 'public-form');
             leadId = created.id;
+            newWebsiteLead = true;
           }
           const customFields = config.fields.filter(field => field.customFieldId);
           if (customFields.length && leadId) {
@@ -135,6 +137,16 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
             publishedConfig: { name: config.name, fields: config.fields, design: config.design }, leadId, contactId, email, phone,
             values: validated.values, tracking: config.settings.trackUrlParams ? input.tracking : {}, notificationStatus: config.settings.notificationEmail ? 'pending' : 'not_requested' } });
+          // Only committed new captures through this published form qualify. Source
+          // labels are editable CRM data and do not establish inbound provenance.
+          if (newWebsiteLead && leadId) {
+            const captured = await tx.lead.findFirstOrThrow({ where: { ...scope, id: leadId },
+              select: { firstName: true, lastName: true, assignedUserId: true, assignedUser: { select: { firstName: true, lastName: true } } } });
+            await tx.notificationEvent.createMany({ data: [{ ...scope, eventKey: `website-lead:${leadId}`, type: 'website_lead',
+              entityType: 'Lead', entityId: leadId, admins: true, actorId: live.createdById,
+              payload: { name: `${captured.firstName} ${captured.lastName}`.trim(), formId: live.id, submissionId: submission.id,
+                assignedName: captured.assignedUser ? `${captured.assignedUser.firstName} ${captured.assignedUser.lastName}`.trim() : null } }], skipDuplicates: true });
+          }
           if (contactId && resolvedProducts.length) {
             const customer = await tx.contact.findFirstOrThrow({ where: { ...scope, id: contactId } });
             await tx.contact.update({ where: { ...scope, id: customer.id }, data: await productRelationData(tx, 'contact', scope.tenantId,
@@ -170,7 +182,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
           if (attempt < 3) continue;
           error = new ConflictError('Another inquiry is being processed. Please try again.');
         }
-        if (!(error instanceof ValidationError) && !(error instanceof NotFoundError)) {
+        if (!(error instanceof ValidationError) && !(error instanceof NotFoundError) && !(error instanceof ConflictError)) {
           const hash = createHash('sha256').update(`form-failure:${form.id}:${input.requestId ?? JSON.stringify(input.values)}`).digest('hex');
           const id = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
           try { await prisma.auditLog.upsert({ where: { id }, update: {}, create: { id, tenantId: form.tenantId, userId: form.createdById,

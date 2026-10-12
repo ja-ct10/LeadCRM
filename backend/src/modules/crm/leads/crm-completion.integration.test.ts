@@ -136,7 +136,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   it('engagement updates status but retired configuration cannot enable Deal-stage changes', async () => {
     const { lead, deals } = await customer(null);
     await prisma.deal.updateMany({ where: { leadDeals: { some: { leadId: lead.id } } }, data: { stageId: stages.Lead, stageChangedAt: before } });
-    const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: 'sales@camxian.com', accessToken: 'test-only', scopes: [], connectedAt: before } });
+    const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: 'sales@camxian.com', accessToken: 'test-only', scopes: [], syncCursor: 'initialized', connectedAt: before } });
     const message = (subject: string) => ({ id: randomUUID(), threadId: randomUUID(), rfcMessageId: randomUUID(), from: lead.email!, to: [account.email], subject,
       body: 'We want to proceed with the product purchase.', snippet: 'Purchase request', date: new Date().toISOString(), isRead: false, labels: ['INBOX'] });
     const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
@@ -159,7 +159,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => dispatchTenantNotifications(tenantId));
     expect(await prisma.notification.count({ where: { tenantId } })).toBe(count);
     expect(await prisma.notification.count({ where: { tenantId, userId: otherAgentId } })).toBe(0);
-    for (const type of ['deal_won', 'closing_requirements_completed', 'customer_hot']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } })).toBeGreaterThan(0);
+    expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type: 'deal_won' } })).toBeGreaterThan(0);
+    for (const type of ['closing_requirements_completed', 'customer_hot', 'record_restored']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } })).toBe(0);
     expect(await prisma.notification.count({ where: { tenantId, type: 'customer_cancelled' } })).toBe(0);
     expect(await prisma.notification.count({ where: { tenantId, userId: agentId, type: 'customer_reply' } })).toBeGreaterThan(0);
     await deliverEvent({ tenantId, eventKey: 'foreign-attempt', type: 'lead_assigned', title: 'Test', ownerId: foreignId });
@@ -237,7 +238,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const mailbox = await prisma.emailAccount.update({ where: { tenantId_userId_provider: { tenantId, userId: agentId, provider: 'gmail' } }, data: { isActive: false } });
     await scope(() => dispatchTenantNotifications(tenantId));
     expect(await prisma.notification.count({ where: { userId: otherAgentId, entityId: lead.id, type: 'lead_assigned' } })).toBe(1);
-    for (const type of ['deal_lost', 'workflow_failed', 'campaign_failed', 'user_created', 'user_status_changed', 'record_restored', 'form_processing_failed', 'mailbox_disconnected']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } }), type).toBeGreaterThan(0);
+    for (const type of ['deal_lost', 'workflow_failed', 'campaign_failed', 'user_created', 'user_status_changed', 'form_processing_failed', 'mailbox_disconnected']) expect(await prisma.notification.count({ where: { tenantId, userId: adminId, type } }), type).toBeGreaterThan(0);
     await prisma.emailAccount.update({ where: { id: mailbox.id }, data: { isActive: true, syncError: 'Persistent test error' } });
     await scope(() => dispatchTenantNotifications(tenantId));
     await scope(() => dispatchTenantNotifications(tenantId, new Date(Date.now() + 16 * 60000)));

@@ -4,6 +4,7 @@ const files=process.argv.slice(2);
 const suites=files.length?files:[
  'src/modules/notifications/notifications.integration.test.ts',
  'src/modules/notifications/notification-delivery.integration.test.ts',
+ 'src/modules/notifications/notification-policy.integration.test.ts',
  'src/modules/crm/leads/lead-polish.integration.test.ts',
  'src/modules/crm/leads/crm-completion.integration.test.ts',
  'src/modules/crm/leads/sales-automation.integration.test.ts',

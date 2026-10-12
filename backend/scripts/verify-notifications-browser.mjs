@@ -7,7 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/notification-verification/browser');
+const root = resolve(import.meta.dirname, '../..'), output = process.env.NOTIFICATION_EVIDENCE_DIR || resolve(root, 'data/outputs/notification-verification/browser');
 mkdirSync(output, { recursive: true });
 const pg = await notificationTestPostgres();
 const base = 'http://localhost:3021';
@@ -56,7 +56,22 @@ try {
       await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,error:{message:'Acceptance failure'}})});return;
     }
     try {
-      const response = await page.request.fetch(`http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`, { method: request.method(), headers: { ...request.headers(), authorization: `Bearer ${token}` }, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 });
+      const localUrl=`http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`;
+      if(url.pathname.endsWith('/events')||url.pathname.endsWith('/record-events')) {
+        // Playwright's buffered request transport cannot finish an infinite SSE
+        // response. Verify the real authenticated first event, then close this
+        // harness connection. Sustained streaming is tested by its own suite.
+        const controller=new AbortController();
+        const timeout=setTimeout(()=>controller.abort(),10000);
+        try {
+          const response=await fetch(localUrl,{headers:{authorization:`Bearer ${token}`},signal:controller.signal});
+          const reader=response.body.getReader(),first=await reader.read();
+          await route.fulfill({status:response.status,contentType:response.headers.get('content-type')||'text/event-stream',body:Buffer.from(first.value||[])});
+          await reader.cancel();
+        }finally{clearTimeout(timeout);controller.abort();}
+        return;
+      }
+      const response = await page.request.fetch(localUrl, { method: request.method(), headers: { ...request.headers(), authorization: `Bearer ${token}` }, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 });
       await route.fulfill({ response });
     } catch (error) { if (!closing) transportErrors.push(`${request.method()} ${url.pathname}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); }
   });
@@ -65,20 +80,25 @@ try {
   const bell = () => page.getByRole('button',{name:/^Notifications, \d+ unread$/});
   const dialog = () => page.getByRole('dialog',{name:'Notifications',exact:true});
   async function responsive(label, locator) {
-    for(const width of [1440,1280,768,390,320]) {
+    for(const theme of ['Light', 'Dark']) {
+      await page.evaluate(mode => { localStorage.setItem('app_theme', mode); window.dispatchEvent(new StorageEvent('storage', { key: 'app_theme' })); }, theme);
+      await eventually(async()=>await page.locator('.crm-shell[data-theme-container]').evaluate((el,mode)=>el.classList.contains('dark')===(mode==='Dark'),theme));
+    for(const width of [320,375,390,430,768,1024,1440,1920]) {
       await page.setViewportSize({width,height:900}); await page.waitForTimeout(200);
       if(label==='page') await page.getByRole('heading',{name:'Notifications',exact:true}).scrollIntoViewIfNeeded();
       assert.equal(await page.getByText('Failed to load data. Please refresh the page.',{exact:true}).count(),0);
       const dimensions = await locator.evaluate(el=>({overflow:el.scrollWidth>el.clientWidth+1,outside:[...el.querySelectorAll('button,input')].filter(e=>e.getClientRects().length&&(e.getBoundingClientRect().left< -1||e.getBoundingClientRect().right>innerWidth+1)).map(e=>e.getAttribute('aria-label')||e.textContent)}));
       assert.equal(dimensions.overflow,false,JSON.stringify(dimensions)); assert.deepEqual(dimensions.outside,[],JSON.stringify(dimensions));
-      await page.screenshot({path:resolve(output,`${label}-${width}.png`)});record(`${label} responsive ${width}`);
+      await page.screenshot({path:resolve(output,`${label}-${theme.toLowerCase()}-${width}.png`)});record(`${label} ${theme} responsive ${width}`);
     }
+    }
+    await page.evaluate(() => { localStorage.setItem('app_theme', 'Light'); window.dispatchEvent(new StorageEvent('storage', { key: 'app_theme' })); });
     await page.setViewportSize({width:1440,height:900});
   }
   await navigate('/crm/contacts'); await bell().filter({hasText:'99+'}).waitFor();
   assert.equal(requests.filter(r=>r.path.endsWith('/notifications')).length,0);record('Closed dropdown loads counts only; badge caps at 99+');
-  await bell().focus(); await page.keyboard.press('Enter'); await dialog().getByRole('button',{name:/Contact assigned to you/}).first().waitFor();
-  assert.equal(await dialog().getByRole('button',{name:/Contact assigned to you/}).count(),5);
+  await bell().focus(); await page.keyboard.press('Enter'); await dialog().getByRole('button',{name:/Contact Assigned to You/}).first().waitFor();
+  assert.equal(await dialog().getByRole('button',{name:/Contact Assigned to You/}).count(),5);
   await responsive('dropdown',dialog());
   await page.keyboard.press('Escape'); await dialog().waitFor({state:'hidden'}); assert.equal(await bell().evaluate(el=>el===document.activeElement),true);record('Recent five, keyboard opening, Escape and focus restoration');
   await bell().click(); await page.getByRole('heading',{name:'Contacts',exact:true}).click(); await dialog().waitFor({state:'hidden'});record('Outside click closes dropdown');
@@ -88,7 +108,7 @@ try {
   await page.getByRole('button',{name:'Load More',exact:true}).click(); await eventually(async()=>await rows().count()===40);record('Newest-first stable SQL order and keyset Load More');
   await responsive('page',page.locator('main'));
   const id=await rows().first().getAttribute('data-notification-id'); const source=await prisma.notification.findUniqueOrThrow({where:{id}});
-  await rows().first().getByRole('button',{name:/Contact assigned to you/}).click();
+  await rows().first().getByRole('button',{name:/Contact Assigned to You/}).click();
   await page.waitForURL('**/crm/contacts/'+source.entityId);
   assert.equal((await prisma.notification.findUniqueOrThrow({where:{id}})).isRead,true);record('Notification read persists and opens its actual Contact');
   await navigate('/notifications'); await eventually(async()=>await rows().count()===20);
@@ -120,8 +140,28 @@ try {
   const muted=await createContact('Muted');await dispatchTenantNotifications(tenant.id,new Date(),100); assert.equal(await prisma.notification.count({where:{...where,entityId:muted.id}}),0);record('Saved preference survives reload and suppresses real optional delivery; unsupported channels disabled');
   await toggle.click(); await page.getByRole('button',{name:'Save Channels',exact:true}).click(); await page.getByText('Notification preferences saved.',{exact:true}).waitFor();
   const task=await prisma.task.create({data:{tenantId:tenant.id,title:'Notification task destination',assignedUserId:agent.id,dueDate:new Date(Date.now()+3*86400000)}});
-  await dispatchTenantNotifications(tenant.id,new Date(),100); await navigate('/notifications'); await rows().first().getByRole('button',{name:/Task assigned to you/}).click();
+  await dispatchTenantNotifications(tenant.id,new Date(),100); await navigate('/notifications'); await rows().first().getByRole('button',{name:/New Task Assigned/}).click();
   await page.getByRole('dialog',{name:'Task details',exact:true}).waitFor(); await page.getByText(task.title,{exact:true}).first().waitFor();record('Task notification opens the existing task drawer');
+  const adminRole=await prisma.roleDefinition.create({data:{tenantId:tenant.id,name:'Client Admin',isSystemRole:true}});
+  const admin=await prisma.user.create({data:{tenantId:tenant.id,firstName:'Policy',lastName:'Admin',email:'policy-admin@camxian.com',role:'Client Admin',mustChangePassword:false,onboardingCompletedAt:new Date(),userRoles:{create:{roleId:adminRole.id}}}});
+  const group=await prisma.tenantGroup.upsert({where:{tenantId_systemKey:{tenantId:tenant.id,systemKey:'SALES'}},create:{tenantId:tenant.id,name:'Sales',systemKey:'SALES'},update:{}});
+  await prisma.tenantGroupMember.create({data:{tenantId:tenant.id,groupId:group.id,userId:agent.id}});
+  const product=await prisma.productInterest.create({data:{tenantId:tenant.id,name:'Browser Product',dealValue:45000}});
+  const forms=require('../dist/backend/src/modules/marketing/forms/forms.service.js');
+  const publicForms=require('../dist/backend/src/modules/marketing/forms/public-forms.service.js');
+  const form=await forms.createForm(tenant.id,admin.id,{name:'Browser Website Form'});
+  const published=await forms.publishForm(form.id,tenant.id,admin.id);
+  const inquiryEmail=randomUUID()+'@example.test';
+  await publicForms.submitPublicForm(form.publicId,{version:published.publishedVersion,requestId:randomUUID(),values:{firstName:'Josh',lastName:'Tiron',email:inquiryEmail,productInterest:product.id,address:'Makati'}});
+  await dispatchTenantNotifications(tenant.id,new Date(),100);
+  token=(await issueAuthSession(admin)).token; await context.clearCookies(); await context.addCookies([{name:'leadcrm_token',value:token,url:base,httpOnly:true,sameSite:'Lax'}]);
+  await navigate('/notifications');
+  const website=rows().filter({hasText:'New Website Lead'}); await website.getByText('Josh Tiron submitted a new inquiry. Assigned to Notification Tester.',{exact:true}).waitFor();
+  assert.equal(await website.count(),1); await website.getByRole('button',{name:/New Website Lead/}).click();
+  const captured=await prisma.lead.findFirstOrThrow({where:{tenantId:tenant.id,email:inquiryEmail}}); await page.waitForURL('**/crm/leads/'+captured.id);record('Real published Website Lead has accurate admin presentation and authorized Lead navigation');
+  await prisma.rolePermission.update({where:{roleId_module:{roleId:role.id,module:'contacts'}},data:{canCreate:false}}); await dispatchTenantNotifications(tenant.id,new Date(),100);
+  await navigate('/notifications'); await rows().filter({hasText:'Role Permissions Updated'}).getByRole('button',{name:/Role Permissions Updated/}).click();
+  await page.waitForURL('**/settings?tab=roles');record('Registered role permission security notice opens existing Roles & Permissions');
   token=(await issueAuthSession(other)).token; await context.clearCookies(); await context.addCookies([{name:'leadcrm_token',value:token,url:base,httpOnly:true,sameSite:'Lax'}]);
   await navigate('/notifications'); await page.getByText('No notifications yet',{exact:true}).waitFor(); assert.equal(await rows().count(),0); await bell().filter({hasText:'99+'}).waitFor({state:'hidden'});record('New authenticated user sees an isolated empty feed');
   assert.deepEqual(pageErrors,[]);assert.deepEqual(transportErrors,[]);
