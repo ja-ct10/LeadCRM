@@ -403,6 +403,8 @@ export default function AccountsPage(): React.ReactElement {
         loading={isLoading || isColumnsLoading}
         loadingLabel={isLoading ? 'Loading accounts...' : 'Loading columns...'}
         onManageColumns={openManageColumns}
+        sort={sort}
+        onSortChange={next => { setSort(next); setCurrentPage(1); }}
         onResetColumns={resetColumnWidths}
       >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
@@ -429,7 +431,7 @@ export default function AccountsPage(): React.ReactElement {
             {filteredAccounts.length > 0 && (
           <AccountsDataGrid
             sort={sort}
-            onSortChange={setSort}
+            onSortChange={next => { setSort(next); setCurrentPage(1); }}
             accounts={filteredAccounts}
             totalRecords={serverTotal}
             effectiveColumns={effectiveColumns}

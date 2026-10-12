@@ -374,7 +374,8 @@ export default function CampaignsPage() {
         {tableColumns.drawer}
         <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
           filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
-          refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths} />
+          refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
+          sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); goToPage(1); }} />
       </>}
 
       {/* Tab Content */}

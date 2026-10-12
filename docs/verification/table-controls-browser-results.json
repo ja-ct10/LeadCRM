@@ -13,13 +13,13 @@
     "Failed create preserves form values; successful retry persists once and refreshes the list",
     "Light/dark 320/768/1440 layouts, trimmed column search and keyboard Escape work",
     "Every supported sort field and direction orders before SQL pagination; module preferences deny restricted roles",
-    "leads: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
-    "contacts: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
-    "accounts: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
-    "tasks: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
-    "workflows: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
-    "campaigns: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
-    "users: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus"
+    "leads: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "contacts: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "accounts: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "tasks: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "workflows: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "campaigns: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "users: settings-menu drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus"
   ],
   "errors": []
 }

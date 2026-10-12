@@ -8,7 +8,7 @@ import { DataGrid } from '../data-grid';
 import type { SortState } from '../types';
 import { LeadsDataGrid } from '@/features/tenant/crm/leads/ui/leads-data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import { compareSortValues, normalizeLeadColumns } from '@leadcrm/shared';
+import { compareSortValues, normalizeLeadColumns, tableSortLabels } from '@leadcrm/shared';
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 
 beforeEach(() => {
@@ -21,10 +21,11 @@ const records = [
   { id: 'a', tenantId: 'tenant', firstName: 'Alpha', lastName: 'Test Alpha', email: 'a@test.example', phone: '100', companyName: 'A', status: 'Cold', createdAt: '2026-01-01', source: 'A' },
 ];
 const columns = LEADS_COLUMN_REGISTRY.map(c => ({ id: c.id, visible: c.defaultVisible || ['firstName', 'lastName', 'createdAt', 'source'].includes(c.id), order: c.defaultOrder }));
-function LeadHarness() {
+function LeadHarness({ separate = false }: { separate?: boolean }) {
   const [sort, setSort] = useState<SortState | null>(null);
   const rows = sort ? [...records].sort((a, b) => compareSortValues(a[sort.field as keyof typeof a], b[sort.field as keyof typeof b], sort.direction)) : records;
-  return <LeadsDataGrid leads={rows as any} totalRecords={2} effectiveColumns={columns} sort={sort} onSortChange={setSort}
+  const layout = columns.map(column => column.id === 'name' ? { ...column, visible: !separate } : column);
+  return <LeadsDataGrid leads={rows as any} totalRecords={2} effectiveColumns={layout} sort={sort} onSortChange={setSort}
     onRowClick={() => {}} selectedIds={new Set()} onSelectionChange={() => {}} getOwnerName={() => ''} getOwnerInitials={() => ''} />;
 }
 
@@ -45,16 +46,15 @@ it('does not sort when the Name resize handle is clicked or released', () => {
   fireEvent.click(handle!);
   expect(sort).not.toHaveBeenCalled();
 });
-it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Lead Source'])('sorts %s from the hamburger, including hidden fields', label => {
-  render(<LeadHarness />);
-  const open = () => fireEvent.click(screen.getByRole('button', { name: 'Column options for Name' }));
+it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Lead Source'])('sorts %s from its own hamburger', label => {
+  render(<LeadHarness separate={['First Name', 'Last Name'].includes(label)} />);
+  const open = () => fireEvent.click(screen.getByRole('button', { name: `Column options for ${label}` }));
+  const labels = tableSortLabels(label === 'Created' ? 'date' : label === 'Phone' ? 'phone' : 'text');
   const firstName = () => screen.getAllByRole('row').slice(1).find(row => row.textContent?.includes('Test'))!.textContent;
   expect(firstName()).toContain('Zulu');
-  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: label }));
-  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort ascending' })); expect(firstName()).toContain('Alpha');
-  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: label }));
-  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort descending' })); expect(firstName()).toContain('Zulu');
-  open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Restore default sorting' })); expect(firstName()).toContain('Zulu');
+  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: labels.asc })); expect(firstName()).toContain('Alpha');
+  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: labels.desc })); expect(firstName()).toContain('Zulu');
+  if (label !== 'Created') { open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Restore default sorting' })); expect(firstName()).toContain('Zulu'); }
 });
 it('sorts Name from its pinned header menu and restores defaults without header-click sorting', () => {
   const onSortChange = vi.fn();
@@ -63,14 +63,20 @@ it('sorts Name from its pinned header menu and restores defaults without header-
   const view = render(<LeadsDataGrid {...props} sort={null} />);
   const open = () => fireEvent.click(screen.getByRole('button', { name: 'Column options for Name' }));
   fireEvent.click(screen.getByRole('columnheader', { name: 'Name' })); expect(onSortChange).not.toHaveBeenCalled();
-  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort ascending' }));
+  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort A–Z' }));
   expect(onSortChange).toHaveBeenLastCalledWith({ field: 'name', direction: 'asc' });
   view.rerender(<LeadsDataGrid {...props} sort={{ field: 'name', direction: 'asc' }} />);
-  open(); expect(screen.getByRole('menuitemradio', { name: 'Sort ascending' }).getAttribute('aria-checked')).toBe('true');
-  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort descending' }));
+  open(); expect(screen.getByRole('menuitemradio', { name: 'Sort A–Z' }).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort Z–A' }));
   expect(onSortChange).toHaveBeenLastCalledWith({ field: 'name', direction: 'desc' });
+  view.rerender(<LeadsDataGrid {...props} sort={{ field: 'name', direction: 'desc' }} />);
   open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Restore default sorting' }));
   expect(onSortChange).toHaveBeenLastCalledWith(null);
+});
+it('sets aria-sort only on the active visible header', () => {
+  render(<LeadsDataGrid leads={records} totalRecords={2} effectiveColumns={columns} sort={{ field: 'companyName', direction: 'asc' }} selectedIds={new Set()} onSelectionChange={vi.fn()} onRowClick={vi.fn()} getOwnerName={() => ''} getOwnerInitials={() => ''} />);
+  expect(screen.getByRole('columnheader', { name: 'Company Name' }).getAttribute('aria-sort')).toBe('ascending');
+  expect(screen.getByRole('columnheader', { name: 'Name' }).hasAttribute('aria-sort')).toBe(false);
 });
 it('never reorders an externally sorted server page', () => {
   render(<DataGrid columns={[{ id: 'firstName', header: 'Name', accessor: row => row.firstName, sortable: true }]}

@@ -231,7 +231,8 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
       <ModuleTableToolbar label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
         filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || groupFilter.length)} onClick={() => setShowFilters(value => !value)} />}
-        refreshing={loading || directory.isRefreshing} onRefresh={directory.refetch} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths} />
+        refreshing={loading || directory.isRefreshing} onRefresh={directory.refetch} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
+        sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); goToPage(1); }} />
 
       <div className="flex min-w-0 gap-3 items-stretch">
         <ModuleFilterRail label="User filters" showFilters={showFilters} onToggleFilters={() => setShowFilters(value => !value)} totalRecords={filtered.length}

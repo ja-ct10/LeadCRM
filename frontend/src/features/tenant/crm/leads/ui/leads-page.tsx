@@ -395,6 +395,8 @@ export default function LeadsPage(): React.ReactElement {
         onSearch={setSearchTerm}
         searchPlaceholder="Search leads..."
         pageSize={pageSize}
+        sort={sort}
+        onSortChange={next => { setSort(next); setCurrentPage(1); }}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         onRefresh={refetchLeads}
@@ -438,7 +440,7 @@ export default function LeadsPage(): React.ReactElement {
         {!(leadsError && leads.length === 0) && (
           <LeadsDataGrid
             sort={sort}
-            onSortChange={setSort}
+            onSortChange={next => { setSort(next); setCurrentPage(1); }}
             leads={leads}
             totalRecords={serverTotal}
             effectiveColumns={effectiveColumns}

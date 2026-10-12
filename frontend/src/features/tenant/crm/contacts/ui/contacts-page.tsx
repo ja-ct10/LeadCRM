@@ -314,6 +314,8 @@ export default function ContactsPage(): React.ReactElement {
       onViewChange={setActiveView}
 
       pageSize={pageSize}
+      sort={sort}
+      onSortChange={next => { setSort(next); setCurrentPage(1); }}
       viewMode={viewMode}
       onViewModeChange={setViewMode}
       savedTabs={[
@@ -367,7 +369,7 @@ export default function ContactsPage(): React.ReactElement {
             {filteredContacts.length > 0 && (
               <ContactsDataGrid
                 sort={sort}
-                onSortChange={setSort}
+                onSortChange={next => { setSort(next); setCurrentPage(1); }}
                 contacts={paginatedContacts}
                 totalRecords={serverTotal}
                 effectiveColumns={effectiveColumns}

@@ -8,7 +8,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
-import { type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
+import { workflowStatusLabel, type Workflow, type WorkflowDraft, type TriggerDefinition, type ActionDefinition } from '@leadcrm/shared';
 import { Eye, Edit, Copy, Activity, Pause, Play, Archive } from 'lucide-react';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
@@ -81,8 +81,8 @@ export default function WorkflowsPage() {
   const columns: DataGridColumnDef<Workflow>[] = [
     { id: 'name', sortable: true, header: 'Name', accessor: row => row.name, width: 240 },
     { id: 'trigger', header: 'Trigger', accessor: row => triggerLabel(row.trigger), width: 210 },
-    { id: 'status', header: 'Status', accessor: row => row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused', width: 110,
-      cell: (_, row) => <StatusBadge label={row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused'} variant={row.status === 'DRAFT' ? 'neutral' : row.isActive ? 'success' : 'warn'} /> },
+    { id: 'status', sortable: true, header: 'Status', accessor: workflowStatusLabel, width: 110,
+      cell: (_, row) => <StatusBadge label={workflowStatusLabel(row)} variant={row.status === 'DRAFT' ? 'neutral' : row.isActive ? 'success' : 'warn'} /> },
     { id: 'lastRun', header: 'Last run', accessor: row => row.lastRunAt, width: 230,
       cell: (_, row) => <span title={formatDateTime(row.lastRunAt, { seconds: true })}>{formatDateTime(row.lastRunAt, { seconds: true })}</span> },
     { id: 'runs', header: 'Runs', accessor: row => row.totalRuns ?? 0, width: 190,
@@ -114,7 +114,8 @@ export default function WorkflowsPage() {
     {tableColumns.drawer}
     <ModuleTableToolbar label="Workflows" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search workflows..."
       filter={<FilterButton title="Workflows" open={showFilters} active={!!(statuses.length || triggers.length)} onClick={() => setShowFilters(!showFilters)} />}
-      refreshing={workflowsLoading} onRefresh={refreshWorkflows} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths} />
+      refreshing={workflowsLoading} onRefresh={refreshWorkflows} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
+      sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); setPage(1); }} />
     <div className="flex items-start gap-3 min-w-0">
       <ModuleFilterRail showFilters={showFilters} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={total} onClearFilters={clearFilters}
         filterGroups={[

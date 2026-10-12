@@ -36,11 +36,53 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await prisma.campaign.create({ data: { ...common, name: `Search Target Campaign ${number}`, type: 'EMAIL' } });
     await prisma.user.create({ data: { ...common, firstName: 'Search Target', lastName: `User ${number}`, role: 'Sales', status: 'ACTIVE', email: `table-control-${number}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date() } });
   }
+  // Varied keys make the assertions check the intended field/value, rather than
+  // merely checking that two equally incorrect requests agree with each other.
+  const textKeys = ['zebra', 'Alpha', 'record 10', 'Record 2', '', null];
+  const statuses = ['HOT', 'Cold', 'Warm'];
+  const groups = await Promise.all(['Zebra', 'Alpha'].map(name => prisma.tenantGroup.create({ data: { ...common, name } })));
+  const linkedAccount = await prisma.account.findFirst({ where: common });
+  for (const module of modules) {
+    const rows = await prisma[module.model].findMany({ where: { ...common, [module.field]: { contains: module.search, mode: 'insensitive' } }, orderBy: { id: 'asc' } });
+    for (const [index, row] of rows.entries()) {
+      const text = textKeys[index % textKeys.length];
+      const date = new Date(Date.UTC(2026, index % 3, 1 + index % 20));
+      const values = {
+        leads: { firstName: index % 2 ? 'josh' : 'Josh', companyName: text, phone: text ? `+63917${index % 3}123456` : text, source: ['Website', 'Referral', 'Google Ads', null][index % 4], status: statuses[index % 3], createdAt: date, updatedAt: date },
+        contacts: { firstName: index % 2 ? 'search target' : 'Search Target', company: text, accountId: index % 2 ? null : linkedAccount.id,
+          phone: text ? `+63917${index % 3}123456` : text, email: text ? `person${index % 3}@example.test` : text, source: ['Website', 'Referral', null][index % 3], status: statuses[index % 3].toUpperCase(), createdAt: date },
+        accounts: { industry: text, size: ['200+', '1-10', '51-200', '11-50', null][index % 5], city: text, country: text, createdAt: date },
+        tasks: { dueDate: date, createdAt: date, updatedAt: date },
+        workflows: { status: ['DRAFT', 'ACTIVE', 'PAUSED', 'ACTIVE'][index % 4], isActive: index % 4 === 1, createdAt: date },
+        campaigns: { createdAt: date },
+        users: { firstName: index % 2 ? 'search target' : 'Search Target', role: index % 2 ? 'Sales' : 'Support', status: ['ACTIVE', 'INACTIVE', 'PENDING'][index % 3], createdAt: date },
+      };
+      await prisma[module.model].update({ where: { id: row.id }, data: values[module.id] });
+      if (module.id === 'users' && index % 3 !== 2) await prisma.tenantGroupMember.create({ data: { ...common, userId: row.id, groupId: groups[index % 2].id } });
+    }
+  }
+  const collator = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+  const displayedValue = (module, row, field) => {
+    if (field === 'name' && ['leads', 'users'].includes(module)) return [row.firstName?.trim(), row.lastName?.trim()].filter(Boolean).join(' ');
+    if (module === 'contacts' && field === 'companyName') return row.company;
+    if (module === 'workflows' && field === 'status') return row.status === 'DRAFT' ? 'Draft' : row.isActive ? 'Active' : 'Paused';
+    if (module === 'users' && field === 'groups') return (row.groups ?? []).map(group => group.name).sort().join(', ');
+    if (['createdAt', 'updatedAt', 'dueDate'].includes(field)) return row[field] ? Date.parse(row[field]) : null;
+    return typeof row[field] === 'string' ? row[field].trim() : row[field];
+  };
   for (const module of modules) {
     for (const field of sortFields[module.id]) for (const direction of ['asc', 'desc']) {
       const query = `?search=${encodeURIComponent(module.search)}&${module.id === 'tasks' ? `sortBy=${field}&sortOrder=${direction}` : `sort=${field}:${direction}`}`;
       const full = await call(module.api + query + '&limit=100');
       assert.equal(full.status, 200, `${module.id} ${field}:${direction}`);
+      const expected = [...full.body.data].sort((a, b) => {
+        const av = displayedValue(module.id, a, field), bv = displayedValue(module.id, b, field);
+        const missingA = av == null || av === '', missingB = bv == null || bv === '';
+        const difference = missingA || missingB ? missingA === missingB ? 0 : missingA ? 1 : -1
+          : (typeof av === 'number' ? av - bv : collator.compare(String(av), String(bv))) * (direction === 'asc' ? 1 : -1);
+        return difference || a.id.localeCompare(b.id);
+      });
+      assert.deepEqual(full.body.data.map(row => row.id), expected.map(row => row.id), `${module.id} ${field}:${direction} matches displayed values`);
       const second = await call(module.api + query + '&limit=1&page=2');
       assert.equal(second.status, 200);
       assert.equal(second.body.meta.total, full.body.meta.total);
@@ -51,7 +93,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     assert.ok([403, 404].includes(denied.status), `${module.id} denied preference access`);
     assert.ok([403, 404].includes((await call(module.api, 'GET', undefined, deniedToken)).status), `${module.id} denied list access`);
   }
-  record('Every supported sort field and direction orders before SQL pagination; module preferences deny restricted roles');
+  record('All 39 supported fields in both directions match displayed values, empty-last order and stable IDs before SQL pagination; restricted roles are denied');
 
   await page.setViewportSize({ width: 1440, height: 900 });
   const navigate = path => page.goto('http://localhost:3027' + path);
@@ -59,18 +101,25 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await navigate(module.path);
     const region = page.getByRole('region', { name: module.region, exact: true });
     await region.getByRole('grid').waitFor();
-    const manage = page.getByRole('button', { name: 'Manage Columns', exact: true });
-    assert.equal(await manage.count(), 1, `${module.id} one Manage Columns entry`);
+    const settings = page.getByRole('button', { name: 'Table settings', exact: true }).last();
+    const manage = page.getByRole('menuitem', { name: 'Manage Columns', exact: true });
+    assert.equal(await page.getByRole('button', { name: 'Manage Columns', exact: true }).count(), 0, `${module.id} no separate Manage Columns button`);
+    assert.equal(await page.getByRole('button', { name: 'Table settings', exact: true }).count(), 1, `${module.id} one toolbar settings entry`);
     assert.equal(await region.getByRole('button', { name: 'Table settings', exact: true }).count(), 0);
     const refresh = page.getByRole('button', { name: module.id === 'tasks' ? 'Refresh tasks' : 'Refresh', exact: true }).last();
-    assert.ok((await manage.boundingBox()).x > (await refresh.boundingBox()).x, module.id + ' control order');
-    assert.equal(await manage.evaluate(element => element.previousElementSibling?.getAttribute('aria-label')), module.id === 'tasks' ? 'Refresh tasks' : 'Refresh');
-    await manage.click();
+    assert.ok((await settings.boundingBox()).x > (await refresh.boundingBox()).x, module.id + ' control order');
+    assert.equal(await settings.evaluate(element => element.parentElement.previousElementSibling?.getAttribute('aria-label')), module.id === 'tasks' ? 'Refresh tasks' : 'Refresh');
+    await settings.focus(); await page.keyboard.press('ArrowDown');
+    assert.equal(await manage.count(), 1, `${module.id} one Manage Columns menu entry`);
+    await until(async () => await manage.evaluate(element => document.activeElement === element), module.id + ' keyboard focus on Manage Columns');
+    await page.screenshot({ path: resolve(output, `${module.id}-settings-menu.png`) });
+    await page.keyboard.press('Enter');
     const drawer = page.getByRole('dialog', { name: `Manage Columns - ${module.id}`, exact: true });
     const hide = drawer.getByRole('switch', { name: new RegExp(`^Toggle ${module.hide} visibility$`, 'i') });
     // Module terminology can differ from its stored column ID.
     if (await hide.count()) { await hide.click(); await drawer.getByRole('button', { name: 'Save', exact: true }).click(); await drawer.getByRole('button', { name: 'Saved', exact: true }).waitFor(); }
     await drawer.getByRole('button', { name: 'Close drawer' }).click();
+    assert.ok(await settings.evaluate(element => document.activeElement === element), module.id + ' drawer restores settings focus');
 
     const search = page.getByRole('textbox', { name: new RegExp(`^Search ${module.id}(?:\\.\\.\\.)?$`, 'i') });
     await search.fill(module.search);
@@ -79,13 +128,93 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await page.getByRole('option', { name: '10', exact: true }).click();
     await until(async () => await page.getByRole('navigation', { name: 'Pagination' }).count() > 0 && !await refresh.isDisabled(), `${module.id} page-size request`);
 
-    const menuTrigger = region.getByRole('button', { name: /^Column options for / }).first();
-    await menuTrigger.click();
+    const primary = { leads: ['Name', 'name'], contacts: ['First Name', 'firstName'], accounts: ['Account Name', 'name'], tasks: ['Task title', 'title'], workflows: ['Name', 'name'], campaigns: ['Campaign', 'name'], users: ['User', 'name'] }[module.id];
+    const primaryTrigger = region.getByRole('button', { name: `Column options for ${primary[0]}`, exact: true });
+    await primaryTrigger.click();
     const menu = page.getByRole('menu').last();
-    assert.equal(await menu.getByRole('menuitem', { name: 'Restore default sorting' }).count(), 1);
-    // Date sorting is offered even when the date column is hidden.
-    await menu.getByRole('menuitemradio', { name: /^Created(?: Date| at)?$/i }).click();
-    await menu.getByRole('menuitemradio', { name: 'Sort ascending', exact: true }).click();
+    assert.equal(await menu.getByText('Sort field', { exact: true }).count(), 0);
+    assert.equal(await menu.getByText(/^Current:/).count(), 0);
+    assert.equal(await menu.getByRole('menuitemradio').count(), 2);
+    await until(async () => await menu.evaluate(element => getComputedStyle(element).opacity) === '1', module.id + ' menu animation settled');
+    await page.screenshot({ path: resolve(output, `${module.id}-column-menu.png`) });
+    await menu.getByRole('menuitemradio', { name: 'Sort A–Z', exact: true }).click();
+    await until(async () => (await call(`/preferences/table/${module.id}`)).body.data.sort?.field === primary[1] && !await refresh.isDisabled(), module.id + ' column-specific sort');
+    assert.equal(await region.getByRole('columnheader', { name: primary[0], exact: true }).getAttribute('aria-sort'), 'ascending');
+    await primaryTrigger.click();
+    assert.equal(await page.getByRole('menuitemradio', { name: 'Sort A–Z' }).getAttribute('aria-checked'), 'true');
+    await page.keyboard.press('Escape');
+
+    const openSort = async () => { await settings.click(); await page.getByRole('menuitem', { name: 'Sort Table…', exact: true }).click(); };
+    await openSort();
+    const sortDialog = page.getByRole('dialog', { name: 'Sort Table', exact: true });
+    const currentSort = (await call(`/preferences/table/${module.id}`)).body.data.sort;
+    await sortDialog.getByRole('combobox', { name: 'Sort field', exact: true }).selectOption('createdAt');
+    const options = await sortDialog.getByRole('combobox', { name: 'Sort field', exact: true }).locator('option').evaluateAll(items => items.map(item => ({ id: item.value, label: item.textContent })));
+    assert.deepEqual(options.map(option => option.id), sortFields[module.id]);
+    assert.equal(await sortDialog.getByRole('option', { name: 'Oldest first', exact: true }).count(), 1);
+    await sortDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+    assert.deepEqual((await call(`/preferences/table/${module.id}`)).body.data.sort, currentSort);
+    assert.ok(await settings.evaluate(element => document.activeElement === element));
+    for (const trigger of await region.getByRole('button', { name: /^Column options for / }).all()) {
+      const label = (await trigger.getAttribute('aria-label')).replace('Column options for ', '');
+      const option = options.find(option => option.label === label);
+      await trigger.scrollIntoViewIfNeeded(); await trigger.click();
+      const columnMenu = page.getByRole('menu').last();
+      assert.equal(await columnMenu.getByRole('menuitemradio').count(), option ? 2 : 0, `${module.id} ${label} only supports its own field`);
+      assert.equal(await columnMenu.getByText('Sort field', { exact: true }).count(), 0);
+      assert.equal(await columnMenu.getByText(/^Current:/).count(), 0);
+      if (option) {
+        const checked = await columnMenu.locator('[role="menuitemradio"][aria-checked="true"]').count();
+        assert.equal(checked, option.id === primary[1] ? 1 : 0);
+      }
+      await page.keyboard.press('Escape');
+    }
+    if (module.id === 'leads') {
+      control.failPath = '/preferences/table/leads/sort'; control.failMethod = 'PUT';
+      await openSort(); await sortDialog.getByRole('combobox', { name: 'Sort field', exact: true }).selectOption('firstName');
+      await sortDialog.getByRole('button', { name: 'Apply', exact: true }).click();
+      await page.getByText('Unable to save sort preference. Please try again.', { exact: true }).waitFor();
+      await until(async () => !await refresh.isDisabled(), 'failed sort write recovered');
+      assert.deepEqual((await call('/preferences/table/leads')).body.data.sort, currentSort);
+      await openSort();
+      assert.equal(await sortDialog.getByRole('combobox', { name: 'Sort field', exact: true }).inputValue(), currentSort.field);
+      await sortDialog.getByRole('button', { name: 'Cancel', exact: true }).click();
+      control.failPath = module.api;
+      await openSort(); await sortDialog.getByRole('combobox', { name: 'Sort field', exact: true }).selectOption('companyName');
+      await sortDialog.getByRole('button', { name: 'Apply', exact: true }).click();
+      await page.getByText(/^Refresh unavailable/).last().waitFor();
+      await until(async () => !await refresh.isDisabled(), 'failed sorted list ended');
+      await refresh.click(); await until(async () => !await refresh.isDisabled(), 'sorted list retry completed');
+      assert.deepEqual((await call('/preferences/table/leads')).body.data.sort, { field: 'companyName', direction: 'asc' });
+      // Reproduce the supplied First Name screenshot with Company still active.
+      await settings.click(); await manage.click();
+      await drawer.getByRole('switch', { name: 'Toggle First Name visibility', exact: true }).click();
+      await page.getByRole('alertdialog').getByRole('button', { name: 'Switch Columns', exact: true }).click();
+      await drawer.getByRole('button', { name: 'Save', exact: true }).click();
+      await drawer.getByRole('button', { name: 'Saved', exact: true }).waitFor();
+      await drawer.getByRole('button', { name: 'Close drawer' }).click();
+      const toastClose = page.locator('[data-sonner-toast] [data-close-button]');
+      while (await toastClose.count()) {
+        const count = await toastClose.count(); await toastClose.first().click();
+        await until(async () => await toastClose.count() < count, 'test error toast dismissed');
+      }
+      await region.getByRole('button', { name: 'Column options for First Name', exact: true }).click();
+      const firstNameMenu = page.getByRole('menu').last();
+      assert.equal(await firstNameMenu.getByText(/Current:|Company Name|Sort field/).count(), 0);
+      assert.equal(await firstNameMenu.locator('[role="menuitemradio"][aria-checked="true"]').count(), 0);
+      await until(async () => await firstNameMenu.evaluate(element => getComputedStyle(element).opacity) === '1', 'First Name menu animation settled');
+      await page.screenshot({ path: resolve(output, 'leads-first-name-menu.png') });
+      await firstNameMenu.getByRole('menuitemradio', { name: 'Sort A–Z', exact: true }).click();
+      await until(async () => (await call('/preferences/table/leads')).body.data.sort?.field === 'firstName' && !await refresh.isDisabled(), 'First Name menu sorted its exact field');
+      assert.equal(await region.getByRole('columnheader', { name: 'First Name', exact: true }).getAttribute('aria-sort'), 'ascending');
+    }
+    await openSort();
+    await sortDialog.getByRole('combobox', { name: 'Sort field', exact: true }).selectOption('createdAt');
+    await sortDialog.getByRole('combobox', { name: 'Direction', exact: true }).selectOption('asc');
+    await until(async () => await sortDialog.evaluate(element => getComputedStyle(element).opacity) === '1', module.id + ' dialog animation settled');
+    assert.notEqual(await sortDialog.evaluate(element => getComputedStyle(element).backgroundColor), 'rgba(0, 0, 0, 0)', module.id + ' dialog has a surface');
+    await page.screenshot({ path: resolve(output, `${module.id}-sort-dialog.png`) });
+    await sortDialog.getByRole('button', { name: 'Apply', exact: true }).click();
     await until(async () => (await call(`/preferences/table/${module.id}`)).body.data.sort?.field === 'createdAt' && (await call(`/preferences/table/${module.id}`)).body.data.sort?.direction === 'asc', `${module.id} saved sort`);
     await until(async () => !await refresh.isDisabled() && await page.getByRole('navigation', { name: 'Pagination' }).count() > 0, `${module.id} sorted list`);
     await page.getByRole('navigation', { name: 'Pagination' }).getByRole('button', { name: 'Next page' }).click();
@@ -104,7 +233,6 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await until(async () => (await call(`/preferences/columns/${module.id}`)).body.data.columns.some(column => column.width === resized), module.id + ' resize write');
     const savedLayout = (await call(`/preferences/columns/${module.id}`)).body.data.columns;
     const savedTable = (await call(`/preferences/table/${module.id}`)).body.data;
-    const settings = page.getByRole('button', { name: 'Table settings', exact: true }).last();
     if (module.id === 'leads') {
       control.failPath = '/preferences/columns/leads'; control.failMethod = 'PUT';
       await settings.click(); await page.getByRole('menuitem', { name: 'Reset Column Size', exact: true }).click();
@@ -165,8 +293,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await page.reload(); await region.getByRole('grid').waitFor();
     assert.equal((await call(`/preferences/columns/${module.id}`)).body.data.columns.some(column => column.width !== undefined), false);
     assert.deepEqual((await call(`/preferences/table/${module.id}`)).body.data.sort, { field: 'createdAt', direction: 'asc' });
-    await region.getByRole('button', { name: /^Column options for / }).first().click();
-    await page.getByRole('menuitem', { name: 'Restore default sorting' }).click();
+    await openSort(); await sortDialog.getByRole('button', { name: 'Restore default sorting', exact: true }).click();
     await until(async () => (await call(`/preferences/table/${module.id}`)).body.data.sort?.direction !== 'asc', module.id + ' default sort saved');
     await region.getByRole('button', { name: /^Column options for / }).first().focus();
     await page.keyboard.press('ArrowDown');
@@ -180,10 +307,14 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
         window.dispatchEvent(new StorageEvent('storage', { key: 'app_theme', storageArea: localStorage }));
       }, dark);
       await until(async () => await page.evaluate(() => document.documentElement.dataset.appTheme) === (dark ? 'dark' : 'light'), module.id + ' resolved theme');
-      await manage.click();
+      await settings.click(); await manage.click();
       const bounds = await drawer.boundingBox(); assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1);
       assert.equal(await drawer.evaluate(element => element.closest('[data-theme-container]').classList.contains('dark')), dark);
       await page.screenshot({ path: resolve(output, `${module.id}-${width}-${dark ? 'dark' : 'light'}.png`) });
+      await page.keyboard.press('Escape');
+      await openSort();
+      const dialogBounds = await sortDialog.boundingBox(); assert.ok(dialogBounds.x >= 0 && dialogBounds.x + dialogBounds.width <= width);
+      assert.equal(await sortDialog.evaluate(element => element.closest('[data-theme-container]').classList.contains('dark')), dark);
       await page.keyboard.press('Escape');
       await region.getByRole('button', { name: /^Column options for / }).first().click();
       const menuBounds = await page.getByRole('menu').last().boundingBox();
@@ -193,8 +324,10 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await page.setViewportSize({ width: 1440, height: 900 });
     // A valid page survives refresh; a page removed by an external deletion
     // must recover to the remaining page through the same data hook.
+    const needsSearchRequest = module.id !== 'users' && await search.inputValue() !== module.search;
+    const beforeSearch = reads.length;
     await search.fill(module.search);
-    await until(async () => !await refresh.isDisabled() && (await region.textContent()).includes(`${refreshedTotal} total`), module.id + ' search restored');
+    await until(async () => (!needsSearchRequest || reads.slice(beforeSearch).some(read => read.path === module.api && read.method === 'GET' && new URLSearchParams(read.query).get('search') === module.search)) && !await refresh.isDisabled() && (await region.textContent()).includes(`${refreshedTotal} total`), module.id + ' search restored');
     await page.getByRole('navigation', { name: 'Pagination' }).getByRole('button', { name: 'Next page' }).click();
     await until(async () => !await refresh.isDisabled() && await page.getByRole('navigation', { name: 'Pagination' }).getByText(/Page 2 of/).count() > 0, module.id + ' page before deletion');
     const remaining = await call(module.api + `?search=${encodeURIComponent(module.search)}&limit=100`);
@@ -202,7 +335,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await refresh.click();
     await until(async () => !await refresh.isDisabled() && await page.getByRole('navigation', { name: 'Pagination' }).getByText(/Page 1 of 1/).count() > 0 && (await region.textContent()).includes('2 total'), module.id + ' removed page recovered');
     assert.equal(await search.inputValue(), module.search);
-    record(`${module.id}: one toolbar drawer, saved menu sorting, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus`);
+    record(`${module.id}: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus`);
   }
   assert.equal(await prisma.userPreference.count({ where: { tenantId: foreignTenant.id } }), 0, 'Writes did not touch another tenant');
 }

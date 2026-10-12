@@ -7,7 +7,7 @@ import { TASK_COLUMN_DEFINITIONS, LEADS_TABLE_COLUMNS, ACCOUNTS_TABLE_COLUMNS, C
  * The preference hook + drawer work automatically for any registered module.
  */
 
-import type { ColumnDefinition } from '@leadcrm/shared';
+import type { ColumnDefinition, TableSortOption } from '@leadcrm/shared';
 import { MODULE_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 
 // ─────────────────────────────────────────────────────
@@ -49,8 +49,12 @@ export const MODULE_COLUMN_REGISTRIES: Record<string, ColumnDefinition[]> = {
   deals: DEALS_COLUMN_REGISTRY,
 };
 
-export function getTableSortFields(module: string) {
+export function getTableSortFields(module: string): TableSortOption[] {
   const registry = MODULE_COLUMN_REGISTRIES[module] ?? [];
   const labels: Record<string, string> = { createdAt: 'Created', updatedAt: 'Updated' };
-  return (MODULE_TABLE_SORT_FIELDS[module] ?? []).map(id => ({ id, label: registry.find(column => column.id === id)?.label ?? labels[id] ?? id }));
+  return (MODULE_TABLE_SORT_FIELDS[module] ?? []).map(id => ({ id,
+    label: registry.find(column => column.id === id)?.label ?? labels[id] ?? id,
+    kind: ['createdAt', 'updatedAt', 'dueDate', 'expectedCloseDate'].includes(id) ? 'date'
+      : id === 'phone' ? 'phone' : id === 'size' ? 'size' : id === 'value' ? 'number' : 'text',
+  }));
 }

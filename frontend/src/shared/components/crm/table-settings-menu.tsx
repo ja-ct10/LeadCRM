@@ -1,23 +1,31 @@
 'use client';
 
 import { useRef, useState } from 'react';
-import { Settings2, Columns3, Check, Loader2 } from 'lucide-react';
+import { Settings2, Columns3, Check, Loader2, ArrowUpDown } from 'lucide-react';
+import type { RecordSort, TableSortOption } from '@leadcrm/shared';
 import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
 import type { ViewMode } from '@/shared/hooks/use-table-preferences';
+import { SortTableDialog } from './sort-table-dialog';
 
 interface TableSettingsMenuProps {
   pageSize?: number;
   onPageSizeChange?: (size: number) => void;
   viewMode?: ViewMode;
   onViewModeChange?: (mode: ViewMode) => void;
+  onManageColumns?: () => void;
   onResetColumnSize?: () => void | Promise<unknown>;
+  sortFields?: TableSortOption[];
+  sort?: RecordSort | null;
+  onSortChange?: (sort: RecordSort | null) => void;
 }
 
-/** Toolbar settings preserve the Leads placement; column selection has its own button. */
-export function TableSettingsMenu({ pageSize, onPageSizeChange, viewMode, onViewModeChange, onResetColumnSize }: TableSettingsMenuProps) {
+/** Shared toolbar menu for column management, sizes and display preferences. */
+export function TableSettingsMenu({ pageSize, onPageSizeChange, viewMode, onViewModeChange, onManageColumns, onResetColumnSize, sortFields = [], sort = null, onSortChange }: TableSettingsMenuProps) {
   const pending = useRef(false);
   const [resetting, setResetting] = useState(false);
+  const [sorting, setSorting] = useState(false);
+  const canSort = !!onSortChange && sortFields.length > 0;
   const reset = async () => {
     if (pending.current || !onResetColumnSize) return;
     pending.current = true; setResetting(true);
@@ -25,13 +33,15 @@ export function TableSettingsMenu({ pageSize, onPageSizeChange, viewMode, onView
     catch { toast.error('Unable to reset column sizes. Please try again.'); }
     finally { pending.current = false; setResetting(false); }
   };
-  if (!onResetColumnSize && !onPageSizeChange && !onViewModeChange) return null;
+  if (!onManageColumns && !onResetColumnSize && !onPageSizeChange && !onViewModeChange && !canSort) return null;
   const mark = (active: boolean) => <Check size={14} aria-hidden="true" className={active ? 'ml-auto' : 'ml-auto invisible'} />;
-  return <DropdownMenu>
+  return <><DropdownMenu>
     <DropdownMenuTrigger disabled={resetting} aria-label="Table settings" className="inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
       {resetting ? <Loader2 size={14} className="animate-spin" /> : <Settings2 size={14} />}
     </DropdownMenuTrigger>
     <DropdownMenuContent aria-label="Table settings">
+      {onManageColumns && <DropdownMenuItem onSelect={onManageColumns}><Columns3 size={14} aria-hidden="true" />Manage Columns</DropdownMenuItem>}
+      {canSort && <DropdownMenuItem onSelect={() => setSorting(true)}><ArrowUpDown size={14} aria-hidden="true" />Sort Table…</DropdownMenuItem>}
       {onResetColumnSize && <DropdownMenuItem onSelect={() => void reset()}><Columns3 size={14} aria-hidden="true" />Reset Column Size</DropdownMenuItem>}
       {onPageSizeChange && <>
         <DropdownMenuSeparator /><DropdownMenuLabel>Records Per Page</DropdownMenuLabel>
@@ -42,5 +52,7 @@ export function TableSettingsMenu({ pageSize, onPageSizeChange, viewMode, onView
         {(['wrap', 'clip'] as const).map(mode => <DropdownMenuItem key={mode} role="menuitemradio" aria-checked={mode === viewMode} onSelect={() => onViewModeChange(mode)}>{mode === 'wrap' ? 'Wrap Text' : 'Clip Text'}{mark(mode === viewMode)}</DropdownMenuItem>)}
       </>}
     </DropdownMenuContent>
-  </DropdownMenu>;
+  </DropdownMenu>
+    {sorting && onSortChange && <SortTableDialog fields={sortFields} sort={sort} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortChange={onSortChange} onClose={() => setSorting(false)} />}
+  </>;
 }

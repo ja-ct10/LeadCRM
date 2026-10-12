@@ -414,6 +414,8 @@ export default function TaskBoard() {
         loading={data.loading || columnPreferences.loading}
         loadingLabel={data.loading ? "Loading tasks..." : "Loading columns..."}
         onManageColumns={openColumns}
+        sort={sort}
+        onSortChange={next => { setSort(next); setPage(1); }}
         onResetColumns={columnPreferences.resetWidths}
         refreshing={data.refreshing}
         directManageColumns

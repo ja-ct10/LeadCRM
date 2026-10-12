@@ -7,23 +7,36 @@ beforeEach(() => {
   db.lead.findMany.mockResolvedValue([]); db.lead.count.mockResolvedValue(100); db.lead.groupBy.mockResolvedValue([]);
 });
 
-it.each(['firstName', 'lastName'])('sorts Leads by persisted %s before pagination in both directions', async field => {
+it.each(['firstName', 'lastName'])('sorts Leads by displayed %s before pagination in both directions', async field => {
   for (const direction of ['asc', 'desc']) {
-    await findAllContacts('tenant', { page: 2, limit: 25, sort: `${field}:${direction}`, search: 'Tiron' });
+    const rows = [{ id: 'b', firstName: 'zebra', lastName: 'zebra' }, { id: 'a', firstName: 'Alpha', lastName: 'Alpha' }, { id: 'c', firstName: ' ', lastName: '' }];
+    const expected = direction === 'asc' ? 'b' : 'a';
+    db.lead.findMany.mockResolvedValueOnce(rows).mockResolvedValueOnce(rows.filter(row => row.id === expected));
+    const result = await findAllContacts('tenant', { page: 2, limit: 1, sort: `${field}:${direction}`, search: 'Tiron' });
+    expect(result.data.map(row => row.id)).toEqual([expected]);
     expect(db.lead.findMany).toHaveBeenLastCalledWith(expect.objectContaining({
-      skip: 25, take: 25, orderBy: [{ [field]: direction }, { id: 'asc' }],
+      skip: 0, take: 1,
       where: expect.objectContaining({ tenantId: 'tenant', isArchived: false, convertedAt: null, deletedAt: null,
+        id: { in: [expected] },
         AND: expect.arrayContaining([{ OR: expect.arrayContaining([{ lastName: { contains: 'Tiron', mode: 'insensitive' } }]) }]) }),
     }));
   }
 });
 
 it.each(['asc', 'desc'])('sorts full Name by persisted names with stable ID before pagination (%s)', async direction => {
-  await findAllContacts('tenant', { page: 3, limit: 25, sort: `name:${direction}` });
+  const rows = [{ id: 'b', firstName: 'Mary Ann', lastName: 'de la Cruz' }, { id: 'a', firstName: 'mary ann', lastName: 'De la Cruz' }, { id: 'c', firstName: 'Zebra', lastName: 'Alpha' }];
+  const expected = direction === 'asc' ? 'b' : 'a';
+  db.lead.findMany.mockResolvedValueOnce(rows).mockResolvedValueOnce(rows.filter(row => row.id === expected));
+  const result = await findAllContacts('tenant', { page: 2, limit: 1, sort: `name:${direction}` });
+  expect(result.data.map(row => row.id)).toEqual([expected]);
   expect(db.lead.findMany).toHaveBeenCalledWith(expect.objectContaining({
-    skip: 50, take: 25,
-    orderBy: [{ firstName: direction }, { lastName: direction }, { id: 'asc' }],
+    skip: 0, take: 1, where: expect.objectContaining({ tenantId: 'tenant', id: { in: [expected] } }),
   }));
+});
+it('orders normalized status labels and leaves blank text last', async () => {
+  const rows = [{ id: 'warm', status: 'WARM' }, { id: 'cold', status: 'Cold' }, { id: 'hot', status: 'HOT' }];
+  db.lead.findMany.mockResolvedValueOnce(rows).mockResolvedValueOnce(rows);
+  expect((await findAllContacts('tenant', { sort: 'status:asc' })).data.map(row => row.id)).toEqual(['cold', 'hot', 'warm']);
 });
 
 it('matches full and multiword names across canonical fields while keeping tenant and filter scope', async () => {

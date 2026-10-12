@@ -92,7 +92,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const sort = typeof query.sort === 'string' ? query.sort.replace(/^companyName:/, 'company:') : query.sort;
   const ids = await sortedPageIds(sort === 'createdAt:desc' ? undefined : sort, ['firstName', 'lastName', 'email', 'phone', 'company', 'status', 'source', 'createdAt'], skip, limit,
     async () => (await prisma.contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true, status: true, source: true, createdAt: true, account: { select: { name: true } } } }))
-      .map(row => ({ ...row, company: row.account?.name ?? row.company })),
+      .map(row => ({ ...row, status: normalizeCrmStatus(row.status) })),
     direction => prisma.contact.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     prisma.contact.findMany({

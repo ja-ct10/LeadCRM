@@ -1,10 +1,14 @@
 # Table controls implementation and verification
 
+Current sorting update: the [column-specific sorting report](column-specific-sorting.md) supersedes this report's all-fields column menu. Column hamburgers now affect their own field; the complete picker lives under Sort Table in settings. The verification below records the earlier table-controls work and settings-menu placement.
+
 Date: 12 October 2026, Asia/Manila. Base: `90d74df7b164afd332454c954614825183690269` on `main`. This report supersedes the earlier requirement that the combined Lead Name must remain visible. The screenshots are visual references; the user's explicit requirements define the behavior.
+
+Follow-up to `9d5d0a3b`: the latest requested placement puts Manage Columns inside the existing table settings icon menu and removes its separate toolbar button. This replaces the earlier direct-button placement. The follow-up was checked with a frontend production build, 31 existing menu/drawer tests, and the 18 real API/SQL browser acceptance groups below.
 
 ## Delivered behavior
 
-The seven active configurable tables now use one **Manage Columns** toolbar button immediately after Refresh. The table header no longer contains a duplicate drawer button. Manage Columns uses a column icon; the adjacent table settings menu retains **Reset Column Size** in the Leads position.
+The seven active configurable tables now use one table settings icon after Refresh. **Manage Columns** is its first menu item and opens the existing drawer; **Reset Column Size** remains in that menu. There is no separate Manage Columns toolbar button or duplicate drawer button in the table header. Closing the drawer restores focus to the table settings icon.
 
 The hamburger in each data-column header opens the shared accessible menu. It lists the module's supported sort fields, including hidden fields, ascending/descending actions, and **Restore default sorting**. The current sort and selected direction are indicated. Pinned headers use the same menu. Header clicks and the redundant standalone sort controls no longer compete with it. Sorting is persisted through the existing table preference API. API lists order matching records before pagination; Users retains its existing complete-directory loading pattern and applies backend ordering to each fetched page before local filtering/pagination.
 
@@ -40,14 +44,14 @@ Verification used the compiled production frontend, the real Express routes and 
 
 | Check | Result / evidence |
 | --- | --- |
-| Workspace builds | Shared, backend and frontend production builds passed; the final frontend build includes the distinct Manage Columns icon |
+| Workspace builds | Shared, backend and frontend production builds passed; the follow-up frontend build includes Manage Columns inside the settings menu |
 | Workspace lint | `npm run lint` passed across all workspaces |
 | Frontend regression tests | 210 passed across 20 affected test files; final JSON reported zero failures |
 | Backend regression tests | 33 passed across four files covering name preferences, preference invariants, Users search and Lead list sorting |
 | Authenticated SQL integration | 12 passed for Lead create/update/validation, restrictions, tenant isolation and existing form contracts |
 | Browser/API acceptance | 18 acceptance groups; no browser page errors; result recorded in [browser results](table-controls-browser-results.json) |
 | Server pagination | 39 supported sort fields in both directions: 78 cases comparing complete ordered results with page 2 at limit 1, using independent allowlists |
-| Toolbar and menu | All seven tables have one Manage Columns control immediately after Refresh, no embedded duplicate, hidden-field sorting, saved selection and default restoration |
+| Toolbar and menu | All seven tables have one settings icon after Refresh with a single Manage Columns menu item, keyboard drawer entry and focus restoration, no separate/embedded duplicate, hidden-field sorting, saved selection and default restoration |
 | Name switching | Confirmation and cancellation in both directions, keyboard confirmation/Escape, no persistence before Save, failed Save retry, reload, legacy reconciliation |
 | Column sizes | Real pointer resize, saved widths/reload, width-only reset, unchanged layout/table preferences, reset failure rollback and retry |
 | Refresh | Direct SQL record updates/inserts become visible with new totals; search, sort, size and page 2 survive; disabled/spinning control ignores repeated clicks; one list request per manual refresh while the page remains valid; 503 retains rows and retry succeeds |

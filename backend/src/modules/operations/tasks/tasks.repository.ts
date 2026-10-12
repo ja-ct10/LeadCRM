@@ -11,6 +11,7 @@ import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
 import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
 import { buildSearchClauses } from '../../../shared/helpers/search';
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 
 export type TaskClient = Prisma.TransactionClient;
 const person = {
@@ -147,6 +148,17 @@ export function taskWhere(
 }
 export async function findAllTasks(tenantId: string, query: TaskQuery) {
   const where = taskWhere(tenantId, query);
+  if (query.sortBy === 'title') {
+    return prisma.$transaction(async tx => {
+      const ids = await sortedPageIds(`title:${query.sortOrder}`, ['title'], (query.page - 1) * query.limit, query.limit,
+        () => tx.task.findMany({ where, select: { id: true, title: true } }));
+      const [data, total] = await Promise.all([
+        tx.task.findMany({ where: { ...where, id: { in: ids ?? [] } }, include: taskInclude }),
+        tx.task.count({ where }),
+      ]);
+      return { data: orderPage(data, ids), total, page: query.page, limit: query.limit };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead });
+  }
   const [data, total] = await prisma.$transaction(
     [
       prisma.task.findMany({

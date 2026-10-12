@@ -141,7 +141,10 @@ try {
   const navigate = path => page.goto(base + path);
   const drawer = () => page.getByRole('dialog', { name: 'Manage Columns - leads' });
   const toolbarSettings = () => page.getByRole('toolbar', { name: 'Module controls' }).getByRole('button', { name: 'Table settings', exact: true });
-  const openColumns = () => page.getByRole('toolbar', { name: 'Module controls' }).getByRole('button', { name: 'Manage Columns', exact: true }).click();
+  const openColumns = async () => {
+    await toolbarSettings().click();
+    await page.getByRole('menuitem', { name: 'Manage Columns', exact: true }).click();
+  };
   await navigate('/crm/leads?view=kanban');
   await page.getByRole('button', { name: 'Josh Tiron', exact: true }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get('view'), null);
@@ -166,7 +169,7 @@ try {
   await drawer().getByRole('button', { name: 'Retry', exact: true }).click();
   await drawer().getByRole('button', { name: 'Saved', exact: true }).waitFor();
   await drawer().getByRole('button', { name: 'Close drawer' }).click();
-  assert.equal(await page.getByRole('button', { name: 'Manage Columns', exact: true }).evaluate(element => document.activeElement === element), true);
+  assert.equal(await toolbarSettings().evaluate(element => document.activeElement === element), true);
   await page.reload(); await page.getByRole('columnheader', { name: 'First Name', exact: true }).waitFor();
   assert.equal(await page.getByRole('columnheader', { name: 'Name', exact: true }).count(), 0);
   await openColumns(); await drawer().getByRole('switch', { name: 'Toggle Last Name visibility' }).click();
@@ -187,7 +190,7 @@ try {
   await page.mouse.move(box.x + box.width - 2, box.y + 15); await page.mouse.down();
   await page.mouse.move(box.x + box.width + 73, box.y + 15); await page.mouse.up();
   await until(async () => (await call('/preferences/columns/leads')).body.data.columns.find(column => column.id === 'name').width === expectedWidth, 'Width was not persisted');
-  assert.equal(await nameHeader.getAttribute('aria-sort'), 'none', 'Resizing must not sort the header');
+  assert.equal(await nameHeader.getAttribute('aria-sort'), null, 'Resizing must not sort the header');
   await page.reload(); await page.getByRole('button', { name: 'Josh Tiron', exact: true }).waitFor();
   assert.equal(Math.round((await page.getByRole('columnheader', { name: 'Name', exact: true }).boundingBox()).width), expectedWidth);
   const pinned = page.getByRole('columnheader', { name: 'Name', exact: true });

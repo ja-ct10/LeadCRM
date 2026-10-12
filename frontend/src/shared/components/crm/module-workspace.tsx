@@ -20,11 +20,11 @@ import { useViewTypePreference } from '@/shared/hooks/use-view-type-preference';
 import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
 import { validateModuleConfig } from './validate-module-config';
 import { ModuleFilterRail, type FilterGroup } from './module-filter-rail';
-import { ManageColumnsButton } from './manage-columns-button';
 import { ModuleSearchInput } from './module-search-input';
 import { FilterButton } from './filter-button';
 import { RefreshButton } from './refresh-button';
 import { TableSettingsMenu } from './table-settings-menu';
+import { getTableSortFields } from '@/shared/constants/column-registries';
 import { TableLoadingState } from './table-loading-state';
 import { PaginationControls } from './pagination-controls';
 import {
@@ -228,8 +228,8 @@ export function ModuleWorkspace({
   searchTerm = '',
   onSearch,
   searchPlaceholder = 'Search records...',
-  // sortableFields, sort, onSortChange retained on props for backward compat
-  // but the global Sort button has been removed — sorting is per-column in DataGrid
+  sort,
+  onSortChange,
   pageSize = 25,
   onPageSizeChange,
   viewMode = 'wrap',
@@ -493,10 +493,10 @@ export function ModuleWorkspace({
           )}
 
           {onRefresh && <RefreshButton onClick={onRefresh} disabled={refreshDisabled || loading} refreshing={refreshing || loading} label={refreshLabel} />}
-          {onManageColumns && <ManageColumnsButton onClick={onManageColumns} />}
           {toolbarExtra}
           <TableSettingsMenu pageSize={pageSize} onPageSizeChange={onPageSizeChange}
-            viewMode={viewMode} onViewModeChange={onViewModeChange} onResetColumnSize={onResetColumns} />
+            viewMode={viewMode} onViewModeChange={onViewModeChange} onManageColumns={onManageColumns} onResetColumnSize={onResetColumns}
+            sort={sort} onSortChange={onSortChange} sortFields={getTableSortFields(moduleId)} />
 
         </div>{/* end secondary controls row */}
       </div>

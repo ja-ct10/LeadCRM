@@ -41,14 +41,20 @@ it('sorts date pages in the database without reading the full collection', async
   expect(result).toMatchObject({ total: 140, page: 3, limit: 25, data: [{ id: 'page-id' }] });
 });
 
-it('supports every visible sort column and sorts the displayed Account name', async () => {
+it('sorts the displayed Company instead of the linked Account name', async () => {
   db.contact.findMany.mockResolvedValueOnce([
     { id: 'b', company: 'Alpha', account: { name: 'Zebra' } },
     { id: 'a', company: 'Zebra', account: { name: 'Alpha' } },
   ]).mockResolvedValueOnce([{ id: 'b' }, { id: 'a' }]);
   const result = await findAllContacts('tenant', { sort: 'companyName:asc' });
-  expect(result.data.map(row => row.id)).toEqual(['a', 'b']);
+  expect(result.data.map(row => row.id)).toEqual(['b', 'a']);
   for (const field of ['lastName', 'phone', 'status', 'source']) await expect(findAllContacts('tenant', { sort: `${field}:asc` })).resolves.toBeDefined();
+});
+it('sorts First Name alone, with record ID as the tie-breaker', async () => {
+  const rows = [{ id: 'b', firstName: 'Ana', lastName: 'Alpha' }, { id: 'a', firstName: 'ana', lastName: 'Zulu' }];
+  db.contact.findMany.mockResolvedValueOnce(rows).mockResolvedValueOnce(rows);
+  const result = await findAllContacts('tenant', { sort: 'firstName:asc' });
+  expect(result.data.map(row => row.id)).toEqual(['a', 'b']);
 });
 
 it('searches full Contact names and related Accounts before pagination while retaining scope', async () => {

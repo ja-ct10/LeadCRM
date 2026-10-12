@@ -2,7 +2,8 @@ import type { Lead as LeadRecord } from '@prisma/client';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
-import { normalizeCrmStatus, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { normalizeCrmStatus, formatLeadName, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { readRecordValues, saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { productRelationData } from '../leads/product-relations';
@@ -78,12 +79,15 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const allowed = new Set(LEADS_TABLE_SORT_FIELDS);
   const sortField = allowed.has(sortKey) ? sortKey : 'createdAt';
   const sortDirection = direction === 'asc' ? 'asc' as const : 'desc' as const;
+  const dateSort = ['createdAt', 'updatedAt'].includes(sortField);
+  const ids = dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
+    async () => (await prisma.lead.findMany({ where,
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, status: true, source: true },
+    })).map(row => ({ ...row, name: row.firstName?.trim() || row.lastName?.trim() ? formatLeadName(row) : null, status: normalizeCrmStatus(row.status) })));
   const [data, total] = await Promise.all([
     prisma.lead.findMany({
-      where, skip, take: limit,
-      orderBy: sortField === 'name'
-        ? [{ firstName: sortDirection }, { lastName: sortDirection }, { id: 'asc' }]
-        : [{ [sortField]: sortDirection }, { id: 'asc' }],
+      where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit,
+      orderBy: [{ [dateSort ? sortField : 'createdAt']: sortDirection }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         account:      { select: { id: true, name: true } },
@@ -106,7 +110,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   for (const row of statuses) { const key = 'status:' + normalizeCrmStatus(row.status); facets[key] = (facets[key] ?? 0) + row._count; }
   for (const row of sources) if (row.source) facets['source:' + row.source] = row._count;
   for (const row of agents) if (row.assignedUserId) facets['owner:' + row.assignedUserId] = row._count;
-  return { data, total, page, limit, facets };
+  return { data: orderPage(data, ids), total, page, limit, facets };
 }
 
 export async function findContactById(id: string, tenantId: string) {

@@ -84,7 +84,7 @@ export interface DataGridColumnDef<T = Record<string, unknown>> {
   minWidth?: number;
   /** Maximum width during resize */
   maxWidth?: number;
-  /** Whether column supports sorting (header click) */
+  /** Whether the column supports sorting through its header menu. */
   sortable?: boolean;
   /** Whether column supports drag-to-resize */
   resizable?: boolean;
@@ -152,7 +152,7 @@ export interface DataGridProps<T = Record<string, unknown>> {
   /** Sort change handler */
   onSortChange?: (sort: SortState | null) => void;
   /** All supported fields, including hidden columns; server tables supply their allowlist. */
-  sortFields?: { id: string; label: string }[];
+  sortFields?: import('@leadcrm/shared').TableSortOption[];
   defaultSort?: SortState | null;
   onSortReset?: () => void;
 

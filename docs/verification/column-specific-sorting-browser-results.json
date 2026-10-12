@@ -1,0 +1,25 @@
+{
+  "status": "passed",
+  "environment": "Local production build + disposable PGlite SQL; background SSE paused to isolate manual refresh",
+  "checks": [
+    "Full-name search and deterministic Name sort precede pagination and retain tenant isolation",
+    "Nine module searches count before paging, match split terms/related labels and preserve denied-role access and required organization identity validation",
+    "Legacy preference retirement, fixed Name, widths and sequential order resolve through real HTTP",
+    "Obsolete view URLs normalize to Table; canonical combined Name is first and pinned",
+    "Failed column saves preserve drafts; retry persists hideable First Name through reload; focus restores",
+    "Resize end persists the final width through validation and browser reload",
+    "Failed reset has a retryable error; confirmed reset restores shared defaults",
+    "Browser full-name search handles whitespace and finds split persisted names",
+    "Failed create preserves form values; successful retry persists once and refreshes the list",
+    "Light/dark 320/768/1440 layouts, trimmed column search and keyboard Escape work",
+    "All 39 supported fields in both directions match displayed values, empty-last order and stable IDs before SQL pagination; restricted roles are denied",
+    "leads: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "contacts: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "accounts: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "tasks: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "workflows: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "campaigns: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus",
+    "users: column-specific sorting and settings dialog apply/cancel/defaults, drawer, width-only reset/reload, valid/removed-page refresh, one request, failure/retry and keyboard focus"
+  ],
+  "errors": []
+}

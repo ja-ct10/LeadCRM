@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
+import { workflowStatusLabel } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { getWorkflowConditionFields, customFieldTechnicalKey, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
@@ -45,7 +46,8 @@ export async function listWorkflows(tenantId: string, query: Record<string, unkn
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
     AND: buildSearchClauses(query.search, ['name']) };
   const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['name', 'status', 'createdAt'], (page - 1) * limit, limit,
-    () => prisma.workflow.findMany({ where, select: { id: true, name: true, status: true, createdAt: true } }));
+    async () => (await prisma.workflow.findMany({ where, select: { id: true, name: true, status: true, isActive: true, createdAt: true } }))
+      .map(row => ({ ...row, status: workflowStatusLabel(row) })));
   const [rows, total] = await Promise.all([
     prisma.workflow.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : (page - 1) * limit, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
     prisma.workflow.count({ where }),

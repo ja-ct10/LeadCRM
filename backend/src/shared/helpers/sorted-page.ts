@@ -22,9 +22,7 @@ export async function sortedPageIds(
   // Keep natural text ordering until a compatible database collation is deployed.
   if (field === 'createdAt' && readDatePage) return (await readDatePage(direction as 'asc' | 'desc')).map(row => row.id);
   const rows = await readKeys();
-  const value = (row: Record<string, unknown>) => field === 'firstName'
-    ? `${row.firstName ?? ''} ${row.lastName ?? ''}`.trim() : row[field];
-  return [...rows].sort((a, b) => compareSortValues(value(a), value(b), direction as 'asc' | 'desc') || a.id.localeCompare(b.id))
+  return [...rows].sort((a, b) => compareSortValues(a[field], b[field], direction as 'asc' | 'desc') || a.id.localeCompare(b.id))
     .slice(skip, skip + limit).map(row => row.id);
 }
 

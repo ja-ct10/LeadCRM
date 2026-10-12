@@ -611,7 +611,7 @@ export function DataGrid<T = Record<string, unknown>>({
 
   // ─── Computed toolbar column width (settings + hidden badge) ────────────
   const hasHiddenBadge = hiddenColumnsCount != null && hiddenColumnsCount > 0;
-  const showToolbarColumn = hasHiddenBadge || columns.length === 0 && availableSortFields.length > 0;
+  const showToolbarColumn = hasHiddenBadge;
   const toolbarColumnWidth = hasHiddenBadge ? HIDDEN_BADGE_COLUMN_WIDTH : SETTINGS_COLUMN_WIDTH;
 
   // ─── ARIA Grid Keyboard Navigation ────────────────────────────────────
@@ -832,7 +832,7 @@ export function DataGrid<T = Record<string, unknown>>({
                   style={{ left: pinnedLeftOffsets[col.id] }}
                   aria-sort={
                     sortDir === 'asc' ? 'ascending' :
-                    sortDir === 'desc' ? 'descending' : 'none'
+                    sortDir === 'desc' ? 'descending' : undefined
                   }
                 >
                   <div className="flex items-center gap-1">
@@ -866,7 +866,7 @@ export function DataGrid<T = Record<string, unknown>>({
                     )}
                     aria-sort={
                       sortDir === 'asc' ? 'ascending' :
-                      sortDir === 'desc' ? 'descending' : 'none'
+                      sortDir === 'desc' ? 'descending' : undefined
                     }
                   >
                     <div className="flex items-center gap-1 truncate">
@@ -902,7 +902,7 @@ export function DataGrid<T = Record<string, unknown>>({
                     )}
                     aria-sort={
                       sortDir === 'asc' ? 'ascending' :
-                      sortDir === 'desc' ? 'descending' : 'none'
+                      sortDir === 'desc' ? 'descending' : undefined
                     }
                   >
                     <div className="flex items-center gap-1">
@@ -939,7 +939,6 @@ export function DataGrid<T = Record<string, unknown>>({
                   className="px-1 text-center"
                 >
                   <div className="flex items-center justify-center gap-1">
-                    {columns.length === 0 && headerMenu({ id: availableSortFields[0]?.id ?? '', header: 'Records', accessor: () => null })}
                     {/* Hidden columns indicator badge */}
                     {hasHiddenBadge && (
                       <span

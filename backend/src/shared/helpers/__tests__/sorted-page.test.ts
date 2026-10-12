@@ -5,12 +5,17 @@ import { normalizeLeadColumns, normalizeModuleColumns, compareSortValues } from 
 const fields = ['firstName', 'email', 'phone', 'companyName', 'status', 'createdAt', 'source'];
 it('treats all missing values equally and puts them last in either direction', () => {
   for (const direction of ['asc', 'desc'] as const) {
-    for (const a of [null, undefined, '', new Date('invalid')]) {
-      for (const b of [null, undefined, '', new Date('invalid')]) expect(compareSortValues(a, b, direction)).toBe(0);
+    for (const a of [null, undefined, '', '  ', new Date('invalid')]) {
+      for (const b of [null, undefined, '', '  ', new Date('invalid')]) expect(compareSortValues(a, b, direction)).toBe(0);
       expect(compareSortValues(a, 'value', direction)).toBe(1);
       expect(compareSortValues('value', a, direction)).toBe(-1);
     }
   }
+});
+it('does not substitute full Name when First Name was requested', async () => {
+  const read = async () => [{ id: 'a', firstName: 'Ana', lastName: 'Zulu' }, { id: 'b', firstName: 'ana', lastName: 'Alpha' }];
+  expect(await sortedPageIds('firstName:asc', fields, 0, 2, read)).toEqual(['a', 'b']);
+  expect(await sortedPageIds('firstName:desc', fields, 0, 2, read)).toEqual(['a', 'b']);
 });
 it.each(fields)('orders %s in both directions before pagination without changing the input', async field => {
   const values = field === 'createdAt' ? [new Date('2026-10-01'), new Date('2026-02-01'), null] : ['zebra', 'Alpha', null];
