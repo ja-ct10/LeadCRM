@@ -1,5 +1,5 @@
 'use client';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/store/AuthContext';
 import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Calendar, ChevronDown, Filter } from 'lucide-react';
@@ -37,6 +37,33 @@ function ChartFilter({ title, options, value, onSelect }: { title: string; optio
 }
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="flex-1 flex items-center justify-center text-sm text-slate-500 py-6">{children}</div>;
+}
+function ActionCenterList({ children }: { children: React.ReactNode }) {
+  const listRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const list = listRef.current;
+    if (!list) return;
+    const items = Array.from(list.querySelectorAll<HTMLAnchorElement>(':scope > a')).slice(0, 5);
+    if (!items.length) {
+      list.style.removeProperty('--action-list-height');
+      list.style.removeProperty('--action-list-desktop-height');
+      return;
+    }
+    const measure = () => {
+      const top = items[0].getBoundingClientRect().top;
+      // Bound the viewport to actual card content, including wrapped titles and gaps.
+      for (const [property, count] of [['--action-list-height', 3], ['--action-list-desktop-height', 5]] as const) {
+        const last = items[Math.min(count, items.length) - 1];
+        list.style.setProperty(property, `${last.getBoundingClientRect().bottom - top}px`);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(list);
+    items.forEach(item => observer.observe(item));
+    return () => observer.disconnect();
+  }, [children]);
+  return <div ref={listRef} role="region" aria-label="Action Center actions" tabIndex={0} className="max-h-[var(--action-list-height)] lg:max-h-[var(--action-list-desktop-height)] shrink-0 min-h-0 space-y-2.5 overflow-y-auto overflow-x-hidden custom-scrollbar [scrollbar-gutter:stable] focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2">{children}</div>;
 }
 const clockDate = new Intl.DateTimeFormat('en-US', { timeZone: DASHBOARD_TIMEZONE, weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
 const clockTime = new Intl.DateTimeFormat('en-GB', { timeZone: DASHBOARD_TIMEZONE, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
@@ -157,12 +184,11 @@ export default function Dashboard({ heading, renderToolbarActions }: {
           </div>
           <div className={`lg:col-span-4 ${card} min-h-[320px]`}>
             <div className="mb-4 shrink-0"><h3 className="font-semibold text-slate-900 dark:text-white flex items-center gap-2"><Zap size={16} className="text-amber-500" />Action Center</h3><p className="text-xs text-slate-500 mt-0.5">Current · Overdue tasks first, hot leads and configured stale deals</p></div>
-            {/* Five 6.75rem slots plus four existing gaps; scale with font density. */}
-            <div role="region" aria-label="Action Center actions" tabIndex={0} className="h-[21.5rem] lg:h-[36.25rem] shrink-0 min-h-0 space-y-2.5 overflow-y-auto overflow-x-hidden custom-scrollbar [scrollbar-gutter:stable] focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2">
-              {!report.access.tasks && !report.access.leads && !report.access.deals ? <div className="h-full flex"><Empty>No permitted action modules.</Empty></div> : report.pendingActions === 0 ? <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-400 py-8"><Check size={28} className="text-emerald-500" /><p className="text-sm font-medium text-slate-600 dark:text-slate-300">All caught up!</p><p className="text-xs">No qualifying pending actions.</p></div> : report.actions.map(action => <Link href={action.href} key={`${action.kind}:${action.id}`} title={action.title} className={`block h-[6.75rem] p-3 rounded-xl border ${action.overdue || action.kind === 'lead' ? 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2`}>
-                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1 block">{action.overdue ? 'Overdue task' : action.kind === 'lead' ? 'Hot lead' : action.kind === 'deal' ? 'Deal needs attention' : 'Pending task'} · {action.priority}</span><p className="text-sm font-semibold text-slate-800 dark:text-white break-words line-clamp-2">{action.title}</p>{action.dueDate && <p className="text-xs text-slate-500 mt-0.5">Due {new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeZone: 'Asia/Manila' }).format(new Date(action.dueDate))}</p>}
+            <ActionCenterList>
+              {!report.access.tasks && !report.access.leads && !report.access.deals ? <div className="h-full flex"><Empty>No permitted action modules.</Empty></div> : report.pendingActions === 0 ? <div className="h-full flex flex-col items-center justify-center gap-2 text-slate-400 py-8"><Check size={28} className="text-emerald-500" /><p className="text-sm font-medium text-slate-600 dark:text-slate-300">All caught up!</p><p className="text-xs">No qualifying pending actions.</p></div> : report.actions.map(action => <Link href={action.href} key={`${action.kind}:${action.id}`} title={action.title} className={`block px-3 py-2.5 rounded-xl border ${action.overdue || action.kind === 'lead' ? 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2`}>
+                <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-0.5 block">{action.overdue ? 'Overdue task' : action.kind === 'lead' ? 'Hot lead' : action.kind === 'deal' ? 'Deal needs attention' : 'Pending task'} · {action.priority}</span><p className="text-sm font-semibold text-slate-800 dark:text-white break-words line-clamp-2">{action.title}</p>{action.dueDate && <p className="text-xs text-slate-500 mt-0.5">Due {new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeZone: 'Asia/Manila' }).format(new Date(action.dueDate))}</p>}
               </Link>)}
-            </div>
+            </ActionCenterList>
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">

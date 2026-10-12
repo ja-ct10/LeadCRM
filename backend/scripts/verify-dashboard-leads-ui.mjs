@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 
-export async function verifyDashboardLeadsUi({ page, staffPage, base, output, http, prisma, tenant, admin, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, leadsOnly = false }) {
+export async function verifyDashboardLeadsUi({ page, staffPage, base, output, http, prisma, tenant, admin, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, leadsOnly = false, dashboardOnly = false }) {
   const widths = [320, 375, 390, 430, 768, 1024, 1440, 1920];
   const revenue = () => page.getByRole('img', { name: /^Revenue Trend by/ });
   const action = () => page.getByRole('heading', { name: 'Action Center', exact: true }).locator('..').locator('..');
@@ -15,10 +15,17 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
       const card = region.parentElement, canvas = region.querySelector('canvas');
       const rect = element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom, right: r.right }; };
       const list = card.nextElementSibling.querySelector('[aria-label="Action Center actions"]');
+      const items = [...list.querySelectorAll('a')].map(link => {
+        const style = getComputedStyle(link), title = link.querySelector('p');
+        return { ...rect(link), title: link.title, fullTitle: title.textContent, titleHeight: title.getBoundingClientRect().height,
+          titleLineHeight: parseFloat(getComputedStyle(title).lineHeight), clamp: getComputedStyle(title).webkitLineClamp,
+          paddingX: parseFloat(style.paddingLeft), paddingY: parseFloat(style.paddingBottom),
+          bottomSlack: link.getBoundingClientRect().bottom - link.lastElementChild.getBoundingClientRect().bottom - parseFloat(style.paddingBottom) - parseFloat(style.borderBottomWidth) };
+      });
       return { width: innerWidth, rootWidth: document.documentElement.scrollWidth, fontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
         region: rect(region), card: rect(card), canvas: rect(canvas), action: rect(card.nextElementSibling),
         list: { ...rect(list), clientHeight: list.clientHeight, scrollHeight: list.scrollHeight, scrollWidth: list.scrollWidth, clientWidth: list.clientWidth, overflow: getComputedStyle(list).overflowY,
-          clippedItems: [...list.querySelectorAll('a')].filter(link => [...link.children].some(child => child.getBoundingClientRect().bottom > link.getBoundingClientRect().bottom - parseFloat(getComputedStyle(link).paddingBottom))).length },
+          items, clippedItems: [...list.querySelectorAll('a')].filter(link => [...link.children].some(child => child.getBoundingClientRect().bottom > link.getBoundingClientRect().bottom - parseFloat(getComputedStyle(link).paddingBottom))).length },
         bottomPadding: parseFloat(getComputedStyle(card).paddingBottom), labels: canvas.__labels ?? [],
         points: canvas.__points ?? [], overflowY: region.scrollHeight > region.clientHeight + 1 };
     });
@@ -32,7 +39,16 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     assert.equal(dimensions.list.overflow, 'auto');
     assert.ok(dimensions.list.scrollWidth <= dimensions.list.clientWidth);
     assert.equal(dimensions.list.clippedItems, 0, 'Action labels, titles and due dates fit at every width');
-    assert.equal(dimensions.list.height, (dimensions.width >= 1024 ? 36.25 : 21.5) * dimensions.fontSize);
+    const items = dimensions.list.items, limit = dimensions.width >= 1024 ? 5 : 3;
+    if (items.length) {
+      assert.ok(Math.abs(dimensions.list.height - (items[Math.min(limit, items.length) - 1].bottom - items[0].y)) <= 1, 'Viewport ends after actual visible cards');
+      for (const item of items) {
+        assert.ok(Math.abs(item.bottomSlack) <= 1, `No reserved whitespace under ${item.title}`);
+        assert.ok(item.titleHeight <= item.titleLineHeight * 2 + 1, 'At most two visible title lines');
+        assert.equal(item.clamp, '2'); assert.equal(item.title, item.fullTitle, 'Full title remains accessible');
+        assert.equal(item.paddingX, dimensions.fontSize * 0.75); assert.equal(item.paddingY, dimensions.fontSize * 0.625);
+      }
+    }
     if (dimensions.width >= 1024) {
       assert.ok(Math.abs(dimensions.card.y - dimensions.action.y) <= 1);
       assert.ok(Math.abs(dimensions.card.height - dimensions.action.height) <= 1);
@@ -81,7 +97,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const heights = [];
   const tasks = [];
   for (const count of [0, 1, 4, 5, 6, 10]) {
-    while (tasks.length < count) tasks.push(await http('/operations/tasks', 'POST', { title: tasks.length === 4 ? 'A long follow-up title that wraps across several lines while the due date remains readable and the complete title is available on the existing record' : `UI polish overdue follow-up ${tasks.length}`, dueDate: new Date(Date.now() - 86400000).toISOString(), priority: 'High', assignedUserId: agent.id }));
+    while (tasks.length < count) tasks.push(await http('/operations/tasks', 'POST', { title: tasks.length === 4 ? 'A long follow-up title that wraps across several lines while the due date remains readable and the complete title is available on the existing record' : `UI polish overdue follow-up ${tasks.length}`, dueDate: new Date(Date.now() - 86400000).toISOString(), priority: 'High', assignedUserId: agent.id, dealIds: [won.id] }));
     const report = await http('/reporting/dashboard?range=thisMonth');
     await until(async () => await action().getByRole('link').count() === report.actions.length, `${count} task Action Center refresh`);
     if (!count) await action().getByText('All caught up!', { exact: true }).waitFor();
@@ -92,28 +108,28 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
       const items = [...list.querySelectorAll('a')].map(link => {
         const item = link.getBoundingClientRect();
         return { height: item.height, top: item.top - viewport.top, bottom: item.bottom - viewport.top, title: link.title,
-          contentClipped: [...link.children].some(child => child.getBoundingClientRect().bottom > item.bottom - 12) };
+          contentClipped: [...link.children].some(child => child.getBoundingClientRect().bottom > item.bottom - parseFloat(getComputedStyle(link).paddingBottom)) };
       });
-      return { clientHeight: list.clientHeight, scrollHeight: list.scrollHeight, items, visible: items.filter(item => item.top >= 0 && item.bottom <= list.clientHeight).length };
+      return { clientHeight: list.clientHeight, scrollHeight: list.scrollHeight, items, visible: items.filter(item => item.top >= -1 && item.bottom <= list.clientHeight + 1).length };
     });
     assert.equal(slots.visible, Math.min(count, 5));
     assert.equal(slots.scrollHeight > slots.clientHeight, count > 5);
-    assert.ok(slots.items.every(item => item.height === 108 && !item.contentClipped));
-    if (count >= 5) assert.equal(slots.items[4].bottom, slots.clientHeight);
+    assert.ok(slots.items.every(item => item.height < 108 && !item.contentClipped));
+    if (count >= 5) assert.ok(Math.abs(slots.items[4].bottom - slots.clientHeight) <= 1);
     if (count >= 6) assert.ok(slots.items[5].top > slots.clientHeight);
-    const size = await layout(`Action Center stable five-slot viewport with ${count} actions`);
+    const size = await layout(`Action Center compact content-based viewport with ${count} actions`);
     heights.push(size.region.height);
     record(`${count} actions: complete slots and scrolling threshold`, slots);
     await page.screenshot({ path: resolve(output, `dashboard-actions-${count}.png`), fullPage: true });
   }
-  assert.ok(heights.every(height => Math.abs(height - heights[0]) <= 1), 'Chart height is independent of action count');
+  assert.ok(heights.slice(3).every(height => Math.abs(height - heights[3]) <= 1), 'Additional actions do not enlarge the chart after five items');
   assert.deepEqual(await actionList().getByRole('link').evaluateAll(links => links.map(link => link.getAttribute('href'))), (await http('/reporting/dashboard?range=thisMonth')).actions.map(row => row.href));
   await actionList().scrollIntoViewIfNeeded();
   const headerBefore = await action().getByRole('heading').boundingBox();
   await actionList().hover(); await page.mouse.wheel(0, 250);
   await until(() => actionList().evaluate(list => list.scrollTop > 0), 'Mouse wheel scrolls only the action list');
   const scrollBefore = await actionList().evaluate(list => list.scrollTop);
-  tasks.push(await http('/operations/tasks', 'POST', { title: 'Background action appended below the current viewport', dueDate: new Date(Date.now() + 86400000).toISOString(), priority: 'Low', assignedUserId: agent.id }));
+  tasks.push(await http('/operations/tasks', 'POST', { title: 'Background action appended below the current viewport', dueDate: new Date(Date.now() + 86400000).toISOString(), priority: 'Low', assignedUserId: agent.id, dealIds: [won.id] }));
   await until(async () => await actionList().getByRole('link').count() === 11, 'Additional action arrives through SSE');
   assert.equal(await actionList().evaluate(list => list.scrollTop), scrollBefore);
   assert.deepEqual(await action().getByRole('heading').boundingBox(), headerBefore);
@@ -133,6 +149,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   assert.equal(await actionList().getByRole('link').last().evaluate(link => document.activeElement === link), true);
   const focused = await actionList().getByRole('link').last().evaluate(link => ({ top: link.getBoundingClientRect().top, bottom: link.getBoundingClientRect().bottom, viewport: { top: link.parentElement.getBoundingClientRect().top, bottom: link.parentElement.getBoundingClientRect().bottom } }));
   assert.ok(focused.top >= focused.viewport.top && focused.bottom <= focused.viewport.bottom + 1);
+  assert.equal(await actionList().getByRole('link').last().evaluate(link => getComputedStyle(link).outlineStyle), 'solid');
   await page.screenshot({ path: resolve(output, 'dashboard-actions-scrolled.png') });
   record('Mouse wheel, Home/End, Tab focus, all remaining actions and unchanged header', focused);
   await actionList().evaluate(list => { list.scrollTop = 0; });
@@ -143,7 +160,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     for (const width of [320, 1440]) {
       await page.setViewportSize({ width, height: 1000 });
       await actionList().focus(); await actionList().evaluate(list => { list.scrollTop = 0; });
-      const visible = await actionList().evaluate(list => [...list.querySelectorAll('a')].filter(link => link.getBoundingClientRect().top >= list.getBoundingClientRect().top && link.getBoundingClientRect().bottom <= list.getBoundingClientRect().bottom + 1).length);
+      const visible = await actionList().evaluate(list => [...list.querySelectorAll('a')].filter(link => link.getBoundingClientRect().top >= list.getBoundingClientRect().top - 1 && link.getBoundingClientRect().bottom <= list.getBoundingClientRect().bottom + 1).length);
       assert.equal(visible, width >= 1024 ? 5 : 3);
       await layout(`${density} font density at ${width}: complete slots without clipped text`);
     }
@@ -160,7 +177,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   await touch.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await until(() => actionList().evaluate(list => list.scrollTop > 0), 'Touch swipe scrolls the mobile action list');
   await touch.detach();
-  await layout('Mobile touch swipe uses a bounded three-slot list');
+  await layout('Mobile touch swipe uses a bounded three-item list');
   await page.setViewportSize({ width: 1440, height: 1000 });
   await actionList().getByRole('link').last().click();
   await page.waitForURL(url => url.pathname === '/operations/taskboard' && url.searchParams.get('taskId') === tasks.at(-1).id);
@@ -220,8 +237,58 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   record('Reporting CSV endpoint remains intact');
   for (const task of tasks) await http(`/operations/tasks/${task.id}/complete`, 'PATCH');
   await until(async () => await action().getByRole('link').count() === 0, 'Completed tasks disappear automatically');
-  const completed = await layout('Card and chart retain stable height after all actions are completed');
+  const completed = await layout('Empty Action Center releases unused list space while retaining the chart minimum');
   assert.ok(Math.abs(completed.region.height - heights[0]) <= 1);
+
+  // Real mixed actions prove that missing dates reserve no placeholder space.
+  const mixedTasks = [];
+  for (const [title, priority] of [['Follow lead for CCTV Panes', 'High'], ['A long overdue follow-up title that needs two visible lines without hiding the due date or overlapping the event category', 'Medium']]) {
+    mixedTasks.push(await http('/operations/tasks', 'POST', { title, priority, dueDate: new Date(Date.now() - 86400000).toISOString(), assignedUserId: agent.id, dealIds: [won.id] }));
+  }
+  const hotLeads = [];
+  for (const [firstName, lastName] of [['Reyn', 'Panes'], ['Lisa', 'Manoban'], ['Shaun', 'Mendes']]) {
+    hotLeads.push(await http('/crm/leads', 'POST', { firstName, lastName, email: `${firstName.toLowerCase()}@example.test`, status: 'Hot', assignedUserId: agent.id }));
+  }
+  await prisma.stage.update({ where: { id: stages[0].id }, data: { rottenAfterDays: 1 } });
+  const stale = await http('/crm/deals', 'POST', { title: 'Configured stagnant deal requiring attention with a longer title', priority: 'LOW', pipelineId: pipeline.id, stageId: stages[0].id, productInterestIds: [products[1].id], assignedUserId: agent.id });
+  await prisma.deal.update({ where: { id: stale.id }, data: { stageChangedAt: new Date(Date.now() - 3 * 86400000) } });
+  await until(async () => await actionList().getByRole('link').count() === 6, 'Mixed actions arrive through Dashboard SSE');
+  const mixed = await http('/reporting/dashboard?range=last3');
+  assert.deepEqual(mixed.actions.map(row => row.kind), ['task', 'task', 'lead', 'lead', 'lead', 'deal']);
+  assert.deepEqual(await actionList().getByRole('link').evaluateAll(links => links.map(link => link.getAttribute('href'))), mixed.actions.map(row => row.href));
+  for (const theme of ['light', 'dark']) {
+    await page.evaluate(theme => { localStorage.setItem('app_theme', theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, mode: theme === 'dark' ? 'Dark' : 'Light' } })); }, theme);
+    await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((shell, dark) => shell.classList.contains('dark') === dark, theme === 'dark'), `${theme} theme applied`);
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 1000 });
+      await actionList().focus();
+      await actionList().evaluate(list => { list.scrollTop = 0; });
+      const size = await layout(`${theme} mixed compact actions responsive ${width}`);
+      const links = actionList().getByRole('link');
+      assert.equal(await links.filter({ hasText: /^Hot lead/ }).locator('p').count(), 3, 'Hot leads contain only their title');
+      assert.equal(await links.filter({ hasText: /^Deal needs attention/ }).locator('p').count(), 1, 'Stagnant deal has no date placeholder');
+      assert.ok(size.list.items[2].height < size.list.items[0].height, 'Hot leads are shorter than overdue tasks');
+      assert.ok(Math.abs(size.list.items[1].titleHeight - size.list.items[1].titleLineHeight * 2) <= 1, 'Long task uses two title lines');
+      const visible = size.list.items.filter(item => item.y >= size.list.y - 1 && item.bottom <= size.list.bottom + 1).length;
+      assert.equal(visible, width >= 1024 ? 5 : 3);
+      await action().scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(output, `dashboard-compact-${theme}-${width}.png`) });
+      await links.last().focus();
+      assert.ok(await links.last().evaluate(link => link.getBoundingClientRect().bottom <= link.parentElement.getBoundingClientRect().bottom + 1));
+    }
+  }
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  for (const row of mixed.actions.filter(row => row.kind !== 'task')) {
+    await actionList().getByRole('link').filter({ has: page.locator(`p:text-is("${row.title}")`) }).click();
+    await page.waitForURL(url => url.pathname === row.href);
+    await page.goto(base + '/dashboard'); await actionList().getByRole('link').last().waitFor();
+  }
+  record('Hot Lead and stagnant Deal destinations retain navigation; overdue-first ordering and all six actions preserved');
+  for (const task of mixedTasks) await http(`/operations/tasks/${task.id}/complete`, 'PATCH');
+  for (const lead of hotLeads) await http(`/crm/leads/${lead.id}`, 'PUT', { status: 'Warm' });
+  await http(`/crm/deals/${stale.id}/archive`, 'PATCH');
+  await prisma.stage.update({ where: { id: stages[0].id }, data: { rottenAfterDays: null } });
+  await until(async () => await actionList().getByRole('link').count() === 0, 'Mixed actions resolve without stale entries');
   await page.goto(base + '/reporting');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).waitFor();
   const downloadWait = page.waitForEvent('download');
@@ -229,6 +296,8 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const download = await downloadWait; assert.equal(await download.failure(), null);
   record('Reports retains its CSV download');
   }
+
+  if (dashboardOnly) return;
 
   const leads = [];
   for (let i = 0; i < 12; i++) leads.push(await http('/crm/leads', 'POST', { firstName: `Polish${String(i).padStart(2, '0')}`, lastName: 'Lead', email: `polish${i}@example.test`, phone: '+639123456789', companyName: `Company ${i}`, status: i === 0 ? 'Hot' : 'Warm', source: 'Website', assignedUserId: i % 2 ? replacement.id : agent.id }));
