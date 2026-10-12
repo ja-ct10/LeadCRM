@@ -14,7 +14,7 @@ export const CreateClientContactSchema = z.object({
   accountId: z.string().uuid().nullable().optional(),
   assignedUserId: z.string().uuid().nullable().optional(),
   productInterests: z.array(recordName(200)).max(100).optional(),
-});
+}).strict();
 export const UpdateClientContactSchema = CreateClientContactSchema.partial().extend({
   productInterestIds: z.array(z.string().uuid()).max(100).optional(),
-});
+}).strict();

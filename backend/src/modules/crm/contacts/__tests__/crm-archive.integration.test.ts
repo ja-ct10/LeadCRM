@@ -19,6 +19,7 @@ vi.mock('../../../../config/database.config', async () => {
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, storage: Awaited<ReturnType<typeof createPrivateStorageFixture>>;
 let base: string, tenantId: string, otherTenantId: string, adminCookie: string, viewerCookie: string;
 const legacyId = randomUUID();
+const retiredFields = ['customerType','recordType','score','linkedinUrl','activeProducts','lastContactedAt','qualifiedAt','disqualifiedReason'];
 const modules = ['leads', 'contacts', 'accounts'] as const;
 type Module = typeof modules[number];
 const delegate = (module: Module) => module === 'leads' ? db.lead : module === 'contacts' ? db.contact : db.account;
@@ -32,7 +33,7 @@ async function call(path: string, method = 'GET', cookie = adminCookie, body?: u
 }
 async function create(module: Module, tenant = tenantId) {
   if (module === 'leads') return db.lead.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Lead', status: 'Qualified', productInterest: [] } });
-  if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Contact', status: 'HOT', activeProducts: [], productInterests: [] } });
+  if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Contact', status: 'HOT', productInterests: [] } });
   return db.account.create({ data: { tenantId: tenant, name: 'Archived Account', tags: [], productInterests: [], activeProducts: [] } });
 }
 
@@ -302,4 +303,62 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
     const other = await db.user.create({ data: { tenantId: otherTenantId, email: 'other@camxian.com', firstName: 'Other', lastName: 'User', role: 'Sales', status: 'INACTIVE' } });
     expect((await userRestore(other.id)).status).toBe(404);
   });
+});
+it('supports Contact CRUD without retired properties and rejects them before any mutation or automatic Deal creation', async () => {
+  const dealCount = await db.deal.count();
+  const created = await call('contacts', 'POST', adminCookie, {firstName:'Retirement',lastName:'CRUD',email:'retirement-crud@example.test',productInterests:[]});
+  expect(created.status,JSON.stringify(created.body)).toBe(201);
+  const id = created.body.data.id;
+  expect(await db.deal.count()).toBe(dealCount);
+  for (const field of retiredFields) {
+    expect(created.body.data).not.toHaveProperty(field);
+    expect((await call(`contacts/${id}`,'PUT',adminCookie,{[field]:null})).status).toBe(400);
+    expect((await call('contacts','POST',adminCookie,{firstName:'Invalid',lastName:'Retired',email:'invalid@example.test',[field]:null})).status).toBe(400);
+  }
+  const since = new Date('2020-01-01T00:00:00Z');
+  await db.contact.update({where:{id},data:{lifecycleStage:'CUSTOMER',customerSince:since,convertedAt:since}});
+  const updated = await call(`contacts/${id}`,'PUT',adminCookie,{jobTitle:'Buyer',notes:'Retained note'});
+  expect(updated.status).toBe(200);
+  expect(updated.body.data).toMatchObject({jobTitle:'Buyer',notes:'Retained note',lifecycleStage:'CUSTOMER',customerSince:since.toISOString(),convertedAt:since.toISOString()});
+  const listed = await call('contacts?search=retirement-crud&sort=firstName:asc&page=1&limit=1');
+  expect(listed.status).toBe(200); expect(listed.body.data.map((row:any)=>row.id)).toEqual([id]);
+  const detail = await call(`contacts/${id}`);
+  expect(detail.status).toBe(200);
+  for (const field of retiredFields) { expect(detail.body.data).not.toHaveProperty(field); expect(listed.body.data[0]).not.toHaveProperty(field); }
+  const before = await db.contact.findUnique({where:{id}});
+  expect((await call('contacts?filter[score]=gte:80')).status).toBe(400);
+  expect((await call('contacts?sort=score:desc')).status).toBe(400);
+  expect(await db.contact.findUnique({where:{id}})).toEqual(before);
+  expect((await call(`contacts/${id}/archive`,'PATCH')).status).toBe(200);
+  expect((await call(`contacts/${id}/restore`,'PATCH')).status).toBe(200);
+  expect(await db.contact.count({where:{email:'invalid@example.test'}})).toBe(0);
+});
+
+it('Contact merge preserves historical Product IDs and purchase flags on both the survivor and archived source', async () => {
+  const product = await db.productInterest.create({data:{tenantId,name:'Retired catalog product',dealValue:1200,active:false}});
+  const primary = await db.contact.create({data:{tenantId,firstName:'Merge',lastName:'Primary',email:'merge-primary@example.test',productsNormalized:true}});
+  const secondary = await db.contact.create({data:{tenantId,firstName:'Merge',lastName:'Secondary',email:'merge-secondary@example.test',productsNormalized:true,productLinks:{create:{productInterestId:product.id,position:0,interested:false,activeProduct:true}}}});
+  await db.productInterest.create({data:{tenantId,name:product.name,dealValue:900}});
+  const before = await db.contact.count();
+  expect((await call('merge','POST',adminCookie,{entityType:'contact',primaryId:primary.id,secondaryId:secondary.id,fieldResolutions:{score:'secondary'}})).status).toBe(400);
+  const result = await call('merge','POST',adminCookie,{entityType:'contact',primaryId:primary.id,secondaryId:secondary.id,fieldResolutions:{}});
+  expect(result.status,JSON.stringify(result.body)).toBe(200);
+  expect(await db.contact.count()).toBe(before);
+  expect(await db.contact.findUniqueOrThrow({where:{id:secondary.id}})).toMatchObject({isArchived:true});
+  for (const id of [primary.id,secondary.id]) {
+    expect(await db.contactProductInterest.findMany({where:{contactId:id}})).toEqual([expect.objectContaining({productInterestId:product.id,activeProduct:true,interested:false})]);
+  }
+  expect((await call(`contacts/${primary.id}`)).body.data.productInterests).toEqual([]);
+});
+
+it('Contact interest edits retain historical purchase flags without presenting them as interests', async () => {
+  const purchase = await db.productInterest.create({data:{tenantId,name:'Historic purchase',dealValue:12500,active:false}});
+  const interest = await db.productInterest.create({data:{tenantId,name:'Current interest',dealValue:500}});
+  const contact = await db.contact.create({data:{tenantId,firstName:'Purchase',lastName:'History',email:'purchase-history@example.test',productsNormalized:true,productLinks:{create:{productInterestId:purchase.id,position:0,interested:false,activeProduct:true}}}});
+  const updated = await call(`contacts/${contact.id}`,'PUT',adminCookie,{productInterestIds:[interest.id]});
+  expect(updated.status,JSON.stringify(updated.body)).toBe(200);
+  expect(updated.body.data.productInterests).toEqual(['Current interest']);
+  expect(updated.body.data).not.toHaveProperty('activeProducts');
+  const links = await db.contactProductInterest.findMany({where:{contactId:contact.id}});
+  expect(links).toEqual(expect.arrayContaining([expect.objectContaining({productInterestId:purchase.id,activeProduct:true,interested:false}),expect.objectContaining({productInterestId:interest.id,activeProduct:false,interested:true})]));
 });

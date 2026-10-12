@@ -17,6 +17,7 @@ const retirement = '20261028000000_retire_legacy_crm_imports';
 const relationshipExpansion = '20261101000000_expand_canonical_relationships';
 const leadRetirement = '20261112000000_retire_lead_nonform_columns';
 const crmRetirement = '20261110000000_retire_unused_crm_columns';
+const contactRetirement = '20261129000000_retire_contact_obsolete_columns';
 const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
 
@@ -57,7 +58,7 @@ function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
   // CRM column retirement retains its separate verification gate. Other reviewed
   // transitions below can require a coordinated application release.
-  const deferred = [crmRetirement, leadRetirement].filter(name => localNames.includes(name)
+  const deferred = [crmRetirement, leadRetirement, contactRetirement].filter(name => localNames.includes(name)
     && !records.some(row => row.migration_name === name && finished(row)));
   if (target !== relationshipExpansion) return { through: target, exclude: deferred };
   const independent = [
@@ -98,6 +99,8 @@ function deploymentPlan(records, localNames) {
     '20261126000000_notification_policy',
     // Additive shared login counters/IP budgets; no account or session changes.
     '20261127000000_login_attempt_lockout',
+    '20261128000000_preserve_contact_retirement_history',
+    contactRetirement,
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

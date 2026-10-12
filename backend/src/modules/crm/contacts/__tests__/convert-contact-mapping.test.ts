@@ -11,13 +11,15 @@ it('maps Lead fields into real Contact columns and normalized Product links afte
   const result = await fixture.convert(lead.id);
   const contact = await fixture.db.contact.findUniqueOrThrow({ where: { id: result.contact.id }, include: { productLinks: true } });
   expect(contact).toMatchObject({ firstName: 'John', lastName: 'Smith', company: 'ABC Corporation', address: 'Makati', source: 'Website', notes: 'Original inquiry', status: 'CLOSED', lifecycleStage: 'CUSTOMER' });
-  expect(contact.productLinks).toEqual([expect.objectContaining({ productInterestId: 'product', interested: true, activeProduct: true })]);
+  expect(contact.productLinks).toEqual([expect.objectContaining({ productInterestId: 'product', interested: true, activeProduct: false })]);
   expect(contact.productInterests).toEqual(['CRM Enterprise']);
-  expect(contact.activeProducts).toEqual(['CRM Enterprise']);
+  expect(contact).not.toHaveProperty('activeProducts');
+  expect(contact.customerSince).toBeInstanceOf(Date);
+  expect(contact.convertedAt).toBeInstanceOf(Date);
   expect(contact.productLinks[0]).not.toHaveProperty('product');
   expect(await fixture.db.contact.findUniqueOrThrow({ where: { id: contact.id }, select: {
-    productInterests: true, activeProducts: true, productLinks: { select: { productInterestId: true } },
-  } })).toEqual({ productInterests: ['CRM Enterprise'], activeProducts: ['CRM Enterprise'], productLinks: [{ productInterestId: 'product' }] });
+    productInterests: true, productLinks: { select: { productInterestId: true } },
+  } })).toEqual({ productInterests: ['CRM Enterprise'], productLinks: [{ productInterestId: 'product' }] });
   expect(result.lead).toMatchObject({ status: 'Closed', contactId: contact.id, accountId: contact.accountId });
   expect(result.lead.convertedAt).toBeInstanceOf(Date);
   expect(await fixture.db.contactDeal.count({ where: { contactId: contact.id, dealId: deal.id } })).toBe(1);

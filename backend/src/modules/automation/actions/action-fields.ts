@@ -1,4 +1,4 @@
-import { getWorkflowUpdateFields, closingValueError, resolveCustomFieldReference, WORKFLOW_MODULES, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { getWorkflowUpdateFields, closingValueError, resolveCustomFieldReference, isRetiredContactField, WORKFLOW_MODULES, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { workflowCustomFields } from '../workflows/workflow-fields';
 import { z } from 'zod';
 import prisma from '../../../config/database.config';
@@ -11,6 +11,10 @@ import { validateSalesOwner } from '../../crm/leads/lead-automation.service';
 
 export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, incomplete = false): Promise<Record<string, unknown>> {
   const config = action.config;
+  if (isRetiredContactField(String(config.field), entity)) {
+    if (incomplete) return {};
+    throw new ValidationError(`Retired Contact field: ${config.field}. Repair or disable this Workflow action before activation.`);
+  }
   for (const key of Object.keys(config)) if (!['field', 'value', 'clear', 'otherDetails'].includes(key)) throw new ValidationError(`Remove unsupported action setting: ${key}.`);
   if (config.clear !== undefined && typeof config.clear !== 'boolean') throw new ValidationError('Choose whether to clear the field.');
   if (entity === 'lead' && config.otherDetails) {

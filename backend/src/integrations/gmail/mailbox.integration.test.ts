@@ -120,7 +120,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('abstains from duplicate CRM matches and multi-customer threads', async () => {
     const c = await customer();
-    await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Duplicate', lastName: 'Customer', email: c.email, productInterests: [], activeProducts: [] } });
+    await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Duplicate', lastName: 'Customer', email: c.email, productInterests: [] } });
     const duplicate = message(c.thread, c.email, 'inbound', 'We will proceed.');
     await ingest([duplicate]);
     expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: duplicate.id } } })).leadId).toBeNull();
@@ -200,7 +200,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const c = await customer(2);
     await scope(() => updateLead(c.lead.id, tenantId, { status: 'Cancelled' }, userId, 'Warm'));
     for (const deal of c.deals) expect(await stageOf(deal.id)).toBe('Closed Lost');
-    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Test', email: `${randomUUID()}@example.test`, productInterests: [], activeProducts: [] } });
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Test', email: `${randomUUID()}@example.test`, productInterests: [] } });
     await scope(() => updateContact(contact.id, tenantId, { status: 'Cancelled' }, userId));
     expect(await prisma.activity.count({ where: { contactId: contact.id, type: 'stage_change' } })).toBe(1);
     await expect(scope(() => updateContact(contact.id, tenantId, { status: 'Closed' }, userId))).rejects.toBeDefined();

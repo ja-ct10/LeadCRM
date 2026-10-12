@@ -6,7 +6,7 @@ import { useAuth } from '../../store/AuthContext';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
 import { dealsApi } from '@/shared/services/deals.api';
-import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
+import { toFrontendLead } from '@/lib/api/adapters/lead.adapter';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import type { Contact, Deal } from '@/store/types';
 
@@ -50,7 +50,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
       if ([leadsRes, dealsRes].some(result => result.status === 'rejected')) setSearchError('Some records could not be searched. Please try again.');
       setSearchedLeads(
         leadsRes.status === 'fulfilled' && leadsRes.value
-          ? (leadsRes.value?.data ?? []).map(toFrontendContact) as Contact[]
+          ? (leadsRes.value?.data ?? []).map(toFrontendLead) as Contact[]
           : [],
       );
       setSearchedDeals(

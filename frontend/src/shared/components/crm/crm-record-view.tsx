@@ -262,7 +262,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
     productRow,
-    ...(module === 'contacts' || module === 'accounts' ? [{ technicalKey: 'activeProductIds', label: 'Active Products', value: record.activeProducts }] : []),
+    ...(module === 'accounts' ? [{ technicalKey: 'activeProductIds', label: 'Active Products', value: record.activeProducts }] : []),
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
     { technicalKey: 'assignedUserId', label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
     ...(module === 'leads' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),

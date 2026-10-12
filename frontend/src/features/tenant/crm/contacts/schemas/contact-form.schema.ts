@@ -19,7 +19,6 @@ export const CreateContactFormSchema = z.object({
   accountId: z.string().min(1).optional().or(z.literal('')),
   assignedUserId: z.string().min(1).optional().or(z.literal('')),
   productInterest: z.array(z.string()).optional(),
-  activeProducts: z.array(z.string()).optional(),
   address: z.string().optional(),
 });
 
@@ -36,7 +35,6 @@ export const UpdateContactFormSchema = z.object({
   accountId: z.string().min(1).optional().or(z.literal('')),
   assignedUserId: z.string().min(1).optional().or(z.literal('')),
   productInterest: z.array(z.string()).optional(),
-  activeProducts: z.array(z.string()).optional(),
   address: z.string().optional(),
 });
 

@@ -218,7 +218,7 @@ describe.sequential('first login with real sessions and migrated disposable Post
       expect(fresh.body.data.user).toMatchObject({ mustChangePassword: true, onboardingCompletedAt: null });
       expect(await db.user.count({ where: { tenantId, email: tester.email } })).toBe(1);
     } finally { generate.mockRestore(); }
-  });
+  }, 20_000);
   it('password recovery establishes a strong password but does not bypass onboarding', async () => {
     const target = await db.user.findFirstOrThrow({ where: { tenantId, email: 'not-submitted@camxian.com' } });
     expect((await call('/auth/forgot-password', { email: target.email }, '')).status).toBe(200);

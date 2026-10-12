@@ -80,7 +80,9 @@ it('preserves distinct Product IDs when a retired catalog name is reused', async
   expect(result.contact.id).toBe(existing.id);
   const contactLinks = await fixture.db.contactProductInterest.findMany({ where: { contactId: existing.id } });
   expect(contactLinks.map(link => link.productInterestId).sort()).toEqual([duplicate.id, 'product'].sort());
-  expect(contactLinks.every(link => link.interested && link.activeProduct)).toBe(true);
+  expect(contactLinks.every(link => link.interested)).toBe(true);
+  expect(contactLinks.find(link => link.productInterestId === duplicate.id)?.activeProduct).toBe(true);
+  expect(contactLinks.find(link => link.productInterestId === 'product')?.activeProduct).toBe(false);
   const accountLinks = await fixture.db.accountProductInterest.findMany({ where: { accountId: account.id } });
   expect(accountLinks.map(link => link.productInterestId).sort()).toEqual([duplicate.id, 'product'].sort());
   expect(accountLinks.find(link => link.productInterestId === 'product')?.activeProduct).toBe(false);

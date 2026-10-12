@@ -93,12 +93,12 @@ describe('campaign report', () => {
     expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Delivered', 'Submitted', 'Opened', 'Total Clicks', 'Bounced']);
     expect(metrics.textContent).toContain('Recipients4'); expect(metrics.textContent).toContain('Delivered3'); expect(metrics.textContent).toContain('Opened2');
     expect(metrics.textContent).toContain('Total Clicks1'); expect(metrics.textContent).toContain('Bounced1');
-    expect(rows()).toHaveLength(4); expect(screen.getAllByLabelText('Opened')).toHaveLength(2); expect(screen.getAllByLabelText('Not opened')).toHaveLength(2);
+    expect(rows()).toHaveLength(4); expect(screen.getAllByLabelText('Opened', { selector: 'span' })).toHaveLength(2); expect(screen.getAllByLabelText('Not opened', { selector: 'span' })).toHaveLength(2);
     const links = screen.getAllByRole('grid')[1];
     expect(within(links).getAllByRole('columnheader').map(el => el.textContent)).toEqual(['Link URL', 'Total Clicks']);
     expect(within(links).getAllByRole('row')[1].textContent).toContain('1');
     expect(within(links).getAllByRole('row')[1].textContent).not.toContain('2');
-    expect(screen.getAllByLabelText('Clicked')).toHaveLength(1); expect(screen.getByRole('link', { name: /camxian/ }).getAttribute('href')).toContain('/cctv-surveillance-system');
+    expect(screen.getAllByLabelText('Clicked', { selector: 'span' })).toHaveLength(1); expect(screen.getByRole('link', { name: /camxian/ }).getAttribute('href')).toContain('/cctv-surveillance-system');
     expect(screen.queryByText(/2026-10-02T/)).toBeNull(); expect(screen.getAllByText(/Oct 2, 2026/).length).toBeGreaterThan(0);
     expect(screen.queryByText('Engagement Overview')).toBeNull(); expect(screen.queryByText('Device Breakdown')).toBeNull(); expect(screen.queryByText('Sent Overview')).toBeNull();
   });
@@ -132,7 +132,7 @@ describe('campaign report', () => {
     let resolve!: (value: never) => void;
     vi.mocked(campaignsApi.report).mockReturnValueOnce(new Promise(done => { resolve = done; }));
     const refresh = screen.getByRole('button', { name: 'Refresh' }); fireEvent.click(refresh); fireEvent.click(refresh);
-    expect(screen.getByText('Doris Testing')).toBeTruthy(); expect(campaignsApi.report).toHaveBeenCalledTimes(2); expect((refresh as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByText('Doris Testing')).toBeTruthy(); expect(campaignsApi.report).toHaveBeenCalledTimes(2); expect((refresh as HTMLButtonElement).disabled).toBe(true);
     expect(screen.queryByRole('status', { name: 'Refreshing recipients' })).toBeNull();
     const next = response(); next.data.recipients = recipients.slice(1); next.data.recipientCount = 3;
     await act(async () => resolve(next as never)); expect(screen.queryByText('Doris Testing')).toBeNull(); expect(screen.getByText('3 of 3 recipients')).toBeTruthy();
@@ -190,7 +190,7 @@ describe('campaign report', () => {
     expect(screen.getAllByText('Delivered').length).toBeGreaterThan(1);
     if (type === 'Email') {
       expect(screen.getByRole('link', { name: /camxian/ })).toBeTruthy();
-      expect(screen.getAllByLabelText('Clicked')).toHaveLength(1);
+      expect(screen.getAllByLabelText('Clicked', { selector: 'span' })).toHaveLength(1);
     }
     hidden = true;
     await act(async () => { document.dispatchEvent(new Event('visibilitychange')); await vi.advanceTimersByTimeAsync(7500); });

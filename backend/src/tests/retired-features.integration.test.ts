@@ -43,8 +43,8 @@ beforeAll(async () => {
   const isolatedTenant = (await db.tenant.create({ data: { name: 'Legacy seed tenant', slug: 'leadcrm-system' } })).id;
   seedOperatorId = (await identity('operator@example.test', 'SYSTEM_ADMIN', isolatedTenant)).id;
   staffId = (await identity('sales@camxian.com', 'Sales')).id;
-  const oldRole = await db.roleDefinition.create({ data: { tenantId, name: 'System-Admin', isSystemRole: true } });
-  const salesRole = await db.roleDefinition.create({ data: { tenantId, name: 'Sales' } });
+  const oldRole = await historicalCreate('RoleDefinition', { tenantId, name: 'System-Admin', isSystemRole: true });
+  const salesRole = await historicalCreate('RoleDefinition', { tenantId, name: 'Sales' });
   await historicalCreate('RolePermission', { tenantId, roleId: salesRole.id, module: 'contacts', canView: true });
   for (const id of [operatorId, staffId]) await db.userRole.create({ data: { tenantId, userId: id, roleId: oldRole.id } });
   await db.userRole.create({ data: { tenantId, userId: staffId, roleId: salesRole.id } });
@@ -71,7 +71,7 @@ beforeAll(async () => {
   await db.auditLog.create({ data: { tenantId, userId, action: 'user.updated', entityType: 'User', entityId: userId } });
   await db.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: stage.id, movedById: userId } });
   await historicalCreate('RecordFile', { tenantId, uploadedById: userId, leadId: lead.id, name: 'preserved.pdf', size: 12, type: 'application/pdf', objectKey: 'preserved-object-key' });
-  await db.passwordResetToken.create({ data: { userId, email: 'admin@camxian.com', token: 'preserved-reset', expires: new Date(Date.now() + 60000) } });
+  await historicalCreate('PasswordResetToken', { userId, email: 'admin@camxian.com', token: 'preserved-reset', expires: new Date(Date.now() + 60000) });
   await pg.query('INSERT INTO "EmailVerificationToken" (id,"userId",email,"tokenHash","expiresAt") VALUES ($1,$2,$3,$4,$5)', ['preserved-verification',userId,'admin@camxian.com','preserved-verification',new Date(Date.now()+60000)]);
   await pg.query('INSERT INTO "TenantDocument" (id,"tenantId","documentKey","fileName","filePath") VALUES ($1,$2,$3,$4,$5)', ['old-doc', tenantId, 'business', 'business.pdf', '/retired/document']);
   await pg.exec(`INSERT INTO "RegistrationOtpToken" (id,email,"codeHash",expires) VALUES ('old-otp','retired@example.test','old-hash',NOW());
@@ -95,7 +95,11 @@ beforeAll(async () => {
   await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
   await replayCrmMigrations(pg, '20261112000000_retire_lead_nonform_columns', '20261102000000');
   await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
-  await replayCrmMigrations(pg, undefined, '20261112000000');
+  await replayCrmMigrations(pg, '20261129000000_retire_contact_obsolete_columns', '20261112000000');
+  // Isolated fixture release marker. Production requires authenticated release
+  // verification through deploy-contact-retirement.cjs before this marker exists.
+  await pg.exec(`COMMENT ON TABLE crm_history.contact_retired_values IS 'leadcrm-contact-retirement-compatible-v1:${'a'.repeat(40)}'`);
+  await replayCrmMigrations(pg, undefined, '20261129000000_retire_contact_obsolete_columns');
   server = (await import('../app')).default.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
 }, 60000);

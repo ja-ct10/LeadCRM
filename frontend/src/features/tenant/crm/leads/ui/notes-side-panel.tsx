@@ -4,7 +4,7 @@ import { uuid } from '@/lib/utils';
 import React, { useState, useEffect, useMemo } from 'react';
 import { useData } from '@/store/DataContext';
 import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
-import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
+import { toFrontendLegacyLead } from '@/lib/api/adapters/contact.adapter';
 import type { Contact } from '@/store/types';
 import { 
   Pin, Trash2, Edit3, Plus, Search, X, Check, Copy, 
@@ -90,7 +90,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
   useEffect(() => {
     if (!isOpen) return;
     leadsService.getAll({ limit: 50 })
-      .then((res) => setLeads((res?.data ?? []).map(toFrontendContact) as Contact[]))
+      .then((res) => setLeads((res?.data ?? []).map(toFrontendLegacyLead) as Contact[]))
       .catch(() => setLeads([]));
   }, [isOpen]);
 

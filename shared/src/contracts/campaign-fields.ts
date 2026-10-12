@@ -20,11 +20,17 @@ function originKey(field: CrmFieldCatalogEntry) {
 function originSupported(field: CrmFieldCatalogEntry, source?: 'LEADS' | 'CONTACTS') {
   return !!source && supportedModules(source).includes(field.module);
 }
+/** A retired direct Contact token must never acquire a related Account meaning. */
+function sourceFields(fields: CrmFieldCatalogEntry[], source?: 'LEADS' | 'CONTACTS') {
+  return source === 'CONTACTS' ? fields.map(field => field.module === 'accounts' && field.technicalKey === 'activeProductIds'
+    ? { ...field, technicalKey: 'account.activeProductIds' } : field) : fields;
+}
 export function campaignPersonalizationAvailable(field: CrmFieldCatalogEntry) {
   return field.active && field.personalizationAvailable && (field.visibleInForm || field.visibleInDetails);
 }
 /** Same token is never a relationship binding. Custom definition identities stay separate. */
 export function campaignVariableChoices(fields: CrmFieldCatalogEntry[], source?: 'LEADS' | 'CONTACTS'): CampaignVariableChoice[] {
+  fields = sourceFields(fields, source);
   const module = source === 'LEADS' ? 'leads' : source === 'CONTACTS' ? 'contacts' : undefined;
   const choices = new Map<string, CampaignVariableChoice>();
   for (const field of fields) {
@@ -60,6 +66,7 @@ export function campaignApprovedVariableKeys(fields: CrmFieldCatalogEntry[], sou
 
 /** Selects direct and safely resolvable related fields for one audience source. */
 export function campaignFieldsForSource(fields: CrmFieldCatalogEntry[], source: 'LEADS' | 'CONTACTS') {
+  fields = sourceFields(fields, source);
   const choices = campaignVariableChoices(fields, source);
   const allowed = new Set(choices.filter(choice => choice.personalizationAvailable).flatMap(choice => choice.origins.filter(origin => originSupported(origin, source)).map(originKey)));
   return fields.filter(field => allowed.has(originKey(field)));

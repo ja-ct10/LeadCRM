@@ -8,8 +8,8 @@ const mocks = vi.hoisted(() => ({
   users: [{ id: 'agent', firstName: 'Sam', lastName: 'Agent', role: 'Sales', status: 'active', assignableAgent: true }],
   deals: [{ id: 'deal', contactIds: ['one'] }],
   contacts: [
-    { id: 'one', firstName: 'One', contactPerson: 'One', assignedUserId: 'agent', customerType: 'Prospect', lastUpdated: '2026-10-01', status: 'Warm' },
-    { id: 'two', firstName: 'Two', contactPerson: 'Two', assignedUserId: 'other', customerType: 'Evaluator', status: 'Warm' },
+    { id: 'one', firstName: 'One', contactPerson: 'One', assignedUserId: 'agent', lifecycleStage: 'LEAD', lastUpdated: '2026-10-01', status: 'Warm' },
+    { id: 'two', firstName: 'Two', contactPerson: 'Two', assignedUserId: 'other', lifecycleStage: 'LEAD', status: 'Warm' },
   ],
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));

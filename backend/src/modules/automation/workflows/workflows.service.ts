@@ -1,4 +1,5 @@
 import { compatibleWorkflow } from './workflow-fields';
+import { retiredContactReferences } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { WorkflowDraftSchema, WorkflowValidationSchema, WorkflowConditionSchema, missingWorkflowConditionValues, normalizeWorkflowAssignment, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
 import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, assignmentOutput } from '../assignment/workflow-assignment.service';
@@ -78,6 +79,7 @@ function parseDraft(value: unknown): WorkflowDraft {
 export async function createWorkflow(tenantId: string, userId: string, dto: unknown) {
   requireScope(tenantId);
   const draft = parseDraft(dto);
+  if (retiredContactReferences([draft.conditions, draft.actions], findTrigger(draft.trigger)?.entity).length) throw new ValidationError('Retired Contact fields cannot be used in a new Workflow. Choose supported fields.');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   await validateConditionReferences(draft, tenantId);
@@ -101,6 +103,8 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   if (!updates.success) throw new ValidationError('Use the supported workflow fields.');
   const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: existing.isActive, ...updates.data });
+  const oldReferences = new Set(retiredContactReferences([existing.conditions, existing.actions], findTrigger(existing.trigger)?.entity));
+  if (retiredContactReferences([draft.conditions, draft.actions], findTrigger(draft.trigger)?.entity).some(field => !oldReferences.has(field))) throw new ValidationError('Retired Contact fields cannot be added to a Workflow. Repair the saved references.');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
   await validateConditionReferences(draft, tenantId);

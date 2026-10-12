@@ -7,3 +7,4 @@ export * from './preferences.contracts';
 export * from './workflow-catalog';
 export * from './organization-settings.contract';
 export * from './task.contract';
+export * from './contact-retirement';

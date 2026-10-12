@@ -456,6 +456,30 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await prisma.lead.delete({ where: { id: lead.id } }); await prisma.contact.delete({ where: { id: contact.id } });
     });
   });
+  it('retains saved retired Contact audience rules for repair and blocks preview or new rules', async () => {
+    await scoped(async () => {
+      const saved = await prisma.targetAudience.create({data:{tenantId,name:'Historical Contact score',source:'CONTACTS',conditions:{create:{field:'score',operator:'gte',value:'80',conditionOrder:0}}}});
+      const listed = (await getAudiences(tenantId)).find(a=>a.id===saved.id)!;
+      expect(listed).toMatchObject({repairReason:expect.stringContaining('needs repair'),conditions:[{field:'score',operator:'gte',value:80}]});
+      await expect(previewAudience(tenantId,{source:'CONTACTS',conditions:[{field:'score',operator:'is_empty',value:null}]})).rejects.toThrow('Retired Contact field');
+      await expect(createAudience(tenantId,{name:'New retired rule',source:'CONTACTS',conditions:[{field:'activeProducts',operator:'is_empty',value:null}]})).rejects.toThrow('Retired Contact field');
+      expect((await prisma.targetAudience.findUniqueOrThrow({where:{id:saved.id},include:{conditions:true}})).conditions).toEqual([expect.objectContaining({field:'score',operator:'gte',value:'80'})]);
+    });
+  });
+  it('requires repair for retired Contact product tokens and keeps explicit related Account products available', async () => {
+    await scoped(async () => {
+      const product = await prisma.productInterest.create({data:{tenantId,name:'Account purchase token fixture',dealValue:500}});
+      const account = await prisma.account.create({data:{tenantId,name:'Token account',productsNormalized:true,productLinks:{create:{productInterestId:product.id,position:0,interested:false,activeProduct:true}}}});
+      const contact = await prisma.contact.create({data:{tenantId,firstName:'Token',lastName:'Contact',email:`token-${randomUUID()}@example.test`,accountId:account.id}});
+      const audience = await createAudience(tenantId,{name:'Scoped token recipient',source:'CONTACTS',conditions:[{field:'email',operator:'equals',value:contact.email!}]});
+      const old = await createCampaign(tenantId,userId,{name:'Old Contact token',type:'EMAIL',targetAudienceId:audience.id,subject:'Old',body:'Old {{activeProductIds}}'});
+      await expect(sendCampaign(old.id,tenantId,userId)).rejects.toThrow('Repair unavailable campaign variables');
+      expect(sendMail).not.toHaveBeenCalled();
+      const current = await createCampaign(tenantId,userId,{name:'Explicit Account token',type:'EMAIL',targetAudienceId:audience.id,subject:'Current',body:'Purchased {{account.activeProductIds}}'});
+      await sendCampaign(current.id,tenantId,userId);
+      expect(JSON.stringify(vi.mocked(sendMail).mock.calls)).toContain(product.name);
+    });
+  });
   it('rejects foreign or nonassignable relations and invalid date ranges', async () => {
     await scoped(async () => {
       for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'CONTACTS', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Choose an active sales agent');
@@ -1015,7 +1039,10 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       const definition = { source: 'CONTACTS', conditions: [{ field: 'email', operator: 'equals', value: contact.email! }, { field: `customFieldValues.${dateId}`, operator: 'between', value: { from: '2026-10-10', to: '2026-10-12' } }, { field: `customFieldValues.${fileId}`, operator: 'is_not_empty', value: null }] };
       const resolved = await resolveAudience(tenantId, definition);
       expect(resolved.breakdown.eligible).toBe(1);
-      expect(resolved.records[0].personalization).toMatchObject({ accountId: 'Readable account', assignedUserId: 'Seeder Admin', company: 'Legacy scalar', company_name: 'Readable account', productInterestIds: 'First ordered product, Second ordered product', activeProductIds: 'Second ordered product', [`customFieldValues.${dateId}`]: '2026-10-11', [`customFieldValues.${textId}`]: '' });
+      expect(resolved.records[0].personalization).toMatchObject({ accountId: 'Readable account', assignedUserId: 'Seeder Admin', company: 'Legacy scalar', company_name: 'Readable account', productInterestIds: 'First ordered product, Second ordered product', 'account.activeProductIds': '', [`customFieldValues.${dateId}`]: '2026-10-11', [`customFieldValues.${textId}`]: '' });
+      expect(resolved.records[0].personalization).not.toHaveProperty('activeProductIds');
+      // This token now belongs only to the related Account. Contact purchase
+      // flags remain history, and must not leak into Account personalization.
       expect(resolved.records[0].personalization).not.toHaveProperty(`customFieldValues.${fileId}`);
       await expect(resolveAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: `customFieldValues.${fileId}`, operator: 'equals', value: randomUUID() }] })).rejects.toThrow('supported operator');
       const invalid = await createCampaign(tenantId, userId, { name: 'Private-file token blocked', type: 'EMAIL', audienceSource: 'CONTACTS', subject: `File {{customFieldValues.${fileId}}}`, body: 'Hello' });

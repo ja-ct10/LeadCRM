@@ -32,16 +32,12 @@ export interface Contact extends SharedContact {
   expectedCloseDate?: string;
   notes?: string;
   lifecycleStage?: string;
-  recordType?: string;
-  score?: number;
   isArchived?: boolean;
   archivedAt?: string;
   archivedBy?: string;
   archiveReason?: string;
   type?: string;
-  customerType?: string;
   customerSince?: string;
-  activeProducts?: string[];
   callStatus?: string;
   updateStatus?: string;
   contactNumbers?: { id: string; type: string; countryCode?: string; number: string; notes?: string }[];
@@ -62,7 +58,6 @@ export interface Contact extends SharedContact {
   phoneCountryCode?: string;
   altPhone?: string;
   website?: string;
-  linkedin?: string;
   facebook?: string;
   otherSocial?: string;
   businessType?: string;

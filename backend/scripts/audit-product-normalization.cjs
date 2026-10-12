@@ -29,7 +29,7 @@ async function audit() {
     const products = await tx.productInterest.findMany({ orderBy: { id: 'asc' }, select: { id: true, tenantId: true, name: true, dealValue: true, active: true, updatedAt: true } });
     const normalize = value => value.trim().toLowerCase();
     const relationships = {};
-    for (const [model, fields] of [['lead', ['productInterestIds', 'productInterest']], ['contact', ['productInterests', 'activeProducts']], ['account', ['productInterests', 'activeProducts']], ['deal', ['productInterestIds', 'productInterests']]]) {
+    for (const [model, fields] of [['lead', ['productInterestIds', 'productInterest']], ['contact', ['productInterests']], ['account', ['productInterests', 'activeProducts']], ['deal', ['productInterestIds', 'productInterests']]]) {
       const rows = await tx[model].findMany({ select: { id: true, tenantId: true, ...Object.fromEntries(fields.map(f => [f, true])), ...(model === 'deal' ? { productInterestId: true, value: true } : {}) } });
       const unresolved = [], ambiguous = [], multiProduct = [];
       let resolvedLinks = 0;

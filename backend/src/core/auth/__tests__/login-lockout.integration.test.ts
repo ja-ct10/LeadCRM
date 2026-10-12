@@ -48,7 +48,7 @@ beforeAll(async () => {
     await replayCrmMigrations(pg, '20261112000000', '20261102000000');
     await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
     await replayCrmMigrations(pg, undefined, '20261112000000');
-    socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
+    socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0, maxConnections: 8 }); await socket.start();
     vi.stubEnv('LOGIN_LOCKOUT_TEST_DATABASE_URL', `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`);
   }
   db = new PrismaClient({ datasources: { db: { url: process.env.LOGIN_LOCKOUT_TEST_DATABASE_URL! } } }); holder.client = db;

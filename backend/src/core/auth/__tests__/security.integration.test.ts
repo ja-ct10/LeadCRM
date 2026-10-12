@@ -95,7 +95,7 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
       for (const field of fields) expect(columns).not.toContainEqual({ table_name: table, column_name: field });
     }
     expect(columns).toContainEqual({ table_name: 'User', column_name: 'passwordChangedAt' });
-    expect(columns).toContainEqual({ table_name: 'Contact', column_name: 'customerType' });
+    expect(columns).not.toContainEqual({ table_name: 'Contact', column_name: 'customerType' });
     expect(columns).toContainEqual({ table_name: 'Contact', column_name: 'customerSince' });
   });
   it('allows a formerly enrolled user to sign in normally with a password', async () => {

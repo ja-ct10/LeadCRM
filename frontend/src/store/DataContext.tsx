@@ -62,11 +62,12 @@ import { workflowsApi } from "@/shared/services/workflows.api";
 import { campaignsApi } from "@/shared/services/campaigns.api";
 import { templatesApi } from "@/shared/services/templates.api";
 import { preferencesApi } from "@/shared/services/preferences.api";
+import type { Lead } from './types/lead.types';
 import { LEADS_TABLE_COLUMNS, reconcileTableColumns, type ColumnConfigItem } from '@leadcrm/shared';
 import {
   toBackendCreateContact,
   toBackendUpdateContact,
-  toFrontendContact,
+  toFrontendLegacyLead,
 } from "@/lib/api/adapters/contact.adapter";
 import {
   toBackendCreateOrg,
@@ -627,7 +628,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (USE_MOCK_DATA || !user) return;
     try {
       const contactsRes = await contactsService.getAll({ limit: 100 });
-      const apiContacts = (contactsRes?.data ?? []).map(toFrontendContact);
+      const apiContacts = (contactsRes?.data ?? []).map(toFrontendLegacyLead);
       setContacts((apiContacts as Contact[]).filter((c: any) => !c.isArchived));
     } catch (err) {
       console.error('[DataContext] Failed to refresh contacts:', err);
@@ -728,7 +729,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const dto = toBackendCreateContact(leadData) as any;
         const res = await contactsService.create(dto);
-        const contact = toFrontendContact((res as any).data ?? res) as Contact;
+        const contact = toFrontendLegacyLead((res as any).data ?? res) as Contact;
         setContacts((prev) => [contact, ...prev]);
         addAuditLog(
           "Contact Created",
@@ -762,7 +763,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       try {
         const dto = toBackendUpdateContact(updates as Record<string, any>) as any;
         const res = await contactsService.update(id, dto);
-        const contact = toFrontendContact((res as any).data ?? res) as Contact;
+        const contact = toFrontendLegacyLead((res as any).data ?? res) as Contact;
         setContacts((prev) => prev.map((l) => (l.id === id ? contact : l)));
         addAuditLog("Contact Updated", `Updated contact '${contact.contactPerson}'.`, id);
       } catch (err: unknown) {
@@ -775,7 +776,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const newLeads = contacts.map((l) => {
       if (l.id === id) {
         const updated = { ...l, ...updates };
-        if (updates.status) updated.score = calculateScore(updates.status);
+        if (updates.status) (updated as Contact & Pick<Lead, "score">).score = calculateScore(updates.status);
         return updated;
       }
       return l;

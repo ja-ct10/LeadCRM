@@ -23,3 +23,4 @@ __exportStar(require("./preferences.contracts"), exports);
 __exportStar(require("./workflow-catalog"), exports);
 __exportStar(require("./organization-settings.contract"), exports);
 __exportStar(require("./task.contract"), exports);
+__exportStar(require("./contact-retirement"), exports);

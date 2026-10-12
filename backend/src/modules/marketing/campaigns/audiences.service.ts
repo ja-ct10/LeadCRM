@@ -8,6 +8,7 @@ import { resolveProducts, validateSalesOwner } from '../../crm/leads/lead-automa
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
 import { normalizeSmsPhone } from '../../../shared/services/sms.service';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, campaignPersonalizationAvailable, campaignApprovedVariableKeys } from '@leadcrm/shared';
+import { retiredContactReferences } from '@leadcrm/shared';
 
 export function campaignScope(tenantId: string) {
   const context = tenantContext.getStore();
@@ -75,6 +76,8 @@ async function readDefinition(tenantId: string, source: string, rows: { field: s
 }
 export async function validateAudienceReferences(tenantId: string, dto: AudienceInput, db: Prisma.TransactionClient = prisma) {
   const fields = await audienceFields(tenantId, dto.source, db);
+  const retired = retiredContactReferences(dto.conditions, dto.source === 'CONTACTS' ? 'contact' : 'lead');
+  if (retired.length) throw new AppError(`Retired Contact field: ${retired.join(', ')}. Repair the saved audience before reuse.`, 400);
   for (const condition of dto.conditions) {
     const error = campaignConditionError(condition, fields);
     if (error) throw new AppError(error, 400);
@@ -89,8 +92,11 @@ export async function validateAudienceReferences(tenantId: string, dto: Audience
 export async function getAudiences(tenantId: string) {
   const rows = await prisma.targetAudience.findMany({ where: { ...campaignScope(tenantId), isActive: true }, include: { conditions: { orderBy: { conditionOrder: 'asc' } } }, orderBy: { name: 'asc' } });
   return Promise.all(rows.map(async row => {
-    try { return { id: row.id, name: row.name, ...await readDefinition(tenantId, row.source, row.conditions, prisma, row.matchMode) }; }
-    catch { const repair = await readDefinition(tenantId, 'LEADS', row.conditions, prisma, row.matchMode).catch(() => ({ conditions: [] })); return { id: row.id, name: row.name, source: row.source, matchMode: row.matchMode, conditions: repair.conditions, repairReason: row.source === 'ALL' ? 'Legacy mixed audience. Create a Lead or Contact audience before reuse.' : 'Saved audience needs repair before reuse.' }; }
+    try {
+      const definition = await readDefinition(tenantId, row.source, row.conditions, prisma, row.matchMode);
+      await validateAudienceReferences(tenantId, definition);
+      return { id: row.id, name: row.name, ...definition };
+    } catch { return { id: row.id, name: row.name, source: row.source, matchMode: row.matchMode, conditions: row.conditions.map(({ field, operator, value }) => { let parsed: unknown = value; try { parsed = JSON.parse(value); } catch {} return { field, operator, value: parsed }; }), repairReason: row.source === 'ALL' ? 'Legacy mixed audience. Create a Lead or Contact audience before reuse.' : 'Saved audience needs repair before reuse. Retired fields cannot execute.' }; }
   }));
 }
 export async function createAudience(tenantId: string, input: unknown) {
@@ -207,7 +213,7 @@ function personalized(row: Record<string, unknown>, fields: CrmFieldCatalogEntry
     if (field.reference === 'pipeline') value = (entity?.pipeline as { name: string } | null)?.name;
     if (field.reference === 'stage') value = (entity?.stage as { name: string } | null)?.name;
     const entityProducts = entity?.productLinks as { product: { name: string }; activeProduct?: boolean; interested?: boolean }[] | undefined;
-    if (field.type === 'products') value = entityProducts ? entityProducts.filter(product => field.technicalKey === 'activeProductIds' ? product.activeProduct : product.interested !== false).map(product => product.product.name).join(', ') : (entity?.productInterestRecord as { name: string } | null)?.name || (Array.isArray(entity?.[field.technicalKey]) ? (entity?.[field.technicalKey] as unknown[]).join(', ') : '');
+    if (field.type === 'products') value = entityProducts ? entityProducts.filter(product => ['activeProductIds','account.activeProductIds'].includes(field.technicalKey) ? product.activeProduct : product.interested !== false).map(product => product.product.name).join(', ') : (entity?.productInterestRecord as { name: string } | null)?.name || (Array.isArray(entity?.[field.technicalKey]) ? (entity?.[field.technicalKey] as unknown[]).join(', ') : '');
     const rendered = scalar(value, field.type === 'date');
     values[field.technicalKey] = values[field.technicalKey] ?? rendered;
     if (field.canonicalTechnicalKey) values[field.canonicalTechnicalKey] = rendered;

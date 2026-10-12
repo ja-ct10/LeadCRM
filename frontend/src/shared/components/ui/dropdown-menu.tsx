@@ -122,8 +122,10 @@ export function DropdownMenuContent({
     };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (contentRef.current?.contains(e.target as Node) && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
-        e.preventDefault(); e.stopPropagation();
         const items = Array.from(contentRef.current.querySelectorAll<HTMLElement>('[role^="menuitem"][aria-disabled="false"]'));
+        // Groups such as Product Interest own their checkbox navigation.
+        if (!items.length) return;
+        e.preventDefault(); e.stopPropagation();
         const current = items.indexOf(document.activeElement as HTMLElement);
         const next = e.key === 'Home' ? 0 : e.key === 'End' ? items.length - 1 : (current + (e.key === 'ArrowUp' ? -1 : 1) + items.length) % items.length;
         items.forEach((item, index) => { item.tabIndex = index === next ? 0 : -1; });

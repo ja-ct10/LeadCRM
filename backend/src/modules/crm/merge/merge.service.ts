@@ -195,6 +195,7 @@ async function executeContactMerge(
   fieldResolutions: Record<string, 'primary' | 'secondary'>,
 ): Promise<MergeExecuteResult> {
   if (primaryId === secondaryId) throw new ValidationError('Choose two different Contacts.');
+  if (Object.keys(fieldResolutions).some(field => !CONTACT_MERGE_FIELDS.includes(field))) throw new ValidationError('Choose a supported Contact merge field. Retired Contact fields cannot be modified.');
   const result = await salesTransaction(async tx => {
     const [primary, secondary] = await Promise.all([
       tx.contact.findFirst({ where: { id: primaryId, tenantId, isArchived: false, deletedAt: null } }),
@@ -211,7 +212,17 @@ async function executeContactMerge(
     }
 
     const reassignedCounts = await repo.reassignContactRelationships(tx, primaryId, secondaryId, tenantId);
-    if (mergedData.productInterests !== undefined) Object.assign(mergedData, await productRelationData(tx, 'contact', tenantId, { names: mergedData.productInterests as string[] }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests] }, true));
+    const sourceProducts = await tx.contactProductInterest.findMany({ where: { tenantId, contactId: secondaryId } });
+    const targetProducts = await tx.contactProductInterest.findMany({ where: { tenantId, contactId: primaryId } });
+    const productLinks = [...targetProducts, ...sourceProducts];
+    if (mergedData.productInterests !== undefined || sourceProducts.some(link => link.activeProduct)) {
+      const selectedProducts = fieldResolutions.productInterests === 'secondary' ? secondary : primary;
+      const { productsNormalized } = await tx.contact.findFirstOrThrow({ where: { tenantId, id: selectedProducts.id }, select: { productsNormalized: true } });
+      Object.assign(mergedData, await productRelationData(tx, 'contact', tenantId,
+        productsNormalized ? { ids: (fieldResolutions.productInterests === 'secondary' ? sourceProducts : targetProducts).filter(link => link.interested).map(link => link.productInterestId) }
+          : { names: selectedProducts.productInterests },
+        { ...primary, productInterests: [...(primary.productInterests ?? []), ...(secondary.productInterests ?? [])], productLinks }, true));
+    }
 
     const updatedPrimary = await tx.contact.update({
       where: { id: primaryId, tenantId },

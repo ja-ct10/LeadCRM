@@ -20,8 +20,8 @@ import { validateAgainstRegistry } from '../preferences.service';
 
 const registryColumns = LEADS_COLUMN_REGISTRY.columns;
 const registryIds = registryColumns.map((c) => c.id);
-const registrySize = registryColumns.length; // 12
-const requiredColumnIds = getRequiredColumnIds('leads'); // ['firstName', 'lastName', 'status']
+const registrySize = registryColumns.length;
+const requiredColumnIds = getRequiredColumnIds('leads');
 const nonRequiredIds = registryIds.filter((id) => !new Set(requiredColumnIds).has(id));
 
 // ─────────────────────────────────────────────────────
@@ -54,6 +54,10 @@ function baseValidConfigArb(): fc.Arbitrary<ColumnConfigItem[]> {
 
 describe('Feature: manage-columns-persistence, Property 3: Required Column Visibility Enforcement', () => {
   it('should reject configs where at least one required column has visible: false', () => {
+    if (!requiredColumnIds.length) {
+      expect(validateAgainstRegistry({ module: 'leads', columns: registryIds.map((id, order) => validColumnItem(id, order, false)) }, 'leads').valid).toBe(true);
+      return;
+    }
     // Generate configs that hide at least one required column
     const configWithHiddenRequiredArb = fc
       .record({

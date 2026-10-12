@@ -8,6 +8,7 @@
  */
 import { apiClient } from '@/lib/api/client';
 import type { Contact } from '@/store/types';
+import { withoutRetiredContactFields } from '@leadcrm/shared';
 
 export interface ContactsV2Response {
   success: boolean;
@@ -34,7 +35,9 @@ export interface ContactV2Query {
 
 /** Contact screens still use display aliases; the Contact API uses canonical columns. */
 export function toContactWrite(data: Partial<Contact>): Record<string, unknown> {
-  const { companyName, leadSource, organizationId, productInterest, ...payload } = data;
+  const { companyName, leadSource, organizationId, productInterest } = data;
+  const allowed = new Set(['firstName', 'lastName', 'email', 'phone', 'company', 'address', 'jobTitle', 'source', 'notes', 'status', 'accountId', 'assignedUserId', 'productInterests', 'productInterestIds', 'productInterestOther', 'customFieldValues']);
+  const payload = Object.fromEntries(Object.entries(data).filter(([key]) => allowed.has(key)));
   return {
     ...payload,
     ...(companyName !== undefined ? { company: companyName } : {}),
@@ -46,7 +49,7 @@ export function toContactWrite(data: Partial<Contact>): Record<string, unknown> 
 
 export function contactDisplay(data: Contact): Contact {
   const contact = data as Contact & { company?: string };
-  return { ...contact, companyName: contact.company ?? contact.companyName,
+  return { ...withoutRetiredContactFields(contact), companyName: contact.company ?? contact.companyName,
     leadSource: contact.source ?? contact.leadSource, organizationId: contact.accountId ?? contact.organizationId };
 }
 

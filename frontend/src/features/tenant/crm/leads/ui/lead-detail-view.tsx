@@ -5,7 +5,7 @@ import { Lead, Organization, User as UserType, Deal, Task, Campaign } from '@/st
 import type { Contact } from '@/store/types';
 import { useData } from '@/store/DataContext';
 import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
-import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
+import { toFrontendLegacyLead } from '@/lib/api/adapters/contact.adapter';
 import { ClientProfileTabs } from './lead-profile-tabs';
 import { CompanyProfileTabs, ExtendedOrg } from './company-profile-tabs';
 import { ShieldCheck, TrendingUp } from 'lucide-react';
@@ -61,7 +61,7 @@ export const UnifiedDetailView = ({
 
   useEffect(() => {
     leadsService.getAll({ limit: 100 })
-      .then((res) => setFetchedLeads((res?.data ?? []).map(toFrontendContact) as Contact[]))
+      .then((res) => setFetchedLeads((res?.data ?? []).map(toFrontendLegacyLead) as Contact[]))
       .catch(() => {/* silent — falls back to DataContext array which may be empty */});
   }, []);
 

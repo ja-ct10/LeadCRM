@@ -90,7 +90,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       required = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Qualified', order: 3, requiredFields: ['expectedCloseDate'] } });
       contacted = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Contacted', order: 4, requiredFields: [] } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Ada', lastName: 'Lead', email: 'recipient@example.test', assignedUserId: actor.id, productInterest: [] } });
-      contact = await prisma.contact.create({ data: { tenantId, firstName: 'Grace', lastName: 'Client', assignedUserId: actor.id, activeProducts: [], productInterests: [] } });
+      contact = await prisma.contact.create({ data: { tenantId, firstName: 'Grace', lastName: 'Client', assignedUserId: actor.id, productInterests: [] } });
       deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } },
         title: 'Acceptance deal', value: 50000, assignedUserId: actor.id, tags: [], productInterests: [] } });
       template = await prisma.template.create({ data: { tenantId, name: 'Welcome', type: 'Email', subject: 'Hello {{first_name}}', content: '<p>Welcome {{first_name}}</p>' } });
@@ -165,7 +165,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const record = await scope(async () => {
       const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', assignedUserId: actor.id };
       if (entity === 'lead') return prisma.lead.create({ data: { ...customer, source: 'Website', status: String(status ?? 'Warm'), productInterest: [] } });
-      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'Warm').toUpperCase() as 'HOT', activeProducts: [], productInterests: [] } });
+      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'Warm').toUpperCase() as 'HOT', productInterests: [] } });
       if (entity === 'account') return prisma.account.create({ data: { tenantId, name: 'Ownerless recipe Account' } });
       return prisma.deal.create({ data: { tenantId, title: 'Catalog opportunity', pipelineId: deal.pipelineId, stageId,
         assignedUserId: actor.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true } });
@@ -298,7 +298,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const changedWorkflow = await create([{ type: 'create_task', config: { title: 'Contact warmed', assignedUserId: actor.id } }], {
       trigger: 'contact.status_changed', conditions: { operator: 'AND', conditions: [{ field: 'contact.status', operator: 'equals', value: 'Warm' }] },
     });
-    const created = await call('/crm/contacts', 'POST', { firstName: 'Profile', lastName: 'Example', email: 'profile@example.test', status: 'Cold', activeProducts: [], productInterests: [] });
+    const created = await call('/crm/contacts', 'POST', { firstName: 'Profile', lastName: 'Example', email: 'profile@example.test', status: 'Cold', productInterests: [] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
     await relatedDeal('contact', id);
@@ -407,7 +407,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const source = await call('/crm/leads', 'POST', { firstName: 'Link', lastName: 'Example', email: 'link@example.test' });
     expect(source.status).toBe(201);
     const completedDeal = await confirmedDeal(source.body.data.id);
-    const existingContact = await scope(() => prisma.contact.create({ data: { tenantId, firstName: 'Existing', lastName: 'Conversion contact', email: 'existing-link@example.test', activeProducts: [], productInterests: [] } }));
+    const existingContact = await scope(() => prisma.contact.create({ data: { tenantId, firstName: 'Existing', lastName: 'Conversion contact', email: 'existing-link@example.test', productInterests: [] } }));
     const linked = await call('/crm/leads/' + source.body.data.id + '/convert', 'POST', { accountName: 'Link account', contactId: existingContact.id, dealId: completedDeal.id });
     expect(linked.status, JSON.stringify(linked.body)).toBe(200);
     expect(linked.body.data.contact.id).toBe(existingContact.id);
@@ -417,7 +417,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const failedSource = await call('/crm/leads', 'POST', { firstName: 'Rollback', lastName: 'Example', email: 'rollback@example.test' });
     expect(failedSource.status).toBe(201);
     const failedDeal = await confirmedDeal(failedSource.body.data.id);
-    const archivedContact = await scope(() => prisma.contact.create({ data: { tenantId, firstName: 'Archived', lastName: 'Conversion contact', isArchived: true, activeProducts: [], productInterests: [] } }));
+    const archivedContact = await scope(() => prisma.contact.create({ data: { tenantId, firstName: 'Archived', lastName: 'Conversion contact', isArchived: true, productInterests: [] } }));
     const failed = await call('/crm/leads/' + failedSource.body.data.id + '/convert', 'POST', { accountName: 'Rolled back account', contactId: archivedContact.id, dealId: failedDeal.id });
     expect(failed.status, JSON.stringify(failed.body)).toBe(409);
     expect(await runs(contactWorkflow.id)).toHaveLength(0);
@@ -667,6 +667,22 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     try { await fire(); expect((await runs(workflow.id))[0].status).toBe('failed');
       expect(await prisma.task.count({ where: { tenantId, title: 'Revoked author task' } })).toBe(0);
     } finally { await prisma.user.update({ where: { id: actor.id }, data: { role: 'Client Admin' } }); }
+  });
+  it('blocks retired Contact selectors before any action and retains definition/execution history for repair', async () => {
+    const conditions = {operator:'AND',conditions:[{field:'contact.score',operator:'is_empty',value:null}]};
+    const actions = [{type:'create_task',config:{title:'Unsafe retired Contact task'}}];
+    const saved = await prisma.workflow.create({data:{tenantId,name:'Saved retired Contact score',trigger:'contact.created',conditions,actions,isActive:true,status:'ACTIVE',activatedById:actor.id}});
+    await fire('contact',contact);
+    const history = await runs(saved.id);
+    expect(history).toHaveLength(1);
+    expect(history[0]).toMatchObject({status:'failed',errorMessage:expect.stringContaining('Retired Contact field')});
+    expect(history[0].definitionSnapshot).toMatchObject({conditions,actions});
+    expect(await prisma.task.count({where:{tenantId,title:'Unsafe retired Contact task'}})).toBe(0);
+    expect((await call(`/automation/workflows/${saved.id}/toggle`,'PATCH',{isActive:false})).status).toBe(200);
+    expect((await prisma.workflow.findUniqueOrThrow({where:{id:saved.id}})).conditions).toEqual(conditions);
+    expect((await call(`/automation/workflows/${saved.id}/toggle`,'PATCH',{isActive:true})).status).toBe(400);
+    await expect(create([{type:'update_field',config:{field:'activeProducts',value:[]}}],{trigger:'contact.created',isActive:false})).rejects.toThrow('Retired Contact fields');
+    expect(await runs(saved.id)).toHaveLength(1);
   });
   it('preserves retired campaign steps in drafts and prevents activation or sending', async () => {
     const previousSender = process.env.BREVO_FROM_EMAIL; process.env.BREVO_FROM_EMAIL = 'workflow-tests@example.test';

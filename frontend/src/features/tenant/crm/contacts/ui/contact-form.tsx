@@ -85,7 +85,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     accountId: initialData?.accountId || initialData?.organizationId || '',
     assignedUserId: initialData?.assignedUserId || '',
     productInterest: initialData?.productInterests || initialData?.productInterest || [],
-    activeProducts: initialData?.activeProducts || [],
     address: initialData?.address || '',
   }), [initialData]);
 
@@ -124,7 +123,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   }, [initialData?.id]);
 
   const selectedProducts = watch('productInterest') || [];
-  const selectedActiveProducts = watch('activeProducts') || [];
 
   const [saveError, setSaveError] = useState('');
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
@@ -145,7 +143,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       leadSource: data.source || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
-      activeProducts: data.activeProducts || [],
       address: data.address || (isEdit ? '' : undefined),
     };
 
@@ -266,9 +263,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
               <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
-            </FieldWrap>
-            <FieldWrap fieldKey="activeProductIds" label="Active Products">
-              <ProductInterestSelect ariaLabel="Active Products" products={productRecords} valueMode="name" values={selectedActiveProducts} onChange={values => setValue('activeProducts', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
             </FieldWrap>
           </div>
           <CustomFieldGroup form={customFields} group="Status & Classification" />

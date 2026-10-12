@@ -3,7 +3,7 @@ import { ValidationError } from '../../../shared/errors/http-error';
 
 type Kind = 'lead' | 'contact' | 'account';
 type Selection = { ids?: string[]; names?: string[]; activeNames?: string[]; activeIds?: string[] };
-type Previous = { id?: string; productInterest?: string[]; productInterestIds?: string[]; productInterests?: string[]; activeProducts?: string[] };
+type Previous = { id?: string; productInterest?: string[]; productInterestIds?: string[]; productInterests?: string[]; activeProducts?: string[]; productLinks?: Array<{ productInterestId: string; activeProduct: boolean }> };
 
 /** Build a single nested write, so the record and its links commit atomically.
  * Previous selections may retain retired products or unresolved historical text.
@@ -11,16 +11,17 @@ type Previous = { id?: string; productInterest?: string[]; productInterestIds?: 
  */
 export async function productRelationData(tx: Prisma.TransactionClient, kind: Kind, tenantId: string,
   selection: Selection, previous?: Previous, updating = false) {
+  if (kind === 'contact' && (selection.activeNames !== undefined || selection.activeIds !== undefined)) throw new ValidationError('Contact Active Products is retired. Use confirmed Closed Won Deals for sales history.');
   const catalog = await tx.productInterest.findMany({ where: { tenantId } });
-  const previousNames = [...(previous?.productInterest ?? previous?.productInterests ?? []), ...(previous?.activeProducts ?? [])];
+  const previousNames = [...(previous?.productInterest ?? previous?.productInterests ?? []), ...(kind === 'contact' ? [] : previous?.activeProducts ?? [])];
   const priorLinks = !previous?.id ? [] : kind === 'lead'
     ? await tx.leadProductInterest.findMany({ where: { tenantId, leadId: previous.id } }) : kind === 'contact'
     ? await tx.contactProductInterest.findMany({ where: { tenantId, contactId: previous.id } })
     : await tx.accountProductInterest.findMany({ where: { tenantId, accountId: previous.id } });
-  const previousIds = [...(previous?.productInterestIds ?? []), ...priorLinks.map(link => link.productInterestId)];
+  const previousIds = [...(previous?.productInterestIds ?? []), ...priorLinks.map(link => link.productInterestId), ...(previous?.productLinks ?? []).map(link => link.productInterestId)];
   const ids = selection.ids;
   const names = selection.names ?? previous?.productInterest ?? previous?.productInterests ?? [];
-  const activeNames = selection.activeNames ?? previous?.activeProducts ?? [];
+  const activeNames = kind === 'contact' ? [] : selection.activeNames ?? previous?.activeProducts ?? [];
   const entries = new Map<string, { productInterestId: string; tenantId: string; position: number; interested: boolean; activeProduct: boolean }>();
   const unresolvedNames: string[] = [], unresolvedActive: string[] = [];
   const resolve = (value: string, byId: boolean, activeProduct: boolean) => {
@@ -45,6 +46,14 @@ export async function productRelationData(tx: Prisma.TransactionClient, kind: Ki
   };
   for (const value of ids ?? names) resolve(value, !!ids, false);
   for (const value of selection.activeIds ?? activeNames) resolve(value, !!selection.activeIds, true);
+  // Preserve separately governed purchase flags and IDs without turning them
+  // into current interests or exposing an editable Active Products feature.
+  if (kind === 'contact') for (const link of [...priorLinks, ...(previous?.productLinks ?? [])]) {
+    if (!('activeProduct' in link) || !link.activeProduct) continue;
+    const entry = entries.get(link.productInterestId);
+    if (entry) entry.activeProduct = true;
+    else entries.set(link.productInterestId, { productInterestId: link.productInterestId, tenantId, position: entries.size, interested: false, activeProduct: true });
+  }
   const normalized = !unresolvedNames.length && !unresolvedActive.length;
   const links = [...entries.values()];
   // Keep unresolved records on the explicit compatibility branch until staff resolve them.
@@ -54,6 +63,7 @@ export async function productRelationData(tx: Prisma.TransactionClient, kind: Ki
     productsNormalized: normalized,
     ...(kind === 'lead'
       ? { productInterest: normalized ? [] : interestNames, productInterestIds: normalized ? [] : links.map(p => p.productInterestId) }
+      : kind === 'contact' ? { productInterests: normalized ? [] : interestNames }
       : { productInterests: normalized ? [] : interestNames, activeProducts: normalized ? [] : active }),
     productLinks: {
       ...(updating ? { deleteMany: {} } : {}),

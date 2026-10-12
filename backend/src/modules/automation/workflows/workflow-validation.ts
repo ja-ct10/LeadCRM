@@ -1,4 +1,4 @@
-import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
+import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, retiredContactReferences, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
@@ -13,6 +13,8 @@ export function validateWorkflowConditions(draft: WorkflowDraft, fields?: Workfl
   const trigger = findTrigger(draft.trigger);
   if (!trigger) throw new ValidationError('Choose a supported trigger.');
   if (!draft.name.trim()) throw new ValidationError('Enter a workflow name.');
+  const retired = retiredContactReferences(draft.conditions, trigger.entity);
+  if (retired.length) throw new ValidationError(`Retired Contact field: ${retired.join(', ')}. Repair the Workflow condition before activation.`);
   for (const rule of draft.conditions?.conditions ?? []) {
     const field = (fields ?? trigger.fields).find(entry => entry.field === rule.field);
     if (!field) throw new ValidationError(`Choose a condition field available for ${trigger.label}.`);

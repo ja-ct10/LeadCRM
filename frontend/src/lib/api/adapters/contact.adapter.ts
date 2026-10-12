@@ -84,6 +84,8 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     accountId: backendContact.accountId || undefined,
     contactId: backendContact.contactId,
     convertedAt: backendContact.convertedAt,
+    lifecycleStage: backendContact.lifecycleStage,
+    customerSince: backendContact.customerSince,
     companyName: backendContact.companyName || backendContact.company || backendContact.account?.name || backendContact.organization?.name || '',
     contactPerson: contactPerson || 'Unknown',
     firstName,
@@ -111,19 +113,23 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     lastStatusChangedAt: backendContact.lastStatusChangedAt || undefined,
     latestStatusChangeDate: backendContact.lastStatusChangedAt || undefined,
     status: toFrontendStatus(backendContact.status),
-    score: typeof backendContact.score === 'number' ? backendContact.score : 0,
     createdAt: backendContact.createdAt || new Date().toISOString(),
     updatedAt: backendContact.updatedAt || undefined,
     isArchived: backendContact.status === 'Archived' || !!backendContact.isArchived,
     archivedAt: backendContact.deletedAt || undefined,
     archivedBy: backendContact.deletedBy || undefined,
-    linkedin: backendContact.linkedinUrl || '',
-    linkedinUrl: backendContact.linkedinUrl || '',
-    customerType: backendContact.accountId ? 'Organization' : 'Individual',
     address: backendContact.address || '',
     // Nested relation objects (when included by Prisma)
     organization: backendContact.account || backendContact.organization || undefined,
     account: backendContact.account || undefined,
     assignedUser: backendContact.assignedUser || undefined,
   };
+}
+
+/** The legacy /crm/leads client shares name/display mapping with Contacts. */
+export function toFrontendLegacyLead(lead: any): Record<string, any> {
+  if (!lead) return {};
+  return { ...toFrontendContact(lead), score: typeof lead.score === 'number' ? lead.score : 0,
+    linkedin: lead.linkedinUrl || '', linkedinUrl: lead.linkedinUrl || '',
+    customerType: lead.accountId ? 'Organization' : 'Individual' };
 }

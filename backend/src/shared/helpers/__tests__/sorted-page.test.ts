@@ -44,7 +44,7 @@ it('migrates combined columns once and preserves independent preferences afterwa
   const old = [{ id: 'emailAndPhone', visible: true, order: 1 }, { id: 'email', visible: false, order: 2 }, { id: 'phone', visible: false, order: 3 }];
   const migrated = normalizeLeadColumns(old);
   expect(migrated.map(col => [col.id, col.visible])).toEqual([['name', true], ['email', true], ['phone', true], ['lastName', false]]);
-  const customized = migrated.map(col => ({ ...col, visible: col.id !== 'email' }));
+  const customized = migrated.map(col => ({ ...col, visible: col.id === 'email' ? false : col.visible }));
   expect(normalizeLeadColumns(customized)).toEqual(customized);
   expect(old).toHaveLength(3);
 });

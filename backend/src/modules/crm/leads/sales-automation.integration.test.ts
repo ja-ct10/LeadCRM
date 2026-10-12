@@ -124,7 +124,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
   it('reuses normalized contact identity, preserves historical fields and rolls back ambiguous conversion', async () => {
     const email = `${randomUUID()}@example.test`;
-    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Historical', lastName: 'Name', email: email.toUpperCase(), phone: '09123456789', notes: 'Keep history', activeProducts: [], productInterests: [] } });
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Historical', lastName: 'Name', email: email.toUpperCase(), phone: '09123456789', notes: 'Keep history', productInterests: [] } });
     const lead = await create(['Smart Lock'], { email, phone: '+639123456789' });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const won = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: deal.pipelineId, isWon: true } });
@@ -133,7 +133,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId).toBe(contact.id);
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).notes).toBe('Keep history');
     const second = await create(['Smart Lock'], { email });
-    await prisma.contact.create({ data: { tenantId, firstName: 'Conflicting', lastName: 'Identity', email, activeProducts: [], productInterests: [] } });
+    await prisma.contact.create({ data: { tenantId, firstName: 'Conflicting', lastName: 'Identity', email, productInterests: [] } });
     const secondDeal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: second.id } } } });
     const secondInitialHistoryCount = await prisma.dealStageHistory.count({ where: { dealId: secondDeal.id } });
     const rejected = await prepareToClose(secondDeal, 409);
@@ -147,7 +147,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it('preserves an explicitly linked Contact and matches company whitespace without duplicating history', async () => {
     const company = `  Legacy   Company ${randomUUID()}  `;
     const account = await prisma.account.create({ data: { tenantId, name: company, tags: [], productInterests: [], activeProducts: [] } });
-    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Original', lastName: 'Person', phone: '+63 (927) 555-12-34', company, activeProducts: [], productInterests: [] } });
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Original', lastName: 'Person', phone: '+63 (927) 555-12-34', company, productInterests: [] } });
     const lead = await create(['Smart Lock'], { contactId: contact.id, email: null, phone: '09275551234', companyName: company.trim().replace(/\s+/g, ' ') });
     const deal = await prisma.deal.findFirstOrThrow({ where: { leadDeals: { some: { leadId: lead.id } } } });
     const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: deal.pipelineId, isWon: true } });

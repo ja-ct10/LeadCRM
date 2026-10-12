@@ -519,9 +519,7 @@ model Contact {
   phone               String?
   company             String?
   jobTitle            String?
-  linkedinUrl         String?
   status              ContactStatus        @default(WARM)
-  score               Int                  @default(75)
   source              String?
   notes               String?
   lastStatusChangedAt DateTime?
@@ -536,13 +534,10 @@ model Contact {
   deletedBy           String?
   createdAt           DateTime             @default(now())
   updatedAt           DateTime             @updatedAt
-  activeProducts      String[]
   address             String?
   customerSince       DateTime?
-  customerType        String               @default("Prospect")
   productInterests    String[]
   lifecycleStage      ContactLifecycleStage @default(LEAD)
-  recordType          String?
 
   tenant       Tenant        @relation(fields: [tenantId], references: [id])
   account      Account?      @relation(fields: [accountId], references: [id])

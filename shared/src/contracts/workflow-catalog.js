@@ -12,6 +12,7 @@ const record_experience_1 = require("./record-experience");
 const company_industries_1 = require("../constants/company-industries");
 const closing_requirements_1 = require("./closing-requirements");
 const field_catalog_1 = require("./field-catalog");
+const contact_retirement_1 = require("./contact-retirement");
 exports.WORKFLOW_MODULES = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 exports.WORKFLOW_MESSAGE_VARIABLES = [
     { token: 'firstName', label: 'First Name', fields: ['firstName'], legacyToken: 'first_name' },
@@ -106,7 +107,7 @@ function normalizeWorkflowReferences(draft, products) {
                 if (!rule || typeof rule.field !== 'string')
                     return rule;
                 const field = rule.field.startsWith(entity + '.') ? rule.field.slice(entity.length + 1) : '';
-                if (aliases[field]) {
+                if (aliases[field] && !(0, contact_retirement_1.isRetiredContactField)(field, entity)) {
                     const value = resolveProduct(rule.value);
                     if (value || ['is_empty', 'is_not_empty'].includes(rule.operator))
                         return { ...rule, field: entity + '.' + aliases[field], value: value ?? rule.value };
@@ -124,7 +125,7 @@ function normalizeWorkflowReferences(draft, products) {
                 if (value)
                     return { ...action, config: { ...action.config, value } };
             }
-            if (action?.type !== 'update_field' || !action.config || !aliases[action.config.field])
+            if (action?.type !== 'update_field' || !action.config || !aliases[action.config.field] || (0, contact_retirement_1.isRetiredContactField)(action.config.field, entity))
                 return action;
             const values = Array.isArray(action.config.value) ? action.config.value.map(resolveProduct) : [];
             if (action.config.clear || (Array.isArray(action.config.value) && values.every(Boolean)))

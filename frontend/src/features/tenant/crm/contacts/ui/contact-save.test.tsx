@@ -30,12 +30,13 @@ it('retains a failed draft and permits retry without submitting twice while savi
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
 });
 
-it('keeps configured Job title, Active Products and Notes values on Contact edits', async () => {
+it('keeps configured Job title and Notes without retired controls values on Contact edits', async () => {
   const save = vi.fn().mockResolvedValue(undefined);
-  render(<ContactFormInner initialData={{ id: 'contact-1', tenantId: 'tenant-1', createdAt: '2026-01-01T00:00:00.000Z', firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', status: 'Warm', jobTitle: 'Buyer', activeProducts: ['CRM Enterprise'], notes: 'Keep this note' }} onSave={save} onCancel={vi.fn()} />);
+  render(<ContactFormInner initialData={{ id: 'contact-1', tenantId: 'tenant-1', createdAt: '2026-01-01T00:00:00.000Z', firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', status: 'Warm', jobTitle: 'Buyer', notes: 'Keep this note' }} onSave={save} onCancel={vi.fn()} />);
   expect((screen.getByLabelText('Job Title') as HTMLInputElement).value).toBe('Buyer');
-  expect(screen.getByLabelText('Active Products').textContent).toContain('CRM Enterprise');
+  expect(screen.queryByLabelText('Active Products')).toBeNull();
   expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('Keep this note');
   fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
-  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ jobTitle: 'Buyer', activeProducts: ['CRM Enterprise'], notes: 'Keep this note' })));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ jobTitle: 'Buyer', notes: 'Keep this note' })));
+  expect(save.mock.calls[0][0]).not.toHaveProperty('activeProducts');
 });

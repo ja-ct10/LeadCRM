@@ -71,16 +71,15 @@ it('displays persisted full Name first in fresh layouts and company only in its 
   expect(LEADS_COLUMN_REGISTRY.find(column => column.id === 'lastName')?.required).toBe(false);
 });
 
-it('retains optional separate names while restoring fixed Name visibility and position', () => {
+it('preserves explicitly hidden Name and the separate-name choices', () => {
   const preferences = columns(['email', 'lastName', 'firstName']).map(column => column.id === 'name' ? { ...column, visible: false, width: 320 } : column);
   renderLead({ id: 'lead', firstName: '  Mary Jane  ', lastName: '  de la Cruz  ' } as Lead, preferences);
   const headers = screen.getAllByRole('columnheader').map(header => header.textContent).filter(Boolean);
-  expect(headers).toEqual(['Name', 'Email', 'Last Name', 'First Name']);
-  expect(screen.getByText('Mary Jane de la Cruz')).toBeTruthy();
+  expect(headers).toEqual(['Email', 'Last Name', 'First Name']);
+  expect(screen.queryByText('Mary Jane de la Cruz')).toBeNull();
   expect(screen.getByText('Mary Jane')).toBeTruthy();
   expect(screen.getByText('de la Cruz')).toBeTruthy();
-  const nameHeader = screen.getByRole('columnheader', { name: /^Name\b/ });
-  expect(nameHeader.className).toContain('sticky');
+  expect(screen.queryByRole('columnheader', { name: /^Name\b/ })).toBeNull();
 });
 
 it.each([

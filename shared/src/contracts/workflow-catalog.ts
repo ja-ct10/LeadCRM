@@ -3,6 +3,7 @@ import { CRM_STATUSES, LEAD_SOURCES, COMPANY_SIZE_OPTIONS } from './record-exper
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { isClosedWonField, type ClosingField, type CustomFieldModule } from './closing-requirements';
 import { getCrmFieldCatalog, type FieldLayout } from './field-catalog';
+import { isRetiredContactField } from './contact-retirement';
 
 export const WORKFLOW_MODULES: Record<WorkflowEntity, CustomFieldModule> = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 export const WORKFLOW_MESSAGE_VARIABLES = [
@@ -97,7 +98,7 @@ export function normalizeWorkflowReferences<T extends { trigger: string; conditi
     conditions: conditions && Array.isArray(conditions.conditions) ? { ...conditions, conditions: conditions.conditions.map(rule => {
       if (!rule || typeof rule.field !== 'string') return rule;
       const field = rule.field.startsWith(entity + '.') ? rule.field.slice(entity.length + 1) : '';
-      if (aliases[field]) {
+      if (aliases[field] && !isRetiredContactField(field, entity)) {
         const value = resolveProduct(rule.value);
         if (value || ['is_empty', 'is_not_empty'].includes(rule.operator)) return { ...rule, field: entity + '.' + aliases[field], value: value ?? rule.value };
       }
@@ -112,7 +113,7 @@ export function normalizeWorkflowReferences<T extends { trigger: string; conditi
         const value = CRM_STATUSES.find(status => status.toLowerCase() === String(action.config.value).toLowerCase());
         if (value) return { ...action, config: { ...action.config, value } };
       }
-      if (action?.type !== 'update_field' || !action.config || !aliases[action.config.field]) return action;
+      if (action?.type !== 'update_field' || !action.config || !aliases[action.config.field] || isRetiredContactField(action.config.field, entity)) return action;
       const values = Array.isArray(action.config.value) ? action.config.value.map(resolveProduct) : [];
       if (action.config.clear || (Array.isArray(action.config.value) && values.every(Boolean))) return { ...action, config: { ...action.config, field: aliases[action.config.field], value: values } };
       return action;

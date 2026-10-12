@@ -29,14 +29,14 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   }));
   const runs = (id: string) => scope(() => workflows.getWorkflowExecutions(id, tenantId));
   const newDeal = (extra = {}) => scope(() => prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id,
-    title: 'Polish deal', value: 100, assignedUserId: actor.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, productInterests: [], tags: [], ...extra } }));
+    title: 'Polish deal', value: 100, assignedUserId: actor.id, accountId: account.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, productInterests: [], tags: [], ...extra } }));
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Workflow polish', slug: `polish-${randomUUID()}`, status: 'ACTIVE' } })).id;
     actor = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email: `polish-${randomUUID()}@camxian.com`, firstName: 'Test', lastName: 'Agent', emailVerified: new Date(), mustChangePassword: false } });
     await scope(async () => {
       account = await prisma.account.create({ data: { tenantId, name: 'Workflow account', assignedUserId: actor.id, tags: [], activeProducts: [], productInterests: [] } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Lead', lastName: 'Test', email: 'lead@example.test', phone: '+639171234567', assignedUserId: actor.id, productInterest: [] } });
-      contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Test', email: 'contact@example.test', phone: '+639181234567', accountId: account.id, assignedUserId: actor.id, activeProducts: [], productInterests: [] } });
+      contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Test', email: 'contact@example.test', phone: '+639181234567', accountId: account.id, assignedUserId: actor.id, productInterests: [] } });
       others = await prisma.productInterest.create({ data: { tenantId, name: 'Others', dealValue: 0 } });
       pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Workflow pipeline' } });
       const stage = (name: string, order: number, extra = {}) => prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name, order, requiredFields: [], ...extra } });
@@ -174,7 +174,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
       ['account.updated', () => updateCompany(account.id, tenantId, actor.id, { notes: 'Changed account' })],
       ['deal.updated', () => updateDeal(deal.id, tenantId, actor.id, { title: 'Changed deal' })],
     ] as const) {
-      const workflow = await create({ trigger });
+      const workflow = await create({ trigger, actions:[{type:'create_task',config:{title:'Follow up',assignedUserId:actor.id,dealId:deal.id}}] });
       await scope(edit); await scope(edit);
       expect(await runs(workflow.id), trigger).toHaveLength(1);
       expect((await runs(workflow.id))[0].status, trigger).toBe('completed');

@@ -47,7 +47,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     account = await prisma.emailAccount.create({ data: { tenantId, userId, email: user.email, accessToken: encryptToken(randomUUID()), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
     leadEmail = `lead-${randomUUID()}@example.test`; contactEmail = `contact-${randomUUID()}@example.test`;
     leadId = (await prisma.lead.create({ data: { tenantId, assignedUserId: userId, email: ` Customer <${leadEmail.toUpperCase()}> `, firstName: 'Lead', lastName: 'Customer', productInterest: [] } })).id;
-    await prisma.contact.create({ data: { tenantId, assignedUserId: userId, email: contactEmail, firstName: 'Contact', lastName: 'Customer', activeProducts: [], productInterests: [] } });
+    await prisma.contact.create({ data: { tenantId, assignedUserId: userId, email: contactEmail, firstName: 'Contact', lastName: 'Customer', productInterests: [] } });
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
   afterAll(async () => { await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });

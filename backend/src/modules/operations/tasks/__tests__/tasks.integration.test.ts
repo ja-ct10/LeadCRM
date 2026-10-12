@@ -126,7 +126,6 @@ describe.skipIf(!disposable)(
             tenantId,
             firstName: "Client",
             lastName: "Task",
-            activeProducts: [],
             productInterests: [],
           },
         });

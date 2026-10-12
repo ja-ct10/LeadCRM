@@ -19,6 +19,7 @@ const scoped = <T>(work: () => T) => tenantContext.run({ tenantId: actor.tenantI
 beforeEach(() => {
   vi.resetAllMocks();
   state.permission.mockResolvedValue(undefined);
+  state.db.user.findFirst.mockResolvedValue({id:'admin',tenantId:'tenant',role:'Client Admin',status:'ACTIVE',tenant:{status:'ACTIVE'},userRoles:[]});
   for (const model of Object.values(state.db)) if ('count' in model) { model.count.mockResolvedValue(0); model.findMany.mockResolvedValue([]); }
   state.db.roleDefinition.count.mockResolvedValue(1);
   state.db.roleDefinition.findMany.mockResolvedValue([{ id: 'role', name: 'Archived Sales', isSystemRole: false }]);

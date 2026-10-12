@@ -2,10 +2,19 @@ import { beforeEach, expect, it, vi } from 'vitest';
 const transport = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn() }));
 vi.mock('@/lib/api/client', () => ({ apiClient: transport }));
 import { contactsV2Api, toContactWrite } from './contacts-v2.api';
+import { RETIRED_CONTACT_FIELDS } from '@leadcrm/shared';
 beforeEach(() => {
   vi.clearAllMocks();
   transport.post.mockResolvedValue({ success: true, data: { id: 'contact', company: 'Acme', source: 'Referral', accountId: 'account' } });
   transport.put.mockResolvedValue({ success: true, data: { id: 'contact' } });
+});
+it('excludes all retired Contact fields from transport and response compatibility', async () => {
+  const retired = Object.fromEntries(RETIRED_CONTACT_FIELDS.map(field=>[field,'legacy']));
+  expect(toContactWrite({ firstName:'Nora', ...retired } as never)).toEqual({firstName:'Nora'});
+  transport.get.mockResolvedValue({success:true,data:[{id:'contact',lifecycleStage:'CUSTOMER',customerSince:'2020-01-01',productInterests:['CCTV'],...retired}],meta:{total:1}});
+  const result = await contactsV2Api.list();
+  for (const field of RETIRED_CONTACT_FIELDS) expect(result.data[0]).not.toHaveProperty(field);
+  expect(result.data[0]).toMatchObject({lifecycleStage:'CUSTOMER',customerSince:'2020-01-01',productInterests:['CCTV']});
 });
 it('translates all display aliases to persisted Contact fields on create and edit', async () => {
   const draft = { companyName: 'Acme', leadSource: 'Referral', productInterest: ['CCTV'], accountId: 'account' };

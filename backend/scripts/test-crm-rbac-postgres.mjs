@@ -27,13 +27,15 @@ const reservation = createServer();
 await new Promise(done => reservation.listen(0, '127.0.0.1', done));
 const port = reservation.address().port;
 await new Promise(done => reservation.close(done));
-const modes = ['--permissions', '--workflow', '--completion', '--custom-fields', '--campaigns'].filter(mode => process.argv.includes(mode));
+const modes = ['--permissions', '--workflow', '--completion', '--custom-fields', '--campaigns', '--login-lockout', '--contact-retirement'].filter(mode => process.argv.includes(mode));
 if (modes.length > 1) throw new Error('Choose one disposable database mode.');
 const database = modes[0] === '--permissions' ? `leadcrm_environment_test_${process.pid}`
   : modes[0] === '--workflow' ? `leadcrm_workflow_test_${process.pid}`
   : modes[0] === '--completion' ? 'leadcrm_completion_test_1'
   : modes[0] === '--custom-fields' ? 'leadcrm_custom_fields_test'
-  : modes[0] === '--campaigns' ? `leadcrm_campaign_test_${process.pid}` : 'leadcrm_forms_test_2';
+  : modes[0] === '--campaigns' ? `leadcrm_campaign_test_${process.pid}`
+  : modes[0] === '--login-lockout' ? `leadcrm_login_lockout_${process.pid}`
+  : modes[0] === '--contact-retirement' ? `leadcrm_contact_retirement_${process.pid}` : 'leadcrm_forms_test_2';
 let started = false;
 try {
   command('initdb', ['-D', data, '-U', 'postgres', '--auth=trust', '--encoding=UTF8', '--locale=C']);
@@ -43,7 +45,7 @@ try {
   command('psql', [...connection, '-d', 'postgres'], `CREATE DATABASE "${database}";`);
   command('psql', [...connection, '-d', database], 'CREATE TABLE "_prisma_migrations" (migration_name text, finished_at timestamptz, rolled_back_at timestamptz);');
   const migrations = resolve(import.meta.dirname, '../prisma/migrations');
-  for (const name of readdirSync(migrations).sort()) {
+  for (const name of modes[0] === '--contact-retirement' ? [] : readdirSync(migrations).sort()) {
     const file = join(migrations, name, 'migration.sql');
     if (!existsSync(file)) continue;
     if (!/^[a-zA-Z0-9_]+$/.test(name)) throw new Error('Unexpected migration identifier');
@@ -51,12 +53,15 @@ try {
   }
   const url = `postgresql://postgres@127.0.0.1:${port}/${database}?connection_limit=8`;
   const suites = process.argv.slice(2).filter(arg => !arg.startsWith('--'));
-  const childArgs = process.argv.includes('--browser') ? [resolve(import.meta.dirname, 'verify-crm-rbac-browser.mjs')]
+  const childArgs = modes[0] === '--contact-retirement' ? [resolve(import.meta.dirname, 'test-contact-retirement.mjs')]
+    : process.argv.includes('--browser') ? [resolve(import.meta.dirname, 'verify-crm-rbac-browser.mjs')]
     : [resolve(import.meta.dirname, '../../node_modules/vitest/vitest.mjs'), 'run', '--no-file-parallelism', '--silent=true',
-      ...(suites.length ? suites : ['src/modules/crm/access/crm-record-access.integration.test.ts'])];
+      ...(process.argv.includes('--all') ? [] : suites.length ? suites : ['src/modules/crm/access/crm-record-access.integration.test.ts'])];
   const child = spawn(process.execPath, childArgs, {
     cwd: resolve(import.meta.dirname, '..'), windowsHide: true, stdio: 'inherit',
     env: { ...process.env, NODE_ENV: 'test', DATABASE_URL: url, DIRECT_URL: url,
+      ...(modes[0] === '--login-lockout' ? { LOGIN_LOCKOUT_POSTGRES_URL: url } : {}),
+      ...(modes[0] === '--contact-retirement' ? { CONTACT_RETIREMENT_TEST_DATABASE_URL: url, CONTACT_RETIREMENT_TEST_PSQL: join(bin,'psql.exe') } : {}),
       JWT_SECRET: 'crm-rbac-isolated-test-only', BREVO_API_KEY: '', BREVO_SMS_SENDER: '', ENCRYPTION_KEY: 'a'.repeat(64) },
   });
   process.exitCode = await new Promise((done, reject) => { child.once('error', reject); child.once('exit', code => done(code ?? 1)); });

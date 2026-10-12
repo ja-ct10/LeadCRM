@@ -1,0 +1,26 @@
+// Local browser QA only. Disposable PostgreSQL; no .env, providers or jobs.
+import { PGlite } from '@electric-sql/pglite';
+import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import { resolve } from 'node:path';
+import { replayCrmMigrations } from './replay-crm-migrations.mjs';
+const require = createRequire(import.meta.url), root = resolve(import.meta.dirname,'../..');
+const pg=await PGlite.create(); await replayCrmMigrations(pg);
+const socket=new PGLiteSocketServer({db:pg,host:'127.0.0.1',port:0,maxConnections:16}); await socket.start();
+Object.assign(process.env,{DATABASE_URL:`postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1&statement_cache_size=0`,DIRECT_URL:`postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1&statement_cache_size=0`,NODE_ENV:'development',JWT_SECRET:'contact-preview-disposable-signing-key',LOGIN_IDENTITY_SECRET:'contact-preview-disposable-identity-key',APP_URL:'http://localhost:3036',ALLOWED_ORIGINS:'http://localhost:3036'});
+const Module=require('node:module'), original=Module._resolveFilename;
+Module._resolveFilename=function(request,...args){return request==='@leadcrm/shared'?resolve(root,'backend/dist/shared/src/index.js'):original.call(this,request,...args);};
+const db=require('../dist/backend/src/config/database.config.js').default;
+const {hashSync}=require('bcryptjs');
+const tenant=await db.tenant.create({data:{name:'Disposable Contact QA',slug:'contact-retirement-preview',status:'ACTIVE',onboardingCompletedAt:new Date()}});
+await db.user.create({data:{tenantId:tenant.id,email:'contact-qa@camxian.com',firstName:'Contact',lastName:'QA',role:'Client Admin',mustChangePassword:false,onboardingCompletedAt:new Date(),passwordHash:hashSync('ContactPreview!2026',10)}});
+const product=await db.productInterest.create({data:{tenantId:tenant.id,name:'CCTV Surveillance System',dealValue:12500}});
+const account=await db.account.create({data:{tenantId:tenant.id,name:'Example Company'}});
+await db.contact.create({data:{tenantId:tenant.id,firstName:'Nora',lastName:'Lim',email:'nora@example.test',jobTitle:'Buyer',accountId:account.id,source:'Referral',notes:'Preserved customer history',lifecycleStage:'CUSTOMER',customerSince:new Date('2020-01-01'),convertedAt:new Date('2020-01-01'),productsNormalized:true,productLinks:{create:{productInterestId:product.id,position:0,interested:true,activeProduct:true}}}});
+const api=require('../dist/backend/src/app.js').default.listen(4101,'127.0.0.1');
+const frontend=spawn(process.execPath,[resolve(root,'node_modules/next/dist/bin/next'),'dev','--port','3036'],{cwd:resolve(root,'frontend'),stdio:'inherit',windowsHide:true,env:{...process.env,API_URL:'http://127.0.0.1:4101/api/v1',NEXT_PUBLIC_USE_MOCK_AUTH:'false',NEXT_PUBLIC_USE_MOCK_DATA:'false'}});
+console.log('Disposable Contact preview: http://localhost:3036; contact-qa@camxian.com / ContactPreview!2026');
+const stop=async()=>{frontend.kill();api.close();await db.$disconnect();await socket.stop();await pg.close();};
+process.once('SIGINT',()=>void stop());process.once('SIGTERM',()=>void stop());
+frontend.once('exit',()=>void stop());

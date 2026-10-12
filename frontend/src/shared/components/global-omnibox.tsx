@@ -342,7 +342,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
                             {personName(contact, 'contact')}
                           </p>
                           <p className="text-[11px] text-slate-400 truncate">
-                            {contact.companyName || (contact as Contact & { account?: { name?: string } }).account?.name || contact.customerType || 'Prospect'} &middot; {contact.email ?? 'No email'}
+                            {contact.companyName || (contact as Contact & { account?: { name?: string } }).account?.name || (contact.lifecycleStage === 'CUSTOMER' ? 'Customer' : 'Contact')} &middot; {contact.email ?? 'No email'}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

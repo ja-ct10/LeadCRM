@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { toBackendCreateContact, toBackendUpdateContact, toFrontendContact } from '../contact.adapter';
+import { toBackendCreateContact, toBackendUpdateContact, toFrontendContact, toFrontendLegacyLead } from '../contact.adapter';
 import { toFrontendLead } from '../lead.adapter';
 import type { LeadRead } from '@leadcrm/shared';
 
@@ -56,4 +56,14 @@ it('projects typed Lead reads using canonical names, company and complete relati
     accountId: 'account', account: input.account, assignedUser: user, createdByUser: user, updatedByUser: user,
     createdAt: input.createdAt, updatedAt: input.updatedAt,
   });
+});
+
+import { RETIRED_CONTACT_FIELDS } from '@leadcrm/shared';
+it('never recreates retired Contact fields and keeps legacy Lead metrics independent', () => {
+  const input = {id:'contact',score:92,linkedinUrl:'https://example.test',customerType:'Customer',recordType:'Individual',activeProducts:['CCTV'],lifecycleStage:'CUSTOMER',customerSince:'2020-01-01'};
+  const contact = toFrontendContact(input);
+  for (const field of RETIRED_CONTACT_FIELDS) expect(contact).not.toHaveProperty(field);
+  expect(contact).not.toHaveProperty('linkedin');
+  expect(contact).toMatchObject({lifecycleStage:'CUSTOMER',customerSince:'2020-01-01'});
+  expect(toFrontendLegacyLead(input).score).toBe(92);
 });

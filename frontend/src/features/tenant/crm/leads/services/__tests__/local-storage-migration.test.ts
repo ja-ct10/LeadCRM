@@ -11,7 +11,7 @@ describe('migrateLocalStorageColumns', () => {
   afterEach(() => localStorage.clear());
   const saved = () => mockSaveUserPreference.mock.calls[0][1];
 
-  it('imports supported custom choices and widths with fixed Name and contiguous orders', async () => {
+  it('imports separate-name choices and widths with contiguous orders', async () => {
     localStorage.setItem(MIGRATION_KEY, JSON.stringify([
       { id: 'firstName', visible: true, order: 0, width: 210 },
       { id: 'lastName', visible: true, order: 1 }, { id: 'email', visible: false, order: 2 },
@@ -19,7 +19,7 @@ describe('migrateLocalStorageColumns', () => {
     await migrateLocalStorageColumns();
     expect(mockSaveUserPreference.mock.calls[0][0]).toBe('leads');
     expect(saved().slice(0, 4)).toEqual([
-      { id: 'name', visible: true, order: 0 },
+      { id: 'name', visible: false, order: 0 },
       { id: 'firstName', visible: true, order: 1, width: 210 },
       { id: 'lastName', visible: true, order: 2 }, { id: 'email', visible: false, order: 3 },
     ]);

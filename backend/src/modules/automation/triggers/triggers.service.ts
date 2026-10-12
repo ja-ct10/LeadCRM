@@ -2,7 +2,7 @@ import { fireWorkflowTrigger } from '../workflows/workflow.engine';
 import { CRM_STATUSES } from '@leadcrm/shared';
 import { safeWorkflowError } from '../actions/action-dispatcher';
 interface RecordEvent { tenantId: string; actorId?: string; eventId?: string; }
-interface ContactEvent extends RecordEvent { contact: { id: string; updatedAt?: Date; status: string; score?: number; assignedUserId?: string | null; source?: string | null }; }
+interface ContactEvent extends RecordEvent { contact: { id: string; updatedAt?: Date; status: string; assignedUserId?: string | null; source?: string | null }; }
 interface LeadEvent extends RecordEvent { lead: { id: string; updatedAt?: Date; status: string; score?: number | null; source?: string | null; assignedUserId?: string | null; companyName?: string | null }; }
 interface DealEvent extends RecordEvent { deal: { id: string; title: string; value?: number | null; assignedUserId?: string | null }; }
 interface UpdatedEvent extends RecordEvent { record: { id: string; updatedAt?: Date }; changedFields: string[]; changes?: { before: Record<string, unknown>; after: Record<string, unknown> }; }

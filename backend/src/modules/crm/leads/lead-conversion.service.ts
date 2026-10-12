@@ -18,22 +18,19 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
   const source = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId }, select: { productsNormalized: true } });
   const initialInterests = source.productsNormalized ? { ids: lead.productInterestIds } : { names: lead.productInterest };
   // Merge canonical IDs, including retired Products, without resolving a reused name.
-  const mergedProducts = async (kind: 'contact' | 'account', record: { id: string; productInterests: string[]; activeProducts: string[] }, includeWon = false) => {
+  const mergedProducts = async (kind: 'contact' | 'account', record: { id: string; productInterests: string[]; activeProducts?: string[] }) => {
     const args = { where: { tenantId, id: record.id }, select: { productsNormalized: true, productLinks: true } } as const;
     const target = kind === 'contact' ? await tx.contact.findFirstOrThrow(args) : await tx.account.findFirstOrThrow(args);
-    const won = includeWon ? deals.filter(deal => deal.stage.isWon) : [];
-    const wonIds = won.flatMap(deal => deal.productInterestId ? [deal.productInterestId] : []);
-    const previous = { ...record, productInterestIds: [...target.productLinks.map(link => link.productInterestId), ...lead.productInterestIds, ...wonIds] };
-    const canonicalTarget = target.productsNormalized || (!record.productInterests.length && !record.activeProducts.length);
-    if (source.productsNormalized && canonicalTarget && won.every(deal => deal.productInterestId || !deal.productInterests.length)) {
+    const previous = { ...record, productInterestIds: [...target.productLinks.map(link => link.productInterestId), ...lead.productInterestIds] };
+    const canonicalTarget = target.productsNormalized || (!record.productInterests.length && !(kind === 'account' && record.activeProducts?.length));
+    if (source.productsNormalized && canonicalTarget) {
       return productRelationData(tx, kind, tenantId, {
         ids: [...new Set([...target.productLinks.filter(link => link.interested).map(link => link.productInterestId), ...lead.productInterestIds])],
-        activeIds: [...new Set([...target.productLinks.filter(link => link.activeProduct).map(link => link.productInterestId), ...wonIds])],
+        ...(kind === 'account' ? { activeIds: target.productLinks.filter(link => link.activeProduct).map(link => link.productInterestId) } : {}),
       }, previous, true);
     }
     const productInterests = [...new Set([...record.productInterests, ...lead.productInterest])];
-    const activeProducts = [...new Set([...record.activeProducts, ...won.flatMap(deal => deal.productInterests)])];
-    return productRelationData(tx, kind, tenantId, { names: productInterests, activeNames: activeProducts }, { ...previous, productInterests, activeProducts }, true);
+    return productRelationData(tx, kind, tenantId, { names: productInterests, ...(kind === 'account' ? { activeNames: record.activeProducts ?? [] } : {}) }, { ...previous, productInterests }, true);
   };
   const conflict = () => new ConflictError('Multiple, archived, or conflicting Contact/Account matches found. Resolve the CRM relationship before closing this Lead.');
   let contact = lead.contactId ? await tx.contact.findFirst({ where: { tenantId, id: lead.contactId } }) : null;
@@ -74,13 +71,12 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, address: lead.address,
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
     ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: 'CLOSED', lifecycleStage: 'CUSTOMER',
-    customerType: 'Customer', customerSince: now, convertedAt: now, lastStatusChangedAt: now } });
+    customerSince: now, convertedAt: now, lastStatusChangedAt: now } });
   else contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: { accountId,
-    status: 'CLOSED', lifecycleStage: 'CUSTOMER', customerType: 'Customer', customerSince: contact.customerSince ?? now,
+    status: 'CLOSED', lifecycleStage: 'CUSTOMER', customerSince: contact.customerSince ?? now,
     convertedAt: contact.convertedAt ?? now, lastStatusChangedAt: contact.status === 'CLOSED' ? contact.lastStatusChangedAt : now,
     ...await mergedProducts('contact', contact) } });
   // Link every original Deal, including archived/terminal history, without changing its sales data.
-  contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: await mergedProducts('contact', contact, true) });
   for (const deal of deals) {
     await tx.contactDeal.upsert({ where: { contactId_dealId: { contactId: contact.id, dealId: deal.id } },
       create: { tenantId, contactId: contact.id, dealId: deal.id, addedById: actorId }, update: {} });
