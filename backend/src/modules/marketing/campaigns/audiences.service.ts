@@ -4,7 +4,8 @@ import { AudienceSourceSchema, AudiencePreviewSchema, AudiencePreviewRequestSche
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
-import { resolveProducts, validateSalesOwner } from '../../crm/leads/lead-automation.service';
+import { resolveProducts } from '../../crm/leads/lead-automation.service';
+import { assertEligibleAssignedAgent, crmAssignmentRequirements } from '../../crm/access/assigned-agent-eligibility';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
 import { normalizeSmsPhone } from '../../../shared/services/sms.service';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, campaignPersonalizationAvailable, campaignApprovedVariableKeys } from '@leadcrm/shared';
@@ -84,7 +85,7 @@ export async function validateAudienceReferences(tenantId: string, dto: Audience
     if (['any', 'is_empty', 'is_not_empty'].includes(condition.operator)) continue;
     const field = campaignConditionField(condition.field, fields)!;
     if (field.type === 'products') await resolveProducts(db, tenantId, condition.value as string[]);
-    if (field.reference === 'user') await validateSalesOwner(db, tenantId, String(condition.value));
+    if (field.reference === 'user') await assertEligibleAssignedAgent(db, tenantId, String(condition.value), crmAssignmentRequirements(dto.source === 'LEADS' ? 'leads' : 'contacts'));
     if (field.reference === 'account' && !await db.account.findFirst({ where: { tenantId, id: String(condition.value), isArchived: false, deletedAt: null }, select: { id: true } })) throw new AppError('Select an available Account in this tenant.', 400);
   }
   return fields;
@@ -173,8 +174,9 @@ export function conditionsFor(input: AudienceInput, lead: boolean, _companies?: 
     if (['is_empty', 'is_not_empty'].includes(condition.operator) && ['status', 'createdAt'].includes(key)) return condition.operator === 'is_empty' ? { id: { in: [] } } : {};
     if (['is_empty', 'is_not_empty'].includes(condition.operator) && ['firstName', 'lastName'].includes(key)) return { [key]: condition.operator === 'is_empty' ? '' : { not: '' } };
     let scalar = scalarPredicate({ ...condition, value }, field.type === 'date', ['text', 'longText'].includes(field.type) || key === 'status' && lead);
-    if (condition.field === 'company' && typeof condition.value === 'string' && ['equals', 'not_equals'].includes(condition.operator) && _companies) scalar = { [condition.operator === 'equals' ? 'in' : 'notIn']: [...new Set([condition.value, ..._companies.filter(company => company.trim().toLowerCase() === String(condition.value).trim().toLowerCase())])], mode: 'insensitive' };
-    if (condition.field === 'company' && !lead) return { OR: [{ account: { is: { name: scalar } } }, { account: { is: null }, company: scalar }, { account: { is: { name: '' } }, company: scalar }] };
+    const company = key === (lead ? 'companyName' : 'company');
+    if (company && typeof condition.value === 'string' && ['equals', 'not_equals'].includes(condition.operator) && _companies) scalar = { [condition.operator === 'equals' ? 'in' : 'notIn']: [...new Set([condition.value, ..._companies.filter(company => company.trim().toLowerCase() === String(condition.value).trim().toLowerCase())])], mode: 'insensitive' };
+    if (company && !lead) return { OR: [{ account: { is: { name: scalar } } }, { account: { is: null }, company: scalar }, { account: { is: { name: '' } }, company: scalar }] };
     if (['is_empty', 'is_not_empty'].includes(condition.operator) && ['text', 'longText', 'dropdown'].includes(field.type)) return condition.operator === 'is_empty' ? { OR: [{ [key]: null }, { [key]: '' }] } : { AND: [{ [key]: { not: null } }, { [key]: { not: '' } }] };
     return { [key]: scalar };
   }) as Prisma.LeadWhereInput[] | Prisma.ContactWhereInput[];
@@ -264,7 +266,8 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   const dto = AudiencePreviewSchema.parse(input), scope = campaignScope(tenantId);
   const fields = await validateAudienceReferences(tenantId, dto, db);
   const campaignFields = await campaignFieldsForAudienceSource(tenantId, dto.source, db);
-  const companies = dto.conditions.some(condition => condition.field === 'company') ? await companyValues(tenantId, dto.source, db) : undefined;
+  const companyKey = dto.source === 'LEADS' ? 'companyName' : 'company';
+  const companies = dto.conditions.some(condition => campaignConditionField(condition.field, fields)?.technicalKey === companyKey) ? await companyValues(tenantId, dto.source, db) : undefined;
   const staff = new Set<string>(), suppressed = new Map<string, string>();
   const batch = (cursor?: string) => ({ take: 250, orderBy: { id: 'asc' as const }, where: { ...scope, ...(cursor ? { id: { gt: cursor } } : {}) } });
   if (channel === 'EMAIL') {

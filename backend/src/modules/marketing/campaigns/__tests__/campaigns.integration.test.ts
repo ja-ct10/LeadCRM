@@ -433,7 +433,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   it('saves typed audience values, filters normalized products and reuses Manila calendar days for both record types', async () => {
     await scoped(async () => {
       const product = await prisma.productInterest.create({ data: { tenantId, name: 'Audience catalog test', dealValue: 100 } });
-      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Audience Sales Agent', permissions: { create: ['leads','deals'].map(module => ({ tenantId, module, canView: true, canEdit: true })) } } });
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Audience Sales Agent', permissions: { create: ['leads','contacts','deals'].map(module => ({ tenantId, module, canView: true, canEdit: true })) } } });
       const agent = await prisma.user.create({ data: { tenantId, email: `agent-${randomUUID()}@camxian.com`, firstName: 'Valid', lastName: 'Agent', role: role.name, status: 'ACTIVE', userRoles: { create: { tenantId, roleId: role.id } } } });
       const createdAt = new Date('2026-10-06T16:00:00Z');
       const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Typed', lastName: 'Lead', companyName: 'Matching COMPANY', source: 'Website', status: 'Hot', assignedUserId: agent.id, createdAt, email: 'typed-lead@example.test', productsNormalized: true, productLinks: { create: { tenantId, productInterestId: product.id } } } });
@@ -722,6 +722,13 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect(linked.body.data.matched).toBe(1); expect(linked.body.data.recipients[0].company).toBe('Linked Company');
     const leads = await request('/marketing/audiences/companies?source=LEADS');
     expect(leads.body.data).toContain('McDonalds'); expect(leads.body.data).not.toContain('Contact Only');
+    for (const field of ['company', 'companyName']) {
+      const canonical = await request('/marketing/audiences/preview', 'POST', { source: 'LEADS', conditions: [{ field, operator: 'equals', value: 'McDonalds' }] });
+      expect(canonical.status).toBe(200); expect(canonical.body.data.eligible).toBe(1);
+      expect(canonical.body.data.recipients[0].company.trim()).toBe('McDonalds');
+      const excluded = await request('/marketing/audiences/preview', 'POST', { source: 'LEADS', conditions: [{ field, operator: 'not_equals', value: 'McDonalds' }] });
+      expect(excluded.body.data.recipients.some((row: any) => row.company.trim().toLowerCase() === 'mcdonalds')).toBe(false);
+    }
     expect((await request('/marketing/audiences/companies?source=CONTACTS')).body.data).toContain('Contact Only');
     const definition = { source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: 'McDonalds' }] };
     const preview = await request('/marketing/audiences/preview', 'POST', definition);
@@ -729,6 +736,27 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     expect((await request('/marketing/audiences', 'POST', { name: 'Company audience', ...definition })).status).toBe(201);
     expect((await request('/marketing/audiences', 'POST', { name: 'Unmatched company', source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: 'Invented' }] })).status).toBe(201);
     expect((await request('/marketing/audiences/companies', 'GET', undefined, deniedToken)).status).toBe(403);
+  });
+  it.each(['LEADS', 'CONTACTS'] as const)('validates audience owner conditions against the selected %s module grants', async source => {
+    await scoped(async () => {
+      const module = source === 'LEADS' ? 'leads' : 'contacts';
+      const grants = await Promise.all(['canView', 'canEdit'].map(flag => prisma.roleDefinition.create({ data: {
+        tenantId, name: `Audience ${module} ${flag} ${randomUUID()}`, permissions: { create: { tenantId, module, [flag]: true } },
+      } })));
+      const agent = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@example.test`, firstName: 'Module', lastName: 'Agent', role: grants[0].name,
+        userRoles: { create: grants.map(role => ({ tenantId, roleId: role.id })) } } });
+      const input = { name: `Module owner ${randomUUID()}`, source, conditions: [{ field: 'assignedUserId', operator: 'equals', value: agent.id }] };
+      expect((await createAudience(tenantId, input)).source).toBe(source);
+      await expect(createAudience(tenantId, { ...input, source: source === 'LEADS' ? 'CONTACTS' : 'LEADS' })).rejects.toThrow('Choose an active eligible agent');
+      await prisma.rolePermission.updateMany({ where: { tenantId, roleId: grants[1].id, module }, data: { canEdit: false } });
+      await expect(createAudience(tenantId, input)).rejects.toThrow('Choose an active eligible agent');
+      await prisma.rolePermission.updateMany({ where: { tenantId, roleId: grants[1].id, module }, data: { canEdit: true } });
+      for (const data of [{ status: 'INACTIVE' as const }, { role: 'Client Admin', status: 'ACTIVE' as const }]) {
+        await prisma.user.update({ where: { id: agent.id }, data });
+        await expect(createAudience(tenantId, input)).rejects.toThrow('Choose an active eligible agent');
+      }
+      expect(sendMail).not.toHaveBeenCalled();
+    });
   });
   it('rejects new Multi campaigns while preserving historical reads', async () => {
     expect((await request('/marketing/campaigns', 'POST', { name: 'New Multi', type: 'MULTI_CHANNEL' })).status).toBe(400);
