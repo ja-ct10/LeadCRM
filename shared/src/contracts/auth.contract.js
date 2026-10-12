@@ -1,6 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PASSWORD_RECOVERY_SEND_ERROR = exports.PASSWORD_RECOVERY_RESEND_SECONDS = exports.PASSWORD_RECOVERY_MESSAGE = void 0;
+exports.PASSWORD_RECOVERY_SEND_ERROR = exports.PASSWORD_RECOVERY_RESEND_SECONDS = exports.PASSWORD_RECOVERY_MESSAGE = exports.LOGIN_LOCKOUT_MESSAGE = exports.INVALID_LOGIN_MESSAGE = exports.LOGIN_LOCKOUT_MS = exports.LOGIN_FAILURE_LIMIT = exports.LOGIN_LOCKOUT_CODE = void 0;
+exports.LOGIN_LOCKOUT_CODE = 'AUTH_LOGIN_LOCKED';
+exports.LOGIN_FAILURE_LIMIT = 5;
+exports.LOGIN_LOCKOUT_MS = 5 * 60 * 1000;
+exports.INVALID_LOGIN_MESSAGE = 'Invalid email or password.';
+exports.LOGIN_LOCKOUT_MESSAGE = 'Too many failed login attempts. Please try again in 5 minutes.';
 exports.PASSWORD_RECOVERY_MESSAGE = 'If an account exists with this email address, you will receive a password reset link shortly.';
 exports.PASSWORD_RECOVERY_RESEND_SECONDS = 60;
 exports.PASSWORD_RECOVERY_SEND_ERROR = 'Unable to send the password reset email. Please try again later.';

@@ -96,6 +96,8 @@ function deploymentPlan(records, localNames) {
     '20261125000000_crm_assignment_policy',
     // Forward notification catalog/triggers only; no relationship columns retire.
     '20261126000000_notification_policy',
+    // Additive shared login counters/IP budgets; no account or session changes.
+    '20261127000000_login_attempt_lockout',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

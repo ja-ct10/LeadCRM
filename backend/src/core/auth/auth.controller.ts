@@ -2,6 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 import prisma from '../../config/database.config';
 import { hashPassword } from '../../shared/helpers/crypto';
 import { loginUser } from './auth.service';
+import { createLockoutProof, restoreLoginLockout, LoginLockedError, LOGIN_LOCKOUT_COOKIE, LOGIN_LOCKOUT_COOKIE_OPTIONS } from './login-attempt.service';
 import { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
 import { revokeSession } from './session.service';
@@ -16,6 +17,7 @@ export {
 
 
 export async function login(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const result = await loginUser(req.body, {
       userAgent: req.headers['user-agent'],
@@ -28,8 +30,17 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
 
     res.json({ success: true, data: { user: result.user } });
   } catch (err) {
+    if (err instanceof LoginLockedError) {
+      res.cookie(LOGIN_LOCKOUT_COOKIE, createLockoutProof(err), { ...LOGIN_LOCKOUT_COOKIE_OPTIONS, expires: new Date(err.retryAt!) });
+    }
     next(err);
   }
+}
+
+export async function loginLockout(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
+  try { res.json(await restoreLoginLockout(req.cookies?.[LOGIN_LOCKOUT_COOKIE], req.body.email)); }
+  catch (error) { next(error); }
 }
 
 export async function logout(req: Request, res: Response, next: NextFunction): Promise<void> {

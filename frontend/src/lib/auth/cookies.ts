@@ -12,7 +12,7 @@ export function rewriteSetCookie(raw: string): string {
 
 export function forwardAuthCookies(source: Headers, destination: Headers): void {
   for (const cookie of source.getSetCookie()) {
-    if (cookie.startsWith('leadcrm_token=')) {
+    if (cookie.startsWith('leadcrm_token=') || cookie.startsWith('leadcrm_login_lockout=')) {
       destination.append('Set-Cookie', rewriteSetCookie(cookie));
     }
   }

@@ -19,7 +19,7 @@ const model = () => ({
 export const db = {
   user: model(), tenant: model(), roleDefinition: model(), rolePermission: model(),
   userRole: model(), pipeline: model(), account: { ...model(), count: vi.fn() },
-  passwordResetToken: model(), auditLog: model(), session: model(), $transaction: vi.fn(),
+  passwordResetToken: model(), auditLog: model(), session: model(), loginAttemptState: model(), $transaction: vi.fn(), $queryRaw: vi.fn(), $executeRaw: vi.fn(),
 };
 
 export function resetDb() {
@@ -31,6 +31,9 @@ export function resetDb() {
   });
   Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, onboardingCompletedAt: null, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
   db.$transaction.mockImplementation(work => work(db));
+  db.$queryRaw.mockImplementation((strings: TemplateStringsArray) => strings.join('').includes('LoginAttemptState')
+    ? [{ identityKey: 'unit-test-identity', failedAttempts: 0, lastFailedAt: null, lockedUntil: null, lockedRejectionLoggedAt: null, updatedAt: new Date() }]
+    : strings.join('').includes('clock_timestamp') ? [{ now: new Date() }] : [{ id: user.id }]);
   db.user.findFirst.mockResolvedValue(user);
   db.user.findMany.mockResolvedValue([user]);
   db.user.findUnique.mockResolvedValue(user);

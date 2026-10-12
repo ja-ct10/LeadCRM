@@ -4,7 +4,7 @@ import { invalidateApiPageCache } from '@/shared/cache/invalidate-api-page-cache
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 import type { ApiError } from '@leadcrm/shared';
 
-export type ApiRequestError = Error & Partial<Pick<ApiError['error'], 'code' | 'retryAt'>> & { status?: number; fieldErrors?: Record<string, string[]> };
+export type ApiRequestError = Error & Partial<Pick<ApiError['error'], 'code' | 'retryAt' | 'serverNow'>> & { status?: number; fieldErrors?: Record<string, string[]> };
 
 // LeadCRM API Client
 // Sends HttpOnly cookies (leadcrm_token) on every request via credentials: 'include'.
@@ -69,6 +69,7 @@ async function request<T>(
     if (typeof rawError === 'object' && rawError !== null && typeof (rawError as Record<string, unknown>).code === 'string') {
       error.code = (rawError as Record<string, unknown>).code as string;
       if (typeof rawError.retryAt === 'string' && Number.isFinite(Date.parse(rawError.retryAt))) error.retryAt = rawError.retryAt;
+      if (typeof rawError.serverNow === 'string' && Number.isFinite(Date.parse(rawError.serverNow))) error.serverNow = rawError.serverNow;
     }
     error.status = res.status;
     // Preserve HTTP rate-limit guidance as an absolute time for callers.

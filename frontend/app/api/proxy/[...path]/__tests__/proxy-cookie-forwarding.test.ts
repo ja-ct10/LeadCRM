@@ -6,6 +6,23 @@ import { rewriteSetCookie } from '@/lib/auth/cookies';
 
 beforeEach(() => vi.stubEnv('API_URL', 'http://localhost:4000/api/v1'));
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
+it('forwards only the opaque lockout proof and preserves its expiry, Retry-After and no-store response', async () => {
+  const fetchMock = vi.fn().mockResolvedValue(new Response('{"success":false,"error":{"code":"AUTH_LOGIN_LOCKED"}}', {
+    status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': '299',
+      'Set-Cookie': 'leadcrm_login_lockout=opaque-proof; Expires=Tue, 01 Jan 2030 00:05:00 GMT; HttpOnly; SameSite=Lax; Path=/' },
+  }));
+  vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('http://app.example.com/api/proxy/auth/login-lockout', {
+    method: 'POST', headers: { Cookie: 'leadcrm_login_lockout=opaque-proof; unrelated=private' }, body: '{}',
+  });
+  const response = await POST(req, { params: Promise.resolve({ path: ['auth','login-lockout'] }) });
+  expect(fetchMock.mock.calls[0][1].headers.Cookie).toBe('leadcrm_login_lockout=opaque-proof');
+  expect(response.status).toBe(429); expect(response.headers.get('retry-after')).toBe('299');
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(response.headers.get('set-cookie')).toContain('leadcrm_login_lockout=opaque-proof');
+  expect(response.headers.get('set-cookie')).toContain('2030'); expect(response.headers.get('set-cookie')).toContain('HttpOnly');
+  expect(response.headers.get('set-cookie')).not.toContain('leadcrm_token=');
+});
 it('delivers pipeline metadata events before the upstream stream closes', async () => {
   let controller: ReadableStreamDefaultController<Uint8Array>;
   const bytes = new TextEncoder().encode('event: pipeline-change\ndata: {"metadata":"committed-hash"}\n\n');

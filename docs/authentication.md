@@ -4,6 +4,12 @@ LeadCRM is an internally managed CRM for Camxian Technologies. PostgreSQL is the
 
 See [security cleanup](security-cleanup-mfa.md) for password behavior and migration history.
 
+Login allows five consecutive failed credential submissions; the **sixth**
+submission activates a durable five-minute account cooldown before checking its
+password. Successful authentication before that submission and cooldown expiry
+reset the counter. See [login lockout implementation and evidence](login-lockout-verification.md)
+for concurrency, shared IP limits, browser restoration and deployment requirements.
+
 ## Supported flows
 
 - All new users: sign in with email/password → change temporary password when required → informational LeadCRM onboarding → dashboard with existing role permissions.

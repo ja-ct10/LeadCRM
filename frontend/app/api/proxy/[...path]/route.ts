@@ -53,9 +53,9 @@ async function proxyRequest(
   // so the browser sends the cookie to same-origin /api/proxy, and this
   // route handler forwards it to the backend via a server-to-server
   // request that is never subject to third-party cookie restrictions.
-  if (token) {
-    headers['Cookie'] = `leadcrm_token=${token}`;
-  }
+  const lockoutProof = req.cookies.get('leadcrm_login_lockout')?.value;
+  const cookies = [token ? `leadcrm_token=${token}` : '', lockoutProof ? `leadcrm_login_lockout=${lockoutProof}` : ''].filter(Boolean);
+  if (cookies.length) headers['Cookie'] = cookies.join('; ');
 
   // Forward the real client IP so the backend rate limiter sees the actual
   // user address rather than the hosting proxy IP. The backend trusts only

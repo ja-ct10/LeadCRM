@@ -6,12 +6,14 @@ import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
-import { StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, type PasswordRecoveryResponse } from '@leadcrm/shared';
+import { StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, LOGIN_LOCKOUT_CODE, type PasswordRecoveryResponse } from '@leadcrm/shared';
 import type { ApiRequestError } from '@/lib/api/client';
 import { CamxianBrandPanel } from './camxian-brand-panel';
+import { useLoginLockout } from '../auth/use-login-lockout';
+import { LoginLockoutDialog } from '../auth/login-lockout-dialog';
 
 const loginSchema = z.object({
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().toLowerCase().max(254).email('Invalid email address'),
   password: z.string().min(1, 'Password is required').max(72, 'Password is too long'),
 });
 
@@ -53,6 +55,11 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
   const [showResetConfirm, setShowResetConfirm] = useState(false);
 
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const loginPending = useRef(false);
+  const lockout = useLoginLockout(email);
+  useEffect(() => {
+    if (lockout.locked) { setPassword(''); toast.dismiss('leadcrm-login-error'); }
+  }, [lockout.locked]);
 
   // RC-10 fix: removed race-condition post-login navigation.
   // After login() resolves, AuthContext commits the new user state and AuthGuard's
@@ -74,6 +81,8 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loginPending.current || lockout.locked || lockout.checking) return;
+    loginPending.current = true;
     setError('');
     setIsSigningIn(true);
 
@@ -82,22 +91,29 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
     } catch (err: unknown) {
       const zodErr = err as { errors?: Array<{message: string}> };
       const errorMessage = zodErr.errors?.[0]?.message || 'Validation failed';
-      toast.error(errorMessage);
+      toast.error(errorMessage, { id: 'leadcrm-login-error' });
       setIsSigningIn(false);
+      loginPending.current = false;
       return;
     }
 
     try {
-      const success = await login(email, password);
+      const success = await login(email.trim().toLowerCase(), password);
       if (!success) {
         // Edge case: API returned 2xx but no user object — structural backend issue.
         // login() throws for all real errors (401, 403, 502, network), so this
         // branch only fires when the response shape is unexpectedly empty.
-        toast.error('Sign in failed. Please try again or contact support.');
+        toast.error('Sign in failed. Please try again or contact support.', { id: 'leadcrm-login-error' });
         setIsSigningIn(false);
       }
       // On success, AuthGuard's useEffect handles role-based navigation.
     } catch (err: unknown) {
+      const requestError = err as ApiRequestError;
+      if (requestError.code === LOGIN_LOCKOUT_CODE && lockout.activate(requestError)) {
+        setPassword('');
+        setError('');
+        return;
+      }
       // login() throws with the real server message — display it directly so
       // the user knows what actually went wrong instead of a generic fallback.
       // Examples: "Invalid email or password", "Account is inactive",
@@ -105,7 +121,10 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
       const message = err instanceof Error ? err.message : 'Sign in failed. Please try again.';
       setError(message);
-      toast.error(message);
+      toast.error(message, { id: 'leadcrm-login-error' });
+      setIsSigningIn(false);
+    } finally {
+      loginPending.current = false;
       setIsSigningIn(false);
     }
   };
@@ -471,6 +490,8 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
   // Main login view with split-screen layout
   return (
+    <>
+    <LoginLockoutDialog open={lockout.open} onOpenChange={lockout.setOpen} countdown={lockout.countdown} seconds={lockout.seconds} />
     <div className="min-h-[var(--app-viewport-height)] flex flex-col lg:flex-row">
       <CamxianBrandPanel onNavigate={onNavigate} />
 
@@ -498,6 +519,9 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
+                    disabled={isSigningIn}
+                    autoComplete="username"
+                    maxLength={254}
                     className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
                     placeholder="name@email.com"
                     required
@@ -514,6 +538,8 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       type={showPassword ? 'text' : 'password'}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      disabled={isSigningIn || lockout.locked}
+                      autoComplete="current-password"
                       className="w-full h-11 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/8 rounded-xl px-4 pr-11 text-slate-900 dark:text-white text-sm placeholder:text-slate-400 focus:outline-none focus:border-blue-500 transition-colors"
                       placeholder="••••••••••"
                       required
@@ -551,16 +577,23 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
                 <button
                   type="submit"
-                  disabled={isSigningIn}
+                  disabled={isSigningIn || lockout.locked || lockout.checking}
                   className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors active:scale-95"
                 >
-                  {isSigningIn ? 'Signing in…' : 'Login'}
+                  {isSigningIn ? 'Signing in…' : lockout.locked ? `Try again in ${lockout.countdown}` : 'Login'}
                 </button>
+                {lockout.locked && (
+                  <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+                    Sign-in available in <span className="font-semibold tabular-nums">{lockout.countdown}</span>.{' '}
+                    <button type="button" onClick={() => lockout.setOpen(true)} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">View timer</button>
+                  </p>
+                )}
               </form>
 
               <p className="text-center text-sm text-slate-500">LeadCRM is Camxian Technologies’ internal workspace for leads, customers, pipelines, and workflows. Use your @camxian.com employee account. Contact your administrator for access.</p>
         </div>
       </div>
     </div>
+    </>
   );
 }

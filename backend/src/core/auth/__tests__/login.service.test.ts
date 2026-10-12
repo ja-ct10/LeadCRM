@@ -26,6 +26,7 @@ beforeEach(() => {
   resetDb();
   vi.mocked(signToken).mockReturnValue('server-only-token');
   vi.stubEnv('NODE_ENV', 'production');
+  vi.stubEnv('JWT_SECRET', 'disposable-login-unit-key');
   vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
   vi.mocked(comparePassword).mockResolvedValue(true);
 });

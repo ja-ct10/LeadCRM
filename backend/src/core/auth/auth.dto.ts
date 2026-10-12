@@ -7,9 +7,16 @@ export const LoginSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).email('Valid email required'),
   password: z.string().min(1, 'Password is required').max(72),
 });
+// The identity gate precedes password validation so any sixth submission for a
+// valid identity triggers cooldown, including a malformed/empty password body.
+export const LoginIdentitySchema = LoginSchema.pick({ email: true }).passthrough();
 
 export const RefreshSchema = z.object({
   refreshToken: z.string().min(1, 'Refresh token is required'),
+});
+
+export const LoginLockoutSchema = z.object({
+  email: z.string().trim().toLowerCase().max(254).email().optional(),
 });
 
 export type LoginDto = z.infer<typeof LoginSchema>;

@@ -4,11 +4,12 @@ import prisma from '../../config/database.config';
 /** Retry serialization conflicts between concurrent account updates. */
 export async function authTransaction<T>(
   work: (tx: Prisma.TransactionClient) => Promise<T>,
+  isolationLevel: Prisma.TransactionIsolationLevel = Prisma.TransactionIsolationLevel.Serializable,
 ): Promise<T> {
   for (let attempt = 0; ; attempt++) {
     try {
       return await prisma.$transaction(work, {
-        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        isolationLevel,
         timeout: 30000,
       });
     } catch (error) {

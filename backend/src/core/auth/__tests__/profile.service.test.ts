@@ -1,7 +1,10 @@
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import sharp from 'sharp';
 import { db, resetDb, user } from './auth-test-db';
+const storage = vi.hoisted(() => ({ put: vi.fn(), read: vi.fn(), remove: vi.fn() }));
 vi.mock('../../../config/database.config', () => ({ default: db }));
+// The runtime uses private mounted storage; keep this boundary fixture aligned.
+vi.mock('../../../shared/services/private-object-storage', () => ({ privateObjectStorage: () => storage }));
 import { updateSelfProfile, uploadSelfAvatar, readSelfAvatar } from '../profile.service';
 import { AVATAR_MAX_BYTES } from '@leadcrm/shared';
 
@@ -9,9 +12,7 @@ beforeEach(() => {
   resetDb();
   Object.assign(user, { avatarUrl: null });
   db.user.update.mockImplementation(({ data }) => { Object.assign(user, data); return user; });
-  vi.stubEnv('SUPABASE_URL', 'https://storage.example.com');
-  vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY', 'test-server-key');
-  vi.stubEnv('SUPABASE_AVATAR_BUCKET', 'avatars');
+  storage.put.mockResolvedValue(undefined); storage.remove.mockResolvedValue(undefined);
 });
 afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
@@ -39,29 +40,24 @@ it('rejects missing tenant ownership and obsolete profile timezone fields', asyn
   await expect(updateSelfProfile(user.id, user.tenantId, { firstName: 'Ada', ...{ timeZone: 'Asia/Manila' } })).rejects.toThrow();
 });
 it('uploads only decoded, optimized images and persists a durable private reference', async () => {
-  const fetchMock = vi.fn().mockResolvedValue(new Response('{}'));
-  vi.stubGlobal('fetch', fetchMock);
   const png = await sharp({ create: { width: 800, height: 600, channels: 3, background: '#123456' } }).png().toBuffer();
   const result = await uploadSelfAvatar(user.id, user.tenantId, png, 'image/png');
   expect(result.avatarUrl).toMatch(/^\/api\/proxy\/auth\/profile\/avatar\/[a-f0-9-]{36}$/);
   expect(user.avatarUrl).toBe(result.avatarUrl);
-  const [url, options] = fetchMock.mock.calls[0];
-  expect(url).toContain(`/avatars/${user.tenantId}/${user.id}/`);
-  expect(options.headers).toMatchObject({ 'Content-Type': 'image/webp', 'x-upsert': 'false' });
-  expect(await sharp(Buffer.from(options.body)).metadata()).toMatchObject({ format: 'webp', width: 512, height: 512 });
-  expect(result.avatarUrl).not.toContain('test-server-key');
+  const [key, bytes] = storage.put.mock.calls[0];
+  expect(key).toMatch(new RegExp(`^${user.tenantId}/${user.id}/[a-f0-9-]{36}\\.webp$`));
+  expect(await sharp(bytes).metadata()).toMatchObject({ format: 'webp', width: 512, height: 512 });
 });
 it('rejects disguised, oversized and unsupported uploads before storage', async () => {
-  const fetchMock = vi.fn(); vi.stubGlobal('fetch', fetchMock);
   for (const [bytes, mime] of [[Buffer.from('<svg/>'), 'image/png'], [Buffer.from('text'), 'text/html'], [Buffer.alloc(AVATAR_MAX_BYTES + 1), 'image/jpeg']] as const) {
     await expect(uploadSelfAvatar(user.id, user.tenantId, bytes, mime)).rejects.toThrow();
   }
-  expect(fetchMock).not.toHaveBeenCalled();
+  expect(storage.put).not.toHaveBeenCalled();
 });
 it('keeps the previous database avatar on storage failure and denies other avatar references', async () => {
-  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{}', { status: 500 })));
+  storage.put.mockRejectedValue(new Error('Unable to access private file storage.'));
   const png = await sharp({ create: { width: 20, height: 20, channels: 3, background: '#fff' } }).png().toBuffer();
-  await expect(uploadSelfAvatar(user.id, user.tenantId, png, 'image/png')).rejects.toThrow('Unable to store');
+  await expect(uploadSelfAvatar(user.id, user.tenantId, png, 'image/png')).rejects.toThrow('Unable to access private file storage');
   expect(db.user.update).not.toHaveBeenCalled();
   await expect(readSelfAvatar(user.id, user.tenantId, 'another-user-avatar')).rejects.toThrow('not found');
 });

@@ -1,5 +1,6 @@
 import rateLimit from 'express-rate-limit';
 import { createHash } from 'crypto';
+export { loginIpRateLimiter } from './login-ip-rate-limit.middleware';
 
 // In development, use very high limits to avoid blocking local testing
 const isDev = process.env.NODE_ENV !== 'production';
@@ -13,7 +14,8 @@ export const rateLimitMiddleware = rateLimit({
   message: { success: false, error: 'Too many requests — please try again later.' },
 });
 
-// Strict limit for credential-guessing surfaces
+// Existing password-change budget. Login uses shared short-window IP protection
+// plus durable identity protection; this 15-minute limiter never runs on login.
 // In dev: effectively unlimited so local testing is never blocked
 export const authRateLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,

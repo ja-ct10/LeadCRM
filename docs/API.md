@@ -53,6 +53,7 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | Method | Path | Responsibility |
 | --- | --- | --- |
 | POST | /auth/login | Password verification and a normal HttpOnly session cookie |
+| POST | /auth/login-lockout | Restore active cooldown only with a signed HttpOnly proof from a denied login; optional normalized email verifies the proof's identity |
 | GET | /auth/me | Current database-backed account state, including mustChangePassword, passwordChangedAt, and read-only Group summaries |
 | PATCH | /auth/profile | Update only the authenticated user's firstName, lastName, phone, jobTitle; returns the canonical user |
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private persistent storage and returns the canonical user |

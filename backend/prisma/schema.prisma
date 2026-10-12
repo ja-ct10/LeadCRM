@@ -1385,6 +1385,26 @@ model EmailDeliveryLog {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 // PASSWORD RESET TOKEN
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
+// Global normalized login identities include unknown and legacy duplicate emails.
+// Only keyed digests are stored; this state is independent of browser sessions.
+model LoginAttemptState {
+  identityKey             String   @id
+  failedAttempts          Int      @default(0)
+  lastFailedAt            DateTime?
+  lockedUntil             DateTime?
+  lockedRejectionLoggedAt DateTime?
+  updatedAt               DateTime @default(now()) @updatedAt
+}
+
+model LoginIpRateLimit {
+  identityKey  String   @id
+  requests     Int
+  windowEndsAt DateTime
+  updatedAt    DateTime @default(now()) @updatedAt
+
+  @@index([windowEndsAt])
+}
+
 model PasswordResetToken {
   userId    String?
   id        String   @id @default(uuid())

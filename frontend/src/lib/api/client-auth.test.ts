@@ -3,6 +3,14 @@ import { apiClient } from './client';
 
 afterEach(() => vi.unstubAllGlobals());
 
+it('preserves authoritative lockout expiry and server time without retrying credentials', async () => {
+  const error = { code: 'AUTH_LOGIN_LOCKED', message: 'Cooldown', retryAt: '2030-01-01T00:05:00.000Z', serverNow: '2030-01-01T00:00:00.000Z' };
+  const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ success: false, error }), { status: 429 }));
+  vi.stubGlobal('fetch', fetchMock);
+  await expect(apiClient.post('/auth/login', {})).rejects.toMatchObject(error);
+  expect(fetchMock).toHaveBeenCalledOnce();
+});
+
 it.each(['/crm/leads', '/crm/contacts', '/crm/accounts', '/crm/deals', '/administration/users', '/administration/users/user/permissions', '/automation/workflows'])('uses the credentialed same-origin path for %s', async path => {
   const fetchMock = vi.fn().mockResolvedValue(new Response('{"data":[]}'));
   vi.stubGlobal('fetch', fetchMock);

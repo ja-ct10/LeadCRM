@@ -20,11 +20,14 @@ export function errorMiddleware(
   const prismaMeta = errAsUnknown.meta as Record<string, unknown> | undefined;
   const importRequest = /\/crm\/(leads|contacts|accounts|deals)\/imports(?:\/|$)/.test(req.path);
   const recoveryRequest = /\/auth\/(forgot-password|reset-password)(?:\/|$)/.test(req.path);
-  const sensitiveRequest = importRequest || recoveryRequest;
+  const loginRequest = /\/auth\/login(?:-lockout)?(?:\/|$)/.test(req.path);
+  const sensitiveRequest = importRequest || recoveryRequest || loginRequest;
 
-  console.error('[Error]', {
+  // Expected credential denials use bounded LoginSecurity events. Avoid a second
+  // security/error entry for every request throughout an active cooldown.
+  if (!(loginRequest && err instanceof AppError && (err.statusCode === 401 || err.code === 'AUTH_LOGIN_LOCKED'))) console.error('[Error]', {
     name: err.name,
-    message: importRequest ? 'CRM import request failed' : recoveryRequest ? 'Password recovery request failed' : err.message,
+    message: importRequest ? 'CRM import request failed' : recoveryRequest ? 'Password recovery request failed' : loginRequest ? 'Login request failed' : err.message,
     ...(prismaCode !== undefined && { code: prismaCode }),
     ...(!sensitiveRequest && prismaMeta !== undefined && { meta: prismaMeta }),
     path: req.path,
@@ -33,10 +36,11 @@ export function errorMiddleware(
   });
 
   if (err instanceof AppError) {
-    if (err.retryAt) res.setHeader('Retry-After', String(Math.max(1, Math.ceil((Date.parse(err.retryAt) - Date.now()) / 1000))));
+    if (loginRequest) res.setHeader('Cache-Control', 'no-store');
+    if (err.retryAt) res.setHeader('Retry-After', String(Math.max(1, Math.ceil((Date.parse(err.retryAt) - (err.serverNow ? Date.parse(err.serverNow) : Date.now())) / 1000))));
     res.status(err.statusCode).json({
       success: false,
-      error: err.code ? { code: err.code, message: err.message, ...(err.retryAt ? { retryAt: err.retryAt } : {}) } : err.message,
+      error: err.code ? { code: err.code, message: err.message, ...(err.retryAt ? { retryAt: err.retryAt } : {}), ...(err.serverNow ? { serverNow: err.serverNow } : {}) } : err.message,
     });
     return;
   }

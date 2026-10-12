@@ -34,6 +34,18 @@ export interface AuthResponse {
 
 export type LoginResponse = AuthResponse;
 
+export const LOGIN_LOCKOUT_CODE = 'AUTH_LOGIN_LOCKED';
+export const LOGIN_FAILURE_LIMIT = 5;
+export const LOGIN_LOCKOUT_MS = 5 * 60 * 1000;
+export const INVALID_LOGIN_MESSAGE = 'Invalid email or password.';
+export const LOGIN_LOCKOUT_MESSAGE = 'Too many failed login attempts. Please try again in 5 minutes.';
+
+/** Available only with the signed, HttpOnly proof issued on a lockout response. */
+export interface LoginLockoutResponse {
+  success: true;
+  data: { locked: boolean; retryAt?: string; serverNow: string };
+}
+
 /** Public recovery response deliberately contains no eligibility or tenant information. */
 export interface PasswordRecoveryResponse {
   success: true;
