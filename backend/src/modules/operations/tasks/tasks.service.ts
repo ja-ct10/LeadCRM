@@ -1,4 +1,5 @@
 import type { z } from "zod";
+import { createHash } from 'node:crypto';
 import { Prisma } from "@prisma/client";
 import {
   CreateTaskSchema,
@@ -17,7 +18,9 @@ import {
 } from "@leadcrm/shared";
 import * as repo from "./tasks.repository";
 import { hydrateTaskRecords } from './tasks.context';
-import { writeAuditLog } from "../../../core/audit/audit.service";
+import { recordTaskHistory, taskState } from './tasks.history';
+import { resolveCrmActor, authorizedWorkflowScope } from '../../crm/access/crm-record-access.service';
+import { hasModulePermission } from '@leadcrm/shared';
 import { tenantContext } from "../../../core/tenant/tenant-context";
 import {
   NotFoundError,
@@ -177,7 +180,7 @@ async function validateReferences(
     !(await repo.findTaskUser(data.assignedUserId, tenantId, client))
   )
     throw new NotFoundError("Active workspace assignee");
-  for (const kind of ["lead", "contact", "deal", "account"] as const) {
+  for (const kind of ["deal"] as const) {
     const ids = taskAssociationIds(data, kind);
     if (
       ids.length &&
@@ -187,38 +190,35 @@ async function validateReferences(
       throw new NotFoundError("Related record");
   }
 }
-function auditState(task: repo.TaskRow) {
-  return {
-    createdById: task.createdById,
-    ...storedLinks(task),
-    title: task.title,
-    description: task.description,
-    status: task.status,
-    priority: task.priority,
-    dueDate: task.dueDate,
-    assignedUserId: task.assignedUserId,
-    assignedById: task.assignedById,
-    completedAt: task.completedAt,
-    completedById: task.completedById,
-    leadId: task.leadLinks[0]?.leadId ?? null,
-    contactId: task.contactLinks[0]?.contactId ?? null,
-    dealId: task.dealLinks[0]?.dealId ?? null,
-    accountId: task.accountLinks[0]?.accountId ?? null,
-    isArchived: task.isArchived,
-  };
-}
 export async function createTask(
   tenantId: string,
   userId: string,
   input: unknown,
+  workflowDeals?: (client: repo.TaskClient) => Promise<string[]>,
 ) {
   requireScope(tenantId);
-  const dto = parseInput(CreateTaskSchema, input);
+  const { requestId, ...dto } = parseInput(CreateTaskSchema, input);
+  const fingerprint = createHash('sha256').update(JSON.stringify(dto)).digest('hex');
   if (dto.reminderAt)
     throw new ValidationError("Task reminder delivery is not available.");
   const task = await repo.withTaskTransaction(async (client) => {
+    if (requestId) {
+      const receipt = await client.auditLog.findFirst({ where: { tenantId, userId, action: 'task.created',
+        metadata: { path: ['taskRequestId'], equals: requestId } } });
+      if (receipt) {
+        if ((receipt.metadata as { requestFingerprint?: string })?.requestFingerprint !== fingerprint) throw new AppError('This Task request was already used with different values.', 409);
+        const previous = receipt.entityId ? await repo.findTaskById(receipt.entityId, tenantId, client) : null;
+        if (!previous) throw new AppError('The original Task is unavailable.', 409);
+        await authorizeTask(client, tenantId, userId, 'canCreate', {});
+        return previous;
+      }
+    }
+    if (workflowDeals) {
+      const ids = await workflowDeals(client);
+      if (JSON.stringify(ids) !== JSON.stringify(taskAssociationIds(dto, 'deal'))) throw new ValidationError('Workflow Deal context changed. Retry this execution.');
+    }
+    await authorizeTask(client, tenantId, userId, "canCreate", dto);
     await validateReferences(tenantId, userId, dto, client);
-    await validateDependentLinks(tenantId, dto, undefined, client);
     const { data, links } = splitLinks(dto);
     const created = await repo.createTask(
       {
@@ -232,17 +232,11 @@ export async function createTask(
       },
       client,
     );
-    if (!Object.keys(links).length) return created;
     await repo.replaceTaskLinks(created, links, client);
-    return (await repo.findTaskById(created.id, tenantId, client))!;
-  });
-  await writeAuditLog({
-    tenantId,
-    userId,
-    action: "task.created",
-    entityType: "Task",
-    entityId: task.id,
-    after: auditState(task),
+    const task = (await repo.findTaskById(created.id, tenantId, client))!;
+    await recordTaskHistory(client, userId, task, undefined, { ...authorizedWorkflowScope(tenantId),
+      ...(requestId ? { taskRequestId: requestId, requestFingerprint: fingerprint } : {}) });
+    return task;
   });
   return task;
 }
@@ -257,10 +251,10 @@ export async function updateTask(
   const result = await repo.withTaskTransaction(async (client) => {
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before || before.isArchived) throw new NotFoundError("Active task");
+    await authorizeTask(client, tenantId, userId, "canEdit", dto, before);
     await validateReferences(tenantId, userId, dto, client);
     if (dto.reminderAt && dto.reminderAt !== before.reminderAt?.toISOString())
       throw new ValidationError("Task reminder delivery is not available.");
-    await validateDependentLinks(tenantId, dto, before, client);
     const split = splitLinks(dto);
     const data: Prisma.TaskUncheckedUpdateInput = { ...split.data };
     if (dto.assignedUserId && dto.assignedUserId !== before.assignedUserId)
@@ -273,33 +267,17 @@ export async function updateTask(
       data.completedAt = null;
       data.completedById = null;
     }
-    if (
-      dto.status === "completed" &&
-      before.status === "completed" &&
-      Object.keys(dto).length === 1
-    )
+    const candidate = { ...taskState(before), ...split.data, ...split.links };
+    if (JSON.stringify(candidate) === JSON.stringify(taskState(before)))
       return { before, task: before, changed: false };
     let task = await repo.updateTask(id, tenantId, data, client);
     if (Object.keys(split.links).length) {
       await repo.replaceTaskLinks(task, split.links, client);
       task = (await repo.findTaskById(id, tenantId, client))!;
     }
+    await recordTaskHistory(client, userId, task, before, reassignReason ? { reassignReason } : {});
     return { before, task, changed: true };
   });
-  if (result.changed)
-    await writeAuditLog({
-      tenantId,
-      userId,
-      action:
-        dto.status === "completed" && result.before.status !== "completed"
-          ? "task.completed"
-          : "task.updated",
-      entityType: "Task",
-      entityId: id,
-      before: auditState(result.before),
-      after: auditState(result.task),
-      ...(reassignReason ? { metadata: { reassignReason } } : {}),
-    });
   return result.task;
 }
 export function completeTask(id: string, tenantId: string, userId: string) {
@@ -311,27 +289,15 @@ export async function archiveTask(
   userId: string,
 ) {
   requireScope(tenantId);
-  const { before, task } = await repo.withTaskTransaction(async (client) => {
+  const { task } = await repo.withTaskTransaction(async (client) => {
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before) throw new NotFoundError("Task");
+    await authorizeTask(client, tenantId, userId, "canArchive", {});
     await validateReferences(tenantId, userId, {}, client);
-    return {
-      before,
-      task: before.isArchived
-        ? before
-        : await repo.updateTask(id, tenantId, { isArchived: true }, client),
-    };
+    const task = before.isArchived ? before : await repo.updateTask(id, tenantId, { isArchived: true }, client);
+    await recordTaskHistory(client, userId, task, before);
+    return { before, task };
   });
-  if (!before.isArchived)
-    await writeAuditLog({
-      tenantId,
-      userId,
-      action: "task.archived",
-      entityType: "Task",
-      entityId: id,
-      before: auditState(before),
-      after: auditState(task),
-    });
   return task;
 }
 export async function bulkTasks(
@@ -439,29 +405,41 @@ export async function getTaskOptions(
   );
 }
 
-/** New plural writes obey the cascading picker; legacy Workflow inputs retain their contract. */
-async function validateDependentLinks(
-  tenantId: string,
-  dto: TaskLinkInput,
-  before: repo.TaskRow | undefined,
-  client: repo.TaskClient,
-) {
-  if (!TASK_LINK_KINDS.some((kind) => dto[`${kind}Ids`] !== undefined)) return;
-  const effective = {
-    ...(before ? storedLinks(before) : {}),
-    ...splitLinks(dto).links,
+/** Task grants and association eligibility are enforced in the mutation transaction. */
+async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: string,
+  action: 'canCreate' | 'canEdit' | 'canArchive', dto: TaskLinkInput & { status?: string; assignedUserId?: string }, before?: repo.TaskRow) {
+  const policy = await resolveCrmActor(client, { tenantId, userId });
+  const system = authorizedWorkflowScope(tenantId);
+  const permitted = (flag: 'canCreate' | 'canEdit' | 'canArchive' | 'canAssign' | 'canComplete') => {
+    if (!system && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', flag)) throw new AppError('Access denied', 403);
   };
-  const leads = effective.leadIds ?? [];
-  if (!leads.length) return;
-  for (const kind of ["contact", "deal", "account"] as const) {
-    const ids = effective[`${kind}Ids`] ?? [];
-    if (
-      ids.length &&
-      (await repo.findTaskLinkIds(kind, ids, tenantId, client, leads))
-        .length !== ids.length
-    )
-      throw new ValidationError(
-        "Select only records explicitly linked to the selected leads.",
-      );
+  const fields = Object.keys(dto);
+  const actionOnly = before && fields.length > 0 && fields.every(field => field === 'assignedUserId' || field === 'status' && dto.status === 'completed');
+  if (!actionOnly) permitted(action);
+  if (dto.assignedUserId !== undefined && dto.assignedUserId !== (before?.assignedUserId ?? userId)) permitted('canAssign');
+  if (dto.status === 'completed' && before?.status !== 'completed') permitted('canComplete');
+  if (dto.dealId !== undefined || dto.dealIds !== undefined) {
+    if (!system && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'deals', 'canView')) throw new AppError('Access denied', 403);
+    const ids = taskAssociationIds(dto, 'deal');
+    const previous = before?.dealLinks.map(row => row.dealId) ?? [];
+    // Removing a Deal is an association mutation too; recheck both sides.
+    const checked = [...new Set([...ids, ...previous])];
+    const deals = await client.deal.findMany({ where: { tenantId, id: { in: checked } }, select: { id: true, assignedUserId: true } });
+    if (deals.length !== checked.length) throw new NotFoundError('Related Deal');
+    if (!system && policy.assignmentRestricted && deals.some(deal => deal.assignedUserId !== userId))
+      throw new AppError('You can only associate tasks with Deals assigned to you.', 403, 'CRM_ASSIGNMENT_REQUIRED');
   }
+}
+
+export async function restoreTask(id: string, tenantId: string, userId: string) {
+  requireScope(tenantId);
+  return repo.withTaskTransaction(async client => {
+    const before = await repo.findTaskById(id, tenantId, client);
+    if (!before || !before.isArchived) throw new NotFoundError('Archived task');
+    const policy = await resolveCrmActor(client, { tenantId, userId });
+    if (!policy.clientAdmin && (!hasModulePermission(policy.permissions, 'archived_data', 'canRestore') || !hasModulePermission(policy.permissions, 'tasks', 'canView'))) throw new AppError('Access denied', 403);
+    const task = await repo.updateTask(id, tenantId, { isArchived: false }, client);
+    await recordTaskHistory(client, userId, task, before);
+    return task;
+  });
 }

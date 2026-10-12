@@ -187,7 +187,7 @@ async function authorizeActivity(req: import('express').Request, _res: import('e
       const ids = [...new Set([input[key], (existing as Record<string, unknown>)[key]].filter(Boolean).map(String))];
       if (!ids.length) continue;
       const where = { tenantId: req.user!.tenantId, id: { in: ids }, isArchived: false };
-      const count = key === 'contactId' ? await prisma.contact.count({ where }) : key === 'accountId' ? await prisma.account.count({ where }) : key === 'dealId' ? await prisma.deal.count({ where }) : await prisma.task.count({ where });
+      const count = key === 'contactId' ? await prisma.contact.count({ where }) : key === 'accountId' ? await prisma.account.count({ where }) : key === 'dealId' ? await prisma.deal.count({ where }) : await prisma.task.count({ where: { tenantId: req.user!.tenantId, id: { in: ids }, ...(req.method === 'GET' ? {} : { isArchived: false }) } });
       if (count !== ids.length) throw new NotFoundError('Active related record');
     }
     next();

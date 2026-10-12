@@ -34,6 +34,7 @@ const system = new AsyncLocalStorage<{ tenantId: string; provenance: string }>()
 export function runAuthorizedWorkflow<T>(tenantId: string, executionId: string, work: () => T): T {
   return system.run({ tenantId, provenance: `workflow:${executionId}` }, work);
 }
+export const authorizedWorkflowScope = (tenantId: string) => system.getStore()?.tenantId === tenantId ? system.getStore() : undefined;
 
 export async function resolveCrmActor(db: Tx, actor: Actor): Promise<CrmRecordAccessPolicy & { permissions: ResolvedPermissions }> {
   const user = await db.user.findFirst({ where: { id: actor.userId, tenantId: actor.tenantId }, include: {

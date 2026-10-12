@@ -137,6 +137,7 @@ exports.RETIRED_WORKFLOW_ACTIONS = ['send_campaign', 'create_notification'];
 function getAvailableActions() {
     return [
         { type: 'create_task', label: 'Create Task', description: 'Create a linked follow-up task.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
+                dealId: { type: 'string', label: 'Deal ID (required when several related Deals exist)', required: false },
                 title: { type: 'string', label: 'Task title', required: true }, description: { type: 'string', label: 'Description', required: false },
                 assignedUserId: { type: 'user', label: 'Assign to (defaults to assigned agent)', required: false },
                 assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },

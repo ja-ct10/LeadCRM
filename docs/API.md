@@ -8,8 +8,9 @@ The backend includes implemented CRM, authentication, administration, campaigns,
 See the [database audit](database/normalization-report.md) for relations, compatibility fields, and verified deployment notes, and [engagement and Deal creation](engagement-deal-creation.md) for the additive Deal creation receipt. Existing databases use the forward migration deployment command, `npm --prefix backend run db:deploy`.
 
 Deal `leadId`/`contactId` and Task `leadId`/`contactId`/`dealId`/`accountId` remain
-public API projections of ordered junctions. Plural association fields remain
-supported; singular response IDs identify the first ordered participant. They are
+public API projections of ordered junctions. Task writes accept only `dealIds`
+(or compatible singular `dealId`); legacy direct Task associations remain readable.
+Singular response IDs identify the first ordered participant. They are
 not independent database columns in the final schema. Mailbox thread associations
 use `MailboxThreadAssociation`; generic mailbox-thread preferences are retired.
 Column retirement uses `db:relations:retire` only after exact-release verification.
@@ -353,6 +354,23 @@ and applicable workload/limit without reserving work or changing assignment stat
 | POST | `/operations/tasks/bulk` | Edit/assign/complete/archive selected Tasks | Corresponding action grant |
 
 Task due dates use the shared Manila conversion for local calendar/date-time inputs; explicit ISO instants are preserved. There is no registered service-order API.
+
+New Tasks require at least one eligible same-tenant Deal. Direct `leadId(s)`,
+`contactId(s)`, and `accountId(s)` writes are rejected. Conflicting singular/plural
+Deal inputs and explicit empty Deal updates are rejected; omitted associations
+remain unchanged, including legacy Tasks without Deals. Sales association changes
+require direct assignment to every added or removed Deal. `requestId` is an
+optional creation UUID: same actor/tenant/payload retries return the original Task;
+different values return 409. Concurrent mutations may return 409 and can be retried.
+
+CRM Task lists derive participants through Deal relationships and retain legacy
+direct links. Lead, Contact, and Account panels open Task details read-only; Deal
+panels and the standalone module retain authorized management. Lifecycle Activity
+and AuditLog events commit with Task mutations and preserve event-time context.
+Task history requires `tasks.view`, including after archive. Workflows use the
+triggering Deal, or the unique eligible related Deal; missing/ambiguous matches
+fail visibly. An optional validated action `dealId` resolves configured cases.
+See [Tasks implementation and verification](tasks-deal-only-implementation.md).
 
 ---
 

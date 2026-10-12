@@ -1,8 +1,8 @@
 import { normalizeCrmStatus } from '@leadcrm/shared';
-import {taskAssociationWhere, taskContextWhere} from "../../operations/tasks/tasks.repository";
+import {taskContextWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
-import { withEmailContent } from '../activities/activities.repository';
+import { withEmailContent, activityRecordContext } from '../activities/activities.repository';
 
 const DEFAULT_LIMIT = 10;
 
@@ -45,14 +45,14 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
     }),
     // Recent activities
     prisma.activity.findMany({
-      where: { leadId: id, tenantId },
+      where: { tenantId, AND: [activityRecordContext('lead', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
       take: limit,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
-      where: { tenantId, isArchived: false, ...taskAssociationWhere("lead",id,tenantId) },
+      where: { tenantId, isArchived: false, ...taskContextWhere("lead",id,tenantId) },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },
@@ -107,7 +107,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     }),
     // Recent activities
     prisma.activity.findMany({
-      where: { tenantId, OR: [{ contactId: id }, { lead: { tenantId, contactId: id, convertedAt: { not: null } } }] },
+      where: { tenantId, AND: [activityRecordContext('contact', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
       take: limit,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, description: true, leadId: true, contactId: true },
@@ -138,7 +138,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
 /**
  * Get relationships for an Account record.
  */
-export async function getAccountRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, page = 1) {
+export async function getAccountRelationships(id: string, tenantId: string, limit = DEFAULT_LIMIT, page = 1, includeTasks = false) {
   const account = await prisma.account.findFirst({
     where: { id, tenantId, isArchived: false },
     select: { id: true },
@@ -166,7 +166,7 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
       select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
     }),
     prisma.activity.findMany({
-      where: { accountId: id, tenantId },
+      where: { tenantId, AND: [activityRecordContext('account', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
       take: limit,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true },
@@ -216,14 +216,14 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     }),
     // Recent activities
     prisma.activity.findMany({
-      where: { dealId: id, tenantId },
+      where: { tenantId, AND: [activityRecordContext('deal', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
       take: limit,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true },
     }),
     // Tasks
     includeTasks ? prisma.task.findMany({
-      where: { tenantId, isArchived: false, ...taskAssociationWhere("deal",id,tenantId) },
+      where: { tenantId, isArchived: false, ...taskContextWhere("deal",id,tenantId) },
       take: limit,
       orderBy: { createdAt: 'desc' },
       select: { id: true, title: true, status: true, priority: true, dueDate: true },

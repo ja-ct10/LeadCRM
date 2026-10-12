@@ -18,14 +18,13 @@ const db = vi.hoisted(() => {
     contact: model(),
     deal: model(),
     account: model(),
+    taskDeal: { deleteMany: vi.fn(), createMany: vi.fn() },
     $transaction: vi.fn(),
   };
 });
 vi.mock("../../../../config/database.config", () => ({ default: db }));
-vi.mock("../../../../core/audit/audit.service", () => ({
-  writeAuditLog: vi.fn(),
-}));
-import { writeAuditLog } from "../../../../core/audit/audit.service";
+vi.mock('../tasks.history', async importOriginal => ({ ...(await importOriginal<any>()), recordTaskHistory: vi.fn() }));
+import { recordTaskHistory } from '../tasks.history';
 import * as service from "../tasks.service";
 
 const tenantId = "task-tenant";
@@ -36,12 +35,14 @@ const input = {
   dueDate: "2026-10-01T09:00:00.000Z",
   status: "pending" as const,
   priority: "High" as const,
+  dealIds: ["deal"],
 };
 const original = {
   leadLinks: [], contactLinks: [], dealLinks: [], accountLinks: [],
   ...input,
   id: "task-id",
   tenantId,
+  dueDate: new Date(input.dueDate),
   description: null,
   reminderAt: null,
   leadId: null,
@@ -69,7 +70,8 @@ beforeEach(() => {
       id: where.id,
       tenantId,
       status: "ACTIVE",
-      role: "Sales Agent",
+      role: "Client Admin",
+      tenant: { status: "ACTIVE" }, userRoles: [],
     }),
   );
   db.task.findFirst.mockResolvedValue({ ...original });
@@ -80,8 +82,8 @@ beforeEach(() => {
     Promise.resolve({ ...original, ...data }),
   );
   db.task.updateMany.mockResolvedValue({ count: 1 });
-  for (const model of [db.lead, db.contact, db.deal, db.account])
-    model.findMany.mockResolvedValue([]);
+  for (const model of [db.lead, db.contact, db.account]) model.findMany.mockResolvedValue([]);
+  db.deal.findMany.mockImplementation(({ where }) => Promise.resolve(where.id.in.filter((id: string) => id === "deal").map((id: string) => ({ id, assignedUserId: actorId }))));
 });
 
 describe("Task service authority", () => {
@@ -141,7 +143,7 @@ describe("Task service authority", () => {
         ),
       ).rejects.toThrow();
       expect(db.task.create).not.toHaveBeenCalled();
-      expect(writeAuditLog).not.toHaveBeenCalled();
+      expect(recordTaskHistory).not.toHaveBeenCalled();
     },
   );
 
@@ -156,9 +158,7 @@ describe("Task service authority", () => {
       completedById: actorId,
       completedAt: expect.any(Date),
     });
-    expect(writeAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({ action: "task.completed", userId: actorId }),
-    );
+    expect(recordTaskHistory).toHaveBeenCalledWith(db, actorId, expect.objectContaining({ completedById: actorId }), expect.any(Object), {});
   });
 
   it("clears completion metadata when a completed task is reopened", async () => {
@@ -207,14 +207,7 @@ describe("Task service authority", () => {
         data: expect.objectContaining({ assignedById: actorId }),
       }),
     );
-    expect(writeAuditLog).toHaveBeenCalledWith(
-      expect.objectContaining({
-        before: expect.objectContaining({
-          assignedUserId: input.assignedUserId,
-        }),
-        after: expect.objectContaining({ assignedUserId: "new-owner" }),
-      }),
-    );
+    expect(recordTaskHistory).toHaveBeenCalledWith(db, actorId, expect.objectContaining({ assignedUserId: 'new-owner' }), expect.objectContaining({ assignedUserId: input.assignedUserId }), {});
   });
 
   it("rejects edits of archived tasks", async () => {
@@ -239,7 +232,7 @@ describe("Task service authority", () => {
         }),
       ),
     ).rejects.toBe(outage);
-    expect(writeAuditLog).not.toHaveBeenCalled();
+    expect(recordTaskHistory).not.toHaveBeenCalled();
   });
 
   it("rejects permanent deletion without touching storage", async () => {

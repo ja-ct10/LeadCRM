@@ -49,6 +49,15 @@ function validateLinkInputs(data: TaskLinkInput, ctx: z.RefinementCtx) {
       });
   }
 }
+function validateDealWrites(data: TaskLinkInput, ctx: z.RefinementCtx) {
+  validateLinkInputs(data, ctx);
+  for (const kind of ['lead', 'contact', 'account'] as const) {
+    if (data[`${kind}Id`] !== undefined || data[`${kind}Ids`] !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [`${kind}Ids`],
+        message: 'Tasks accept Deal associations only. Related CRM records are resolved through Deals.' });
+    }
+  }
+}
 const instant = z.string().datetime({ offset: true });
 const taskFields = z.object({
   title: z.string().trim().min(1, "Enter a task title.").max(255),
@@ -68,13 +77,26 @@ const taskFields = z.object({
   accountIds: linkIds.optional(),
 });
 export const CreateTaskSchema = taskFields
+  .extend({ requestId: z.string().uuid().optional() })
   .strict()
-  .superRefine(validateLinkInputs);
+  .superRefine((data, ctx) => {
+    validateDealWrites(data, ctx);
+    if (!taskAssociationIds(data, 'deal').length) ctx.addIssue({
+      code: z.ZodIssueCode.custom, path: ['dealIds'],
+      message: 'Select at least one Deal to associate with this task.',
+    });
+  });
 export const UpdateTaskSchema = taskFields
   .partial()
   .extend({ reassignReason: z.string().trim().max(1000).optional() })
   .strict()
-  .superRefine(validateLinkInputs);
+  .superRefine((data, ctx) => {
+    validateDealWrites(data, ctx);
+    if ((data.dealIds !== undefined || data.dealId !== undefined) && !taskAssociationIds(data, 'deal').length) ctx.addIssue({
+      code: z.ZodIssueCode.custom, path: ['dealIds'],
+      message: 'Select at least one Deal to associate with this task.',
+    });
+  });
 export type CreateTaskInput = z.input<typeof CreateTaskSchema>;
 export type CreateTaskDto = z.output<typeof CreateTaskSchema>;
 export type UpdateTaskDto = z.output<typeof UpdateTaskSchema>;

@@ -8,6 +8,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import type { PermissionKey } from '../../../shared/constants/permissions';
 import { loadArchiveDatePage } from './archive-date-page';
 import { resolveCrmActor } from '../../crm/access/crm-record-access.service';
+import { restoreTask } from '../../operations/tasks/tasks.service';
 
 async function applyAssignmentRestorePolicy(actor: Actor, rows: ArchivedRecord[]) {
   const policy = await resolveCrmActor(prisma, actor);
@@ -128,8 +129,8 @@ export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestor
   let result: { count: number };
   switch (params.type) {
     case 'Task':
-      result = await prisma.task.updateMany({ where, data: { isArchived: false } });
-      break;
+      await restoreTask(params.id, actor.tenantId, actor.userId);
+      return;
     case 'Pipeline':
       result = await prisma.pipeline.updateMany({ where, data: { isArchived: false } });
       break;

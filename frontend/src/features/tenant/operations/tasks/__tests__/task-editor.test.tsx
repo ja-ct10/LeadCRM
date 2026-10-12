@@ -115,22 +115,12 @@ it("preserves the due instant and existing identity on successful edits", async 
   );
   expect(mocks.addTask).not.toHaveBeenCalled();
 });
-it("prefills the explicit Contact association for creation", async () => {
-  mocks.addTask.mockResolvedValue(undefined);
-  render(<TaskEditor links={{ contactId: "profile-id" }} onClose={vi.fn()} />);
-  fireEvent.change(await screen.findByLabelText("Title *"), {
-    target: { value: "Profile follow up" },
-  });
-  fireEvent.click(screen.getByRole("button", { name: "Create task" }));
-  await waitFor(() =>
-    expect(mocks.addTask).toHaveBeenCalledWith(
-      expect.objectContaining({
-        contactIds: ["profile-id"],
-        title: "Profile follow up",
-        assignedUserId: "owner",
-      }),
-    ),
-  );
+it('requires a Deal for creation even when a legacy CRM context is supplied', async () => {
+  render(<TaskEditor links={{ contactId: 'profile-id' }} onClose={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Follow up' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Select at least one Deal to associate with this task.');
+  expect(mocks.addTask).not.toHaveBeenCalled();
 });
 it("does not render a save action without the existing edit permission", async () => {
   mocks.canEdit = false;
@@ -139,97 +129,20 @@ it("does not render a save action without the existing edit permission", async (
   expect(screen.queryByRole("button", { name: "Save changes" })).toBeNull();
 });
 
-it("uses Contact wording, clears dependent links on Lead changes, and sends the selected Lead scope", async () => {
-  mocks.options.mockResolvedValue({
-    data: [{ id: "new-lead", label: "New Lead" }],
-  });
-  render(
-    <TaskEditor
-      task={{
-        ...task,
-        leadIds: ["old-lead"],
-        contactIds: ["old-contact"],
-        dealIds: ["old-deal"],
-        accountIds: ["old-account"],
-      }}
-      onClose={vi.fn()}
-    />,
-  );
-  expect(
-    await screen.findByRole("button", { name: "Associate task to contact" }),
-  ).toBeTruthy();
-  expect(screen.queryByText(/client profile/i)).toBeNull();
-  fireEvent.click(
-    screen.getByRole("button", { name: "Associate task to lead" }),
-  );
-  fireEvent.click(await screen.findByRole("checkbox", { name: "New Lead" }));
-  expect(screen.getByRole("status").textContent).toContain(
-    "Lead selection changed",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  expect(
-    screen.getByRole("button", { name: "Associate task to contact" })
-      .textContent,
-  ).toContain("Select a contact");
-  mocks.options.mockResolvedValue({ data: [] });
-  fireEvent.click(
-    screen.getByRole("button", { name: "Associate task to contact" }),
-  );
-  expect(
-    await screen.findByText("No related contacts for the selected leads."),
-  ).toBeTruthy();
-  expect(mocks.options).toHaveBeenLastCalledWith(
-    "contact",
-    "",
-    expect.any(AbortSignal),
-    ["old-lead", "new-lead"],
-  );
-  expect(screen.getByRole("button", { name: "Create a contact" })).toBeTruthy();
-  fireEvent.click(screen.getByRole("button", { name: "Done" }));
-  fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
-  await waitFor(() =>
-    expect(mocks.updateTask).toHaveBeenCalledWith(
-      "task",
-      expect.objectContaining({
-        leadIds: ["old-lead", "new-lead"],
-        contactIds: [],
-        dealIds: [],
-        accountIds: [],
-      }),
-    ),
-  );
+it('shows only the existing multi-Deal selector and keeps legacy associations informational', () => {
+  render(<TaskEditor task={{ ...task, leadIds: ['legacy'], leads: [{ id: 'legacy', firstName: 'Historical', lastName: 'Lead' }] }} onClose={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: /Associate task to (lead|contact|account)/ })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Associate task to deal' })).toBeTruthy();
+  expect(screen.getByText('Historical Lead')).toBeTruthy();
+  expect(screen.getByText('Associated Deals (0)')).toBeTruthy();
 });
-
-it.each(["contact", "deal", "account"])(
-  "offers creation in an empty related %s menu",
-  async (kind) => {
-    mocks.options.mockResolvedValue({ data: [] });
-    render(<TaskEditor links={{ leadIds: ["lead"] }} onClose={vi.fn()} />);
-    fireEvent.click(
-      await screen.findByRole("button", { name: `Associate task to ${kind}` }),
-    );
-    expect(
-      await screen.findByText(`No related ${kind}s for the selected leads.`),
-    ).toBeTruthy();
-    expect(
-      screen.getByRole("button", {
-        name: `Create ${kind === "account" ? "an" : "a"} ${kind}`,
-      }),
-    ).toBeTruthy();
-  },
-);
-
-it("does not offer Lead relationship changes without Lead edit permission", async () => {
-  mocks.canEditLeads = false;
-  mocks.options.mockResolvedValue({ data: [] });
-  render(<TaskEditor links={{ leadIds: ["lead"] }} onClose={vi.fn()} />);
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Associate task to contact" }),
-  );
-  await screen.findByText("No related contacts for the selected leads.");
-  expect(screen.queryByRole("button", { name: "Create a contact" })).toBeNull();
+it('prevents every mutation action in a read-only Task context', () => {
+  render(<TaskEditor task={task} readOnly onClose={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /Create a deal/ })).toBeNull();
+  expect((screen.getByLabelText('Title *') as HTMLInputElement).closest('fieldset')?.disabled).toBe(true);
 });
-
 it('keeps picker changes as a draft until Done and discards them on Cancel', () => {
   render(<TaskEditor onClose={vi.fn()} />);
   const trigger = screen.getByLabelText('Due date and time *');
@@ -246,15 +159,11 @@ it('keeps picker changes as a draft until Done and discards them on Cancel', () 
   expect(screen.queryByRole('group', { name: 'Choose due date and time' })).toBeNull();
 });
 
-it('retains the originating Deal when contextual task relationship choices change', async () => {
-  mocks.options.mockResolvedValue({ data: [{ id: 'new-lead', label: 'New Lead' }] });
+it('retains the originating Deal and sends no direct associations during creation', async () => {
   mocks.addTask.mockResolvedValue(undefined);
   render(<TaskEditor links={{ dealIds: ['originating-deal'] }} preserveContextLinks onClose={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Deal follow up' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Associate task to lead' }));
-  fireEvent.click(await screen.findByRole('checkbox', { name: 'New Lead' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
   fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
-  await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ dealIds: ['originating-deal'], assignedUserId: 'owner', title: 'Deal follow up' })));
-  expect(mocks.addTask.mock.calls[0][0]).not.toHaveProperty('dealId');
+  await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ dealIds: ['originating-deal'], title: 'Deal follow up' })));
+  for (const kind of ['lead','contact','account']) expect(mocks.addTask.mock.calls[0][0]).not.toHaveProperty(kind + 'Ids');
 });

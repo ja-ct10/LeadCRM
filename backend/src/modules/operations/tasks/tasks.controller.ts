@@ -4,12 +4,16 @@ import { hasModulePermission, type TaskRecord } from "@leadcrm/shared";
 import { findUserEffectivePermissions } from "../../administration/roles/roles.repository";
 
 async function visibleTaskContext(req: Request, tasks: TaskRecord[]): Promise<TaskRecord[]> {
-  if (req.user!.role === "Client Admin" || !tasks.some(task => task.relatedRecords?.length)) return tasks;
+  if (req.user!.role === "Client Admin") return tasks;
   const permissions = await findUserEffectivePermissions(req.user!.userId, req.user!.tenantId);
   return tasks.map(task => ({
     ...task,
     relatedRecords: task.relatedRecords?.filter(record =>
       hasModulePermission(permissions, `${record.kind}s`, "canView")),
+    ...(!hasModulePermission(permissions, 'deals', 'canView') ? { deals: [], deal: null } : {}),
+    ...(!hasModulePermission(permissions, 'leads', 'canView') ? { leads: [], lead: null } : {}),
+    ...(!hasModulePermission(permissions, 'contacts', 'canView') ? { contacts: [], contact: null } : {}),
+    ...(!hasModulePermission(permissions, 'accounts', 'canView') ? { accounts: [], account: null } : {}),
   }));
 }
 

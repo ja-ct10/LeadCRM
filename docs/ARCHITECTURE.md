@@ -28,7 +28,7 @@ Related relationship, audit, and record writes commit together. Tenant-scoped ID
 | Roles | `RoleDefinition`, `UserRole`, and `RolePermission`; metadata and permission replacement save in one transaction |
 | Customer records | Leads, Contacts, Accounts and their relationships share tenant validation, imports, file history, and CRM activity |
 | Deals | Canonical `accountId`; ordered Lead/Contact associations; current Product price snapshots at creation; governed stage changes |
-| Tasks | Ordered CRM associations, immutable creator, current Assigned Agent, contextual inherited reads after conversion, activity/assignment history, shared Manila date conversion; unfinished work transfers during user deactivation |
+| Tasks | New writes require ordered TaskDeal associations; CRM participants derive through Deals. Legacy junctions remain readable. Immutable creator and event-time Activity/AuditLog history commit with mutations; Lead/Contact/Account panels are read-only. Shared Manila dates and deactivation transfers remain supported. See [Task verification](tasks-deal-only-implementation.md). |
 | Forms | Saved definitions and submissions; new Leads use protected Sales Group rotation in the sales transaction; retries preserve one turn and returning assignments; publish permission remains separate |
 | Reporting | Reports reuses Dashboard's authorized server aggregates, filters, real stage labels, and CSV definitions |
 | Gmail | Persisted scoped mailbox history and owned account; recipient/CRM assignment checks apply to manual, scheduled, and Workflow sends |

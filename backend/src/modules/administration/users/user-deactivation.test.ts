@@ -5,14 +5,16 @@ const state = vi.hoisted(() => ({
     user: { findFirst: vi.fn(), count: vi.fn(), update: vi.fn() },
     lead: { count: vi.fn(), findMany: vi.fn() }, contact: { count: vi.fn(), findMany: vi.fn() },
     account: { count: vi.fn(), findMany: vi.fn() }, deal: { count: vi.fn(), findMany: vi.fn() },
-    task: { count: vi.fn(), findMany: vi.fn(), updateMany: vi.fn() },
+    task: { count: vi.fn(), findMany: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     activity: { createMany: vi.fn() }, auditLog: { create: vi.fn() }, session: { updateMany: vi.fn() },
-  }, validateOwner: vi.fn(),
+  }, validateOwner: vi.fn(), history: vi.fn(),
 }));
 vi.mock('../../../config/database.config', () => ({ default: state.db }));
 vi.mock('../../crm/leads/lead-automation.service', () => ({
   salesTransaction: (work: (tx: unknown) => unknown) => work(state.db), validateSalesOwner: state.validateOwner,
 }));
+
+vi.mock('../../operations/tasks/tasks.history', () => ({ recordTaskHistory: state.history }));
 
 import { assertNoOwnership, deactivateUser, deactivationImpact } from './user-deactivation.service';
 const target = { id: 'departing', firstName: 'Leaving', lastName: 'Agent', role: 'Sales', status: 'ACTIVE' };
@@ -32,7 +34,8 @@ beforeEach(() => {
   tasks = ['pending', 'in_progress', 'blocked', 'completed', 'cancelled'].map((status, i) => ({ id: `task-${i}`, tenantId: 'tenant', assignedUserId: target.id, isArchived: false, status }));
   tasks.push({ ...tasks[0], id: 'archived', isArchived: true }, { ...tasks[0], id: 'foreign', tenantId: 'another-tenant' });
   state.db.task.count.mockImplementation(async ({ where }) => tasks.filter(task => matches(task, where)).length);
-  state.db.task.findMany.mockImplementation(async ({ where }) => tasks.filter(task => matches(task, where)).map(task => ({ id: task.id })).sort((a, b) => a.id.localeCompare(b.id)));
+  state.db.task.findMany.mockImplementation(async ({ where }) => tasks.filter(task => where.assignedUserId ? matches(task, where) : task.tenantId === where.tenantId && where.id.in.includes(task.id)).map(task => ({ ...task })).sort((a, b) => a.id.localeCompare(b.id)));
+  state.db.task.findFirst.mockImplementation(async ({ where }) => tasks.find(task => task.id === where.id));
   state.db.task.updateMany.mockImplementation(async ({ where, data }) => { const rows = tasks.filter(task => matches(task, where)); rows.forEach(task => Object.assign(task, data)); return { count: rows.length }; });
 });
 
@@ -54,7 +57,8 @@ it('reassigns unfinished Tasks, records history and revokes sessions while prese
   expect(result.counts.tasks).toBe(3);
   expect(tasks.filter(task => task.assignedUserId === 'replacement').map(task => task.id)).toEqual(['task-0', 'task-1', 'task-2']);
   expect(tasks.filter(task => ['completed', 'cancelled'].includes(task.status) || task.isArchived || task.tenantId !== 'tenant').every(task => task.assignedUserId === target.id)).toBe(true);
-  expect(state.db.activity.createMany).toHaveBeenCalledWith({ data: expect.arrayContaining([expect.objectContaining({ taskId: 'task-0', tenantId: 'tenant', createdById: 'admin', metadata: expect.objectContaining({ reason: 'user_deactivation' }) })]) });
+  expect(state.history).toHaveBeenCalledTimes(3);
+  expect(state.history).toHaveBeenCalledWith(state.db, 'admin', expect.objectContaining({ id: 'task-0', assignedUserId: 'replacement' }), expect.objectContaining({ id: 'task-0' }), expect.objectContaining({ reason: 'user_deactivation' }));
   expect(state.db.user.update).toHaveBeenCalledWith({ where: { tenantId: 'tenant', id: target.id }, data: { status: 'INACTIVE' } });
   expect(state.db.session.updateMany).toHaveBeenCalledWith({ where: { userId: target.id, revokedAt: null }, data: { revokedAt: expect.any(Date) } });
   expect(state.db.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ metadata: expect.objectContaining({ tasks: 3 }) }) });

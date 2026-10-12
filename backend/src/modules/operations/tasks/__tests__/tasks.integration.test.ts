@@ -6,6 +6,7 @@ import { tenantContext } from "../../../../core/tenant/tenant-context";
 import { issueAuthSession } from "../../../../core/auth/auth-session";
 import app from "../../../../app";
 import { reassignTaskLinks } from '../tasks.repository';
+import { dispatchTenantNotifications } from '../../../notifications/notification-events.service';
 const url = new URL(process.env.DATABASE_URL ?? "postgresql://invalid/");
 const disposable =
   ["localhost", "127.0.0.1"].includes(url.hostname) &&
@@ -55,6 +56,7 @@ describe.skipIf(!disposable)(
       assignedUserId: owner.id,
       dueDate: "2026-01-01T09:30:00.000Z",
       priority: "High",
+      dealIds: [deal.id],
     });
     beforeAll(async () => {
       const stamp = Date.now();
@@ -175,128 +177,6 @@ describe.skipIf(!disposable)(
         await new Promise<void>((resolve) => server.close(() => resolve()));
       await prisma.$disconnect();
     });
-    it('hydrates legacy Account-only tasks consistently in list and detail responses', async () => {
-      const task = await scope(() => prisma.task.create({ data: { ...draft('Legacy account task'), tenantId, accountLinks: { create: { accountId: account.id, position: 0 } } } }));
-      const detail = (await call(`/operations/tasks/${task.id}`)).body.data;
-      const listing = (await call('/operations/tasks?search=Legacy%20account%20task')).body.data[0];
-      for (const row of [detail, listing]) {
-        expect(row.account).toMatchObject({ id: account.id, name: account.name });
-        expect(row.accounts).toEqual([{ id: account.id, name: account.name }]);
-      }
-    });
-    it('shows a Deal task’s existing CRM connections without rewriting its selected associations', async () => {
-      const linkedLead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Context' } }));
-      const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Linked task deal', leadDeals: { create: { leadId: linkedLead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, accountId: account.id } }));
-      const saved = await call('/operations/tasks', 'POST', { ...draft('Workflow context task'), dealId: linkedDeal.id });
-      expect(saved.status, JSON.stringify(saved.body)).toBe(201);
-      const task = saved.body.data;
-      const listing = (await call('/operations/tasks?search=Workflow%20context%20task')).body.data[0];
-      const detail = (await call(`/operations/tasks/${task.id}`)).body.data;
-      for (const row of [task, listing, detail]) {
-        expect(row.relatedRecords).toEqual(expect.arrayContaining([
-          expect.objectContaining({ kind: 'lead', id: linkedLead.id }), expect.objectContaining({ kind: 'contact', id: contact.id }), expect.objectContaining({ kind: 'account', id: account.id }),
-        ]));
-        expect(row.leadIds).toEqual([]);
-        expect(row.contactIds).toEqual([]);
-        expect(row.accountIds).toEqual([]);
-      }
-    });
-      it('limits additional CRM context to the reader’s module View permissions', async () => {
-        const linkedLead = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Permission', lastName: 'Context' } }));
-        const linkedDeal = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title: 'Permission context deal', leadDeals: { create: { leadId: linkedLead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } }, accountId: account.id } }));
-        const created = await call('/operations/tasks', 'POST', { ...draft('Permission context task'), dealId: linkedDeal.id });
-        expect(created.status).toBe(201);
-        const taskId = created.body.data.id;
-        for (const path of [`/operations/tasks/${taskId}`, '/operations/tasks?search=Permission%20context%20task']) {
-          const response = await call(path, 'GET', undefined, readerToken);
-          expect(response.status).toBe(200);
-          const task = Array.isArray(response.body.data) ? response.body.data[0] : response.body.data;
-          expect(task.relatedRecords).toEqual([]);
-          expect(task.dealIds).toEqual([linkedDeal.id]);
-        }
-        const viewer = await prisma.user.create({ data: { tenantId, role: 'Task Contact Reader', email: `task-context-${Date.now()}@camxian.com`, firstName: 'Context', lastName: 'Reader', emailVerified: new Date(), mustChangePassword: false, onboardingCompletedAt: new Date() } });
-        const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task Contact Reader', permissions: { create: ['tasks', 'contacts'].map(module => ({ module, canView: true })) } } });
-        await prisma.userRole.create({ data: { tenantId, userId: viewer.id, roleId: role.id } });
-        const viewerToken = (await issueAuthSession(viewer)).token;
-        for (const path of [`/operations/tasks/${taskId}`, '/operations/tasks?search=Permission%20context%20task']) {
-          const response = await call(path, 'GET', undefined, viewerToken);
-          expect(response.status).toBe(200);
-          const task = Array.isArray(response.body.data) ? response.body.data[0] : response.body.data;
-          expect(task.relatedRecords).toEqual([expect.objectContaining({ kind: 'contact', id: contact.id })]);
-        }
-      });
-      it("persists links, completion, reassignment, reopen, archive, and audit through HTTP", async () => {
-      const created = await call("/operations/tasks", "POST", {
-        ...draft(),
-        leadId: lead.id,
-        contactId: contact.id,
-        dealId: deal.id,
-        accountId: account.id,
-      });
-      expect(created.status, JSON.stringify(created.body)).toBe(201);
-      const task = created.body.data;
-      expect(task.contact.id).toBe(contact.id);
-      expect(task.lead.id).toBe(lead.id);
-      expect(task.deal.id).toBe(deal.id);
-      expect(task.assignedById).toBe(actor.id);
-      expect(task.createdById).toBe(actor.id);
-      expect(task.createdBy).toMatchObject({ id: actor.id, firstName: actor.firstName });
-      expect(task.assignedUserId).toBe(owner.id);
-      const completed = await call(`/operations/tasks/${task.id}`, "PUT", {
-        status: "completed",
-      });
-      expect(completed.status).toBe(200);
-      expect(completed.body.data.completedById).toBe(actor.id);
-      expect(completed.body.data.completedAt).toBeTruthy();
-      const repeated = await call(
-        `/operations/tasks/${task.id}/complete`,
-        "PATCH",
-      );
-      expect(repeated.body.data.completedAt).toBe(
-        completed.body.data.completedAt,
-      );
-      const reopened = await call(`/operations/tasks/${task.id}`, "PUT", {
-        status: "in-progress",
-        assignedUserId: actor.id,
-        contactId: null,
-      });
-      expect(reopened.body.data).toMatchObject({
-        id: task.id,
-        status: "in_progress",
-        completedAt: null,
-        completedById: null,
-        assignedUserId: actor.id,
-        contactId: null,
-        createdById: actor.id,
-      });
-      const audits = await prisma.auditLog.findMany({
-        where: { tenantId, entityId: task.id },
-        orderBy: { createdAt: "asc" },
-      });
-      expect(audits.map((row) => row.action)).toEqual([
-        "task.created",
-        "task.completed",
-        "task.updated",
-      ]);
-      expect((audits[2].changeset as any).before).toMatchObject({
-        assignedUserId: owner.id,
-      });
-      expect((audits[2].changeset as any).after).toMatchObject({
-        assignedUserId: actor.id,
-      });
-      expect(
-        (await call(`/operations/tasks/${task.id}/archive`, "PATCH")).status,
-      ).toBe(200);
-      expect(
-        (await call(`/operations/tasks/${task.id}`, "PUT", { title: "No" }))
-          .status,
-      ).toBe(404);
-      expect(
-        (await call("/operations/tasks?archived=true")).body.data.some(
-          (row: any) => row.id === task.id,
-        ),
-      ).toBe(true);
-    });
     it("bulk archives persist and Task recovery uses Archived Data with permission checks", async () => {
       const task = (await call('/operations/tasks', 'POST', draft('Recoverable task'))).body.data;
       expect((await call('/operations/tasks/bulk', 'POST', { operation: 'archive', ids: [task.id] })).body.data.succeeded).toEqual([task.id]);
@@ -310,149 +190,6 @@ describe.skipIf(!disposable)(
       expect((await call(`/operations/tasks/${task.id}`)).body.data).toMatchObject({ isArchived: false, title: 'Recoverable task' });
       expect((await call(path, 'PATCH')).status).toBe(404);
       expect((await call('/administration/archived-data/Task/invalid/restore', 'PATCH')).status).toBe(400);
-    });
-    it('rejects creator spoofing and reads converted Lead Tasks once without turning inherited visibility into direct merge links', async () => {
-      expect((await call('/operations/tasks', 'POST', { ...draft('Spoofed creator'), createdById: owner.id })).status).toBe(400);
-      const convertedContact = await prisma.contact.create({ data: { tenantId, firstName: 'Continuity', lastName: 'Contact' } });
-      const destination = await prisma.contact.create({ data: { tenantId, firstName: 'Merge', lastName: 'Target' } });
-      const source = await prisma.lead.create({ data: { tenantId, firstName: 'Converted', lastName: 'Source', contactId: convertedContact.id, convertedAt: new Date() } });
-      const pending = await prisma.lead.create({ data: { tenantId, firstName: 'Unconverted', lastName: 'Source', contactId: convertedContact.id } });
-      const inherited = (await call('/operations/tasks', 'POST', { ...draft('Continuity inherited'), leadId: source.id })).body.data;
-      const both = (await call('/operations/tasks', 'POST', { ...draft('Continuity both'), leadId: source.id, contactId: convertedContact.id, status: 'completed' })).body.data;
-      const direct = (await call('/operations/tasks', 'POST', { ...draft('Continuity direct'), contactId: convertedContact.id })).body.data;
-      await call('/operations/tasks', 'POST', { ...draft('Continuity unconverted'), leadId: pending.id });
-      const query = `/operations/tasks?contactId=${convertedContact.id}&search=Continuity`;
-      const result = await call(query);
-      expect(result.body.meta.total).toBe(3);
-      expect(new Set(result.body.data.map((task: { id: string }) => task.id))).toEqual(new Set([inherited.id, both.id, direct.id]));
-      expect(result.body.data.find((task: { id: string }) => task.id === inherited.id)).toMatchObject({ contactId: null, contactIds: [], createdById: actor.id, assignedUserId: owner.id });
-      const summary = await call(`/operations/tasks/summary?contactId=${convertedContact.id}&search=Continuity`);
-      expect(summary.body.data).toMatchObject({ total: 3, active: 2, completed: 1 });
-      expect((await call(`/operations/tasks/${inherited.id}`, 'PUT', { createdById: owner.id })).status).toBe(400);
-      const moved = await scope(() => prisma.$transaction(tx => reassignTaskLinks(tx, 'contact', destination.id, convertedContact.id, tenantId)));
-      expect(moved.count).toBe(2);
-      expect(await prisma.taskContact.count({ where: { tenantId, taskId: inherited.id } })).toBe(0);
-      expect(await prisma.taskContact.count({ where: { tenantId, taskId: both.id, contactId: destination.id } })).toBe(1);
-      expect(await prisma.taskLead.count({ where: { tenantId, taskId: inherited.id, leadId: source.id } })).toBe(1);
-      expect((await call(`/operations/tasks/${inherited.id}`)).body.data).toMatchObject({ createdById: actor.id, assignedUserId: owner.id, contactIds: [] });
-    });
-    it("rejects cross-tenant, inactive, and invalid references", async () => {
-      for (const bad of [
-        { assignedUserId: outsider.id },
-        { leadId: foreignLead.id },
-        { contactId: "missing" },
-        { dealId: "missing" },
-        { accountId: "missing" },
-      ]) {
-        const response = await call("/operations/tasks", "POST", {
-          ...draft("Rejected"),
-          ...bad,
-        });
-        expect(response.status, JSON.stringify(response.body)).toBe(404);
-      }
-      await prisma.user.update({
-        where: { id: owner.id },
-        data: { status: "INACTIVE" },
-      });
-      expect(
-        (await call("/operations/tasks", "POST", draft("Inactive"))).status,
-      ).toBe(404);
-      await prisma.user.update({
-        where: { id: owner.id },
-        data: { status: "ACTIVE" },
-      });
-      expect(
-        await prisma.task.count({ where: { tenantId, title: "Rejected" } }),
-      ).toBe(0);
-    });
-    it("uses server pagination beyond 100 rows and composes status with overdue", async () => {
-      await scope(
-        async () =>
-          await prisma.task.createMany({
-            data: Array.from({ length: 125 }, (_, index) => ({
-              ...draft(`Page ${String(index).padStart(3, "0")}`),
-              tenantId,
-              status: index < 5 ? "completed" : "pending",
-            })),
-          }),
-      );
-      const first = await call(
-        "/operations/tasks?search=Page&limit=100&sortBy=title",
-      );
-      const second = await call(
-        "/operations/tasks?search=Page&limit=100&page=2&sortBy=title",
-      );
-      expect(first.body.meta).toMatchObject({ total: 125, hasMore: true });
-      expect(second.body.data).toHaveLength(25);
-      expect(
-        new Set([...first.body.data, ...second.body.data].map((row) => row.id))
-          .size,
-      ).toBe(125);
-      expect(
-        (
-          await call(
-            "/operations/tasks?search=Page&status=completed&overdue=true",
-          )
-        ).body.meta.total,
-      ).toBe(0);
-      const summary = await call("/operations/tasks/summary?search=Page");
-      expect(summary.body.data).toMatchObject({
-        total: 125,
-        active: 120,
-        completed: 5,
-        overdue: 120,
-      });
-      expect(summary.body.data.workload[0].total).toBe(120);
-      expect((await call("/operations/tasks?limit=101")).status).toBe(400);
-      expect(
-        (
-          await call(
-            "/operations/tasks?dueFrom=2026-02-01T00:00:00Z&dueTo=2026-01-01T00:00:00Z",
-          )
-        ).status,
-      ).toBe(400);
-    });
-    it("enforces existing permissions including CRM relationship task payloads", async () => {
-      const task = (
-        await call("/operations/tasks", "POST", {
-          ...draft("Protected"),
-          leadId: lead.id,
-          contactId: contact.id,
-        })
-      ).body.data;
-      expect(
-        (await call("/operations/tasks", "POST", draft(), readerToken)).status,
-      ).toBe(403);
-      expect(
-        (
-          await call(
-            `/operations/tasks/${task.id}/complete`,
-            "PATCH",
-            undefined,
-            readerToken,
-          )
-        ).status,
-      ).toBe(403);
-      expect(
-        (await call("/operations/tasks", "GET", undefined, contactsToken))
-          .status,
-      ).toBe(403);
-      expect((await call(`/crm/leads/${lead.id}/relationships`, 'GET', undefined, contactsToken)).status).toBe(403);
-      for (const path of [`/crm/contacts/${contact.id}/relationships`]) {
-        const response = await call(path, "GET", undefined, contactsToken);
-        expect(response.status).toBe(200);
-        expect(response.body.data.tasks).toEqual([]);
-      }
-      expect(
-        (
-          await call(
-            "/operations/tasks/options?kind=lead",
-            "GET",
-            undefined,
-            readerToken,
-          )
-        ).status,
-      ).toBe(403);
     });
     it("persists Task columns per user and protects required columns and permissions", async () => {
       const path = "/preferences/columns/tasks";
@@ -488,78 +225,6 @@ describe.skipIf(!disposable)(
         ).status,
       ).toBe(400);
     });
-    it("creates a contact from the Task quick form and returns its explicit association", async () => {
-      const created = await call("/crm/contacts", "POST", {
-        firstName: "Task",
-        lastName: "Contact",
-        email: "task-quick@example.test",
-        company: "Example",
-      });
-      expect(created.status).toBe(201);
-      const options = await call(
-        "/operations/tasks/options?kind=contact&search=task-quick",
-      );
-      expect(options.body.data).toEqual([
-        {
-          id: created.body.data.id,
-          label: "Task Contact · task-quick@example.test",
-        },
-      ]);
-      const task = await call("/operations/tasks", "POST", {
-        ...draft("New contact follow-up"),
-        contactId: created.body.data.id,
-        accountId: account.id,
-      });
-      expect(task.status).toBe(201);
-      const list = await call(
-        "/operations/tasks?contactId=" + created.body.data.id,
-      );
-      expect(list.body.data).toHaveLength(1);
-      expect(list.body.data[0].contact.id).toBe(created.body.data.id);
-      expect(list.body.data[0].account).toMatchObject({
-        id: account.id,
-        name: account.name,
-      });
-    });
-    it("creates and associates lead, account and deal records through the existing public CRM routes", async () => {
-      const createdAccount = await call("/crm/accounts", "POST", {
-        name: "Task new account",
-        country: "Philippines",
-      });
-      expect(createdAccount.status).toBe(201);
-      const createdLead = await call("/crm/leads", "POST", {
-        firstName: "Task",
-        lastName: "Lead",
-        status: "Warm",
-        email: "task-lead@example.test",
-        accountId: createdAccount.body.data.id,
-        productInterest: [product.id],
-      });
-      expect(createdLead.status).toBe(201);
-      const createdDeal = await call("/crm/deals", "POST", {
-        title: "Task new deal",
-        productInterestIds: [product.id],
-        pipelineId: deal.pipelineId,
-        stageId: deal.stageId,
-        priority: "MEDIUM",
-        currency: "PHP",
-        accountId: createdAccount.body.data.id,
-        leadIds: [createdLead.body.data.id],
-      });
-      expect(createdDeal.status).toBe(201);
-      const created = await call("/operations/tasks", "POST", {
-        ...draft("New CRM records"),
-        accountId: createdAccount.body.data.id,
-        leadId: createdLead.body.data.id,
-        dealId: createdDeal.body.data.id,
-      });
-      expect(created.status).toBe(201);
-      expect(created.body.data).toMatchObject({
-        accountId: createdAccount.body.data.id,
-        leadId: createdLead.body.data.id,
-        dealId: createdDeal.body.data.id,
-      });
-    });
     it("returns accurate partial bulk results without changing inaccessible tasks", async () => {
       const task = (
         await call("/operations/tasks", "POST", draft("Bulk local"))
@@ -567,7 +232,7 @@ describe.skipIf(!disposable)(
       const foreignTask = await scope(
         async () =>
           await prisma.task.create({
-            data: { ...draft("Foreign task"), tenantId },
+            data: { title: "Foreign task", tenantId: otherTenantId, assignedUserId: outsider.id, dueDate: new Date("2026-01-01") },
           }),
         otherTenantId,
       );
@@ -603,181 +268,6 @@ describe.skipIf(!disposable)(
       ).toBe(403);
     });
 
-    it("persists multiple associations, filters every linked record, and clears lists atomically", async () => {
-      const second = await scope(() =>
-        prisma.lead.create({
-          data: { tenantId, firstName: "Second", lastName: "Lead" },
-        }),
-      );
-      const created = await call("/operations/tasks", "POST", {
-        ...draft("Multiple links"),
-        leadIds: [lead.id, second.id, lead.id],
-      });
-      expect(created.status).toBe(201);
-      expect(created.body.data.leadIds).toEqual([lead.id, second.id]);
-      expect(created.body.data.leads).toHaveLength(2);
-      const id = created.body.data.id;
-      expect(
-        (await call(`/operations/tasks?leadId=${second.id}`)).body.data.some(
-          (row: any) => row.id === id,
-        ),
-      ).toBe(true);
-      expect(
-        (
-          await call(`/crm/leads/${second.id}/relationships`)
-        ).body.data.tasks.some((row: any) => row.id === id),
-      ).toBe(true);
-      const unchanged = await call(`/operations/tasks/${id}`, "PUT", {
-        title: "Renamed multiple links",
-      });
-      expect(unchanged.body.data.leadIds).toEqual([lead.id, second.id]);
-      const rejected = await call(`/operations/tasks/${id}`, "PUT", {
-        leadIds: [lead.id, foreignLead.id],
-      });
-      expect(rejected.status).toBe(404);
-      expect((await call(`/operations/tasks/${id}`)).body.data.leadIds).toEqual(
-        [lead.id, second.id],
-      );
-      const cleared = await call(`/operations/tasks/${id}`, "PUT", {
-        leadIds: [],
-      });
-      expect(cleared.body.data.leadIds).toEqual([]);
-      expect(cleared.body.data.leadId).toBeNull();
-      expect(await prisma.taskLead.count({ where: { taskId: id } })).toBe(0);
-    });
-    it("restricts dependent options to explicit Lead relationships and enforces them on save", async () => {
-      const relatedLead = await scope(() =>
-        prisma.lead.create({
-          data: {
-            tenantId,
-            firstName: "Related",
-            lastName: "Lead",
-            contactId: contact.id,
-            accountId: account.id,
-          },
-        }),
-      );
-      await scope(() =>
-        prisma.leadDeal.create({
-          data: { tenantId, leadId: relatedLead.id, dealId: deal.id },
-        }),
-      );
-      for (const [kind, expected] of [
-        ["contact", contact.id],
-        ["account", account.id],
-        ["deal", deal.id],
-      ]) {
-        const result = await call(
-          `/operations/tasks/options?kind=${kind}&leadIds=${relatedLead.id}`,
-        );
-        expect(result.status).toBe(200);
-        expect(result.body.data.map((row: any) => row.id)).toEqual([expected]);
-        const empty = await call(
-          `/operations/tasks/options?kind=${kind}&leadIds=${lead.id}`,
-        );
-        expect(empty.body.data).toEqual([]);
-      }
-      expect(
-        (
-          await call(
-            `/operations/tasks/options?kind=deal&leadIds=${foreignLead.id}`,
-          )
-        ).status,
-      ).toBe(404);
-      expect(
-        (
-          await call(
-            `/operations/tasks/options?kind=deal&leadIds=${relatedLead.id}`,
-            "GET",
-            undefined,
-            readerToken,
-          )
-        ).status,
-      ).toBe(403);
-      const invalid = await call("/operations/tasks", "POST", {
-        ...draft(),
-        leadIds: [lead.id],
-        contactIds: [contact.id],
-      });
-      expect(invalid.status).toBe(400);
-      const valid = await call("/operations/tasks", "POST", {
-        ...draft(),
-        leadIds: [relatedLead.id],
-        contactIds: [contact.id],
-        dealIds: [deal.id],
-        accountIds: [account.id],
-      });
-      expect(valid.status).toBe(201);
-      expect(valid.body.data.contacts[0].id).toBe(contact.id);
-      expect(valid.body.data.accounts[0].id).toBe(account.id);
-      expect(valid.body.data.deals[0].id).toBe(deal.id);
-    });
-    it("makes newly created records available in Lead-filtered options and saves their Task associations", async () => {
-      const createdLead = await call("/crm/leads", "POST", {
-        firstName: "Create",
-        lastName: "Related",
-        status: "Warm",
-        email: "related-lead@example.test",
-      });
-      expect(createdLead.status).toBe(201);
-      const leadId = createdLead.body.data.id;
-      const newAccount = await call("/crm/accounts", "POST", {
-        name: "Related create account",
-      });
-      expect(newAccount.status).toBe(201);
-      const accountId = newAccount.body.data.id;
-      expect(
-        (await call(`/crm/leads/${leadId}`, "PUT", { accountId })).status,
-      ).toBe(200);
-      // Conversion requires an already confirmed sale; this test exercises task links.
-      await scope(async () => {
-        const won = await prisma.stage.create({ data: { tenantId, pipelineId: deal.pipelineId, name: 'Closed Won', order: 1, isWon: true, requiredFields: [] } });
-        await prisma.deal.create({ data: { tenantId, pipelineId: deal.pipelineId, stageId: won.id, leadDeals: { create: { leadId: leadId, position: 0 } }, title: 'Previously confirmed sale', wonConfirmedAt: new Date(), closedAt: new Date(), productInterests: [], tags: [] } });
-      });
-      const converted = await call(`/crm/leads/${leadId}/convert`, "POST", {
-        accountId,
-        createContact: true,
-        createDeal: false,
-      });
-      expect(converted.status).toBe(200);
-      const contactId = converted.body.data.contact.id;
-      expect((await call(`/crm/leads/${leadId}`)).body.data.status).toBe(
-        "Closed",
-      );
-      const newDeal = await call("/crm/deals", "POST", {
-        title: "Related create deal",
-        productInterestIds: [product.id],
-        pipelineId: deal.pipelineId,
-        stageId: deal.stageId,
-        leadIds: [leadId, lead.id],
-      });
-      expect(newDeal.status).toBe(201);
-      const dealId = newDeal.body.data.id;
-      for (const [kind, id] of [
-        ["account", accountId],
-        ["contact", contactId],
-        ["deal", dealId],
-      ]) {
-        const options = await call(
-          `/operations/tasks/options?kind=${kind}&leadIds=${leadId}`,
-        );
-        expect(options.status).toBe(200);
-        expect(
-          options.body.data.map((row: { id: string }) => row.id),
-        ).toContain(id);
-      }
-      const saved = await call("/operations/tasks", "POST", {
-        ...draft("Created related records"),
-        leadIds: [leadId, lead.id],
-        contactIds: [contactId],
-        accountIds: [accountId],
-        dealIds: [dealId],
-      });
-      expect(saved.status).toBe(201);
-      expect(saved.body.data.contactIds).toEqual([contactId]);
-      expect(saved.body.data.accountIds).toEqual([accountId]);
-      expect(saved.body.data.dealIds).toEqual([dealId]);
-    });
     it("reschedules through the existing API and validates dates and assignees", async () => {
       const saved = (
         await call("/operations/tasks", "POST", draft("Reschedule acceptance"))
@@ -817,62 +307,228 @@ describe.skipIf(!disposable)(
       expect((await call("/operations/tasks/bulk", "POST", { operation: "delete", ids: [saved.id] })).status).toBe(400);
       expect((await call(`/operations/tasks/${saved.id}`)).status).toBe(200);
     });
-    it("preserves and deduplicates all Task links through approved Merge integration", async () => {
-      const merge = await import("../../../crm/merge/merge.repository");
-      for (const kind of ["lead", "contact", "account"] as const) {
-        const second = await scope(async () =>
-          kind === "lead"
-            ? prisma.lead.create({
-                data: { tenantId, firstName: "Merge", lastName: "Lead" },
-              })
-            : kind === "contact"
-              ? prisma.contact.create({
-                  data: { tenantId, firstName: "Merge", lastName: "Contact" },
-                })
-              : prisma.account.create({
-                  data: { tenantId, name: "Merge Account" },
-                }),
-        );
-        const primary =
-          kind === "lead"
-            ? lead.id
-            : kind === "contact"
-              ? contact.id
-              : account.id;
-        const task = (
-          await call("/operations/tasks", "POST", {
-            ...draft("Merge links"),
-            [kind + "Ids"]: [second.id, primary],
-          })
-        ).body.data;
-        await scope(() =>
-          prisma.$transaction((tx) =>
-            kind === "lead"
-              ? merge.reassignLeadRelationships(
-                  tx,
-                  primary,
-                  second.id,
-                  tenantId,
-                )
-              : kind === "contact"
-                ? merge.reassignContactRelationships(
-                    tx,
-                    primary,
-                    second.id,
-                    tenantId,
-                  )
-                : merge.reassignAccountRelationships(
-                    tx,
-                    primary,
-                    second.id,
-                    tenantId,
-                  ),
-          ),
-        );
-        const stored = (await call(`/operations/tasks/${task.id}`)).body.data;
-        expect(stored[kind + "Ids"]).toEqual([primary]);
-        expect(stored[kind + "Id"]).toBe(primary);
+
+    const newDeal = (title: string, data: object = {}) => scope(() => prisma.deal.create({ data: {
+      tenantId, pipelineId: deal.pipelineId, stageId: deal.stageId, title, ...data,
+    } }));
+    const create = async (title: string, data: object = {}) => {
+      const response = await call('/operations/tasks', 'POST', { ...draft(title), ...data });
+      expect(response.status, JSON.stringify(response.body)).toBe(201);
+      return response.body.data;
+    };
+    const history = (taskId: string) => prisma.activity.findMany({ where: { tenantId, taskId }, orderBy: [{ createdAt: 'asc' }, { title: 'asc' }] });
+
+    it('requires Deals, rejects every direct association field, and rejects conflicting input', async () => {
+      const invalid = [{ dealIds: [] }, { dealIds: undefined }, { dealId: deal.id },
+        ...['leadId', 'leadIds', 'contactId', 'contactIds', 'accountId', 'accountIds'].map(key => ({ [key]: key.endsWith('Ids') ? [lead.id] : lead.id }))];
+      for (const payload of invalid) expect((await call('/operations/tasks', 'POST', { ...draft('Rejected input'), ...payload })).status).toBe(400);
+      expect(await prisma.task.count({ where: { tenantId, title: 'Rejected input' } })).toBe(0);
+      const { dealIds, ...singular } = draft('Singular compatibility');
+      expect((await call('/operations/tasks', 'POST', { ...singular, dealId: deal.id })).status).toBe(201);
+    });
+
+    it('creates multiple deduplicated TaskDeal rows and never writes direct CRM links', async () => {
+      const second = await newDeal('Second Deal');
+      const task = await create('Multiple Deals', { dealIds: [deal.id, second.id, deal.id] });
+      expect(task.dealIds).toEqual([deal.id, second.id]);
+      for (const model of [prisma.taskLead, prisma.taskContact, prisma.taskAccount]) expect(await model.count({ where: { taskId: task.id } })).toBe(0);
+      expect(await prisma.taskDeal.count({ where: { taskId: task.id } })).toBe(2);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Keep links' })).body.data.dealIds).toEqual([deal.id, second.id]);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [] })).status).toBe(400);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { leadIds: [] })).status).toBe(400);
+    });
+
+    it('delivers one assignment notification for a multi-Deal Task and preserves worker retry idempotency', async () => {
+      const { randomUUID } = await import('node:crypto');
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task notification staff',
+        permissions: { create: { module: 'tasks', canView: true } } } });
+      const staff = await prisma.user.create({ data: { tenantId, firstName: 'Assigned', lastName: 'Staff',
+        email: `${randomUUID()}@camxian.com`, role: 'Task notification staff', userRoles: { create: { roleId: role.id } } } });
+      const second = await newDeal('Notification second Deal');
+      const task = await create('Multi-Deal assignment delivery', { assignedUserId: staff.id, dealIds: [deal.id, second.id],
+        dueDate: new Date(Date.now() + 3 * 86400000).toISOString() });
+      for (let batch = 0; batch < 20; batch++) if (!(await dispatchTenantNotifications(tenantId)).claimed) break;
+      const deliveries = await prisma.notification.findMany({ where: { tenantId, entityType: 'Task', entityId: task.id } });
+      expect(deliveries).toHaveLength(1);
+      expect(deliveries[0]).toMatchObject({ userId: staff.id, type: 'task_assigned' });
+      await dispatchTenantNotifications(tenantId);
+      expect(await prisma.notification.count({ where: { tenantId, entityType: 'Task', entityId: task.id } })).toBe(1);
+      expect(await prisma.notificationDelivery.count({ where: { tenantId, userId: staff.id, outcome: 'delivered', eventKey: deliveries[0].eventKey! } })).toBe(1);
+    });
+
+    it('records Deal association changes with both event-time contexts and deduplicates concurrent completion', async () => {
+      const source = await newDeal('Removed Deal');
+      const target = await newDeal('Added Deal');
+      const task = await create('Association and concurrency', { dealIds: [source.id] });
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [target.id] })).status).toBe(200);
+      const changes = (await history(task.id)).filter(row => (row.metadata as any).taskEvent.event === 'deals_changed');
+      expect(changes).toHaveLength(1);
+      expect((changes[0].metadata as any).taskEvent).toMatchObject({ before: { dealIds: [source.id] }, after: { dealIds: [target.id] } });
+      expect((changes[0].metadata as any).taskEvent.context.dealIds.sort()).toEqual([source.id, target.id].sort());
+      const results = await Promise.all(Array.from({ length: 4 }, () => call(`/operations/tasks/${task.id}/complete`, 'PATCH')));
+      expect(results.some(result => result.status === 200)).toBe(true);
+      expect(results.every(result => [200, 409].includes(result.status))).toBe(true);
+      for (const result of results.filter(result => result.status === 409)) expect((await call(`/operations/tasks/${task.id}/complete`, 'PATCH')).status).toBe(200);
+      expect((await history(task.id)).filter(row => (row.metadata as any).taskEvent.event === 'completed')).toHaveLength(1);
+    });
+
+    it('rejects foreign, archived, missing Deals and inactive assignees atomically', async () => {
+      const foreign = await scope(async () => {
+        const pipeline = await prisma.pipeline.create({ data: { tenantId: otherTenantId, name: 'Foreign pipeline' } });
+        const stage = await prisma.stage.create({ data: { tenantId: otherTenantId, pipelineId: pipeline.id, name: 'Lead', order: 0, requiredFields: [] } });
+        return prisma.deal.create({ data: { tenantId: otherTenantId, title: 'Foreign Deal', pipelineId: pipeline.id, stageId: stage.id } });
+      }, otherTenantId);
+      const archived = await newDeal('Archived Deal', { isArchived: true });
+      for (const id of [foreign.id, archived.id, 'missing']) {
+        expect((await call('/operations/tasks', 'POST', { ...draft('Invalid reference'), dealIds: [deal.id, id] })).status).toBe(404);
       }
+      expect((await call('/operations/tasks', 'POST', { ...draft('Invalid reference'), assignedUserId: outsider.id })).status).toBe(404);
+      expect(await prisma.task.count({ where: { tenantId, title: 'Invalid reference' } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { tenantId, action: 'task.created', changeset: { path: ['after', 'title'], equals: 'Invalid reference' } } })).toBe(0);
+    });
+
+    it('commits actor, creator, assignment, completion, reschedule, archive and restore history once', async () => {
+      const task = await create('Lifecycle');
+      expect(task).toMatchObject({ createdById: actor.id, assignedUserId: owner.id, assignedById: actor.id });
+      await call(`/operations/tasks/${task.id}`, 'PUT', { assignedUserId: actor.id, dueDate: '2031-01-01T09:00:00Z' });
+      const completed = await call(`/operations/tasks/${task.id}/complete`, 'PATCH');
+      await call(`/operations/tasks/${task.id}/complete`, 'PATCH');
+      expect(completed.body.data).toMatchObject({ completedById: actor.id, createdById: actor.id });
+      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'pending' });
+      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'blocked' });
+      await call(`/operations/tasks/${task.id}/archive`, 'PATCH');
+      await call(`/operations/tasks/${task.id}/archive`, 'PATCH');
+      await call(`/administration/archived-data/Task/${task.id}/restore`, 'PATCH');
+      const rows = await history(task.id);
+      expect(rows.map(row => (row.metadata as any).taskEvent.event).sort()).toEqual([
+        'created','assigned','reassigned','rescheduled','completed','reopened','status_changed','archived','restored',
+      ].sort());
+      const audits = await prisma.auditLog.findMany({ where: { tenantId, entityId: task.id } });
+      expect(new Set(audits.map(row => row.id))).toEqual(new Set(rows.map(row => row.id)));
+      expect(rows.every(row => row.createdById === actor.id && row.createdAt instanceof Date)).toBe(true);
+      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'blocked', dueDate: '2031-01-01T09:00:00Z' });
+      expect(await history(task.id)).toHaveLength(rows.length);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { createdById: owner.id })).status).toBe(400);
+    });
+
+    it('rolls back Task and audit if its Activity cannot be committed', async () => {
+      let rejectHistory = true;
+      prisma.$use(async (params, next) => {
+        if (rejectHistory && params.model === 'Activity' && params.action === 'create' && params.args.data.metadata?.taskEvent?.taskTitle === 'History rollback') throw new Error('Simulated history outage');
+        return next(params);
+      });
+      try { expect((await call('/operations/tasks', 'POST', draft('History rollback'))).status).toBe(500); }
+      finally { rejectHistory = false; }
+      expect(await prisma.task.count({ where: { tenantId, title: 'History rollback' } })).toBe(0);
+      expect(await prisma.auditLog.count({ where: { tenantId, changeset: { path: ['after','title'], equals: 'History rollback' } } })).toBe(0);
+    });
+
+    it('returns a persisted creation receipt on retries and rejects reuse with different values', async () => {
+      const { randomUUID } = await import('node:crypto');
+      const payload = { ...draft('Idempotent creation'), requestId: randomUUID() };
+      const first = await call('/operations/tasks', 'POST', payload);
+      const retry = await call('/operations/tasks', 'POST', payload);
+      expect(retry.body.data.id).toBe(first.body.data.id);
+      expect(await history(first.body.data.id)).toHaveLength(2);
+      expect((await call('/operations/tasks', 'POST', { ...payload, title: 'Changed retry' })).status).toBe(409);
+    });
+
+    it('derives all CRM Task lists with accurate counts, pagination, conversion context and no duplicates', async () => {
+      const related = await newDeal('Related Deal', { accountId: account.id,
+        leadDeals: { create: { leadId: lead.id } }, contactDeals: { create: { contactId: contact.id } } });
+      const second = await newDeal('Another Related Deal', { accountId: account.id,
+        leadDeals: { create: { leadId: lead.id } }, contactDeals: { create: { contactId: contact.id } } });
+      const task = await create('Derived unique', { dealIds: [related.id, second.id] });
+      for (const [kind,id] of [['lead',lead.id],['contact',contact.id],['account',account.id],['deal',related.id]]) {
+        const result = await call(`/operations/tasks?${kind}Id=${id}&search=Derived%20unique&limit=1`);
+        expect(result.body.meta.total).toBe(1); expect(result.body.data[0].id).toBe(task.id);
+        expect((await call(`/operations/tasks/summary?${kind}Id=${id}&search=Derived%20unique`)).body.data).toMatchObject({ total: 1, active: 1 });
+        const events = await call(`/crm/activities?${kind}Id=${id}&type=task&search=Derived%20unique&limit=1`);
+        expect(events.body.meta.total).toBe(2); expect(events.body.data).toHaveLength(1);
+        const next = await call(`/crm/activities?${kind}Id=${id}&type=task&search=Derived%20unique&limit=1&cursor=${events.body.nextCursor}`);
+        expect(next.body.data).toHaveLength(1); expect(next.body.data[0].id).not.toBe(events.body.data[0].id);
+      }
+      await scope(() => prisma.lead.update({ where: { id: lead.id }, data: { contactId: contact.id, convertedAt: new Date() } }));
+      await scope(() => prisma.contactDeal.deleteMany({ where: { tenantId, dealId: related.id } }));
+      expect((await call(`/operations/tasks?contactId=${contact.id}&search=Derived%20unique`)).body.meta.total).toBe(1);
+      await call(`/operations/tasks/${task.id}/archive`, 'PATCH');
+      expect((await call(`/operations/tasks?leadId=${lead.id}&search=Derived%20unique`)).body.meta.total).toBe(0);
+      expect((await call(`/crm/activities?leadId=${lead.id}&type=task&search=Derived%20unique`)).body.meta.total).toBe(3);
+      expect((await call(`/crm/activities?taskId=${task.id}`)).status).toBe(200);
+    });
+
+    it('freezes event-time context when Deal participants and Account change', async () => {
+      const leadA = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Old', lastName: 'Lead' } }));
+      const leadB = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'New', lastName: 'Lead' } }));
+      const otherAccount = await scope(() => prisma.account.create({ data: { tenantId, name: 'New Account' } }));
+      const related = await newDeal('Historical Deal', { accountId: account.id, leadDeals: { create: { leadId: leadA.id } } });
+      const task = await create('Frozen history', { dealIds: [related.id] });
+      await call(`/operations/tasks/${task.id}/complete`, 'PATCH');
+      const first = await history(task.id);
+      await scope(() => prisma.$transaction(async tx => {
+        await tx.leadDeal.deleteMany({ where: { tenantId, dealId: related.id } });
+        await tx.leadDeal.create({ data: { tenantId, leadId: leadB.id, dealId: related.id } });
+        await tx.deal.update({ where: { id: related.id }, data: { accountId: otherAccount.id } });
+      }));
+      for (const [kind,oldId,newId] of [['lead',leadA.id,leadB.id],['account',account.id,otherAccount.id]]) {
+        expect((await call(`/crm/activities?${kind}Id=${oldId}&search=Frozen%20history`)).body.meta.total).toBe(3);
+        expect((await call(`/crm/activities?${kind}Id=${newId}&search=Frozen%20history`)).body.meta.total).toBe(0);
+        expect((await call(`/operations/tasks?${kind}Id=${newId}&search=Frozen%20history`)).body.meta.total).toBe(1);
+      }
+      expect((await history(task.id)).map(row => row.metadata)).toEqual(first.map(row => row.metadata));
+      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'pending' });
+      expect((await call(`/crm/activities?leadId=${leadB.id}&search=Frozen%20history`)).body.meta.total).toBe(1);
+    });
+
+    it('preserves legacy Tasks and links through edits and merges without inventing Deals', async () => {
+      const source = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Legacy', lastName: 'Lead' } }));
+      const task = await scope(() => prisma.task.create({ data: { tenantId, title: 'Legacy record', assignedUserId: owner.id,
+        createdById: actor.id, dueDate: new Date('2026-01-01'), leadLinks: { create: { leadId: source.id } },
+        contactLinks: { create: { contactId: contact.id } }, accountLinks: { create: { accountId: account.id } } } }));
+      await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Safe legacy management', status: 'completed' });
+      const result = (await call(`/operations/tasks/${task.id}`)).body.data;
+      expect(result).toMatchObject({ dealIds: [], leadIds: [source.id], contactIds: [contact.id], accountIds: [account.id], createdById: actor.id });
+      const events = await history(task.id);
+      await scope(() => prisma.$transaction(tx => reassignTaskLinks(tx, 'lead', lead.id, source.id, tenantId)));
+      expect((await call(`/operations/tasks/${task.id}`)).body.data.leadIds).toEqual([lead.id]);
+      expect((await history(task.id)).map(row => row.metadata)).toEqual(events.map(row => row.metadata));
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [deal.id] })).status).toBe(200);
+      expect(await prisma.taskLead.count({ where: { taskId: task.id } })).toBe(1);
+    });
+
+    it('enforces Sales Deal assignments and Task permissions without granting CRM edit', async () => {
+      const sales = await prisma.user.create({ data: { tenantId, firstName: 'Sales', lastName: 'Agent', role: 'Sales Agent',
+        email: `sales-${Date.now()}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date() } });
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Agent', crmAssignmentRestricted: true,
+        permissions: { create: [{ module: 'tasks', canView: true, canCreate: true, canEdit: true, canAssign: true, canComplete: true }, { module: 'deals', canView: true }] } } });
+      await prisma.userRole.create({ data: { tenantId, userId: sales.id, roleId: role.id } });
+      const auth = (await issueAuthSession(sales)).token;
+      const own = await newDeal('Own Sales Deal', { assignedUserId: sales.id });
+      const other = await newDeal('Other Sales Deal', { assignedUserId: owner.id, ownerId: sales.id });
+      expect((await call('/operations/tasks', 'POST', { ...draft('Allowed Sales Task'), dealIds: [own.id] }, auth)).status).toBe(201);
+      expect((await call('/operations/tasks', 'POST', { ...draft('Denied Sales Task'), dealIds: [other.id] }, auth)).status).toBe(403);
+      const task = await create('Admin task on Other Deal', { dealIds: [other.id] });
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [own.id] }, auth)).status).toBe(403);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(200);
+      expect((await call(`/crm/deals/${own.id}`, 'PUT', { title: 'No CRM edit grant' }, auth)).status).toBe(403);
+      const options = await call('/operations/tasks/options?kind=deal', 'GET', undefined, auth);
+      expect(options.body.data.map((row: any) => row.id)).toContain(own.id);
+      expect(options.body.data.map((row: any) => row.id)).not.toContain(other.id);
+      expect((await call('/operations/tasks', 'POST', draft('Reader denied'), readerToken)).status).toBe(403);
+    });
+
+    it('protects Task history from unauthorized reads, forgery, edits and deletes', async () => {
+      const related = await newDeal('Protected history Deal', { contactDeals: { create: { contactId: contact.id } } });
+      const task = await create('Private Task history', { dealIds: [related.id] });
+      const events = await history(task.id);
+      expect((await call(`/crm/activities?contactId=${contact.id}&search=Private%20Task`, 'GET', undefined, contactsToken)).body.meta.total).toBe(0);
+      expect((await call(`/crm/activities/${events[0].id}`, 'GET', undefined, contactsToken)).status).toBe(404);
+      expect((await call(`/crm/contacts/${contact.id}/relationships`, 'GET', undefined, contactsToken)).body.data.activities.some((row: any) => events.some(event => event.id === row.id))).toBe(false);
+      expect((await call(`/crm/activities/${events[0].id}`, 'PUT', { title: 'Forged' })).status).toBe(403);
+      expect((await call(`/crm/activities/${events[0].id}`, 'DELETE')).status).toBe(403);
+      expect((await call('/crm/activities', 'POST', { type: 'task', title: 'Forged history', taskId: task.id })).status).toBe(403);
+      const foreign = await scope(() => prisma.activity.create({ data: { tenantId: otherTenantId, createdById: outsider.id, type: 'task', title: 'Other tenant history' } }), otherTenantId);
+      expect((await call(`/crm/activities/${foreign.id}`)).status).toBe(404);
     });
   },
 );

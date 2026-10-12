@@ -7,6 +7,7 @@ import * as repo from './actions.repository';
 import { actionEntity, validateAction } from './action-validation';
 import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, completeWorkflowAssignment, assignmentOutput } from '../assignment/workflow-assignment.service';
 import { createTask } from '../../operations/tasks/tasks.service';
+import { resolveTaskDealIds } from './action-task-deals';
 import { sendSms } from '../../../shared/services/sms.service';
 import { smsRecipient } from './action-sms';
 import { fieldUpdatePatch } from './action-fields';
@@ -38,7 +39,8 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
         priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
         dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
         assignedUserId: assignment!.resolvedUserId,
-        ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) });
+        dealIds: await resolveTaskDealIds(action, entity, tenantId, context) },
+        client => resolveTaskDealIds(action, entity, tenantId, context, client));
       return { success: true, output: { taskId: task.id, ...assignmentOutput(assignment!) } };
     }
     if (action.type === 'send_sms') {

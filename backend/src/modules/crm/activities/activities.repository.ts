@@ -1,8 +1,27 @@
 import { Prisma } from '@prisma/client';
+import { crmActor, resolveCrmActor } from '../access/crm-record-access.service';
+import { hasModulePermission } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateActivityDto, UpdateActivityDto } from './activities.dto';
 import { AppError } from '../../../shared/errors/app-error';
+
+async function taskVisibility(tenantId: string): Promise<Prisma.ActivityWhereInput> {
+  const actor = crmActor.getStore();
+  if (!actor) return {};
+  const policy = await resolveCrmActor(prisma, actor);
+  if (policy.clientAdmin || hasModulePermission(policy.permissions, 'tasks', 'canView')) return {};
+  return { taskId: null, type: { not: 'task' } };
+}
+
+/** Frozen event context is independent of today's Deal participants. */
+export function activityRecordContext(kind: 'lead' | 'contact' | 'account' | 'deal', id: string, tenantId: string): Prisma.ActivityWhereInput {
+  return { OR: [
+    { [`${kind}Id`]: id },
+    { type: 'task', metadata: { path: ['taskEvent', 'context', `${kind}Ids`], array_contains: [id] } },
+    ...(kind === 'contact' ? [{ lead: { tenantId, contactId: id, convertedAt: { not: null } } }] : []),
+  ] };
+}
 
 // ─── Shared include ───────────────────────────────────────────────────────────
 
@@ -37,29 +56,25 @@ export async function findAllActivities(
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
 
-  const where: Prisma.ActivityWhereInput = { tenantId };
+  const where: Prisma.ActivityWhereInput = { tenantId, AND: [await taskVisibility(tenantId)] };
 
   // ── Entity filters ──────────────────────────────────────────────────────────
   // Note: the Activity model uses leadId (not contactId) for the Lead FK.
-  if (query.leadId)    where.leadId    = String(query.leadId);
-  if (query.contactId) where.OR = [
-    { contactId: String(query.contactId) },
-    { lead: { tenantId, contactId: String(query.contactId), convertedAt: { not: null } } },
-  ];
-  if (query.dealId)    where.dealId    = String(query.dealId);
-  if (query.accountId) where.accountId = String(query.accountId);
+  for (const kind of ['lead', 'contact', 'account', 'deal'] as const) {
+    if (query[`${kind}Id`]) (where.AND as Prisma.ActivityWhereInput[]).push(activityRecordContext(kind, String(query[`${kind}Id`]), tenantId));
+  }
   if (query.taskId)    where.taskId    = String(query.taskId);
 
   // ── Type filter ─────────────────────────────────────────────────────────────
   if (query.type) where.type = { in: String(query.type).split(',') };
   if (query.search && String(query.search).trim()) {
     const contains = String(query.search).trim();
-    where.AND = [{ OR: [
+    (where.AND as Prisma.ActivityWhereInput[]).push({ OR: [
       { title: { contains, mode: 'insensitive' } },
       { description: { contains, mode: 'insensitive' } },
       { createdBy: { firstName: { contains, mode: 'insensitive' } } },
       { createdBy: { lastName: { contains, mode: 'insensitive' } } },
-    ] }];
+    ] });
   }
 
   // ── User filter ─────────────────────────────────────────────────────────────
@@ -120,7 +135,7 @@ export async function withEmailContent<T extends { type: string; metadata?: Pris
 
 export async function findActivityById(id: string, tenantId: string) {
   return prisma.activity.findFirst({
-    where:   { id, tenantId },
+    where:   { id, tenantId, AND: [await taskVisibility(tenantId)] },
     include: ACTIVITY_INCLUDE,
   });
 }

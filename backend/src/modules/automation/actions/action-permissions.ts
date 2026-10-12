@@ -44,7 +44,7 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
       if (permission) required.push(permission);
     }
     // Automated tasks need the same explicit creation and assignment grants.
-    if (action.type === 'create_task') required.push('tasks.create', 'tasks.assign');
+    if (action.type === 'create_task') required.push('tasks.create', 'tasks.assign', 'deals.view');
     if (action.type === 'send_campaign') required.push('campaigns.view', 'campaigns.send');
     if (action.type === 'send_email') required.push('campaigns.send');
     if (action.type === 'send_sms') required.push('campaigns.send', 'contacts.view', 'contacts.edit');

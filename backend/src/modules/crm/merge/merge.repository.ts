@@ -55,7 +55,7 @@ export async function reassignLeadRelationships(
 ): Promise<RelationshipCounts> {
   // Activities
   const activities = await tx.activity.updateMany({
-    where: { leadId: secondaryId, tenantId },
+    where: { leadId: secondaryId, tenantId, taskId: null, type: { not: 'task' } },
     data: { leadId: primaryId },
   });
 
@@ -133,7 +133,7 @@ export async function reassignContactRelationships(
 ): Promise<RelationshipCounts> {
   // Activities
   const activities = await tx.activity.updateMany({
-    where: { contactId: secondaryId, tenantId },
+    where: { contactId: secondaryId, tenantId, taskId: null, type: { not: 'task' } },
     data: { contactId: primaryId },
   });
 
@@ -231,7 +231,7 @@ export async function reassignAccountRelationships(
 
   // Activities
   const activities = await tx.activity.updateMany({
-    where: { accountId: secondaryId, tenantId },
+    where: { accountId: secondaryId, tenantId, taskId: null, type: { not: 'task' } },
     data: { accountId: primaryId },
   });
 

@@ -49,7 +49,7 @@ export async function getAccountRelationships(req: Request, res: Response, next:
     const tenantId = req.user!.tenantId;
     const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 10));
 
-    const data = await relationshipsService.getAccountRelationships(id, tenantId, limit, Math.max(1, Math.trunc(Number(req.query.page) || 1)));
+    const data = await relationshipsService.getAccountRelationships(id, tenantId, limit, Math.max(1, Math.trunc(Number(req.query.page) || 1)), await mayReadTasks(req));
     res.json({ success: true, data: await filterRelationships(req, data) });
   } catch (err) {
     next(err);

@@ -9,20 +9,9 @@ import {
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
+import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
 
-export type TaskClient = Pick<
-  Prisma.TransactionClient,
-  | "task"
-  | "user"
-  | "lead"
-  | "contact"
-  | "deal"
-  | "account"
-  | "taskLead"
-  | "taskContact"
-  | "taskDeal"
-  | "taskAccount"
->;
+export type TaskClient = Prisma.TransactionClient;
 const person = {
   id: true,
   firstName: true,
@@ -62,28 +51,28 @@ export const taskInclude = {
 export type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
 
 /** One batch per source kind; never infer connections from names or company text. */
-export async function findTaskRecordContext(tenantId: string, ids: Required<TaskAssociations>) {
+export async function findTaskRecordContext(tenantId: string, ids: Required<TaskAssociations>, client: TaskClient = prisma) {
   const account = { id: true, name: true, tenantId: true } as const;
   const deal = { id: true, title: true, tenantId: true } as const;
   const [leads, contacts, deals, accounts] = await Promise.all([
-    ids.leadIds.length ? prisma.lead.findMany({
+    ids.leadIds.length ? client.lead.findMany({
       where: { tenantId, id: { in: ids.leadIds } },
       select: { ...person, account: { select: account }, convertedContact: { select: person },
         leadDeals: { where: { tenantId }, select: { deal: { select: deal } } } },
     }) : [],
-    ids.contactIds.length ? prisma.contact.findMany({
+    ids.contactIds.length ? client.contact.findMany({
       where: { tenantId, id: { in: ids.contactIds } },
       select: { ...person, account: { select: account },
         convertedFromLeads: { where: { tenantId }, select: person },
         contactDeals: { where: { tenantId }, select: { deal: { select: deal } } } },
     }) : [],
-    ids.dealIds.length ? prisma.deal.findMany({
+    ids.dealIds.length ? client.deal.findMany({
       where: { tenantId, id: { in: ids.dealIds } },
       select: { ...deal, organization: { select: account },
-        leadDeals: { where: { tenantId }, select: { lead: { select: person } } },
+        leadDeals: { where: { tenantId }, select: { lead: { select: { ...person, contactId: true, convertedAt: true } } } },
         contactDeals: { where: { tenantId }, select: { contact: { select: person } } } },
     }) : [],
-    ids.accountIds.length ? prisma.account.findMany({
+    ids.accountIds.length ? client.account.findMany({
       where: { tenantId, id: { in: ids.accountIds } }, select: account,
     }) : [],
   ]);
@@ -323,8 +312,11 @@ export async function findTaskOptions(
     }));
   }
   if (kind === "deal") {
+    const actor = crmActor.getStore();
+    const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
     const rows = await prisma.deal.findMany({
-      where: { ...where, title: contains, AND: [related.deal] },
+      where: { ...where, title: contains, deletedAt: null, AND: [related.deal],
+        ...(policy?.assignmentRestricted ? { assignedUserId: policy.userId } : {}) },
       take: 50,
       orderBy: [{ title: "asc" }, { id: "asc" }],
       select: { id: true, title: true },
@@ -362,11 +354,18 @@ export function taskContextWhere(
   tenantId: string,
 ): Prisma.TaskWhereInput {
   const direct = taskAssociationWhere(kind, id, tenantId);
-  if (kind !== "contact") return direct;
-  return { OR: [direct, { leadLinks: { some: {
+  if (kind === 'deal') return direct;
+  const related: Prisma.DealWhereInput = kind === 'lead'
+    ? { tenantId, leadDeals: { some: { tenantId, leadId: id } } }
+    : kind === 'account' ? { tenantId, accountId: id }
+    : { tenantId, OR: [
+      { contactDeals: { some: { tenantId, contactId: id } } },
+      { leadDeals: { some: { tenantId, lead: { tenantId, contactId: id, convertedAt: { not: null } } } } },
+    ] };
+  return { OR: [direct, { dealLinks: { some: { tenantId, deal: related } } }, ...(kind === 'contact' ? [{ leadLinks: { some: {
     tenantId,
     lead: { tenantId, contactId: id, convertedAt: { not: null } },
-  } } }] };
+  } } }] : [])] };
 }
 export async function replaceTaskLinks(
   task: { id: string; tenantId: string },
@@ -446,7 +445,7 @@ export async function findTaskLinkIds(
       });
     case "deal":
       return client.deal.findMany({
-        where: { ...where, AND: [related.deal] },
+        where: { ...where, deletedAt: null, AND: [related.deal] },
         select,
       });
     case "account":

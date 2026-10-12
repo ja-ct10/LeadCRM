@@ -5,15 +5,11 @@ import { taskRecordOptions } from "../task-relations";
 import { useId, useRef, useState } from "react";
 import {
   TASK_STATUSES,
-  TASK_LINK_KINDS,
   taskAssociationIds,
   type TaskLinkInput,
-  type TaskLinkKind,
   TASK_STATUS_LABELS,
   type TaskRecord,
   type TaskOption,
-  type TaskOptionKind,
-  type CreateTaskInput,
 } from "@leadcrm/shared";
 import { useData } from "@/store/DataContext";
 import { useAuth } from "@/store/AuthContext";
@@ -61,16 +57,13 @@ export function TaskEditor({
   onClose: () => void;
 }) {
   const { user } = useAuth();
+  const requestId = useRef<string>(crypto.randomUUID());
   const { addTask, updateTask, deleteTask } = useData();
   const canCreate = useHasPermission("tasks.create"),
     canEdit = useHasPermission("tasks.edit"),
     canArchive = useHasPermission("tasks.archive");
   const canComplete = useHasPermission("tasks.complete"), canAssign = useHasPermission("tasks.assign");
-  const canCreateContacts = useHasPermission("contacts.create"),
-    canEditLeads = useHasPermission("leads.edit"),
-    canCreateAccounts = useHasPermission("accounts.create");
-  const canContacts = useHasPermission("leads.view"),
-    canAccounts = useHasPermission("accounts.view");
+  const canCreateDeals = useHasPermission("deals.create");
   const editable = !readOnly && !task?.isArchived && (task ? canEdit : canCreate);
   const [title, setTitle] = useState(task?.title ?? "");
   const [description, setDescription] = useState(task?.description ?? "");
@@ -87,30 +80,11 @@ export function TaskEditor({
   const [assignedUserId, setOwner] = useState(
     task?.assignedUserId ?? user?.id ?? "",
   );
-  const [relations, setRelations] = useState<Record<TaskLinkKind, string[]>>(
-    () => ({
-      lead: taskAssociationIds(task ?? links, "lead"),
-      contact: taskAssociationIds(task ?? links, "contact"),
-      deal: taskAssociationIds(task ?? links, "deal"),
-      account: taskAssociationIds(task ?? links, "account"),
-    }),
-  );
-  const [associationNotice, setAssociationNotice] = useState("");
-  const changeRelations = (kind: TaskLinkKind, ids: string[]) => {
-    if (kind === "lead") {
-      setRelations({ lead: ids, contact: [], deal: preserveContextLinks ? taskAssociationIds(links, "deal") : [], account: [] });
-      setAssociationNotice(
-        "Lead selection changed. Choose related contacts, deals, and accounts again.",
-      );
-    } else setRelations((previous) => ({ ...previous, [kind]: kind === "deal" && preserveContextLinks ? [...new Set([...ids, ...taskAssociationIds(links, "deal")])] : ids }));
-  };
-  const [creating, setCreating] = useState<Exclude<
-    TaskOptionKind,
-    "user"
-  > | null>(null);
-  const [createdLabels, setCreatedLabels] = useState<
-    Partial<Record<TaskLinkKind, TaskOption[]>>
-  >({});
+  const [dealIds, setDealIds] = useState(() => taskAssociationIds(task ?? links, 'deal'));
+  const changeDeals = (ids: string[]) => setDealIds([...new Set([...ids,
+    ...(preserveContextLinks ? taskAssociationIds(links, 'deal') : [])])]);
+  const [creating, setCreating] = useState<'deal' | null>(null);
+  const [createdLabels, setCreatedLabels] = useState<TaskOption[]>([]);
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [confirmArchive, setConfirmArchive] = useState(false);
@@ -122,6 +96,8 @@ export function TaskEditor({
     try {
       if (!title.trim()) throw new Error("Enter a task title.");
       if (!assignedUserId) throw new Error("Select an assigned agent.");
+      if (!dealIds.length && (!task || taskAssociationIds(task, "deal").length))
+        throw new Error("Select at least one Deal to associate with this task.");
       const dueDateUnchanged = !!task && dueDate === manilaLocalDateTime(task.dueDate);
       const resolvedDueDate = resolveManilaTaskDueDateTime(dueDate);
       if (!dueDateUnchanged) {
@@ -140,25 +116,16 @@ export function TaskEditor({
           ? task.dueDate
           : manilaTaskDueInstant(resolvedDueDate),
         assignedUserId,
-        leadIds: relations.lead,
-        contactIds: relations.contact,
-        dealIds: [...new Set([...relations.deal, ...(preserveContextLinks ? taskAssociationIds(links, "deal") : [])])],
-        accountIds: relations.account,
+        dealIds: [...new Set([...dealIds, ...(preserveContextLinks ? taskAssociationIds(links, "deal") : [])])],
       };
       if (task) {
         const updates: Partial<TaskRecord> = { ...data };
         // Preserve untouched links, including historical archived relationships.
         if (assignedUserId === task.assignedUserId)
           delete updates.assignedUserId;
-        for (const kind of TASK_LINK_KINDS) {
-          if (
-            JSON.stringify(relations[kind]) ===
-            JSON.stringify(taskAssociationIds(task, kind))
-          )
-            delete updates[`${kind}Ids`];
-        }
+        if (JSON.stringify(dealIds) === JSON.stringify(taskAssociationIds(task, 'deal'))) delete updates.dealIds;
         await updateTask(task.id, updates);
-      } else await addTask(data);
+      } else await addTask({ ...data, requestId: requestId.current });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save task.");
@@ -167,7 +134,7 @@ export function TaskEditor({
     }
   };
   const archive = async () => {
-    if (!task) return;
+    if (!task || readOnly || !canArchive || task.isArchived) return;
     setBusy(true);
     setError("");
     try {
@@ -209,47 +176,17 @@ export function TaskEditor({
       >
         <header className={panelHeaderClass + " pr-16 sm:pr-20"}>
           <h2 id={heading} className={panelTitleClass}>
-            {creating
-              ? creating === "contact"
-                ? "New Contact"
-                : "Create " + creating
-              : task
-                ? "Task details"
-                : "Create task"}
+            {creating ? "Create deal" : task ? "Task details" : "Create task"}
           </h2>
-          {creating === "contact" && (
-            <p className="text-sm text-muted-foreground mt-0.5">
-              Complete the contact details below.
-            </p>
-          )}
         </header>
         {creating ? (
           <TaskRecordCreator
             kind={creating}
-            leadIds={relations.lead}
             onBusy={setBusy}
             onCancel={() => setCreating(null)}
             onCreated={(option) => {
-              if (
-                relations.lead.length &&
-                (creating === "contact" || creating === "account")
-              ) {
-                setRelations((previous) => ({
-                  ...previous,
-                  account: creating === "account" ? [option.id] : [],
-                  ...(creating === "contact"
-                    ? { contact: [...previous.contact, option.id] }
-                    : {}),
-                }));
-                setAssociationNotice(
-                  "Lead relationship updated. Review the Task’s related Account selection before saving.",
-                );
-              } else
-                changeRelations(creating, [...relations[creating], option.id]);
-              setCreatedLabels((previous) => ({
-                ...previous,
-                [creating]: [...(previous[creating] ?? []), option],
-              }));
+              changeDeals([...dealIds, option.id]);
+              setCreatedLabels(previous => [...previous, option]);
               setCreating(null);
             }}
           />
@@ -359,82 +296,29 @@ export function TaskEditor({
                 </section>
                 <section>
                   <PanelSectionHeading number={4}>
-                    Associate task (
-                    {Object.values(relations).reduce(
-                      (sum, ids) => sum + ids.length,
-                      0,
-                    )}
-                    )
+                    Associated Deals ({dealIds.length})
                   </PanelSectionHeading>
                   <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
-                    Select multiple records. Contacts, deals, and accounts are
-                    filtered by the selected leads.
+                    Select the Deal associated with this task. Related Leads, Contacts, and Accounts will be linked automatically.
                   </p>
-                  {associationNotice && (
-                    <p
-                      role="status"
-                      className="mt-2 text-xs text-muted-foreground"
-                    >
-                      {associationNotice}
-                    </p>
-                  )}
                   <div className="mt-4 space-y-4">
-                    {(["lead", "contact", "deal", "account"] as const)
-                      .filter(
-                        (kind) =>
-                          kind === "deal" ||
-                          (kind === "account" ? canAccounts : canContacts),
-                      )
-                      .map((kind) => {
-                        const options = taskRecordOptions(task, kind);
-                        return (
-                          <TaskSelector
-                            appearance="panel"
-                            key={
-                              kind +
-                              (kind === "lead"
-                                ? ""
-                                : JSON.stringify(relations.lead))
-                            }
-                            multiple
-                            leadIds={kind === "lead" ? [] : relations.lead}
-                            kind={kind}
-                            label={
-                              kind === "contact"
-                                ? "Associate task to contact"
-                                : kind === "account"
-                                  ? "Associate task to account"
-                                  : kind === "lead"
-                                    ? "Associate task to lead"
-                                    : "Associate task to deal"
-                            }
-                            value={relations[kind]}
-                            selectedLabels={[
-                              ...options,
-                              ...(createdLabels[kind] ?? []),
-                            ]}
-                            onCreate={
-                              !USE_MOCK_DATA &&
-                              (kind === "lead" ||
-                                kind === "deal" ||
-                                !relations.lead.length ||
-                                canEditLeads) &&
-                              relations[kind].length < 50 &&
-                              (kind === "deal"
-                                ? canCreate
-                                : kind === "account"
-                                  ? canCreateAccounts
-                                  : canCreateContacts)
-                                ? () => setCreating(kind)
-                                : undefined
-                            }
-                            onChange={(ids) => changeRelations(kind, ids)}
-                          />
-                        );
-                      })}
+                    <TaskSelector appearance="panel" multiple kind="deal"
+                      label="Associate task to deal" required={!task || !!taskAssociationIds(task, 'deal').length}
+                      value={dealIds}
+                      selectedLabels={[...taskRecordOptions(task, 'deal'), ...createdLabels]}
+                      onCreate={editable && !USE_MOCK_DATA && canCreateDeals && dealIds.length < 50 ? () => setCreating('deal') : undefined}
+                      onChange={changeDeals} />
                   </div>
                 </section>
               </fieldset>
+              {task && (['lead', 'contact', 'account'] as const).some(kind => taskRecordOptions(task, kind).length) && (
+                <section aria-label="Historical Task associations" className="space-y-2 text-sm">
+                  <h3 className="font-semibold">Historical associations</h3>
+                  {(['lead', 'contact', 'account'] as const).flatMap(kind => taskRecordOptions(task, kind).map(record => (
+                    <p key={kind + record.id}><span className="capitalize text-muted-foreground">{kind}: </span>{record.label}</p>
+                  )))}
+                </section>
+              )}
               {!!task?.relatedRecords?.length && (
                 <section aria-label="Related CRM records" className="space-y-3 rounded-xl border border-border p-4">
                   <h3 className="text-sm font-semibold">Related CRM records</h3>

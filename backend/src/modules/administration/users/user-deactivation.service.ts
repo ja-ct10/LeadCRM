@@ -1,3 +1,5 @@
+import { taskInclude } from '../../operations/tasks/tasks.repository';
+import { recordTaskHistory } from '../../operations/tasks/tasks.history';
 import type { Prisma } from '@prisma/client';
 import type { DeactivationImpact } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
@@ -84,15 +86,12 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
     if (replacementAgentId) {
       let cursor: string | undefined;
       for (;;) {
-        const rows = await tx.task.findMany({ where: { ...where.tasks, ...(cursor ? { id: { gt: cursor } } : {}) }, select: { id: true }, orderBy: { id: 'asc' }, take: 500 });
+        const rows = await tx.task.findMany({ where: { ...where.tasks, ...(cursor ? { id: { gt: cursor } } : {}) }, include: taskInclude, orderBy: { id: 'asc' }, take: 500 });
         if (!rows.length) break;
         const ids = rows.map(row => row.id);
         await tx.task.updateMany({ where: { ...where.tasks, id: { in: ids } }, data: { assignedUserId: replacementAgentId, assignedById: actorId } });
-        await tx.activity.createMany({ data: ids.map(taskId => ({ tenantId, createdById: actorId, taskId,
-          type: 'assignment', title: 'Task assignee changed',
-          description: `Task reassigned because ${target.firstName} ${target.lastName} was deactivated.`,
-          metadata: { previousAssignedUserId: id, newAssignedUserId: replacementAgentId, reason: 'user_deactivation' },
-        })) });
+        const updated = await tx.task.findMany({ where: { tenantId, id: { in: ids } }, include: taskInclude });
+        for (const task of updated) await recordTaskHistory(tx, actorId, task, rows.find(row => row.id === task.id), { reason: 'user_deactivation' });
         cursor = ids[ids.length - 1];
       }
     }

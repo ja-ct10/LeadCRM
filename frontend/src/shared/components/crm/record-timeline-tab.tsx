@@ -149,6 +149,12 @@ interface TimelineEntryProps {
   compact?: boolean;
 }
 
+function activityActorName(activity: TimelineActivity): string {
+  const event = activity.metadata?.taskEvent as { actorName?: unknown } | undefined;
+  if (activity.type === 'task' && typeof event?.actorName === 'string') return event.actorName;
+  return [activity.createdBy?.firstName, activity.createdBy?.lastName].filter(Boolean).join(' ');
+}
+
 function TimelineEntry({ activity, compact = false }: TimelineEntryProps): React.ReactElement {
   const email = activityEmail(activity);
   const config = ACTIVITY_ICON_MAP[activity.type] ?? ACTIVITY_ICON_MAP.note;
@@ -173,7 +179,7 @@ function TimelineEntry({ activity, compact = false }: TimelineEntryProps): React
           </p>
         )}
         <div className={cn('mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-muted-foreground', compact ? 'text-[11px] sm:text-xs' : 'text-xs')}>
-          {activity.createdBy && <span className="break-words [overflow-wrap:anywhere]">{[activity.createdBy.firstName, activity.createdBy.lastName].filter(Boolean).join(' ')}</span>}
+          {activityActorName(activity) && <span className="break-words [overflow-wrap:anywhere]">{activityActorName(activity)}</span>}
           <time dateTime={activity.createdAt} title={new Date(activity.createdAt).toLocaleString()}>{formatRelativeTime(activity.createdAt)}</time>
         </div>
       </div>
@@ -207,7 +213,7 @@ export function RecordTimelineTab({ activities, module, recordId, onActivityCrea
     setFilter(nextFilter); setSearchTerm(search);
     onFiltersChange?.({ type: FILTER_MAPPING[nextFilter].join(',') || undefined, search: search.trim() || undefined });
   };
-  const filteredActivities = allActivities.filter(activity => (filter === 'All' || FILTER_MAPPING[filter].includes(activity.type)) && (!searchTerm.trim() || [activity.title, activity.description, activity.createdBy?.firstName, activity.createdBy?.lastName, activityEmail(activity)?.body, activityEmail(activity)?.subject].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.trim().toLowerCase())));
+  const filteredActivities = allActivities.filter(activity => (filter === 'All' || FILTER_MAPPING[filter].includes(activity.type)) && (!searchTerm.trim() || [activity.title, activity.description, activityActorName(activity), activityEmail(activity)?.body, activityEmail(activity)?.subject].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.trim().toLowerCase())));
   const entries = [
     ...groupEmailActivities(filteredActivities.filter(activity => activity.type === 'email')).map(thread => ({ id: `thread:${thread.key}`, createdAt: thread.createdAt, content: <EmailThread thread={thread} /> })),
     ...filteredActivities.filter(activity => activity.type !== 'email').map(activity => ({ id: activity.id, createdAt: activity.createdAt, content: <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"><TimelineEntry activity={activity} compact={compact} /></div> })),

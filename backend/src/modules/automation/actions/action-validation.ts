@@ -1,4 +1,5 @@
 import { validateDealTargets } from './action-deal-targets';
+import { resolveTaskDealIds } from './action-task-deals';
 import { z } from 'zod';
 import { workflowMessageVariableKeys, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { fieldUpdatePatch } from './action-fields';
@@ -55,6 +56,10 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (field.type === 'campaign' && !await repo.findCampaign(String(value), tenantId)) throw new NotFoundError('Campaign');
   }
   if (['create_task', 'assign_owner'].includes(action.type)) await validateAssignment(action, entity, tenantId, context, incomplete || action.enabled === false);
+  if (action.type === 'create_task') {
+    if (action.config.dealId && (!z.string().uuid().safeParse(action.config.dealId).success || !await prisma.deal.findFirst({ where: { tenantId, id: String(action.config.dealId), isArchived: false, deletedAt: null } }))) throw new ValidationError('Choose an eligible same-workspace Deal ID.');
+    if (context && action.enabled !== false) await resolveTaskDealIds(action, entity, tenantId, context);
+  }
   // Disabled steps retain safe configuration and scoped references, but need no delivery readiness.
   if (action.enabled === false) return;
   if (incomplete && Object.entries(definition.configSchema).some(([key, field]) => field.required && !action.config[key])) return;

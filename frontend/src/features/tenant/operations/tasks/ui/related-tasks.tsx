@@ -9,7 +9,9 @@ import { DataLoadingSkeleton } from "@/shared/components/crm/data-view-states";
 import { useTasks } from "../use-tasks";
 import { TaskEditor, type TaskLinks } from "./task-editor";
 
-export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCountChange?: (count: number | undefined) => void }) {
+export function RelatedTasks({ links, onCountChange, allowCreate = false, readOnly = true }: {
+  links: TaskLinks; onCountChange?: (count: number | undefined) => void; allowCreate?: boolean; readOnly?: boolean;
+}) {
   const [page, setPage] = useState(1),
     [editor, setEditor] = useState<TaskRecord | "new" | null>(null);
   const canCreate = useHasPermission("tasks.create");
@@ -47,7 +49,7 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
         </span>
         <div className="flex gap-2">
           <RefreshButton label="Refresh tasks" refreshing={data.loading} onClick={() => { if (refreshing.current || data.loading) return; refreshing.current = true; data.refresh(); }} />
-          {canCreate && (
+          {allowCreate && !readOnly && !!(links.dealId || links.dealIds?.length) && canCreate && (
             <Button
               size="sm"
               variant="default"
@@ -113,6 +115,8 @@ export function RelatedTasks({ links, onCountChange }: { links: TaskLinks; onCou
           key={key + (editor === "new" ? "new" : editor.id)}
           task={editor === "new" ? undefined : editor}
           links={links}
+          readOnly={readOnly}
+          preserveContextLinks={editor === "new"}
           onClose={() => setEditor(null)}
         />
       )}

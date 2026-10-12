@@ -18,6 +18,7 @@ export async function getActivity(id: string, tenantId: string) {
 }
 
 export async function createActivity(tenantId: string, createdById: string, dto: CreateActivityDto) {
+  if (dto.taskId || dto.type === 'task' || dto.metadata?.taskEvent) throw new AppError('Task history is recorded by Task operations.', 403);
   // Can add specific logic here later, like validation or side-effects based on activity type
   return salesTransaction(async tx => {
     await authorizeLinks(tx, dto);
@@ -29,6 +30,8 @@ export async function updateActivity(id: string, tenantId: string, dto: UpdateAc
   const activity = await salesTransaction(async tx => {
     const current = await tx.activity.findFirst({ where: { id, tenantId } });
     if (!current) throw new AppError('Activity not found', 404);
+    assertMutableActivity(current);
+    if (dto.taskId || dto.type === 'task' || dto.metadata?.taskEvent) throw new AppError('Task history is recorded by Task operations.', 403);
     await authorizeLinks(tx, current);
     await authorizeLinks(tx, dto);
     return activitiesRepository.updateActivity(id, tenantId, dto, tx);
@@ -43,6 +46,7 @@ export async function deleteActivity(id: string, tenantId: string) {
   const activity = await salesTransaction(async tx => {
     const current = await tx.activity.findFirst({ where: { id, tenantId } });
     if (!current) throw new AppError('Activity not found', 404);
+    assertMutableActivity(current);
     await authorizeLinks(tx, current);
     return activitiesRepository.deleteActivity(id, tenantId, tx);
   });
@@ -50,6 +54,10 @@ export async function deleteActivity(id: string, tenantId: string) {
     throw new AppError('Activity not found or cannot be deleted', 404);
   }
   return activity;
+}
+
+function assertMutableActivity(record: { taskId: string | null; type: string; metadata: Prisma.JsonValue | null }) {
+  if (record.taskId || record.type === 'task' || (record.metadata as { taskEvent?: unknown } | null)?.taskEvent) throw new AppError('Task lifecycle history cannot be changed or deleted.', 403);
 }
 
 async function authorizeLinks(tx: Prisma.TransactionClient, record: object) {

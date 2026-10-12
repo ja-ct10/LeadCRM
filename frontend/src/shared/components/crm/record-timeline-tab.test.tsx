@@ -13,6 +13,15 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 const note = { id: 'saved', type: 'note', title: 'Follow-up note', createdAt: '2026-10-01T10:00:00Z', createdBy: { id: 'actor', firstName: 'Author', lastName: 'Test', email: 'author@example.test' } };
 beforeEach(() => { vi.resetAllMocks(); mocks.canEdit = true; mocks.actor = 'actor'; });
 afterEach(cleanup);
+it('preserves the event-time Task actor after their profile name changes', () => {
+  render(<RecordTimelineTab activities={[{ ...note, type: 'task', title: 'Task Completed',
+    createdBy: { ...note.createdBy, firstName: 'Renamed', lastName: 'User' },
+    metadata: { taskEvent: { actorName: 'Original Actor' } } }]} module="deals" recordId="deal" />);
+  const timeline = within(screen.getByRole('region', { name: 'Activity Timeline' }));
+  expect(timeline.getByText('Original Actor')).toBeTruthy();
+  expect(timeline.queryByText('Renamed User')).toBeNull();
+  expect(timeline.getByText('Task Completed').parentElement?.querySelector('time')?.getAttribute('dateTime')).toBe(note.createdAt);
+});
 it.each([['leads','leadId'],['contacts','contactId'],['accounts','accountId'],['deals','dealId']] as const)('saves one trimmed %s note, applies server identity and clears only after success', async (module,key) => {
   mocks.create.mockResolvedValue({ data: note });
   render(<RecordTimelineTab canEditRecord activities={[]} module={module} recordId="record" onActivityCreated={mocks.onCreated} />);

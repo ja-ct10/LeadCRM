@@ -10,10 +10,12 @@ export async function getActivities(req: Request, res: Response, next: NextFunct
   } catch (error) { next(error); }
 }
 
-export async function getActivity(req: Request, res: Response) {
+export async function getActivity(req: Request, res: Response, next: NextFunction) {
+  try {
   const tenantId = req.user!.tenantId as string;
   const activity = await activitiesService.getActivity(req.params.id as string, tenantId);
   res.json({ success: true, data: activity });
+  } catch (error) { next(error); }
 }
 
 export async function createActivity(req: Request, res: Response, next: NextFunction) {
@@ -26,15 +28,19 @@ export async function createActivity(req: Request, res: Response, next: NextFunc
   } catch (error) { next(error); }
 }
 
-export async function updateActivity(req: Request, res: Response) {
+export async function updateActivity(req: Request, res: Response, next: NextFunction) {
+  try {
   const tenantId = req.user!.tenantId as string;
   const dto = UpdateActivitySchema.parse(req.body);
   const activity = await activitiesService.updateActivity(req.params.id as string, tenantId, dto);
   res.json({ success: true, data: activity });
+  } catch (error) { next(error); }
 }
 
-export async function deleteActivity(req: Request, res: Response) {
+export async function deleteActivity(req: Request, res: Response, next: NextFunction) {
+  try {
   const tenantId = req.user!.tenantId as string;
   await activitiesService.deleteActivity(req.params.id as string, tenantId);
   res.json({ success: true, message: 'Activity deleted successfully' });
+  } catch (error) { next(error); }
 }
