@@ -25,7 +25,7 @@ const matches = (task: typeof tasks[number], where: { tenantId: string; assigned
 
 beforeEach(() => {
   vi.resetAllMocks();
-  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : { ...target });
+  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : where.id === 'replacement' ? { id: 'replacement' } : { ...target });
   state.db.user.count.mockResolvedValue(2);
   state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [{ role: { permissions: [{ module: 'tasks', canView: true }] } }] });
   for (const model of [state.db.lead, state.db.contact, state.db.account, state.db.deal]) {
@@ -78,6 +78,7 @@ it('retains self-deactivation and Client Admin transfer guards', async () => {
 });
 
 it('prevents transferring unfinished Tasks to a sales agent who cannot view Tasks', async () => {
+  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : where.id === 'replacement' ? null : target);
   state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [{ role: { permissions: [{ module: 'tasks', canView: false }] } }] });
   await expect(deactivateUser(target.id, 'tenant', 'admin', 'replacement')).rejects.toMatchObject({ statusCode: 409, message: 'Choose an Assigned Agent with Tasks View permission to receive the unfinished tasks.' });
   expect(state.db.task.updateMany).not.toHaveBeenCalled();
@@ -89,4 +90,13 @@ it('does not require Task visibility when no unfinished Tasks are being transfer
   state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [] });
   await deactivateUser(target.id, 'tenant', 'admin', 'replacement');
   expect(state.db.user.update).toHaveBeenCalledOnce();
+});
+
+it('rejects Client Admin and multi-role admin replacements before changing Tasks or deactivating the user', async () => {
+  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : where.id === 'replacement' ? null : target);
+  state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [{ role: { name: 'Client Admin', permissions: [{ module: 'tasks', canView: true }] } }] });
+  await expect(deactivateUser(target.id, 'tenant', 'admin', 'replacement')).rejects.toMatchObject({ statusCode: 409 });
+  expect(state.db.task.updateMany).not.toHaveBeenCalled();
+  expect(state.db.user.update).not.toHaveBeenCalled();
+  expect(state.db.auditLog.create).not.toHaveBeenCalled();
 });

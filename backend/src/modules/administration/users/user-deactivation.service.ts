@@ -1,4 +1,4 @@
-import { taskInclude } from '../../operations/tasks/tasks.repository';
+import { findTaskAssignee, taskInclude } from '../../operations/tasks/tasks.repository';
 import { recordTaskHistory } from '../../operations/tasks/tasks.history';
 import type { Prisma } from '@prisma/client';
 import type { DeactivationImpact } from '@leadcrm/shared';
@@ -51,10 +51,9 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
     if (replacementAgentId === id) throw new ConflictError('Choose another active Assigned Agent.');
     if (impact.total && !replacementAgentId) throw new ConflictError('Choose an Assigned Agent before deactivating this user.');
     if (replacementAgentId) {
-      const replacement = await validateSalesOwner(tx, tenantId, replacementAgentId)
+      await validateSalesOwner(tx, tenantId, replacementAgentId)
         .catch(() => { throw new ConflictError('The selected Assigned Agent is no longer available. Choose another agent.'); });
-      if (impact.counts.tasks && replacement.role !== 'Client Admin' &&
-          !replacement.userRoles.some(link => link.role.permissions.some(permission => permission.module === 'tasks' && permission.canView))) {
+      if (impact.counts.tasks && !(await findTaskAssignee(replacementAgentId, tenantId, tx))) {
         throw new ConflictError('Choose an Assigned Agent with Tasks View permission to receive the unfinished tasks.');
       }
     }

@@ -8,7 +8,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import * as service from './forms.service';
 import { getPublicForm, submitPublicForm } from './public-forms.service';
 import app from '../../../app';
-import { ClosingFieldInputSchema, FORM_PRODUCT_INTERESTS, leadCatalogFormField, type FormField } from '@leadcrm/shared';
+import { ClosingFieldInputSchema, FORM_PRODUCT_INTERESTS, LEAD_SOURCES, leadCatalogFormField, type FormField } from '@leadcrm/shared';
 import { ensureSalesGroup } from '../../administration/groups/sales-group';
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_forms_test_\d+$/.test(url.pathname);
@@ -74,6 +74,24 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
       const refreshed = await request('/marketing/forms/field-catalog');
       expect(refreshed.body.data).toContainEqual(expect.objectContaining({ label: 'Age in years', customFieldId: age.id }));
     } finally { await removeFields([age.id, contact.id, hidden.id, disabled.id]); }
+  });
+
+  it('preserves saved Lead Source definitions, published snapshots, answers and attribution across later draft edits', async () => {
+    const form = await draft();
+    const source: FormField = { id: 'historicalSource', type: 'dropdown', label: 'Lead Source', mapToField: 'source', options: [...LEAD_SOURCES], required: true };
+    await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: form.revision, fields: [...form.fields as FormField[], source] }));
+    const published = await publish(form.id);
+    const before = await getPublicForm(form.publicId);
+    const answers = { ...values(), historicalSource: 'Referral' };
+    await submit(form.publicId, answers, published.publishedVersion);
+    const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: answers.email } });
+    expect(lead.source).toBe('Referral');
+    const submission = await prisma.formSubmission.findFirstOrThrow({ where: { tenantId, formId: form.id } });
+    expect(submission.values).toMatchObject({ historicalSource: 'Referral' });
+    await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: published.revision, name: 'Later draft name' }));
+    expect((await service.getFormById(form.id, tenantId)).fields).toContainEqual(source);
+    expect(await getPublicForm(form.publicId)).toEqual(before);
+    expect(await prisma.formSubmission.findUniqueOrThrow({ where: { id: submission.id } })).toEqual(submission);
   });
   it('persists every supported Lead Custom type, layout content and order through reload, publish and repeat submission', async () => {
     const definitions = await Promise.all([customField('Age', 'Number', 'leads', tenantId, { required: true }), customField('Nickname', 'Text'), customField('Details', 'Long Text'), customField('Birthday', 'Date'), customField('Choice', 'Dropdown')]);

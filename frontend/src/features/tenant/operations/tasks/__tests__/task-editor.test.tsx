@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   deleteTask: vi.fn(),
   canEdit: true,
   canEditLeads: true,
+  canAssign: true,
   options: vi.fn(),
 }));
 const user = {
@@ -36,7 +37,7 @@ vi.mock("@/shared/hooks/use-permissions", () => ({
   useHasPermission: (permission: string) =>
     permission === "leads.edit"
       ? mocks.canEditLeads
-      : permission !== "tasks.edit" || mocks.canEdit,
+      : permission === 'tasks.assign' ? mocks.canAssign : permission !== "tasks.edit" || mocks.canEdit,
 }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({
@@ -84,6 +85,69 @@ beforeEach(() => {
   vi.resetAllMocks();
   mocks.canEdit = true;
   mocks.canEditLeads = true;
+  mocks.canAssign = true;
+  mocks.options.mockResolvedValue({ data: [{ id: 'owner', label: 'Test Owner' }] });
+});
+async function selectAgent() {
+  fireEvent.click(screen.getByRole('button', { name: 'Assigned Agent *' }));
+  fireEvent.click(await screen.findByRole('checkbox', { name: 'Test Owner' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+}
+it('preserves authorized self-assignment without Tasks Assign permission while requiring an explicit choice', async () => {
+  mocks.canAssign = false;
+  mocks.options.mockResolvedValue({ data: [{ id: 'owner', label: 'Test Owner' }, { id: 'other', label: 'Other Agent' }] });
+  render(<TaskEditor links={{ dealIds: ['deal'] }} onClose={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Self-assigned draft' } });
+  expect(screen.getByText('Select Agent...')).toBeTruthy();
+  await selectAgent();
+  expect(screen.queryByText('Other Agent')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
+  await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ assignedUserId: 'owner' })));
+});
+it('requires explicit agent selection and preserves the entire draft for resubmission', async () => {
+  const close = vi.fn();
+  render(<TaskEditor links={{ dealIds: ['deal'] }} onClose={close} />);
+  expect(screen.getByText('Select Agent...')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'My draft' } });
+  fireEvent.change(screen.getByRole('textbox', { name: /Notes/ }), { target: { value: 'My notes' } });
+  const due = screen.getByLabelText('Due date and time *').textContent;
+  fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Select an assigned agent.');
+  expect(mocks.addTask).not.toHaveBeenCalled();
+  expect(close).not.toHaveBeenCalled();
+  expect((screen.getByLabelText('Title *') as HTMLInputElement).value).toBe('My draft');
+  expect((screen.getByRole('textbox', { name: /Notes/ }) as HTMLTextAreaElement).value).toBe('My notes');
+  expect(screen.getByLabelText('Due date and time *').textContent).toBe(due);
+  await selectAgent();
+  fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ title: 'My draft', description: 'My notes', assignedUserId: 'owner', dealIds: ['deal'] }));
+});
+it('shows the eligible-agent empty state without falling back to the logged-in user', async () => {
+  mocks.options.mockResolvedValue({ data: [] });
+  render(<TaskEditor onClose={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Assigned Agent *' }));
+  expect(await screen.findByText('No eligible agents available.')).toBeTruthy();
+  expect(screen.getByText('Select Agent...')).toBeTruthy();
+});
+it('preserves a historical assignee as a read-only choice while allowing eligible reassignment', async () => {
+  render(<TaskEditor task={{ ...task, assignedUserId: 'admin', assignedUser: { id: 'admin', firstName: 'Historical', lastName: 'Admin' } }} onClose={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Assigned Agent *' }));
+  const historical = await screen.findByRole('checkbox', { name: 'Historical Admin (current assignment, read-only)' });
+  expect((historical as HTMLInputElement).disabled).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(mocks.updateTask).toHaveBeenCalled());
+  expect(mocks.updateTask.mock.calls[0][1]).not.toHaveProperty('assignedUserId');
+});
+it('retains dropdown searching and keyboard opening', async () => {
+  render(<TaskEditor onClose={vi.fn()} />);
+  fireEvent.keyDown(screen.getByRole('button', { name: 'Assigned Agent *' }), { key: 'ArrowDown' });
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search owner' }), { target: { value: 'Test' } });
+  await screen.findByRole('checkbox', { name: 'Test Owner' });
+  expect(mocks.options).toHaveBeenLastCalledWith('user', 'Test', expect.any(AbortSignal));
+  fireEvent.keyDown(screen.getByRole('textbox', { name: 'Search owner' }), { key: 'Escape' });
+  expect(screen.queryByRole('dialog', { name: 'Select owner' })).toBeNull();
 });
 it("keeps the editor and entered values after a rejected save", async () => {
   mocks.updateTask.mockRejectedValue(new Error("Task update rejected"));
@@ -118,6 +182,7 @@ it("preserves the due instant and existing identity on successful edits", async 
 it('requires a Deal for creation even when a legacy CRM context is supplied', async () => {
   render(<TaskEditor links={{ contactId: 'profile-id' }} onClose={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Follow up' } });
+  await selectAgent();
   fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Select at least one Deal to associate with this task.');
   expect(mocks.addTask).not.toHaveBeenCalled();
@@ -163,6 +228,7 @@ it('retains the originating Deal and sends no direct associations during creatio
   mocks.addTask.mockResolvedValue(undefined);
   render(<TaskEditor links={{ dealIds: ['originating-deal'] }} preserveContextLinks onClose={vi.fn()} />);
   fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Deal follow up' } });
+  await selectAgent();
   fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
   await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ dealIds: ['originating-deal'], title: 'Deal follow up' })));
   for (const kind of ['lead','contact','account']) expect(mocks.addTask.mock.calls[0][0]).not.toHaveProperty(kind + 'Ids');

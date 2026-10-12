@@ -49,6 +49,7 @@ function catalogIcon(field: CrmFieldCatalogEntry): string {
 }
 export function paletteFieldsFromCatalog(catalog: CrmFieldCatalogEntry[]): PaletteField[] {
   return catalog.flatMap(field => {
+    if (field.kind === 'System' && field.technicalKey === 'source') return [];
     const input = leadCatalogFormField(field);
     if (!input) return [];
     return [{ ...input, icon: catalogIcon(field), color: field.kind === 'Custom' ? 'bg-amber-700' : 'bg-emerald-700', section: field.kind === 'Custom' ? 'custom' : 'standard' } satisfies PaletteField];

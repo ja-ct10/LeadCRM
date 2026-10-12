@@ -1,18 +1,18 @@
 import type { Prisma } from '@prisma/client';
 import type { WorkflowAssignmentPurpose, WorkflowAssignmentTarget, WorkflowAssignmentPoolOption } from '@leadcrm/shared';
 import { eligibleAgents } from '../../crm/leads/lead-automation.service';
+import { taskAssigneeWhere } from '../../operations/tasks/tasks.repository';
 
 type Client = Prisma.TransactionClient;
 export async function assignmentCandidates(client: Client, tenantId: string, purpose: WorkflowAssignmentPurpose) {
   if (purpose === 'crm_owner') return eligibleAgents(client, tenantId);
   const users = await client.user.findMany({
-    where: { tenantId, status: 'ACTIVE' },
+    where: taskAssigneeWhere(tenantId),
     include: { userRoles: { where: { tenantId, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } },
       include: { role: { include: { permissions: { where: { tenantId, module: 'tasks' } } } } } } },
     orderBy: { id: 'asc' },
   });
-  return users.filter(user => user.role === 'Client Admin' ||
-    (user.role.trim().toLowerCase() !== 'guest' && user.userRoles.some(link => link.role.permissions.some(permission => permission.canView))));
+  return users;
 }
 
 export async function assignmentPool(client: Client, tenantId: string, target: Extract<WorkflowAssignmentTarget, { type: 'role' | 'group' }>) {

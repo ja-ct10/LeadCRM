@@ -51,6 +51,9 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
       groupId = (await prisma.tenantGroup.create({ data: { tenantId, name: 'Follow-up team' } })).id;
       await prisma.tenantGroupMember.createMany({ data: [actorId, taskUserId, salesUserId, secondSalesId].map(userId => ({ tenantId, groupId, userId })) });
       leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Lead', assignedUserId: actorId, productInterest: [] } })).id;
+      const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Pool Task Deals' } });
+      const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
+      await prisma.deal.create({ data: { tenantId, title: 'Pool Task Deal', pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId } } } });
     });
     foreignGroupId = (await prisma.tenantGroup.create({ data: { tenantId: foreignTenant, name: 'Foreign team' } })).id;
     foreignRoleId = (await prisma.roleDefinition.create({ data: { tenantId: foreignTenant, name: 'Foreign role' } })).id;

@@ -5,6 +5,7 @@ import {
   TaskOptionKind,
   TaskAssociations,
   TaskLinkKind,
+  hasModulePermission,
 } from "@leadcrm/shared";
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
@@ -184,7 +185,7 @@ export function findTaskById(
     include: taskInclude,
   });
 }
-export function findTaskUser(
+export function findTaskActor(
   id: string,
   tenantId: string,
   client: TaskClient = prisma,
@@ -198,6 +199,22 @@ export function findTaskUser(
     },
     select: person,
   });
+}
+/** Shared by manual, bulk, Workflow and deactivation assignment paths. */
+export function taskAssigneeWhere(tenantId: string): Prisma.UserWhereInput {
+  const reserved = ['Client Admin', 'Guest'].map(name => ({ name: { equals: name, mode: 'insensitive' as const } }));
+  return {
+    tenantId,
+    status: 'ACTIVE',
+    NOT: ['Client Admin', 'Guest'].map(role => ({ role: { equals: role, mode: 'insensitive' } })),
+    userRoles: {
+      none: { tenantId, role: { tenantId, OR: reserved } },
+      some: { tenantId, role: { tenantId, isArchived: false, permissions: { some: { tenantId, module: 'tasks', canView: true } } } },
+    },
+  };
+}
+export function findTaskAssignee(id: string, tenantId: string, client: TaskClient = prisma) {
+  return client.user.findFirst({ where: { ...taskAssigneeWhere(tenantId), id }, select: person });
 }
 export function findTaskLink(
   kind: Exclude<TaskOptionKind, "user">,
@@ -277,11 +294,12 @@ export async function findTaskOptions(
     AND: buildSearchClauses(search, ['firstName', 'lastName', 'email']),
   };
   if (kind === "user") {
+    const actor = crmActor.getStore();
+    const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
     const rows = await prisma.user.findMany({
       where: {
-        tenantId,
-        status: "ACTIVE",
-        role: { notIn: ["Guest", "Client Admin"] },
+        ...taskAssigneeWhere(tenantId),
+        ...(policy && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', 'canAssign') ? { id: policy.userId } : {}),
         ...people,
       },
       take: 50,

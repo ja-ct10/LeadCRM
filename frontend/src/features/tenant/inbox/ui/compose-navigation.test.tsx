@@ -22,6 +22,10 @@ it('consumes a Lead action once, preserves exact recipient, clears fresh compose
   window.history.replaceState({ retained: true }, '', `${recordEmailComposeHref(email)}&view=sent#mail`);
   const view = render(<StrictMode><InboxPage /></StrictMode>);
   await waitFor(() => expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe(email));
+  expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('');
+  expect(document.querySelector('[contenteditable="true"]')?.textContent).toBe('');
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: 'edited@example.test' } });
+  expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('edited@example.test');
   expect(window.location.search).toBe('?view=sent');
   expect(window.location.hash).toBe('#mail');
   expect(window.history.state).toEqual({ retained: true });

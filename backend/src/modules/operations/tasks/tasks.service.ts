@@ -172,12 +172,14 @@ async function validateReferences(
   userId: string,
   data: TaskLinkInput & { assignedUserId?: string },
   client: repo.TaskClient,
+  previousAssigneeId?: string,
 ) {
-  if (!(await repo.findTaskUser(userId, tenantId, client)))
+  if (!(await repo.findTaskActor(userId, tenantId, client)))
     throw new NotFoundError("Active workspace actor");
   if (
     data.assignedUserId &&
-    !(await repo.findTaskUser(data.assignedUserId, tenantId, client))
+    data.assignedUserId !== previousAssigneeId &&
+    !(await repo.findTaskAssignee(data.assignedUserId, tenantId, client))
   )
     throw new NotFoundError("Active workspace assignee");
   for (const kind of ["deal"] as const) {
@@ -252,7 +254,7 @@ export async function updateTask(
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before || before.isArchived) throw new NotFoundError("Active task");
     await authorizeTask(client, tenantId, userId, "canEdit", dto, before);
-    await validateReferences(tenantId, userId, dto, client);
+    await validateReferences(tenantId, userId, dto, client, before.assignedUserId);
     if (dto.reminderAt && dto.reminderAt !== before.reminderAt?.toISOString())
       throw new ValidationError("Task reminder delivery is not available.");
     const split = splitLinks(dto);

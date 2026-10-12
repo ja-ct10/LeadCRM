@@ -39,6 +39,9 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
       }
       groupId = (await prisma.tenantGroup.create({ data: { tenantId, name: 'Assignment team', members: { create: [firstId, secondId].map(userId => ({ userId })) } } })).id;
       leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Sample', lastName: 'Lead', assignedUserId: actorId } })).id;
+      const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Strategy Task Deals' } });
+      const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
+      await prisma.deal.create({ data: { tenantId, title: 'Strategy Task Deal', pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId } } } });
     });
   });
   beforeEach(async () => {

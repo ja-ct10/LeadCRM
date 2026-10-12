@@ -70,8 +70,8 @@ beforeEach(() => {
       id: where.id,
       tenantId,
       status: "ACTIVE",
-      role: "Client Admin",
-      tenant: { status: "ACTIVE" }, userRoles: [],
+      role: [actorId, 'new-actor'].includes(where.id) ? "Client Admin" : "Sales",
+      tenant: { status: "ACTIVE" }, userRoles: [{ role: { permissions: [{ module: 'tasks', canView: true }] } }],
     }),
   );
   db.task.findFirst.mockResolvedValue({ ...original });
