@@ -1,4 +1,4 @@
-import { CAMPAIGNS_TABLE_COLUMNS, WORKFLOWS_TABLE_COLUMNS, USERS_TABLE_COLUMNS, TASK_COLUMN_DEFINITIONS, LEADS_TABLE_COLUMNS, LEADS_TABLE_SORT_FIELDS, ACCOUNTS_TABLE_COLUMNS, CONTACTS_TABLE_COLUMNS, DEALS_TABLE_COLUMNS, ACCOUNTS_TABLE_SORT_FIELDS, CONTACTS_TABLE_SORT_FIELDS, DEALS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { MODULE_TABLE_SORT_FIELDS, CAMPAIGNS_TABLE_COLUMNS, WORKFLOWS_TABLE_COLUMNS, USERS_TABLE_COLUMNS, TASK_COLUMN_DEFINITIONS, LEADS_TABLE_COLUMNS, LEADS_TABLE_SORT_FIELDS, ACCOUNTS_TABLE_COLUMNS, CONTACTS_TABLE_COLUMNS, DEALS_TABLE_COLUMNS, ACCOUNTS_TABLE_SORT_FIELDS, CONTACTS_TABLE_SORT_FIELDS, DEALS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 import { reconcileTableColumns, type ColumnConfig, type ColumnDefinition } from '@leadcrm/shared';
 
 /**
@@ -47,10 +47,10 @@ export const DEALS_COLUMN_REGISTRY: ModuleRegistry = { module: 'deals', columns:
 // ─────────────────────────────────────────────────────
 
 export const COLUMN_REGISTRIES: Record<string, ModuleRegistry> = {
-  campaigns: { module: 'campaigns', columns: CAMPAIGNS_TABLE_COLUMNS, sortableFields: ['name', 'createdAt'] },
-  workflows: { module: 'workflows', columns: WORKFLOWS_TABLE_COLUMNS, sortableFields: ['name', 'createdAt'] },
-  users: { module: 'users', columns: USERS_TABLE_COLUMNS, sortableFields: ['name', 'role', 'email', 'status', 'groups', 'createdAt'] },
-  tasks: { module: 'tasks', columns: TASK_COLUMN_DEFINITIONS, sortableFields: ['title', 'dueDate', 'createdAt', 'updatedAt'] },
+  campaigns: { module: 'campaigns', columns: CAMPAIGNS_TABLE_COLUMNS, sortableFields: MODULE_TABLE_SORT_FIELDS.campaigns },
+  workflows: { module: 'workflows', columns: WORKFLOWS_TABLE_COLUMNS, sortableFields: MODULE_TABLE_SORT_FIELDS.workflows },
+  users: { module: 'users', columns: USERS_TABLE_COLUMNS, sortableFields: MODULE_TABLE_SORT_FIELDS.users },
+  tasks: { module: 'tasks', columns: TASK_COLUMN_DEFINITIONS, sortableFields: MODULE_TABLE_SORT_FIELDS.tasks },
   leads: LEADS_COLUMN_REGISTRY,
   accounts: ACCOUNTS_COLUMN_REGISTRY,
   contacts: CONTACTS_COLUMN_REGISTRY,

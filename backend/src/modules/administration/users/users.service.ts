@@ -37,8 +37,9 @@ export async function getAll(tenantId: string, query: Record<string, unknown>) {
     ...(query.role   ? { role:   String(query.role) }   : {}),
     AND: buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'role', 'jobTitle']),
   };
-  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['firstName', 'email', 'role', 'status', 'createdAt'], skip, limit,
-    () => prisma.user.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true, createdAt: true } }),
+  const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['name', 'firstName', 'email', 'role', 'status', 'groups', 'createdAt'], skip, limit,
+    async () => (await prisma.user.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true, createdAt: true, groupMemberships: SAFE_USER_SELECT.groupMemberships } }))
+      .map(user => ({ ...user, name: `${user.firstName} ${user.lastName}`.trim(), groups: (user.groupMemberships ?? []).map(member => member.group.name).sort().join(', ') })),
     direction => prisma.user.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     prisma.user.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: SAFE_USER_SELECT }),

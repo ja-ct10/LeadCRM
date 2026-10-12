@@ -54,6 +54,7 @@ export default function ContactsPage(): React.ReactElement {
     saveColumns,
     saveColumnWidth,
     resetColumns,
+    resetColumnWidths,
   } = useColumnPreferences('contacts');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
@@ -334,9 +335,11 @@ export default function ContactsPage(): React.ReactElement {
       searchPlaceholder="Search contacts..."
       onRefresh={refreshContacts}
       refreshDisabled={isInitialLoad || isRefreshing || manualRefreshing}
+      refreshing={isRefreshing || manualRefreshing}
       loading={isInitialLoad || isColumnsLoading}
       loadingLabel={isInitialLoad ? 'Loading contacts...' : 'Loading columns...'}
       onManageColumns={openManageColumns}
+        onResetColumns={resetColumnWidths}
     >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
           <span>Showing selected search result</span>
@@ -387,7 +390,6 @@ export default function ContactsPage(): React.ReactElement {
                     toast.error('Failed to hide column. Reverted.');
                   }
                 }}
-                onManageColumns={openManageColumns}
                 onColumnWidthChange={(id, width) => { void saveColumnWidth(id, width).catch(error => toast.error(error instanceof Error ? error.message : 'Unable to save column width.')); }}
                 highlightRowId={highlightId}
                 viewMode={viewMode}

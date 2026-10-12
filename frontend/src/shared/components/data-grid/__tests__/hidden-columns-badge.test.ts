@@ -82,7 +82,7 @@ describe('Hidden Columns Indicator Badge', () => {
     expect(badge.textContent).toContain('2');
   });
 
-  it('renders both badge and settings button when both are present', () => {
+  it('retains the hidden badge without a duplicate embedded settings control', () => {
     const onSettingsClick = vi.fn();
     render(createDataGrid({ onSettingsClick, hiddenColumnsCount: 5 }));
 
@@ -90,9 +90,8 @@ describe('Hidden Columns Indicator Badge', () => {
     const badge = screen.getByLabelText('5 columns hidden');
     expect(badge).toBeTruthy();
 
-    // Settings button should also be present
-    const settingsButton = screen.getByLabelText('Table settings');
-    expect(settingsButton).toBeTruthy();
+    expect(screen.queryByLabelText('Table settings')).toBeNull();
+    expect(onSettingsClick).not.toHaveBeenCalled();
   });
 
   it('includes EyeOff icon in the badge', () => {

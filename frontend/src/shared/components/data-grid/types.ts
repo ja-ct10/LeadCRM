@@ -151,6 +151,10 @@ export interface DataGridProps<T = Record<string, unknown>> {
   sortingMode?: 'client' | 'external';
   /** Sort change handler */
   onSortChange?: (sort: SortState | null) => void;
+  /** All supported fields, including hidden columns; server tables supply their allowlist. */
+  sortFields?: { id: string; label: string }[];
+  defaultSort?: SortState | null;
+  onSortReset?: () => void;
 
   // ─── Row Selection ──────────────────────────────────────────────────────
   /** Enable row selection checkboxes */

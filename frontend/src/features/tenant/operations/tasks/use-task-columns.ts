@@ -77,6 +77,7 @@ export function useTaskColumns(identity: string, enabled: boolean) {
   };
   const save = (input: ColumnConfigItem[]) => write(() => input);
   const reset = () => write();
+  const resetWidths = () => write(() => latestColumns.current.map(({ width: _width, ...column }) => column));
   const saveWidth = (columnId: string, width: number): Promise<void> => write(() =>
     latestColumns.current.map(column => column.id === columnId
       ? { ...column, width: Math.max(80, Math.min(800, Math.round(width))) } : column));
@@ -84,6 +85,7 @@ export function useTaskColumns(identity: string, enabled: boolean) {
     columns,
     save,
     reset,
+    resetWidths,
     saveWidth,
     loading: enabled && state?.identity !== identity,
     error: state?.identity === identity ? state.error : undefined,

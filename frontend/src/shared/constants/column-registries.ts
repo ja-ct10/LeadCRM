@@ -8,6 +8,7 @@ import { TASK_COLUMN_DEFINITIONS, LEADS_TABLE_COLUMNS, ACCOUNTS_TABLE_COLUMNS, C
  */
 
 import type { ColumnDefinition } from '@leadcrm/shared';
+import { MODULE_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 
 // ─────────────────────────────────────────────────────
 // LEADS
@@ -47,3 +48,9 @@ export const MODULE_COLUMN_REGISTRIES: Record<string, ColumnDefinition[]> = {
   contacts: CONTACTS_COLUMN_REGISTRY,
   deals: DEALS_COLUMN_REGISTRY,
 };
+
+export function getTableSortFields(module: string) {
+  const registry = MODULE_COLUMN_REGISTRIES[module] ?? [];
+  const labels: Record<string, string> = { createdAt: 'Created', updatedAt: 'Updated' };
+  return (MODULE_TABLE_SORT_FIELDS[module] ?? []).map(id => ({ id, label: registry.find(column => column.id === id)?.label ?? labels[id] ?? id }));
+}

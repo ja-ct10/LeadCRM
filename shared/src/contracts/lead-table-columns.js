@@ -8,7 +8,7 @@ function formatLeadName(lead) {
 }
 exports.LEADS_TABLE_SORT_FIELDS = ['name', 'firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'updatedAt'];
 const entries = [
-    ['name', 'Name', true, 'required'],
+    ['name', 'Name', true, 'high'],
     ['email', 'Email', true, 'low'], ['phone', 'Phone', true, 'low'],
     ['companyName', 'Company Name', true, 'high'], ['status', 'Status', true, 'medium'],
     ['assignedUserId', 'Assigned Agent', true, 'medium'], ['source', 'Lead Source', true, 'medium'],
@@ -19,7 +19,7 @@ const entries = [
     ['updatedBy', 'Updated by', false, 'low'], ['latestStatusChangeDate', 'Latest status change date', false, 'low'],
 ];
 exports.LEADS_TABLE_COLUMNS = entries.map(([id, label, defaultVisible, priority], defaultOrder) => ({
-    id, label, defaultVisible, defaultOrder, priority, required: id === 'name',
+    id, label, defaultVisible, defaultOrder, priority, required: false,
     group: ['createdAt', 'createdBy', 'updatedAt', 'updatedBy', 'latestStatusChangeDate'].includes(id) ? 'History' : 'Leads',
     sortable: exports.LEADS_TABLE_SORT_FIELDS.includes(id),
     ...(id === 'name' ? { fixedPosition: 'first', pinned: 'left' } : {}),

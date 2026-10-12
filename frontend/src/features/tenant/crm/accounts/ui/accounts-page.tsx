@@ -54,6 +54,7 @@ export default function AccountsPage(): React.ReactElement {
     saveColumns,
     saveColumnWidth,
     resetColumns,
+    resetColumnWidths,
   } = useColumnPreferences('accounts');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
@@ -191,6 +192,9 @@ export default function AccountsPage(): React.ReactElement {
 
   // Server total from metadata
   const serverTotal = totalCount;
+  useEffect(() => {
+    if (!isLoading && !isRefreshing && !accountsError && currentPage > Math.max(1, Math.ceil(serverTotal / pageSize))) setCurrentPage(Math.max(1, Math.ceil(serverTotal / pageSize)));
+  }, [isLoading, isRefreshing, accountsError, currentPage, serverTotal, pageSize]);
 
   // Reset page on filter/search/pageSize/sort changes
   useEffect(() => {
@@ -395,9 +399,11 @@ export default function AccountsPage(): React.ReactElement {
         searchPlaceholder="Search accounts..."
         onRefresh={refetchAccounts}
         refreshDisabled={isLoading || isRefreshing}
+        refreshing={isRefreshing}
         loading={isLoading || isColumnsLoading}
         loadingLabel={isLoading ? 'Loading accounts...' : 'Loading columns...'}
         onManageColumns={openManageColumns}
+        onResetColumns={resetColumnWidths}
       >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
           <span>Showing selected search result</span>
@@ -445,7 +451,6 @@ export default function AccountsPage(): React.ReactElement {
                 toast.error('Failed to hide column. Reverted.');
               }
             }}
-            onManageColumns={openManageColumns}
             onColumnWidthChange={(id, width) => { void saveColumnWidth(id, width).catch(error => toast.error(error instanceof Error ? error.message : 'Unable to save column width.')); }}
             highlightRowId={highlightId}
             viewMode={viewMode}

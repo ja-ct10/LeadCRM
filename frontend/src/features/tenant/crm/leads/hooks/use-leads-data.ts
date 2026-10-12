@@ -32,7 +32,7 @@ export interface UseLeadsDataReturn {
   isInitialLoad: boolean;
   isRefreshing: boolean;
   error: string | null;
-  refetch: () => void;
+  refetch: () => Promise<void>;
   invalidate: () => void;
 }
 

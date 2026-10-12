@@ -250,7 +250,8 @@ it("uses saved table order and selects only the displayed page", () => {
   ).toBeLessThan(headers.findIndex((label) => label?.startsWith("Task title")));
   fireEvent.click(screen.getByRole("checkbox", { name: "Select all records" }));
   expect(select).toHaveBeenCalledWith(["one"]);
-  fireEvent.click(screen.getByRole("columnheader", { name: /Due date/ }));
+  fireEvent.click(screen.getByRole("button", { name: "Column options for Due date" }));
+  fireEvent.click(screen.getByRole("menuitemradio", { name: "Sort descending" }));
   expect(sort).toHaveBeenCalledWith({ sortBy: "dueDate", sortOrder: "desc" });
   const row = screen.getAllByRole("row")[1];
   expect(

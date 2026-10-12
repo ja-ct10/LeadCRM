@@ -1,5 +1,6 @@
 import type { ColumnConfigItem, ColumnDefinition } from '../types/preferences';
 import { normalizeLeadColumns } from './lead-column-migration';
+import { LEADS_TABLE_SORT_FIELDS } from './lead-table-columns';
 
 /** Shared table choices are limited to persisted fields or included relations. */
 export const ACCOUNTS_TABLE_COLUMNS: ColumnDefinition[] = [
@@ -66,4 +67,17 @@ export const WORKFLOWS_TABLE_COLUMNS = defineColumns('Workflows', [
 ]);
 export const USERS_TABLE_COLUMNS = defineColumns('Users', [
   ['name', 'User'], ['role', 'Role'], ['email', 'Contact'], ['status', 'Status'], ['groups', 'Groups'], ['activity', 'Actions'],
-]);
+]).map(column => column.id === 'name' ? { ...column, required: false, priority: 'high' as const, fixedPosition: 'first' as const, pinned: 'left' as const } : column);
+
+/** Only registered person-name projections share this visibility constraint. */
+export const PERSON_NAME_COLUMN_GROUPS: Record<string, { combined: string; separate: string[] }> = {
+  leads: { combined: 'name', separate: ['firstName', 'lastName'] },
+};
+
+/** Shared with the preference API, including sortable fields hidden from the grid. */
+export const MODULE_TABLE_SORT_FIELDS: Record<string, string[]> = {
+  leads: LEADS_TABLE_SORT_FIELDS,
+  contacts: CONTACTS_TABLE_SORT_FIELDS, accounts: ACCOUNTS_TABLE_SORT_FIELDS, deals: DEALS_TABLE_SORT_FIELDS,
+  tasks: ['title', 'dueDate', 'createdAt', 'updatedAt'], campaigns: ['name', 'createdAt'],
+  workflows: ['name', 'status', 'createdAt'], users: ['name', 'role', 'email', 'status', 'groups', 'createdAt'],
+};

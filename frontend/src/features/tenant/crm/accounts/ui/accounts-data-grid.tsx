@@ -15,6 +15,7 @@
  */
 
 'use client';
+import { getTableSortFields } from '@/shared/constants/column-registries';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
@@ -225,6 +226,8 @@ export function AccountsDataGrid({
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
       sortingMode="external"
+      sortFields={getTableSortFields('accounts')} defaultSort={{ field: 'createdAt', direction: 'desc' }}
+      onSortReset={() => onSortChange?.(null)}
       sort={sort}
       onSortChange={onSortChange}
       onRowClick={onRowClick}
@@ -233,7 +236,6 @@ export function AccountsDataGrid({
       onColumnWidthChange={onColumnWidthChange}
       columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       rowActions={getRowActions}
-      onSettingsClick={onManageColumns}
       summaryLabel={`${totalRecords} total records`}
       emptyMessage="No accounts found. Adjust your filters or create a new account."
       ariaLabel="Accounts data grid"

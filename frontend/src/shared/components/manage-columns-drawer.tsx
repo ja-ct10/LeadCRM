@@ -26,7 +26,7 @@ import { cn } from '@/lib/utils';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 import { useConfiguredColumnDefinitions } from '@/shared/hooks/use-field-layout';
-import { reconcileTableColumns } from '@leadcrm/shared';
+import { reconcileTableColumns, PERSON_NAME_COLUMN_GROUPS } from '@leadcrm/shared';
 import { matchesSearch } from '@/shared/utils/search';
 import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 
@@ -126,6 +126,7 @@ export function ManageColumnsDrawer({
   const [resetError, setResetError] = useState<string | null>(null);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showCloseConfirm, setShowCloseConfirm] = useState(false);
+  const [switchColumn, setSwitchColumn] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
   const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -149,6 +150,7 @@ export function ManageColumnsDrawer({
       setResetError(null);
       setShowResetConfirm(false);
       setShowCloseConfirm(false);
+      setSwitchColumn(null);
       setRetryCount(0);
     } else if (!hasChanges && saveState !== 'saving' && JSON.stringify(baseline) !== JSON.stringify(sourceRef.current)) {
       setLocalColumns(sourceRef.current);
@@ -233,10 +235,28 @@ export function ManageColumnsDrawer({
 
   const handleToggleVisibility = useCallback((columnId: string) => {
     if (saveState === 'saving' || registry.some(column => column.id === columnId && column.required)) return;
+    const group = PERSON_NAME_COLUMN_GROUPS[module];
+    const enabling = !localColumns.find(column => column.id === columnId)?.visible;
+    if (group && enabling && (columnId === group.combined
+      ? localColumns.some(column => group.separate.includes(column.id) && column.visible)
+      : group.separate.includes(columnId) && localColumns.some(column => column.id === group.combined && column.visible))) {
+      setSwitchColumn(columnId); return;
+    }
     setLocalColumns((prev) =>
       prev.map((col) => (col.id === columnId ? { ...col, visible: !col.visible } : col))
     );
-  }, [saveState, registry]);
+  }, [saveState, registry, module, localColumns]);
+
+  const confirmColumnSwitch = () => {
+    const group = PERSON_NAME_COLUMN_GROUPS[module];
+    if (!group || !switchColumn) return;
+    setLocalColumns(previous => previous.map(column => {
+      if (column.id === switchColumn) return { ...column, visible: true };
+      if (switchColumn === group.combined ? group.separate.includes(column.id) : column.id === group.combined) return { ...column, visible: false };
+      return column;
+    }));
+    setSwitchColumn(null);
+  };
 
   const handleSave = useCallback(async () => {
     if (!hasChanges || saveState === 'saving') return;
@@ -438,6 +458,12 @@ export function ManageColumnsDrawer({
       <ConfirmActionDialog open={showCloseConfirm} onOpenChange={setShowCloseConfirm}
         title="Discard changes?" description="You have unsaved changes. Are you sure you want to close without saving?"
         variant="warning" confirmLabel="Discard" cancelLabel="Keep editing" onConfirm={handleConfirmClose} />
+      <ConfirmActionDialog open={switchColumn !== null} onOpenChange={open => { if (!open) setSwitchColumn(null); }}
+        title="Switch name columns?" variant="warning" confirmLabel="Switch Columns" cancelLabel="Cancel"
+        description={switchColumn === PERSON_NAME_COLUMN_GROUPS[module]?.combined
+          ? 'Showing Name will hide the separate First Name and Last Name columns. Continue?'
+          : 'Name already combines First Name and Last Name. To display these separately, Name needs to be hidden. Would you like to switch columns?'}
+        onConfirm={confirmColumnSwitch} />
     </div></ThemedPortal></OverlayOwnerContext.Provider>
   );
 }

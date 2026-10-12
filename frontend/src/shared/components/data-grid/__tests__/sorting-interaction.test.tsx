@@ -45,27 +45,31 @@ it('does not sort when the Name resize handle is clicked or released', () => {
   fireEvent.click(handle!);
   expect(sort).not.toHaveBeenCalled();
 });
-it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Lead Source'])('cycles %s ascending, descending and default with matching rows', label => {
+it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Lead Source'])('sorts %s from the hamburger, including hidden fields', label => {
   render(<LeadHarness />);
-  const header = screen.getByRole('columnheader', { name: label });
+  const open = () => fireEvent.click(screen.getByRole('button', { name: 'Column options for Name' }));
   const firstName = () => screen.getAllByRole('row').slice(1).find(row => row.textContent?.includes('Test'))!.textContent;
   expect(firstName()).toContain('Zulu');
-  fireEvent.click(header); expect(header.getAttribute('aria-sort')).toBe('ascending'); expect(firstName()).toContain('Alpha');
-  fireEvent.click(header); expect(header.getAttribute('aria-sort')).toBe('descending'); expect(firstName()).toContain('Zulu');
-  fireEvent.click(header); expect(header.getAttribute('aria-sort')).toBe('none'); expect(firstName()).toContain('Zulu');
+  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: label }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort ascending' })); expect(firstName()).toContain('Alpha');
+  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: label }));
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort descending' })); expect(firstName()).toContain('Zulu');
+  open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Restore default sorting' })); expect(firstName()).toContain('Zulu');
 });
-it('emits the shared Name sort field through the existing header cycle', () => {
+it('sorts Name from its pinned header menu and restores defaults without header-click sorting', () => {
   const onSortChange = vi.fn();
   const props = { leads: records as any, totalRecords: 2, effectiveColumns: columns, onSortChange,
     onRowClick: () => {}, selectedIds: new Set<string>(), onSelectionChange: () => {}, getOwnerName: () => '', getOwnerInitials: () => '' };
   const view = render(<LeadsDataGrid {...props} sort={null} />);
-  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' }));
+  const open = () => fireEvent.click(screen.getByRole('button', { name: 'Column options for Name' }));
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' })); expect(onSortChange).not.toHaveBeenCalled();
+  open(); fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort ascending' }));
   expect(onSortChange).toHaveBeenLastCalledWith({ field: 'name', direction: 'asc' });
   view.rerender(<LeadsDataGrid {...props} sort={{ field: 'name', direction: 'asc' }} />);
-  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' }));
+  open(); expect(screen.getByRole('menuitemradio', { name: 'Sort ascending' }).getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sort descending' }));
   expect(onSortChange).toHaveBeenLastCalledWith({ field: 'name', direction: 'desc' });
-  view.rerender(<LeadsDataGrid {...props} sort={{ field: 'name', direction: 'desc' }} />);
-  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' }));
+  open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Restore default sorting' }));
   expect(onSortChange).toHaveBeenLastCalledWith(null);
 });
 it('never reorders an externally sorted server page', () => {

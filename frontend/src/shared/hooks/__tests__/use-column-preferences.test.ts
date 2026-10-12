@@ -32,6 +32,19 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+it('resets only widths with PUT, preserves the layout and recovers from a failed reset', async () => {
+  const saved = baseline.map(column => column.id === 'email' ? { ...column, visible: false } : column);
+  mocks.api.getEffectiveColumns.mockResolvedValue(response(saved));
+  const { result } = await loadedHook();
+  mocks.api.saveUserPreference.mockRejectedValueOnce(new Error('Offline'));
+  await act(async () => { await expect(result.current.resetColumnWidths()).rejects.toThrow('Offline'); });
+  expect(result.current.effectiveColumns).toEqual(saved);
+  await act(async () => result.current.resetColumnWidths());
+  expect(result.current.effectiveColumns).toEqual(saved.map(({ width, ...column }) => column));
+  expect(mocks.api.deleteUserPreference).not.toHaveBeenCalled();
+  expect(mocks.api.saveUserPreference).toHaveBeenCalledTimes(2);
+});
+
 it('makes reset failures observable and retains the previous columns', async () => {
   const error = new Error('Reset request failed');
   mocks.api.deleteUserPreference.mockRejectedValue(error);
@@ -77,7 +90,7 @@ it('ignores an older initial fetch after a successful mutation', async () => {
   const initialFetch = deferred<ReturnType<typeof response>>();
   mocks.api.getEffectiveColumns.mockReturnValue(initialFetch.promise);
   const { result } = renderHook(() => useColumnPreferences('leads'));
-  const saved = baseline.map(column => column.id === 'firstName' ? { ...column, visible: true } : column);
+  const saved = baseline.map(column => column.id === 'firstName' ? { ...column, visible: true } : column.id === 'name' ? { ...column, visible: false } : column);
   await act(async () => result.current.saveColumns(saved));
   await act(async () => initialFetch.resolve(response(baseline)));
   expect(result.current.effectiveColumns.find(column => column.id === 'firstName')?.visible).toBe(true);

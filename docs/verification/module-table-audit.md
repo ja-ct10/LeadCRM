@@ -1,5 +1,7 @@
 # Active module table audit
 
+Update, 12 October 2026: see the [table controls implementation](table-controls-implementation.md) for current controls and verification. It supersedes this audit's required combined-person-name visibility, embedded settings controls and full-layout toolbar reset. Module projections and domain rules below remain the earlier audit record.
+
 Review date: 12 October 2026 (Asia/Manila). Base revision: `dc71889dcea7e7adebcf7f8b84ce8849cfc05684`; implementation is the accompanying commit. See the [architecture](../ARCHITECTURE.md), [API](../API.md), [Tasks behavior](../tasks-deal-only-implementation.md), and [Campaign delivery meanings](../campaign-status-report.md) for the underlying domain rules. The [implementation report](leads-table-search-implementation.md#verification-after-integration-with-main) records successful checks after integration with the latest main.
 
 ## Consumer and data map

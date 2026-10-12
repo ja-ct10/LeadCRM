@@ -81,7 +81,7 @@ export function useAccounts(params?: UseAccountsParams) {
   // ── Mutations ────────────────────────────────────────────────────────────
   const loadAccounts = useCallback(async () => {
     if (USE_MOCK_DATA) return; // mock state is set by the useEffect above
-    refetch();
+    await refetch();
   }, [refetch]);
 
   const handleCreate = useCallback(async (formData: AccountFormValues) => {

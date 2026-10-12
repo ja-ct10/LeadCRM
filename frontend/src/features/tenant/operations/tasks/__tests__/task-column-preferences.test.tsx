@@ -9,6 +9,16 @@ vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/shared/services/preferences.api', () => ({ preferencesApi: api }));
 const defaults = (): ColumnConfigItem[] => TASK_COLUMN_DEFINITIONS.map(column => ({ id: column.id, visible: column.defaultVisible, order: column.defaultOrder }));
 afterEach(cleanup);
+it('clears only Task widths and retains the saved visibility/order using the existing PUT', async () => {
+  const saved = normalizeTaskColumns(defaults().map(column => ({ ...column, width: 333, visible: column.id === 'dueDate' ? false : column.visible })));
+  api.getEffectiveColumns.mockResolvedValue({ data: { columns: saved } });
+  api.saveUserPreference.mockImplementation(async (_module, columns) => ({ data: { columns } }));
+  const { result } = renderHook(() => useTaskColumns('tenant:user', true));
+  await waitFor(() => expect(result.current.loading).toBe(false));
+  await act(async () => result.current.resetWidths());
+  expect(result.current.columns).toEqual(saved.map(({ width, ...column }) => column));
+  expect(api.deleteUserPreference).not.toHaveBeenCalled();
+});
 beforeEach(() => { vi.resetAllMocks(); api.getEffectiveColumns.mockResolvedValue({ data: { columns: defaults() } }); });
 
 it('preserves supported widths, order and visibility through Task preference normalization', () => {

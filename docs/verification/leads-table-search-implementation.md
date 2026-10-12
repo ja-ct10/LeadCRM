@@ -1,5 +1,7 @@
 # Leads table and application search implementation
 
+Update, 12 October 2026: the [table controls implementation](table-controls-implementation.md) supersedes this report's required Name visibility and toolbar reset behavior. Name is now hideable, combined/separate name columns use confirmation, sorting uses the hamburger menu, and Reset Column Size preserves the layout. The checks below describe the earlier implementation.
+
 Date: 12 October 2026, Asia/Manila. Inspected base: `dc71889dcea7e7adebcf7f8b84ce8849cfc05684`. The implementation is the accompanying commit; verification after integration with the latest main is recorded below. The supplied `LeadCRM-Leads-Agent-Plan.md` is the requirements reference; its historical findings were checked against the current code and registered routes. No deployment was performed.
 
 ## Delivered behavior

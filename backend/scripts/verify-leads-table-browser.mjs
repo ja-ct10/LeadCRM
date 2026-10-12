@@ -9,10 +9,12 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
+import { verifyTableControls } from './verify-table-controls.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = resolve(root, '.tmp/leads-table-browser');
 mkdirSync(output, { recursive: true });
+writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'running', checks: [], errors: [] }));
 const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
@@ -64,6 +66,7 @@ try {
   const deniedToken = (await issueAuthSession(denied)).token;
   const oldColumns = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'assignedUserId'].map((id, order) => ({ id, order, visible: true, width: 180 }));
   oldColumns.push({ id: 'emailCount', visible: true, order: 79, width: 180 });
+  oldColumns.push({ id: 'name', visible: true, order: 80, width: 240 });
   await prisma.userPreference.create({ data: { tenantId: tenant.id, userId: admin.id, module: 'leads', key: 'columns', value: { columns: oldColumns } } });
   api = app.listen(0, '127.0.0.1');
   await new Promise(done => api.once('listening', done));
@@ -93,8 +96,8 @@ try {
   assert.equal((await call('/crm/deals?search=Canonical%20Account')).body.meta.total, 3);
   assert.equal((await call('/crm/activities?search=Table%20Target&leadId=' + lead.id)).body.meta.total, 3);
   assert.equal((await call('/crm/leads?search=Josh', 'GET', undefined, deniedToken)).status, 403);
-  assert.equal((await call('/preferences/columns/leads', 'PUT', { columns: [{ id: 'name', visible: false, order: 0 }] })).status, 400);
-  record('Nine module searches count before paging, match split terms/related labels and preserve denied-role access and required Name validation');
+  assert.equal((await call('/preferences/columns/accounts', 'PUT', { columns: [{ id: 'name', visible: false, order: 0 }] })).status, 400);
+  record('Nine module searches count before paging, match split terms/related labels and preserve denied-role access and required organization identity validation');
   const preference = (await call('/preferences/columns/leads')).body.data.columns;
   assert.equal(preference[0].id, 'name'); assert.equal(preference[0].visible, true);
   assert.ok(!preference.some(column => column.id === 'emailCount'));
@@ -109,13 +112,21 @@ try {
   await until(async () => { try { return (await fetch(base + '/login')).ok; } catch { return false; } }, 'Frontend did not start');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  // Stream responses cannot be buffered by route.fulfill. Pause background SSE
+  // in this manual-refresh runner so request counts have one explicit owner.
+  await context.addInitScript(() => { Object.defineProperty(window, 'EventSource', { value: undefined, configurable: true }); });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage(); page.setDefaultTimeout(20000);
   page.on('pageerror', error => errors.push(error.message));
   const failures = { preference: 0, reset: 0, create: 0 };
+  const reads = [];
+  const control = { failPath: '', holdPath: '', release: null, pending: 0 };
+  page.on('request', request => { const url = new URL(request.url()); if (url.pathname.startsWith('/api/proxy/')) reads.push({ path: url.pathname.replace('/api/proxy', ''), method: request.method(), query: url.search }); });
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url());
     const path = url.pathname.replace('/api/proxy', '');
+    if (request.method() === (control.failMethod ?? 'GET') && path === control.failPath) { control.failPath = ''; control.failMethod = 'GET'; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Refresh unavailable. Please retry.' }) }); return; }
+    if (request.method() === 'GET' && path === control.holdPath) { control.pending++; await new Promise(resolve => { control.release = resolve; }); control.pending--; control.holdPath = ''; }
     const kind = path === '/preferences/columns/leads' && request.method() === 'PUT' ? 'preference'
       : path === '/preferences/columns/leads' && request.method() === 'DELETE' ? 'reset'
       : path === '/crm/leads' && request.method() === 'POST' ? 'create' : undefined;
@@ -130,7 +141,7 @@ try {
   const navigate = path => page.goto(base + path);
   const drawer = () => page.getByRole('dialog', { name: 'Manage Columns - leads' });
   const toolbarSettings = () => page.getByRole('toolbar', { name: 'Module controls' }).getByRole('button', { name: 'Table settings', exact: true });
-  const openColumns = async () => { await toolbarSettings().click(); await page.getByRole('button', { name: 'Manage Columns', exact: true }).click(); };
+  const openColumns = () => page.getByRole('toolbar', { name: 'Module controls' }).getByRole('button', { name: 'Manage Columns', exact: true }).click();
   await navigate('/crm/leads?view=kanban');
   await page.getByRole('button', { name: 'Josh Tiron', exact: true }).waitFor();
   assert.equal(new URL(page.url()).searchParams.get('view'), null);
@@ -138,19 +149,36 @@ try {
   assert.equal(await page.getByRole('columnheader', { name: 'Name', exact: true }).evaluate(element => getComputedStyle(element).position), 'sticky');
   record('Obsolete view URLs normalize to Table; canonical combined Name is first and pinned');
   await openColumns();
-  assert.equal(await drawer().getByRole('switch', { name: 'Name visibility (locked)' }).isDisabled(), true);
+  assert.equal(await drawer().getByRole('switch', { name: 'Toggle Name visibility' }).isDisabled(), false);
   assert.equal(await drawer().getByRole('button', { name: 'Drag to reorder Name' }).isDisabled(), true);
   await drawer().getByRole('switch', { name: 'Toggle First Name visibility' }).click();
+  await page.keyboard.press('Escape');
+  assert.equal(await drawer().getByRole('switch', { name: 'Toggle Name visibility' }).getAttribute('aria-checked'), 'true');
+  assert.equal(await drawer().getByRole('switch', { name: 'Toggle First Name visibility' }).getAttribute('aria-checked'), 'false');
+  await drawer().getByRole('switch', { name: 'Toggle First Name visibility' }).click();
+  await page.keyboard.press('Tab');
+  assert.equal(await page.getByRole('alertdialog').getByRole('button', { name: 'Switch Columns' }).evaluate(element => document.activeElement === element), true);
+  await page.keyboard.press('Enter');
   failures.preference = 1;
   await drawer().getByRole('button', { name: 'Save', exact: true }).click();
   await drawer().getByRole('button', { name: 'Retry', exact: true }).waitFor();
-  assert.equal(await drawer().getByRole('switch', { name: 'Toggle First Name visibility' }).getAttribute('aria-checked'), 'false');
+  assert.equal(await drawer().getByRole('switch', { name: 'Toggle First Name visibility' }).getAttribute('aria-checked'), 'true');
   await drawer().getByRole('button', { name: 'Retry', exact: true }).click();
   await drawer().getByRole('button', { name: 'Saved', exact: true }).waitFor();
   await drawer().getByRole('button', { name: 'Close drawer' }).click();
-  assert.equal(await toolbarSettings().evaluate(element => document.activeElement === element), true);
+  assert.equal(await page.getByRole('button', { name: 'Manage Columns', exact: true }).evaluate(element => document.activeElement === element), true);
+  await page.reload(); await page.getByRole('columnheader', { name: 'First Name', exact: true }).waitFor();
+  assert.equal(await page.getByRole('columnheader', { name: 'Name', exact: true }).count(), 0);
+  await openColumns(); await drawer().getByRole('switch', { name: 'Toggle Last Name visibility' }).click();
+  await drawer().getByRole('switch', { name: 'Toggle Name visibility' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Cancel', exact: true }).click();
+  assert.equal(await drawer().getByRole('switch', { name: 'Toggle Last Name visibility' }).getAttribute('aria-checked'), 'true');
+  await drawer().getByRole('switch', { name: 'Toggle Name visibility' }).click();
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Switch Columns' }).click();
+  await drawer().getByRole('button', { name: 'Save', exact: true }).click();
+  await drawer().getByRole('button', { name: 'Saved', exact: true }).waitFor();
+  await drawer().getByRole('button', { name: 'Close drawer' }).click();
   await page.reload(); await page.getByRole('button', { name: 'Josh Tiron', exact: true }).waitFor();
-  assert.equal(await page.getByRole('columnheader', { name: 'First Name', exact: true }).count(), 0);
   record('Failed column saves preserve drafts; retry persists hideable First Name through reload; focus restores');
 
   const nameHeader = page.getByRole('columnheader', { name: 'Name', exact: true });
@@ -219,8 +247,9 @@ try {
     await page.keyboard.press('Escape');
   }
   record('Light/dark 320/768/1440 layouts, trimmed column search and keyboard Escape work');
+  await verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output });
   assert.deepEqual(errors, []);
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ environment: 'Local production build + disposable PGlite SQL', checks, errors }, null, 2));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'passed', environment: 'Local production build + disposable PGlite SQL; background SSE paused to isolate manual refresh', checks, errors }, null, 2));
 } finally {
   closing = true;
   await browser?.close(); frontend?.kill();

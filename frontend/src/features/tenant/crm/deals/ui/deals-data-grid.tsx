@@ -7,6 +7,7 @@
  */
 
 'use client';
+import { getTableSortFields } from '@/shared/constants/column-registries';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
@@ -241,6 +242,8 @@ export function DealsDataGrid({
       onSelectionChange={onSelectionChange}
       sort={sort}
       sortingMode="external"
+      sortFields={getTableSortFields('deals')} defaultSort={{ field: 'createdAt', direction: 'desc' }}
+      onSortReset={() => onSortChange?.(null)}
       onSortChange={onSortChange}
       onRowClick={onRowClick}
       onHideColumn={onHideColumn}
@@ -248,7 +251,6 @@ export function DealsDataGrid({
       onColumnWidthChange={onColumnWidthChange}
       columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       rowActions={getRowActions}
-      onSettingsClick={onManageColumns}
       summaryLabel={`${totalRecords} total records`}
       emptyMessage="No deals found. Adjust your filters or create a new deal."
       ariaLabel="Deals data grid"

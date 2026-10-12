@@ -4,12 +4,13 @@
  * Close.com-style features:
  * - Status rendered as colored dot + plain text (no pill badge)
  * - Canonical Name plus independent Email and actionable Phone values
- * - Name column pinned left and always visible
+ * - Name column first and pinned left whenever visible
  * - Sticky header with resizable, reorderable columns
  * - Bulk selection, quick actions, column header menu
  */
 
 'use client';
+import { getTableSortFields } from '@/shared/constants/column-registries';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
@@ -326,6 +327,8 @@ export function LeadsDataGrid({
         selectedIds={selectedIds}
         onSelectionChange={onSelectionChange}
         sortingMode="external"
+        sortFields={getTableSortFields('leads')} defaultSort={{ field: 'createdAt', direction: 'desc' }}
+        onSortReset={() => onSortChange?.(null)}
         sort={sort}
         onSortChange={onSortChange}
         onRowClick={onRowClick}
@@ -334,7 +337,6 @@ export function LeadsDataGrid({
         columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
         onColumnWidthChange={onColumnWidthChange}
         rowActions={getRowActions}
-        onSettingsClick={onManageColumns}
         summaryLabel={`${totalRecords} total records`}
         emptyMessage="No leads found. Adjust your filters or create a new lead."
         ariaLabel="Leads data grid"

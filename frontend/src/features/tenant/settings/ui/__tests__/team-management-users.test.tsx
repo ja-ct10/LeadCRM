@@ -1,14 +1,16 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { clearPageCache } from '@/shared/cache/page-cache';
 const mocks = vi.hoisted(() => ({ list: vi.fn(), update: vi.fn(), archive: vi.fn(), impact: vi.fn(), deactivate: vi.fn(), role: 'Client Admin' }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'admin', tenantId: 't', role: mocks.role }, userCan: () => true }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 't' }, isLoading: false, authError: null, user: { id: 'admin', tenantId: 't', role: mocks.role }, userCan: () => true }) }));
+vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ roles: [{ id: 'r', name: 'Sales', isArchived: false, isSystemRole: false }], refreshRoles: vi.fn() }) }));
 vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { getAll: mocks.list, update: mocks.update, archive: mocks.archive, deactivationImpact: mocks.impact, deactivate: mocks.deactivate } }));
 import { UsersSubTab } from '../team-management-users';
-beforeEach(() => { vi.resetAllMocks(); mocks.role = 'Client Admin'; vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
-afterEach(cleanup);
+beforeEach(() => { clearPageCache(); vi.resetAllMocks(); mocks.role = 'Client Admin'; vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
+afterEach(() => { cleanup(); clearPageCache(); });
 it('retains failed deactivation for retry and lets cancellation end the reassignment flow', async () => {
   const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
   mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });
@@ -127,7 +129,7 @@ it('shows Leads pagination on a single page and pages the complete API-backed us
   fireEvent.click(screen.getByLabelText('Records per page'));
   fireEvent.click(screen.getByRole('option', { name: '50' }));
   await screen.findByText('Page 1 of 1');
-  expect(screen.queryByText('27 total records')).toBeNull();
+  expect(screen.getByText('27 total records')).toBeTruthy();
   expect((screen.getByLabelText('Next page') as HTMLButtonElement).disabled).toBe(true);
   fireEvent.change(screen.getByPlaceholderText('Search users...'), { target: { value: 'user26@' } });
   await waitFor(() => expect(screen.queryByText('Saved User 0')).toBeNull());

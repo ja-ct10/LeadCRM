@@ -1,4 +1,5 @@
 'use client';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { StatusBadge } from '@/shared/components/crm/record-drawer';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
@@ -43,7 +44,8 @@ export default function WorkflowsPage() {
   const [retry, setRetry] = useState(0);
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearch, setFilterSearch] = useState('');
-  const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
+  const { sort: savedSort, setSort } = useTablePreferences('workflows');
+  const sort = savedSort ?? { field: 'createdAt', direction: 'desc' as const };
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
   const [search, setSearch] = useState('');
@@ -112,7 +114,7 @@ export default function WorkflowsPage() {
     {tableColumns.drawer}
     <ModuleTableToolbar label="Workflows" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search workflows..."
       filter={<FilterButton title="Workflows" open={showFilters} active={!!(statuses.length || triggers.length)} onClick={() => setShowFilters(!showFilters)} />}
-      refreshing={workflowsLoading} onRefresh={refreshWorkflows} onManageColumns={tableColumns.openColumns} />
+      refreshing={workflowsLoading} onRefresh={refreshWorkflows} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths} />
     <div className="flex items-start gap-3 min-w-0">
       <ModuleFilterRail showFilters={showFilters} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={total} onClearFilters={clearFilters}
         filterGroups={[
@@ -121,14 +123,14 @@ export default function WorkflowsPage() {
         ]}
         onFilterToggle={(group, id) => { const setter = group === 'status' ? setStatuses : setTriggers; setter(previous => previous.includes(id) ? previous.filter(value => value !== id) : [...previous, id]); setPage(1); }} />
       <div className="min-w-0 flex-1">
-        {workflowsLoading ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); setPage(1); }} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={workflows} getRowId={row => row.id} height="auto" selectable={canActivate || canDelete} selectedIds={selected} onSelectionChange={setSelected}
+        {isInitialLoad ? <TableLoadingState label="Loading workflows..." /> : <DataGrid<Workflow> sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); setPage(1); }} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={workflows} getRowId={row => row.id} height="auto" selectable={canActivate || canDelete} selectedIds={selected} onSelectionChange={setSelected}
           onRowClick={workflow => setRuns(workflow)} rowActions={workflow => [
             { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setRuns(workflow) },
             ...(canEdit ? [{ id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy, onClick: () => router.push(`/automation/workflows/${workflow.id}/edit`) }] : []),
             ...(canDuplicate ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, disabled: busy, onClick: () => duplicateWorkflow(workflow) }] : []),
             ...(canActivate ? [{ id: 'pause', label: workflow.isActive ? 'Pause' : workflow.status === 'PAUSED' ? 'Resume' : 'Activate', icon: workflow.isActive ? <Pause size={14} /> : <Play size={14} />, disabled: busy, onClick: () => toggleWorkflow(workflow) }] : []),
             ...(canDelete ? [{ id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy, onClick: () => setArchiving(workflow) }] : []),
-          ]} enableColumnMenu={false} ariaLabel="Workflows table"
+          ]} enableColumnMenu ariaLabel="Workflows table"
           summaryLabel={`${total} total ${total === 1 ? 'record' : 'records'}`} emptyMessage={workflowsError ? 'Unable to load workflows.' : 'No workflows match. Create a workflow or adjust your filters.'} />}
         <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} loading={isInitialLoad} refreshing={isRefreshing} disabled={workflowsLoading} />
       </div>

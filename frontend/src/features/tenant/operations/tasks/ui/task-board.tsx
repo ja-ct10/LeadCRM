@@ -1,4 +1,5 @@
 "use client";
+import { useTablePreferences } from "@/shared/hooks/use-table-preferences";
 import { toast } from "sonner";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from 'next/navigation';
@@ -58,6 +59,7 @@ export default function TaskBoard() {
   const [period, setPeriod] = useState<Period>("all");
   const [search, setSearch] = useState(""),
     [debounced, setDebounced] = useState("");
+  const { sort, setSort } = useTablePreferences("tasks");
   const [filters, setFilters] = useState<TaskListQuery>({});
   const [page, setPage] = useState(1),
     [limit, setLimit] = useState(25);
@@ -103,6 +105,8 @@ export default function TaskBoard() {
     period === "today" || period === "week" ? taskDateRange(period) : {};
   const query = {
     ...filters,
+    sortBy: (sort?.field ?? "createdAt") as TaskListQuery["sortBy"],
+    sortOrder: sort?.direction ?? "desc",
     ...range,
     ...(period === "overdue" ? { overdue: true } : {}),
     search: debounced,
@@ -410,6 +414,8 @@ export default function TaskBoard() {
         loading={data.loading || columnPreferences.loading}
         loadingLabel={data.loading ? "Loading tasks..." : "Loading columns..."}
         onManageColumns={openColumns}
+        onResetColumns={columnPreferences.resetWidths}
+        refreshing={data.refreshing}
         directManageColumns
       >
         {(error || data.error || ownerError) && (
@@ -441,7 +447,7 @@ export default function TaskBoard() {
               onEdit={(task) => setEditor({ task })}
               onArchive={(task) => setArchiveIds([task.id])}
               onStatus={(task) => void change(task)}
-              onSort={updateFilter}
+              onSort={next => { setSort({ field: next.sortBy ?? "createdAt", direction: next.sortOrder ?? "desc" }); setPage(1); }}
               query={query}
               busy={busy}
               canEdit={canEdit}

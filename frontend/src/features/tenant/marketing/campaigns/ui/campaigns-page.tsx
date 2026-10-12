@@ -1,4 +1,5 @@
 'use client';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { panelBodyClass, panelFooterClass, panelInputClass, panelLabelClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
@@ -43,7 +44,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 export default function CampaignsPage() {
 
 
-  const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
+  const { sort: savedSort, setSort } = useTablePreferences('campaigns');
+  const sort = savedSort ?? { field: 'createdAt', direction: 'desc' as const };
   const [editingCampaign, setEditingCampaign] = useState<Campaign | undefined>();
   const [builderSubject, setBuilderSubject] = useState('');
   const [templateErrors, setTemplateErrors] = useState<Record<string, string>>({});
@@ -84,6 +86,7 @@ export default function CampaignsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [archiving, setArchiving] = useState<Campaign | null>(null);
   useEffect(() => { setSelected(new Set()); setArchiving(null); }, [user?.tenantId, currentPage, pageSize, searchTerm, statusFilter, typeFilter, activeTab]);
+  useEffect(() => { if (campaignsError) toast.error(campaignsError); }, [campaignsError]);
   const campaigns = serverCampaigns;
   const templates = serverTemplates;
   useEffect(() => { goToPage(1); }, [searchTerm, statusFilter, typeFilter, activeTab]);
@@ -371,7 +374,7 @@ export default function CampaignsPage() {
         {tableColumns.drawer}
         <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
           filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
-          refreshing={isInitialLoad} silentRefresh onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} />
+          refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths} />
       </>}
 
       {/* Tab Content */}
@@ -422,9 +425,9 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-                {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'createdAt', direction: 'desc' }); goToPage(1); }}
+                {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); goToPage(1); }}
                   columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
-                  enableColumnMenu={false} ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
+                  enableColumnMenu ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
                   rowActions={campaign => [
                     { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => viewCampaign(campaign) },
                     ...(canDuplicateCampaign ? [{ id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, onClick: () => void handleDuplicate(campaign) }] : []),

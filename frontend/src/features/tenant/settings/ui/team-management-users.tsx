@@ -3,8 +3,9 @@ import type { DeactivationImpact } from '@leadcrm/shared';
 import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { CreateButton } from '@/shared/components/ui/button';
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { compareSortValues } from '@leadcrm/shared';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useCachedPage } from '@/shared/hooks/use-cached-page';
+import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import {
   Plus, UserCheck, UserX,
 } from 'lucide-react';
@@ -62,36 +63,38 @@ function roleColor(role: string): string {
 export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (action: React.ReactNode) => React.ReactNode; onUsersLoaded?: (users: User[]) => void }): React.ReactElement {
   const { user: currentUser, userCan } = useAuth();
   const { roles, rolesLoading, rolesError, refreshRoles } = useData();
-  const [allUsers, setAllUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const { sort: savedSort, setSort } = useTablePreferences('users');
+  const sort = savedSort ?? { field: 'createdAt', direction: 'desc' as const };
   const [reload, setReload] = useState(0);
   const tenantId = currentUser?.tenantId ?? '';
-
+  const directory = useCachedPage<User[]>({
+    module: 'users', params: { directory: true, sort }, disabled: !userCan('users', 'canView'), revalidateOnInvalidation: true,
+    fetchFn: async signal => {
+      const result: User[] = [];
+      for (let page = 1; !signal.aborted; page++) {
+        const response = await usersService.getAll({ page, limit: 100, sort: `${sort.field}:${sort.direction}` });
+        result.push(...response.data);
+        if (!response.meta?.hasMore) break;
+      }
+      return result;
+    },
+  });
+  const allUsers = directory.data ?? [];
+  const loading = directory.isInitialLoad;
+  const loadError = directory.error;
+  const allUsersRef = useRef(allUsers); allUsersRef.current = allUsers;
+  const setAllUsers = (update: React.SetStateAction<User[]>) => {
+    const next = typeof update === 'function' ? update(allUsersRef.current) : update;
+    allUsersRef.current = next; directory.setData(next);
+  };
+  const previousReload = useRef(reload);
+  useEffect(() => { if (previousReload.current !== reload) { previousReload.current = reload; void directory.refetch(); } }, [reload, directory.refetch]);
+  const onUsersLoadedRef = useRef(onUsersLoaded); onUsersLoadedRef.current = onUsersLoaded;
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true); setLoadError(null);
-    const load = async () => {
-      try {
-        const result: User[] = [];
-        let page = 1;
-        while (!cancelled) {
-          const response = await usersService.getAll({ page, limit: 100 });
-          result.push(...(response.data ?? []));
-          if (!response.meta?.hasMore) break;
-          page++;
-        }
-        if (!cancelled) {
-          setAllUsers(result);
-          setEditingUser(previous => previous ? result.find(user => user.id === previous.id) ?? null : null);
-          onUsersLoaded?.(result);
-        }
-      } catch (error) { if (!cancelled) setLoadError(error instanceof Error ? error.message : 'Unable to load users.'); }
-      finally { if (!cancelled) setLoading(false); }
-    };
-    if (tenantId) void load();
-    return () => { cancelled = true; };
-  }, [tenantId, reload, onUsersLoaded]);
+    if (!directory.data) return;
+    setEditingUser(previous => previous ? directory.data!.find(user => user.id === previous.id) ?? null : null);
+    onUsersLoadedRef.current?.(directory.data);
+  }, [directory.data]);
 
   const tenantUsers = useMemo(
     () => allUsers.filter((u) => u.tenantId === tenantId),
@@ -104,7 +107,6 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const [roleFilter, setRoleFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<string[]>([]);
-  const [sort, setSort] = useState<SortState>({ field: 'createdAt', direction: 'desc' });
   const [showFilters, setShowFilters] = useState(false);
   const groups = useMemo(() => [...new Map(tenantUsers.flatMap(user => user.groups ?? []).map(group => [group.id, group])).values()].sort((a, b) => a.name.localeCompare(b.name)), [tenantUsers]);
 
@@ -141,9 +143,6 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       const matchRole = roleFilter.length === 0 || roleFilter.includes(u.role);
       const matchStatus = statusFilter.length === 0 || statusFilter.some((s) => s.toLowerCase() === (u.status ?? '').toLowerCase());
       return matchSearch && matchRole && matchStatus && (groupFilter.length === 0 || u.groups?.some(group => groupFilter.includes(group.id)));
-    }).sort((a, b) => {
-      const value = (u: User) => sort.field === 'name' ? `${u.firstName} ${u.lastName}` : sort.field === 'groups' ? u.groups?.map(group => group.name).join(', ') : sort.field === 'createdAt' ? u.createdAt ? new Date(u.createdAt) : null : u[sort.field as keyof User];
-      return compareSortValues(value(a), value(b), sort.direction) || a.id.localeCompare(b.id);
     });
   }, [tenantUsers, search, roleFilter, statusFilter, groupFilter, sort]);
 
@@ -232,7 +231,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
       <ModuleTableToolbar label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
         filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || groupFilter.length)} onClick={() => setShowFilters(value => !value)} />}
-        refreshing={loading} onRefresh={() => setReload(value => value + 1)} onManageColumns={tableColumns.openColumns} />
+        refreshing={loading || directory.isRefreshing} onRefresh={directory.refetch} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths} />
 
       <div className="flex min-w-0 gap-3 items-stretch">
         <ModuleFilterRail label="User filters" showFilters={showFilters} onToggleFilters={() => setShowFilters(value => !value)} totalRecords={filtered.length}
@@ -248,8 +247,9 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
             else if (group === 'role') setRoleFilter(update);
           }} />
         <div className="min-w-0 flex-1 space-y-4">
-          {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
-            <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
+          {loadError && allUsers.length > 0 && <div role="alert">{loadError} <button type="button" disabled={directory.isRefreshing} onClick={() => void directory.refetch()}>Retry users</button></div>}
+          {loading ? <TableLoadingState label="Loading users..." /> : loadError && !allUsers.length ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
+            <DataGrid<User> sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: "createdAt", direction: "desc" }} onSortReset={() => setSort(null)} onSortChange={next => setSort(next)} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu ariaLabel="Team Management table" summaryLabel={`${totalItems} total records`} emptyMessage="No users found"
               onRowClick={u => openUser(u)} rowActions={u => [
                 { id: 'view', label: 'View', onClick: () => openUser(u) },
                 ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [

@@ -63,6 +63,7 @@ export default function LeadsPage(): React.ReactElement {
     isLoading: isColumnsLoading,
     saveColumns,
     resetColumns,
+    resetColumnWidths,
     saveColumnWidth,
   } = useColumnPreferences('leads');
 
@@ -237,6 +238,9 @@ export default function LeadsPage(): React.ReactElement {
   useEffect(() => {
     setCurrentPage(1);
   }, [debouncedSearch, activeTab, selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, createdFilter, pageSize, sort]);
+  useEffect(() => {
+    if (leadsMeta && currentPage > Math.max(1, Math.ceil(leadsMeta.total / pageSize))) setCurrentPage(Math.max(1, Math.ceil(leadsMeta.total / pageSize)));
+  }, [leadsMeta, currentPage, pageSize]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getOwnerInitials = (userId?: string): string => {
@@ -395,13 +399,11 @@ export default function LeadsPage(): React.ReactElement {
         onViewModeChange={setViewMode}
         onRefresh={refetchLeads}
         refreshDisabled={isLeadsInitialLoad || isLeadsRefreshing}
+        refreshing={isLeadsRefreshing}
         loading={(isLeadsInitialLoad || isColumnsLoading)}
         loadingLabel={isLeadsInitialLoad ? 'Loading leads...' : 'Loading columns...'}
         onManageColumns={openManageColumns}
-        onResetColumns={async () => {
-          try { await resetColumns(); toast.success('Columns reset to default'); }
-          catch { toast.error('Unable to reset columns. Please try again.'); }
-        }}
+        onResetColumns={resetColumnWidths}
         bulkSelection={
           selectedIds.size > 0
             ? {
@@ -462,7 +464,6 @@ export default function LeadsPage(): React.ReactElement {
                 toast.error('Failed to hide column. Reverted.');
               }
             }}
-            onManageColumns={openManageColumns}
             onColumnWidthChange={(id, width) => { void saveColumnWidth(id, width).catch(() => toast.error('Unable to save column width. Please try again.')); }}
             highlightRowId={highlightId}
             viewMode={viewMode}          />

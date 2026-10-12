@@ -274,7 +274,8 @@ describe('Feature: manage-columns-persistence, Property 2: Registry Reconciliati
         const result = reconcileWithRegistry(config, 'leads');
 
         expect(result.columns.map(column => column.order)).toEqual(result.columns.map((_, index) => index));
-        expect(result.columns[0]).toMatchObject({ id: 'name', visible: true, order: 0 });
+        expect(result.columns[0]).toMatchObject({ id: 'name', order: 0 });
+        expect(result.columns[0].visible).toBe(normalizeLeadColumns(subsetColumns)[0]?.visible ?? true);
         const addedIds = result.columns.filter(column => !existingIds.has(column.id)).map(column => column.id);
         expect(addedIds).toEqual([...registryColumns].sort((a, b) => a.defaultOrder - b.defaultOrder)
           .filter(column => !existingIds.has(column.id)).map(column => column.id));
@@ -297,8 +298,8 @@ describe('Feature: manage-columns-persistence, Property 2: Registry Reconciliati
 // ─────────────────────────────────────────────────────
 
 describe('Feature: manage-columns-persistence, Property 4: Required Column Auto-Inclusion', () => {
-  const requiredColumnIds = getRequiredColumnIds('leads');
-  const nonRequiredIds = registryIds.filter((id) => !requiredIds.has(id));
+  const requiredColumnIds = getRequiredColumnIds('contacts');
+  const nonRequiredIds = getRegistryForModule('contacts')!.columns.map(column => column.id).filter(id => !requiredColumnIds.includes(id));
 
   it('should auto-include required columns with visible:true when they are omitted from config', () => {
     // Generate configs that contain ONLY non-required columns (omitting all required)
@@ -314,8 +315,8 @@ describe('Feature: manage-columns-persistence, Property 4: Required Column Auto-
 
     fc.assert(
       fc.property(nonRequiredOnlyArb, (nonRequiredColumns) => {
-        const config: ColumnConfig = { module: 'leads', columns: nonRequiredColumns };
-        const result = reconcileWithRegistry(config, 'leads');
+        const config: ColumnConfig = { module: 'contacts', columns: nonRequiredColumns };
+        const result = reconcileWithRegistry(config, 'contacts');
 
         // All required columns must be present with visible: true
         const resultMap = new Map(result.columns.map((c) => [c.id, c]));
@@ -346,8 +347,8 @@ describe('Feature: manage-columns-persistence, Property 4: Required Column Auto-
 
     fc.assert(
       fc.property(partialRequiredArb, (columns) => {
-        const config: ColumnConfig = { module: 'leads', columns };
-        const result = reconcileWithRegistry(config, 'leads');
+        const config: ColumnConfig = { module: 'contacts', columns };
+        const result = reconcileWithRegistry(config, 'contacts');
 
         // ALL required columns must be in result with visible: true
         const resultMap = new Map(result.columns.map((c) => [c.id, c]));

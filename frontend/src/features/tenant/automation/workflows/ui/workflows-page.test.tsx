@@ -100,7 +100,7 @@ it('disables refresh and spins its icon until the in-flight request finishes', a
   const calls = vi.mocked(workflowsApi.list).mock.calls.length;
   fireEvent.click(refresh); fireEvent.click(refresh);
   expect(refresh.disabled).toBe(true);
-  expect(screen.getByText('Loading workflows...').parentElement?.querySelector('.animate-spin')).toBeTruthy();
+  expect(screen.getByRole('grid')).toBeTruthy();
   expect(screen.getByLabelText('Search workflows')).toBeTruthy();
   expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
   expect(refresh.querySelector('.animate-spin')).toBeTruthy();

@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
+import { useAuth } from '@/store/AuthContext';
 import {
   tablePreferencesApi,
   type SortPreference,
@@ -29,7 +30,8 @@ interface UseTablePreferencesReturn {
 
 /**
  * Hook to manage table preferences (pageSize, viewMode, displayMode, sort) for a module.
- * Fetches from the server on mount, persists changes via fire-and-forget pattern.
+ * Fetches from the server on mount. Sort writes are serialized with rollback;
+ * page size and display changes retain the existing fire-and-forget handling.
  *
  * Fire-and-forget behavior:
  * - UI updates immediately (optimistic)
@@ -41,12 +43,18 @@ interface UseTablePreferencesReturn {
  *   const { pageSize, viewMode, displayMode, sort, setPageSize, setViewMode, setDisplayMode, setSort } = useTablePreferences('leads');
  */
 export function useTablePreferences(module: string): UseTablePreferencesReturn {
-  const defaultSort = (): SortPreference | null => ['leads', 'contacts', 'accounts', 'campaigns', 'workflows', 'users'].includes(module) ? { field: 'createdAt', direction: 'desc' } : null;
+  const { user, tenant } = useAuth();
+  const identity = [module, tenant?.id, user?.id].join(':');
+  const identityRef = useRef(identity); identityRef.current = identity;
+  const defaultSort = (): SortPreference | null => ['leads', 'contacts', 'accounts', 'campaigns', 'workflows', 'users', 'tasks', 'deals'].includes(module) ? { field: 'createdAt', direction: 'desc' } : null;
   const [pageSize, setPageSizeState] = useState<number>(25);
   const [viewMode, setViewModeState] = useState<ViewMode>('wrap');
   const [displayMode, setDisplayModeState] = useState<DisplayMode>('wrap');
   const [sort, setSortState] = useState<SortPreference | null>(defaultSort);
   const sortChanged = useRef(false);
+  const sortVersion = useRef(0);
+  const confirmedSort = useRef<SortPreference | null>(defaultSort());
+  const sortQueue = useRef<Promise<void>>(Promise.resolve());
   const [isLoading, setIsLoading] = useState(true);
 
   const mountedRef = useRef(true);
@@ -61,6 +69,9 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
   // Fetch on mount
   useEffect(() => {
     let cancelled = false;
+    sortChanged.current = false;
+    confirmedSort.current = defaultSort();
+    setSortState(defaultSort()); setPageSizeState(25); setViewModeState('wrap'); setDisplayModeState('wrap');
 
     async function fetchPreferences(): Promise<void> {
       setIsLoading(true);
@@ -71,7 +82,10 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
           setViewModeState(response.data.viewMode);
           // Display mode comes from viewMode on the server (same underlying preference)
           setDisplayModeState(response.data.viewMode);
-          if (!sortChanged.current) setSortState(response.data.sort ?? defaultSort());
+          if (!sortChanged.current) {
+            confirmedSort.current = response.data.sort ?? defaultSort();
+            setSortState(confirmedSort.current);
+          }
         }
       } catch {
         // On failure, keep defaults (pageSize: 25, viewMode: 'wrap', displayMode: 'wrap', sort: null)
@@ -87,7 +101,7 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
     return () => {
       cancelled = true;
     };
-  }, [module]);
+  }, [module, identity]);
 
   const setPageSize = useCallback((size: number) => {
     setPageSizeState(size);
@@ -123,14 +137,22 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
 
   const setSort = useCallback((newSort: SortPreference | null) => {
     sortChanged.current = true;
-    setSortState(newSort);
-    // Always persist — including null (clears server sort)
-    tablePreferencesApi.saveSort(module, newSort).catch(() => {
-      if (mountedRef.current) {
-        toast.error('Unable to save sort preference', { duration: 5000 });
+    const next = newSort ?? defaultSort();
+    const version = ++sortVersion.current, owner = identity;
+    setSortState(next);
+    sortQueue.current = sortQueue.current.catch(() => {}).then(async () => {
+      if (!mountedRef.current || owner !== identityRef.current) return;
+      try {
+        await tablePreferencesApi.saveSort(module, newSort);
+        if (owner === identityRef.current) confirmedSort.current = next;
+      } catch {
+        if (mountedRef.current && owner === identityRef.current && version === sortVersion.current) {
+          setSortState(confirmedSort.current);
+          toast.error('Unable to save sort preference. Please try again.', { duration: 5000 });
+        }
       }
     });
-  }, [module]);
+  }, [module, identity]);
 
   /**
    * Fire-and-forget filter persistence.

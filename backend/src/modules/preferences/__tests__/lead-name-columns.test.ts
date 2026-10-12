@@ -11,10 +11,22 @@ const expectedDefault = ['name', 'email', 'phone', 'companyName', 'status', 'ass
 const visibleIds = (columns: ColumnConfigItem[]) => [...columns].sort((a, b) => a.order - b.order).filter(column => column.visible).map(column => column.id);
 beforeEach(() => vi.resetAllMocks());
 
+it('hides Name through authenticated saves and resolves conflicting legacy names without changing widths', async () => {
+  const config = getSystemDefault('leads').columns.map(column => ({ ...column, width: 230, visible: ['name', 'firstName', 'lastName'].includes(column.id) ? true : column.visible }));
+  const result = await upsertUserPreference('tenant', 'user', 'leads', { module: 'leads', columns: config });
+  expect(result.columns.find(column => column.id === 'name')?.visible).toBe(true);
+  expect(result.columns.filter(column => ['firstName', 'lastName'].includes(column.id)).every(column => !column.visible)).toBe(true);
+  expect(result.columns.every(column => column.width === 230)).toBe(true);
+  const split = config.map(column => column.id === 'name' ? { ...column, visible: false } : column);
+  const switched = await upsertUserPreference('tenant', 'user', 'leads', { module: 'leads', columns: split });
+  expect(switched.columns[0]).toMatchObject({ id: 'name', visible: false, order: 0 });
+  expect(switched.columns.filter(column => ['firstName', 'lastName'].includes(column.id)).every(column => column.visible)).toBe(true);
+});
+
 it('uses shared supported defaults with fixed Name and optional individual name fields', () => {
   expect(visibleIds(getSystemDefault('leads').columns)).toEqual(expectedDefault);
   expect(getSortableFields('leads')).toEqual(expect.arrayContaining(['name', 'firstName', 'lastName']));
-  expect(LEADS_COLUMN_REGISTRY.columns.find(column => column.id === 'name')).toMatchObject({ required: true, fixedPosition: 'first', pinned: 'left' });
+  expect(LEADS_COLUMN_REGISTRY.columns.find(column => column.id === 'name')).toMatchObject({ required: false, fixedPosition: 'first', pinned: 'left' });
   expect(LEADS_COLUMN_REGISTRY.columns.find(column => column.id === 'firstName')?.required).toBe(false);
 });
 
@@ -39,21 +51,21 @@ it('puts Name first and preserves custom order, widths and explicit individual n
     { id: 'status', order: 4, visible: true },
   ];
   const upgraded = normalizeLeadColumns(custom);
-  expect(upgraded[0]).toMatchObject({ id: 'name', visible: true, order: 0 });
-  expect(visibleIds(upgraded)).toEqual(['name', 'email', 'lastName', 'status']);
+  expect(upgraded[0]).toMatchObject({ id: 'name', visible: false, order: 0 });
+  expect(visibleIds(upgraded)).toEqual(['email', 'lastName', 'status']);
   expect(upgraded.slice(1).map(({ order, ...column }) => column)).toEqual(custom.map(({ order, ...column }) => column));
   expect(normalizeLeadColumns(upgraded)).toEqual(upgraded);
   expect(normalizeModuleColumns('contacts', custom)).toBe(custom);
 });
 
-it('restores a hidden or displaced Name once, retaining its saved width', () => {
+it('keeps a hidden Name first, retaining its saved width', () => {
   const result = reconcileWithRegistry({ module: 'leads', columns: [
     { id: 'email', order: 0, visible: true, width: 270 },
     { id: 'name', order: 5, visible: false, width: 315 },
     { id: 'firstName', order: 6, visible: false },
     { id: 'lastName', order: 7, visible: false },
   ] }, 'leads').columns;
-  expect(result[0]).toEqual({ id: 'name', order: 0, visible: true, width: 315 });
+  expect(result[0]).toEqual({ id: 'name', order: 0, visible: false, width: 315 });
   expect(result.filter(column => column.id === 'name')).toHaveLength(1);
   expect(result.find(column => column.id === 'email')?.width).toBe(270);
   expect(result.find(column => column.id === 'firstName')?.visible).toBe(false);
@@ -107,7 +119,6 @@ it('accepts documented retired choices from old clients while rejecting arbitrar
   expect(result.columns.map(column => column.order)).toEqual(result.columns.map((_, index) => index));
   for (const columns of [
     [{ id: 'arbitrarySecret', order: 0, visible: true }],
-    [{ id: 'name', order: 0, visible: false }],
     [{ id: 'email', order: -1, visible: true }],
     [{ id: 'email', order: 0, visible: true, width: -20 }],
     [{ id: 'email', order: 0, visible: true }, { id: 'email', order: 1, visible: false }],

@@ -12,8 +12,40 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 import React from 'react';
 import { ManageColumnsDrawer } from '../manage-columns-drawer';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
+import { LEADS_TABLE_COLUMNS } from '@leadcrm/shared';
 
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined }) }));
+
+it('confirms both name switches in the draft, cancels without changes, and saves through the existing action', async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  const defaults = LEADS_TABLE_COLUMNS.map(column => ({ id: column.id, order: column.defaultOrder, visible: column.defaultVisible, width: 222 }));
+  render(<ManageColumnsDrawer isOpen module="leads" registry={LEADS_TABLE_COLUMNS} effectiveColumns={defaults} onSave={save} onReset={vi.fn()} onClose={vi.fn()} />);
+  const toggle = (name: string) => screen.getByRole('switch', { name: `Toggle ${name} visibility` });
+  fireEvent.click(toggle('First Name'));
+  expect(screen.getByText('Name already combines First Name and Last Name. To display these separately, Name needs to be hidden. Would you like to switch columns?')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(toggle('Name').getAttribute('aria-checked')).toBe('true');
+  expect(toggle('First Name').getAttribute('aria-checked')).toBe('false');
+  expect(save).not.toHaveBeenCalled();
+  fireEvent.click(toggle('First Name'));
+  fireEvent.click(screen.getByRole('button', { name: 'Switch Columns' }));
+  await waitFor(() => expect(toggle('Name').getAttribute('aria-checked')).toBe('false'));
+  expect(toggle('First Name').getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(toggle('Last Name'));
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  fireEvent.click(toggle('Name'));
+  expect(screen.getByText('Showing Name will hide the separate First Name and Last Name columns. Continue?')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(toggle('First Name').getAttribute('aria-checked')).toBe('true');
+  fireEvent.click(toggle('Name')); fireEvent.click(screen.getByRole('button', { name: 'Switch Columns' }));
+  await waitFor(() => expect(toggle('Name').getAttribute('aria-checked')).toBe('true'));
+  expect(toggle('First Name').getAttribute('aria-checked')).toBe('false');
+  expect(toggle('Last Name').getAttribute('aria-checked')).toBe('false');
+  fireEvent.click(toggle('Name')); // Hiding alone is allowed and leaves form data untouched.
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(1));
+  expect(save.mock.calls[0][0].find((column: ColumnConfigItem) => column.id === 'name')).toMatchObject({ visible: false, order: 0, width: 222 });
+}, 15000);
 
 // Mock @dnd-kit modules used internally by ManageColumnsDrawer
 vi.mock('@dnd-kit/core', () => ({

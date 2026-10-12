@@ -13,6 +13,7 @@ interface UseColumnPreferencesReturn {
   saveColumns: (config: ColumnConfigItem[]) => Promise<void>;
   saveColumnWidth: (columnId: string, width: number) => Promise<void>;
   resetColumns: () => Promise<void>;
+  resetColumnWidths: () => Promise<void>;
   retryCount: number;
 }
 
@@ -77,7 +78,9 @@ export function useColumnPreferences(module: string): UseColumnPreferencesReturn
   }, [identity, module, normalize, publish]);
   const saveColumns = useCallback((columns: ColumnConfigItem[]) => mutate(() => columns), [mutate]);
   const resetColumns = useCallback(() => mutate(), [mutate]);
+  const resetColumnWidths = useCallback(() => mutate(() => normalize(columnsRef.current)
+    .map(({ width: _width, ...column }) => column)), [mutate, normalize]);
   const saveColumnWidth = useCallback((columnId: string, width: number) => mutate(() => normalize(columnsRef.current)
     .map(column => column.id === columnId ? { ...column, width: Math.round(Math.min(800, Math.max(80, width))) } : column)), [mutate, normalize]);
-  return { effectiveColumns, isLoading, isSaving, saveError, saveColumns, saveColumnWidth, resetColumns, retryCount };
+  return { effectiveColumns, isLoading, isSaving, saveError, saveColumns, saveColumnWidth, resetColumns, resetColumnWidths, retryCount };
 }

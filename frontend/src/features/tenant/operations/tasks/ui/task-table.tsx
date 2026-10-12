@@ -1,4 +1,5 @@
 "use client";
+import { getTableSortFields } from "@/shared/constants/column-registries";
 import type { ReactNode } from "react";
 import {
   TASK_COLUMN_DEFINITIONS,
@@ -205,7 +206,7 @@ export function TaskTable({
         if (!busy) onSelect([...ids]);
       }}
       onRowClick={onOpen}
-      sortingMode="external"
+      sortingMode="external" enableColumnMenu sortFields={getTableSortFields("tasks")} defaultSort={{ field: "createdAt", direction: "desc" }}
       sort={{
         field: query.sortBy ?? "createdAt",
         direction: query.sortOrder ?? "desc",
@@ -239,7 +240,6 @@ export function TaskTable({
           onClick: () => onArchive(task),
         },
       ]}
-      onSettingsClick={onManageColumns}
       onColumnWidthChange={onColumnWidthChange}
       columnWidths={Object.fromEntries(columns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       summaryLabel={`${totalRecords} total records`}

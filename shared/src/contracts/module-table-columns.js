@@ -1,8 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.USERS_TABLE_COLUMNS = exports.WORKFLOWS_TABLE_COLUMNS = exports.CAMPAIGNS_TABLE_COLUMNS = exports.DEALS_TABLE_SORT_FIELDS = exports.DEALS_TABLE_COLUMNS = exports.CONTACTS_TABLE_SORT_FIELDS = exports.CONTACTS_TABLE_COLUMNS = exports.ACCOUNTS_TABLE_SORT_FIELDS = exports.ACCOUNTS_TABLE_COLUMNS = void 0;
+exports.MODULE_TABLE_SORT_FIELDS = exports.PERSON_NAME_COLUMN_GROUPS = exports.USERS_TABLE_COLUMNS = exports.WORKFLOWS_TABLE_COLUMNS = exports.CAMPAIGNS_TABLE_COLUMNS = exports.DEALS_TABLE_SORT_FIELDS = exports.DEALS_TABLE_COLUMNS = exports.CONTACTS_TABLE_SORT_FIELDS = exports.CONTACTS_TABLE_COLUMNS = exports.ACCOUNTS_TABLE_SORT_FIELDS = exports.ACCOUNTS_TABLE_COLUMNS = void 0;
 exports.normalizeModuleColumns = normalizeModuleColumns;
 const lead_column_migration_1 = require("./lead-column-migration");
+const lead_table_columns_1 = require("./lead-table-columns");
 /** Shared table choices are limited to persisted fields or included relations. */
 exports.ACCOUNTS_TABLE_COLUMNS = [
     { id: 'name', label: 'Account Name', required: true, defaultVisible: true, defaultOrder: 0, group: 'Account Info', priority: 'required' },
@@ -65,4 +66,15 @@ exports.WORKFLOWS_TABLE_COLUMNS = defineColumns('Workflows', [
 ]);
 exports.USERS_TABLE_COLUMNS = defineColumns('Users', [
     ['name', 'User'], ['role', 'Role'], ['email', 'Contact'], ['status', 'Status'], ['groups', 'Groups'], ['activity', 'Actions'],
-]);
+]).map(column => column.id === 'name' ? { ...column, required: false, priority: 'high', fixedPosition: 'first', pinned: 'left' } : column);
+/** Only registered person-name projections share this visibility constraint. */
+exports.PERSON_NAME_COLUMN_GROUPS = {
+    leads: { combined: 'name', separate: ['firstName', 'lastName'] },
+};
+/** Shared with the preference API, including sortable fields hidden from the grid. */
+exports.MODULE_TABLE_SORT_FIELDS = {
+    leads: lead_table_columns_1.LEADS_TABLE_SORT_FIELDS,
+    contacts: exports.CONTACTS_TABLE_SORT_FIELDS, accounts: exports.ACCOUNTS_TABLE_SORT_FIELDS, deals: exports.DEALS_TABLE_SORT_FIELDS,
+    tasks: ['title', 'dueDate', 'createdAt', 'updatedAt'], campaigns: ['name', 'createdAt'],
+    workflows: ['name', 'status', 'createdAt'], users: ['name', 'role', 'email', 'status', 'groups', 'createdAt'],
+};

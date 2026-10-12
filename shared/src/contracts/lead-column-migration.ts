@@ -26,8 +26,13 @@ export function normalizeLeadColumns(columns: ColumnConfigItem[]): ColumnConfigI
     // Preserve unknown IDs for validation, never silently legitimize arbitrary input.
     result.push(...supported.filter(column => !result.some(item => item.id === column.id)));
   } else {
-    const name = supported.find(column => column.id === 'name') ?? { id: 'name', visible: true, order: 0 };
-    result = [{ ...name, visible: true }, ...supported.filter(column => column.id !== 'name')];
+    const name = supported.find(column => column.id === 'name') ?? {
+      id: 'name', visible: !supported.some(column => ['firstName', 'lastName'].includes(column.id) && column.visible), order: 0,
+    };
+    // Existing conflicting layouts prefer combined Name. Explicitly hidden Name
+    // and pre-combined customized layouts preserve their separate-name choices.
+    result = [name, ...supported.filter(column => column.id !== 'name')
+      .map(column => name.visible && ['firstName', 'lastName'].includes(column.id) ? { ...column, visible: false } : column)];
     if (!result.some(column => column.id === 'lastName')) result.push({ id: 'lastName', visible: false, order: result.length });
   }
   return result.map((column, order) => ({ ...column, order }));

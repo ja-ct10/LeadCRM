@@ -15,7 +15,7 @@ export interface UseCampaignsDataReturn {
   isInitialLoad: boolean;
   isRefreshing: boolean;
   error: string | null;
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
 export function useCampaignsData(options?: { disabled?: boolean; intervalMs?: number; query?: CampaignListQuery }): UseCampaignsDataReturn {
