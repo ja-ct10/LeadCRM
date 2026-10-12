@@ -14,6 +14,7 @@ vi.mock('../companies/companies.repository', () => mocks.accounts);
 vi.mock('../deals/deals.repository', () => mocks.deals);
 vi.mock('../../automation/triggers/triggers.service', () => mocks.triggers);
 vi.mock('../../../config/database.config', () => ({ default: {} }));
+vi.mock('../leads/lead-automation.service', () => ({ salesTransaction: (work: (tx: unknown) => unknown) => work({}) }));
 vi.mock('../../../core/audit/audit.service', () => ({ writeAuditLog: vi.fn(), buildChangeset: vi.fn(() => ({ before: {}, after: {} })) }));
 
 import { recordChanges } from '../record-updates';

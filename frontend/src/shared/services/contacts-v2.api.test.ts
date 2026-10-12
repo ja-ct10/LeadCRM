@@ -19,12 +19,14 @@ it('excludes all retired Contact fields from transport and response compatibilit
 it('translates all display aliases to persisted Contact fields on create and edit', async () => {
   const draft = { companyName: 'Acme', leadSource: 'Referral', productInterest: ['CCTV'], accountId: 'account' };
   const expected = { company: 'Acme', source: 'Referral', productInterests: ['CCTV'], accountId: 'account' };
-  const response = await contactsV2Api.create(draft);
-  expect(transport.post).toHaveBeenCalledWith('/crm/contacts', expected);
+  const requestId = '96eaed35-af9f-4686-8854-83c5da0f8e05';
+  const response = await contactsV2Api.create({ ...draft, requestId });
+  expect(transport.post).toHaveBeenCalledWith('/crm/contacts', { ...expected, requestId });
   expect(response.data).toMatchObject({ companyName: 'Acme', leadSource: 'Referral', accountId: 'account', organizationId: 'account' });
   await contactsV2Api.update('contact', draft);
   expect(transport.put).toHaveBeenCalledWith('/crm/contacts/contact', expected);
   expect(toContactWrite({ companyName: '', leadSource: '', productInterest: [] })).toEqual({ company: '', source: '', productInterests: [] });
+  expect(toContactWrite({ ...draft, requestId } as never)).not.toHaveProperty('requestId');
 });
 it('makes exactly one list request with server page, sort, search and filters', async () => {
   transport.get.mockResolvedValue({ success: true, data: [], meta: { total: 10000, page: 2, limit: 25, hasMore: true } });

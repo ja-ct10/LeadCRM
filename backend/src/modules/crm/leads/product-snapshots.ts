@@ -2,10 +2,11 @@ import { z } from 'zod';
 import { ProductInterestSchema } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
+import { salesContext } from './sales-context';
 import { ValidationError } from '../../../shared/errors/http-error';
 
 /** Validate legacy name-based input; normalized writes resolve it to catalog FKs. */
-export async function validateProductSnapshots(tenantId: string, input: unknown, previous: string[] = [], db: Prisma.TransactionClient = prisma) {
+export async function validateProductSnapshots(tenantId: string, input: unknown, previous: string[] = [], db: Prisma.TransactionClient = salesContext.getStore() ?? prisma) {
   if (input === undefined) return;
   const names = z.array(ProductInterestSchema.shape.name).max(100).parse(input);
   const added = [...new Set(names.filter(name => !previous.includes(name)))];

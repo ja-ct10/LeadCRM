@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { readGmailJson } from './gmail-read';
+import { readGmailJson, withMailboxWorkerReadBudget } from './gmail-read';
 import { errorMiddleware } from '../../api/middleware/error.middleware';
 import type { Request, Response } from 'express';
 
@@ -17,6 +17,11 @@ afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 const failure = (status: number, reason: string, headers?: HeadersInit) => Response.json({ error: { message: 'private provider payload', errors: [{ reason }] } }, { status, headers });
 
 describe('Gmail read error handling', () => {
+  it('makes one provider attempt inside durable worker retry authority', async () => {
+    const fetchMock = vi.fn(async () => failure(503, 'backendError')); vi.stubGlobal('fetch', fetchMock);
+    await expect(withMailboxWorkerReadBudget(() => readGmailJson(token, 'history'))).rejects.toMatchObject({ code: 'GMAIL_UNAVAILABLE' });
+    expect(fetchMock).toHaveBeenCalledOnce(); expect(mocks.delay).not.toHaveBeenCalled();
+  });
   it.each([500, 503])('retries a transient %i before returning data', async status => {
     const fetchMock = vi.fn().mockResolvedValueOnce(failure(status, 'userRateLimitExceeded')).mockResolvedValueOnce(Response.json({ messages: [] }));
     vi.stubGlobal('fetch', fetchMock);

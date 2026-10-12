@@ -66,6 +66,7 @@ export default function ContactsPage(): React.ReactElement {
 
   // ── Form State ────────────────────────────────────────────────────────
   const [isFormOpen, setIsFormOpen] = useState(false);
+  const contactCreation = useRef<{ intent: string; requestId: string } | null>(null);
   const [editingContact, setEditingContact] = useState<Contact | undefined>(undefined);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
 
@@ -237,7 +238,7 @@ export default function ContactsPage(): React.ReactElement {
       label: 'Filter By Fields',
       isExpanded: true,
       items: [
-        ...getAssignableAgents(users).slice(0, 5).map(u => ({
+        ...getAssignableAgents(users, ['contacts']).slice(0, 5).map(u => ({
           id: `owner:${u.id}`,
           label: `Assigned Agent: ${u.firstName} ${u.lastName}`,
           count: facets['owner:' + u.id] ?? 0,
@@ -490,7 +491,7 @@ export default function ContactsPage(): React.ReactElement {
     {/* ── Contact Form Sheet ──────────────────────────────────── */}
     <ContactFormSheet
       isOpen={isFormOpen}
-      onClose={() => { setIsFormOpen(false); setEditingContact(undefined); }}
+      onClose={() => { setIsFormOpen(false); setEditingContact(undefined); contactCreation.current = null; }}
       initialData={editingContact}
       onSave={async (data) => {
         try {
@@ -498,7 +499,9 @@ export default function ContactsPage(): React.ReactElement {
             await contactsV2Api.update(editingContact.id, data);
             toast.success('Contact updated successfully');
           } else {
-            await contactsV2Api.create(data);
+            const intent = JSON.stringify(data);
+            if (contactCreation.current?.intent !== intent) contactCreation.current = { intent, requestId: crypto.randomUUID() };
+            await contactsV2Api.create({ ...data, requestId: contactCreation.current.requestId });
             toast.success('Contact created successfully');
           }
           await fetchContacts();
@@ -507,6 +510,7 @@ export default function ContactsPage(): React.ReactElement {
         }
         setIsFormOpen(false);
         setEditingContact(undefined);
+        contactCreation.current = null;
       }}
     />
 

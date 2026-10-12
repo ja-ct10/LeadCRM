@@ -72,7 +72,7 @@ export function ClientFilters({
     label: src
   }));
 
-  const memberOptions: FilterOption[] = getAssignableAgents(usersList).map(u => ({
+  const memberOptions: FilterOption[] = getAssignableAgents(usersList, ['leads']).map(u => ({
     id: u.id,
     label: `${u.firstName || ''} ${u.lastName || ''}`.trim() || u.email,
     icon: (u.firstName?.[0] || u.email?.[0] || '?').toUpperCase()

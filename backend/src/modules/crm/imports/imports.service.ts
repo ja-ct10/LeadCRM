@@ -18,9 +18,13 @@ async function prepare(module: CrmImportModule, tenantId: string, actorId: strin
 
 async function requestIdentity(module: CrmImportModule, tenantId: string, actorId: string, input: CreateCrmImportInput) {
   const dto = CreateCrmImportSchema.parse(input);
-  const digest = await sourceDigest(tenantId, actorId, module, dto);
+  const previous = await importStore(prisma, module, tenantId).findKey(dto.idempotencyKey);
+  // A completed, actor-bound receipt retains the original immutable upload reference.
+  // Bare keys and historical jobs without source evidence still require the source.
+  const retainedDigest = previous?.completedAt && previous.createdById === actorId && dto.csvText === undefined && previous.sourceReference === dto.uploadId ? previous.sourceDigest : null;
+  const digest = retainedDigest ?? await sourceDigest(tenantId, actorId, module, dto);
   const mappings = Object.entries(dto.mappings).sort(([a], [b]) => a.localeCompare(b));
-  return { dto, requestHash: createHash('sha256').update(JSON.stringify([actorId, dto.fileName, mappings, digest])).digest('hex') };
+  return { dto, digest, requestHash: createHash('sha256').update(JSON.stringify([actorId, dto.fileName, mappings, digest])).digest('hex') };
 }
 
 export function moduleImportService(module: CrmImportModule) {
@@ -37,13 +41,13 @@ export function moduleImportService(module: CrmImportModule) {
       return result;
     },
     async getRequestImport(tenantId: string, actorId: string, input: CreateCrmImportInput) {
-      const { dto, requestHash } = await requestIdentity(module, tenantId, actorId, input);
+      const { dto, requestHash, digest } = await requestIdentity(module, tenantId, actorId, input);
       const job = await storeFor(tenantId).findKey(dto.idempotencyKey);
       if (job && job.requestHash !== requestHash) throw new ConflictError('This import key belongs to a different request. Start a New import.');
       return job;
     },
     async processImport(tenantId: string, actorId: string, input: CreateCrmImportInput) {
-      const { dto, requestHash } = await requestIdentity(module, tenantId, actorId, input);
+      const { dto, requestHash, digest } = await requestIdentity(module, tenantId, actorId, input);
       const existing = await storeFor(tenantId).findKey(dto.idempotencyKey);
       if (existing && existing.requestHash !== requestHash) throw new ConflictError('This import key belongs to a different request. Start a New import.');
       if (existing?.completedAt) { await releaseCsvSource(tenantId, actorId, module, dto.uploadId); return existing; }
@@ -56,7 +60,7 @@ export function moduleImportService(module: CrmImportModule) {
           return previous;
         }
         return db.create({ createdById: actorId, fileName: dto.fileName, totalRecords: rows.length,
-          idempotencyKey: dto.idempotencyKey, requestHash, status: 'importing', uploadId: dto.uploadId });
+          idempotencyKey: dto.idempotencyKey, requestHash, sourceDigest: digest, sourceReference: dto.uploadId, status: 'importing', uploadId: dto.uploadId });
       });
       if (job.completedAt) { await releaseCsvSource(tenantId, actorId, module, dto.uploadId); return job; }
       const validate = csvRowValidator(module, tenantId, rows, async (tx, rowNumber) =>

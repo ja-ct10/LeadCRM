@@ -7,6 +7,7 @@ import { drainCampaignSubmissions, startCampaignScheduleScheduler } from './modu
 import { purgeExpiredSessions } from './core/auth/session.service';
 import { startImportCleanupScheduler } from './modules/crm/imports/import-cleanup.service';
 import { validateEnvironment } from './config/validate-env';
+import { startWorkflowScheduler } from './modules/automation/workflows/workflow-queue';
 
 validateEnvironment();
 
@@ -49,12 +50,14 @@ let stopMailbox: (() => void) | undefined;
 let stopNotifications: (() => Promise<void>) | undefined;
 let stopCampaignSchedule: (() => Promise<void>) | undefined;
 let stopCampaignRecovery: (() => Promise<void>) | undefined;
+let stopWorkflows: (() => Promise<void>) | undefined;
 const server = app.listen(PORT, () => {
   console.log(`[server] LeadCRM API running on http://localhost:${PORT}`);
   console.log(`[server] Environment: ${process.env.NODE_ENV ?? 'development'}`);
 
   // Start background services
   stopCampaignRecovery = startCampaignRecoveryScheduler();
+  stopWorkflows = startWorkflowScheduler();
   stopCampaignSchedule = startCampaignScheduleScheduler();
   stopMailbox = startMailboxScheduler();
   if (process.env.NOTIFICATION_WORKER_ENABLED !== 'false') stopNotifications = startNotificationScheduler();
@@ -63,12 +66,13 @@ const server = app.listen(PORT, () => {
 
 
 });
-server.on('close', () => { stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); void stopCampaignSchedule?.(); });
+server.on('close', () => { stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); void stopCampaignSchedule?.(); void stopWorkflows?.(); });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
   stopMailbox?.();
   const schedules = stopCampaignSchedule?.();
   const drain = drainCampaignSubmissions();
-  server.close(() => { void Promise.allSettled([schedules, drain, stopNotifications?.(), stopCampaignRecovery?.()]).finally(() => process.exit(0)); });
+  const workflows = stopWorkflows?.();
+  server.close(() => { void Promise.allSettled([schedules, drain, workflows, stopNotifications?.(), stopCampaignRecovery?.()]).finally(() => process.exit(0)); });
   // Interrupted mailbox pages and scheduled claims resume from durable leases.
   setTimeout(() => process.exit(0), 30000).unref();
 });

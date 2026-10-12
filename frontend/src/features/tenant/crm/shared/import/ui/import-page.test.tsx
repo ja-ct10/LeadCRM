@@ -5,6 +5,7 @@ import { mapImportCsv, type CrmImportModule, type ImportReviewRow } from '@leadc
 import { getImportConfig } from '../configs';
 import type { ImportSummary } from '../types/import.types';
 import { finalImportNotice, summarizeReview } from '../utils/import-outcome';
+import { clearPageCache, getPageCache, setPageCache } from '@/shared/cache/page-cache';
 
 const mocks = vi.hoisted(() => ({ post: vi.fn(), get: vi.fn(), push: vi.fn(), refresh: vi.fn(),
   success: vi.fn(), warning: vi.fn(), error: vi.fn() }));
@@ -52,6 +53,18 @@ async function review(module: CrmImportModule, valid: number, duplicate: number,
 }
 beforeEach(() => { vi.resetAllMocks(); window.history.replaceState(null, '', '/crm/leads/import'); mocks.refresh.mockResolvedValue(undefined); });
 afterEach(cleanup);
+
+it('invalidates Contact and automatic Deal caches after a completed Contact import', async () => {
+  clearPageCache();
+  const affected = ['contacts', 'counts-contacts', 'deals', 'counts-deals', 'pipeline', 'activities', 'dashboard', 'reports'];
+  affected.forEach(module => setPageCache(module, 'tenant', {}, ['stale']));
+  await review('contacts', 10, 0, 0);
+  fireEvent.click(screen.getByRole('button', { name: /^Import 10 / }));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalled());
+  affected.forEach(module => expect(getPageCache(module, 'tenant', {})).toBeNull());
+  expect(mocks.refresh).toHaveBeenCalledTimes(2);
+  clearPageCache();
+});
 
 describe.each<CrmImportModule>(['leads', 'contacts', 'accounts', 'deals'])('%s import UI', module => {
   it.each(scenarios)('handles %i valid / %i duplicate / %i invalid', async (valid, duplicate, invalid, type, title) => {

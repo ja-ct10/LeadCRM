@@ -70,8 +70,9 @@ beforeEach(() => {
       id: where.id,
       tenantId,
       status: "ACTIVE",
-      role: "Client Admin",
-      tenant: { status: "ACTIVE" }, userRoles: [],
+      role: [actorId, 'new-actor'].includes(where.id) ? "Client Admin" : "Task staff",
+      tenant: { status: "ACTIVE" }, userRoles: [{ tenantId, role: { tenantId, isArchived: false,
+        permissions: [{ tenantId, module: 'tasks', canView: true }] } }],
     }),
   );
   db.task.findFirst.mockResolvedValue({ ...original });
@@ -87,6 +88,16 @@ beforeEach(() => {
 });
 
 describe("Task service authority", () => {
+  it('allows a Client Admin actor to assign staff but rejects Client Admin as the assignee', async () => {
+    await expect(scoped(() => service.createTask(tenantId, actorId, { ...input, assignedUserId: actorId }))).rejects.toMatchObject({ statusCode: 404 });
+    expect(db.task.create).not.toHaveBeenCalled();
+    await expect(scoped(() => service.createTask(tenantId, actorId, input))).resolves.toMatchObject({ createdById: actorId, assignedUserId: input.assignedUserId });
+  });
+
+  it('preserves an unchanged historical assignee during ordinary edits', async () => {
+    db.task.findFirst.mockResolvedValue({ ...original, assignedUserId: actorId });
+    await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, { assignedUserId: actorId, title: 'Retain historical assignment' }))).resolves.toMatchObject({ title: 'Retain historical assignment' });
+  });
   it("sets the immutable creator from the validated actor separately from the assigned agent", async () => {
     const task = await scoped(() => service.createTask(tenantId, actorId, input));
     expect(task).toMatchObject({ createdById: actorId, assignedUserId: input.assignedUserId, assignedById: actorId });

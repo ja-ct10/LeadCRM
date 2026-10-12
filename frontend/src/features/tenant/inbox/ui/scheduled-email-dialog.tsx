@@ -12,8 +12,10 @@ export function ScheduledEmailDialog({ id, onClose, onCancelled }: { id: string;
   const pending = useRef(false);
   useEffect(() => {
     let active = true;
-    getScheduledGmailEmail(id).then(result => { if (active) setDetail(result); }).catch(failure => { if (active) setError(failure instanceof Error ? failure.message : 'Scheduled email could not be loaded.'); });
-    return () => { active = false; };
+    const controller = new AbortController();
+    setDetail(undefined); setError('');
+    getScheduledGmailEmail(id, controller.signal).then(result => { if (active) setDetail(result); }).catch(failure => { if (active) { setDetail(undefined); setError(failure instanceof Error ? failure.message : 'Scheduled email could not be loaded.'); } });
+    return () => { active = false; controller.abort(); };
   }, [id]);
   async function cancel() {
     if (pending.current || !detail?.canCancel) return;

@@ -1,12 +1,20 @@
+import { salesContext } from '../leads/sales-context';
 import { CreateClientContactSchema, UpdateClientContactSchema } from './contacts-v2.dto';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import * as repo from './contacts-v2.repository';
 import { NotFoundError } from '../../../shared/errors/http-error';
 import { paginate } from '../../../shared/helpers/pagination';
-import { fireContactCreated, fireContactStatusChanged, fireContactUpdated } from '../../automation/triggers/triggers.service';
+import { fireContactStatusChanged, fireContactUpdated } from '../../automation/triggers/triggers.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { recordChanges, customFieldChangeTracker } from '../record-updates';
+import { salesTransaction } from '../leads/lead-automation.service';
+import { assertContactAccountSelection, mayReadContactAccount } from './contact-account-access';
+
+async function presentContact<T extends { status: string; account: unknown }>(tenantId: string, contact: T) {
+  return { ...contact, status: normalizeCrmStatus(contact.status),
+    account: await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId) ? contact.account : null };
+}
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
@@ -17,25 +25,23 @@ export async function getContacts(tenantId: string, query: Record<string, unknow
 export async function getContactById(id: string, tenantId: string) {
   const contact = await repo.findContactById(id, tenantId);
   if (!contact) throw new NotFoundError('Contact');
-  return { ...contact, status: normalizeCrmStatus(contact.status) };
+  return presentContact(tenantId, contact);
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
   dto = CreateClientContactSchema.parse(dto);
-  await validateLinks(tenantId, dto);
-  const contact = await repo.createContact(tenantId, dto, actorId);
-  if (actorId) {
-    await writeAuditLog({ tenantId, userId: actorId, action: 'contact.created', entityType: 'Contact', entityId: contact.id });
-    await fireContactCreated({ tenantId, actorId, contact });
-  }
-  return { ...contact, status: normalizeCrmStatus(contact.status) };
+  const { contact, replayed } = await repo.createContact(tenantId, dto, actorId);
+  return { contact: await presentContact(tenantId, contact), replayed };
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
-  dto = UpdateClientContactSchema.parse(dto);
-  await validateLinks(tenantId, dto);
+  const input = dto;
+  return salesTransaction(async () => {
+  dto = UpdateClientContactSchema.parse(input);
   const before = await repo.findContactById(id, tenantId);
   if (!before) throw new NotFoundError('Contact');
+  await assertContactAccountSelection(salesContext.getStore() ?? prisma, tenantId, dto.accountId, before.accountId);
+  await validateLinks(tenantId, dto, before.accountId);
   const withCustomChanges = await customFieldChangeTracker(tenantId, 'contacts', id, dto.customFieldValues);
   const contact = await repo.updateContact(id, tenantId, dto, actorId);
   if (!contact) throw new NotFoundError('Contact');
@@ -45,7 +51,8 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
   }
   const changes = await withCustomChanges(recordChanges(before, contact));
   if (changes.changedFields.length) await fireContactUpdated({ tenantId, actorId, record: contact, changedFields: changes.changedFields, changes });
-  return { ...contact, status: normalizeCrmStatus(contact.status) };
+  return presentContact(tenantId, contact);
+  });
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {
@@ -62,7 +69,7 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
     entityType: 'Contact', entityId: id, after: { isArchived: false } });
 }
 
-async function validateLinks(tenantId: string, dto: Record<string, unknown>) {
-  if (dto.accountId && !await prisma.account.findFirst({ where: { id: String(dto.accountId), tenantId, isArchived: false } })) throw new NotFoundError('Account');
-  if (dto.assignedUserId && !await prisma.user.findFirst({ where: { id: String(dto.assignedUserId), tenantId, status: 'ACTIVE' } })) throw new NotFoundError('User');
+async function validateLinks(tenantId: string, dto: Record<string, unknown>, previousAccountId: string | null) {
+  if (dto.accountId && dto.accountId !== previousAccountId && !await (salesContext.getStore() ?? prisma).account.findFirst({ where: { id: String(dto.accountId), tenantId, isArchived: false, deletedAt: null } })) throw new NotFoundError('Account');
+  if (dto.assignedUserId && !await (salesContext.getStore() ?? prisma).user.findFirst({ where: { id: String(dto.assignedUserId), tenantId, status: 'ACTIVE' } })) throw new NotFoundError('User');
 }

@@ -13,7 +13,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
   let accountId = deal.accountId;
   const conflict = () => new ConflictError('Multiple or archived matching records found. Resolve the Contact/Account association before marking this Deal won.');
   for (const lead of leads) {
-    await changeCustomerStatus(tx, deal.tenantId, actorId, { leadId: lead.id }, 'Closed', 'All configured Closed Won requirements completed and validated.', new Date());
+    await changeCustomerStatus(tx, deal.tenantId, actorId, { leadId: lead.id }, 'Closed', 'All configured Closed Won requirements completed and validated.', new Date(), { dealEventHandledByCaller: deal.id });
     const converted = await tx.lead.findFirstOrThrow({ where: { ...scope, id: lead.id } });
     accountId ??= converted.accountId;
   }
@@ -21,6 +21,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
   const contactLinks = await tx.contactDeal.findMany({ where: { ...scope, dealId: deal.id }, include: { contact: true } });
   for (const { contact } of contactLinks) {
     if (contact.isArchived) throw conflict();
+    if (contact.accountId && accountId && contact.accountId !== accountId) throw conflict();
     let linkedAccount = contact.accountId ?? accountId;
     if (!linkedAccount && contact.company?.trim()) {
       const name = contact.company.trim().replace(/\s+/g, ' ');

@@ -82,7 +82,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   });
   it('reuses normalized email and company identity while retaining prior Contact history', async () => {
     const { lead, deals } = await customer('  EXAMPLE   company ');
-    const existing = await prisma.contact.create({ data: { tenantId, email: ` ${lead.email!.toUpperCase()} `, firstName: 'Existing', lastName: 'Customer', notes: 'Keep this history', productInterests: ['Prior Product'], activeProducts: [] } });
+    const existing = await prisma.contact.create({ data: { tenantId, email: ` ${lead.email!.toUpperCase()} `, firstName: 'Existing', lastName: 'Customer', notes: 'Keep this history', productInterests: ['Prior Product'] } });
     const count = await prisma.account.count({ where: { tenantId } });
     await close(deals[0].id);
     const saved = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
@@ -97,7 +97,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   });
   it('rolls back stage, evidence, Account and conversion when Contact identity is ambiguous', async () => {
     const { lead, deals } = await customer('Rollback Company', 1);
-    for (let n = 0; n < 2; n++) await prisma.contact.create({ data: { tenantId, firstName: 'Duplicate', lastName: String(n), email: lead.email, productInterests: [], activeProducts: [] } });
+    for (let n = 0; n < 2; n++) await prisma.contact.create({ data: { tenantId, firstName: 'Duplicate', lastName: String(n), email: lead.email, productInterests: [] } });
     await expect(close(deals[0].id)).rejects.toThrow('matches found');
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).convertedAt).toBeNull();
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Qualified);

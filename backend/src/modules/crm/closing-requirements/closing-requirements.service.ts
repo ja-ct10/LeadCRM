@@ -109,6 +109,7 @@ async function readState(tx: Prisma.TransactionClient, tenantId: string, dealId:
 export const getRequirements = (tenantId: string, dealId: string) => salesTransaction(tx => readState(tx, tenantId, dealId));
 
 export async function saveValues(tenantId: string, actorId: string, dealId: string, input: unknown) {
+  return salesTransaction(async () => {
   const patch = ClosingValuesPatchSchema.parse(input);
   const result = await salesTransaction(async tx => {
     await assertCrmRecordMutation(tx, 'deals', dealId);
@@ -147,4 +148,5 @@ export async function saveValues(tenantId: string, actorId: string, dealId: stri
   if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId, record: result.updated,
     eventId: result.transition?.stageHistory?.id, changedFields: changes.changedFields, changes });
   return result.state;
+  });
 }

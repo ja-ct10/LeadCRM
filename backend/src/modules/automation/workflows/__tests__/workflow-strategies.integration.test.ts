@@ -39,6 +39,10 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
       }
       groupId = (await prisma.tenantGroup.create({ data: { tenantId, name: 'Assignment team', members: { create: [firstId, secondId].map(userId => ({ userId })) } } })).id;
       leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Sample', lastName: 'Lead', assignedUserId: actorId } })).id;
+      const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Strategy opportunities' } });
+      const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
+      await prisma.deal.create({ data: { tenantId, title: 'Strategy fixture opportunity', pipelineId: pipeline.id, stageId: stage.id,
+        assignedUserId: actorId, leadDeals: { create: { leadId, position: 0 } } } });
     });
   });
   beforeEach(async () => {
@@ -96,6 +100,7 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
     expect((await scope(() => resolveWorkflowAssignee(input))).resolvedUserId).toBe(assigned[0].resolvedUserId);
   });
   it('skips inactive members in previews and live execution', async () => {
+    await prisma.lead.updateMany({ where: { tenantId, assignedUserId: firstId, isArchived: false }, data: { assignedUserId: actorId } });
     await prisma.user.update({ where: { id: firstId }, data: { status: 'INACTIVE' } });
     const workflow = await create(pool());
     const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));

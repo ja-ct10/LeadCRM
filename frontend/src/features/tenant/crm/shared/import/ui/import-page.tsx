@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useData } from '@/store/DataContext';
+import { invalidatePageCache } from '@/shared/cache/page-cache';
 import { apiClient, type ApiRequestError } from '@/lib/api/client';
 import { getImportConfig } from '../configs';
 import { parseCsv, autoMapColumns, createEmptyMappings } from '../utils';
@@ -329,8 +330,10 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
         toast[notice.type](notice.title, { description: notice.description, id: `crm-import-${result.id}` });
       }
       // A list-refresh failure cannot change a confirmed, committed import outcome.
+      for (const module of new Set([moduleKey, `counts-${moduleKey}`, 'activities', 'dashboard', 'reports',
+        ...(['leads', 'contacts', 'deals'].includes(moduleKey) ? ['deals', 'counts-deals', 'pipeline'] : [])])) invalidatePageCache(module);
       void Promise.allSettled([
-        ...(moduleKey === 'deals' || moduleKey === 'leads' ? [refreshDeals()] : []),
+        ...(moduleKey === 'deals' || moduleKey === 'leads' || moduleKey === 'contacts' ? [refreshDeals()] : []),
         ...(moduleKey === 'accounts' ? [refreshOrganizations()] : moduleKey !== 'deals' ? [refreshContacts()] : []),
       ]);
     } catch (err) {

@@ -1,4 +1,4 @@
-import { FIXED_MAILBOX_SENDERS, mailboxAddress, messageInScope, resolveMailboxScope } from './mailbox-scope';
+import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { normalizeCrmStatus } from '@leadcrm/shared';
@@ -8,6 +8,7 @@ import { CustomerLink, changeCustomerStatus, customerDealWhere } from '../../mod
 import { engagementStatus, engagementReason, normalizeEmail, ENGAGEMENT_RULE_VERSION, DAY_MS } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
 import { fireLeadStatusChanged, fireContactStatusChanged } from '../../modules/automation/triggers/triggers.service';
+import { mailboxPermissions } from './mailbox-sync.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean }
 type Tx = Prisma.TransactionClient;
@@ -19,7 +20,9 @@ async function matchCustomer(tx: Tx, tenantId: string, userId: string, email: st
   const contacts = permissions.contactsView ? (await tx.contact.findMany({ where })).filter(row => normalizeEmail(row.email ?? '') === email) : [];
   const convertedContacts = permissions.contactsView ? await tx.contact.findMany({ where: { tenantId, assignedUserId: userId, isArchived: false, deletedAt: null,
     id: { in: leads.filter(lead => lead.convertedAt && lead.contactId).map(lead => lead.contactId!) } } }) : [];
-  for (const contact of convertedContacts) if (!contacts.some(row => row.id === contact.id)) contacts.push(contact);
+  // Historical conversion linkage does not grant an obsolete email alias.
+  const canonicalConverted = convertedContacts.filter(contact => normalizeEmail(contact.email ?? '') === email);
+  for (const contact of canonicalConverted) if (!contacts.some(row => row.id === contact.id)) contacts.push(contact);
   const activeLeads = leads.filter(lead => !lead.convertedAt && (!lead.contactId || !contacts.some(contact => contact.id === lead.contactId)));
   if (activeLeads.length + contacts.length !== 1) return;
   return activeLeads[0] ? { leadId: activeLeads[0].id } : { contactId: contacts[0].id };
@@ -32,17 +35,23 @@ async function historyWhere(tx: Tx, tenantId: string, link: CustomerLink): Promi
 }
 
 /** Rebuild from verified provider messages, never the old wording-based classification. */
-async function evaluateCustomer(tx: Tx, account: EmailAccount, link: CustomerLink, now: Date, immediateReply = false) {
+async function evaluateCustomer(tx: Tx, account: EmailAccount, link: CustomerLink, permissions: MailboxPermissions, now: Date, immediateReply = false) {
   const tenantId = account.tenantId;
   const customer = link.leadId
     ? await tx.lead.findFirst({ where: { tenantId, assignedUserId: account.userId, id: link.leadId, isArchived: false, deletedAt: null, convertedAt: null } })
     : await tx.contact.findFirst({ where: { tenantId, assignedUserId: account.userId, id: link.contactId, isArchived: false, deletedAt: null } });
   if (!customer) return;
   const where = await historyWhere(tx, tenantId, link);
-  const verified = { ...where, engagementRuleVersion: ENGAGEMENT_RULE_VERSION, sentAt: { lte: now } };
+  const scope = await resolveMailboxScope(account, permissions, tx);
+  const verified = { AND: [where, scopedMessagesWhere(account, scope)], engagementRuleVersion: ENGAGEMENT_RULE_VERSION, sentAt: { lte: now } };
   const inbound = await tx.mailboxMessage.findFirst({ where: { ...verified, direction: 'inbound', meaningful: true }, orderBy: { sentAt: 'desc' } });
   const outbound = !inbound ? await tx.mailboxMessage.findFirst({ where: { ...verified, direction: 'outbound' }, orderBy: { sentAt: 'asc' } }) : null;
-  const data = { lastCustomerReplyAt: inbound?.sentAt ?? null, firstUnansweredOutboundAt: outbound?.sentAt ?? null };
+  // A verified CRM engagement timestamp survives reassignment; source mailbox content stays private.
+  const previousReply = customer.engagementEvaluatedAt && customer.lastCustomerReplyAt && +customer.lastCustomerReplyAt <= +now ? customer.lastCustomerReplyAt : null;
+  const lastCustomerReplyAt = inbound && (!previousReply || +inbound.sentAt > +previousReply) ? inbound.sentAt : previousReply;
+  const previousOutbound = customer.engagementEvaluatedAt && customer.firstUnansweredOutboundAt && +customer.firstUnansweredOutboundAt <= +now ? customer.firstUnansweredOutboundAt : null;
+  const firstUnansweredOutboundAt = lastCustomerReplyAt ? null : outbound && (!previousOutbound || +outbound.sentAt < +previousOutbound) ? outbound.sentAt : previousOutbound;
+  const data = { lastCustomerReplyAt, firstUnansweredOutboundAt };
   const pending = await tx.mailboxMessage.findFirst({ where: { ...where, engagementRuleVersion: { lt: ENGAGEMENT_RULE_VERSION } }, select: { id: true } });
   const stale = await tx.mailboxMessage.findFirst({ where: { ...where, account: { OR: [
     { isActive: false }, { lastSyncAt: null }, { lastSyncAt: { lt: new Date(+now - DAY_MS) } }, { syncCursor: null },
@@ -66,38 +75,45 @@ async function emitStatus(account: EmailAccount, link: CustomerLink, change: Awa
 }
 
 export async function ingestMailboxMessages(account: EmailAccount, messages: GmailEmail[], permissions: MailboxPermissions) {
+  const requestedPermissions = { ...permissions };
   const scope = await resolveMailboxScope(account, permissions);
   const staff = await prisma.user.findMany({ where: { tenantId: account.tenantId }, select: { email: true } });
   const internalEmails = new Set([...staff.map(user => normalizeEmail(user.email)), normalizeEmail(account.email)]);
   const ordered = [...messages].sort((a, b) => +new Date(a.date) - +new Date(b.date) || a.id.localeCompare(b.id));
   for (const email of ordered) {
     if (!messageInScope(email, account.email, scope)) continue;
+    const currentPermissions = await mailboxPermissions(account.tenantId, account.userId);
+    permissions = Object.fromEntries(Object.entries(requestedPermissions).map(([key, allowed]) => [key, allowed && currentPermissions[key as keyof MailboxPermissions]])) as unknown as MailboxPermissions;
     const now = new Date(), sentAt = new Date(email.date);
     if (!Number.isFinite(+sentAt) || +sentAt > +now) continue;
     const result = await salesTransaction(async tx => {
       if (!await tx.emailAccount.findFirst({ where: { id: account.id, tenantId: account.tenantId, userId: account.userId, isActive: true } })) return;
+      // Re-read assignments inside the same serializable transaction as persistence and CRM effects.
+      const currentScope = await resolveMailboxScope(account, permissions, tx);
+      if (!messageInScope(email, account.email, currentScope)) return;
+      const authorizationParticipants = mailboxParticipants(email)!;
       const key = { accountId: account.id, providerMessageId: email.id };
       const existing = await tx.mailboxMessage.findUnique({ where: { accountId_providerMessageId: key } });
       const previousDraft = email.labels.includes('DRAFT') && email.draftId ? await tx.mailboxMessage.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, draftId: email.draftId, sourceMessageId: { not: null } }, select: { sourceMessageId: true, crmDraft: true } }) : null;
       const sourceDraft = previousDraft ?? existing;
-      if (email.labels.includes('DRAFT') && sourceDraft?.sourceMessageId && !scope.draftSourceIds.includes(sourceDraft.sourceMessageId)) return;
+      if (email.labels.includes('DRAFT') && sourceDraft?.sourceMessageId && !currentScope.draftSourceIds.includes(sourceDraft.sourceMessageId)) return;
       const excluded = email.labels.some(label => ['SPAM', 'TRASH', 'DELETED'].includes(label));
       if (excluded) {
         if (existing) await tx.mailboxMessage.update({ where: { id: existing.id }, data: { labels: email.labels, direction: 'unknown', meaningful: false, engagementRuleVersion: ENGAGEMENT_RULE_VERSION } });
         return;
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
-        await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
+        await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         return;
       }
-      const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? [])].map(normalizeEmail);
+      const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
       const direction = from === normalizeEmail(account.email) ? 'outbound' : recipients.includes(normalizeEmail(account.email)) && !internalEmails.has(from) ? 'inbound' : 'unknown';
       const externals = [...new Set([from, ...recipients].filter(address => address.includes('@') && !internalEmails.has(address)))];
       const matched = direction !== 'unknown' && externals.length === 1 ? await matchCustomer(tx, account.tenantId, account.userId, externals[0], permissions) : undefined;
       const priorLink: CustomerLink | undefined = existing?.contactId ? { contactId: existing.contactId } : existing?.leadId ? { leadId: existing.leadId } : undefined;
-      const link = matched ?? (priorLink && (priorLink.leadId ? scope.leadIds.includes(priorLink.leadId) : scope.contactIds.includes(priorLink.contactId!)) ? priorLink : undefined);
+      const link = matched ?? (priorLink && (priorLink.leadId ? currentScope.leadIds.includes(priorLink.leadId) : currentScope.contactIds.includes(priorLink.contactId!)) ? priorLink : undefined);
       const prior = link ? await tx.mailboxMessage.findMany({ where: { ...await historyWhere(tx, account.tenantId, link), accountId: account.id, threadId: email.threadId }, select: { dealId: true } }) : [];
       const association = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId: email.threadId } } });
       const explicitIds = association?.dealId ? [association.dealId] : existing?.dealId ? [existing.dealId] : [...new Set(prior.map(row => row.dealId).filter((id): id is string => !!id))];
@@ -106,7 +122,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const genuineReply = direction === 'inbound' && !email.automated && !FIXED_MAILBOX_SENDERS.includes(from) && !email.labels.includes('DRAFT');
       const data = { ...key, threadId: email.threadId, direction, from: email.from, recipients: email.to, subject: email.subject,
         ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
-        fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: recipients.flatMap(value => mailboxAddress(value) ?? []), draftId: email.draftId,
+        fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: recipients.flatMap(value => mailboxAddress(value) ?? []), authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, draftId: email.draftId,
         ...(email.labels.includes('DRAFT') && sourceDraft ? { sourceMessageId: sourceDraft.sourceMessageId, crmDraft: sourceDraft.crmDraft } : {}),
         body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId, rfcInReplyTo: email.rfcInReplyTo,
         ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
@@ -117,13 +133,16 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const hash = createHash('sha256').update([account.tenantId, link.leadId ?? link.contactId, email.rfcMessageId || `${account.id}:${email.id}`, direction].join(':')).digest('hex');
       const activityId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
       await tx.activity.upsert({ where: { id: activityId }, update: {}, create: { id: activityId, tenantId: account.tenantId, ...link,
+        mailboxMessageId: stored.id,
         createdById: account.userId, type: 'email', title: `${direction === 'inbound' ? 'Received' : 'Sent'} email: ${email.subject}`.slice(0, 500), createdAt: sentAt,
         metadata: { mailboxMessageId: stored.id, providerMessageId: email.id, threadId: email.threadId, mailboxOwnerId: account.userId, direction } } });
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
-      const change = await evaluateCustomer(tx, account, link, now, !existing && genuineReply);
+      const change = await evaluateCustomer(tx, account, link, permissions, now, !existing && genuineReply);
+      // Workflow trigger enqueueing shares the CRM transaction through salesContext.
+      await emitStatus(account, link, change);
       return { link, change };
     });
-    if (result) await emitStatus(account, result.link, result.change);
+    void result;
   }
 }
 
@@ -142,7 +161,11 @@ export async function evaluateMailboxEngagement(account: EmailAccount, permissio
     const key = link.leadId ?? link.contactId!;
     if (seen.has(key)) continue;
     seen.add(key);
-    const change = await salesTransaction(tx => evaluateCustomer(tx, account, link!, now));
-    await emitStatus(account, link, change);
+    const latestPermissions = await mailboxPermissions(account.tenantId, account.userId);
+    const currentPermissions = Object.fromEntries(Object.entries(permissions).map(([key, allowed]) => [key, allowed && latestPermissions[key as keyof MailboxPermissions]])) as unknown as MailboxPermissions;
+    await salesTransaction(async tx => {
+      const change = await evaluateCustomer(tx, account, link!, currentPermissions, now);
+      await emitStatus(account, link!, change);
+    });
   }
 }

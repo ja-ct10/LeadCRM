@@ -88,11 +88,16 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
     // Group directory reads require the same explicit View grant as other modules.
     expect((await call('/administration/groups', actor.token)).status).toBe(403);
     expect((await call('/administration/groups/missing/members', actor.token, 'POST', { userId: actor.user.userId })).status).toBe(403);
-    const editor = await roleUser('Task Editor QA', [{ module: 'tasks', canView: true, canCreate: true, canEdit: true }]);
-    const task = await call('/operations/tasks', editor.token, 'POST', { title: 'Permission QA', dueDate: '2026-11-01T09:00:00.000Z', assignedUserId: editor.user.userId });
+    const editor = await roleUser('Task Editor QA', [{ module: 'tasks', canView: true, canCreate: true, canEdit: true }, { module: 'deals', canView: true }]);
+    const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Task permission fixture' } });
+    const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
+    const deal = await prisma.deal.create({ data: { tenantId, title: 'Task permission fixture Deal', pipelineId: pipeline.id, stageId: stage.id } });
+    const task = await call('/operations/tasks', editor.token, 'POST', { title: 'Permission QA', dueDate: '2026-11-01T09:00:00.000Z', assignedUserId: editor.user.userId, dealIds: [deal.id] });
     expect(task.status, JSON.stringify(task.body)).toBe(201);
     expect((await call(`/operations/tasks/${task.body.data.id}`, editor.token, 'PUT', { status: 'completed' })).status).toBe(403);
     expect((await call(`/operations/tasks/${task.body.data.id}`, editor.token, 'PUT', { assignedUserId: actor.user.userId })).status).toBe(403);
+    // Make the later assignment target eligible without granting mutation authority.
+    await prisma.rolePermission.create({ data: { tenantId, roleId: actor.roleId, module: 'tasks', canView: true } });
     const operator = await roleUser('Task Operator QA', [{ module: 'tasks', canView: true, canComplete: true, canAssign: true }]);
     expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { assignedUserId: actor.user.userId })).status).toBe(200);
     expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { status: 'completed' })).status).toBe(200);

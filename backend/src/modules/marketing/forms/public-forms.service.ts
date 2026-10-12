@@ -11,7 +11,7 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
-import { afterSalesCommit, createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
+import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
 import { normalizeFormDefinitionForTenant } from './forms.repository';
 import { saveRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 
@@ -102,7 +102,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 contactId = ids[0] ?? null;
               }
               if (contactId) await tx.lead.update({ where: { ...scope, id: lead.id }, data: { contactId } });
-              await changeCustomerStatus(tx, scope.tenantId, live.createdById, { leadId: lead.id }, 'Closed', 'Completed sales conversion resolved during a returning inquiry.', new Date());
+              await changeCustomerStatus(tx, scope.tenantId, live.createdById, { leadId: lead.id }, 'Closed', 'Completed sales conversion resolved during a returning inquiry.', new Date(), { previousLead: lead });
               const converted = await convertClosedLead(tx, scope.tenantId, lead.id, live.createdById);
               contact = converted.contact;
               contactId = contact.id;
@@ -160,10 +160,10 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true,
                 value: Number(product.dealValue), currency: 'PHP', assignedUserId: customer.assignedUserId, ownerId: customer.assignedUserId,
                 automationKey: `form:${submission.id}:${product.id}`, leadSource: 'Website', tags: [] } });
-              afterSalesCommit(() => fireDealCreated({ tenantId: scope.tenantId, actorId: live.createdById, deal }));
               await tx.contactDeal.create({ data: { ...scope, contactId, dealId: deal.id, addedById: live.createdById } });
               await tx.activity.create({ data: { ...scope, contactId, dealId: deal.id, createdById: live.createdById,
                 type: 'deal_action', title: `Deal created for ${product.name}`, description: 'New website inquiry from an existing Contact.' } });
+              await fireDealCreated({ tenantId: scope.tenantId, actorId: live.createdById, deal });
             }
           }
           return { submission, notificationEmail: config.settings.notificationEmail };

@@ -4,11 +4,11 @@ import { CreateClientContactSchema, UpdateClientContactSchema } from '../contact
 import { validateWorkflowConditions } from '../../../automation/workflows/workflow-validation';
 
 it.each(RETIRED_CONTACT_FIELDS)('rejects retired Contact mutation input %s on create and update', field => {
-  expect(CreateClientContactSchema.safeParse({ firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', [field]: null }).success).toBe(false);
+  expect(CreateClientContactSchema.safeParse({ requestId: '00000000-0000-4000-8000-000000000001', firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', [field]: null }).success).toBe(false);
   expect(UpdateClientContactSchema.safeParse({ [field]: null }).success).toBe(false);
 });
 it('keeps supported writes and Product Interest catalogs, with Account Active Products scoped independently', () => {
-  expect(CreateClientContactSchema.parse({ firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', productInterests: ['CCTV'] })).toMatchObject({ productInterests: ['CCTV'] });
+  expect(CreateClientContactSchema.parse({ requestId: '00000000-0000-4000-8000-000000000001', firstName: 'Nora', lastName: 'Lim', email: 'nora@example.test', productInterests: ['CCTV'] })).toMatchObject({ productInterests: ['CCTV'] });
   for (const fields of [getCrmFieldCatalog('contacts').map(f=>f.technicalKey), getWorkflowConditionFields('contact').map(f=>f.field.slice(8)), getWorkflowUpdateFields('contact').map(f=>f.field), campaignFields('CONTACTS').map(f=>f.technicalKey)]) {
     expect(fields).toContain('productInterestIds');
     for (const key of [...RETIRED_CONTACT_FIELDS,'activeProductIds']) expect(fields).not.toContain(key);

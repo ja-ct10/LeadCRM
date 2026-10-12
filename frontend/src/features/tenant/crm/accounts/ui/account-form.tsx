@@ -304,7 +304,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
               >
                 <option value="">{isEdit ? 'Unassigned' : 'Assign automatically'}</option>
-                {getAssignableAgents(recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users).map((u) => (
+                {getAssignableAgents(recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users, ['accounts']).map((u) => (
                   <option key={u.id} value={u.id}>
                     {u.firstName} {u.lastName}
                   </option>

@@ -3,7 +3,8 @@ import { recordTaskHistory } from '../../operations/tasks/tasks.history';
 import type { Prisma } from '@prisma/client';
 import type { DeactivationImpact } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
-import { salesTransaction, validateSalesOwner } from '../../crm/leads/lead-automation.service';
+import { salesTransaction } from '../../crm/leads/lead-automation.service';
+import { assertEligibleAssignedAgent, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/errors/http-error';
 
 type Tx = Prisma.TransactionClient;
@@ -51,12 +52,10 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
     if (replacementAgentId === id) throw new ConflictError('Choose another active Assigned Agent.');
     if (impact.total && !replacementAgentId) throw new ConflictError('Choose an Assigned Agent before deactivating this user.');
     if (replacementAgentId) {
-      const replacement = await validateSalesOwner(tx, tenantId, replacementAgentId)
-        .catch(() => { throw new ConflictError('The selected Assigned Agent is no longer available. Choose another agent.'); });
-      if (impact.counts.tasks && replacement.role !== 'Client Admin' &&
-          !replacement.userRoles.some(link => link.role.permissions.some(permission => permission.module === 'tasks' && permission.canView))) {
-        throw new ConflictError('Choose an Assigned Agent with Tasks View permission to receive the unfinished tasks.');
-      }
+      const modules = (['leads', 'contacts', 'accounts', 'deals'] as const).filter(module => impact.counts[module] > 0);
+      const requirements = [...modules.flatMap(crmAssignmentRequirements), ...(impact.counts.tasks ? TASK_ASSIGNEE_REQUIREMENTS : [])];
+      await assertEligibleAssignedAgent(tx, tenantId, replacementAgentId, requirements)
+        .catch(() => { throw new ConflictError('Choose an active eligible agent with access to every transferred CRM module and unfinished Tasks.'); });
     }
     const where = ownershipWhere(tenantId, id);
     const transfer = async (kind: 'lead' | 'contact' | 'account' | 'deal', filter: typeof where.contacts) => {

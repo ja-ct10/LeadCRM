@@ -80,7 +80,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   it('rejects foreign selections and preserves retired Product identity and nested projections', async () => {
     const product = await prisma.productInterest.create({ data: { tenantId, name: 'Link checks', dealValue: 25 } });
     const foreign = await prisma.productInterest.create({ data: { tenantId: otherTenant, name: 'Foreign', dealValue: 0 } });
-    const contact = await request('/crm/contacts', 'POST', { firstName: 'Linked', lastName: 'Contact', email: 'links@example.test', productInterests: [product.name] });
+    const contact = await request('/crm/contacts', 'POST', { requestId: randomUUID(), firstName: 'Linked', lastName: 'Contact', email: 'links@example.test', productInterests: [product.name] });
     expect(contact.status, JSON.stringify(contact.body)).toBe(201);
     const id = contact.body.data.id;
     expect(await prisma.contactProductInterest.count({ where: { contactId: id } })).toBe(1);
@@ -92,7 +92,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect((await request('/crm/contacts/' + id, 'PUT', { productInterests: ['Current catalog name'] })).status).toBe(200);
     expect(await prisma.contactProductInterest.count({ where: { contactId: id } })).toBe(1);
     expect((await prisma.contactProductInterest.findMany({ where: { contactId: id } })).map(p => p.productInterestId)).toEqual([product.id]);
-    const fresh = await request('/crm/contacts', 'POST', { firstName: 'New', lastName: 'Selection', email: 'fresh@example.test', productInterests: [replacement.name] });
+    const fresh = await request('/crm/contacts', 'POST', { requestId: randomUUID(), firstName: 'New', lastName: 'Selection', email: 'fresh@example.test', productInterests: [replacement.name] });
     expect(fresh.status, JSON.stringify(fresh.body)).toBe(201);
     expect((await prisma.contactProductInterest.findMany({ where: { contactId: fresh.body.data.id } })).map(p => p.productInterestId)).toEqual([replacement.id]);
   });

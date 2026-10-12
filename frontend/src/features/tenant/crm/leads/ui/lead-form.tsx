@@ -362,6 +362,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
                 control={control}
                 render={({ field }) => (
                   <AssignedAgentSelect
+                    modules={isEdit ? ['leads'] : ['leads', 'deals']}
                     id={`${fieldId}-assignedUserId`}
                     value={field.value ?? ''}
                     name={field.name}

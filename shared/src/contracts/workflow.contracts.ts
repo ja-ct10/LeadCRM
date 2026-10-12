@@ -159,7 +159,7 @@ export interface WorkflowExecutionStep {
 }
 export interface WorkflowExecutionRun {
   id: string; tenantId: string; workflowId: string; triggerId: string; entityType: string; entityId: string;
-  status: 'running' | 'completed' | 'failed' | 'skipped'; startedAt: string; completedAt?: string | null;
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'skipped' | 'interrupted'; startedAt: string; completedAt?: string | null;
   errorMessage?: string | null; steps: WorkflowExecutionStep[];
   workflowVersion?: number | null;
   definitionSnapshot?: WorkflowDraft | null;

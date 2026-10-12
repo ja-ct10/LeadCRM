@@ -1,8 +1,8 @@
-import { CrmEmailSchema, CustomFieldValuesSchema } from '@leadcrm/shared';
+import { CrmEmailSchema, CustomFieldValuesSchema, ContactCreationIdentitySchema } from '@leadcrm/shared';
 import { z } from 'zod';
 import { CrmStatusSchema } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
-export const CreateClientContactSchema = z.object({
+const ContactFields = ContactCreationIdentitySchema.extend({
   customFieldValues: CustomFieldValuesSchema.optional(),
   productInterestOther: recordText(1000).nullable().optional(),
   firstName: recordName(), lastName: recordName(),
@@ -15,6 +15,6 @@ export const CreateClientContactSchema = z.object({
   assignedUserId: z.string().uuid().nullable().optional(),
   productInterests: z.array(recordName(200)).max(100).optional(),
 }).strict();
-export const UpdateClientContactSchema = CreateClientContactSchema.partial().extend({
-  productInterestIds: z.array(z.string().uuid()).max(100).optional(),
-}).strict();
+const exclusiveProducts = (data: { productInterestIds?: string[]; productInterests?: string[] }) => data.productInterestIds === undefined || data.productInterests === undefined;
+export const CreateClientContactSchema = ContactFields.refine(exclusiveProducts, 'Supply Product IDs or legacy names, not both.');
+export const UpdateClientContactSchema = ContactFields.omit({ requestId: true }).partial().strict();

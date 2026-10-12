@@ -76,7 +76,7 @@ export async function bulkReassign(
   dto: BulkReassignDto,
 ): Promise<BulkOperationResult> {
   await authorizeBatch(dto.dealIds, 'edit', { assignedUserId: dto.assignedUserId });
-  if (crmActor.getStore()) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
+  if (crmActor.getStore()) await validateSalesOwner(prisma, tenantId, dto.assignedUserId, ['deals']);
   // Verify target user belongs to tenant
   const targetUser = await prisma.user.findFirst({
     where: { id: dto.assignedUserId, tenantId },
@@ -90,20 +90,19 @@ export async function bulkReassign(
 
   for (const dealId of dto.dealIds) {
     try {
-      const deal = await prisma.deal.findFirst({ where: { id: dealId, tenantId } });
+      const saved = await salesTransaction(async tx => {
+      const deal = await tx.deal.findFirst({ where: { id: dealId, tenantId } });
       if (!deal) {
-        result.failed += 1;
-        result.errors.push({ id: dealId, reason: 'Not found' });
-        continue;
+        return false;
       }
-
+      await assertCrmRecordMutation(tx, 'deals', dealId, 'edit', { assignedUserId: dto.assignedUserId });
+      if (crmActor.getStore()) await validateSalesOwner(tx, tenantId, dto.assignedUserId, ['deals']);
       const previousAssignee = deal.assignedUserId;
       if (previousAssignee === dto.assignedUserId) {
-        result.succeeded += 1;
-        continue;
+        return true;
       }
       // SEC: tenantId in where clause closes the TOCTOU gap between findFirst and update
-      const updated = await prisma.deal.update({
+      const updated = await tx.deal.update({
         where: { id: dealId, tenantId },
         data: { assignedUserId: dto.assignedUserId },
       });
@@ -119,8 +118,10 @@ export async function bulkReassign(
       });
       const changes = recordChanges(deal, updated);
       if (changes.changedFields.length) await fireDealUpdated({ tenantId, actorId: userId, record: updated, changedFields: changes.changedFields, changes });
-
-      result.succeeded += 1;
+      return true;
+      });
+      if (saved) result.succeeded += 1;
+      else { result.failed += 1; result.errors.push({ id: dealId, reason: 'Not found' }); }
     } catch (error) {
       if (error instanceof AppError && error.statusCode === 403) authorizationDenial = error;
       result.failed += 1;

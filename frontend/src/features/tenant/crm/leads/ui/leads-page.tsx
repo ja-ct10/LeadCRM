@@ -282,7 +282,7 @@ export default function LeadsPage(): React.ReactElement {
           count: facets?.['source:' + source] ?? 0,
           isChecked: selectedSources.includes(source),
         })),
-        ...getAssignableAgents(users).map((u) => ({
+        ...getAssignableAgents(users, ['leads']).map((u) => ({
           id: `owner:${u.id}`,
           label: `Assigned Agent: ${u.firstName} ${u.lastName}`,
           count: facets?.['owner:' + u.id] ?? 0,

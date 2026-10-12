@@ -24,6 +24,12 @@ const control = 'inline-flex min-h-9 items-center justify-center gap-2 rounded-l
 
 export default function InboxPage(): React.ReactElement {
   const { user, tenant } = useAuth();
+  // Identity changes remount every protected view and invalidate all of its outstanding callbacks.
+  return <InboxMailbox key={`${tenant?.id ?? ''}:${user?.id ?? ''}`} />;
+}
+
+function InboxMailbox(): React.ReactElement {
+  const { user, tenant } = useAuth();
   type PendingLink = { threadId: string; sourceDealId: string };
   const linkStorageKey = 'leadcrm:pending-deal-links:v1:' + tenant?.id + ':' + user?.id;
   const [pendingLinks, setPendingLinks] = useState<PendingLink[]>([]);
@@ -64,7 +70,7 @@ export default function InboxPage(): React.ReactElement {
   const menuRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState(''), [debouncedSearch, setDebouncedSearch] = useState('');
   const [isComposeOpen, setIsComposeOpen] = useState(false);
-  const [composeDraft, setComposeDraft] = useState<{ to: string; subject: string; body: string; draftId?: string; sourceDealId?: string } | null>(null);
+  const [composeDraft, setComposeDraft] = useState<import('../services/email-presentation').MailboxComposeDraft | null>(null);
   useEffect(() => {
     const request = consumeRecordEmailCompose(new URL(window.location.href));
     if (!request) return;
@@ -79,8 +85,10 @@ export default function InboxPage(): React.ReactElement {
 
   const [selectedEmail, setSelectedEmail] = useState<GmailEmail | null>(null);
   const [selectedSchedule, setSelectedSchedule] = useState<string>();
-  useNotificationRecordLink('threadId', connectionStatus?.email ?? '', !!connectionStatus?.isConnected,
-    async id => { const response = await fetchGmailThread(id); const latest = response.emails[response.emails.length - 1]; if (!latest) throw new Error('Unavailable'); return latest; }, setSelectedEmail);
+  const [authorizationRevision, setAuthorizationRevision] = useState(0);
+  const authorizationGeneration = useRef(0);
+  useNotificationRecordLink('threadId', `${connectionStatus?.email ?? ''}:${authorizationRevision}`, !!connectionStatus?.isConnected,
+    async id => { const generation = authorizationGeneration.current; const response = await fetchGmailThread(id); if (generation !== authorizationGeneration.current) throw new Error('Access changed'); const latest = response.emails[response.emails.length - 1]; if (!latest) throw new Error('Unavailable'); return latest; }, setSelectedEmail);
   const [revision, setRevision] = useState(0);
   const [nextPageToken, setNextPageToken] = useState<string>();
   const [page, setPage] = useState(1);
@@ -94,6 +102,16 @@ export default function InboxPage(): React.ReactElement {
   const [apiCooldownUntil, setApiCooldownUntil] = useState(0);
   const cooldownRef = useRef(0);
   const reconnectAfterRef = useRef(0);
+  const composeDraftRef = useRef(composeDraft); composeDraftRef.current = composeDraft;
+  const invalidateMailbox = useCallback(() => {
+    request.current?.controller.abort(); request.current = null; requestId.current++;
+    authorizationGeneration.current++; setAuthorizationRevision(value => value + 1);
+    setEmails([]); setSelectedEmail(null); setSelectedSchedule(undefined); setUnreadCount(undefined);
+    setNextPageToken(undefined); setPage(1); pageRef.current = 1; tokenRef.current = undefined; pageTokens.current = [undefined];
+    loaded.current = false; setRefreshing(false); setInitialLoading(false); setRevision(value => value + 1);
+    if (composeDraftRef.current?.draftId || composeDraftRef.current?.sourceDealId) { setComposeDraft(null); setIsComposeOpen(false); }
+    window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: 0 }));
+  }, []);
   const applyApiCooldown = useCallback((error: ApiRequestError) => {
     // Provider throttling pauses synchronization only; persisted mail stays usable.
     if (error.status !== 429 || error.code === 'GMAIL_RATE_LIMITED') return;
@@ -122,9 +140,9 @@ export default function InboxPage(): React.ReactElement {
   }, [menu]);
   useEffect(() => { if (!retryAt) return; const timer = setTimeout(() => setRetryAt(0), Math.max(0, retryAt - Date.now())); return () => clearTimeout(timer); }, [retryAt]);
 
-  const loadEmails = useCallback((pageToken?: string, targetPage = 1): Promise<void> => {
-    if (Date.now() < cooldownRef.current) return Promise.resolve();
-    const key = JSON.stringify([filter, sort, debouncedSearch, pageToken]);
+  const loadEmails = useCallback((pageToken?: string, targetPage = 1, authorizationRefresh = false): Promise<void> => {
+    if (!authorizationRefresh && Date.now() < cooldownRef.current) return Promise.resolve();
+    const key = JSON.stringify([tenant?.id, user?.id, authorizationGeneration.current, filter, sort, debouncedSearch, pageToken]);
     if (request.current?.key === key) return request.current.promise;
     request.current?.controller.abort();
     const controller = new AbortController(), id = ++requestId.current;
@@ -154,21 +172,21 @@ export default function InboxPage(): React.ReactElement {
         } else {
           setError(error instanceof Error ? error.message : 'Unable to load emails.');
         }
-        if ([401, 403, 409].includes((error as ApiRequestError).status ?? 0)) { setEmails([]); setSelectedEmail(null); }
+        if ([401, 403, 409].includes((error as ApiRequestError).status ?? 0)) invalidateMailbox();
       } finally {
         if (id === requestId.current) { request.current = null; setRefreshing(false); setInitialLoading(false); }
       }
     })();
     request.current = { key, controller, promise };
     return promise;
-  }, [filter, sort, debouncedSearch, applyApiCooldown]);
+  }, [tenant?.id, user?.id, filter, sort, debouncedSearch, applyApiCooldown, invalidateMailbox]);
   useEffect(() => {
     if (connectionStatus?.isConnected) void loadEmails();
     return () => { request.current?.controller.abort(); request.current = null; requestId.current++; };
   }, [connectionStatus?.isConnected, loadEmails]);
 
   useEffect(() => {
-    if (!connectionStatus?.isConnected || apiCooldownUntil > Date.now()) return;
+    if (!connectionStatus?.isConnected) return;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let active = true;
     const refresh = () => {
@@ -197,7 +215,15 @@ export default function InboxPage(): React.ReactElement {
       if (!active || events || document.visibilityState === 'hidden' || Date.now() < cooldownRef.current || Date.now() < reconnectAfterRef.current || typeof EventSource === 'undefined') return;
       events = new EventSource('/api/proxy/integrations/gmail/events');
       events.addEventListener('mailbox-change', refresh);
-      events.addEventListener('mailbox-access-changed', () => { setEmails([]); setSelectedEmail(null); refresh(); });
+      events.addEventListener('mailbox-access-changed', () => {
+        if (!active) return;
+        if (timer) clearTimeout(timer);
+        invalidateMailbox();
+        // Revocation handling never waits for visibility, pagination or a refresh cooldown.
+        void loadEmails(undefined, 1, true);
+        const generation = authorizationGeneration.current;
+        void getGmailStatus().then(status => { if (active && generation === authorizationGeneration.current) setConnectionStatus(status); }).catch(() => undefined);
+      });
       events.addEventListener('error', () => {
         events?.close();
         events = null;
@@ -217,7 +243,7 @@ export default function InboxPage(): React.ReactElement {
       clearTimeout(reconnect);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [connectionStatus?.isConnected, loadEmails, apiCooldownUntil, applyApiCooldown]);
+  }, [connectionStatus?.isConnected, loadEmails, apiCooldownUntil, applyApiCooldown, invalidateMailbox]);
 
   useEffect(() => {
     if (!apiCooldownUntil) return;
@@ -254,16 +280,15 @@ export default function InboxPage(): React.ReactElement {
     disconnectPending.current = true; setDisconnecting(true);
     try {
       await disconnectGmail();
-      request.current?.controller.abort(); request.current = null; requestId.current++;
-      setConnectionStatus(null); setEmails([]); setUnreadCount(undefined); setSelectedEmail(null);
-      loaded.current = false;
-      window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: 0 }));
+      invalidateMailbox(); setConnectionStatus(null); setIsComposeOpen(false); setComposeDraft(null);
     } catch (error) { setError(error instanceof Error ? error.message : 'Unable to disconnect your mailbox.'); }
     finally { disconnectPending.current = false; setDisconnecting(false); }
   };
   const openEmail = (email: GmailEmail) => {
     if (email.scheduledStatus) { setSelectedSchedule(email.id); return; }
-    if (filter === 'drafts') { setComposeDraft({ to: email.to.join(', '), subject: email.subject, body: email.body, draftId: email.draftId }); setIsComposeOpen(true); }
+    if (filter === 'drafts') { setComposeDraft({ to: [...email.to, ...(email.cc ?? [])].join(', '), subject: email.subject, body: email.body, draftId: email.draftId,
+      composeMode: email.composeMode, replyToMessageId: email.replyToMessageId, forwardSourceMessageId: email.forwardSourceMessageId,
+      draftContextRequired: email.draftContextRequired, draftThreadId: email.threadId }); setIsComposeOpen(true); }
     else setSelectedEmail(email);
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
@@ -291,6 +316,6 @@ export default function InboxPage(): React.ReactElement {
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
     {connectionStatus?.isConnected && selectedSchedule && <ScheduledEmailDialog key={selectedSchedule} id={selectedSchedule} onClose={() => setSelectedSchedule(undefined)} onCancelled={() => { void loadEmails(tokenRef.current, pageRef.current); toast.success('Scheduled send cancelled. The email is available in Drafts.'); }} />}
     {pendingLinks.map(link => <div key={link.threadId} role="status" className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-card p-3 text-sm"><span>Email sent, but linking to the Deal failed.</span><button className={control} disabled={!!linking} onClick={() => void retryDealLink(link)}>{linking === link.threadId ? 'Linking…' : 'Retry deal link'}</button></div>)}
-    <ComposeModal onDealLinkResult={dealLinkResult} isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
+    <ComposeModal authorizationRevision={authorizationRevision} onDealLinkResult={dealLinkResult} isOpen={isComposeOpen} retryAt={retryAt} onClose={() => { setIsComposeOpen(false); setComposeDraft(null); }} onSent={() => void loadEmails()} initialDraft={composeDraft} />
   </motion.div>;
 }

@@ -11,6 +11,7 @@ import type { Account } from '@/features/tenant/crm/accounts/types/account.types
 import type { Contact, Deal } from '@/store/types';
 
 vi.mock('@/shared/hooks/use-field-layout', () => ({ useConfiguredCrmColumns: (_module: string, columns: unknown[]) => columns }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true }) }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user' }, userCan: () => true }) }));
 const all = (registry: ColumnDefinition[]) => registry.map(column => ({ id: column.id, visible: true, order: column.defaultOrder }));

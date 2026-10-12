@@ -66,7 +66,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const list = (await call('/crm/contacts/custom-fields')).body.data as ClosingField[];
     expect(list.every(f => f.module === 'contacts')).toBe(true);
     for (const patch of [{ module: 'leads' }, { type: 'Number' }, { name: '   ' }, { group: '  ' }, { name: 'x'.repeat(101) }]) expect((await call(`/administration/closing-requirements/${original.id}`, 'PATCH', patch)).status).toBe(400);
-    const created = await call('/crm/contacts', 'POST', { ...person(), customFieldValues: { [original.id]: 'Morning' } });
+    const created = await call('/crm/contacts', 'POST', { ...person(), requestId: randomUUID(), customFieldValues: { [original.id]: 'Morning' } });
     expect(created.status).toBe(201);
     expect((await call(`/crm/contacts/${created.body.data.id}/custom-fields`)).body.data.values[original.id]).toBe('Morning');
     expect((await call('/crm/leads', 'POST', { ...person(), customFieldValues: { [original.id]: 'Wrong module' } })).status).toBe(400);
@@ -212,7 +212,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
   it('automatically assigns Accounts through the existing sales rotation and excludes Client Admin', async () => {
     const agents = [];
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Agent' } });
-    for (const module of ['leads', 'deals']) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canEdit: true } });
+    for (const module of ['accounts']) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canEdit: true } });
     for (let i = 0; i < 2; i++) {
       const agent = await prisma.user.create({ data: { tenantId, firstName: 'Agent', lastName: String(i), email: `${randomUUID()}@camxian.com`, role: 'Sales Agent', status: 'ACTIVE' } });
       await prisma.userRole.create({ data: { tenantId, userId: agent.id, roleId: role.id } });
@@ -339,7 +339,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       const created = await call('/crm/deals/batch', 'POST', { title: 'Inline Deal', pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: [product.id], idempotencyKey: randomUUID(), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
       expect(created.status, JSON.stringify(created.body)).toBe(201); id = created.body.data.deals[0].id;
     } else {
-      const created = await call(`/crm/${module}`, 'POST', { ...(module === 'accounts' ? { name: 'Inline Account' } : person()), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
+      const created = await call(`/crm/${module}`, 'POST', { ...(module === 'accounts' ? { name: 'Inline Account' } : person()), ...(module === 'contacts' ? { requestId: randomUUID() } : {}), customFieldValues: { [count.id]: 1, [note.id]: 'Keep' } });
       expect(created.status).toBe(201); id = created.body.data.id;
     }
     const userFor = async (name: string, canEdit: boolean, configEditor: boolean) => {

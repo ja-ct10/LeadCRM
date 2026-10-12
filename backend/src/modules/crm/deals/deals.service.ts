@@ -1,3 +1,4 @@
+import { salesContext } from '../leads/sales-context';
 import { resolveProducts, salesTransaction } from '../leads/lead-automation.service';
 import { validateSalesOwner } from '../leads/lead-automation.service';
 import { Prisma } from '@prisma/client';
@@ -6,6 +7,7 @@ import prisma from '../../../config/database.config';
 import * as repo from './deals.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError, ConflictError } from '../../../shared/errors/http-error';
+import { AppError } from '../../../shared/errors/app-error';
 import { CreateDealDto, UpdateDealDto, MoveDealStageDto, DealsQueryParams, ManualCreateDealSchema } from './deals.dto';
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireDealCreated, fireDealStageChanged, fireDealUpdated } from '../../automation/triggers/triggers.service';
@@ -19,6 +21,7 @@ import { assertDealStageTransition, dealHasEverBeenWon } from './deal-lifecycle'
  * - Connection/infrastructure errors → logged server-side, then re-thrown for global handler (500)
  */
 function mapRepositoryError(error: unknown, context: string): never {
+  if (error instanceof AppError) throw error;
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === 'P2025') throw new ConflictError('This Deal is no longer active or has changed. Reopen it before editing.');
     if (error.code === 'P2002') {
@@ -55,17 +58,18 @@ export async function getDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, userId: string, dto: CreateDealDto) {
+  return salesTransaction(async tx => {
   dto = ManualCreateDealSchema.parse(dto);
-  if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
-  const stage = await prisma.stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
+  if (dto.assignedUserId) await validateSalesOwner(salesContext.getStore() ?? prisma, tenantId, dto.assignedUserId, ['deals']);
+  const stage = await (salesContext.getStore() ?? prisma).stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage) throw new ValidationError('Stage must belong to the selected pipeline.');
-  const initial = await prisma.stage.findMany({ where: { tenantId, pipelineId: dto.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
+  const initial = await (salesContext.getStore() ?? prisma).stage.findMany({ where: { tenantId, pipelineId: dto.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
   if (initial.length !== 1) throw new ValidationError('Configure one Lead starting stage in this pipeline.');
   dto = { ...dto, stageId: initial[0].id };
 
   let deal;
   try {
-    deal = await prisma.$transaction(tx => repo.createDeal(tenantId, userId, dto, tx));
+    deal = await repo.createDeal(tenantId, userId, dto, tx);
   } catch (error) {
     mapRepositoryError(error, 'createDeal');
   }
@@ -76,16 +80,18 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
     after: { title: dto.title, pipelineId: dto.pipelineId, stageId: dto.stageId, value: deal.value },
   });
 
-  // Fire workflow trigger (non-blocking — never fails the request)
+  // Capture dependent automation before committing the Deal.
   await fireDealCreated({ tenantId, actorId: userId, deal });
 
   // Assignment events commit with the Deal through the notification outbox.
 
   return deal;
+  });
 }
 
 export async function updateDeal(id: string, tenantId: string, userId: string, dto: UpdateDealDto) {
-  if (dto.assignedUserId) await validateSalesOwner(prisma, tenantId, dto.assignedUserId);
+  return salesTransaction(async () => {
+  if (dto.assignedUserId) await validateSalesOwner(salesContext.getStore() ?? prisma, tenantId, dto.assignedUserId, ['deals']);
   const before = await repo.findDealById(id, tenantId);
   if (!before) throw new NotFoundError('Deal');
   const withCustomChanges = await customFieldChangeTracker(tenantId, 'deals', id, dto.customFieldValues);
@@ -114,20 +120,21 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   // Assignment events commit with the Deal through the notification outbox.
 
   return deal;
+  });
 }
 
 export async function validateDealStageMove(id: string, tenantId: string, dto: MoveDealStageDto) {
   // SEC-1 fix: Resolve stage within the tenant boundary via pipeline
-  const newStage = await prisma.stage.findFirst({
+  const newStage = await (salesContext.getStore() ?? prisma).stage.findFirst({
     where: { id: dto.stageId, tenantId },
   });
   if (!newStage) throw new NotFoundError('Stage');
 
-  const deal = await prisma.deal.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null }, include: { stage: true } });
+  const deal = await (salesContext.getStore() ?? prisma).deal.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null }, include: { stage: true } });
   if (!deal) throw new NotFoundError('Deal');
   if (deal.pipelineId !== newStage.pipelineId) throw new ValidationError('Stage must belong to this Deal’s pipeline.');
   if (deal.stageId === newStage.id) return newStage;
-  assertDealStageTransition(deal, newStage, await dealHasEverBeenWon(prisma, tenantId, deal));
+  assertDealStageTransition(deal, newStage, await dealHasEverBeenWon(salesContext.getStore() ?? prisma, tenantId, deal));
 
   if (newStage.isLost && !dto.lostReason) {
     throw new ValidationError('Lost reason is required when closing a deal as lost');
@@ -153,6 +160,7 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
 }
 
 export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto, guard?: import('./deal-lifecycle').RelatedDealMoveGuard) {
+  return salesTransaction(async () => {
   const newStage = await validateDealStageMove(id, tenantId, dto);
   let result;
   try {
@@ -169,7 +177,7 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     after: { newStageId: dto.stageId, isWon: newStage.isWon, isLost: newStage.isLost, note: dto.note, lostReason: dto.lostReason },
   });
 
-  // Fire workflow trigger (non-blocking)
+  // Capture dependent automation before committing the stage transition.
   await fireDealStageChanged({
     tenantId,
     eventId: result.stageHistory.id,
@@ -186,9 +194,11 @@ export async function moveDealStage(id: string, tenantId: string, userId: string
     record: result.deal, changedFields: changes.changedFields, changes });
 
   return { deal: result.deal, stageHistory: result.stageHistory };
+  });
 }
 
 export async function moveDealPipeline(id: string, tenantId: string, actorId: string, input: unknown) {
+  return salesTransaction(async () => {
   const dto = MoveDealPipelineSchema.parse(input);
   const result = await repo.moveDealPipeline(id, tenantId, actorId, dto);
   if (result.stageHistory) {
@@ -199,6 +209,7 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
     await fireDealUpdated({ tenantId, actorId, eventId: result.stageHistory.id, record: result.deal, changedFields: changes.changedFields, changes });
   }
   return { deal: result.deal, stageHistory: result.stageHistory };
+  });
 }
 
 export async function archiveDeal(id: string, tenantId: string, userId: string, archiveReason?: string) {
@@ -224,7 +235,7 @@ export async function restoreDeal(id: string, tenantId: string, userId: string) 
   if (!deal) throw new NotFoundError('Deal');
   if (!deal.isArchived) throw new ValidationError('Deal is not archived');
 
-  const restored = await prisma.deal.update({
+  const restored = await (salesContext.getStore() ?? prisma).deal.update({
     where: { id },
     data: { isArchived: false, archiveReason: null },
   });
@@ -240,10 +251,11 @@ export async function restoreDeal(id: string, tenantId: string, userId: string) 
 }
 
 export async function duplicateDeal(id: string, tenantId: string, userId: string) {
+  return salesTransaction(async () => {
 
   const source = await repo.findDealById(id, tenantId);
   if (!source) throw new NotFoundError('Deal');
-  const initialStage = await prisma.stage.findFirst({ where: { tenantId, pipelineId: source.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
+  const initialStage = await (salesContext.getStore() ?? prisma).stage.findFirst({ where: { tenantId, pipelineId: source.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
   if (!initialStage) throw new ValidationError('Configure a Lead stage before duplicating an opportunity.');
 
   // Destructure to exclude fields that shouldn't be copied
@@ -316,4 +328,5 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
 
   await fireDealCreated({ tenantId, actorId: userId, deal: newDeal });
   return repo.findDealById(newDeal.id, tenantId);
+  });
 }

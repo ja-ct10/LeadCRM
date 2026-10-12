@@ -12,7 +12,7 @@ import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import prisma from '../../../config/database.config';
-import { resolveProducts, createAssignedLead, salesTransaction, afterSalesCommit, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
+import { resolveProducts, createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
 import { CreateContactDto, UpdateContactDto } from './contacts.dto';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
@@ -176,7 +176,7 @@ export async function updateContact(
           }
         }
         if (updatedById && changes.changedFields.length) await tx.auditLog.create({ data: { tenantId, userId: updatedById, action: 'lead.updated', entityType: 'Lead', entityId: id, metadata: { changedFields: changes.changedFields } } });
-        if (onCommitted) afterSalesCommit(() => onCommitted(current, saved, changes));
+        if (onCommitted) await onCommitted(current, saved, changes);
         return saved;
       };
       if (dto.status) {
@@ -214,10 +214,10 @@ export async function updateContact(
         tenantId, createdById: updatedById, leadId: id, type: 'assignment', title: 'Lead reassigned',
         metadata: { assignedUserId: dto.assignedUserId, previousUserId: current.assignedUserId },
       } });
-      if (dto.assignedUserId || dto.productInterest) await createProductDeals(tx, tenantId, id, updatedById);
+      if (updated.status !== 'Closed' && (dto.assignedUserId || dto.productInterest)) await createProductDeals(tx, tenantId, id, updatedById);
       if (updatedById && updated.status === 'Cancelled') await cancelOpenDeals(tx, tenantId, updatedById, { leadId: id }, 'Staff explicitly cancelled the opportunity.');
       if (updated.status === 'Closed' && updatedById) {
-        await convertClosedLead(tx, tenantId, id, updatedById);
+        await convertClosedLead(tx, tenantId, id, updatedById, { previousLead: current, emitLeadEvents: !onCommitted });
         return finish(await tx.lead.findFirstOrThrow({ where: { id, tenantId }, include: {
           assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } }, updatedBy: { select: { id: true, firstName: true, lastName: true } },

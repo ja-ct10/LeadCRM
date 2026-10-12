@@ -1,3 +1,4 @@
+import { salesContext } from '../leads/sales-context';
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
@@ -6,10 +7,12 @@ import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { assertClosedStatus, cancelOpenDeals, contactStatusValue } from '../engagement.service';
+import { assertClosedStatus, cancelOpenDeals, contactStatusValue, finalizeContactLifecycle } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { buildSearchClauses } from '../../../shared/helpers/search';
+import { createAssignedContact } from './contact-creation';
+import { mayReadContactAccount } from './contact-account-access';
 import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
 
 const CONTACT_FILTER_FIELDS: FilterFields = {
@@ -38,6 +41,7 @@ const CONTACT_INCLUDE = {
 } as const;
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
+  const canReadAccount = await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId);
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
   const filters = parseFilterParams(query);
@@ -49,7 +53,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   }
   const clauses = buildPrismaFilters(filters, CONTACT_FILTER_FIELDS);
   clauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'company', 'phone', 'source'], contains => [
-    { account: { name: contains } },
+    ...(canReadAccount ? [{ account: { name: contains } }] : []),
     ...(['HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'].includes(contains.contains.toUpperCase()) ? [{ status: contains.contains.toUpperCase() }] : []),
   ]));
   const scope = filters.find(filter => filter.field === 'scope')?.value;
@@ -58,7 +62,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const system = filters.find(filter => filter.field === 'system')?.value;
   const systemValues = Array.isArray(system) ? system : [];
   if (systemValues.includes('touched') !== systemValues.includes('untouched')) {
-    clauses.push({ updatedAt: systemValues.includes('touched') ? { gt: prisma.contact.fields.createdAt } : { lte: prisma.contact.fields.createdAt } });
+    clauses.push({ updatedAt: systemValues.includes('touched') ? { gt: (salesContext.getStore() ?? prisma).contact.fields.createdAt } : { lte: (salesContext.getStore() ?? prisma).contact.fields.createdAt } });
   }
   const related = filters.find(filter => filter.field === 'related')?.value;
   if (Array.isArray(related) && related.includes('has_deals')) {
@@ -91,68 +95,60 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const sort = typeof query.sort === 'string' ? query.sort.replace(/^companyName:/, 'company:') : query.sort;
   const ids = await sortedPageIds(sort === 'createdAt:desc' ? undefined : sort, ['firstName', 'lastName', 'email', 'phone', 'company', 'status', 'source', 'createdAt'], skip, limit,
-    async () => (await prisma.contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true, status: true, source: true, createdAt: true, account: { select: { name: true } } } }))
+    async () => (await (salesContext.getStore() ?? prisma).contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true, status: true, source: true, createdAt: true } }))
       .map(row => ({ ...row, status: normalizeCrmStatus(row.status) })),
-    direction => prisma.contact.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
+    direction => (salesContext.getStore() ?? prisma).contact.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
-    prisma.contact.findMany({
+    (salesContext.getStore() ?? prisma).contact.findMany({
       where: ids ? { ...where, id: { in: ids } } : where,
       skip: ids ? 0 : skip,
       take: limit,
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
-      include: CONTACT_INCLUDE,
+      include: { ...CONTACT_INCLUDE, account: canReadAccount ? CONTACT_INCLUDE.account : false },
     }),
-    prisma.contact.count({ where: where as never }),
+    (salesContext.getStore() ?? prisma).contact.count({ where: where as never }),
   ]);
 
   const [statuses, agents, touched, hasDeals] = await Promise.all([
-    prisma.contact.groupBy({ by: ['status'], where: where as never, _count: true }),
-    prisma.contact.groupBy({ by: ['assignedUserId'], where: where as never, _count: true }),
-    prisma.contact.count({ where: { AND: [where, { updatedAt: { gt: prisma.contact.fields.createdAt } }] } as never }),
-    prisma.contact.count({ where: { AND: [where, { contactDeals: { some: { tenantId, deal: { tenantId, isArchived: false } } } }] } as never }),
+    (salesContext.getStore() ?? prisma).contact.groupBy({ by: ['status'], where: where as never, _count: true }),
+    (salesContext.getStore() ?? prisma).contact.groupBy({ by: ['assignedUserId'], where: where as never, _count: true }),
+    (salesContext.getStore() ?? prisma).contact.count({ where: { AND: [where, { updatedAt: { gt: (salesContext.getStore() ?? prisma).contact.fields.createdAt } }] } as never }),
+    (salesContext.getStore() ?? prisma).contact.count({ where: { AND: [where, { contactDeals: { some: { tenantId, deal: { tenantId, isArchived: false } } } }] } as never }),
   ]);
   const facets: Record<string, number> = { touched, untouched: total - touched, has_deals: hasDeals };
   for (const row of statuses) facets['status:' + normalizeCrmStatus(row.status)] = row._count;
   for (const row of agents) if (row.assignedUserId) facets['owner:' + row.assignedUserId] = row._count;
-  return { data: orderPage(data, ids), total, page, limit, facets };
+  return { data: orderPage(data.map(contact => ({ ...contact, account: canReadAccount ? contact.account : null })), ids), total, page, limit, facets };
 }
 
 export async function findContactById(id: string, tenantId: string) {
-  return prisma.contact.findFirst({
+  return (salesContext.getStore() ?? prisma).contact.findFirst({
     where: { id, tenantId, isArchived: false },
     include: CONTACT_INCLUDE,
   });
 }
 
 export async function createContact(tenantId: string, dto: Record<string, unknown>, actorId?: string) {
-  await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
-  if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
-  dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
-  normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
-  const { customFieldValues, ...data } = dto;
-  return salesTransaction(async tx => {
-    const contact = await tx.contact.create({
-    data: { ...data, ...await productRelationData(tx, 'contact', tenantId, { names: dto.productInterests as string[] | undefined }), tenantId, status: CrmStatusSchema.parse(dto.status).toUpperCase() } as never,
-    include: CONTACT_INCLUDE,
-    });
-    await saveRecordValues(tx, tenantId, 'contacts', contact.id, customFieldValues, actorId);
-    return contact;
-  });
+  if (!actorId) throw new ValidationError('An authenticated Contact creator is required.');
+  return salesTransaction(tx => createAssignedContact(tx, tenantId, dto, actorId, String(dto.requestId)));
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
-  const previous = await prisma.contact.findFirst({ where: { id, tenantId } });
+  const previous = await (salesContext.getStore() ?? prisma).contact.findFirst({ where: { id, tenantId } });
   if (dto.productInterestIds !== undefined && dto.productInterests !== undefined) throw new ValidationError('Supply Product IDs or legacy names, not both.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
   const interestNames = dto.productInterestIds === undefined ? (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? []
-    : (await prisma.productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
+    : (await (salesContext.getStore() ?? prisma).productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
   normalizeProductOther(dto, interestNames, previous?.productInterestOther);
   return salesTransaction(async tx => {
     await assertCrmRecordMutation(tx, 'contacts', id, 'edit', dto);
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
     if (dto.productInterests !== undefined || dto.productInterestIds !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined }, current, true));
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
-    if (status === 'Closed' && normalizeCrmStatus(current.status) !== 'Closed') await assertClosedStatus(tx, tenantId, { contactId: id });
+    if (status === 'Closed') {
+      await assertClosedStatus(tx, tenantId, { contactId: id });
+      await finalizeContactLifecycle(tx, tenantId, id, actorId);
+    }
     const { customFieldValues, productInterestIds: _productIds, ...data } = dto;
     await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({
@@ -173,14 +169,14 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {
-  return prisma.contact.updateMany({
+  return (salesContext.getStore() ?? prisma).contact.updateMany({
     where: { id, tenantId, isArchived: false },
     data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
   });
 }
 
 export async function restoreContact(id: string, tenantId: string) {
-  return prisma.contact.updateMany({
+  return (salesContext.getStore() ?? prisma).contact.updateMany({
     where: { id, tenantId, isArchived: true },
     data: { isArchived: false, deletedAt: null, deletedBy: null, archiveReason: null },
   });

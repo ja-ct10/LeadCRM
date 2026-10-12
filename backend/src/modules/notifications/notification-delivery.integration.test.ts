@@ -12,6 +12,8 @@ import { saveNotificationPreferences } from './notification-preferences.service'
 import { findNotifications, deleteNotifications } from './notifications.repository';
 import { DEFAULT_NOTIFICATION_PREFERENCES } from '@leadcrm/shared';
 import { deactivateUser } from '../administration/users/user-deactivation.service';
+import { MAILBOX_PARTICIPANT_POLICY_VERSION } from '../../integrations/gmail/mailbox-scope';
+import { tenantContext } from '../../core/tenant/tenant-context';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms_test_2')('Durable notification delivery', () => {
@@ -62,7 +64,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   });
 
   it('direct Contact API creates one Contact event and an authorized Contact destination', async () => {
-    const created = await request('/crm/contacts', 'POST', { firstName: 'Direct', lastName: 'Contact', email: 'direct@example.test', assignedUserId: agentId }, adminToken);
+    const created = await request('/crm/contacts', 'POST', { requestId: randomUUID(), firstName: 'Direct', lastName: 'Contact', email: 'direct@example.test', assignedUserId: agentId }, adminToken);
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
     expect(await notifications(id)).toHaveLength(0);
@@ -74,7 +76,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   });
 
   it('captures assignment transactionally, ignores title edits and respects self-assignment', async () => {
-    const row = await notificationActor.run(agentId, () => createContact(tenantId, { firstName: 'Self', lastName: 'Contact', email: 'self@example.test', assignedUserId: agentId }, agentId));
+    const { contact: row } = await tenantContext.run({ tenantId }, () => notificationActor.run(agentId, () => createContact(tenantId, { requestId: randomUUID(), firstName: 'Self', lastName: 'Contact', email: 'self@example.test', assignedUserId: agentId }, agentId)));
     await processEvents(); expect(await notifications(row.id)).toHaveLength(0);
     await prisma.contact.update({ where: { id: row.id }, data: { assignedUserId: otherId } });
     await prisma.contact.update({ where: { id: row.id }, data: { firstName: 'Edited' } });
@@ -234,7 +236,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const now = new Date(), customer = await contact();
     const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: owner.email, accessToken: 'test-encrypted', scopes: [], syncCursor: 'initialized', connectedAt: new Date(+now - 60000) } });
     const messageData = { tenantId, accountId: account.id, providerMessageId: 'one', threadId: 'thread', direction: 'inbound',
-      from: customer.email!, fromAddress: customer.email!, recipients: [owner.email], recipientAddresses: [owner.email],
+      from: customer.email!, fromAddress: customer.email!, recipients: [owner.email], recipientAddresses: [owner.email], authorizationParticipants: [customer.email!, owner.email].sort(), participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
       subject: 'Private subject', body: 'Private body', snippet: 'Private preview', labels: ['INBOX','UNREAD'], sentAt: now, contactId: customer.id, rfcMessageId: 'canonical' };
     const copiedAccount = await prisma.emailAccount.create({ data: { tenantId, userId: adminId, email: 'copy@camxian.com', accessToken: 'test-encrypted', scopes: [], connectedAt: new Date(+now - 60000) } });
     await prisma.mailboxMessage.create({ data: { ...messageData, accountId: copiedAccount.id, providerMessageId: 'admin-copy' } });

@@ -12,6 +12,7 @@ async function mayReadTasks(req: Request): Promise<boolean> {
  * GET /api/v1/crm/leads/:id/relationships
  */
 export async function getLeadRelationships(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const id = String(req.params.id);
     const tenantId = req.user!.tenantId;
@@ -28,6 +29,7 @@ export async function getLeadRelationships(req: Request, res: Response, next: Ne
  * GET /api/v1/crm/contacts/:id/relationships
  */
 export async function getContactRelationships(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const id = String(req.params.id);
     const tenantId = req.user!.tenantId;
@@ -44,6 +46,7 @@ export async function getContactRelationships(req: Request, res: Response, next:
  * GET /api/v1/crm/accounts/:id/relationships
  */
 export async function getAccountRelationships(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const id = String(req.params.id);
     const tenantId = req.user!.tenantId;
@@ -60,6 +63,7 @@ export async function getAccountRelationships(req: Request, res: Response, next:
  * GET /api/v1/crm/deals/:id/relationships
  */
 export async function getDealRelationships(req: Request, res: Response, next: NextFunction): Promise<void> {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const id = String(req.params.id);
     const tenantId = req.user!.tenantId;

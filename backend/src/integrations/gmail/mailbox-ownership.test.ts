@@ -11,7 +11,10 @@ const mocks = vi.hoisted(() => ({
   readUser: vi.fn(), decrypt: vi.fn(), exchange: vi.fn(), info: vi.fn(), refresh: vi.fn(), audit: vi.fn(), authorize: vi.fn(),
 }));
 vi.mock('../../config/mail.config', () => ({ mailConfig: mocks.config }));
-vi.mock('../../config/database.config', () => ({ default: { emailAccount: mocks.account, mailboxOAuthState: mocks.state, session: mocks.session } }));
+vi.mock('../../config/database.config', () => {
+  const tx = { emailAccount: mocks.account, mailboxOAuthState: mocks.state, session: mocks.session };
+  return { default: { ...tx, $transaction: vi.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } };
+});
 vi.mock('../../core/auth/auth-user', () => ({ readAuthUser: mocks.readUser }));
 vi.mock('../../core/encryption/crypto.service', () => ({ decryptToken: mocks.decrypt, encryptToken: (value: string) => `encrypted:${value}` }));
 vi.mock('../../core/permissions/permission.service', () => ({ assertPermissions: vi.fn() }));

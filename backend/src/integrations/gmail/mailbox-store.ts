@@ -6,7 +6,8 @@ import { mailboxPermissions } from './mailbox-sync.service';
 import { resolveMailboxScope, scopedMessagesWhere } from './mailbox-scope';
 import type { GmailEmail } from './gmail.types';
 import type { MailboxAttachment } from '@leadcrm/shared';
-import { countUnreadConversations, listMailboxConversations } from './mailbox-conversations';
+import { countUnreadConversations, listMailboxConversations, conversationContext } from './mailbox-conversations';
+import { draftComposeContexts } from './mailbox-draft-context';
 
 export async function authorizedMailbox(tenantId: string, userId: string) {
   const permissions = await mailboxPermissions(tenantId, userId);
@@ -32,8 +33,17 @@ export async function listStoredMailbox(tenantId: string, userId: string, input:
   const base = scopedMessagesWhere(account, scope);
   const unreadCount = await countUnreadConversations(account, scope);
   if (!['drafts', 'scheduled'].includes(options.filter)) return { ...await listMailboxConversations(account, scope, options), unreadCount, unreadCountUnit: 'conversations' as const, scopeHash: scope.hash };
-  const offset = options.pageToken ? Number(options.pageToken) : 0;
+  const context = conversationContext(account, scope, ['editable', options.filter, options.sort, options.query ?? '']);
+  let offset = 0;
+  if (options.pageToken) {
+    try {
+      const cursor = JSON.parse(Buffer.from(options.pageToken, 'base64url').toString('utf8')) as { context: string; offset: number };
+      if (cursor.context !== context) throw new AppError('Mailbox page changed. Reload the first page.', 400, 'MAILBOX_PAGE_CHANGED');
+      offset = cursor.offset;
+    } catch (error) { if (error instanceof AppError) throw error; throw new AppError('Invalid mailbox page.', 400); }
+  }
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 1000000) throw new AppError('Invalid mailbox page.', 400);
+  const nextToken = () => Buffer.from(JSON.stringify({ context, offset: offset + options.maxResults })).toString('base64url');
   if (options.filter === 'scheduled') {
     const visibleDrafts = await prisma.mailboxMessage.findMany({ where: base, select: { draftId: true } });
     const where: Prisma.ScheduledMailboxEmailWhereInput = { tenantId, accountId: account.id, createdById: userId, status: { notIn: ['sent', 'cancelled'] },
@@ -43,7 +53,7 @@ export async function listStoredMailbox(tenantId: string, userId: string, input:
     return { emails: rows.slice(0, options.maxResults).map(row => ({ id: row.id, threadId: '', from: row.recipients.join(', '), to: row.recipients,
       subject: row.subject, body: '', snippet: row.lastError ?? 'Scheduled email', date: row.scheduledAt.toISOString(),
       isRead: true, labels: [], scheduledStatus: row.status, scheduleError: row.lastError })),
-      nextPageToken: rows.length > options.maxResults ? String(offset + options.maxResults) : undefined, unreadCount, unreadCountUnit: 'conversations' as const, scopeHash: scope.hash };
+      nextPageToken: rows.length > options.maxResults ? nextToken() : undefined, unreadCount, unreadCountUnit: 'conversations' as const, scopeHash: scope.hash };
   }
   const filters: Prisma.MailboxMessageWhereInput[] = [base,
     options.filter === 'drafts' ? { labels: { has: 'DRAFT' } } : { NOT: { labels: { has: 'DRAFT' } } }];
@@ -63,7 +73,9 @@ export async function listStoredMailbox(tenantId: string, userId: string, input:
     rows = offset < unread ? await prisma.mailboxMessage.findMany({ where: unreadWhere, orderBy, skip: offset, take: options.maxResults + 1 }) : [];
     if (rows.length < options.maxResults + 1) rows.push(...await prisma.mailboxMessage.findMany({ where: { AND: [where, { NOT: { labels: { has: 'UNREAD' } } }] }, orderBy, skip: Math.max(0, offset - unread), take: options.maxResults + 1 - rows.length }));
   } else rows = await prisma.mailboxMessage.findMany({ where, orderBy, skip: offset, take: options.maxResults + 1 });
-  return { emails: rows.slice(0, options.maxResults).map(storedEmail), nextPageToken: rows.length > options.maxResults ? String(offset + options.maxResults) : undefined, unreadCount, unreadCountUnit: 'conversations' as const, scopeHash: scope.hash };
+  const page = rows.slice(0, options.maxResults), contexts = await draftComposeContexts(account, page);
+  const emails = page.map(row => ({ ...storedEmail(row), ...contexts.get(row.id) }));
+  return { emails, nextPageToken: rows.length > options.maxResults ? nextToken() : undefined, unreadCount, unreadCountUnit: 'conversations' as const, scopeHash: scope.hash };
 }
 
 export async function mailboxChanged(accountId: string) {

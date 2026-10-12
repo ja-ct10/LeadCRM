@@ -76,8 +76,8 @@ export const contactsV2Api = {
   get: (id: string, signal?: AbortSignal): Promise<ContactV2Response> =>
     apiClient.get<ContactV2Response>(`/crm/contacts/${encodeURIComponent(id)}`, { signal }).then(contactResponse),
 
-  create: (data: Partial<Contact>): Promise<ContactV2Response> =>
-    apiClient.post<ContactV2Response>('/crm/contacts', toContactWrite(data)).then(contactResponse),
+  create: (data: Partial<Contact> & { requestId: string }): Promise<ContactV2Response> =>
+    apiClient.post<ContactV2Response>('/crm/contacts', { ...toContactWrite(data), requestId: data.requestId }).then(contactResponse),
 
   update: (id: string, data: Partial<Contact>): Promise<ContactV2Response> =>
     apiClient.put<ContactV2Response>(`/crm/contacts/${id}`, toContactWrite(data)).then(contactResponse),

@@ -1,4 +1,5 @@
 import { beforeAll, afterAll, it, expect, describe } from 'vitest';
+import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { EMPTY_PERMISSION_FLAGS, ArchiveQuerySchema } from '@leadcrm/shared';
@@ -111,7 +112,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     expect(new Set([...all.body.data, ...second.body.data].map((row: any) => row.id)).size).toBe(4);
   });
   it.each(Object.keys(delegates))('%s creation rejects another-agent assignment and missing Create permission', async module => {
-    const payload = { assignedUserId: b.id, ...(module === 'accounts' ? { name: 'Spoofed' } : module === 'deals'
+    const payload = { ...(module === 'contacts' ? { requestId: randomUUID() } : {}), assignedUserId: b.id, ...(module === 'accounts' ? { name: 'Spoofed' } : module === 'deals'
       ? { title: 'Spoofed', pipelineId: pipeline.id, stageId: stage.id, productInterestIds: [product.id] }
       : { firstName: 'Spoofed', lastName: 'QA', email: `${module}-spoof@example.test` }) };
     const before = await snapshot();
@@ -253,9 +254,9 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     }
   });
   it.each(['leads', 'accounts'])('%s keeps server round-robin assignment to another agent available', async module => {
-    const agents = await eligibleAgents(prisma, tenantId);
+    const agents = await eligibleAgents(prisma, tenantId, module === 'accounts' ? ['accounts'] : ['leads', 'deals']);
     const targetIndex = agents.findIndex(agent => agent.id === b.id);
-    const key = { tenantId, module: 'lead-assignment', key: 'default' };
+    const key = { tenantId, module: module === 'accounts' ? 'accounts-assignment' : 'lead-assignment', key: 'default' };
     const cursor = agents[(targetIndex + agents.length - 1) % agents.length].id;
     await prisma.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: cursor }, update: { value: cursor } });
     const payload = module === 'accounts' ? { name: 'Automatic assignment QA' } : {

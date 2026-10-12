@@ -15,6 +15,7 @@ vi.mock('../../core/permissions/permission.service', () => ({ assertPermissions:
 vi.mock('../../core/encryption/crypto.service', () => ({ encryptToken: (value: string) => value, decryptToken: (value: string) => value }));
 vi.mock('../../core/audit/audit.service', () => ({ writeAuditLog: vi.fn() }));
 vi.mock('./gmail.oauth', () => ({ getAuthorizationUrl: vi.fn(), exchangeCodeForTokens: state.exchange, getUserInfo: state.info }));
+vi.mock('../../modules/crm/leads/lead-automation.service', () => ({ salesTransaction: (work: (tx: typeof state.db) => Promise<unknown>) => work(state.db) }));
 
 import { finishMailboxConnection } from './mailbox-auth.service';
 import { AppError } from '../../shared/errors/app-error';

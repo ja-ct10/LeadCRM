@@ -24,7 +24,7 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
     if (!pipeline) throw new ValidationError('Choose an available pipeline.');
     const stages = await tx.stage.findMany({ where: { tenantId, pipelineId: pipeline.id, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
     if (stages.length !== 1 || stages[0].id !== dto.stageId) throw new ValidationError('New Deals must start at the Lead stage.');
-    if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId);
+    if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId, ['deals']);
     if (dto.accountId && !await tx.account.findFirst({ where: { tenantId, id: dto.accountId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable.');
     const leadIds = [...new Set(dto.leadIds ?? [])], contactIds = [...new Set(dto.contactIds ?? [])];
     if (await tx.lead.count({ where: { tenantId, id: { in: leadIds }, isArchived: false, deletedAt: null } }) !== leadIds.length) throw new ValidationError('A selected Lead is unavailable.');
@@ -40,14 +40,10 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
       await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id,
         changeset: { after: { title: deal.title, value: deal.value, productInterestId: product.id, stageId: deal.stageId } } } });
       await tx.activity.create({ data: { tenantId, createdById: actorId, dealId: deal.id, type: 'deal_action', title: `Deal created: ${deal.title}` } });
+      await fireDealCreated({ tenantId, actorId, deal });
     }
     await tx.dealCreationReceipt.create({ data: { tenantId, actorId, idempotencyKey, requestHash, dealIds: deals.map(deal => deal.id) } });
     return { deals, replayed: false };
   });
-  // Replaying these stable events is safe even if the first HTTP response was lost.
-  for (const deal of result.deals) {
-    await fireDealCreated({ tenantId, actorId, deal });
-
-  }
   return result;
 }

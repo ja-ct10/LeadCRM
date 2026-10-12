@@ -13,6 +13,7 @@ export async function readMailboxAttachment(tenantId: string, userId: string, me
   const attachment = (Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : []).find(file => file.id === attachmentId);
   if (!attachment) throw new AppError('Attachment is not available for this message.', 404);
   const maximum = 35 * 1024 * 1024;
+  if (!Number.isSafeInteger(attachment.size) || attachment.size < 0 || typeof attachment.filename !== 'string') throw new AppError('Invalid attachment metadata.', 502);
   if (attachment.size > maximum) throw new AppError('This attachment exceeds the download limit.', 413);
   const result = await readGmailJson<{ data: string; size: number }>(await getValidAccessToken(tenantId, userId), `messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(attachmentId)}`);
   if (typeof result.data !== 'string' || !/^[a-zA-Z0-9_-]*={0,2}$/.test(result.data) || result.data.length > Math.ceil(maximum * 4 / 3) + 4) throw new AppError('Gmail returned an invalid attachment.', 502);

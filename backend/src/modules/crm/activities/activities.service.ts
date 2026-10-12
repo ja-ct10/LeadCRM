@@ -14,7 +14,9 @@ export async function getActivity(id: string, tenantId: string) {
   if (!activity) {
     throw new AppError('Activity not found', 404);
   }
-  return activity;
+  const [visible] = await activitiesRepository.withEmailContent(tenantId, [activity]);
+  if (!visible) throw new AppError('Activity not found', 404);
+  return visible;
 }
 
 export async function createActivity(tenantId: string, createdById: string, dto: CreateActivityDto) {
@@ -57,6 +59,7 @@ export async function deleteActivity(id: string, tenantId: string) {
 }
 
 function assertMutableActivity(record: { taskId: string | null; type: string; metadata: Prisma.JsonValue | null }) {
+  if (record.type === 'email') throw new AppError('Email history is managed through Inbox operations.', 403);
   if (record.taskId || record.type === 'task' || (record.metadata as { taskEvent?: unknown } | null)?.taskEvent) throw new AppError('Task lifecycle history cannot be changed or deleted.', 403);
 }
 

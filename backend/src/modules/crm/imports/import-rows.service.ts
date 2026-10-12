@@ -7,6 +7,8 @@ import { CreateDealSchema, type CreateDealDto } from '../deals/deals.dto';
 import { createDeal } from '../deals/deals.repository';
 import sanitizeHtml from 'sanitize-html';
 import { ZodError, type ZodIssue } from 'zod';
+import { createAssignedContact } from '../contacts-v2/contact-creation';
+import { fireDealCreated } from '../../automation/triggers/triggers.service';
 
 type Tx = Prisma.TransactionClient;
 export type MappedRow = { rowNumber: number; data: Record<string, string> };
@@ -87,7 +89,7 @@ async function resolveDeal(tx: Tx, tenantId: string, data: Record<string, string
   if (data.assignedUser) {
     const users = await tx.user.findMany({ where: { tenantId, status: 'ACTIVE', OR: [{ id: data.assignedUser }, { email: { equals: data.assignedUser, mode: 'insensitive' } }] } });
     assignee = unique(users, 'Assigned Agent', data.assignedUser);
-    await validateSalesOwner(tx, tenantId, assignee.id);
+    await validateSalesOwner(tx, tenantId, assignee.id, ['deals']);
   }
   const dto = CreateDealSchema.parse({ title: data.title, pipelineId: pipeline.id, stageId: stage.id,
     productInterestId: product.id, productInterestIds: [product.id], value: Number(product.dealValue), priority: data.priority,
@@ -170,11 +172,11 @@ async function createLead(tx: Tx, tenantId: string, actorId: string, jobId: stri
     createdById: actorId, updatedById: actorId, creationKey: `${jobId}:${row.rowNumber}`,
   }, actorId)).id;
 }
-async function createContact(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
+async function createContact(tx: Tx, tenantId: string, actorId: string, jobId: string, row: ResolvedRow) {
   const d = row.data;
-  return (await tx.contact.create({ data: { tenantId, firstName: d.firstName, lastName: d.lastName,
-    email: d.email, phone: d.phone, company: d.companyName, address: d.address, status: 'WARM', ...await productRelationData(tx, 'contact', tenantId, { ids: row.products.map(p => p.id) }),
-  } })).id;
+  return (await createAssignedContact(tx, tenantId, { firstName: d.firstName, lastName: d.lastName,
+    email: d.email, phone: d.phone, company: d.companyName, address: d.address, status: 'Warm', productInterestIds: row.products.map(p => p.id),
+  }, actorId, `import:${jobId}:${row.rowNumber}`)).contact.id;
 }
 async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
   const d = row.data;
@@ -202,6 +204,9 @@ async function createImportedDeal(tx: Tx, tenantId: string, actorId: string, _jo
     const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
     await tx.account.update({ where: { tenantId, id: accountId }, data: await productRelationData(tx, 'account', tenantId, { names: [...new Set([...account.productInterests, ...names])] }, account, true) });
   }
+  await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id, metadata: { source: 'import' } } });
+  await tx.activity.create({ data: { tenantId, dealId: deal.id, createdById: actorId, type: 'deal_action', title: `Deal imported: ${deal.title}` } });
+  await fireDealCreated({ tenantId, actorId, deal });
   return deal.id;
 }
 

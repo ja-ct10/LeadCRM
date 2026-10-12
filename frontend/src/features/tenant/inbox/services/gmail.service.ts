@@ -14,8 +14,8 @@ export interface GmailConnectionStatus {
 }
 
 export const syncGmail = () => apiClient.post<{ hasMore: boolean; processed?: number; retryAt?: string }>('/integrations/gmail/sync', {});
-export const fetchGmailThread = (threadId: string) => apiClient.get<EmailListResponse & { dealOptions: { id: string; title: string; stage: string }[]; canAssociateDeal: boolean }>(`/integrations/gmail/threads/${encodeURIComponent(threadId)}`);
-export const fetchGmailCorrespondent = (conversationId: string, pageToken?: string) => apiClient.get<MailboxConversationDetail>(`/integrations/gmail/conversations/${encodeURIComponent(conversationId)}`, { params: { pageToken } });
+export const fetchGmailThread = (threadId: string, signal?: AbortSignal) => apiClient.get<EmailListResponse & { dealOptions: { id: string; title: string; stage: string }[]; canAssociateDeal: boolean }>(`/integrations/gmail/threads/${encodeURIComponent(threadId)}`, { signal });
+export const fetchGmailCorrespondent = (conversationId: string, pageToken?: string, signal?: AbortSignal) => apiClient.get<MailboxConversationDetail>(`/integrations/gmail/conversations/${encodeURIComponent(conversationId)}`, { params: { pageToken }, signal });
 export const setGmailMessageReadState = (messageId: string, isRead: boolean) => apiClient.patch(`/integrations/gmail/messages/${encodeURIComponent(messageId)}/read-state`, { isRead });
 export const associateThreadDeal = (threadId: string, dealId: string) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/deal`, { dealId });
 export const setGmailThreadReadState = (threadId: string, isRead: boolean) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/read-state`, { isRead });
@@ -38,6 +38,7 @@ interface SendEmailResponse {
   success: boolean;
   messageId: string;
   threadId: string;
+  syncPending?: boolean;
 }
 
 /**
@@ -65,10 +66,10 @@ export async function fetchGmailEmails(options?: MailboxListOptions, signal?: Ab
   });
 }
 
-export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string; forwardSourceMessageId?: string }) =>
+export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string; forwardSourceMessageId?: string; composeMode?: import('@leadcrm/shared').MailboxComposeMode }) =>
   apiClient.post<{ id: string; status: string }>('/integrations/gmail/scheduled', data);
 export const deleteGmailDraft = (draftId: string) => apiClient.delete(`/integrations/gmail/drafts/${encodeURIComponent(draftId)}`);
-export const getScheduledGmailEmail = (id: string) => apiClient.get<ScheduledMailboxEmailDetail>(`/integrations/gmail/scheduled/${encodeURIComponent(id)}`);
+export const getScheduledGmailEmail = (id: string, signal?: AbortSignal) => apiClient.get<ScheduledMailboxEmailDetail>(`/integrations/gmail/scheduled/${encodeURIComponent(id)}`, { signal });
 export const cancelScheduledGmailEmail = (id: string) => apiClient.post<{ id: string; status: string }>(`/integrations/gmail/scheduled/${encodeURIComponent(id)}/cancel`, {});
 
 /**
@@ -78,12 +79,13 @@ export async function sendGmailEmail(
   to: string | string[],
   subject: string,
   body: string,
-  replyToMessageId?: string,
-  draftId?: string,
-  forwardSourceMessageId?: string,
-  requestId?: string,
+  replyToMessageId: string | undefined,
+  draftId: string | undefined,
+  forwardSourceMessageId: string | undefined,
+  requestId: string,
+  composeMode?: import('@leadcrm/shared').MailboxComposeMode,
 ): Promise<SendEmailResponse> {
-  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId, forwardSourceMessageId, requestId });
+  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId, forwardSourceMessageId, requestId, composeMode });
 }
 
 /**
@@ -114,9 +116,11 @@ export async function saveGmailDraft(
   to: string,
   subject: string,
   body: string,
-  draftId?: string,
-  replyToMessageId?: string,
-  forwardSourceMessageId?: string,
+  draftId: string | undefined,
+  replyToMessageId: string | undefined,
+  forwardSourceMessageId: string | undefined,
+  requestId: string,
+  composeMode?: import('@leadcrm/shared').MailboxComposeMode,
 ): Promise<{ success: boolean; draftId: string; messageId: string }> {
-  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId, forwardSourceMessageId });
+  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId, forwardSourceMessageId, requestId, composeMode });
 }

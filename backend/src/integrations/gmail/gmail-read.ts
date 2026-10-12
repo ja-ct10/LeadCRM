@@ -1,9 +1,13 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { createHash } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { AppError } from '../../shared/errors/app-error';
 
 type ReadState = { active: number; waiting: (() => void)[]; pending: Map<string, Promise<unknown>>; retryUntil: number; throttles: number; touchedAt: number };
 const mailboxes = new Map<string, ReadState>();
+const workerReadAttempts = new AsyncLocalStorage<number>();
+/** Durable workers own retry/backoff counters; provider reads must not multiply that budget. */
+export const withMailboxWorkerReadBudget = <T>(work: () => Promise<T>) => workerReadAttempts.run(1, work);
 
 function rateLimitError(state: ReadState) {
   return new AppError('Gmail is pausing mailbox updates. Updates will resume automatically.', 429, 'GMAIL_RATE_LIMITED', new Date(state.retryUntil).toISOString());
@@ -47,6 +51,7 @@ export async function writeGmailJson<T>(accessToken: string, path: string, metho
  * Store token hashes only. Coalesce concurrent reads; never cache authorization or retry sends.
  */
 export function readGmailJson<T>(accessToken: string, path: string): Promise<T> {
+  const maxAttempts = workerReadAttempts.getStore() ?? 3, pendingKey = `${maxAttempts}:${path}`;
   const now = Date.now();
   for (const [key, value] of mailboxes) {
     if (!value.active && !value.pending.size && value.retryUntil <= now && now - value.touchedAt > 3600000) mailboxes.delete(key);
@@ -55,7 +60,7 @@ export function readGmailJson<T>(accessToken: string, path: string): Promise<T> 
   let state = mailboxes.get(key);
   if (!state) { state = { active: 0, waiting: [], pending: new Map(), retryUntil: 0, throttles: 0, touchedAt: now }; mailboxes.set(key, state); }
   state.touchedAt = now;
-  const existing = state.pending.get(path);
+  const existing = state.pending.get(pendingKey);
   if (existing) return existing as Promise<T>;
   const mailbox = state;
   const request = (async () => {
@@ -65,17 +70,17 @@ export function readGmailJson<T>(accessToken: string, path: string): Promise<T> 
     else mailbox.active++;
     try {
       if (mailbox.retryUntil > Date.now()) throw rateLimitError(mailbox);
-      return await performRead<T>(accessToken, path, mailbox);
+      return await performRead<T>(accessToken, path, mailbox, maxAttempts);
     } finally {
       const next = mailbox.waiting.shift();
       if (next) next(); else mailbox.active--;
     }
-  })().finally(() => { mailbox.pending.delete(path); mailbox.touchedAt = Date.now(); });
-  mailbox.pending.set(path, request);
+  })().finally(() => { mailbox.pending.delete(pendingKey); mailbox.touchedAt = Date.now(); });
+  mailbox.pending.set(pendingKey, request);
   return request;
 }
 
-async function performRead<T>(accessToken: string, path: string, state: ReadState): Promise<T> {
+async function performRead<T>(accessToken: string, path: string, state: ReadState, maxAttempts: number): Promise<T> {
   const signal = AbortSignal.timeout(15000);
   try {
     for (let attempt = 0; ; attempt++) {
@@ -102,7 +107,7 @@ async function performRead<T>(accessToken: string, path: string, state: ReadStat
         state.retryUntil = Math.max(state.retryUntil, Date.now() + cooldown);
         throw rateLimitError(state);
       }
-      if (temporary && attempt < 2) {
+      if (temporary && attempt + 1 < maxAttempts) {
         // Long provider cooldowns are returned to the caller instead of outliving the API proxy.
         if (!Number.isFinite(retryAfter) || retryAfter <= 5000) {
           await delay(Math.max(Number.isFinite(retryAfter) ? retryAfter : 0, 1000 * 2 ** attempt + Math.random() * 250), undefined, { signal });

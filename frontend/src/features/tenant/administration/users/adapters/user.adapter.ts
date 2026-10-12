@@ -2,6 +2,7 @@ import { User } from '@/store/types';
 
 export interface UserDTO {
   assignableAgent?: boolean;
+  assignableModules?: string[];
   id: string;
   tenantId: string;
   firstName: string;
@@ -43,6 +44,7 @@ export const userAdapter = {
   toModel: (dto: UserDTO): User => ({
     id: dto.id,
     assignableAgent: dto.assignableAgent,
+    assignableModules: dto.assignableModules,
     createdAt: dto.createdAt,
     isArchived: dto.status === 'INACTIVE',
     firstName: dto.firstName,

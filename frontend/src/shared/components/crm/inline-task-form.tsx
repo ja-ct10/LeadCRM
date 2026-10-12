@@ -166,7 +166,7 @@ export function InlineTaskForm({
           className="h-8 rounded-lg border border-border bg-card px-2 text-xs text-foreground"
         >
           <option value="">Assignee (Default)</option>
-          {getAssignableAgents(users).map((user) => (
+          {getAssignableAgents(users, ['tasks']).map((user) => (
             <option key={user.id} value={user.id}>
               {user.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : user.email}
             </option>

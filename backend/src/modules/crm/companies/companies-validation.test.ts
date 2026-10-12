@@ -1,6 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 const repo = vi.hoisted(() => ({ createCompany: vi.fn(), updateCompany: vi.fn(), findCompanyById: vi.fn() }));
 vi.mock('./companies.repository', () => repo);
+vi.mock('../../../config/database.config', () => ({ default: { $transaction: vi.fn(async (work: (tx: object) => Promise<unknown>) => work({})) } }));
 vi.mock('../../../core/audit/audit.service', () => ({ writeAuditLog: vi.fn(), buildChangeset: vi.fn(() => ({ before: {}, after: {} })) }));
 import { createCompany, updateCompany } from './companies.service';
 beforeEach(() => { vi.clearAllMocks(); repo.createCompany.mockResolvedValue({ id: 'account' }); repo.findCompanyById.mockResolvedValue({ id: 'account' }); repo.updateCompany.mockResolvedValue({ id: 'account' }); });

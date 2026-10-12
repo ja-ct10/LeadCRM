@@ -36,7 +36,7 @@ export class SmsSubmissionError extends ValidationError {
 }
 const receiptSchema = z.object({ data: z.object({ success: z.literal(true), smsBatchId: z.string().regex(/^[a-f\d]{24}$/i), recipientCount: z.literal(1) }) });
 /** Every caller, including Workflows, gets the shared Camxian contact footer. */
-export async function sendSms(recipient: string, content: string): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
+export async function sendSms(recipient: string, content: string, options: { beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
   assertSmsConfigured();
   const phone = normalizeSmsPhone(recipient);
   const tenantId = tenantContext.getStore()?.tenantId;
@@ -44,6 +44,7 @@ export async function sendSms(recipient: string, content: string): Promise<{ sub
   if (!content.trim()) throw new ValidationError('SMS message content is required.');
   const finalContent = buildFinalSms({ body: content });
   if (finalContent.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
+  await options.beforeProviderWrite?.();
   let response: Response;
   try {
     response = await fetch('https://api.textbee.dev/api/v1/gateway/send-sms', { method: 'POST', signal: AbortSignal.timeout(15000), redirect: 'error',

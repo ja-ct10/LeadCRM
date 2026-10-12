@@ -1,3 +1,4 @@
+import { salesContext } from '../leads/sales-context';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { assertCrmRecordMutation, assertCrmCreateAssignment, runCrmAutomaticCreation } from '../access/crm-record-access.service';
 import { resolveSalesAgent } from '../leads/lead-automation.service';
@@ -43,23 +44,23 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   };
 
   const ids = await sortedPageIds(query.sort, ["name","industry","size","city","country","createdAt"], skip, limit,
-    () => prisma.account.findMany({ where, select: { id: true, name: true, industry: true, size: true, city: true, country: true, createdAt: true } }),
-    direction => prisma.account.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
+    () => (salesContext.getStore() ?? prisma).account.findMany({ where, select: { id: true, name: true, industry: true, size: true, city: true, country: true, createdAt: true } }),
+    direction => (salesContext.getStore() ?? prisma).account.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
-    prisma.account.findMany({
+    (salesContext.getStore() ?? prisma).account.findMany({
       where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
       },
     }),
-    prisma.account.count({ where }),
+    (salesContext.getStore() ?? prisma).account.count({ where }),
   ]);
 
   return { data: orderPage(data, ids), total, page, limit };
 }
 
 export async function findCompanyById(id: string, tenantId: string) {
-  return prisma.account.findFirst({
+  return (salesContext.getStore() ?? prisma).account.findFirst({
     where: { id, tenantId },
     include: {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
@@ -73,7 +74,7 @@ export async function createCompany(tenantId: string, dto: CreateCompanyDto, act
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
   const { customFieldValues, ...data } = dto;
   return salesTransaction(async tx => {
-    const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId);
+    const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId, ['accounts']);
     const account = await runCrmAutomaticCreation(tx, 'accounts', agent?.id ?? null, async () => await tx.account.create({ data: { ...data, assignedUserId: agent?.id ?? null, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never }));
     await saveRecordValues(tx, tenantId, 'accounts', account.id, customFieldValues, actorId);
     return account;
@@ -81,11 +82,11 @@ export async function createCompany(tenantId: string, dto: CreateCompanyDto, act
 }
 
 export async function updateCompany(id: string, tenantId: string, dto: UpdateCompanyDto, actorId?: string) {
-  const previous = await prisma.account.findFirst({ where: { id, tenantId } });
+  const previous = await (salesContext.getStore() ?? prisma).account.findFirst({ where: { id, tenantId } });
   if ((dto.productInterestIds !== undefined && dto.productInterests !== undefined) || (dto.activeProductIds !== undefined && dto.activeProducts !== undefined)) throw new ValidationError('Supply Product IDs or legacy names, not both.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
   const interestNames = dto.productInterestIds === undefined ? (dto.productInterests as string[] | undefined) ?? previous?.productInterests ?? []
-    : (await prisma.productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
+    : (await (salesContext.getStore() ?? prisma).productInterest.findMany({ where: { tenantId, id: { in: dto.productInterestIds as string[] } }, select: { name: true } })).map(product => product.name);
   normalizeProductOther(dto, interestNames, previous?.productInterestOther);
   return salesTransaction(async tx => {
       await assertCrmRecordMutation(tx, 'accounts', id, 'edit', dto);
@@ -99,14 +100,14 @@ export async function updateCompany(id: string, tenantId: string, dto: UpdateCom
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {
-  return prisma.account.updateMany({
+  return (salesContext.getStore() ?? prisma).account.updateMany({
     where: { id, tenantId, isArchived: false },
     data: { isArchived: true, deletedAt: new Date(), deletedBy: userId },
   });
 }
 
 export async function restoreCompany(id: string, tenantId: string) {
-  return prisma.account.updateMany({
+  return (salesContext.getStore() ?? prisma).account.updateMany({
     where: { id, tenantId, isArchived: true },
     data: { isArchived: false, deletedAt: null, deletedBy: null },
   });

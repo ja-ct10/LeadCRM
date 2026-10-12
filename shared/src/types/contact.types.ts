@@ -57,6 +57,8 @@ export interface Contact {
  * Mirrors the backend `CreateContactSchema` Zod DTO.
  */
 export interface CreateContactRequest {
+  requestId: string;
+  productInterestIds?: string[];
   firstName: string;
   lastName: string;
   email?: string;
@@ -74,4 +76,4 @@ export interface CreateContactRequest {
  * Fields accepted by PUT /api/v1/crm/contacts/:id (update).
  * All fields optional — mirrors the backend `UpdateContactSchema`.
  */
-export interface UpdateContactRequest extends Partial<CreateContactRequest> {}
+export interface UpdateContactRequest extends Partial<Omit<CreateContactRequest, 'requestId'>> {}

@@ -88,7 +88,7 @@ export function TaskSelector(props: TaskSelectorProps) {
         if (USE_MOCK_DATA) {
           rows =
             kind === "user"
-              ? getAssignableAgents(users)
+              ? getAssignableAgents(users, ['tasks'])
                   .filter((u) => u.status.toLowerCase() === "active")
                   .map((u) => ({
                     id: u.id,

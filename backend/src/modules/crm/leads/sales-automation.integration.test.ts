@@ -11,6 +11,8 @@ import { defaultContactForm, ProductInterestConfigSchema, FORM_PRODUCT_INTERESTS
 import { submitPublicForm } from '../../marketing/forms/public-forms.service';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
+import { dispatchQueuedWorkflows } from '../../automation/workflows/workflow-queue';
+import * as triggers from '../../automation/triggers/triggers.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && (url.pathname === '/leadcrm_forms_test_2' || /^\/leadcrm_sales_test_\d+$/.test(url.pathname));
@@ -40,7 +42,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const admin = await prisma.user.create({ data: { tenantId, firstName: 'Admin', lastName: 'Test', email: 'admin@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     adminId = admin.id; token = (await issueAuthSession(admin)).token;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Eligible custom sales role' } });
-    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
+    await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'tasks'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
     agentIds = [];
     for (const index of [0, 1, 2]) {
       const agent = await prisma.user.create({ data: { tenantId, firstName: `Agent ${index}`, lastName: 'Sales', email: `agent${index}@camxian.com`, role: role.name, status: index === 2 ? 'INACTIVE' : 'ACTIVE', mustChangePassword: false } });
@@ -63,6 +65,118 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
+
+  it('creates Contact Product Deals atomically and replays a stable request without repricing', async () => {
+    const products = await Promise.all([0, 12.5, 99].map((dealValue, index) => prisma.productInterest.create({ data: { tenantId, name: `Contact receipt ${index}`, dealValue } })));
+    const input = { requestId: randomUUID(), firstName: 'Contact', lastName: 'Receipt', email: `${randomUUID()}@example.test`, assignedUserId: agentIds[0], productInterestIds: [...products.map(product => product.id), products[0].id] };
+    const first = await request('/crm/contacts', 'POST', input);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    const id = first.body.data.id;
+    const deals = await prisma.deal.findMany({ where: { tenantId, contactDeals: { some: { contactId: id } } }, include: { stage: true, contactDeals: true } });
+    expect(deals).toHaveLength(3);
+    expect(deals.map(deal => deal.value).sort((a, b) => a - b)).toEqual([0, 12.5, 99]);
+    expect(deals.every(deal => deal.stage.name === 'Lead' && deal.assignedUserId === agentIds[0] && deal.contactDeals.length === 1)).toBe(true);
+    expect(await prisma.lead.count({ where: { tenantId, email: input.email } })).toBe(0);
+    await prisma.productInterest.update({ where: { id: products[0].id }, data: { dealValue: 900 } });
+    const replay = await request('/crm/contacts', 'POST', input);
+    expect(replay.status).toBe(200); expect(replay.body.data.id).toBe(id);
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: id } } } })).toBe(3);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals.find(deal => deal.value === 0)!.id } })).value).toBe(0);
+    expect((await request('/crm/contacts', 'POST', { ...input, lastName: 'Changed' })).status).toBe(409);
+    expect((await request(`/crm/contacts/${id}`, 'PUT', { productInterestIds: [products[1].id] })).status).toBe(200);
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: id } } } })).toBe(3);
+  });
+
+  it('rejects missing identities and invalid Products/assignees without partial Contact writes', async () => {
+    const input = { firstName: 'Rejected', lastName: 'Contact', email: `${randomUUID()}@example.test` };
+    expect((await request('/crm/contacts', 'POST', input)).status).toBe(400);
+    expect((await request('/crm/contacts', 'POST', { ...input, requestId: randomUUID(), productInterestIds: [randomUUID()] })).status).toBe(400);
+    expect((await request('/crm/contacts', 'POST', { ...input, requestId: randomUUID(), assignedUserId: adminId })).status).toBe(400);
+    expect(await prisma.contact.count({ where: { tenantId, email: input.email } })).toBe(0);
+    const empty = await request('/crm/contacts', 'POST', { ...input, requestId: randomUUID() });
+    expect(empty.status, JSON.stringify(empty.body)).toBe(201);
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: empty.body.data.id } } } })).toBe(0);
+  });
+  it('runs approved Contact Product automation without granting the actor general Deal creation', async () => {
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Contact intake only' } });
+    await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module: 'contacts', canView: true, canCreate: true, canEdit: true } });
+    const actor = await prisma.user.create({ data: { tenantId, firstName: 'Intake', lastName: 'Agent', email: `${randomUUID()}@camxian.com`, role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
+    const auth = (await issueAuthSession(actor)).token;
+    const response = await request('/crm/contacts', 'POST', { requestId: randomUUID(), firstName: 'Controlled', lastName: 'Automation', email: `${randomUUID()}@example.test`, productInterestIds: [productIds['Smart Lock']] }, auth);
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    const [deal] = await prisma.deal.findMany({ where: { tenantId, contactDeals: { some: { contactId: response.body.data.id } } } });
+    expect(deal).toBeDefined(); expect(agentIds).toContain(deal.assignedUserId);
+    expect((await request('/crm/deals', 'POST', { title: 'Unauthorized manual Deal', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [productIds['Smart Lock']] }, auth)).status).toBe(403);
+  });
+
+  it('serializes simultaneous Contact requests and rolls back a failure after automatic Deal creation', async () => {
+    const input = { requestId: randomUUID(), firstName: 'Concurrent', lastName: 'Contact', email: `${randomUUID()}@example.test`, assignedUserId: agentIds[0], productInterestIds: [productIds['Smart Lock']] };
+    const responses = await Promise.all([0, 1, 2].map(() => request('/crm/contacts', 'POST', input)));
+    expect(responses.map(response => response.status).sort()).toEqual([200, 200, 201]);
+    expect(new Set(responses.map(response => response.body.data.id)).size).toBe(1);
+    const contactId = responses[0].body.data.id;
+    expect(await prisma.contact.count({ where: { tenantId, email: input.email } })).toBe(1);
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId } } } })).toBe(1);
+    const failedInput = { ...input, requestId: randomUUID(), email: `${randomUUID()}@example.test` };
+    const counts = await Promise.all([prisma.contact.count({ where: { tenantId } }), prisma.deal.count({ where: { tenantId } }), prisma.contactProductInterest.count({ where: { tenantId } }), prisma.contactCreationReceipt.count({ where: { tenantId } }), prisma.activity.count({ where: { tenantId } }), prisma.auditLog.count({ where: { tenantId } })]);
+    const failure = vi.spyOn(triggers, 'fireDealCreated').mockRejectedValueOnce(new Error('Injected transactional queue failure'));
+    try { expect((await request('/crm/contacts', 'POST', failedInput)).status).toBe(500); } finally { failure.mockRestore(); }
+    expect(await Promise.all([prisma.contact.count({ where: { tenantId } }), prisma.deal.count({ where: { tenantId } }), prisma.contactProductInterest.count({ where: { tenantId } }), prisma.contactCreationReceipt.count({ where: { tenantId } }), prisma.activity.count({ where: { tenantId } }), prisma.auditLog.count({ where: { tenantId } })])).toEqual(counts);
+    expect((await request('/crm/contacts', 'POST', failedInput)).status).toBe(201);
+  });
+
+  it('repairs an already Closed Contact from first-Won evidence and preserves earlier dates and conversion history', async () => {
+    const { pipeline } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: pipeline.id, isWon: true } });
+    const convertedAt = new Date('2020-01-02T00:00:00Z'), firstWon = new Date('2021-03-04T00:00:00Z'), earlier = new Date('2019-05-06T00:00:00Z');
+    for (const customerSince of [null, earlier]) {
+      const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Historical', lastName: 'Closed', email: `${randomUUID()}@example.test`, assignedUserId: agentIds[0], status: 'CLOSED', lifecycleStage: 'CONTACT', convertedAt, customerSince } });
+      for (const date of [new Date('2022-01-01T00:00:00Z'), firstWon]) {
+        const deal = await prisma.deal.create({ data: { tenantId, title: 'Verified historical Won', pipelineId: pipeline.id, stageId: stage.id, wonConfirmedAt: date, wonConfirmedById: adminId, hasEverBeenWon: true } });
+        await prisma.contactDeal.create({ data: { tenantId, contactId: contact.id, dealId: deal.id } });
+      }
+      expect((await request(`/crm/contacts/${contact.id}`, 'PUT', { status: 'Closed' })).status).toBe(200);
+      const repaired = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
+      expect(repaired.lifecycleStage).toBe('CUSTOMER');
+      expect(repaired.customerSince).toEqual(customerSince ?? firstWon);
+      expect(repaired.convertedAt).toEqual(convertedAt);
+      const auditCount = await prisma.auditLog.count({ where: { tenantId, entityId: contact.id, action: 'contact.customer_finalized' } });
+      expect((await request(`/crm/contacts/${contact.id}`, 'PUT', { status: 'Closed' })).status).toBe(200);
+      expect(await prisma.auditLog.count({ where: { tenantId, entityId: contact.id, action: 'contact.customer_finalized' } })).toBe(auditCount);
+    }
+  });
+
+  it('commits Contact events with their source, executes queued work once, and never discovers workflows on replay', async () => {
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Contact durable Task', trigger: 'contact.created', status: 'ACTIVE', isActive: true, activatedById: adminId,
+      actions: [{ type: 'create_task', config: { title: 'Durable Contact follow-up', assignedUserId: agentIds[0] } }] } });
+    const input = { requestId: randomUUID(), firstName: 'Durable', lastName: 'Event', email: `${randomUUID()}@example.test`, productInterestIds: [productIds['Smart Lock']] };
+    const created = await request('/crm/contacts', 'POST', input);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const where = { tenantId, workflowId: workflow.id, entityId: created.body.data.id };
+    expect(await prisma.workflowExecutionRun.count({ where: { ...where, status: 'queued' } })).toBe(1);
+    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(0);
+    await prisma.$disconnect();
+    await Promise.all([dispatchQueuedWorkflows(), dispatchQueuedWorkflows()]);
+    const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where, include: { steps: true } });
+    expect(run.status, run.errorMessage ?? '').toBe('completed');
+    expect(run.steps).toHaveLength(1); expect(run.steps[0].resolvedInput).toMatchObject({ requestId: run.steps[0].id });
+    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(1);
+    const recoveryTrigger = await prisma.workflowTriggerRecord.create({ data: { tenantId, workflowId: workflow.id, triggerType: 'contact.created', entityType: 'contact', entityId: created.body.data.id, eventId: randomUUID() } });
+    const expired = new Date(Date.now() - 600000);
+    const uncertain = await prisma.workflowExecutionRun.create({ data: { tenantId, workflowId: workflow.id, triggerId: recoveryTrigger.id, entityType: 'contact', entityId: created.body.data.id, status: 'running', dispatchContext: { version: 1 }, dispatchStartedAt: expired, leaseId: randomUUID(), leaseUntil: expired } });
+    const historicalTrigger = await prisma.workflowTriggerRecord.create({ data: { tenantId, workflowId: workflow.id, triggerType: 'contact.created', entityType: 'contact', entityId: created.body.data.id, eventId: randomUUID() } });
+    const historical = await prisma.workflowExecutionRun.create({ data: { tenantId, workflowId: workflow.id, triggerId: historicalTrigger.id, entityType: 'contact', entityId: created.body.data.id, status: 'running', leaseUntil: expired } });
+    await dispatchQueuedWorkflows();
+    expect((await prisma.workflowExecutionRun.findUniqueOrThrow({ where: { id: uncertain.id } })).status).toBe('interrupted');
+    expect((await prisma.workflowExecutionRun.findUniqueOrThrow({ where: { id: historical.id } })).status).toBe('running');
+    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(1);
+    await prisma.workflow.create({ data: { tenantId, name: 'Activated after Contact', trigger: 'contact.created', status: 'ACTIVE', isActive: true, activatedById: adminId, actions: workflow.actions as never } });
+    expect((await request('/crm/contacts', 'POST', input)).status).toBe(200);
+    await dispatchQueuedWorkflows();
+    expect(await prisma.workflowExecutionRun.count({ where: { tenantId, entityId: created.body.data.id } })).toBe(3);
+    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(1);
+    await prisma.workflow.updateMany({ where: { tenantId, trigger: 'contact.created' }, data: { isActive: false, status: 'PAUSED' } });
+  });
 
   it('rotates eligible tenant agents, persists one owner, values and one Deal per product', async () => {
     const leads = [];
@@ -87,7 +201,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'assignment' } })).toBe(1);
   });
   it('rejects invalid/inactive/foreign owners and unknown products with complete rollback', async () => {
-    for (const assignedUserId of [inactiveId, deniedId, randomUUID()]) await expect(create([], { assignedUserId })).rejects.toThrow('active sales agent');
+    for (const assignedUserId of [inactiveId, deniedId, randomUUID()]) await expect(create([], { assignedUserId })).rejects.toThrow('active eligible agent');
     const before = await prisma.lead.count({ where: { tenantId } });
     await expect(create(['Smart Lock', 'Unknown Product'])).rejects.toThrow('Unknown Product');
     expect(await prisma.lead.count({ where: { tenantId } })).toBe(before);
@@ -347,7 +461,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const editedLead = await request(`/crm/leads/${lead.body.data.id}`, 'PUT', { status });
     expect(editedLead.status).toBe(200);
     expect(editedLead.body.data.status).toBe(status);
-    const contact = await request('/crm/contacts', 'POST', { email: 'manual@example.test', firstName: 'Manual', lastName: status, status });
+    const contact = await request('/crm/contacts', 'POST', { requestId: randomUUID(), email: 'manual@example.test', firstName: 'Manual', lastName: status, status });
     expect(contact.status).toBe(201);
     expect(contact.body.data.status).toBe(status);
     const edited = await request(`/crm/contacts/${contact.body.data.id}`, 'PUT', { status: 'Cold' });
@@ -371,7 +485,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
 
   it('defaults Contacts to Warm and rejects noncanonical statuses on both APIs', async () => {
-    expect((await request('/crm/contacts', 'POST', { email: 'fixture@example.test', firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Warm');
+    expect((await request('/crm/contacts', 'POST', { requestId: randomUUID(), email: 'fixture@example.test', firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Warm');
     for (const module of ['leads', 'contacts']) {
       for (const status of ['WARM', 'HOT', 'COLD', 'CLOSED', 'CANCELLED', 'Unknown']) {
         const response = await request(`/crm/${module}`, 'POST', { firstName: 'Invalid', lastName: 'Status', status });
@@ -385,7 +499,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     for (const email of [undefined, '', '   ', 'invalid', 'a'.repeat(250) + '@example.test']) {
       expect((await request(`/crm/${module}`, 'POST', { firstName: 'Email', lastName: 'Validation', email })).status).toBe(400);
     }
-    const created = await request(`/crm/${module}`, 'POST', { firstName: 'Email', lastName: 'Valid', email: '  email@example.test  ' });
+    const created = await request(`/crm/${module}`, 'POST', { requestId: randomUUID(), firstName: 'Email', lastName: 'Valid', email: '  email@example.test  ' });
     expect(created.status).toBe(201);
     expect(created.body.data.email).toBe('email@example.test');
     for (const email of ['', '  ', 'invalid', null]) expect((await request(`/crm/${module}/${created.body.data.id}`, 'PUT', { email })).status).toBe(400);

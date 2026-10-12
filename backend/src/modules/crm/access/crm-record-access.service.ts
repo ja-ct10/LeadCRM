@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { EMPTY_PERMISSION_FLAGS, hasModulePermission, isWorkspaceAccessible, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
+import { assertEligibleAssignedAgent, crmAssignmentRequirements } from './assigned-agent-eligibility';
 
 export type CrmModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type Actor = { userId: string; tenantId: string };
@@ -92,8 +93,7 @@ export async function assertCrmRecordMutation(tx: Tx, module: CrmModule, id: str
   }
   if (data.assignedUserId !== undefined && data.assignedUserId !== record.assignedUserId && data.assignedUserId !== null && data.assignedUserId !== '') {
     const targetId = typeof data.assignedUserId === 'object' ? data.assignedUserId.set : data.assignedUserId;
-    const target = await resolveCrmActor(tx, { tenantId: actor.tenantId, userId: targetId });
-    if (target.clientAdmin || !hasModulePermission(target.permissions, module, 'canEdit')) throw new AppError('Choose an active eligible agent in this workspace.', 400);
+    await assertEligibleAssignedAgent(tx, actor.tenantId, targetId, crmAssignmentRequirements(module));
   }
 }
 

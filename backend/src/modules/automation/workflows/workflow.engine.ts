@@ -1,7 +1,10 @@
 import { compatibleWorkflow, supportedChangedFields } from './workflow-fields';
 import { runAuthorizedWorkflow } from '../../crm/access/crm-record-access.service';
-import { AsyncLocalStorage } from 'node:async_hooks';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, Workflow, WorkflowExecutionRun } from '@prisma/client';
+import prisma from '../../../config/database.config';
+import { workflowChain as chain, workflowLease } from './workflow-dispatch-context';
+import { fenceWorkflowLease, isWorkflowLeaseLost, workflowLeaseWrite } from './workflow-lease';
+import { interruptWorkflowEvidence } from './workflow-interruption';
 import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, type WorkflowDraft } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
@@ -13,12 +16,16 @@ import { assertWorkflowPermissions } from '../actions/action-permissions';
 import { validateWorkflow } from './workflow-validation';
 export { evaluateCondition } from './workflow-conditions';
 
-const chain = new AsyncLocalStorage<ReadonlySet<string>>();
 export interface WorkflowFireParams {
   triggerType: string; entityType: string; entityId: string; tenantId: string;
   actorId?: string; eventId?: string; context: Record<string, unknown>;
 }
-export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<void> {
+type PreparedWorkflow = { workflow: Workflow; run: WorkflowExecutionRun; leaseId: string; eventContext?: Record<string, unknown> };
+export function fireWorkflowTrigger(params: WorkflowFireParams, prepared?: PreparedWorkflow): Promise<void> {
+  return prepared ? workflowLease.run({ tenantId: params.tenantId, executionId: prepared.run.id, leaseId: prepared.leaseId }, () => executeWorkflowTrigger(params, prepared))
+    : executeWorkflowTrigger(params);
+}
+async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: PreparedWorkflow): Promise<void> {
   const scope = tenantContext.getStore();
   if (!scope || scope.tenantId !== params.tenantId) throw new ValidationError('A matching CRM tenant context is required for automation.');
   const trigger = findTrigger(params.triggerType);
@@ -31,14 +38,15 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
   }
   if (['deal.stage_changed', 'deal.closed_won', 'deal.closed_lost'].includes(params.triggerType) &&
     (typeof params.context['event.previousStageId'] !== 'string' || typeof params.context['event.newStageId'] !== 'string' || params.context['event.previousStageId'] === params.context['event.newStageId'])) return;
-  const context = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
-  if (!context) throw new NotFoundError('Triggering record');
+  const currentContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
+  if (!currentContext) throw new NotFoundError('Triggering record');
+  const context = prepared?.eventContext ? { ...prepared.eventContext } : currentContext;
   // Only event metadata is accepted from emitters; saved record values remain authoritative.
   for (const key of ['event.previousStageId', 'event.newStageId', 'event.previousStatus', 'event.newStatus', 'event.changedFields']) if (key in params.context) context[key] = params.context[key];
-  if (context['event.newStageId'] && context['event.newStageId'] !== context['deal.stageId']) return;
+  if (context['event.newStageId'] && context['event.newStageId'] !== currentContext['deal.stageId']) return;
   if (params.triggerType.endsWith('.status_changed')) {
     const previous = params.context['event.previousStatus'], next = params.context['event.newStatus'];
-    if (!CRM_STATUSES.includes(previous as never) || !CRM_STATUSES.includes(next as never) || previous === next || next !== context[trigger.entity + '.status']) return;
+    if (!CRM_STATUSES.includes(previous as never) || !CRM_STATUSES.includes(next as never) || previous === next || next !== currentContext[trigger.entity + '.status']) return;
   }
   const eventId = params.eventId ?? (params.triggerType.endsWith('.created') ? `${params.triggerType}:${params.entityId}` : undefined);
   if (!eventId || eventId.length > 500) throw new ValidationError('A stable event identifier is required for automation.');
@@ -46,7 +54,7 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
   const actorAvailable = !!actorId && !!await repo.findActor(actorId, params.tenantId);
   const visited = chain.getStore() ?? new Set<string>();
   if (visited.size >= 10) return;
-  const workflows = await repo.activeWorkflows(params.tenantId, params.triggerType);
+  const workflows = prepared ? [prepared.workflow] : await repo.activeWorkflows(params.tenantId, params.triggerType);
   for (const workflow of workflows) {
     if (visited.has(workflow.id)) continue;
     await chain.run(new Set([...visited, workflow.id]), async () => {
@@ -54,7 +62,7 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
         const parsed = WorkflowActionSchema.safeParse(action);
         return parsed.success ? normalizeSavedWorkflowAssignment(parsed.data) as Prisma.JsonObject : action;
       }) : workflow.actions;
-      const run = await repo.startRun({ tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType,
+      const run = prepared?.run ?? await repo.startRun({ tenantId: params.tenantId, workflowId: workflow.id, triggerType: params.triggerType,
         workflowVersion: workflow.version, definitionSnapshot: { name: workflow.name, description: workflow.description, trigger: workflow.trigger,
           conditions: workflow.conditions, actions, isActive: workflow.isActive },
         entityType: trigger.entity, entityId: params.entityId, eventId, recordName: String(context[`${trigger.entity}.title`] ?? context[`${trigger.entity}.name`] ?? `${context[`${trigger.entity}.firstName`] ?? ''} ${context[`${trigger.entity}.lastName`] ?? ''}`).trim().slice(0, 255) });
@@ -79,13 +87,14 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           errorMessage = context['deal.hasEverBeenWon'] ? 'This deal previously reached Won.' : 'This deal’s earlier stage history needs verification.';
         }
         for (let index = 0; index < draft.actions.length; index++) {
+          await fenceWorkflowLease();
           const action = draft.actions[index];
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
-          if (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime()) status = status === 'failed' ? status : 'skipped';
+          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime())) status = 'skipped';
           const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
           // A stage follow-up belongs to this entry into the stage. Do not continue after moving away.
-          if (status !== 'failed' && params.triggerType === 'deal.stage_changed' && (!freshContext || freshContext['deal.stageId'] !== context['event.newStageId'])) status = 'skipped';
-          if (status !== 'failed' && freshContext && draft.conditions?.conditions.some(rule => rule.field === 'deal.hasEverBeenWon' && rule.value === false) &&
+          if (status === 'completed' && params.triggerType === 'deal.stage_changed' && (!freshContext || freshContext['deal.stageId'] !== context['event.newStageId'])) status = 'skipped';
+          if (status === 'completed' && freshContext && draft.conditions?.conditions.some(rule => rule.field === 'deal.hasEverBeenWon' && rule.value === false) &&
             (freshContext['deal.hasEverBeenWon'] !== false || freshContext['deal.wonHistoryVerified'] !== true)) status = 'skipped';
           if (status !== 'completed' || action.enabled === false) {
             await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped',
@@ -96,15 +105,17 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
-          const result = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index }))
+          await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: step.id, tenantId: params.tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify({ version: 1, action, context: freshContext })) } }));
+          const result = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index, stepId: step.id }))
             : { success: false, error: 'The triggering record is no longer available.' };
           await repo.finishExecutionStep(step.id, params.tenantId, { status: result.success ? 'success' : 'failed', output: result.output, error: result.error });
           pendingStepId = undefined;
           recordedSteps++;
-          if (!result.success) { status = 'failed'; errorMessage = result.error; }
+          if (!result.success) { status = result.output?.outcomeUnknown ? 'interrupted' : 'failed'; errorMessage = result.error; }
         }
       } catch (error) {
-        status = 'failed'; errorMessage = safeWorkflowError(error);
+        if (isWorkflowLeaseLost(error)) return; // The recovery worker owns the interrupted outcome.
+        status = pendingStepId ? 'interrupted' : 'failed'; errorMessage = safeWorkflowError(error);
         if (pendingStepId) await repo.finishExecutionStep(pendingStepId, params.tenantId, { status: 'failed', error: 'Action outcome requires review. Check CRM records and delivery history before any replay.' });
         else if (!recordedSteps) await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id,
           stepIndex: -1, actionType: 'validation', status: 'failed', error: errorMessage });
@@ -114,9 +125,20 @@ export async function fireWorkflowTrigger(params: WorkflowFireParams): Promise<v
           await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action?.type ?? 'unknown', status: 'skipped' });
         }
       }
-      await repo.updateExecutionRun(run.id, params.tenantId, { status, errorMessage, completedAt: new Date() });
+      if (prepared) {
+        try {
+          await workflowLeaseWrite(async tx => {
+            if (status === 'interrupted') await interruptWorkflowEvidence(tx, run);
+            const completed = await tx.workflowExecutionRun.updateMany({ where: { id: run.id, tenantId: params.tenantId, status: 'running', leaseId: prepared.leaseId, leaseUntil: { gt: new Date() } }, data: { status, errorMessage, completedAt: new Date() } });
+            if (!completed.count) return;
+            if (actorAvailable) await repo.recordRunActivity(params.tenantId, actorId!, trigger.entity, params.entityId, workflow.id, run.id, workflow.name, status, tx);
+          });
+        } catch (error) { if (isWorkflowLeaseLost(error)) return; throw error; }
+      } else {
+        await repo.updateExecutionRun(run.id, params.tenantId, { status, errorMessage, completedAt: new Date() });
+        if (actorAvailable) await repo.recordRunActivity(params.tenantId, actorId!, trigger.entity, params.entityId, workflow.id, run.id, workflow.name, status);
+      }
       console.info('[Workflow]', { workflowId: workflow.id, executionId: run.id, trigger: params.triggerType, status, durationMs: Date.now() - run.startedAt.getTime() });
-      if (actorAvailable) await repo.recordRunActivity(params.tenantId, actorId!, trigger.entity, params.entityId, workflow.id, run.id, workflow.name, status);
     });
   }
 }

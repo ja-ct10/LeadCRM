@@ -1,7 +1,7 @@
 import type { CreateAdministrationUserInput, UpdateAdministrationUserInput } from '@leadcrm/shared';
 import { assertNoOwnership } from './user-deactivation.service';
 import { replaceUserGroups, serializeUserGroups } from './user-groups';
-import { eligibleAgents } from '../../crm/leads/lead-automation.service';
+import { eligibleAssignedAgents, hasAssignedAgentAccess, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS, type AssignedAgent } from '../../crm/access/assigned-agent-eligibility';
 import { requestPasswordReset } from '../../../core/auth/password-reset.service';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { readSelfAvatar } from '../../../core/auth/profile.service';
@@ -27,6 +27,12 @@ const SAFE_USER_SELECT = {
   // passwordHash is NEVER selected
 };
 
+function assignmentEligibility(user: AssignedAgent, tenantId: string) {
+  const assignableModules = (['leads', 'contacts', 'accounts', 'deals', 'tasks'] as const).filter(module =>
+    hasAssignedAgentAccess(user, tenantId, module === 'tasks' ? TASK_ASSIGNEE_REQUIREMENTS : crmAssignmentRequirements(module)));
+  return { assignableModules, assignableAgent: ['leads', 'deals'].every(module => assignableModules.includes(module as 'leads' | 'deals')) };
+}
+
 
 export async function getAll(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
@@ -45,14 +51,15 @@ export async function getAll(tenantId: string, query: Record<string, unknown>) {
     prisma.user.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: SAFE_USER_SELECT }),
     prisma.user.count({ where }),
   ]);
-  const assignable = new Set((await eligibleAgents(prisma, tenantId)).map(user => user.id));
-  return paginate(orderPage(data, ids).map(user => ({ ...serializeUserGroups(user), assignableAgent: assignable.has(user.id) })), total, { page, limit });
+  const assignable = new Map((await eligibleAssignedAgents(prisma, tenantId, [])).map(user => [user.id, assignmentEligibility(user, tenantId)]));
+  return paginate(orderPage(data, ids).map(user => ({ ...serializeUserGroups(user), ...(assignable.get(user.id) ?? { assignableAgent: false, assignableModules: [] }) })), total, { page, limit });
 }
 
 export async function getById(id: string, tenantId: string) {
   const user = await prisma.user.findFirst({ where: { id, tenantId }, select: SAFE_USER_SELECT });
   if (!user) throw new NotFoundError('User');
-  return { ...serializeUserGroups(user), assignableAgent: (await eligibleAgents(prisma, tenantId)).some(agent => agent.id === id) };
+  const agent = (await eligibleAssignedAgents(prisma, tenantId, [])).find(agent => agent.id === id);
+  return { ...serializeUserGroups(user), ...(agent ? assignmentEligibility(agent, tenantId) : { assignableAgent: false, assignableModules: [] }) };
 }
 
 export async function getAvatar(id: string, tenantId: string, avatarId: string) {

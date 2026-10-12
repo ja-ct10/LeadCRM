@@ -2,7 +2,7 @@ import type { Prisma } from '@prisma/client';
 import type { CrmImportModule } from '@leadcrm/shared';
 import { importModules } from './import-modules';
 
-type JobCreate = { createdById: string; fileName: string; totalRecords: number; idempotencyKey: string; requestHash: string; status: string; uploadId?: string };
+type JobCreate = { createdById: string; fileName: string; totalRecords: number; idempotencyKey: string; requestHash: string; status: string; uploadId?: string; sourceDigest?: string; sourceReference?: string };
 type JobUpdate = { successfulRecords: number; failedRecords: number; duplicateRecords: number; status: string; completedAt: Date | null };
 type RowWrite = { importId: string; rowNumber: number; status: string; remarks?: string; data: Prisma.InputJsonObject; entityId?: string };
 export type ImportQuery = { page: number; limit: number; status?: string };

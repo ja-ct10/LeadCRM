@@ -14,6 +14,16 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('TextBee shared SMS transport', () => {
+  it('awaits the current operation claim immediately before transport and sends nothing if it is revoked', async () => {
+    let release!: () => void;
+    const boundary = new Promise<void>(resolve => { release = resolve; });
+    const claim = vi.fn(async () => { await boundary; throw new Error('Claim revoked before transport'); });
+    const pending = tenantContext.run({ tenantId: 'test-tenant' }, () => sendSms('+639171234567', 'Hello', { beforeProviderWrite: claim }));
+    const result = pending.catch(error => error);
+    expect(claim).toHaveBeenCalledOnce(); expect(fetch).not.toHaveBeenCalled();
+    release(); expect(await result).toMatchObject({ message: 'Claim revoked before transport' });
+    expect(fetch).not.toHaveBeenCalled();
+  });
   it('reads current tenant contact identity without fabricating missing values or crossing tenant scope', async () => {
     vi.mocked(prisma.tenant.findUnique).mockResolvedValue({ name: 'Configured organization', email: 'contact@example.test' } as never);
     expect(await tenantContext.run({ tenantId: 'test-tenant' }, () => getSmsSenderIdentity('test-tenant'))).toEqual({ organizationName: 'Configured organization', organizationEmail: 'contact@example.test' });

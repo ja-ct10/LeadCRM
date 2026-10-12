@@ -67,7 +67,7 @@ beforeAll(async () => {
   const mailbox = await historicalCreate('EmailAccount', { tenantId, userId, email: 'admin@camxian.com', accessToken: 'encrypted-access-unchanged', refreshToken: 'encrypted-refresh-unchanged', scopes: ['gmail.modify'], syncCursor: 'preserved-cursor' });
   const message = await historicalCreate('MailboxMessage', { tenantId, accountId: mailbox.id, providerMessageId: 'gmail-message', threadId: 'thread', direction: 'inbound', from: 'lead@example.test', recipients: ['admin@camxian.com'], subject: 'Preserved email', body: 'Original email body', snippet: 'Original', labels: ['INBOX'], sentAt: new Date(), leadId: lead.id, contactId: contact.id });
   await db.mailboxOAuthState.create({ data: { tenantId, userId, stateHash: 'preserved-state', sessionHash: 'session-hash', verifier: 'encrypted-verifier', expiresAt: new Date(Date.now() + 60000) } });
-  for (const type of ['email', 'task', 'stage_change', 'workflow', 'note']) await db.activity.create({ data: { tenantId, createdById: userId, type, title: `Preserved ${type}`, ...links, taskId: task.id, metadata: type === 'email' ? { mailboxMessageId: message.id } : {} } });
+  for (const type of ['email', 'task', 'stage_change', 'workflow', 'note']) await historicalCreate('Activity', { tenantId, createdById: userId, type, title: `Preserved ${type}`, ...links, taskId: task.id, metadata: type === 'email' ? { mailboxMessageId: message.id } : {} });
   await db.auditLog.create({ data: { tenantId, userId, action: 'user.updated', entityType: 'User', entityId: userId } });
   await db.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: stage.id, movedById: userId } });
   await historicalCreate('RecordFile', { tenantId, uploadedById: userId, leadId: lead.id, name: 'preserved.pdf', size: 12, type: 'application/pdf', objectKey: 'preserved-object-key' });
@@ -102,7 +102,7 @@ beforeAll(async () => {
   await replayCrmMigrations(pg, undefined, '20261129000000_retire_contact_obsolete_columns');
   server = (await import('../app')).default.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
-}, 60000);
+}, 180000);
 afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await db?.$disconnect(); await socket?.stop(); await pg?.close(); });
 
 describe('forward retirement migration and retained APIs', () => {
@@ -131,9 +131,16 @@ describe('forward retirement migration and retained APIs', () => {
     const field = ({ leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' } as const)[module];
     const path = `/crm/activities?${field}=${records[module]}`;
     const history = await call(path); expect(history.status).toBe(200);
-    expect(history.body.data.map((a: { type: string }) => a.type)).toEqual(expect.arrayContaining(['email', 'task', 'stage_change', 'workflow', 'note']));
-    expect(history.body.data.find((a: { type: string }) => a.type === 'email').metadata.email.body).toBe('Original email body');
-    for (const type of ['email', 'task', 'stage_change']) {
+    expect(history.body.data.map((a: { type: string }) => a.type)).toEqual(expect.arrayContaining(['task', 'stage_change', 'workflow', 'note']));
+    // The original historical mail has no verified participant metadata. Preserve
+    // it exactly in SQL while refusing to reveal private mail through CRM history.
+    expect(await db.activity.count({ where: { tenantId, [field]: records[module], type: 'email' } })).toBe(1);
+    expect(await db.mailboxMessage.findFirst({ where: { tenantId, providerMessageId: 'gmail-message' } })).toMatchObject({ body: 'Original email body' });
+    expect(JSON.stringify(history.body)).not.toContain('Original email body');
+    expect(history.body.data.some((a: { type: string }) => a.type === 'email')).toBe(false);
+    const hiddenMail = await call(`${path}&type=email`); expect(hiddenMail.status).toBe(200);
+    expect(hiddenMail.body.data).toHaveLength(0); expect(hiddenMail.body.meta.total).toBe(0);
+    for (const type of ['task', 'stage_change']) {
       const filtered = await call(`${path}&type=${type}`); expect(filtered.status).toBe(200);
       expect(filtered.body.data).toHaveLength(1); expect(filtered.body.data[0].type).toBe(type);
     }

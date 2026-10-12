@@ -1,14 +1,15 @@
 import { isDeepStrictEqual } from 'node:util';
 import type { CustomFieldModule } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
+import { salesContext } from './leads/sales-context';
 import { readRecordValues } from './closing-requirements/custom-field-values.repository';
 
 /** Capture stored custom values before a service mutation, then compare the committed values. */
 export async function customFieldChangeTracker(tenantId: string, module: CustomFieldModule, id: string, patch: unknown) {
-  const before = patch === undefined ? undefined : await readRecordValues(prisma, tenantId, module, id);
+  const before = patch === undefined ? undefined : await readRecordValues(salesContext.getStore() ?? prisma, tenantId, module, id);
   return async (changes: ReturnType<typeof recordChanges>) => {
     if (!before) return changes;
-    const after = await readRecordValues(prisma, tenantId, module, id);
+    const after = await readRecordValues(salesContext.getStore() ?? prisma, tenantId, module, id);
     for (const key of new Set([...Object.keys(before), ...Object.keys(after)])) {
       if (isDeepStrictEqual(before[key] ?? null, after[key] ?? null)) continue;
       const field = `customFieldValues.${key}`;

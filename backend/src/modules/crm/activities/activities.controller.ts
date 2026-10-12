@@ -3,6 +3,7 @@ import { CreateActivitySchema, UpdateActivitySchema } from './activities.dto';
 import * as activitiesService from './activities.service';
 
 export async function getActivities(req: Request, res: Response, next: NextFunction) {
+  res.setHeader('Cache-Control', 'no-store');
   try {
     const tenantId = req.user!.tenantId;
     const result = await activitiesService.getActivities(tenantId, req.query);
@@ -11,6 +12,7 @@ export async function getActivities(req: Request, res: Response, next: NextFunct
 }
 
 export async function getActivity(req: Request, res: Response, next: NextFunction) {
+  res.setHeader('Cache-Control', 'no-store');
   try {
   const tenantId = req.user!.tenantId as string;
   const activity = await activitiesService.getActivity(req.params.id as string, tenantId);

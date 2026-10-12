@@ -38,6 +38,8 @@ interface EntityComboboxBaseProps {
   disabled?: boolean;
   /** For stages: filter by pipelineId */
   pipelineId?: string;
+  /** For user assignment: modules the assignee must be eligible to own. */
+  assignmentModules?: readonly string[];
   /** Optional className */
   className?: string;
 }
@@ -149,6 +151,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
     error,
     disabled = false,
     pipelineId,
+    assignmentModules,
     className,
     multiple = false,
   } = props;
@@ -196,7 +199,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           entities = dataContext.contacts; // Leads are stored as 'contacts' in DataContext
           break;
         case 'users':
-          entities = getAssignableAgents(dataContext.users);
+          entities = getAssignableAgents(dataContext.users, assignmentModules);
           break;
         case 'pipelines':
           entities = dataContext.pipelines;
@@ -222,7 +225,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
       setLoadError('Failed to load data. Please try again.');
       return [];
     }
-  }, [dataContext, entityType, pipelineId]);
+  }, [dataContext, entityType, pipelineId, assignmentModules]);
 
   useEffect(() => {
     setRemoteOptions([]); setKnownOptions({}); setLoadError(null);

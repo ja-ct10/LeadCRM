@@ -5,6 +5,7 @@ import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { assignmentCandidates, assignmentPool, assignmentWorkloads } from './workflow-assignment.repository';
 import { liveReservations, memberAvailable } from './workflow-assignment-policy';
+import { fenceWorkflowLease } from '../workflows/workflow-lease';
 
 export function assignmentPurpose(action: WorkflowAction): WorkflowAssignmentPurpose {
   return action.type === 'create_task' ? 'task_assignee' : 'crm_owner';
@@ -23,13 +24,13 @@ export type AssignmentRequest = {
 };
 async function candidates(client: Prisma.TransactionClient, request: AssignmentRequest) {
   const { tenantId, target, purpose } = request;
-  const users = await assignmentCandidates(client, tenantId, purpose);
+  const users = await assignmentCandidates(client, tenantId, purpose, request.entity);
   if (target.type === 'user' || target.type === 'record_owner') {
     const id = target.type === 'user' ? target.id : request.recordOwnerId;
     if (!id) throw new ValidationError('Assign an agent to the triggering record or choose an explicit assignment target.');
     const user = users.find(user => user.id === id);
     if (!user) throw new ValidationError(purpose === 'crm_owner'
-      ? 'Choose an active sales agent with Lead and Deal permissions in this workspace.'
+      ? 'Choose an active agent with access to the triggering CRM module in this workspace.'
       : 'The selected task assignee is unavailable, inactive or lacks Tasks access in this workspace.');
     return { users: [user], targetName: `${user.firstName} ${user.lastName}` };
   }
@@ -56,7 +57,7 @@ export async function validateAssignment(action: WorkflowAction, entity: Workflo
   }
   const target = parseAssignment(action);
   if (target.type === 'record_owner' && !context) return;
-  await candidates(prisma, { tenantId, target, purpose: assignmentPurpose(action), recordOwnerId: context?.[`${entity}.assignedUserId`] as string | undefined });
+  await candidates(prisma, { tenantId, target, purpose: assignmentPurpose(action), entity, recordOwnerId: context?.[`${entity}.assignedUserId`] as string | undefined });
 }
 
 /** Reserve one turn per workflow/action/pool. Dry-runs only read the cursor. */
@@ -112,7 +113,7 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
   };
   if (request.dryRun || request.target.type === 'user' || request.target.type === 'record_owner') return resolve(prisma);
   for (let attempt = 0; ; attempt++) {
-    try { return await prisma.$transaction(resolve, { isolationLevel: 'Serializable' }); }
+    try { return await prisma.$transaction(async tx => { await fenceWorkflowLease(tx); return resolve(tx); }, { isolationLevel: 'Serializable' }); }
     catch (error) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code) && attempt < 4) continue;
       throw error;

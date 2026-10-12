@@ -25,10 +25,26 @@ beforeEach(() => {
   mocks.list.mockResolvedValue({ emails: [email] });
   mocks.sync.mockResolvedValue({ hasMore: false });
 });
-afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 
 describe('Persisted scoped Inbox', () => {
+  it('aborts and rejects a stale page after authorization changes while hidden', async () => {
+    let events: EventTarget;
+    vi.stubGlobal('EventSource', class extends EventTarget { close = vi.fn(); constructor() { super(); events = this; } });
+    mocks.list.mockResolvedValueOnce({ emails: [email], nextPageToken: 'old-page', unreadCount: 3 });
+    render(<InboxPage />); await flush();
+    let resolveOld: (value: unknown) => void;
+    mocks.list.mockImplementationOnce(() => new Promise(done => { resolveOld = done; }));
+    fireEvent.click(screen.getByLabelText('Next page')); await flush();
+    const oldSignal = mocks.list.mock.lastCall?.[1] as AbortSignal;
+    mocks.list.mockResolvedValueOnce({ emails: [], unreadCount: 0 });
+    vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => events!.dispatchEvent(new Event('mailbox-access-changed'))); await flush();
+    expect(oldSignal.aborted).toBe(true); expect(mocks.list.mock.lastCall?.[0].pageToken).toBeUndefined();
+    await act(async () => resolveOld!({ emails: [email], unreadCount: 3, nextPageToken: 'old-next' }));
+    expect(screen.queryByText('Saved customer email')).toBeNull(); expect(screen.queryByText('3 unread conversations')).toBeNull();
+  });
   it.each([false, true])('shows the list spinner during manual refresh and preserves the page chrome (failure=%s)', async fails => {
     mocks.list.mockResolvedValueOnce({ emails: [email], unreadCount: 1 });
     render(<InboxPage />); await flush();
@@ -170,7 +186,7 @@ describe('Persisted scoped Inbox', () => {
     fireEvent.click(screen.getByLabelText('Refresh')); fireEvent.click(screen.getByText('Sync now'));
     document.dispatchEvent(new Event('visibilitychange')); await advance(119_999);
     expect(mocks.list).toHaveBeenCalledTimes(2); expect(mocks.sync).not.toHaveBeenCalled(); expect(streams).toHaveLength(1);
-    await advance(26); expect(mocks.list).toHaveBeenCalledTimes(3); expect(streams).toHaveLength(2);
+    await advance(26); expect(mocks.list).toHaveBeenCalledTimes(3); expect(streams).toHaveLength(3);
   });
   it('stops status-request throttling and avoids fallback reads while hidden', async () => {
     const streams: EventTarget[] = [];

@@ -482,7 +482,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   });
   it('rejects foreign or nonassignable relations and invalid date ranges', async () => {
     await scoped(async () => {
-      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'CONTACTS', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Choose an active sales agent');
+      for (const value of [userId, randomUUID()]) await expect(createAudience(tenantId, { name: 'Invalid', source: 'CONTACTS', conditions: [{ field: 'assignedUserId', operator: 'equals', value }] })).rejects.toThrow('Choose an active eligible agent');
       await expect(previewAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: 'productInterest', operator: 'equals', value: [randomUUID()] }] })).rejects.toThrow('Product Interests');
       await expect(previewAudience(tenantId, { source: 'CONTACTS', conditions: [{ field: 'createdAt', operator: 'between', value: { from: '2026-10-08', to: '2026-10-07' } }] })).rejects.toThrow();
     });

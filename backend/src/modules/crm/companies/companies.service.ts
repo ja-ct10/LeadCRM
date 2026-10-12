@@ -1,3 +1,4 @@
+import { salesContext } from '../leads/sales-context';
 import * as repo from './companies.repository';
 import { writeAuditLog, buildChangeset } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
@@ -5,6 +6,7 @@ import { CreateCompanyDto, UpdateCompanyDto, CreateCompanySchema, UpdateCompanyS
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireAccountUpdated } from '../../automation/triggers/triggers.service';
 import { recordChanges, customFieldChangeTracker } from '../record-updates';
+import { salesTransaction } from '../leads/lead-automation.service';
 
 export async function getCompanies(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllCompanies(tenantId, query);
@@ -31,7 +33,9 @@ export async function createCompany(tenantId: string, userId: string, dto: Creat
 export async function updateCompany(
   id: string, tenantId: string, userId: string, dto: UpdateCompanyDto,
 ) {
-  dto = UpdateCompanySchema.parse(dto);
+  const input = dto;
+  return salesTransaction(async () => {
+  dto = UpdateCompanySchema.parse(input);
   const before = await repo.findCompanyById(id, tenantId);
   if (!before) throw new NotFoundError('Company');
   const withCustomChanges = await customFieldChangeTracker(tenantId, 'accounts', id, dto.customFieldValues);
@@ -51,6 +55,7 @@ export async function updateCompany(
   const changes = await withCustomChanges(recordChanges(before, company));
   if (changes.changedFields.length) await fireAccountUpdated({ tenantId, actorId: userId, record: company, changedFields: changes.changedFields, changes });
   return company;
+  });
 }
 
 export async function archiveCompany(id: string, tenantId: string, userId: string) {

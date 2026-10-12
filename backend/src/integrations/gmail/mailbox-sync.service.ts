@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { mailboxProviderQueries, messageInScope, resolveMailboxScope, scopedMessagesWhere } from './mailbox-scope';
+import { mailboxProviderQueries, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { mailboxChanged, storedEmail } from './mailbox-store';
 import { runScheduledMailboxEmails } from './scheduled-mailbox.service';
 import { randomUUID } from 'node:crypto';
@@ -17,7 +17,7 @@ import { GmailEmail } from './gmail.types';
 import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { isMailboxOwner } from './mailbox-ownership';
-import { readGmailJson as gmailJson } from './gmail-read';
+import { readGmailJson as gmailJson, withMailboxWorkerReadBudget } from './gmail-read';
 
 export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true): Promise<MailboxPermissions> {
   const user = await readAuthUser(userId, tenantId);
@@ -35,13 +35,14 @@ export async function mailboxPermissions(tenantId: string, userId: string, check
 }
 
 export async function decorateEmails(tenantId: string, userId: string, emails: GmailEmail[], permissions: MailboxPermissions, expectedScopeHash?: string): Promise<GmailEmail[]> {
+  permissions = await mailboxPermissions(tenantId, userId);
   const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account) return emails;
   const scope = await resolveMailboxScope(account, permissions);
   if (expectedScopeHash && expectedScopeHash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
   const saved = await prisma.mailboxMessage.findMany({ where: { tenantId, accountId: account.id, providerMessageId: { in: emails.map(email => email.id) } }, select: { providerMessageId: true, direction: true, leadId: true, contactId: true, dealId: true, needsDealAssociation: true } });
   return emails.map<GmailEmail>(email => { const row = saved.find(item => item.providerMessageId === email.id); return {
-    ...email, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
+    ...email, bcc: undefined, replyToAddresses: undefined, authorizationHeadersValid: undefined, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,
     contactId: row?.contactId && scope.contactIds.includes(row.contactId) ? row.contactId : undefined,
     dealId: permissions.dealsView && (scope.leadIds.includes(row?.leadId ?? '') || scope.contactIds.includes(row?.contactId ?? '')) ? row?.dealId : undefined,
@@ -63,6 +64,8 @@ export async function readMailboxThread(tenantId: string, userId: string, thread
   const deals = link && permissions.dealsView ? await prisma.deal.findMany({ where: { ...customerDealWhere(tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true, title: true, stage: { select: { name: true } } } }) : [];
   const association = link && permissions.dealsView ? await prisma.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId } } }) : null;
   const associated = association && link ? await prisma.deal.findFirst({ where: { ...customerDealWhere(tenantId, link), id: association.dealId }, select: { id: true } }) : null;
+  const current = await resolveMailboxScope(account, await mailboxPermissions(tenantId, userId));
+  if (current.hash !== scope.hash || !await prisma.emailAccount.findFirst({ where: { id: account.id, isActive: true }, select: { id: true } })) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
   return { emails: associated ? decorated.map(email => ({ ...email, dealId: associated.id, needsDealAssociation: false })) : decorated, dealOptions: deals.map(deal => ({ id: deal.id, title: deal.title, stage: deal.stage.name })), canAssociateDeal: permissions.dealsEdit && permissions.dealsView };
 }
 
@@ -73,6 +76,8 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
   if (!account.isActive) throw new AppError('Connect your mailbox first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
   await salesTransaction(async tx => {
+    const currentScope = await resolveMailboxScope(account, permissions, tx);
+    if (currentScope.hash !== scope.hash) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
     const messages = await tx.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId }] }, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
     const links = messages.filter(message => message.leadId ? scope.leadIds.includes(message.leadId) : message.contactId && scope.contactIds.includes(message.contactId));
     if (links.length !== 1) throw new AppError('This thread must have one unambiguous CRM email match.', 409);
@@ -104,12 +109,15 @@ export function mailboxSyncIntervalMs() {
 }
 
 /** All entry points share this DB lease and durable continuation. Reads never start sync. */
-export async function syncMailbox(tenantId: string, userId: string, trigger: 'manual' | 'worker' = 'manual') {
+export const syncMailbox = (tenantId: string, userId: string, trigger: 'manual' | 'worker' = 'manual') =>
+  withMailboxWorkerReadBudget(() => syncMailboxPass(tenantId, userId, trigger));
+async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manual' | 'worker') {
   const started = new Date();
   const permissions = await mailboxPermissions(tenantId, userId);
   let account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account?.isActive) throw new AppError('Connect your work Gmail account first.', 409);
   if (account.syncRetryAt && account.syncRetryAt > started) return { syncing: false, hasMore: true, retryAt: account.syncRetryAt.toISOString() };
+  if (account.syncPausedAt && trigger === 'worker') return { syncing: false, hasMore: true, paused: true };
   const scope = await resolveMailboxScope(account, permissions);
   let changedScope = scope.hash !== account.syncScopeHash;
   const pollDue = !account.lastSyncAt || +started - +account.lastSyncAt >= mailboxSyncIntervalMs();
@@ -125,11 +133,12 @@ export async function syncMailbox(tenantId: string, userId: string, trigger: 'ma
     data: { syncLeaseId: leaseId, syncLeaseUntil: new Date(Date.now() + 180000), syncCheckedAt: started } });
   if (!lease.count) return { syncing: true, hasMore: true };
   const checkpoint = async (data: Prisma.EmailAccountUpdateManyMutationInput) => {
-    if (!(await prisma.emailAccount.updateMany({ where: { id: account!.id, syncLeaseId: leaseId, isActive: true }, data: { ...data, syncLeaseUntil: new Date(Date.now() + 180000) } })).count) throw new AppError('Mailbox sync interrupted.', 409);
+    if (!(await prisma.emailAccount.updateMany({ where: { id: account!.id, syncLeaseId: leaseId, syncLeaseUntil: { gt: new Date() }, isActive: true }, data: { ...data, syncLeaseUntil: new Date(Date.now() + 180000) } })).count) throw new AppError('Mailbox sync interrupted.', 409, 'MAILBOX_SYNC_CLAIM_LOST');
   };
   try {
     // Another replica may have completed a page between our read and claim.
     account = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
+    if (trigger === 'manual' && account.syncPausedAt) { await checkpoint({ syncPausedAt: null, syncFailureCount: 0 }); account.syncFailureCount = 0; }
     changedScope = scope.hash !== account.syncScopeHash;
     const quietPeriod = trigger === 'worker' ? mailboxSyncIntervalMs() : 10000;
     if (!changedScope && !account.syncRequestedAt && account.syncCursor && !account.syncPageToken && !account.syncBatch && account.lastSyncAt && Date.now() - +account.lastSyncAt < quietPeriod) return { syncing: false, hasMore: false, processed: 0 };
@@ -177,12 +186,28 @@ export async function syncMailbox(tenantId: string, userId: string, trigger: 'ma
     for (const id of batch.ids.slice(0, 20)) {
       if (examined && Date.now() - +started > 45000) break;
       try {
+        await checkpoint({});
         // History contains unfiltered IDs. Inspect headers before fetching any body.
-        const meta = await gmailJson<GmailApiMessage>(token, 'messages/' + encodeURIComponent(id) + '?format=metadata&metadataHeaders=From&metadataHeaders=To&metadataHeaders=Cc&metadataHeaders=Message-ID');
+        const meta = await gmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(id)}?format=metadata&${MAILBOX_METADATA_HEADERS}`);
         const email = parseGmailMessage(meta);
+        const currentPermissions = await mailboxPermissions(tenantId, userId);
+        if (!await prisma.emailAccount.findFirst({ where: { id: account.id, tenantId, userId, isActive: true }, select: { id: true } })) throw new AppError('Mailbox disconnected during synchronization.', 403);
+        const currentScope = await resolveMailboxScope(account, currentPermissions);
+        if (currentScope.hash !== scope.hash) throw new AppError('Mailbox assignments changed during synchronization.', 409, 'MAILBOX_SCOPE_CHANGED');
+        if (email.labels.includes('DRAFT')) email.crmDraft = !!await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, tenantId, crmDraft: true,
+          OR: [{ providerMessageId: id }, ...(batch.drafts?.[id] ? [{ draftId: batch.drafts[id] }] : [])] }, select: { id: true } });
         if (email.labels.some(label => ['SPAM', 'TRASH'].includes(label))) {
           await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, tenantId, providerMessageId: id }, data: { labels: email.labels } });
         } else if (messageInScope(email, account.email, scope)) {
+          // Hydrate legacy authorization metadata without rewriting an already verified historical body.
+          const existing = await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: id } }, select: { id: true, engagementRuleVersion: true, labels: true } });
+          if (existing && existing.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !email.labels.includes('DRAFT')) {
+            await prisma.mailboxMessage.update({ where: { id: existing.id }, data: { fromAddress: mailboxAddress(email.from)!,
+              recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ?? null,
+              authorizationParticipants: mailboxParticipants(email)!, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, labels: email.labels } });
+            processed++;
+            await checkpoint({}); examined++; continue;
+          }
           let draftId = batch.drafts?.[id];
           if (!draftId && email.labels.includes('DRAFT') && email.rfcMessageId && /^<[^\s<>]+>$/.test(email.rfcMessageId)) {
             const params = new URLSearchParams({ maxResults: '20', q: 'rfc822msgid:' + email.rfcMessageId });
@@ -194,8 +219,8 @@ export async function syncMailbox(tenantId: string, userId: string, trigger: 'ma
             sourceMessageId: { not: null }, OR: [{ providerMessageId: id }, ...(draftId ? [{ draftId }] : [])] }, select: { sourceMessageId: true } }) : null;
           if (!savedDraft?.sourceMessageId || scope.draftSourceIds.includes(savedDraft.sourceMessageId)) {
             const full = await fetchMessageDetail(token, id);
-            full.draftId = draftId;
-            await ingestMailboxMessages(account, [full], permissions);
+            full.draftId = draftId; full.crmDraft = email.crmDraft;
+            await ingestMailboxMessages(account, [full], currentPermissions);
             processed++;
           }
         }
@@ -209,7 +234,7 @@ export async function syncMailbox(tenantId: string, userId: string, trigger: 'ma
     batch.ids = batch.ids.slice(examined); batch.deleted = [];
     const queriesDone = batch.history || batch.nextIndex >= reconciliationQueries(scope).length;
     const hasMore = !!batch.ids.length || !!batch.nextPage || !queriesDone;
-    await checkpoint({ syncError: null, syncRetryAt: null, mailboxVersion: { increment: 1 },
+    await checkpoint({ syncError: null, syncRetryAt: null, syncFailureCount: 0, syncPausedAt: null, mailboxVersion: { increment: 1 },
       ...(batch.ids.length ? { syncBatch: JSON.parse(JSON.stringify(batch)) } : {
         syncBatch: Prisma.DbNull, syncPageToken: batch.nextPage ?? null, syncQueryIndex: batch.nextIndex,
         ...(!hasMore ? { syncCursor: batch.historyId, syncBaselineHistoryId: null, syncQueryIndex: 0, lastSyncAt: new Date() } : {}),
@@ -237,8 +262,12 @@ export async function syncMailbox(tenantId: string, userId: string, trigger: 'ma
     console.info('[mailbox-sync]', { accountId: account.id, trigger, processed, durationMs: Date.now() - +started, hasMore });
     return { syncing: hasMore, hasMore, processed };
   } catch (error) {
-    const retryAt = error instanceof AppError && error.retryAt ? new Date(error.retryAt) : new Date(Date.now() + 60000 + Math.random() * 5000);
-    await checkpoint({ syncRetryAt: retryAt, syncRequestedAt: new Date(), mailboxVersion: { increment: 1 }, syncError: error instanceof AppError && error.code === 'GMAIL_RATE_LIMITED' ? 'Gmail updates are temporarily paused. Saved emails remain available.' : 'Email updates are delayed. Reconnect if Gmail access was revoked.' });
+    const scopeChanged = error instanceof AppError && error.code === 'MAILBOX_SCOPE_CHANGED';
+    const failures = scopeChanged ? account.syncFailureCount : account.syncFailureCount + 1;
+    const paused = !scopeChanged && failures >= 5;
+    const retryAt = scopeChanged ? new Date() : error instanceof AppError && error.retryAt ? new Date(error.retryAt) : new Date(Date.now() + Math.min(15 * 60000, 60000 * 2 ** Math.min(failures, 4)) + Math.random() * 5000);
+    await checkpoint({ syncRetryAt: retryAt, syncFailureCount: failures, syncPausedAt: paused ? new Date() : null,
+      syncRequestedAt: new Date(), mailboxVersion: { increment: 1 }, syncError: paused ? 'Email updates paused after repeated failures. Saved history is preserved. Review the connection, then use Sync now to resume the unfinished page.' : error instanceof AppError && error.code === 'GMAIL_RATE_LIMITED' ? 'Gmail updates are temporarily paused. Saved emails remain available.' : 'Email updates are delayed. Reconnect if Gmail access was revoked.' }).catch(() => undefined);
     console.warn('[mailbox-sync]', { accountId: account.id, trigger, category: error instanceof AppError ? error.code : 'SYNC_FAILED', durationMs: Date.now() - +started });
     throw error;
   } finally {
@@ -259,7 +288,7 @@ export function startMailboxScheduler() {
     if (running || stopped) return;
     running = true;
     try {
-      const accounts = await prisma.emailAccount.findMany({ where: { provider: 'gmail', isActive: true, tenantId: { not: 'system' }, OR: [{ syncRetryAt: null }, { syncRetryAt: { lte: new Date() } }] }, orderBy: { syncCheckedAt: { sort: 'asc', nulls: 'first' } }, take: 20, select: { id: true, tenantId: true, userId: true } });
+      const accounts = await prisma.emailAccount.findMany({ where: { provider: 'gmail', isActive: true, syncPausedAt: null, tenantId: { not: 'system' }, OR: [{ syncRetryAt: null }, { syncRetryAt: { lte: new Date() } }] }, orderBy: { syncCheckedAt: { sort: 'asc', nulls: 'first' } }, take: 20, select: { id: true, tenantId: true, userId: true } });
       for (let index = 0; index < accounts.length && !stopped; index += 3) await Promise.all(accounts.slice(index, index + 3).map(async account => {
         try { await tenantContext.run({ tenantId: account.tenantId }, () => syncMailbox(account.tenantId, account.userId, 'worker')); }
         catch { await prisma.emailAccount.updateMany({ where: { id: account.id }, data: { syncCheckedAt: new Date() } }); }

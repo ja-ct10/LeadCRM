@@ -26,6 +26,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
   const [nextPageToken, setNextPageToken] = useState<string>(), [messageCount, setMessageCount] = useState(email.messageCount ?? 1);
   const historyPending = useRef(false);
   const historyGeneration = useRef(0);
+  const historyController = useRef<AbortController | undefined>(undefined);
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState<{ id: string; title: string; stage: string }[]>([]);
@@ -40,12 +41,13 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
     const request = error as ApiRequestError;
     setError(error instanceof Error ? error.message : 'This email action could not be completed. Try again.');
     setCooldown(Date.parse(request.retryAt ?? '') || 0);
-    if ([401, 403, 404, 409].includes(request.status ?? 0)) { historyGeneration.current++; setMessages([]); setTopics([]); setNextPageToken(undefined); setDraft(null); callbacks.current.onBack('This conversation is no longer available. Refresh your Inbox or check your mailbox access.'); }
+    if ([401, 403, 404, 409].includes(request.status ?? 0)) { historyController.current?.abort(); historyGeneration.current++; setMessages([]); setTopics([]); setNextPageToken(undefined); setDraft(null); callbacks.current.onBack('This conversation is no longer available. Refresh your Inbox or check your mailbox access.'); }
   }, []);
   useEffect(() => {
     let active = true;
+    historyController.current?.abort(); const controller = new AbortController(); historyController.current = controller;
     const generation = ++historyGeneration.current;
-    const request = email.conversationId ? fetchGmailCorrespondent(email.conversationId) : fetchGmailThread(email.threadId);
+    const request = email.conversationId ? fetchGmailCorrespondent(email.conversationId, undefined, controller.signal) : fetchGmailThread(email.threadId, controller.signal);
     request.then(result => {
       if (!active || generation !== historyGeneration.current) return;
       const ordered: GmailEmail[] = email.conversationId ? result.emails : [...result.emails].sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id.localeCompare(b.id));
@@ -55,7 +57,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
       const latestId = ordered.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined)?.id;
       setExpanded(previous => Object.fromEntries(ordered.map((message, index) => [message.id, previous[message.id] ?? (email.conversationId ? message.id === latestId : !message.isRead || index === ordered.length - 1)])));
     }).catch(error => { if (active) failure(error); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; if (historyGeneration.current === generation) historyGeneration.current++; };
+    return () => { active = false; historyController.current?.abort(); if (historyGeneration.current === generation) historyGeneration.current++; };
   }, [email.conversationId, email.threadId, revision, refresh, failure]);
   const unreadIds = messages.filter(message => !message.isRead && (!email.conversationId || expanded[message.id])).map(message => message.id).sort().join(',');
   useEffect(() => {
@@ -73,7 +75,8 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
     historyPending.current = true; setLoading(true);
     const generation = historyGeneration.current;
     try {
-      const result = await fetchGmailCorrespondent(email.conversationId, nextPageToken);
+      const controller = new AbortController(); historyController.current = controller;
+      const result = await fetchGmailCorrespondent(email.conversationId, nextPageToken, controller.signal);
       if (generation !== historyGeneration.current) return;
       setMessages(previous => [...new Map([...previous, ...result.emails].map(message => [message.id, message])).values()]);
       setTopics(previous => [...new Map([...previous, ...result.threads].map(topic => [topic.threadId, topic])).values()]);

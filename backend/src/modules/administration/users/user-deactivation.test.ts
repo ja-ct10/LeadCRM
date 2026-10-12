@@ -11,7 +11,10 @@ const state = vi.hoisted(() => ({
 }));
 vi.mock('../../../config/database.config', () => ({ default: state.db }));
 vi.mock('../../crm/leads/lead-automation.service', () => ({
-  salesTransaction: (work: (tx: unknown) => unknown) => work(state.db), validateSalesOwner: state.validateOwner,
+  salesTransaction: (work: (tx: unknown) => unknown) => work(state.db),
+}));
+vi.mock('../../crm/access/assigned-agent-eligibility', async importOriginal => ({
+  ...await importOriginal<any>(), assertEligibleAssignedAgent: state.validateOwner,
 }));
 
 vi.mock('../../operations/tasks/tasks.history', () => ({ recordTaskHistory: state.history }));
@@ -78,8 +81,9 @@ it('retains self-deactivation and Client Admin transfer guards', async () => {
 });
 
 it('prevents transferring unfinished Tasks to a sales agent who cannot view Tasks', async () => {
-  state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [{ role: { permissions: [{ module: 'tasks', canView: false }] } }] });
-  await expect(deactivateUser(target.id, 'tenant', 'admin', 'replacement')).rejects.toMatchObject({ statusCode: 409, message: 'Choose an Assigned Agent with Tasks View permission to receive the unfinished tasks.' });
+  state.validateOwner.mockRejectedValue(new Error('Tasks access is unavailable'));
+  await expect(deactivateUser(target.id, 'tenant', 'admin', 'replacement')).rejects.toMatchObject({ statusCode: 409 });
+  expect(state.validateOwner).toHaveBeenCalledWith(state.db, 'tenant', 'replacement', [{ module: 'tasks', permissions: ['canView'] }]);
   expect(state.db.task.updateMany).not.toHaveBeenCalled();
   expect(state.db.user.update).not.toHaveBeenCalled();
 });
@@ -88,5 +92,6 @@ it('does not require Task visibility when no unfinished Tasks are being transfer
   tasks = tasks.filter(task => ['completed', 'cancelled'].includes(task.status));
   state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [] });
   await deactivateUser(target.id, 'tenant', 'admin', 'replacement');
+  expect(state.validateOwner).toHaveBeenCalledWith(state.db, 'tenant', 'replacement', []);
   expect(state.db.user.update).toHaveBeenCalledOnce();
 });

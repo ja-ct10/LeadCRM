@@ -362,6 +362,7 @@ export function DealForm({
               render={({ field }) => (
                 <EntityCombobox
                   entityType="users"
+                  assignmentModules={['deals']}
                   disabled={!recordAccess.policy || !recordAccess.canReassign}
                   multiple={false}
                   value={field.value || null}

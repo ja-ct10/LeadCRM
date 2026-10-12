@@ -6,6 +6,13 @@
  */
 
 import type { Contact } from '../types/contact.types';
+import { z } from 'zod';
+
+/** Identity belongs to creation, never ordinary Contact updates. */
+export const ContactCreationIdentitySchema = z.object({
+  requestId: z.string().uuid(),
+  productInterestIds: z.array(z.string().uuid()).max(100).optional(),
+});
 
 // Re-export request types from types for consumers that import from contracts
 export type { CreateContactRequest, UpdateContactRequest } from '../types/contact.types';

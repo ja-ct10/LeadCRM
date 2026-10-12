@@ -135,7 +135,8 @@ describe.sequential('durable sixth-attempt login lockout', () => {
   });
   it('atomically accepts only five failures when twenty requests race', async () => {
     const results = await Promise.all(Array.from({ length: 20 }, () => login()));
-    expect(results.filter(r => r.status === 401)).toHaveLength(5); expect(results.filter(r => r.status === 429)).toHaveLength(15);
+    const outcomes = JSON.stringify(results.map(result => ({ status: result.status, code: result.body.error?.code ?? result.body.error?.message ?? result.body.error })));
+    expect(results.filter(r => r.status === 401), outcomes).toHaveLength(5); expect(results.filter(r => r.status === 429), outcomes).toHaveLength(15);
     expect(new Set(results.filter(r => r.status === 429).map(r => r.body.error.retryAt)).size).toBe(1);
     expect(await db.session.count()).toBe(0); expect((await state()).failedAttempts).toBe(5);
   }, 30_000);

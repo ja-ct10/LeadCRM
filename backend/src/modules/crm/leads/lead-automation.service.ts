@@ -4,37 +4,34 @@ import { cancelOpenDeals } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
-import { AsyncLocalStorage } from 'node:async_hooks';
 import { fireLeadCreated, fireDealCreated, fireDealUpdated } from '../../automation/triggers/triggers.service';
-import { isAssignableAgent, SALES_PIPELINE_STAGES, pipelineStageColor } from '@leadcrm/shared';
+import { SALES_PIPELINE_STAGES, pipelineStageColor } from '@leadcrm/shared';
 import { ProductInterestIdSchema } from '@leadcrm/shared';
 import { productRelationData } from './product-relations';
 import { findSalesGroup } from '../../administration/groups/sales-group';
+import { eligibleAssignedAgents, crmAssignmentRequirements } from '../access/assigned-agent-eligibility';
+import type { CrmModule } from '../access/crm-record-access.service';
+import { salesContext } from './sales-context';
+import { fenceWorkflowLease } from '../../automation/workflows/workflow-lease';
 
 type Tx = Prisma.TransactionClient;
 export const crmScope = (tenantId: string) => ({ tenantId });
 
-// Each serialization attempt gets its own effects. Failed attempts are discarded.
-const committedEffects = new AsyncLocalStorage<Array<() => Promise<void>>>();
-export function afterSalesCommit(effect: () => Promise<void>) {
-  const effects = committedEffects.getStore();
-  if (!effects) throw new Error('Sales writes require salesTransaction.');
-  effects.push(effect);
-}
-/** Serializable writes with side effects dispatched only after the successful commit. */
+/** Serializable writes capture dependent work durably; workers execute after commit. */
 export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise<T> {
+  const current = salesContext.getStore();
+  if (current) { await fenceWorkflowLease(current); return work(current); }
   for (let attempt = 0; ; attempt++) {
-    const effects: Array<() => Promise<void>> = [];
     let result: T;
-    try { result = await committedEffects.run(effects, () => prisma.$transaction(async tx => {
+    try { result = await prisma.$transaction(async tx => {
+      await fenceWorkflowLease(tx);
       await setNotificationActor(tx);
-      return work(tx);
-    }, { isolationLevel: 'Serializable', timeout: 20000 })); }
+      return salesContext.run(tx, () => work(tx));
+    }, { isolationLevel: 'Serializable', timeout: 20000 }); }
     catch (error) {
       if ((isCrmTransactionConflict(error) || error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') && attempt < 4) continue;
       throw error;
     }
-    for (const effect of effects) await effect();
     return result;
   }
 }
@@ -51,18 +48,13 @@ export async function resolveProducts(tx: Tx, tenantId: string, ids: string[]) {
   return unique.map(id => products.find(p => p.id === id)!);
 }
 
-export async function eligibleAgents(tx: Tx, tenantId: string) {
-  const users = await tx.user.findMany({ where: { tenantId, status: 'ACTIVE', role: { notIn: ['Client Admin', 'Guest'] } },
-    include: { userRoles: { where: { tenantId, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } }, include: { role: { include: { permissions: { where: { tenantId } } } } } } }, orderBy: { id: 'asc' } });
-  return users.filter(user => isAssignableAgent({ ...user, assignableAgent: ['leads', 'deals'].every(module => {
-    const permissions = user.userRoles.flatMap(link => link.role.permissions).filter(p => p.module === module);
-    return permissions.some(p => p.canView) && permissions.some(p => p.canEdit);
-  }) }));
+export async function eligibleAgents(tx: Tx, tenantId: string, modules: CrmModule[] = ['leads', 'deals']) {
+  return eligibleAssignedAgents(tx, tenantId, modules.flatMap(module => crmAssignmentRequirements(module)));
 }
 
-export async function validateSalesOwner(tx: Tx, tenantId: string, id: string) {
-  const owner = (await eligibleAgents(tx, tenantId)).find(user => user.id === id);
-  if (!owner) throw new ValidationError('Choose an active sales agent with Lead and Deal permissions in this workspace.');
+export async function validateSalesOwner(tx: Tx, tenantId: string, id: string, modules: CrmModule[] = ['leads', 'deals']) {
+  const owner = (await eligibleAgents(tx, tenantId, modules)).find(user => user.id === id);
+  if (!owner) throw new ValidationError('Choose an active eligible agent with the required module permissions in this workspace.');
   return owner;
 }
 
@@ -83,39 +75,42 @@ export async function salesPipeline(tx: Tx, tenantId: string) {
   return { pipeline, initial };
 }
 
-export async function createProductDeals(tx: Tx, tenantId: string, leadId: string, actorId?: string) {
+export async function createProductDeals(tx: Tx, tenantId: string, leadId: string, actorId?: string, kind: 'lead' | 'contact' = 'lead') {
   const scope = crmScope(tenantId);
-  const lead = await tx.lead.findFirstOrThrow({ where: { id: leadId, ...scope } });
-  const selected = await tx.productInterest.findMany({ where: { tenantId, active: true, id: { in: lead.productInterestIds } } });
-  if (!selected.length || lead.isArchived || lead.convertedAt) return;
+  const lead = kind === 'lead' ? await tx.lead.findFirstOrThrow({ where: { id: leadId, ...scope } }) : await tx.contact.findFirstOrThrow({ where: { id: leadId, ...scope } });
+  const productIds = kind === 'lead' && 'productInterestIds' in lead ? lead.productInterestIds : (await tx.contactProductInterest.findMany({ where: { tenantId, contactId: leadId, interested: true }, orderBy: { position: 'asc' } })).map(link => link.productInterestId);
+  const selected = await tx.productInterest.findMany({ where: { tenantId, active: true, id: { in: productIds } } });
+  if (!selected.length || lead.isArchived || kind === 'lead' && lead.convertedAt) return;
   const agent = lead.assignedUserId ? await tx.user.findFirst({ where: { tenantId, id: lead.assignedUserId }, select: { firstName: true, lastName: true } }) : undefined;
   const { pipeline, initial } = await salesPipeline(tx, tenantId);
   for (const product of selected) {
-    const automationKey = `${lead.id}:${product.id}`;
-    const existing = await tx.deal.findFirst({ where: { ...scope, OR: [{ automationKey }, { leadDeals: { some: { tenantId, leadId: lead.id } }, productInterestId: product.id }] } });
+    const automationKey = `${kind === 'contact' ? 'contact:' : ''}${lead.id}:${product.id}`;
+    const existing = await tx.deal.findFirst({ where: { ...scope, OR: [{ automationKey }, { ...(kind === 'lead' ? { leadDeals: { some: { tenantId, leadId: lead.id } } } : { contactDeals: { some: { tenantId, contactId: lead.id } } }), productInterestId: product.id }] } });
     if (existing) {
       if (!existing.assignedUserId && lead.assignedUserId && !existing.isArchived) {
         const updated = await tx.deal.update({ where: { id: existing.id, ...scope }, data: { assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId } });
-        afterSalesCommit(() => fireDealUpdated({ tenantId, actorId, record: updated, changedFields: ['assignedUserId'] }));
+        await fireDealUpdated({ tenantId, actorId, record: updated, changedFields: ['assignedUserId'] });
       }
       continue;
     }
     const deal = await runCrmAutomaticCreation(tx, 'deals', lead.assignedUserId, () => tx.deal.create({ data: { ...scope, automationKey, title: `${lead.firstName} ${lead.lastName} – ${product.name}`.slice(0, 255),
       productInterestId: product.id, productsNormalized: true, value: Number(product.dealValue), assignedUserId: lead.assignedUserId, ownerId: lead.assignedUserId,
       pipelineId: pipeline.id, stageId: initial.id, accountId: lead.accountId, leadSource: lead.source, tags: [] } }));
-    afterSalesCommit(() => fireDealCreated({ tenantId, actorId, deal }));
-    await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
+    if (kind === 'lead') await tx.leadDeal.create({ data: { ...scope, leadId: lead.id, dealId: deal.id, addedById: actorId } });
+    else await tx.contactDeal.create({ data: { ...scope, contactId: lead.id, dealId: deal.id, addedById: actorId } });
+    if (actorId) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id } });
     if (actorId || lead.assignedUserId) await tx.activity.create({ data: { ...scope, dealId: deal.id, createdById: (actorId ?? lead.assignedUserId)!,
-      type: 'deal_action', title: `Deal created for ${product.name}; ${agent ? 'assigned to ' + agent.firstName + ' ' + agent.lastName : 'awaiting assignment'}`, description: "System created this Deal from the Lead's Product Interest." } });
+      type: 'deal_action', title: `Deal created for ${product.name}; ${agent ? 'assigned to ' + agent.firstName + ' ' + agent.lastName : 'awaiting assignment'}`, description: `System created this Deal from the ${kind === 'lead' ? 'Lead' : 'Contact'}'s Product Interest.` } });
+    await fireDealCreated({ tenantId, actorId, deal });
   }
 }
 
 /** Shared transactional rotation for new CRM records. */
-export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId?: string | null) {
-  const agents = await eligibleAgents(tx, tenantId);
-  let agent = assignedUserId ? await validateSalesOwner(tx, tenantId, assignedUserId) : undefined;
+export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId?: string | null, modules: CrmModule[] = ['leads', 'deals']) {
+  const agents = await eligibleAgents(tx, tenantId, modules);
+  let agent = assignedUserId ? await validateSalesOwner(tx, tenantId, assignedUserId, modules) : undefined;
   if (!agent && agents.length) {
-    const key = { tenantId: tenantId, module: 'lead-assignment', key: 'default' };
+    const key = { tenantId, module: modules.includes('leads') ? 'lead-assignment' : `${modules[0]}-assignment`, key: 'default' };
     const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
     const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
     agent = agents[(agents.findIndex(user => user.id === lastId) + 1) % agents.length];
@@ -171,7 +166,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
   }
   if (actorId) await tx.auditLog.create({ data: { ...scope, userId: actorId, action: 'lead.created', entityType: 'Lead', entityId: lead.id } });
   const assignedLead = await tx.lead.findFirstOrThrow({ where: { id: lead.id, ...scope }, include: { assignedUser: { select: { id: true, firstName: true, lastName: true } } } });
-  afterSalesCommit(() => fireLeadCreated({ tenantId: scope.tenantId, actorId, lead: assignedLead }));
+  await fireLeadCreated({ tenantId: scope.tenantId, actorId, lead: assignedLead });
   await createProductDeals(tx, scope.tenantId, lead.id, actorId);
   if (lead.status === 'Cancelled' && actorId) await cancelOpenDeals(tx, scope.tenantId, actorId, { leadId: lead.id }, 'Staff created a cancelled opportunity.');
   return assignedLead;

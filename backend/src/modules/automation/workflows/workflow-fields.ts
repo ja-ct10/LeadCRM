@@ -3,7 +3,7 @@ import prisma from '../../../config/database.config';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
 import { normalizeWorkflowReferences, WorkflowActionSchema, normalizeSavedWorkflowAssignment } from '@leadcrm/shared';
 
-export const workflowCustomFields = (tenantId: string) => readConfiguredFields(prisma, tenantId);
+export const workflowCustomFields = (tenantId: string, db: import('@prisma/client').Prisma.TransactionClient = prisma) => readConfiguredFields(db, tenantId);
 export async function supportedChangedFields(entity: WorkflowEntity, fields: unknown, tenantId: string): Promise<string[]> {
   if (!Array.isArray(fields)) return [];
   const definitions = await workflowCustomFields(tenantId);

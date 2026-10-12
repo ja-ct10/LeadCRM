@@ -4,6 +4,7 @@ import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import * as workflows from '../workflows.service';
 import { fireWorkflowTrigger } from '../workflow.engine';
+import { flushWorkflowQueue } from './workflow-queue-test-helper';
 import { fireDealStageChanged, fireDealCreated } from '../../triggers/triggers.service';
 import { updateContact as updateLead } from '../../../crm/contacts/contacts.service';
 import { updateContact } from '../../../crm/contacts-v2/contacts-v2.service';
@@ -21,11 +22,15 @@ vi.mock('../../../../shared/services/email.service', async original => ({ ...awa
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('workflow polish with real persisted CRM records', { timeout: 30000 }, () => {
-  let tenantId: string, actor: any, lead: any, contact: any, account: any, pipeline: any, initial: any, qualified: any, lost: any, won: any, others: any;
-  const scope = <T>(fn: () => T) => tenantContext.run({ tenantId }, fn);
+  let tenantId: string, actor: any, taskOwner: any, lead: any, contact: any, account: any, pipeline: any, initial: any, qualified: any, lost: any, won: any, others: any;
+  const scope = async <T>(fn: () => T) => {
+    const result = await tenantContext.run({ tenantId }, fn);
+    await flushWorkflowQueue(tenantId);
+    return result;
+  };
   const create = (extra: Partial<WorkflowDraft> = {}) => scope(() => workflows.createWorkflow(tenantId, actor.id, {
     name: `Polish ${randomUUID()}`, trigger: 'lead.updated', isActive: true,
-    actions: [{ type: 'create_task', config: { title: 'Follow up', assignedUserId: actor.id } }], ...extra,
+    actions: [{ type: 'create_task', config: { title: 'Follow up', assignedUserId: taskOwner.id } }], ...extra,
   }));
   const runs = (id: string) => scope(() => workflows.getWorkflowExecutions(id, tenantId));
   const newDeal = (extra = {}) => scope(() => prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id,
@@ -33,6 +38,9 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Workflow polish', slug: `polish-${randomUUID()}`, status: 'ACTIVE' } })).id;
     actor = await prisma.user.create({ data: { tenantId, role: 'Client Admin', email: `polish-${randomUUID()}@camxian.com`, firstName: 'Test', lastName: 'Agent', emailVerified: new Date(), mustChangePassword: false } });
+    const taskRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task staff', permissions: { create: { module: 'tasks', canView: true } } } });
+    taskOwner = await prisma.user.create({ data: { tenantId, role: 'Task staff', email: `task-${randomUUID()}@camxian.com`, firstName: 'Task', lastName: 'Staff',
+      userRoles: { create: { roleId: taskRole.id } } } });
     await scope(async () => {
       account = await prisma.account.create({ data: { tenantId, name: 'Workflow account', assignedUserId: actor.id, tags: [], activeProducts: [], productInterests: [] } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Lead', lastName: 'Test', email: 'lead@example.test', phone: '+639171234567', assignedUserId: actor.id, productInterest: [] } });
@@ -174,7 +182,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
       ['account.updated', () => updateCompany(account.id, tenantId, actor.id, { notes: 'Changed account' })],
       ['deal.updated', () => updateDeal(deal.id, tenantId, actor.id, { title: 'Changed deal' })],
     ] as const) {
-      const workflow = await create({ trigger, actions:[{type:'create_task',config:{title:'Follow up',assignedUserId:actor.id,dealId:deal.id}}] });
+      const workflow = await create({ trigger, actions:[{type:'create_task',config:{title:'Follow up',assignedUserId:taskOwner.id,dealId:deal.id}}] });
       await scope(edit); await scope(edit);
       expect(await runs(workflow.id), trigger).toHaveLength(1);
       expect((await runs(workflow.id))[0].status, trigger).toBe('completed');
@@ -232,7 +240,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     const event = { tenantId, actorId: actor.id, eventId: randomUUID(), triggerType: 'lead.updated', entityType: 'lead', entityId: lead.id, context: { 'event.changedFields': ['address'] } };
     await scope(() => fireWorkflowTrigger(event)); await scope(() => fireWorkflowTrigger(event));
     expect(sendSms).toHaveBeenCalledTimes(1); expect((await runs(workflow.id))[0].status).toBe('completed');
-    expect(sendSms).toHaveBeenCalledWith('+639171234567', 'Hello Lead');
+    expect(sendSms).toHaveBeenCalledWith('+639171234567', 'Hello Lead', { beforeProviderWrite: expect.any(Function) });
     await scope(() => updateLead(lead.id, tenantId, actor.id, { phone: '' }));
     expect(sendSms).toHaveBeenCalledTimes(1); expect((await runs(workflow.id))[0].status).toBe('failed');
   });
@@ -240,7 +248,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     const deal = await newDeal();
     const workflow = await create({ trigger: 'deal.updated', actions: [{ type: 'send_sms', config: { recipient: 'primary_contact', message: 'Hello {{first_name}}' } }] });
     await scope(() => updateDeal(deal.id, tenantId, actor.id, { title: 'SMS recipient test' }));
-    expect(sendSms).toHaveBeenCalledWith('+639181234567', 'Hello Contact');
+    expect(sendSms).toHaveBeenCalledWith('+639181234567', 'Hello Contact', { beforeProviderWrite: expect.any(Function) });
     expect((await runs(workflow.id))[0].status).toBe('completed');
   });
   it('preserves retired steps in drafts but refuses activation until they are disabled or removed', async () => {

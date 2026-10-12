@@ -18,23 +18,24 @@ import * as fc from 'fast-check';
 // ─────────────────────────────────────────────────────
 
 vi.mock('../../../../config/database.config', () => {
-  return {
-    default: {
-      deal: {
-        findFirst: vi.fn(),
-        update: vi.fn(),
-      },
-      user: {
-        findFirst: vi.fn(),
-      },
-      stage: {
-        findFirst: vi.fn(),
-      },
-      dealStageHistory: {
-        create: vi.fn(),
-      },
+  const client = {
+    deal: {
+      findFirst: vi.fn(),
+      update: vi.fn(),
     },
+    user: {
+      findFirst: vi.fn(),
+    },
+    stage: {
+      findFirst: vi.fn(),
+    },
+    dealStageHistory: {
+      create: vi.fn(),
+    },
+    $transaction: vi.fn(),
   };
+  client.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => work(client));
+  return { default: client };
 });
 
 vi.mock('../../../../core/audit/audit.service', () => {
@@ -47,7 +48,10 @@ import prisma from '../../../../config/database.config';
 import { writeAuditLog } from '../../../../core/audit/audit.service';
 import { bulkArchive, bulkReassign, bulkStageChange } from '../bulk-deals.service';
 import { moveDealStage } from '../deals.service';
+import { fireDealUpdated } from '../../../automation/triggers/triggers.service';
+import { salesContext } from '../../leads/sales-context';
 vi.mock('../deals.service', () => ({ moveDealStage: vi.fn().mockResolvedValue({}) }));
+vi.mock('../../../automation/triggers/triggers.service', () => ({ fireDealUpdated: vi.fn().mockResolvedValue(undefined) }));
 
 // ─────────────────────────────────────────────────────
 // GENERATORS
@@ -94,6 +98,7 @@ function setupFindFirstMock(records: DealIdRecord[]): void {
   const ownedIds = new Set(records.filter((r) => r.isOwnedByTenant).map((r) => r.id));
 
   vi.mocked(prisma.deal.findFirst).mockImplementation(((args: { where: { id: string; tenantId: string } }) => {
+    expect(args.where.tenantId).toBe(TENANT_ID);
     const dealId = args.where.id;
     if (ownedIds.has(dealId)) {
       return Promise.resolve({
@@ -217,6 +222,25 @@ describe('Feature: deals-module-modernization, Property 7: Bulk Tenant Isolation
     // Mock target user found in tenant
     vi.mocked(prisma.user.findFirst).mockResolvedValue({ id: 'user-target', tenantId: TENANT_ID } as never);
     vi.mocked(prisma.deal.update).mockResolvedValue({} as never);
+  });
+
+  it('keeps the scoped write, audit and event in the same sales transaction', async () => {
+    setupFindFirstMock([{ id: 'owned', isOwnedByTenant: true }]);
+    vi.mocked(prisma.deal.update).mockImplementation(async ({ where, data }) => {
+      expect(salesContext.getStore()).toBe(prisma);
+      expect(where).toMatchObject({ id: 'owned', tenantId: TENANT_ID });
+      return { id: 'owned', tenantId: TENANT_ID, assignedUserId: data.assignedUserId } as never;
+    });
+    vi.mocked(writeAuditLog).mockImplementation(async () => { expect(salesContext.getStore()).toBe(prisma); });
+    vi.mocked(fireDealUpdated).mockImplementation(async event => {
+      expect(salesContext.getStore()).toBe(prisma);
+      expect(event).toMatchObject({ tenantId: TENANT_ID, actorId: USER_ID, record: { id: 'owned', assignedUserId: 'user-target' }, changedFields: ['assignedUserId'] });
+    });
+    const result = await bulkReassign(TENANT_ID, USER_ID, { dealIds: ['owned', 'foreign'], assignedUserId: 'user-target' });
+    expect(result).toMatchObject({ succeeded: 1, failed: 1, errors: [{ id: 'foreign', reason: 'Not found' }] });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(2);
+    expect(writeAuditLog).toHaveBeenCalledTimes(1); expect(fireDealUpdated).toHaveBeenCalledTimes(1);
+    expect(salesContext.getStore()).toBeUndefined();
   });
 
   it('only reassigns tenant-owned deals; non-tenant deals are silently skipped', async () => {

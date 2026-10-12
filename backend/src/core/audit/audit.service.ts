@@ -1,4 +1,5 @@
 import prisma from '../../config/database.config';
+import { salesContext } from '../../modules/crm/leads/sales-context';
 
 export interface AuditParams {
   tenantId:   string;
@@ -17,8 +18,8 @@ export interface AuditParams {
 
 /**
  * Write a single audit log entry.
- * Fire-and-forget — does NOT throw if the write fails
- * (audit failure must never block the primary operation).
+ * CRM transaction audit entries commit with their source and propagate failures.
+ * Standalone audit callers retain best-effort logging.
  */
 export async function writeAuditLog(params: AuditParams): Promise<void> {
   const changeset =
@@ -27,7 +28,7 @@ export async function writeAuditLog(params: AuditParams): Promise<void> {
       : undefined;
 
   try {
-    await prisma.auditLog.create({
+    await (salesContext.getStore() ?? prisma).auditLog.create({
       data: {
         tenantId:   params.tenantId,
         userId:     params.userId,
@@ -43,6 +44,7 @@ export async function writeAuditLog(params: AuditParams): Promise<void> {
       },
     });
   } catch (err) {
+    if (salesContext.getStore()) throw err;
     // Log internally but never surface to caller
     console.error('[AuditLog] Failed to write audit entry:', err);
   }

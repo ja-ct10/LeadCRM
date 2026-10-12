@@ -14,7 +14,7 @@ import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content
 import { mailboxPermissions } from '../../../integrations/gmail/mailbox-sync.service';
 import { assertMailboxCustomerPermission, assertMailboxRecipients } from '../../../integrations/gmail/mailbox-recipient-access';
 import { authorizedMailbox } from '../../../integrations/gmail/mailbox-store';
-import { mailboxAddress } from '../../../integrations/gmail/mailbox-scope';
+import { mailboxAddress, projectMailboxScope } from '../../../integrations/gmail/mailbox-scope';
 
 export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   const matches = (['lead', 'contact', 'deal', 'account'] as const).filter(entity => typeof context[`${entity}.id`] === 'string');
@@ -108,9 +108,7 @@ export async function validateEmail(action: WorkflowAction, entity: WorkflowEnti
     if (context[`${entity}.assignedUserId`] !== senderUserId) throw new ValidationError('The selected sender must be assigned to the email recipient. Add an earlier owner assignment or choose the assigned sender.');
     const { account, scope, permissions } = await authorizedMailbox(tenantId, senderUserId);
     const email = mailboxAddress(String(context[`${entity}.email`]))!;
-    const projectedScope = { ...scope, addresses: [...new Set([...scope.addresses, email])],
-      leadIds: entity === 'lead' ? [...new Set([...scope.leadIds, record.id])] : scope.leadIds,
-      contactIds: entity === 'contact' ? [...new Set([...scope.contactIds, record.id])] : scope.contactIds };
+    const projectedScope = projectMailboxScope(scope, permissions, { type: entity as 'lead' | 'contact', id: record.id, email, assignedUserId: senderUserId });
     await assertMailboxRecipients(account, projectedScope, permissions, [email], '', { type: entity as 'lead' | 'contact', id: record.id, email });
   }
 }

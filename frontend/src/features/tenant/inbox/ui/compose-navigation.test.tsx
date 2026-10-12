@@ -61,7 +61,8 @@ it.each(['Electric Fence', 'Laptop/Server/Data Cabinets', 'Access & Alarm + Secu
   expect(window.location.search).toBe('');
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
-  expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('');
+  expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('Updated inquiry');
+  expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('customer+sales@example.test');
   view.unmount(); render(<InboxPage />);
   await screen.findByRole('button', { name: 'Compose new email' });
   expect(screen.queryByLabelText('To')).toBeNull();

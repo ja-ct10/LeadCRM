@@ -19,6 +19,7 @@ describe.skipIf(!disposable)(
       otherTenantId: string,
       actor: any,
       owner: any,
+      replacementOwner: any,
       outsider: any,
       lead: any,
       contact: any,
@@ -89,7 +90,11 @@ describe.skipIf(!disposable)(
           },
         });
       actor = await user("actor");
-      owner = await user("owner");
+      owner = await user("owner", tenantId, "Task staff");
+      replacementOwner = await user("replacement", tenantId, "Task staff");
+      const taskStaffRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Task staff',
+        permissions: { create: { module: 'tasks', canView: true } } } });
+      await prisma.userRole.createMany({ data: [owner.id, replacementOwner.id].map(userId => ({ tenantId, userId, roleId: taskStaffRole.id })) });
       outsider = await user("outsider", otherTenantId);
       token = (await issueAuthSession(actor)).token;
       for (const [name, module] of [
@@ -382,6 +387,7 @@ describe.skipIf(!disposable)(
         expect((await call('/operations/tasks', 'POST', { ...draft('Invalid reference'), dealIds: [deal.id, id] })).status).toBe(404);
       }
       expect((await call('/operations/tasks', 'POST', { ...draft('Invalid reference'), assignedUserId: outsider.id })).status).toBe(404);
+      expect((await call('/operations/tasks', 'POST', { ...draft('Invalid reference'), assignedUserId: actor.id })).status).toBe(404);
       expect(await prisma.task.count({ where: { tenantId, title: 'Invalid reference' } })).toBe(0);
       expect(await prisma.auditLog.count({ where: { tenantId, action: 'task.created', changeset: { path: ['after', 'title'], equals: 'Invalid reference' } } })).toBe(0);
     });
@@ -389,7 +395,7 @@ describe.skipIf(!disposable)(
     it('commits actor, creator, assignment, completion, reschedule, archive and restore history once', async () => {
       const task = await create('Lifecycle');
       expect(task).toMatchObject({ createdById: actor.id, assignedUserId: owner.id, assignedById: actor.id });
-      await call(`/operations/tasks/${task.id}`, 'PUT', { assignedUserId: actor.id, dueDate: '2031-01-01T09:00:00Z' });
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { assignedUserId: replacementOwner.id, dueDate: '2031-01-01T09:00:00Z' })).status).toBe(200);
       const completed = await call(`/operations/tasks/${task.id}/complete`, 'PATCH');
       await call(`/operations/tasks/${task.id}/complete`, 'PATCH');
       expect(completed.body.data).toMatchObject({ completedById: actor.id, createdById: actor.id });

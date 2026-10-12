@@ -6,9 +6,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useReducedMotion } from 'motion/react';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
-import { SendMailboxEmailSchema } from '@leadcrm/shared';
+import { SendMailboxEmailSchema, type MailboxComposeMode } from '@leadcrm/shared';
 import { toast } from 'sonner';
-import { associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft } from '../services/gmail.service';
+import { associateThreadDeal, sendGmailEmail, saveGmailDraft, scheduleGmailEmail, deleteGmailDraft, fetchGmailThread, type GmailEmail } from '../services/gmail.service';
 import EmojiPicker from './emoji-picker';
 import { safeMailboxHtml } from '../services/email-html';
 import type { MailboxComposeDraft } from '../services/email-presentation';
@@ -22,11 +22,12 @@ interface ComposeModalProps {
   onClose: () => void;
   onSent: () => void;
   initialDraft?: MailboxComposeDraft | null;
+  authorizationRevision?: number;
   retryAt?: number;
   onDealLinkResult?: (link: { threadId: string; sourceDealId: string }, linked: boolean) => void;
 }
 
-export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, retryAt = 0, onDealLinkResult }: ComposeModalProps): React.ReactElement | null {
+export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, authorizationRevision = 0, retryAt = 0, onDealLinkResult }: ComposeModalProps): React.ReactElement | null {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
   const [sentLink, setSentLink] = useState<{ threadId: string; sourceDealId: string } | null>(null);
@@ -45,14 +46,23 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   const [showScheduleMenu, setShowScheduleMenu] = useState(false);
   const scheduleRequest = useRef<{ key: string; id: string } | null>(null);
   const sendRequest = useRef<{ key: string; id: string } | null>(null);
+  const draftRequest = useRef<{ key: string; id: string } | null>(null);
   const mutationPending = useRef(false);
   const [currentDraftId, setCurrentDraftId] = useState<string | undefined>(undefined);
+  const [composeMode, setComposeMode] = useState<MailboxComposeMode | ''>('compose');
+  const [sourceMessageId, setSourceMessageId] = useState('');
+  const [sourceOptions, setSourceOptions] = useState<GmailEmail[]>([]);
+  const [sourceLoading, setSourceLoading] = useState(false);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [draftSaved, setDraftSaved] = useState(false);
   const shouldReduceMotion = useReducedMotion();
   const toInputRef = useRef<HTMLInputElement>(null);
   const editorRef = useRef<HTMLDivElement>(null);
   const minimizedBody = useRef('');
+  const retainedComposer = useRef<{ to: string; subject: string; body: string } | null>(null);
+  const lastAuthorizationRevision = useRef(authorizationRevision);
+  const operationGeneration = useRef(0);
+  const authoredContent = useRef(false);
   const emojiRef = useRef<HTMLDivElement>(null);
   const linkRef = useRef<HTMLDivElement>(null);
   const moreRef = useRef<HTMLDivElement>(null);
@@ -62,7 +72,40 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   const compact = useMediaQuery('(max-width: 767px)');
   const modal = isOpen && !isMinimized && (compact || isFullscreen);
   useFocusMode(isOpen && !isMinimized && isFullscreen);
-  useModalInteraction({ open: modal, panelRef, owner, onClose: () => { if (!mutationPending.current) { resetForm(); onClose(); } } });
+  const closeComposer = () => {
+    if (mutationPending.current) return;
+    // Keep independently authored work in this actor's mounted Inbox. Source drafts remain provider-owned.
+    if (!currentDraftId && !initialDraft?.draftId && !initialDraft?.replyToMessageId && !initialDraft?.forwardSourceMessageId && !initialDraft?.sourceDealId) {
+      const body = getEditorContent() || minimizedBody.current;
+      retainedComposer.current = authoredContent.current || (editorRef.current?.textContent ?? '').trim() ? { to, subject, body } : null;
+    }
+    onClose();
+  };
+  useModalInteraction({ open: modal, panelRef, owner, onClose: closeComposer });
+
+  useEffect(() => {
+    if (lastAuthorizationRevision.current === authorizationRevision) return;
+    lastAuthorizationRevision.current = authorizationRevision;
+    operationGeneration.current++;
+    if (currentDraftId || initialDraft?.draftId || initialDraft?.replyToMessageId || initialDraft?.forwardSourceMessageId || initialDraft?.sourceDealId) {
+      retainedComposer.current = null; minimizedBody.current = '';
+      scheduleRequest.current = null; sendRequest.current = null; draftRequest.current = null;
+      setTo(''); setSubject(''); setCurrentDraftId(undefined); setSentLink(null); setError(null);
+      if (editorRef.current) editorRef.current.innerHTML = '';
+      onClose();
+    }
+  }, [authorizationRevision, currentDraftId, initialDraft, onClose]);
+
+  useEffect(() => {
+    if (!isOpen || !initialDraft?.draftContextRequired || !initialDraft.draftThreadId) return;
+    const controller = new AbortController(), generation = operationGeneration.current;
+    setSourceOptions([]); setSourceLoading(true);
+    void fetchGmailThread(initialDraft.draftThreadId, controller.signal).then(result => {
+      if (!controller.signal.aborted && generation === operationGeneration.current) setSourceOptions(result.emails.filter(email => !email.labels.includes('DRAFT')));
+    }).catch(() => { if (!controller.signal.aborted && generation === operationGeneration.current) setError('Original messages are unavailable. Refresh your Inbox to check current access.'); })
+      .finally(() => { if (!controller.signal.aborted && generation === operationGeneration.current) setSourceLoading(false); });
+    return () => controller.abort();
+  }, [isOpen, initialDraft, authorizationRevision]);
 
   useEffect(() => {
     if (!pauseUntil) return;
@@ -77,19 +120,22 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
     }
   }, [isOpen, isMinimized]);
 
-  // Every new compose starts with its explicit draft or an empty recipient.
+  // An explicit source takes precedence over independently authored, unsaved work.
   useEffect(() => {
     if (isOpen) {
-      setError(null); setShowScheduleMenu(false); scheduleRequest.current = null; sendRequest.current = null;
+      const restored = initialDraft ?? retainedComposer.current;
+      authoredContent.current = !initialDraft && !!retainedComposer.current;
+      setError(null); setShowScheduleMenu(false);
+      if (initialDraft || !retainedComposer.current) { scheduleRequest.current = null; sendRequest.current = null; draftRequest.current = null; }
       setSentLink(null);
-      setTo(initialDraft?.to ?? '');
-      setSubject(initialDraft?.subject ?? '');
+      setTo(restored?.to ?? '');
+      setSubject(restored?.subject ?? '');
       setCurrentDraftId(initialDraft?.draftId);
-      // Set body content in the editor after a short delay to ensure ref is mounted
-      const timer = setTimeout(() => {
-        if (editorRef.current) editorRef.current.innerHTML = safeMailboxHtml(initialDraft?.body ?? '');
-      }, 50);
-      return () => clearTimeout(timer);
+      setComposeMode(initialDraft?.draftContextRequired ? '' : initialDraft?.composeMode ?? (initialDraft?.replyToMessageId ? 'reply' : initialDraft?.forwardSourceMessageId ? 'forward' : 'compose'));
+      setSourceMessageId(initialDraft?.replyToMessageId ?? initialDraft?.forwardSourceMessageId ?? '');
+      // Refs are mounted before effects; delayed initialization could overwrite newly typed content.
+      if (editorRef.current) editorRef.current.innerHTML = safeMailboxHtml(restored?.body ?? '');
+      else minimizedBody.current = safeMailboxHtml(restored?.body ?? '');
     }
   }, [isOpen, initialDraft]);
 
@@ -144,18 +190,27 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   const getEditorContent = (): string => {
     return safeMailboxHtml(editorRef.current?.innerHTML ?? '');
   };
+  const sourceContext = { composeMode: composeMode || undefined,
+    replyToMessageId: composeMode === 'reply' || composeMode === 'replyAll' ? sourceMessageId || undefined : undefined,
+    forwardSourceMessageId: composeMode === 'forward' ? sourceMessageId || undefined : undefined };
+  const sourceRequired = !!initialDraft?.draftContextRequired && (!composeMode || !sourceOptions.some(email => email.id === sourceMessageId));
   const actionFailed = (error: unknown, fallback: string) => {
-    setError(error instanceof Error ? error.message : fallback);
     const request = error as ApiRequestError;
+    if (([401, 403, 404].includes(request.status ?? 0) || request.code === 'MAILBOX_SCOPE_CHANGED') && (currentDraftId || sourceMessageId || initialDraft?.sourceDealId)) {
+      operationGeneration.current++; resetForm(); onClose(); return;
+    }
+    setError(error instanceof Error ? error.message : fallback);
     setActionRetryAt(Date.parse(request.retryAt ?? '') || (request.status === 429 ? Date.now() + 60000 : 0));
   };
 
   const handleSend = async (scheduledAt?: string): Promise<void> => {
     if (mutationPending.current || paused) return;
+    if (sourceRequired) { setError('Choose the original authorized message and its action before continuing.'); return; }
     if (sentLink) {
       mutationPending.current = true; setIsSending(true);
-      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId); onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal'); }
-      catch { setError('Email sent, but linking to the Deal failed.'); }
+      const generation = operationGeneration.current;
+      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId); if (generation !== operationGeneration.current) return; onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal'); }
+      catch { if (generation === operationGeneration.current) setError('Email sent, but linking to the Deal failed.'); }
       finally { mutationPending.current = false; setIsSending(false); }
       return;
     }
@@ -180,25 +235,28 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
       return;
     }
 
-    const parsed = SendMailboxEmailSchema.safeParse({ to: recipients, subject: subject.trim() || '(no subject)', body: htmlBody, replyToMessageId: initialDraft?.replyToMessageId });
+    const parsed = SendMailboxEmailSchema.omit({ requestId: true }).safeParse({ to: recipients, subject: subject.trim() || '(no subject)', body: htmlBody, ...sourceContext });
     if (!parsed.success) { setError(parsed.error.issues[0].message); return; }
     mutationPending.current = true; setIsSending(true);
     setError(null);
+    const generation = operationGeneration.current;
 
     try {
       if (scheduledAt) {
-        const payload = { to: recipients, subject: subject.trim() || '(no subject)', body: htmlBody, scheduledAt, draftId: currentDraftId, replyToMessageId: initialDraft?.replyToMessageId, forwardSourceMessageId: initialDraft?.forwardSourceMessageId };
+        const payload = { to: recipients, subject: subject.trim() || '(no subject)', body: htmlBody, scheduledAt, draftId: currentDraftId, ...sourceContext };
         const key = JSON.stringify(payload);
         if (scheduleRequest.current?.key !== key) scheduleRequest.current = { key, id: crypto.randomUUID() };
         await scheduleGmailEmail({ ...payload, requestId: scheduleRequest.current.id });
+        if (generation !== operationGeneration.current) return;
       } else {
-        const key = JSON.stringify([recipients, subject, htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId]);
+        const key = JSON.stringify([recipients, subject, htmlBody, currentDraftId, sourceContext]);
         if (sendRequest.current?.key !== key) sendRequest.current = { key, id: crypto.randomUUID() };
-        const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, initialDraft?.replyToMessageId, currentDraftId, initialDraft?.forwardSourceMessageId, sendRequest.current.id);
+        const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, sourceContext.replyToMessageId, currentDraftId, sourceContext.forwardSourceMessageId, sendRequest.current.id, sourceContext.composeMode);
+        if (generation !== operationGeneration.current) return;
         if (initialDraft?.sourceDealId) {
           const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId };
-          try { await associateThreadDeal(link.threadId, link.sourceDealId); onDealLinkResult?.(link, true); }
-          catch { setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent'); return; }
+          try { await associateThreadDeal(link.threadId, link.sourceDealId); if (generation !== operationGeneration.current) return; onDealLinkResult?.(link, true); }
+          catch { if (generation !== operationGeneration.current) return; setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent'); return; }
         }
         toast.success('Email sent');
       }
@@ -206,13 +264,14 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
       onSent();
       onClose();
     } catch (err) {
-      actionFailed(err, 'Failed to send email');
+      if (generation === operationGeneration.current) actionFailed(err, 'Failed to send email');
     } finally {
       mutationPending.current = false; setIsSending(false);
     }
   };
 
   const resetForm = (): void => {
+    retainedComposer.current = null;
     setTo('');
     setSubject('');
     setError(null);
@@ -231,20 +290,25 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
 
   const handleSaveDraft = async (): Promise<void> => {
     if (mutationPending.current || paused || sentLink) return;
+    if (sourceRequired) { setError('Choose the original authorized message and its action before continuing.'); return; }
     const htmlBody = getEditorContent();
     if (!to.trim() && !subject.trim() && !htmlBody.trim()) {
       return; // Nothing to save
     }
 
     mutationPending.current = true; setIsSavingDraft(true);
+    const generation = operationGeneration.current;
     try {
-      const result = await saveGmailDraft(to.trim(), subject.trim(), htmlBody, currentDraftId, initialDraft?.replyToMessageId, initialDraft?.forwardSourceMessageId);
+      const key = JSON.stringify([to.trim(), subject.trim(), htmlBody, currentDraftId, sourceContext]);
+      if (draftRequest.current?.key !== key) draftRequest.current = { key, id: crypto.randomUUID() };
+      const result = await saveGmailDraft(to.trim(), subject.trim(), htmlBody, currentDraftId, sourceContext.replyToMessageId, sourceContext.forwardSourceMessageId, draftRequest.current.id, sourceContext.composeMode);
+      if (generation !== operationGeneration.current) return;
       setCurrentDraftId(result.draftId);
       setDraftSaved(true);
       // Reset saved indicator after 3 seconds
       setTimeout(() => setDraftSaved(false), 3000);
     } catch (error) {
-      actionFailed(error, 'Draft was not saved.');
+      if (generation === operationGeneration.current) actionFailed(error, 'Draft was not saved.');
     } finally {
       mutationPending.current = false; setIsSavingDraft(false);
     }
@@ -253,8 +317,9 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
   const handleDiscard = async (): Promise<void> => {
     if (mutationPending.current || currentDraftId && paused) return;
     mutationPending.current = true;
-    try { if (currentDraftId) await deleteGmailDraft(currentDraftId); resetForm(); onSent(); onClose(); }
-    catch (error) { actionFailed(error, 'Draft could not be deleted.'); }
+    const generation = operationGeneration.current;
+    try { if (currentDraftId) await deleteGmailDraft(currentDraftId); if (generation !== operationGeneration.current) return; resetForm(); onSent(); onClose(); }
+    catch (error) { if (generation === operationGeneration.current) actionFailed(error, 'Draft could not be deleted.'); }
     finally { mutationPending.current = false; }
   };
 
@@ -310,7 +375,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
               <Maximize2 className="w-3.5 h-3.5" />
             </button>
             <button
-              onClick={() => { if (!mutationPending.current) { resetForm(); onClose(); } }}
+              onClick={closeComposer}
               className="p-1.5 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
               aria-label="Close"
             >
@@ -336,7 +401,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
       role="dialog"
       aria-modal={modal ? true : undefined}
       aria-label="Compose email"
-      onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); if (showEmojiPicker || showLinkInput || showMoreMenu || showScheduleMenu) { setShowEmojiPicker(false); setShowLinkInput(false); setShowMoreMenu(false); setShowScheduleMenu(false); } else if (!mutationPending.current) { resetForm(); onClose(); } } }}
+      onKeyDown={event => { if (event.key === 'Escape') { event.stopPropagation(); if (showEmojiPicker || showLinkInput || showMoreMenu || showScheduleMenu) { setShowEmojiPicker(false); setShowLinkInput(false); setShowMoreMenu(false); setShowScheduleMenu(false); } else closeComposer(); } }}
     >
       {/* Title Bar */}
       <div className="flex items-center justify-between px-4 py-2.5 bg-slate-800 dark:bg-slate-800 rounded-t-xl shrink-0">
@@ -359,7 +424,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             <Maximize2 className="w-3.5 h-3.5" />
           </button>
           <button
-            onClick={() => { if (!mutationPending.current) { resetForm(); onClose(); } }}
+            onClick={closeComposer}
             className="p-1.5 text-slate-400 hover:text-white rounded transition-colors cursor-pointer"
             aria-label="Close"
           >
@@ -382,6 +447,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
             readOnly={!!sentLink || !!initialDraft?.sourceDealId}
             value={to}
             onChange={(e) => {
+              authoredContent.current = true;
               setTo(e.target.value);
               setError(null);
               // Clear error if user is typing a valid email
@@ -413,11 +479,24 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
           type="text"
           readOnly={!!sentLink}
           value={subject}
-          onChange={(e) => setSubject(e.target.value)}
+          onChange={(e) => { authoredContent.current = true; setSubject(e.target.value); }}
           placeholder="Subject"
           className="min-w-0 flex-1 py-2.5 text-[13px] text-slate-900 dark:text-white bg-transparent placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
         />
       </div>
+
+      {initialDraft?.draftContextRequired && <div className="space-y-2 border-b border-gray-100 px-4 py-2 text-xs dark:border-white/[0.05]">
+        <p>This older draft needs its original message and action selected before delivery.</p>
+        <div className="flex flex-wrap gap-2">
+          <select aria-label="Draft action" value={composeMode} disabled={sourceLoading || isSending || isSavingDraft} onChange={event => setComposeMode(event.target.value as MailboxComposeMode | '')} className="min-h-9 rounded border border-border bg-background px-2">
+            <option value="">Choose action</option><option value="reply">Reply</option><option value="replyAll">Reply All</option><option value="forward">Forward</option>
+          </select>
+          <select aria-label="Original message for draft" value={sourceMessageId} disabled={sourceLoading || isSending || isSavingDraft} onChange={event => setSourceMessageId(event.target.value)} className="min-h-9 min-w-0 flex-1 rounded border border-border bg-background px-2">
+            <option value="">{sourceLoading ? 'Loading authorized messages…' : 'Choose original message'}</option>
+            {sourceOptions.map(email => <option key={email.id} value={email.id}>{email.subject || '(no subject)'} · {email.from} · {new Date(email.date).toLocaleString()}</option>)}
+          </select>
+        </div>
+      </div>}
 
       {/* Rich Text Body Editor */}
       <div className="flex-1 overflow-hidden flex flex-col">
@@ -427,6 +506,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
           role="textbox"
           aria-label="Email body"
           aria-multiline="true"
+          onInput={() => { authoredContent.current = true; }}
           onKeyUp={updateActiveFormats}
           onMouseUp={updateActiveFormats}
           onPaste={event => { event.preventDefault(); const html = event.clipboardData.getData('text/html'); document.execCommand(html ? 'insertHTML' : 'insertText', false, html ? safeMailboxHtml(html) : event.clipboardData.getData('text/plain')); }}
@@ -451,7 +531,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
           <div className="flex items-center" ref={scheduleRef}>
             <button
               onClick={() => void handleSend()}
-              disabled={isSending || isSavingDraft || paused}
+              disabled={isSending || isSavingDraft || paused || sourceRequired}
               className="inline-flex items-center gap-2 h-9 px-4 rounded-l-full bg-primary hover:bg-primary/90 disabled:opacity-60 disabled:cursor-not-allowed text-white text-[13px] font-medium active:scale-95 transition-all cursor-pointer"
               aria-label={sentLink ? "Retry deal link" : "Send email"}
             >
@@ -463,7 +543,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
               <span>{isSending ? (sentLink ? 'Linking…' : 'Sending...') : sentLink ? 'Retry deal link' : 'Send'}</span>
             </button>
             <button
-              disabled={isSending || isSavingDraft || paused || !!initialDraft?.sourceDealId || !!sentLink}
+              disabled={isSending || isSavingDraft || paused || sourceRequired || !!initialDraft?.sourceDealId || !!sentLink}
               onClick={() => setShowScheduleMenu(value => !value)}
               aria-expanded={showScheduleMenu}
               title="Schedule send"
@@ -598,7 +678,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, re
           {/* Save Draft */}
           <button
             onClick={handleSaveDraft}
-            disabled={isSavingDraft || isSending || paused}
+            disabled={isSavingDraft || isSending || paused || sourceRequired}
             className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-50 transition-colors cursor-pointer"
             aria-label="Save as draft"
             title="Save as draft"

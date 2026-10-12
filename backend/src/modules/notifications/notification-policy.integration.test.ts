@@ -19,6 +19,8 @@ import { submitPublicForm } from '../marketing/forms/public-forms.service';
 import { ensureSalesGroup } from '../administration/groups/sales-group';
 import { createRole, updateRoleAndPermissions, replaceUserRole } from '../administration/roles/roles.repository';
 import { EMPTY_PERMISSION_FLAGS } from '@leadcrm/shared';
+import { MAILBOX_PARTICIPANT_POLICY_VERSION } from '../../integrations/gmail/mailbox-scope';
+import { tenantContext } from '../../core/tenant/tenant-context';
 
 vi.mock('../../shared/services/email.service', () => ({ sendMail: vi.fn().mockRejectedValue(Error('test-no-provider')) }));
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
@@ -89,7 +91,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await processEvents(); expect(await recipients(task.id)).toEqual([supportId]);
   });
   it('suppresses ordinary self-assignment, unchanged assignment and obsolete owners', async () => {
-    const created = await request('/crm/contacts', 'POST', { firstName: 'Self', lastName: 'Assigned', email: randomUUID() + '@example.test', assignedUserId: agentId });
+    const created = await request('/crm/contacts', 'POST', { requestId: randomUUID(), firstName: 'Self', lastName: 'Assigned', email: randomUUID() + '@example.test', assignedUserId: agentId });
     expect(created.status).toBe(201); await processEvents(); expect(await rows(created.body.data.id)).toHaveLength(0);
     const row = await contact();
     await prisma.contact.update({ where: { id: row.id }, data: { assignedUserId: otherId } });
@@ -130,7 +132,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
       await processEvents(); expect(await rows(row.id)).toHaveLength(count);
     }
   });
-  it('coalesces Qualified action and delivers the successful Won snapshot once to admin and owner', async () => {
+  it('coalesces Qualified action and delivers the successful Won snapshot once to admin and owner', () => tenantContext.run({ tenantId }, async () => {
     const customer = await lead(); const row = await deal();
     await prisma.leadDeal.create({ data: { tenantId, dealId: row.id, leadId: customer.id } });
     await moveDealStage(row.id, tenantId, stages.Contacted, adminId); await processEvents();
@@ -147,7 +149,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await recipients(row.id, 'closing_requirements_completed')).toEqual([]);
     await moveDealStage(row.id, tenantId, stages['Closed Won'], adminId); await processEvents();
     expect(await recipients(row.id, 'deal_won')).toHaveLength(2);
-  });
+  }));
   it('notifies successful Lost once, including an owner who acted, and suppresses failed or unchanged transitions', async () => {
     const row = await deal(); await processEvents();
     await expect(moveDealStage(row.id, tenantId, stages['Closed Lost'], agentId)).rejects.toThrow('reason');
@@ -239,7 +241,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const customer = await contact();
     const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: owner.email, scopes: [], accessToken: 'test-only', connectedAt: new Date(Date.now() - 60000) } });
     const data = { tenantId, accountId: account.id, threadId: 'authorized-thread', direction: 'inbound', from: customer.email!, fromAddress: customer.email!,
-      recipients: [owner.email], recipientAddresses: [owner.email], contactId: customer.id, subject: 'PRIVATE SUBJECT', body: 'PRIVATE BODY', snippet: 'PRIVATE PREVIEW', sentAt: new Date(), labels: ['INBOX'] };
+      recipients: [owner.email], recipientAddresses: [owner.email], authorizationParticipants: [customer.email!, owner.email].sort(), participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, contactId: customer.id, subject: 'PRIVATE SUBJECT', body: 'PRIVATE BODY', snippet: 'PRIVATE PREVIEW', sentAt: new Date(), labels: ['INBOX'] };
     await prisma.mailboxMessage.create({ data: { ...data, providerMessageId: 'initial-after-connect', rfcMessageId: 'initial-after-connect' } });
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncCursor: 'initialized' } });
     for (const label of ['SPAM', 'TRASH', 'DELETED', 'DRAFT']) await prisma.mailboxMessage.create({ data: { ...data, providerMessageId: label, rfcMessageId: label, labels: [label] } });

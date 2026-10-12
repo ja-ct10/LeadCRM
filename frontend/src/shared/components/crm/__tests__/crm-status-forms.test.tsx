@@ -50,7 +50,7 @@ it.each(CRM_STATUSES)('submits the New Lead side panel with %s and both selected
 });
 
 it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async status => {
-  const created = render(<ContactFormSheet isOpen onClose={() => {}} onSave={data => { void contactsV2Api.create(data); }} />);
+  const created = render(<ContactFormSheet isOpen onClose={() => {}} onSave={data => { void contactsV2Api.create({ ...data, requestId: '72d1f071-a18d-4722-9ed9-c7c63084c230' }); }} />);
   fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Testing' } });
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Contact' } });
   fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'contact@example.test' } });

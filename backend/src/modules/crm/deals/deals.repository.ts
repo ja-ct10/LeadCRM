@@ -1,3 +1,4 @@
+import { salesContext } from '../leads/sales-context';
 import { participantOrder, withDealParticipants } from './deal-participants';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { resolveProducts } from '../leads/lead-automation.service';
@@ -54,7 +55,7 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     : { createdAt: 'desc' };
 
   const [data, total] = await Promise.all([
-    prisma.deal.findMany({
+    (salesContext.getStore() ?? prisma).deal.findMany({
       where, skip, take: limit, orderBy,
       include: {
         stage:        true,
@@ -71,14 +72,14 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
         },
       },
     }),
-    prisma.deal.count({ where }),
+    (salesContext.getStore() ?? prisma).deal.count({ where }),
   ]);
 
   return { data: data.map(withDealParticipants), total, page, limit };
 }
 
 export async function findDealById(id: string, tenantId: string) {
-  const deal = await prisma.deal.findFirst({
+  const deal = await (salesContext.getStore() ?? prisma).deal.findFirst({
     where: { id, tenantId },
     include: {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
@@ -200,7 +201,7 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
   }
 
   // Re-fetch with includes so the response contains junction data for the frontend adapter
-  const updated = await prisma.deal.findFirst({
+  const updated = await (salesContext.getStore() ?? prisma).deal.findFirst({
     where: { id, tenantId },
     include: {
       stage:        { select: { id: true, name: true, isWon: true, isLost: true, color: true } },
@@ -342,7 +343,7 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
 
 export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {
   try {
-    return await prisma.deal.update({ where: { id, tenantId }, data: { isArchived: true, archiveReason: archiveReason ?? null } });
+    return await (salesContext.getStore() ?? prisma).deal.update({ where: { id, tenantId }, data: { isArchived: true, archiveReason: archiveReason ?? null } });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return null;
@@ -367,7 +368,7 @@ export async function findDealsGroupedByStage(
   const PAGE_SIZE = 20;
 
   // Get all stages for this pipeline, scoped to tenant
-  const stages = await prisma.stage.findMany({
+  const stages = await (salesContext.getStore() ?? prisma).stage.findMany({
     where: { pipelineId, tenantId },
     select: { id: true },
     orderBy: { order: 'asc' },
@@ -380,7 +381,7 @@ export async function findDealsGroupedByStage(
     const skip = (page - 1) * PAGE_SIZE;
 
     const [deals, total] = await Promise.all([
-      prisma.deal.findMany({
+      (salesContext.getStore() ?? prisma).deal.findMany({
         where: { tenantId, stageId: stage.id, pipelineId, isArchived: false },
         skip,
         take: PAGE_SIZE,
@@ -396,7 +397,7 @@ export async function findDealsGroupedByStage(
           },
         },
       }),
-      prisma.deal.count({
+      (salesContext.getStore() ?? prisma).deal.count({
         where: { tenantId, stageId: stage.id, pipelineId, isArchived: false },
       }),
     ]);

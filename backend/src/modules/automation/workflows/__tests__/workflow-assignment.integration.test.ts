@@ -51,6 +51,10 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
       groupId = (await prisma.tenantGroup.create({ data: { tenantId, name: 'Follow-up team' } })).id;
       await prisma.tenantGroupMember.createMany({ data: [actorId, taskUserId, salesUserId, secondSalesId].map(userId => ({ tenantId, groupId, userId })) });
       leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Lead', assignedUserId: actorId, productInterest: [] } })).id;
+      const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Assignment opportunities' } });
+      const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
+      await prisma.deal.create({ data: { tenantId, title: 'Assignment fixture opportunity', pipelineId: pipeline.id, stageId: stage.id,
+        assignedUserId: actorId, leadDeals: { create: { leadId, position: 0 } } } });
     });
     foreignGroupId = (await prisma.tenantGroup.create({ data: { tenantId: foreignTenant, name: 'Foreign team' } })).id;
     foreignRoleId = (await prisma.roleDefinition.create({ data: { tenantId: foreignTenant, name: 'Foreign role' } })).id;
@@ -116,6 +120,7 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     const firstId = (firstRun.steps[0].output as Prisma.JsonObject).resolvedUserId as string;
     const remainingId = firstId === salesUserId ? secondSalesId : salesUserId;
     if (actionType === 'assign_owner') await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: actorId } });
+    await prisma.task.updateMany({ where: { tenantId, assignedUserId: firstId, status: { notIn: ['completed', 'cancelled'] } }, data: { status: 'completed' } });
     await prisma.user.update({ where: { id: firstId }, data: { status: 'INACTIVE' } });
     const options = await scope(() => workflows.getOptions(tenantId, actorId));
     const option = (type === 'role' ? options.roles : options.groups).find(row => row.id === pool.id)!;
@@ -126,6 +131,7 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     await fire();
     expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: remainingId, candidateCount: 1 } }] });
     if (actionType === 'assign_owner') await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: actorId } });
+    await prisma.task.updateMany({ where: { tenantId, assignedUserId: remainingId, status: { notIn: ['completed', 'cancelled'] } }, data: { status: 'completed' } });
     await prisma.user.update({ where: { id: remainingId }, data: { status: 'INACTIVE' } });
     const beforeTasks = await prisma.task.count({ where: { tenantId } });
     const cursorKey = { tenantId, module: 'workflow-assignment', key: `${workflow.id}:0:${type}:${pool.id}` };
@@ -170,6 +176,7 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     await expect(create([task(target('group', empty.id))])).rejects.toThrow('no active members');
   });
   it('fails after membership loss, skips later actions, allows pausing, and leaves old Tasks unchanged', async () => {
+    await prisma.lead.update({ where: { id: leadId, tenantId }, data: { assignedUserId: salesUserId } });
     const group = await prisma.tenantGroup.create({ data: { tenantId, name: 'Changing team', members: { create: { userId: taskUserId } } } });
     const workflow = await create([task(target('group', group.id)), task()]);
     await fire();

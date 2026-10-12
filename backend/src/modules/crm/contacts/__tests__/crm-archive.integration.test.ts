@@ -306,14 +306,14 @@ describe.sequential('Settings archived-data aggregation and missing restore rout
 });
 it('supports Contact CRUD without retired properties and rejects them before any mutation or automatic Deal creation', async () => {
   const dealCount = await db.deal.count();
-  const created = await call('contacts', 'POST', adminCookie, {firstName:'Retirement',lastName:'CRUD',email:'retirement-crud@example.test',productInterests:[]});
+  const created = await call('contacts', 'POST', adminCookie, {requestId:randomUUID(),firstName:'Retirement',lastName:'CRUD',email:'retirement-crud@example.test',productInterests:[]});
   expect(created.status,JSON.stringify(created.body)).toBe(201);
   const id = created.body.data.id;
   expect(await db.deal.count()).toBe(dealCount);
   for (const field of retiredFields) {
     expect(created.body.data).not.toHaveProperty(field);
     expect((await call(`contacts/${id}`,'PUT',adminCookie,{[field]:null})).status).toBe(400);
-    expect((await call('contacts','POST',adminCookie,{firstName:'Invalid',lastName:'Retired',email:'invalid@example.test',[field]:null})).status).toBe(400);
+    expect((await call('contacts','POST',adminCookie,{requestId:randomUUID(),firstName:'Invalid',lastName:'Retired',email:'invalid@example.test',[field]:null})).status).toBe(400);
   }
   const since = new Date('2020-01-01T00:00:00Z');
   await db.contact.update({where:{id},data:{lifecycleStage:'CUSTOMER',customerSince:since,convertedAt:since}});

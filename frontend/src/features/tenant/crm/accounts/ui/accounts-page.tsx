@@ -280,7 +280,7 @@ export default function AccountsPage(): React.ReactElement {
           count: accounts.filter((a) => a.size === sz).length,
           isChecked: selectedTypes.includes(sz),
         })),
-        ...getAssignableAgents(users).slice(0, 5).map((u) => ({
+        ...getAssignableAgents(users, ['accounts']).slice(0, 5).map((u) => ({
           id: `owner:${u.id}`,
           label: `Owner: ${u.firstName} ${u.lastName}`,
           count: accounts.filter((a) => a.assignedUserId === u.id).length,

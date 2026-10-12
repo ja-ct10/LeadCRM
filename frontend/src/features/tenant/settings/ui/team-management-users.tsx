@@ -307,7 +307,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       >
         <dl className="grid grid-cols-2 gap-2 text-sm">{Object.entries(impact?.counts ?? {}).map(([label, count]) => <React.Fragment key={label}><dt className="capitalize">{label}</dt><dd className="text-right">{count}</dd></React.Fragment>)}</dl>
         {!!impact?.total && <div className="space-y-2"><label htmlFor="deactivation-agent" className="text-sm font-medium">Assigned Agent <span className="text-red-500">*</span></label>
-          <AssignedAgentSelect id="deactivation-agent" value={replacement} onChange={setReplacement} users={allUsers.filter(user => user.id !== reassignUser?.id)} placeholder="Select agent" className="w-full rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 py-2.5 pr-8 text-sm" />
+          <AssignedAgentSelect id="deactivation-agent" value={replacement} onChange={setReplacement} users={allUsers.filter(user => user.id !== reassignUser?.id)} modules={Object.entries(impact?.counts ?? {}).filter(([, count]) => count > 0).map(([module]) => module)} placeholder="Select agent" className="w-full rounded-xl border border-gray-200 dark:border-white/10 bg-white dark:bg-slate-900 px-3 py-2.5 pr-8 text-sm" />
         </div>}
       </ConfirmActionDialog>
       <ConfirmActionDialog

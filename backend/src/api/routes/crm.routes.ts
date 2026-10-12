@@ -173,6 +173,7 @@ router.put(   '/activities/:id', authorizeActivity,   validate(UpdateActivitySch
 router.delete('/activities/:id', authorizeActivity, activityController.deleteActivity);
 
 async function authorizeActivity(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
+  _res.setHeader('Cache-Control', 'no-store');
   try {
     const keys = { leadId: 'leads', contactId: 'contacts', accountId: 'accounts', dealId: 'deals', taskId: 'tasks' };
     const existing = req.params.id ? await activitiesService.getActivity(String(req.params.id), req.user!.tenantId) : {};

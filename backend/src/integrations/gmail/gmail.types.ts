@@ -14,6 +14,11 @@ export interface GmailTokens {
 
 export interface GmailEmail extends MailboxEmail {
   cc?: string[];
+  /** Internal authorization headers. Never expose hidden recipients to the UI. */
+  bcc?: string[];
+  replyToAddresses?: string[];
+  authorizationHeadersValid?: boolean;
+  crmDraft?: boolean;
   plainText?: string;
   rfcMessageId?: string;
   rfcReferences?: string[];

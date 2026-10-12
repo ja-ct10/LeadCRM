@@ -22,6 +22,7 @@ import { mailConfig } from '../../config/mail.config';
 import { validateImportRow } from '../../modules/crm/imports/import-rows.service';
 import { processBrevoEvent } from '../../modules/marketing/campaigns/brevo-webhook';
 import * as dealRepository from '../../modules/crm/deals/deals.repository';
+import { dispatchQueuedWorkflows } from '../../modules/automation/workflows/workflow-queue';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -102,6 +103,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await prisma.mailboxMessage.update({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: outbound.id } }, data: { dealId: c.deals[1].id } });
     const contact = await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Existing', lastName: 'Customer', email: `${randomUUID()}@example.test`, createdAt: before(180) } });
     await scope(() => salesTransaction(async tx => {
+      await tx.deal.update({ where: { id: c.deals[1].id }, data: { wonConfirmedAt: before(5) } });
       await tx.lead.update({ where: { id: c.lead.id }, data: { status: 'Closed', contactId: contact.id } });
       await convertClosedLead(tx, tenantId, c.lead.id, userId);
     }));
@@ -277,7 +279,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const contact = await prisma.contact.create({ data: { tenantId, assignedUserId: userId, firstName: 'Reply', lastName: 'Contact', email: `${randomUUID()}@example.test`, status: 'COLD' } });
     const reply = message(randomUUID(), contact.email!, 'inbound', 'Anything at all', 2);
     await ingest([reply]);
-    const owner = await prisma.user.create({ data: { tenantId, firstName: 'Second', lastName: 'Mailbox', email: `${randomUUID()}@camxian.com`, role: 'Client Admin' } });
+    const owner = await prisma.user.create({ data: { tenantId, firstName: 'Second', lastName: 'Mailbox', email: `${randomUUID()}@camxian.com`, role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     const second = await prisma.emailAccount.create({ data: { tenantId, userId: owner.id, email: owner.email, accessToken: encryptToken('test'), lastSyncAt: now, syncCursor: 'verified-history' } });
     await prisma.contact.update({ where: { id: contact.id }, data: { assignedUserId: owner.id } });
     await scope(() => ingestMailboxMessages(second, [{ ...message(reply.threadId, contact.email!, 'inbound', 'Older wording', 20), to: [second.email] }], permissions));
@@ -346,6 +348,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       expect(await prisma.closingFieldDefinition.count({ where: { tenantId } })).toBe(definitions);
       const reply = message(c.thread, c.email, 'inbound', 'Thanks', 0);
       await ingest([reply]); await ingest([reply]);
+      await scope(() => dispatchQueuedWorkflows());
       expect(await stageOf(c.deals[0].id)).toBe('Lead');
       expect(await prisma.workflowExecutionRun.findFirst({ where: { workflowId: workflow.id }, include: { steps: true } })).toMatchObject({ status: 'completed' });
       expect(await stageOf(c.deals[1].id)).toBe('Contacted');
@@ -548,7 +551,9 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       expect((await call('/administration/closing-requirements', 'GET', undefined, denied)).status).toBe(403);
       expect((await call(endpoint, 'PATCH', { values: { 'confirmation-type': 'Approved Quotation' } }, denied)).status).toBe(403);
       expect((await call(endpoint, 'GET', undefined, foreignToken)).status).toBe(404);
-      const document = { ...initial.find((f: { id: string }) => f.id === 'required-document') }; delete document.id; delete document.version; document.required = true;
+      const document = { ...initial.find((f: { id: string }) => f.id === 'required-document') };
+      for (const derived of ['id', 'version', 'technicalAlias', 'deletedAt', 'deletedById']) delete document[derived];
+      document.required = true;
       expect((await call('/administration/closing-requirements/required-document', 'PATCH', document)).status).toBe(200);
       expect((await call('/administration/closing-requirements/required-document', 'PATCH', { ...document, type: 'Text' })).status).toBe(400);
       expect((await call('/administration/closing-requirements', 'POST', { name: 'Count', type: 'Number', appliesTo: 'Closed Won Requirements', required: false })).status).toBe(200);
@@ -558,7 +563,9 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       const optionalFields = (await call('/administration/closing-requirements', 'POST', optionalInput)).body.data;
       const optionalId = optionalFields.id;
       expect((await call(endpoint, 'PATCH', { values: { [optionalId]: 'Old' } })).status).toBe(200);
-      expect((await call(`/administration/closing-requirements/${optionalId}`, 'PATCH', { ...optionalInput, options: ['New'] })).status).toBe(200);
+      const removedOption = await call(`/administration/closing-requirements/${optionalId}`, 'PATCH', { ...optionalInput, options: ['New'] });
+      expect(removedOption.status).toBe(400); expect(removedOption.body.error).toContain('option is used');
+      expect((await call(`/administration/closing-requirements/${optionalId}`, 'PATCH', { ...optionalInput, options: ['Old', 'New', 'Later'] })).status).toBe(200);
       expect((await call('/administration/closing-requirements', 'POST', { name: 'Invalid', type: 'Dropdown', appliesTo: 'Closed Won Requirements', required: false, options: ['Same', 'same'] })).status).toBe(400);
       expect((await call(endpoint, 'PATCH', { values: { 'confirmation-date': '2026-02-30' } })).status).toBe(400);
       expect((await call(endpoint, 'PATCH', { values: { 'confirmation-type': 'Fake' } })).status).toBe(400);

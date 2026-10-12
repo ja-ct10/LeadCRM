@@ -23,7 +23,8 @@ export const usersService = {
   deactivate: async (id: string, replacementAgentId: string | null) => {
     const res = await apiClient.post<ApiResponse<{ user: UserDTO; impact: DeactivationImpact }>>(`/administration/users/${id}/deactivate`, { replacementAgentId });
     if (!res.data) throw new Error('Unable to deactivate user.');
-    for (const module of ['leads', 'contacts', 'accounts', 'deals', 'users', 'dashboard']) invalidatePageCache(module, res.data.user.tenantId);
+    for (const module of ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'users', 'dashboard', 'reports', 'pipeline', 'activities',
+      'counts-leads', 'counts-contacts', 'counts-accounts', 'counts-deals']) invalidatePageCache(module, res.data.user.tenantId);
     window.dispatchEvent(new Event('leadcrm:users-changed'));
     return { user: userAdapter.toModel(res.data.user), impact: res.data.impact };
   },

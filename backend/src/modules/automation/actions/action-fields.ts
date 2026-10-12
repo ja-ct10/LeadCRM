@@ -7,7 +7,7 @@ import { UpdateContactSchema } from '../../crm/contacts/contacts.dto';
 import { UpdateClientContactSchema } from '../../crm/contacts-v2/contacts-v2.dto';
 import { UpdateCompanySchema } from '../../crm/companies/companies.dto';
 import { UpdateDealSchema } from '../../crm/deals/deals.dto';
-import { validateSalesOwner } from '../../crm/leads/lead-automation.service';
+import { assertEligibleAssignedAgent, crmAssignmentRequirements } from '../../crm/access/assigned-agent-eligibility';
 
 export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, incomplete = false): Promise<Record<string, unknown>> {
   const config = action.config;
@@ -67,9 +67,9 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
     if (entity !== 'lead' && field.field !== 'activeProductIds') input.productInterestOther = others ? String(config.otherDetails ?? '').trim() || null : null;
   } else if (config.otherDetails) throw new ValidationError('Additional interest details are only available for Product Interest.');
   const schema = entity === 'lead' ? UpdateContactSchema : entity === 'contact' ? UpdateClientContactSchema : entity === 'account' ? UpdateCompanySchema : UpdateDealSchema;
-  const parsed = schema.strict().safeParse(input);
+  const parsed = schema.safeParse(input);
   if (!parsed.success) throw new ValidationError(parsed.error.issues.map(issue => `${field.label}: ${issue.message}`).join(' '));
-  if (field.type === 'user' && value) await validateSalesOwner(prisma, tenantId, String(value));
+  if (field.type === 'user' && value) await assertEligibleAssignedAgent(prisma, tenantId, String(value), crmAssignmentRequirements(entity === 'lead' ? 'leads' : entity === 'contact' ? 'contacts' : entity === 'account' ? 'accounts' : 'deals'));
   if (field.type === 'account' && value && !await prisma.account.findFirst({ where: { id: String(value), tenantId, isArchived: false } })) throw new ValidationError('Account is unavailable in this workspace.');
   if (field.type === 'contacts' || field.type === 'leads') {
     const ids = Array.isArray(value) ? value as string[] : [];

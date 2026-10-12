@@ -23,8 +23,8 @@ export async function getContactById(req: Request, res: Response, next: NextFunc
 
 export async function createContact(req: Request, res: Response, next: NextFunction) {
   try {
-    const contact = await service.createContact(req.user!.tenantId, req.body, req.user!.userId);
-    res.status(201).json({ success: true, data: contact });
+    const { contact, replayed } = await service.createContact(req.user!.tenantId, req.body, req.user!.userId);
+    res.status(replayed ? 200 : 201).json({ success: true, data: contact });
   } catch (err) { next(err); }
 }
 

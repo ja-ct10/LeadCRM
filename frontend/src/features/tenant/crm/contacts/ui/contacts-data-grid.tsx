@@ -34,6 +34,8 @@ import type { CellRendererMap } from '@/shared/components/data-grid';
 import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { CONTACTS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import type { Contact } from '@/store/types';
 
 // ─── Props Interface ─────────────────────────────────────────────────────────
@@ -104,6 +106,7 @@ export function ContactsDataGrid({
   highlightRowId,
 }: ContactsDataGridProps): React.ReactElement {
   const recordAccess = useCrmRecordAccess();
+  const router = useRouter();
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Contact> = useMemo(() => ({
@@ -205,7 +208,7 @@ export function ContactsDataGrid({
     return buildDefaultRowActions({
       onView: () => onRowClick(contact),
       onEdit: onEdit ? () => onEdit(contact) : undefined,
-      onSendEmail: contact.email ? () => window.open(`mailto:${contact.email}`, '_self') : undefined,
+      onSendEmail: contact.email ? () => router.push(recordEmailComposeHref(contact.email ?? '') ?? '/inbox') : undefined,
       onArchive: onArchive ? () => onArchive(contact) : undefined,
       onCopyUrl: () => {
         navigator.clipboard.writeText(`${window.location.origin}/crm/contacts/${contact.id}`);
@@ -213,7 +216,7 @@ export function ContactsDataGrid({
       canEdit: canEdit && recordAccess.canMutate(contact),
       canArchive: canArchive && recordAccess.canMutate(contact),
     });
-  }, [onRowClick, onEdit, onArchive, canEdit, canArchive, recordAccess.canMutate]);
+  }, [onRowClick, onEdit, onArchive, canEdit, canArchive, recordAccess.canMutate, router]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 

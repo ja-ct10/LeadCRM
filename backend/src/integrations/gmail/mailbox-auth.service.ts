@@ -11,6 +11,8 @@ import { getAuthorizationUrl, exchangeCodeForTokens, getUserInfo } from './gmail
 import { normalizeEmail } from './engagement-rules';
 import { isOnboardingComplete, isWorkspaceAccessible } from '@leadcrm/shared';
 import { getMailboxTestOverride, isMailboxOwner } from './mailbox-ownership';
+import { mailboxPermissions } from './mailbox-sync.service';
+import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 
 export async function beginMailboxConnection(user: { userId: string; tenantId: string; email: string }, sessionToken: string) {
   const state = randomBytes(32).toString('base64url'), verifier = randomBytes(48).toString('base64url');
@@ -41,7 +43,10 @@ export async function finishMailboxConnection(state: string, code: string) {
   }
   const tokens = await exchangeCodeForTokens(code, decryptToken(challenge.verifier));
   const info = await getUserInfo(tokens.access_token);
-  const identity = { userId, tenantId, email: user.email };
+  // OAuth network waits must not restore an account after session/permission revocation.
+  const currentUser = await readAuthUser(userId, tenantId);
+  await mailboxPermissions(tenantId, userId, false);
+  const identity = { userId, tenantId, email: currentUser.email };
   if (!isMailboxOwner(identity, info.email)) throw new AppError('Select your staff work email or the exact mailbox approved for temporary testing.', 400);
   if (!tokens.scope.split(' ').includes('https://www.googleapis.com/auth/gmail.modify')) throw new AppError('Gmail permission was not granted. Reconnect and allow the requested mailbox access.', 400);
   const existing = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
@@ -50,9 +55,15 @@ export async function finishMailboxConnection(state: string, code: string) {
   if (!refreshToken) throw new AppError('Offline Gmail access is required. Reconnect and approve access.', 400);
   const data = { email: normalizeEmail(info.email), accessToken: encryptToken(tokens.access_token), refreshToken,
     tokenExpiresAt: new Date(Date.now() + tokens.expires_in * 1000), scopes: tokens.scope.split(' '), isActive: true, syncError: null,
-    syncRequestedAt: new Date(), syncRetryAt: null };
-  await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
-    create: { tenantId, userId, provider: 'gmail', ...data }, update: data });
+    syncRequestedAt: new Date(), syncRetryAt: null, syncPausedAt: null, syncFailureCount: 0 };
+  await salesTransaction(async tx => {
+    const currentSession = await tx.session.findUnique({ where: { tokenHash: challenge.sessionHash } });
+    if (!currentSession || currentSession.revokedAt || currentSession.expiresAt <= new Date() || currentSession.userId !== userId || currentSession.tenantId !== tenantId) throw new AppError('Sign in again before connecting email.', 401);
+    const currentAccount = await tx.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
+    if (currentAccount && normalizeEmail(currentAccount.email) !== normalizeEmail(info.email)) throw new AppError('This mailbox has historical messages under a different address.', 409);
+    await tx.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
+      create: { tenantId, userId, provider: 'gmail', ...data }, update: { ...data, mailboxVersion: { increment: 1 } } });
+  });
   const testOverride = normalizeEmail(info.email) !== normalizeEmail(user.email) ? getMailboxTestOverride(identity) : null;
   await writeAuditLog({ tenantId, userId, action: 'integration.gmail_connected', entityType: 'EmailAccount', entityId: existing?.id ?? userId,
     after: { email: info.email, ...(testOverride ? { access: 'temporary-test', expiresAt: testOverride.expiresAt } : {}) } });

@@ -28,7 +28,7 @@ const groupResult = (emails = [olderTopic, latest]) => ({ emails, threads: [], m
 it('uses correspondent history, distinguishes original topics and marks only expanded messages read', async () => {
   mocks.correspondent.mockResolvedValue(groupResult()); mocks.readMessage.mockResolvedValue({ success: true });
   render(<EmailConversationView {...props()} email={groupedEmail} mailboxEmail="staff@camxian.com" />); await loaded();
-  expect(mocks.correspondent).toHaveBeenCalledWith(correspondentId); expect(mocks.thread).not.toHaveBeenCalled();
+  expect(mocks.correspondent).toHaveBeenCalledWith(correspondentId, undefined, expect.any(AbortSignal)); expect(mocks.thread).not.toHaveBeenCalled();
   expect(screen.getByRole('heading', { name: 'CCTV quotation' })).toBeTruthy(); expect(screen.getByRole('heading', { name: 'Fire Detection Inquiry' })).toBeTruthy();
   await waitFor(() => expect(mocks.readMessage).toHaveBeenCalledWith('latest', true));
   expect(mocks.readMessage).toHaveBeenCalledOnce(); expect(mocks.read).not.toHaveBeenCalled();
@@ -55,7 +55,7 @@ it('loads bounded history pages and keeps the message count and existing topic o
   render(<EmailConversationView {...props()} email={groupedEmail} />); await loaded();
   fireEvent.click(screen.getByRole('button', { name: 'Load more messages' }));
   await waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(2));
-  expect(mocks.correspondent).toHaveBeenLastCalledWith(correspondentId, 'next-history');
+  expect(mocks.correspondent).toHaveBeenLastCalledWith(correspondentId, 'next-history', expect.any(AbortSignal));
   expect(screen.queryByRole('button', { name: 'Load more messages' })).toBeNull();
 });
 it.each([['Archive conversation', 'archiveGroups'], ['Move conversation to trash', 'trashGroups']] as const)('applies %s to the correspondent identity across original Gmail topics', async (label, action) => {

@@ -11,6 +11,21 @@ vi.mock('@/features/tenant/administration/users/services/users.service', () => (
 import { UsersSubTab } from '../team-management-users';
 beforeEach(() => { clearPageCache(); vi.resetAllMocks(); mocks.role = 'Client Admin'; vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); clearPageCache(); });
+it('offers task-only replacement staff according to the responsibilities being transferred', async () => {
+  const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
+  mocks.list.mockResolvedValue({ data: [active,
+    { ...active, id: 'task', firstName: 'Task', lastName: 'Staff', assignableAgent: false, assignableModules: ['tasks'] },
+    { ...active, id: 'crm', firstName: 'CRM', lastName: 'Staff', assignableAgent: true, assignableModules: ['leads', 'deals'] },
+    { ...active, id: 'admin', firstName: 'Admin', lastName: 'Staff', role: 'Client Admin', assignableAgent: true, assignableModules: ['tasks'] },
+  ], meta: { hasMore: false } });
+  mocks.impact.mockResolvedValue({ data: { userId: 'a', total: 1, counts: { leads: 0, contacts: 0, accounts: 0, deals: 0, tasks: 1 } } });
+  render(<UsersSubTab />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Deactivate Ana Sales' }));
+  const select = await screen.findByRole('combobox', { name: /Assigned Agent/ });
+  expect(within(select).getByRole('option', { name: 'Task Staff' })).toBeTruthy();
+  expect(within(select).queryByRole('option', { name: 'CRM Staff' })).toBeNull();
+  expect(within(select).queryByRole('option', { name: 'Admin Staff' })).toBeNull();
+});
 it('retains failed deactivation for retry and lets cancellation end the reassignment flow', async () => {
   const active = { id: 'a', tenantId: 't', firstName: 'Ana', lastName: 'Sales', role: 'Sales', status: 'active', email: 'a@example.com' };
   mocks.list.mockResolvedValue({ data: [active], meta: { hasMore: false } });

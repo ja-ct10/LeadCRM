@@ -332,7 +332,7 @@ export function DealDetailsModal({
                     <select value={editFields.assignedUserId} onChange={e => setEditFields({ ...editFields, assignedUserId: e.target.value })}
                       className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none">
                       <option value="">Unassigned</option>
-                      {getAssignableAgents(users).map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
+                      {getAssignableAgents(users, ['deals']).map(u => <option key={u.id} value={u.id}>{u.firstName} {u.lastName}</option>)}
                     </select>
                   </div>
 

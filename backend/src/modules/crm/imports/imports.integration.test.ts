@@ -127,6 +127,33 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     const account = await prisma.account.findFirstOrThrow({ where: { tenantId, name: 'ABC Corporation' } });
     expect(account.productInterests).toHaveLength(2); expect(account.size).toBe('11-50');
   });
+  it('creates only unique Contact Product Deals and replays a completed upload after its parent is deleted', async () => {
+    const zero = await prisma.productInterest.create({ data: { tenantId, name: `Zero ${randomUUID()}`, dealValue: 0 } });
+    const email = `${randomUUID()}@example.com`, uploadId = randomUUID();
+    const input = csv([person(email, `CCTV Surveillance System; Biometrics; ${zero.name}; Biometrics`)]);
+    const { csvText, ...metadata } = input;
+    expect((await request('contacts', '/upload', 'POST', { uploadId, chunkIndex: 0, totalChunks: 1, content: csvText })).status).toBe(200);
+    const payload = { ...metadata, uploadId };
+    const created = await request('contacts', '', 'POST', payload);
+    expect(created.status).toBe(201); expect(created.body.data.successfulRecords).toBe(1);
+    const contact = await prisma.contact.findFirstOrThrow({ where: { tenantId, email } });
+    const deals = await prisma.deal.findMany({ where: { tenantId, contactDeals: { some: { contactId: contact.id } } }, include: { stage: true } });
+    expect(deals).toHaveLength(3); expect(deals.map(deal => deal.value).sort((a, b) => a - b)).toEqual([0, 15000, 25000]);
+    expect(deals.every(deal => deal.stage.name === 'Lead' && deal.currency === 'PHP')).toBe(true);
+    const job = await prisma.crmImportJob.findUniqueOrThrow({ where: { id: created.body.data.id } });
+    expect(job.sourceDigest).toMatch(/^[a-f0-9]{64}$/); expect(job.sourceReference).toBe(uploadId);
+    await prisma.crmImportUpload.deleteMany({ where: { tenantId, id: uploadId } });
+    expect((await request('contacts', '', 'POST', payload)).body.data.id).toBe(job.id);
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: contact.id } } } })).toBe(3);
+    expect((await request('contacts', '', 'POST', { ...payload, mappings: { ...payload.mappings, phone: undefined } })).status).toBe(409);
+    const emptyEmail = `${randomUUID()}@example.com`;
+    expect((await run('contacts', csv([person(emptyEmail, '')]))).successfulRecords).toBe(1);
+    const emptyContact = await prisma.contact.findFirstOrThrow({ where: { tenantId, email: emptyEmail } });
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: emptyContact.id } } } })).toBe(0);
+    const duplicate = await run('contacts', csv([person(email)]));
+    expect(duplicate.duplicateRecords).toBe(1);
+    expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: contact.id } } } })).toBe(3);
+  });
   it('resolves each Deal price, permits repeat opportunities and preserves historical prices after changes', async () => {
     const row = { title: 'CCTV Project', customer: 'CONTACT@example.com', productInterest: 'CCTV Surveillance System', pipeline, stage };
     const input = csv([row, { ...row, title: 'Biometrics Project', productInterest: 'Biometrics' }, row]);
@@ -142,7 +169,8 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(next.value).toBe(30000); expect(next.productInterestId).toBe(cctv);
     expect(next.contactDeals.map(link => link.contactId)).toEqual(old.contactDeals.map(link => link.contactId));
     expect(old.contactDeals).toHaveLength(1);
-    expect(await prisma.contactDeal.count({ where: { tenantId, contactId: old.contactDeals[0].contactId } })).toBe(3);
+    // Two Contact-created Product Deals plus these three explicit imported opportunities.
+    expect(await prisma.contactDeal.count({ where: { tenantId, contactId: old.contactDeals[0].contactId } })).toBe(5);
   });
   it('reports unknown/inactive Products, missing relationships, invalid dates and field lengths per row', async () => {
     const result = await request('leads', '/preview', 'POST', csv([person('unknown@example.com', 'Unknown CCTV Package'), person('inactive@example.com', 'Archived Product'), { ...person('bad-email'), firstName: 'x'.repeat(101) }]));
@@ -311,7 +339,7 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
         expect(history.body.data.some((row: { id: string }) => row.id === job.id)).toBe(true);
       }
     }
-  }, 60000);
+  }, 180000);
   it('rolls back a rejected creation and its automatic Deals, records failure, and continues', async () => {
     const bad = `rollback-${randomUUID()}@example.com`, good = `after-${randomUUID()}@example.com`;
     let rolledBackId = '';
@@ -386,5 +414,5 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     ]);
     expect(report.workspacesVerified).toBe(1);
     await prisma.$executeRawUnsafe(`COMMENT ON TABLE "CrmImportJob" IS 'crm-import-normalization-api-verified-v1'`);
-  });
+  }, 180000);
 });

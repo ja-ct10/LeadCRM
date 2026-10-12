@@ -10,8 +10,10 @@ import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
 import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
+import { eligibleAssignedAgents, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
+import { fenceWorkflowLease } from '../../automation/workflows/workflow-lease';
 
 export type TaskClient = Prisma.TransactionClient;
 const person = {
@@ -86,6 +88,7 @@ export async function withTaskTransaction<T>(
 ): Promise<T> {
   try {
     return await prisma.$transaction(async tx => {
+      await fenceWorkflowLease(tx);
       await setNotificationActor(tx);
       return work(tx);
     }, {
@@ -277,17 +280,10 @@ export async function findTaskOptions(
     AND: buildSearchClauses(search, ['firstName', 'lastName', 'email']),
   };
   if (kind === "user") {
-    const rows = await prisma.user.findMany({
-      where: {
-        tenantId,
-        status: "ACTIVE",
-        role: { notIn: ["Guest", "Client Admin"] },
-        ...people,
-      },
-      take: 50,
-      orderBy: [{ firstName: "asc" }, { id: "asc" }],
-      select: person,
-    });
+    const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
+    const rows = (await eligibleAssignedAgents(prisma, tenantId, TASK_ASSIGNEE_REQUIREMENTS))
+      .filter(user => terms.every(term => `${user.firstName} ${user.lastName} ${user.email}`.toLocaleLowerCase().includes(term)))
+      .sort((a, b) => a.firstName.localeCompare(b.firstName) || a.id.localeCompare(b.id)).slice(0, 50);
     return rows.map((row) => ({
       id: row.id,
       label: `${row.firstName} ${row.lastName}`.trim(),

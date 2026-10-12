@@ -20,6 +20,7 @@ import * as repo from "./tasks.repository";
 import { hydrateTaskRecords } from './tasks.context';
 import { recordTaskHistory, taskState } from './tasks.history';
 import { resolveCrmActor, authorizedWorkflowScope } from '../../crm/access/crm-record-access.service';
+import { assertEligibleAssignedAgent, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { hasModulePermission } from '@leadcrm/shared';
 import { tenantContext } from "../../../core/tenant/tenant-context";
 import {
@@ -172,14 +173,16 @@ async function validateReferences(
   userId: string,
   data: TaskLinkInput & { assignedUserId?: string },
   client: repo.TaskClient,
+  previousAssignee?: string,
 ) {
   if (!(await repo.findTaskUser(userId, tenantId, client)))
     throw new NotFoundError("Active workspace actor");
   if (
-    data.assignedUserId &&
-    !(await repo.findTaskUser(data.assignedUserId, tenantId, client))
-  )
-    throw new NotFoundError("Active workspace assignee");
+    data.assignedUserId && data.assignedUserId !== previousAssignee
+  ) {
+    await assertEligibleAssignedAgent(client, tenantId, data.assignedUserId, TASK_ASSIGNEE_REQUIREMENTS)
+      .catch(error => { if (error instanceof ValidationError) throw new NotFoundError("Active eligible workspace assignee"); throw error; });
+  }
   for (const kind of ["deal"] as const) {
     const ids = taskAssociationIds(data, kind);
     if (
@@ -252,7 +255,7 @@ export async function updateTask(
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before || before.isArchived) throw new NotFoundError("Active task");
     await authorizeTask(client, tenantId, userId, "canEdit", dto, before);
-    await validateReferences(tenantId, userId, dto, client);
+    await validateReferences(tenantId, userId, dto, client, before.assignedUserId);
     if (dto.reminderAt && dto.reminderAt !== before.reminderAt?.toISOString())
       throw new ValidationError("Task reminder delivery is not available.");
     const split = splitLinks(dto);

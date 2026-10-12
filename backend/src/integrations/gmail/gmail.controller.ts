@@ -3,9 +3,9 @@ import { z } from 'zod';
 import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema, MailboxBulkActionSchema, MailboxConversationIdSchema } from '@leadcrm/shared';
 import { mutateMailboxThread, mutateMailboxThreads, mutateMailboxCorrespondents, mutateMailboxMessages } from './mailbox-thread-actions';
 import { readMailboxCorrespondent } from './mailbox-correspondents.service';
-import { sendMailboxEmail } from './mailbox-send.service';
+import { sendMailboxEmail, saveMailboxDraft, deleteMailboxDraft } from './mailbox-send.service';
 import { scheduleMailboxEmail, getScheduledMailboxEmail, cancelScheduledMailboxEmail } from './scheduled-mailbox.service';
-import { fetchEmails, fetchUnreadCount, getConnectionStatus, disconnectAccount, trashEmails, archiveEmails, saveDraft, deleteDraft } from './gmail.service';
+import { fetchEmails, fetchUnreadCount, getConnectionStatus, disconnectAccount } from './gmail.service';
 import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.service';
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
 import { AppError } from '../../shared/errors/app-error';
@@ -59,7 +59,7 @@ export async function sync(req: Request, res: Response, next: NextFunction) {
   try { res.json(await syncMailbox(req.user!.tenantId, req.user!.userId)); } catch (error) { next(error); }
 }
 export async function schedule(req: Request, res: Response, next: NextFunction) {
-  try { res.status(201).json(await scheduleMailboxEmail(req.user!.tenantId, req.user!.userId, ScheduleMailboxEmailSchema.parse(req.body))); } catch (error) { next(error); }
+  try { res.status(201).json(await scheduleMailboxEmail(req.user!.tenantId, req.user!.userId, ScheduleMailboxEmailSchema.extend({ scheduledAt: z.string().datetime() }).parse(req.body))); } catch (error) { next(error); }
 }
 export async function thread(req: Request, res: Response, next: NextFunction) {
   try { res.json(await readMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId))); } catch (error) { next(error); }
@@ -115,7 +115,7 @@ async function bulkAction(req: Request, res: Response, next: NextFunction, actio
     const data = MailboxBulkActionSchema.parse(req.body), { tenantId, userId } = req.user!;
     res.json(await ('conversationIds' in data ? mutateMailboxCorrespondents(tenantId, userId, data.conversationIds, action) :
       'threadIds' in data ? mutateMailboxThreads(tenantId, userId, data.threadIds, action) :
-        (action === 'trash' ? trashEmails : archiveEmails)(tenantId, userId, data.messageIds)));
+        mutateMailboxMessages(tenantId, userId, data.messageIds, action)));
   } catch (error) { next(error); }
 }
 export const trash = (req: Request, res: Response, next: NextFunction) => bulkAction(req, res, next, 'trash');
@@ -123,9 +123,9 @@ export const archive = (req: Request, res: Response, next: NextFunction) => bulk
 export async function saveDraftHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const data = SaveMailboxDraftSchema.parse(req.body);
-    res.json({ success: true, ...await saveDraft(req.user!.tenantId, req.user!.userId, data.to, data.subject, data.body, data.draftId, { replyToMessageId: data.replyToMessageId, forwardSourceMessageId: data.forwardSourceMessageId }) });
+    res.json({ success: true, ...await saveMailboxDraft(req.user!.tenantId, req.user!.userId, data) });
   } catch (error) { next(error); }
 }
 export async function deleteDraftHandler(req: Request, res: Response, next: NextFunction) {
-  try { await deleteDraft(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.draftId)); res.json({ success: true }); } catch (error) { next(error); }
+  try { await deleteMailboxDraft(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.draftId)); res.json({ success: true }); } catch (error) { next(error); }
 }

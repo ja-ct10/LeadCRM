@@ -234,7 +234,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const l = await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Test', email: v.email, productInterest: ['CCTV'] } });
     const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Sales' } });
     const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Won', order: 1, isWon: true, requiredFields: [] } });
-    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, leadDeals: { create: { leadId: l.id, position: 0 } }, title: 'Historic sale', productInterests: ['CCTV'], tags: [] } });
+    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, wonConfirmedAt: new Date('2025-01-01'), wonConfirmedById: userId, hasEverBeenWon: true, wonHistoryVerified: true, leadDeals: { create: { leadId: l.id, position: 0 } }, title: 'Historic sale', productInterests: ['CCTV'], tags: [] } });
     await submit(form.publicId, v); await submit(form.publicId, v);
     const repaired = await prisma.lead.findUniqueOrThrow({ where: { id: l.id } }); expect(repaired.contactId).toBeTruthy();
     expect(repaired.status).toBe('Closed');
@@ -258,7 +258,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Historical' } });
     const won = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Closed Won', order: 1, isWon: true, requiredFields: [] } });
     const current = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'After sale', order: 2, requiredFields: [] } });
-    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: current.id, title: 'Old purchase', productInterests: [], tags: [] } });
+    const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: current.id, wonConfirmedAt: new Date('2025-01-01'), wonConfirmedById: userId, hasEverBeenWon: true, wonHistoryVerified: true, title: 'Old purchase', productInterests: [], tags: [] } });
     await prisma.leadDeal.create({ data: { tenantId, dealId: deal.id, leadId: lead.id } });
     await prisma.contactDeal.create({ data: { tenantId, dealId: deal.id, contactId: contact.id } });
     await prisma.dealStageHistory.create({ data: { tenantId, dealId: deal.id, newStageId: won.id, movedById: userId } });

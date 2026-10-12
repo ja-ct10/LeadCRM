@@ -296,6 +296,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               control={control}
               render={({ field }) => (
                 <AssignedAgentSelect
+                  modules={isEdit ? ['contacts'] : ['contacts', 'deals']}
                   id={`${fieldId}-assignedUserId`}
                   value={field.value ?? ''}
                   name={field.name}

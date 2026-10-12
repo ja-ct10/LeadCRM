@@ -23,6 +23,7 @@ export interface RoleDefinition {
 
 export interface User {
   assignableAgent?: boolean;
+  assignableModules?: string[];
   createdAt?: string;
   id: string;
   tenantId: string;
