@@ -7,6 +7,7 @@ import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-sco
 import { motion, AnimatePresence } from 'motion/react';
 import { ChevronDown, Search, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { matchesSearch } from '@/shared/utils/search';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
 export interface FilterGroup {
@@ -233,9 +234,8 @@ export function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: F
 
   const visibleItems = React.useMemo(() => {
     if (!filterSearchTerm.trim()) return group.items;
-    const term = filterSearchTerm.toLowerCase().trim();
-    return group.items.filter((item) => item.label.toLowerCase().includes(term));
-  }, [group.items, filterSearchTerm]);
+    return group.items.filter((item) => matchesSearch(filterSearchTerm, item.label, group.label));
+  }, [group.items, group.label, filterSearchTerm]);
 
   if (visibleItems.length === 0 && filterSearchTerm.trim()) {
     return null;

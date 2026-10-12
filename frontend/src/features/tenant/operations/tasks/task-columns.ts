@@ -23,6 +23,10 @@ export function normalizeTaskColumns(input: unknown): ColumnConfigItem[] {
       definition.required ||
       (saved.get(definition.id)?.visible ?? definition.defaultVisible),
     order: saved.get(definition.id)?.order ?? definition.defaultOrder,
+    ...(typeof saved.get(definition.id)?.width === 'number' &&
+      Number.isInteger(saved.get(definition.id)?.width) &&
+      saved.get(definition.id)!.width! >= 80 && saved.get(definition.id)!.width! <= 800
+      ? { width: saved.get(definition.id)!.width } : {}),
   }))
     .sort((a, b) =>
       a.id === "action" ? -1 : b.id === "action" ? 1 : a.order - b.order,

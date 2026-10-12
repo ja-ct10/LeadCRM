@@ -280,6 +280,7 @@ export const TASK_COLUMN_DEFINITIONS: ColumnDefinition[] = [
   {
     id: "action",
     label: "Action",
+    fixedPosition: 'first',
     required: true,
     defaultVisible: true,
     defaultOrder: 0,

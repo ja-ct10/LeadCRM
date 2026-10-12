@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
 import { useData } from "@/store/DataContext";
 import { getAssignableAgents } from "@/shared/utils/assigned-agents";
+import { matchesSearch } from "@/shared/utils/search";
 import { useAuth } from "@/store/AuthContext";
 import { tasksApi } from "@/shared/services/tasks.api";
 import { USE_MOCK_DATA } from "@/lib/config";
@@ -122,7 +123,7 @@ export function TaskSelector(props: TaskSelectorProps) {
                     : [];
           rows = rows
             .filter((row) =>
-              row.label.toLowerCase().includes(search.toLowerCase()),
+              matchesSearch(search, row.label),
             )
             .slice(0, 50);
         } else
@@ -165,7 +166,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     ? labelFor(selectedIds[0]) +
       (selectedIds.length > 1 ? ` +${selectedIds.length - 1}` : "")
     : "";
-  const visible = !search
+  const visible = !search.trim()
     ? [
         ...selectedIds
           .filter((id) => kind !== "user" && !options.some((option) => option.id === id))

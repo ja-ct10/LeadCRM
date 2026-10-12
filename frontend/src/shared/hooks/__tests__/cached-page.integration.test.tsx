@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useModuleData } from '../use-module-data';
 import { useCachedPage } from '../use-cached-page';
 import { useModuleCounts } from '../use-module-counts';
+import { useLeadsData } from '@/features/tenant/crm/leads/hooks/use-leads-data';
 import { clearPageCache, getPageCacheSize, invalidatePageCache } from '@/shared/cache/page-cache';
 
 const mocks = vi.hoisted(() => ({
@@ -32,6 +33,36 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearPageCache(); });
 
 describe('real cached request lifecycle', () => {
+  it('refreshes mounted Lead lists and selected detail after one invalidation without an explicit page refetch', async () => {
+    let firstName = 'Before';
+    const record = () => ({ id: 'lead', tenantId: 'tenant-a', firstName, lastName: 'Person', status: 'Warm',
+      createdAt: '2026-10-01T00:00:00Z', updatedAt: '2026-10-01T00:00:00Z', isArchived: false });
+    const listResponse = () => ({ data: [record()], meta: { page: 1, pageSize: 25, total: 1, totalPages: 1 } });
+    const refreshedList = deferred<ReturnType<typeof listResponse>>();
+    mocks.get.mockImplementation(async (path: string) => path === '/crm/leads/lead'
+      ? { data: record() } : firstName === 'Saved' ? refreshedList.promise : listResponse());
+    const first = renderHook(() => useLeadsData({ page: 1, pageSize: 25 }));
+    const second = renderHook(() => useLeadsData({ page: 1, pageSize: 25 }));
+    const detail = renderHook(() => useModuleData({ moduleId: 'leads', page: 1, pageSize: 25, recordId: 'lead' }));
+    await waitFor(() => expect(first.result.current.leads[0]?.firstName).toBe('Before'));
+    await waitFor(() => expect(second.result.current.leads[0]?.firstName).toBe('Before'));
+    await waitFor(() => expect(detail.result.current.data[0]?.firstName).toBe('Before'));
+    expect(mocks.get.mock.calls.filter(([path]) => path === '/crm/leads')).toHaveLength(1);
+    firstName = 'Saved';
+    act(() => invalidatePageCache('leads', 'tenant-a'));
+    await waitFor(() => expect(mocks.get.mock.calls.filter(([path]) => path === '/crm/leads')).toHaveLength(2));
+    await act(async () => refreshedList.resolve(listResponse()));
+    await waitFor(() => expect(first.result.current.leads[0]?.firstName).toBe('Saved'));
+    await waitFor(() => expect(second.result.current.leads[0]?.firstName).toBe('Saved'));
+    await waitFor(() => expect(detail.result.current.data[0]?.firstName).toBe('Saved'));
+    expect(mocks.get.mock.calls.filter(([path]) => path === '/crm/leads')).toHaveLength(2);
+    expect(mocks.get.mock.calls.filter(([path]) => path === '/crm/leads/lead')).toHaveLength(2);
+    firstName = 'Manual refresh';
+    await act(async () => first.result.current.refetch());
+    expect(first.result.current.leads[0]?.firstName).toBe('Manual refresh');
+    expect(mocks.get.mock.calls.filter(([path]) => path === '/crm/leads')).toHaveLength(3);
+  });
+
   it('restarts an in-flight workflow list after an authorization refresh clears the cache', async () => {
     const old = deferred<string[]>(), fresh = deferred<string[]>();
     const fetchFn = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(fresh.promise);

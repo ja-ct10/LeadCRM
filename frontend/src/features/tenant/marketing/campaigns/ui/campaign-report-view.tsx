@@ -1,4 +1,5 @@
 'use client';
+import { matchesSearch } from '@/shared/utils/search';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Download, Link2, Mail, Send, Target, Users } from 'lucide-react';
@@ -103,8 +104,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
 
   const recipients = report?.recipients ?? [];
   const visibleRecipients = useMemo(() => recipients.filter(row => {
-    const query = search.trim().toLowerCase();
-    return `${row.name} ${row.email || ''} ${row.phone || ''}`.toLowerCase().includes(query) &&
+    return matchesSearch(search, row.name, row.email, row.phone) &&
       (!deliveryFilter.length || deliveryFilter.includes(row.deliveryStatus)) &&
       (!engagementFilter.length || engagementFilter.some(value => value === 'Opened' ? row.opened : row.clicked));
   }), [recipients, search, deliveryFilter, engagementFilter]);

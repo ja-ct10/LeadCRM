@@ -1,20 +1,23 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ leads: vi.fn(), contacts: vi.fn(), accounts: vi.fn(), push: vi.fn() }));
+const mocks = vi.hoisted(() => ({ leads: vi.fn(), contacts: vi.fn(), accounts: vi.fn(), deals: vi.fn(), push: vi.fn(), permissions: ['leads', 'contacts', 'accounts', 'deals'] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 't' }, user: { id: 'u', } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 't' }, user: { id: 'u', }, userCan: (module: string) => mocks.permissions.includes(module) }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ deals: [{ id: 'deal-id', title: 'Johnny deal', companyName: 'Jact' }] }) }));
 vi.mock('@/features/tenant/crm/leads/services/leads.service', () => ({ leadsService: { getAll: mocks.leads } }));
 vi.mock('@/features/tenant/crm/accounts/services/accounts.service', () => ({ accountsService: { getAll: mocks.accounts } }));
 vi.mock('@/shared/services/contacts-v2.api', () => ({ contactsV2Api: { list: mocks.contacts } }));
+vi.mock('@/shared/services/deals.api', () => ({ dealsApi: { list: mocks.deals } }));
 import { GlobalOmnibox } from '../global-omnibox';
 import { MobileSearchOverlay } from '../mobile-search-overlay';
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.permissions = ['leads', 'contacts', 'accounts', 'deals'];
   mocks.leads.mockResolvedValue({ data: [{ id: 'lead-id', firstName: ' Johnny ', lastName: ' Sins ', companyName: 'Jact Inc.', email: 'johnny123@gmail.com' }] });
   mocks.contacts.mockResolvedValue({ data: [{ id: 'contact-id', firstName: ' May Ann ', lastName: ' Tiron ', companyName: 'Google Inc.', email: 'may@example.com' }] });
   mocks.accounts.mockResolvedValue({ data: [{ id: 'account-id', name: 'Jact account' }] });
+  mocks.deals.mockResolvedValue({ data: [{ id: 'deal-id', title: 'Johnny deal', organization: { name: 'Jact' } }] });
 });
 afterEach(cleanup);
 async function search() {
@@ -50,6 +53,7 @@ it('retains the debounce, minimum length and module scope', async () => {
   expect(mocks.contacts).not.toHaveBeenCalled();
   await screen.findByText('May Ann Tiron');
   expect(mocks.leads).not.toHaveBeenCalled(); expect(mocks.accounts).not.toHaveBeenCalled();
+  expect(mocks.deals).not.toHaveBeenCalled();
 });
 it.each([
   [{ firstName: ' Jane ' }, 'Jane'],
@@ -68,4 +72,31 @@ it('can immediately search the same term again after selecting a result', async 
   input.focus(); fireEvent.focus(input);
   fireEvent.change(input, { target: { value: 'johnny' } });
   await screen.findByText('Johnny Sins');
+});
+
+it('searches Deals on the server before limiting so records beyond cached pages are discoverable', async () => {
+  mocks.deals.mockResolvedValue({ data: [{ id: 'late-deal', title: 'Remote Deal', organization: { name: 'Late Account' } }] });
+  render(<GlobalOmnibox />); await search();
+  expect(mocks.deals).toHaveBeenCalledWith({ search: 'johnny', limit: 4 });
+  fireEvent.click(await screen.findByText('Remote Deal'));
+  expect(mocks.push).toHaveBeenCalledWith('/crm/deals?highlight=late-deal');
+});
+it('skips unauthorized modules and hides their search scopes', async () => {
+  mocks.permissions = ['contacts'];
+  render(<GlobalOmnibox />); const input = screen.getByRole('textbox'); fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: 'johnny' } });
+  await screen.findByText('May Ann Tiron');
+  expect(mocks.leads).not.toHaveBeenCalled(); expect(mocks.accounts).not.toHaveBeenCalled(); expect(mocks.deals).not.toHaveBeenCalled();
+  expect(screen.queryByRole('option', { name: 'Leads' })).toBeNull();
+});
+it('ignores an older request that resolves after the next query has started', async () => {
+  let resolveOld!: (response: unknown) => void;
+  mocks.leads.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  render(<GlobalOmnibox />); const input = screen.getByRole('textbox'); fireEvent.focus(input);
+  fireEvent.change(input, { target: { value: 'first' } });
+  await waitFor(() => expect(mocks.leads).toHaveBeenCalled());
+  fireEvent.change(input, { target: { value: 'second' } });
+  resolveOld({ data: [{ id: 'old', firstName: 'Stale', lastName: 'Result' }] });
+  await screen.findByText('Johnny Sins');
+  expect(screen.queryByText('Stale Result')).toBeNull();
 });

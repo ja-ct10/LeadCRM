@@ -13,7 +13,8 @@ import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
 import type { Deal } from '@/store/types';
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { DEALS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
+import Link from 'next/link';
 import type { SortState } from '@/shared/components/data-grid';
 import { StatusBadge } from '@/shared/components/crm';
 import {
@@ -21,7 +22,6 @@ import {
   useDataGridColumns,
   buildDefaultRowActions,
   renderDate,
-  renderLink,
   MODULE_ACCENT_COLORS,
   DEAL_PRIORITY_VARIANTS,
 } from '@/shared/components/data-grid';
@@ -69,6 +69,7 @@ interface DealsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  onColumnWidthChange?: (columnId: string, width: number) => void;
   /** Display mode: wrap or clip cell content */
   viewMode?: 'wrap' | 'clip';
   /** Tenant currency configuration for formatting monetary values */
@@ -97,6 +98,7 @@ export function DealsDataGrid({
   onDelete,
   onManageColumns,
   onHideColumn,
+  onColumnWidthChange,
   viewMode = 'clip',
   currencyConfig,
 }: DealsDataGridProps): React.ReactElement {
@@ -161,8 +163,10 @@ export function DealsDataGrid({
     ),
 
     accountId: (_value: unknown, row: Deal) => {
-      const accountName = row.companyName || getAccountName(row.organizationId);
-      return renderLink(accountName || null);
+      const accountId = row.accountId ?? row.account?.id ?? row.organizationId;
+      const accountName = row.account?.name || getAccountName(accountId) || row.companyName;
+      return accountId ? <Link href={`/crm/accounts/${encodeURIComponent(accountId)}`} onClick={event => event.stopPropagation()}
+        className="text-[12px] text-blue-600 dark:text-blue-400 hover:underline truncate">{accountName || '—'}</Link> : '—';
     },
 
     expectedCloseDate: (_value: unknown, row: Deal) => renderDate(row.expectedCloseDate),
@@ -175,7 +179,7 @@ export function DealsDataGrid({
 
     industry: (_value: unknown, row: Deal) => (
       <span className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {(row as unknown as Record<string, unknown>).industry as string ?? '—'}
+        {row.industry ?? '—'}
       </span>
     ),
 
@@ -189,7 +193,7 @@ export function DealsDataGrid({
     effectiveColumns,
     cellRenderers,
     pinnedColumns: ['title'],
-    sortableColumns: ['title', 'value', 'stageId', 'priority', 'expectedCloseDate', 'createdAt'],
+    sortableColumns: DEALS_TABLE_SORT_FIELDS,
     resizableColumns: 'all',
     defaultWidths: {
       title: 240,
@@ -236,9 +240,13 @@ export function DealsDataGrid({
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
       sort={sort}
+      sortingMode="external"
       onSortChange={onSortChange}
       onRowClick={onRowClick}
       onHideColumn={onHideColumn}
+      enableColumnMenu={!!onHideColumn}
+      onColumnWidthChange={onColumnWidthChange}
+      columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       rowActions={getRowActions}
       onSettingsClick={onManageColumns}
       summaryLabel={`${totalRecords} total records`}

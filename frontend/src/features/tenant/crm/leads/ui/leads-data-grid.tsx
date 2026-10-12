@@ -3,7 +3,7 @@
  *
  * Close.com-style features:
  * - Status rendered as colored dot + plain text (no pill badge)
- * - Dedicated clickable Phone and Email icon columns (between Name and Email)
+ * - Canonical Name plus independent Email and actionable Phone values
  * - Name column pinned left and always visible
  * - Sticky header with resizable, reorderable columns
  * - Bulk selection, quick actions, column header menu
@@ -17,7 +17,7 @@ import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 import { useRouter } from 'next/navigation';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import React, { useMemo, useCallback } from 'react';
-import { Phone, Mail, ExternalLink, GitMerge } from 'lucide-react';
+import { GitMerge } from 'lucide-react';
 import {
   DataGrid,
   DataGridQuickFilter,
@@ -29,13 +29,9 @@ import {
 import type { SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { formatLeadName, LEADS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
 import { CrmStatusIndicator } from '@/shared/components/crm/crm-status';
 import type { Lead } from '@/store/types';
-
-// ─── Status Dot Colors (Close.com style) ─────────────────────────────────────
-
-
 
 // ─── Helper: Render user with avatar initials ─────────────────────────────────
 
@@ -99,6 +95,7 @@ interface LeadsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  onColumnWidthChange?: (columnId: string, width: number) => void;
   /** Display mode: wrap or clip cell content */
   viewMode?: 'wrap' | 'clip';
   /** Row ID to highlight (navigated from global search) */
@@ -130,6 +127,7 @@ export function LeadsDataGrid({
   onMerge,
   onManageColumns,
   onHideColumn,
+  onColumnWidthChange,
   viewMode = 'clip',
   highlightRowId,
 }: LeadsDataGridProps): React.ReactElement {
@@ -140,66 +138,36 @@ export function LeadsDataGrid({
   const cellRenderers: CellRendererMap<Lead> = useMemo(() => ({
 
     // ── First Name ────────────────────────────────────────────────────
-    firstName: (_value: unknown, row: Lead) => {
-      const initials = (row.firstName && row.lastName
-        ? `${row.firstName[0]}${row.lastName[0]}`
-        : (row.firstName || row.lastName || '').slice(0, 2)).toUpperCase();
+    name: (_value: unknown, row: Lead) => {
+      const firstName = row.firstName?.trim() ?? '', lastName = row.lastName?.trim() ?? '';
+      const initials = (firstName && lastName ? `${firstName[0]}${lastName[0]}` : (firstName || lastName).slice(0, 2)).toUpperCase();
       return (
         <div className="flex items-center gap-2.5 min-w-0">
           <div className={`w-7 h-7 rounded-full ${MODULE_ACCENT_COLORS.leads} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
             {initials}
           </div>
           <div className="min-w-0">
-            <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate leading-tight hover:underline cursor-pointer">
-              {row.firstName || '—'}
-            </p>
+            <button type="button" onClick={() => onRowClick(row)} className="text-left text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate leading-tight hover:underline cursor-pointer">
+              {formatLeadName(row)}
+            </button>
           </div>
         </div>
       );
     },
 
+    firstName: (_value: unknown, row: Lead) => <span>{row.firstName?.trim() || '—'}</span>,
     lastName: (_value: unknown, row: Lead) => (
       <p className="text-[13px] text-[#3C4858] dark:text-slate-200 truncate">
         {row.lastName || '—'}
       </p>
     ),
 
-    // ── Phone icon column (clickable) ──────────────────────────────────
-    phoneAction: (_value: unknown, row: Lead) => {
-      if (!row.phone) return <span className="text-[#d1d5db] select-none text-center block">—</span>;
-      return (
-        <a
-          href={`tel:${row.phone}`}
-          title={row.phone}
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#5A6B85] hover:text-[#1a73e8] hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-        >
-          <Phone size={14} />
-        </a>
-      );
-    },
-
-    // ── Email icon column (clickable) ──────────────────────────────────
-    emailAction: (_value: unknown, row: Lead) => {
-      if (!row.email) return <span className="text-[#d1d5db] select-none text-center block">—</span>;
-      return (
-        <a
-          href={recordEmailComposeHref(row.email ?? '') ?? undefined}
-          title={row.email}
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center justify-center w-7 h-7 rounded-md text-[#5A6B85] hover:text-[#1a73e8] hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors"
-        >
-          <Mail size={14} />
-        </a>
-      );
-    },
-
     email: (_value: unknown, row: Lead) => (
       <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.email ?? '—'}</p>
     ),
 
     phone: (_value: unknown, row: Lead) => (
-      <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.phone ?? '—'}</p>
+      row.phone ? <a href={`tel:${row.phone}`} onClick={event => event.stopPropagation()} className="text-[12px] text-[#1a73e8] dark:text-blue-400 truncate hover:underline">{row.phone}</a> : <span>—</span>
     ),
 
     companyName: (_value: unknown, row: Lead) => (
@@ -210,7 +178,7 @@ export function LeadsDataGrid({
     status: (_value: unknown, row: Lead) => <CrmStatusIndicator status={row.status} />,
 
     source: (_value: unknown, row: Lead) => (
-      <p className="text-[12px] text-[#8899a6] dark:text-slate-400 truncate">{row.leadSource ?? row.source ?? '—'}</p>
+      <p className="text-[12px] text-[#8899a6] dark:text-slate-400 truncate">{row.source ?? row.leadSource ?? '—'}</p>
     ),
 
     assignedUserId: (_value: unknown, row: Lead) => (
@@ -238,30 +206,6 @@ export function LeadsDataGrid({
     lastStatusChangedAt: (_value: unknown, row: Lead) => renderDate(row.lastStatusChangedAt),
     latestStatusChangeDate: (_value: unknown, row: Lead) => renderDate(row.lastStatusChangedAt),
 
-    website: (_value: unknown, row: Lead) => {
-      const url = row.website;
-      if (!url) return <span className="text-[12px] text-[#94a3b8]">—</span>;
-      return (
-        <a
-          href={url.startsWith('http') ? url : `https://${url}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title={url}
-          onClick={(e) => e.stopPropagation()}
-          className="inline-flex items-center gap-1 text-[12px] text-[#1a73e8] hover:underline truncate"
-        >
-          {url.replace(/^https?:\/\//, '')}
-          <ExternalLink size={11} className="shrink-0" />
-        </a>
-      );
-    },
-
-    description: (_value: unknown, row: Lead) => {
-      const desc = row.description;
-      if (!desc) return <span className="text-[12px] text-[#94a3b8]">—</span>;
-      return <p className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate" title={desc}>{desc}</p>;
-    },
-
     createdBy: (_value: unknown, row: Lead) => renderUserName(row.createdByUser),
     updatedBy: (_value: unknown, row: Lead) => renderUserName(row.updatedByUser),
 
@@ -269,10 +213,9 @@ export function LeadsDataGrid({
       <p className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate">{row.address ?? row.streetAddress ?? '—'}</p>
     ),
 
-    primaryAddressCityState: (_value: unknown, row: Lead) => {
-      const parts = [row.city, row.province].filter(Boolean).join(', ');
-      return <p className="text-[12px] text-[#3C4858] dark:text-slate-300 truncate">{parts || '—'}</p>;
-    },
+    accountId: (_value: unknown, row: Lead) => row.accountId && row.account?.id === row.accountId
+      ? <a href={`/crm/accounts/${row.accountId}`} onClick={event => event.stopPropagation()} className="text-[12px] text-[#1a73e8] dark:text-blue-400 truncate hover:underline">{row.account.name}</a>
+      : <span>—</span>,
 
     productInterest: (_value: unknown, row: Lead) => {
       const interests = row.productInterests ?? (Array.isArray(row.productInterest)
@@ -280,36 +223,30 @@ export function LeadsDataGrid({
       if (!interests.length) return <span className="text-[12px] text-[#94a3b8]">—</span>;
       return (
         <div className="flex flex-wrap gap-1 min-w-0">
-          {interests.slice(0, 2).map((item: string) => (
+          {interests.map((item: string) => (
             <span key={item} className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-slate-100 dark:bg-slate-700 text-[#5A6B85] dark:text-slate-300 truncate max-w-[80px]">
               {item}
             </span>
           ))}
-          {interests.length > 2 && (
-            <span className="text-[10px] text-[#94a3b8]">+{interests.length - 2}</span>
-          )}
         </div>
       );
     },
 
-  }), [getOwnerName, getOwnerInitials]);
+  }), [getOwnerName, getOwnerInitials, onRowClick]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
 
   const { gridColumns } = useDataGridColumns<Lead>({
+    module: 'leads',
     registry: LEADS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
-    sortableColumns: [
-      'firstName', 'lastName', 'email', 'phone', 'companyName', 'status',
-      'source', 'createdAt', 'updatedAt',
-    ],
+    sortableColumns: LEADS_TABLE_SORT_FIELDS,
     resizableColumns: 'all',
     defaultWidths: {
-      firstName:               240,
+      name:                    240,
+      firstName:               160,
       lastName:                160,
-      phoneAction:             52,
-      emailAction:             52,
       email:                   200,
       phone:                   150,
       companyName:             180,
@@ -320,11 +257,9 @@ export function LeadsDataGrid({
       updatedAt:               140,
       lastStatusChangedAt:     150,
       latestStatusChangeDate:  150,
-      description:             220,
-      website:                 180,
       address:                 200,
-      primaryAddressCityState: 160,
       productInterest:         180,
+      accountId:               180,
       createdBy:               150,
       updatedBy:               150,
     },
@@ -365,7 +300,7 @@ export function LeadsDataGrid({
     }
 
     return actions;
-  }, [onRowClick, onEdit, onArchive, onConvert, onMerge, canEdit, canArchive, recordAccess.canMutate]);
+  }, [router, onRowClick, onEdit, onArchive, onConvert, onMerge, canEdit, canArchive, recordAccess.canMutate]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 
@@ -394,7 +329,10 @@ export function LeadsDataGrid({
         sort={sort}
         onSortChange={onSortChange}
         onRowClick={onRowClick}
+        enableColumnMenu
         onHideColumn={onHideColumn}
+        columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
+        onColumnWidthChange={onColumnWidthChange}
         rowActions={getRowActions}
         onSettingsClick={onManageColumns}
         summaryLabel={`${totalRecords} total records`}

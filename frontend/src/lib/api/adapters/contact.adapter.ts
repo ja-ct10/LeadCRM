@@ -2,27 +2,11 @@
 
 import { CrmStatusSchema, normalizeCrmStatus, type CrmStatus } from '@leadcrm/shared';
 
-/** API writes must use the canonical contract; never silently replace invalid input. */
+/** API writes use canonical status validation; response compatibility stays at the boundary. */
 export function toBackendStatus(status?: string): CrmStatus {
   return CrmStatusSchema.parse(status ?? 'Warm');
 }
-
 export const toFrontendStatus = normalizeCrmStatus;
-
-/**
- * Splits a full name into first and last name.
- * 
- * @param {string} fullName The full name string
- * @returns {{ firstName: string, lastName: string }} First and last name parts
- */
-function splitName(fullName: string): { firstName: string; lastName: string } {
-  if (!fullName) return { firstName: 'Unknown', lastName: 'Unknown' };
-  const parts = fullName.trim().split(/\s+/);
-  if (parts.length === 1) return { firstName: parts[0], lastName: 'Unknown' };
-  const lastName = parts.pop() || 'Unknown';
-  const firstName = parts.join(' ') || 'Unknown';
-  return { firstName, lastName };
-}
 
 /**
  * Prepares frontend Contact data for backend creation (CreateContactDto).
@@ -32,12 +16,8 @@ function splitName(fullName: string): { firstName: string; lastName: string } {
  * @returns {Record<string, any>} Data formatted for backend creation
  */
 export function toBackendCreateContact(data: Record<string, any>): Record<string, any> {
-  const { firstName, lastName } = data.contactPerson 
-    ? splitName(data.contactPerson) 
-    : { 
-        firstName: data.firstName || 'Unknown', 
-        lastName: data.lastName || 'Unknown' 
-      };
+  const firstName = data.firstName ?? '';
+  const lastName = data.lastName ?? '';
 
   return {
     customFieldValues: data.customFieldValues,
@@ -48,14 +28,10 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
     phone: data.phone || undefined,
     companyName: data.companyName || undefined,
     status: toBackendStatus(data.status),
-    source: data.leadSource || data.source || undefined,
+    source: data.source ?? data.leadSource ?? undefined,
     accountId: data.accountId || undefined,
     assignedUserId: data.assignedUserId || undefined,
-    productInterest: Array.isArray(data.productInterests)
-      ? data.productInterests
-      : (Array.isArray(data.productInterest)
-        ? data.productInterest
-        : (data.productInterest ? [data.productInterest] : undefined)),
+    productInterest: data.productInterestIds ?? data.productInterest,
     address: data.address || undefined,
   };
 }
@@ -71,26 +47,17 @@ export function toBackendUpdateContact(data: Record<string, any>): Record<string
   const result: Record<string, any> = {};
   if (data.customFieldValues !== undefined) result.customFieldValues = data.customFieldValues;
 
-  if (data.contactPerson !== undefined || data.firstName !== undefined || data.lastName !== undefined) {
-    if (data.contactPerson) {
-      const { firstName, lastName } = splitName(data.contactPerson);
-      result.firstName = firstName;
-      result.lastName = lastName;
-    } else {
-      if (data.firstName !== undefined) result.firstName = data.firstName;
-      if (data.lastName !== undefined) result.lastName = data.lastName;
-    }
-  }
+  if (data.firstName !== undefined) result.firstName = data.firstName;
+  if (data.lastName !== undefined) result.lastName = data.lastName;
 
   if (data.email !== undefined) result.email = data.email;
   if (data.phone !== undefined) result.phone = data.phone ?? '';
   if (data.companyName !== undefined) result.companyName = data.companyName ?? '';
   if (data.status !== undefined) result.status = toBackendStatus(data.status);
-  if (data.leadSource !== undefined || data.source !== undefined) result.source = data.leadSource ?? data.source ?? '';
+  if (data.leadSource !== undefined || data.source !== undefined) result.source = data.source ?? data.leadSource ?? '';
   if (data.accountId !== undefined) result.accountId = data.accountId || null;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || null;
-  if (data.productInterests !== undefined) result.productInterest = data.productInterests;
-  else if (data.productInterest !== undefined) result.productInterest = data.productInterest ? (Array.isArray(data.productInterest) ? data.productInterest : [data.productInterest]) : [];
+  if (data.productInterestIds !== undefined || data.productInterest !== undefined) result.productInterest = data.productInterestIds ?? data.productInterest ?? [];
   if (data.address !== undefined) result.address = data.address ?? '';
 
   return result;
@@ -156,6 +123,7 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     address: backendContact.address || '',
     // Nested relation objects (when included by Prisma)
     organization: backendContact.account || backendContact.organization || undefined,
+    account: backendContact.account || undefined,
     assignedUser: backendContact.assignedUser || undefined,
   };
 }

@@ -8,10 +8,12 @@
  */
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import React from 'react';
 import { ManageColumnsDrawer } from '../manage-columns-drawer';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
+
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined }) }));
 
 // Mock @dnd-kit modules used internally by ManageColumnsDrawer
 vi.mock('@dnd-kit/core', () => ({
@@ -44,7 +46,7 @@ vi.mock('@dnd-kit/utilities', () => ({
 // ─── Test Fixtures ────────────────────────────────────────────────────────────
 
 const REGISTRY: ColumnDefinition[] = [
-  { id: 'name', label: 'Name', required: true, defaultVisible: true, defaultOrder: 0, group: 'General', priority: 'required' },
+  { id: 'name', label: 'Name', required: true, fixedPosition: 'first', defaultVisible: true, defaultOrder: 0, group: 'General', priority: 'required' },
   { id: 'email', label: 'Email', required: false, defaultVisible: true, defaultOrder: 1, group: 'General', priority: 'high' },
   { id: 'phone', label: 'Phone', required: false, defaultVisible: true, defaultOrder: 2, group: 'Contact', priority: 'medium' },
 ];
@@ -75,7 +77,77 @@ function renderDrawer(overrides: Partial<React.ComponentProps<typeof ManageColum
 
 describe('ManageColumnsDrawer — save, retry, and unsaved-changes guard', () => {
   afterEach(() => {
+    cleanup();
     vi.restoreAllMocks();
+  });
+
+  it('treats registry fallback as the baseline when effective columns are empty', async () => {
+    const onClose = vi.fn();
+    renderDrawer({ effectiveColumns: [], onClose });
+    expect((screen.getByText('Save') as HTMLButtonElement).disabled).toBe(true);
+    await act(async () => fireEvent.click(screen.getByLabelText('Close drawer')));
+    expect(screen.queryByText('Discard changes?')).toBeNull();
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows contiguous group headings in persisted table order and locks fixed Name movement', () => {
+    renderDrawer({ effectiveColumns: [EFFECTIVE_COLUMNS[0], { ...EFFECTIVE_COLUMNS[2], order: 1 }, { ...EFFECTIVE_COLUMNS[1], order: 2 }] });
+    expect(screen.getAllByRole('listitem').map(item => item.getAttribute('aria-label'))).toEqual([
+      'Column Name, position 1 of 3', 'Column Phone, position 2 of 3', 'Column Email, position 3 of 3',
+    ]);
+    expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['General', 'Contact', 'General']);
+    expect((screen.getByLabelText('Drag to reorder Name') as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText('Name visibility (locked)') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('trims column search and retains draft visibility across background updates', async () => {
+    const { rerender, props } = renderDrawer();
+    await act(async () => fireEvent.click(screen.getByLabelText('Toggle Email visibility')));
+    rerender(<ManageColumnsDrawer {...props} effectiveColumns={EFFECTIVE_COLUMNS.map(column => column.id === 'phone' ? { ...column, visible: false } : column)} />);
+    expect(screen.getByLabelText('Toggle Email visibility').getAttribute('aria-checked')).toBe('false');
+    expect(screen.getByLabelText('Toggle Phone visibility').getAttribute('aria-checked')).toBe('true');
+    fireEvent.change(screen.getByLabelText('Search columns'), { target: { value: '  EMAIL  ' } });
+    expect(screen.getAllByRole('listitem')).toHaveLength(1);
+    expect(screen.getByLabelText('Toggle Email visibility').getAttribute('aria-checked')).toBe('false');
+  });
+
+  it('preserves its unsaved draft and Retry through optimistic publish and rollback', async () => {
+    let rejectFirst!: (error: Error) => void;
+    const persist = vi.fn()
+      .mockImplementationOnce(() => new Promise<void>((_resolve, reject) => { rejectFirst = reject; }))
+      .mockResolvedValueOnce(undefined);
+    function Harness() {
+      const [effectiveColumns, setEffectiveColumns] = React.useState(EFFECTIVE_COLUMNS);
+      const onSave = async (config: ColumnConfigItem[]) => {
+        setEffectiveColumns(config);
+        try { await persist(config); }
+        catch (error) { setEffectiveColumns(EFFECTIVE_COLUMNS); throw error; }
+      };
+      return <ManageColumnsDrawer isOpen onClose={vi.fn()} module="leads" registry={REGISTRY} effectiveColumns={effectiveColumns} onSave={onSave} onReset={vi.fn()} />;
+    }
+    render(<Harness />);
+    await act(async () => fireEvent.click(screen.getByLabelText('Toggle Email visibility')));
+    await act(async () => fireEvent.click(screen.getByText('Save')));
+    expect(screen.getByText('Saving...')).toBeTruthy();
+    await act(async () => rejectFirst(new Error('Network failed')));
+    expect(screen.getByText('Retry')).toBeTruthy();
+    expect(screen.getByLabelText('Toggle Email visibility').getAttribute('aria-checked')).toBe('false');
+    await act(async () => fireEvent.click(screen.getByText('Retry')));
+    expect(persist).toHaveBeenCalledTimes(2);
+    expect(persist.mock.calls[1][0]).toEqual(persist.mock.calls[0][0]);
+    expect(screen.getByText('Saved')).toBeTruthy();
+  });
+
+  it('preserves edits and reports reset failure without closing its confirmation', async () => {
+    const onReset = vi.fn().mockRejectedValue(new Error('Network failed'));
+    renderDrawer({ onReset });
+    await act(async () => fireEvent.click(screen.getByLabelText('Toggle Email visibility')));
+    await act(async () => fireEvent.click(screen.getByText('Reset to Default')));
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: 'Reset' })));
+    expect(onReset).toHaveBeenCalledTimes(1);
+    expect(screen.getAllByText('Unable to reset columns. Please try again.').length).toBeGreaterThan(0);
+    expect(screen.getByText('Reset to Default?')).toBeTruthy();
+    expect(screen.getByLabelText('Toggle Email visibility').getAttribute('aria-checked')).toBe('false');
   });
 
   describe('Requirement 5.2: Save persists via onSave', () => {

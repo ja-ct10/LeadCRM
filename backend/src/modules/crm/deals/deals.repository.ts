@@ -13,6 +13,7 @@ import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
 import { saveRecordValues, type BatchFiles } from '../closing-requirements/custom-field-values.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { assertDealStageTransition, dealHasEverBeenWon, type RelatedDealMoveGuard } from './deal-lifecycle';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 
@@ -35,7 +36,10 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     ...(accountId             ? { accountId }                           : {}),
     ...(params.contactId      ? { contactDeals: { some: { contactId: params.contactId } } } : {}),
     ...(params.leadId         ? { leadDeals: { some: { leadId: params.leadId } } }          : {}),
-    ...(params.search ? { title: { contains: params.search, mode: 'insensitive' as const } } : {}),
+    AND: buildSearchClauses(params.search, ['title', 'leadSource', 'industry'], contains => [
+      { organization: { name: contains } }, { stage: { name: contains } },
+      ...(['LOW', 'MEDIUM', 'HIGH'].includes(contains.contains.toUpperCase()) ? [{ priority: contains.contains.toUpperCase() }] : []),
+    ]),
     ...(params.dateFrom || params.dateTo ? {
       createdAt: {
         ...(params.dateFrom ? { gte: new Date(params.dateFrom) } : {}),

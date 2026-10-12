@@ -14,6 +14,7 @@ import type { Task } from "@/store/types";
 import { subscribePageCacheInvalidation } from "@/shared/cache/page-cache";
 import { tasksApi } from "@/shared/services/tasks.api";
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
+import { matchesSearch } from '@/shared/utils/search';
 
 export function localTaskQuery(
   tasks: Task[],
@@ -44,10 +45,7 @@ export function localTaskQuery(
         (!query.dueFrom ||
           Date.parse(task.dueDate) >= Date.parse(query.dueFrom)) &&
         (!query.dueTo || Date.parse(task.dueDate) < Date.parse(query.dueTo)) &&
-        (!query.search ||
-          `${task.title} ${task.description ?? ""}`
-            .toLowerCase()
-            .includes(query.search.toLowerCase()))
+        matchesSearch(query.search ?? '', task.title, task.description)
       );
     })
     .map((task) => ({ ...task, status: TaskStatusSchema.parse(task.status) }));

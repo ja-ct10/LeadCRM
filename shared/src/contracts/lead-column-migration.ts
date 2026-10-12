@@ -1,8 +1,36 @@
 import type { ColumnConfigItem } from '../types/preferences';
+import { LEADS_TABLE_COLUMNS, RETIRED_LEAD_TABLE_IDS } from './lead-table-columns';
 
-/** Expand the retired composite only once; later email/phone choices stay independent. */
+const historicalDefaults = [
+  ['firstName', 'assignedUserId', 'email', 'phone', 'companyName', 'status', 'createdAt', 'source'],
+  ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'assignedUserId'],
+  ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'assignedUserId', 'createdAt'],
+];
+
+/** Idempotent upgrade of documented static preferences; custom data is never touched. */
 export function normalizeLeadColumns(columns: ColumnConfigItem[]): ColumnConfigItem[] {
-  return normalizeLeadNameColumns(expandEmailAndPhone(columns));
+  if (!columns.length) return columns;
+  const expanded = expandEmailAndPhone(columns);
+  const ordered = [...expanded].sort((a, b) => a.order - b.order);
+  const visibleIds = ordered.filter(column => column.visible).map(column => column.id);
+  const usesHistoricalDefault = !ordered.some(column => column.id === 'name') && historicalDefaults.some(ids =>
+    ids.length === visibleIds.length && ids.every((id, index) => id === visibleIds[index]));
+  const retiredIds = new Set(RETIRED_LEAD_TABLE_IDS);
+  const supported = ordered.filter(column => !retiredIds.has(column.id));
+  let result: ColumnConfigItem[];
+  if (usesHistoricalDefault) {
+    const byId = new Map(supported.map(column => [column.id, column]));
+    result = LEADS_TABLE_COLUMNS.map(definition => ({
+      ...byId.get(definition.id), id: definition.id, visible: definition.defaultVisible, order: definition.defaultOrder,
+    }));
+    // Preserve unknown IDs for validation, never silently legitimize arbitrary input.
+    result.push(...supported.filter(column => !result.some(item => item.id === column.id)));
+  } else {
+    const name = supported.find(column => column.id === 'name') ?? { id: 'name', visible: true, order: 0 };
+    result = [{ ...name, visible: true }, ...supported.filter(column => column.id !== 'name')];
+    if (!result.some(column => column.id === 'lastName')) result.push({ id: 'lastName', visible: false, order: result.length });
+  }
+  return result.map((column, order) => ({ ...column, order }));
 }
 
 function expandEmailAndPhone(columns: ColumnConfigItem[]): ColumnConfigItem[] {
@@ -12,32 +40,7 @@ function expandEmailAndPhone(columns: ColumnConfigItem[]): ColumnConfigItem[] {
     legacy.visible && ['email', 'phone'].includes(column.id) ? { ...column, visible: true } : column
   ));
   for (const [index, id] of ['email', 'phone'].entries()) {
-    if (!result.some(column => column.id === id)) result.push({ id, visible: true, order: legacy.order + index });
+    if (!result.some(column => column.id === id)) result.push({ id, visible: legacy.visible, order: legacy.order + index });
   }
   return result.sort((a, b) => a.order - b.order).map((column, order) => ({ ...column, order }));
-}
-
-const previousDefaultVisibleIds = ['firstName', 'assignedUserId', 'email', 'phone', 'companyName', 'status', 'createdAt', 'source'];
-const defaultNameColumnIds = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'assignedUserId'];
-
-/** Upgrade old defaults once, while retaining explicitly saved name-column choices. */
-function normalizeLeadNameColumns(columns: ColumnConfigItem[]): ColumnConfigItem[] {
-  if (!columns.some(column => column.id === 'firstName') || columns.some(column => column.id === 'lastName')) return columns;
-  const ordered = [...columns].sort((a, b) => a.order - b.order);
-  const visibleIds = ordered.filter(column => column.visible).map(column => column.id);
-  const usesPreviousDefault = visibleIds.length === previousDefaultVisibleIds.length
-    && visibleIds.every((id, index) => id === previousDefaultVisibleIds[index]);
-  const lastName: ColumnConfigItem = { id: 'lastName', visible: true, order: 1 };
-  if (usesPreviousDefault) {
-    const byId = new Map([...ordered, lastName].map(column => [column.id, column]));
-    const primaryIds = new Set(defaultNameColumnIds);
-    const primary = defaultNameColumnIds.map(id => byId.get(id)!);
-    const additional = ordered.filter(column => !primaryIds.has(column.id)).map(column => (
-      ['createdAt', 'source'].includes(column.id) ? { ...column, visible: false } : column
-    ));
-    return [...primary, ...additional].map((column, order) => ({ ...column, order }));
-  }
-  // Insert beside First Name without reordering or changing visibility/widths of saved columns.
-  ordered.splice(ordered.findIndex(column => column.id === 'firstName') + 1, 0, lastName);
-  return ordered.map((column, order) => ({ ...column, order }));
 }

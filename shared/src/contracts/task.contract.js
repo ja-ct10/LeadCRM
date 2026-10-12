@@ -172,6 +172,7 @@ exports.TASK_COLUMN_DEFINITIONS = [
     {
         id: "action",
         label: "Action",
+        fixedPosition: 'first',
         required: true,
         defaultVisible: true,
         defaultOrder: 0,

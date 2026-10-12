@@ -29,6 +29,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 import ForecastBar from './forecast-bar';
 import { getTenantCurrency } from '@/shared/utils/currency';
 import type { Deal } from '@/store/types';
+import { matchesSearch } from '@/shared/utils/search';
 
 export default function PipelinePage({ navigate }: { navigate?: (path: string) => void }) {
   const router = useRouter();
@@ -53,6 +54,23 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const refreshPending = useRef(false);
   const [pipelineError, setPipelineError] = useState('');
   const [selected, setSelected] = useState<Deal | null>(null);
+  const highlightId = searchParams.get('highlight');
+  useEffect(() => {
+    if (!highlightId) return;
+    const controller = new AbortController();
+    setSelected(null);
+    void apiClient.get<{ data: Record<string, unknown> }>('/crm/deals/' + encodeURIComponent(highlightId), { signal: controller.signal }).then(response => {
+      if (controller.signal.aborted) return;
+      const deal = toFrontendDeal(response.data);
+      setSelected(deal);
+      const params = new URLSearchParams(window.location.search);
+      if (deal.pipelineId && params.get('pipelineId') !== deal.pipelineId) {
+        params.set('pipelineId', deal.pipelineId);
+        router.replace('/crm/deals?' + params.toString(), { scroll: false });
+      }
+    }).catch(error => { if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : 'Unable to open Deal.'); });
+    return () => controller.abort();
+  }, [highlightId, user?.id, user?.tenantId, router]);
   const [createStage, setCreateStage] = useState<string>();
   const [lost, setLost] = useState<{ id: string; stageId: string }>();
   const query = useCachedPage<Deal[]>({ module: 'deals', params: { pipelineId: pipeline?.id }, disabled: USE_MOCK_DATA || !pipeline,
@@ -89,7 +107,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
     return (!searchParams.get('accountId') && !searchParams.get('organizationId') || (deal.accountId ?? deal.organizationId) === (searchParams.get('accountId') || searchParams.get('organizationId')))
       && (!searchParams.get('leadId') || deal.leadIds?.includes(searchParams.get('leadId')!) || deal.leadId === searchParams.get('leadId'))
       && (!searchParams.get('contactId') || deal.contactIds?.includes(searchParams.get('contactId')!) || deal.contactId === searchParams.get('contactId'))
-      && (!search.trim() || terms.includes(search.trim().toLowerCase())) && (!myDeals || deal.assignedUserId === user?.id)
+      && matchesSearch(search, terms) && (!myDeals || deal.assignedUserId === user?.id)
       && (!filters.stage?.length || filters.stage.includes(deal.stageId))
       && (!filters.owner?.length || filters.owner.includes(deal.assignedUserId || 'unassigned'))
       && (!filters.priority?.length || filters.priority.includes(deal.priority))

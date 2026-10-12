@@ -2,11 +2,10 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings } from 'lucide-react';
-import { useData } from '../../store/DataContext';
 import { useAuth } from '../../store/AuthContext';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
-import { pipelineService } from '@/features/tenant/crm/pipeline/services/pipeline.service';
+import { dealsApi } from '@/shared/services/deals.api';
 import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import type { Contact, Deal } from '@/store/types';
@@ -19,59 +18,59 @@ interface CommandPaletteProps {
 
 export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
-  const { roles } = useData();
-  const { user } = useAuth();
+  const { user, userCan } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
+  const searchVersion = useRef(0);
+  const canLeads = userCan('leads', 'canView'), canDeals = userCan('deals', 'canView');
 
   // ── Server-side search results ───────────────────────────────────────────
   const [searchedLeads,  setSearchedLeads]  = useState<Contact[]>([]);
   const [searchedDeals,  setSearchedDeals]  = useState<Deal[]>([]);
   const [isSearching,    setIsSearching]    = useState(false);
+  const [searchError, setSearchError] = useState('');
   const debouncedQuery = useDebounce(query, 300);
 
-  const userRoleDef    = roles.find(r => r.name === user?.role);
-  const userPermissions = userRoleDef?.permissions || [];
-
   const searchRecords = useCallback(async (term: string): Promise<void> => {
-    if (!term.trim() || term.length < 2) {
+    const version = ++searchVersion.current;
+    setSearchError('');
+    term = term.trim();
+    if (!isOpen || term.length < 2) {
       setSearchedLeads([]);
       setSearchedDeals([]);
+      setIsSearching(false);
       return;
     }
     setIsSearching(true);
     try {
       const [leadsRes, dealsRes] = await Promise.allSettled([
-        leadsService.getAll({ search: term, limit: 5 }),
-        pipelineService.getDeals(undefined, 5),
+        canLeads ? leadsService.getAll({ search: term, limit: 5 }) : Promise.resolve(null),
+        canDeals ? dealsApi.list({ search: term, limit: 5 }) : Promise.resolve(null),
       ]);
+      if (version !== searchVersion.current) return;
+      if ([leadsRes, dealsRes].some(result => result.status === 'rejected')) setSearchError('Some records could not be searched. Please try again.');
       setSearchedLeads(
-        leadsRes.status === 'fulfilled'
+        leadsRes.status === 'fulfilled' && leadsRes.value
           ? (leadsRes.value?.data ?? []).map(toFrontendContact) as Contact[]
           : [],
       );
       setSearchedDeals(
-        dealsRes.status === 'fulfilled'
+        dealsRes.status === 'fulfilled' && dealsRes.value
           ? (dealsRes.value?.data ?? [])
               .map(toFrontendDeal)
-              .filter((d): d is Deal =>
-                d !== null &&
-                (
-                  (d.title ?? '').toLowerCase().includes(term.toLowerCase()) ||
-                  (d.companyName ?? '').toLowerCase().includes(term.toLowerCase())
-                ),
-              ) as Deal[]
+              .filter((d): d is Deal => d !== null && !d.isArchived) as Deal[]
           : [],
       );
     } catch {
       // Silent failure — nav items remain usable
     } finally {
-      setIsSearching(false);
+      if (version === searchVersion.current) setIsSearching(false);
     }
-  }, []);
+  }, [isOpen, user?.id, user?.tenantId, canLeads, canDeals]);
 
   useEffect(() => {
-    void searchRecords(debouncedQuery);
-  }, [debouncedQuery, searchRecords]);
+    if (query.trim() === debouncedQuery.trim()) void searchRecords(debouncedQuery);
+    return () => { searchVersion.current++; };
+  }, [debouncedQuery, searchRecords, query]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -97,31 +96,25 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
   if (!isOpen) return null;
 
   const navItems = [
-    { name: 'Dashboard',       path: 'dashboard',  icon: LayoutDashboard, permissions: ['p1'] },
-    { name: 'Client Profiles', path: 'contacts',   icon: Users,           permissions: ['contacts.view'] },
-    { name: 'Leads',           path: 'leads',      icon: Users,           permissions: ['leads.view'] },
-    { name: 'Accounts',        path: 'accounts',   icon: Users,           permissions: ['accounts.view'] },
-    { name: 'Deals',           path: 'deals',      icon: Briefcase,       permissions: ['deals.view'] },
-    { name: 'Workflows',       path: 'workflows',  icon: Workflow,        permissions: ['workflows.view'] },
-    { name: 'Campaigns',       path: 'campaigns',  icon: Mail,            permissions: ['campaigns.view'] },
-    { name: 'Users',           path: 'users',      icon: Users,           permissions: ['users.view'] },
-    { name: 'Settings',        path: 'settings',   icon: Settings,        permissions: ['settings.view'] },
+    { name: 'Dashboard',       path: '/dashboard',               icon: LayoutDashboard, module: 'dashboard' },
+    { name: 'Client Profiles', path: '/crm/contacts',            icon: Users, module: 'contacts' },
+    { name: 'Leads',           path: '/crm/leads',               icon: Users, module: 'leads' },
+    { name: 'Accounts',        path: '/crm/accounts',            icon: Users, module: 'accounts' },
+    { name: 'Deals',           path: '/crm/deals',               icon: Briefcase, module: 'deals' },
+    { name: 'Workflows',       path: '/automation/workflows',    icon: Workflow, module: 'workflows' },
+    { name: 'Campaigns',       path: '/marketing/campaigns',     icon: Mail, module: 'campaigns' },
+    { name: 'Users',           path: '/settings?tab=users',       icon: Users, module: 'users' },
+    { name: 'Settings',        path: '/settings',               icon: Settings, module: 'settings' },
   ];
 
-  const hasAccess = (item: { name: string; permissions?: string[]; roles?: string[]; enabled?: boolean }) => {
-    if (user?.role?.toLowerCase() === 'client admin') return true;
-
-    if (item.roles?.some((r) => r.toLowerCase() === user?.role?.toLowerCase())) return true;
-    if (item.permissions?.some((p) => userPermissions.includes(p))) return true;
-    return false;
-  };
-
   const filteredNav = navItems.filter((item) =>
-    hasAccess(item) &&
-    item.name.toLowerCase().includes(query.toLowerCase()),
+    userCan(item.module, 'canView') &&
+    item.name.toLowerCase().includes(query.trim().toLowerCase()),
   );
 
   const handleSelect = (path: string): void => {
+    searchVersion.current++;
+    setQuery(''); setSearchedLeads([]); setSearchedDeals([]); setIsSearching(false);
     navigate(path);
     setIsOpen(false);
   };
@@ -144,7 +137,8 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
             className="flex-1 bg-transparent text-slate-900 dark:text-white placeholder-slate-500 focus:outline-none text-lg"
             placeholder="Search leads, deals, or navigate..."
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => { searchVersion.current++; setSearchedLeads([]); setSearchedDeals([]); setIsSearching(false); setQuery(e.target.value); }}
+            aria-label="Search or navigate"
           />
           {isSearching && (
             <div className="w-4 h-4 border-2 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mr-2 shrink-0" aria-label="Searching" />
@@ -156,6 +150,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-2">
+          {searchError && <p role="alert" className="px-3 py-2 text-sm text-destructive">{searchError}</p>}
           {query === '' && (
             <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
               Quick Navigation
@@ -187,7 +182,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
           )}
 
           {/* Lead results */}
-          {query !== '' && searchedLeads.length > 0 && (
+          {query !== '' && canLeads && searchedLeads.length > 0 && (
             <div className="mb-4">
               <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Leads
@@ -195,13 +190,13 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
               {searchedLeads.map((contact) => (
                 <button
                   key={contact.id}
-                  onClick={() => handleSelect('leads')}
+                  onClick={() => handleSelect('/crm/leads?highlight=' + encodeURIComponent(contact.id))}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
                 >
                   <Users size={18} className="text-blue-400 shrink-0" />
                   <div className="min-w-0">
-                    <div className="font-medium truncate">{contact.companyName || contact.contactPerson}</div>
-                    <div className="text-xs text-slate-500 truncate">{contact.contactPerson}</div>
+                    <div className="font-medium truncate">{contact.contactPerson}</div>
+                    <div className="text-xs text-slate-500 truncate">{contact.companyName || contact.email}</div>
                   </div>
                 </button>
               ))}
@@ -209,7 +204,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
           )}
 
           {/* Deal results */}
-          {query !== '' && searchedDeals.length > 0 && (
+          {query !== '' && canDeals && searchedDeals.length > 0 && (
             <div className="mb-4">
               <div className="px-3 py-2 text-xs font-semibold text-slate-500 uppercase tracking-wider">
                 Deals
@@ -217,7 +212,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
               {searchedDeals.map((deal) => (
                 <button
                   key={deal.id}
-                  onClick={() => handleSelect('pipeline')}
+                  onClick={() => handleSelect('/crm/deals?highlight=' + encodeURIComponent(deal.id))}
                   className="w-full flex items-center gap-3 px-3 py-3 rounded-xl hover:bg-gray-50 dark:hover:bg-white/[0.04] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
                 >
                   <Briefcase size={18} className="text-purple-400 shrink-0" />

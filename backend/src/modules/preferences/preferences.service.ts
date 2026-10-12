@@ -1,4 +1,4 @@
-import { normalizeModuleColumns } from '@leadcrm/shared';
+import { reconcileTableColumns, RETIRED_LEAD_TABLE_IDS } from '@leadcrm/shared';
 import type { ColumnConfig, ColumnConfigItem } from '@leadcrm/shared';
 import { SaveColumnsBodySchema } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
@@ -88,35 +88,7 @@ export function reconcileWithRegistry(config: ColumnConfig, module: string): Col
     return config;
   }
 
-  const registryIds = new Set(registry.columns.map((col) => col.id));
-  const requiredIds = new Set(getRequiredColumnIds(module));
-
-  // 1. Strip stale columns that no longer exist in registry
-  const storedColumns = normalizeModuleColumns(module, config.columns);
-  const validColumns = storedColumns.filter((col) => registryIds.has(col.id));
-
-  // 2. Find registry columns NOT in the config
-  const existingIds = new Set(validColumns.map((col) => col.id));
-  const missingColumns: ColumnConfigItem[] = registry.columns
-    .filter((regCol) => !existingIds.has(regCol.id))
-    .map((regCol) => ({
-      id: regCol.id,
-      visible: regCol.defaultVisible,
-      order: regCol.defaultOrder,
-    }));
-
-  // 3. Merge existing + missing columns
-  const allColumns = [...validColumns, ...missingColumns];
-
-  // 4. Ensure required columns have visible: true
-  const reconciledColumns = allColumns.map((col) => {
-    if (requiredIds.has(col.id) && !col.visible) {
-      return { ...col, visible: true };
-    }
-    return col;
-  });
-
-  return { module, columns: reconciledColumns };
+  return { module, columns: reconcileTableColumns(module, config.columns, registry.columns) };
 }
 
 // ─────────────────────────────────────────────────────
@@ -228,6 +200,20 @@ function parseStoredValue(value: unknown): ColumnConfigItem[] | null {
   }
 }
 
+/** Accept documented old clients, but validate raw input before stripping retired IDs. */
+function prepareIncomingConfig(config: ColumnConfig, module: string): ColumnConfig {
+  const parsed = SaveColumnsBodySchema.safeParse({ columns: config.columns });
+  if (!parsed.success) throw new AppError('Invalid column configuration', 400);
+  const registry = getRegistryForModule(module);
+  const knownIds = new Set(registry?.columns.map(column => column.id) ?? []);
+  const legacyIds = new Set(module === 'leads' ? [...RETIRED_LEAD_TABLE_IDS, 'emailAndPhone'] : module === 'users' ? ['department'] : []);
+  const rawErrors = config.columns.some(column => !knownIds.has(column.id) && !legacyIds.has(column.id)
+    || column.order > Math.max(registry?.columns.length ?? 0, module === 'leads' ? 80 : 0)
+    || registry?.columns.some(definition => definition.id === column.id && definition.required && !column.visible));
+  if (rawErrors) throw new AppError('Column configuration contains an unknown, hidden required or invalid column', 400);
+  return reconcileWithRegistry(config, module);
+}
+
 
 // ─────────────────────────────────────────────────────
 // USER PREFERENCE CRUD
@@ -244,6 +230,7 @@ export async function upsertUserPreference(
   config: ColumnConfig,
 ): Promise<ColumnConfig> {
   // 1. Validate config against registry
+  config = prepareIncomingConfig(config, module);
   const validation = validateAgainstRegistry(config, module);
   if (!validation.valid) {
     const details = validation.errors.map((e) => `${e.field}: ${e.reason}`).join('; ');
@@ -294,6 +281,7 @@ export async function upsertTenantDefault(
   ipAddress?: string,
 ): Promise<ColumnConfig> {
   // 1. Validate config against registry
+  config = prepareIncomingConfig(config, module);
   const validation = validateAgainstRegistry(config, module);
   if (!validation.valid) {
     const details = validation.errors.map((e) => `${e.field}: ${e.reason}`).join('; ');

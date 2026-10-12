@@ -39,8 +39,8 @@ function buildQuery(params: Record<string, unknown>): string {
 }
 
 export const dealsApi = {
-  list: (query: Record<string, unknown> = {}) =>
-    apiClient.get<DealsResponse>(`/crm/deals${buildQuery(query)}`),
+  list: (query: Record<string, unknown> = {}, signal?: AbortSignal) =>
+    apiClient.get<DealsResponse>(`/crm/deals${buildQuery(query)}`, { signal }),
 
   get: (id: string) =>
     apiClient.get<DealResponse>(`/crm/deals/${id}`),

@@ -120,7 +120,7 @@ export function ProductsPage() {
   const [pageSize, setPageSize] = useState(25);
   useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); }, [user?.tenantId]);
   useEffect(() => { setSelected(new Set()); }, [page, pageSize, search]);
-  const filtered = products.filter(product => product.name.toLowerCase().includes(search.toLowerCase())).sort((a, b) => {
+  const filtered = products.filter(product => product.name.toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => {
     const others = Number(a.name.trim().toLowerCase() === 'others') - Number(b.name.trim().toLowerCase() === 'others');
     if (others) return others;
     if (!sort) return 0;

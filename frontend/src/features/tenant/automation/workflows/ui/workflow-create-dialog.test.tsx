@@ -36,8 +36,16 @@ it('shows the sixteen approved starters and excludes hidden recipes from search'
     if (starters.has(index)) return;
     fireEvent.change(screen.getByRole('searchbox'), { target: { value: recipe.name } });
     expect(screen.queryByRole('button', { name: `Preview ${recipe.name}` })).toBeNull();
-    expect(screen.getByRole('status').textContent).toBe('0 templates of 16');
+    for (const button of screen.queryAllByRole('button', { name: /^Preview / })) {
+      expect(WORKFLOW_STARTER_TEMPLATES.some(entry => `Preview ${entry.recipe.name}` === button.getAttribute('aria-label'))).toBe(true);
+    }
   });
+});
+
+it('searches multiple template words with extra whitespace', () => {
+  setup();
+  fireEvent.change(screen.getByRole('searchbox'), { target: { value: '  EMAIL   new   LEAD ' } });
+  expect(screen.getByRole('button', { name: 'Preview New Lead Email Welcome' })).toBeTruthy();
 });
 
 it('combines record, action, and text filters; returns to the same result and focus; clears empty SMS results', () => {

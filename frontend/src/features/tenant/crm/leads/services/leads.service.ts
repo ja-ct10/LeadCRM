@@ -1,8 +1,8 @@
 'use client';
 
 import { apiClient } from '@/lib/api/client';
-import type { PaginatedResponse, ApiResponse } from '@leadcrm/shared';
-import type { Lead, CreateLeadRequest, UpdateLeadRequest } from '@/store/types/lead.types';
+import type { PaginatedResponse, ApiResponse, LeadRead } from '@leadcrm/shared';
+import type { CreateLeadRequest, UpdateLeadRequest } from '@/store/types/lead.types';
 
 export interface LeadQueryParams {
   page?: number;
@@ -22,7 +22,7 @@ export interface LeadQueryParams {
  * and ensure the backend is running with `npm run dev` in /backend.
  */
 export const leadsService = {
-  getAll: (params?: LeadQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<Lead>> => {
+  getAll: (params?: LeadQueryParams, signal?: AbortSignal): Promise<PaginatedResponse<LeadRead>> => {
     const query = new URLSearchParams();
     if (params?.page)     query.set('page',     String(params.page));
     if (params?.limit)    query.set('limit',    String(params.limit));
@@ -31,17 +31,17 @@ export const leadsService = {
     if (params?.archived) query.set('archived', 'true');
     const qs = query.toString();
     // canonical path: /crm/leads
-    return apiClient.get<PaginatedResponse<Lead>>(`/crm/leads${qs ? `?${qs}` : ''}`, { signal });
+    return apiClient.get<PaginatedResponse<LeadRead>>(`/crm/leads${qs ? `?${qs}` : ''}`, { signal });
   },
 
-  getById: (id: string): Promise<ApiResponse<Lead>> =>
-    apiClient.get<ApiResponse<Lead>>(`/crm/leads/${id}`),
+  getById: (id: string): Promise<ApiResponse<LeadRead>> =>
+    apiClient.get<ApiResponse<LeadRead>>(`/crm/leads/${id}`),
 
-  create: (data: CreateLeadRequest): Promise<ApiResponse<Lead>> =>
-    apiClient.post<ApiResponse<Lead>>('/crm/leads', data),
+  create: (data: CreateLeadRequest): Promise<ApiResponse<LeadRead>> =>
+    apiClient.post<ApiResponse<LeadRead>>('/crm/leads', data),
 
-  update: (id: string, data: UpdateLeadRequest): Promise<ApiResponse<Lead>> =>
-    apiClient.put<ApiResponse<Lead>>(`/crm/leads/${id}`, data),
+  update: (id: string, data: UpdateLeadRequest): Promise<ApiResponse<LeadRead>> =>
+    apiClient.put<ApiResponse<LeadRead>>(`/crm/leads/${id}`, data),
 
   archive: (id: string): Promise<void> =>
     apiClient.patch<void>(`/crm/leads/${id}/archive`),

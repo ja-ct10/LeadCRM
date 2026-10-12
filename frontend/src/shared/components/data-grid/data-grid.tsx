@@ -95,6 +95,7 @@ function ResizeHandle({ columnId, currentWidth, onStartResize, isResizing }: Res
         e.stopPropagation();
         onStartResize(columnId, e.clientX, currentWidth);
       }}
+      onClick={event => { event.preventDefault(); event.stopPropagation(); }}
       aria-hidden="true"
     />
   );
@@ -447,7 +448,10 @@ export function DataGrid<T = Record<string, unknown>>({
 }: DataGridProps<T>): React.ReactElement {
   // ─── Internal column widths state (when uncontrolled) ──────────────────
   const [internalWidths, setInternalWidths] = useState<Record<string, number>>({});
-  const columnWidths = externalColumnWidths ?? internalWidths;
+  const columnWidths = { ...externalColumnWidths, ...internalWidths };
+  // Server confirmation, Reset and rollback all replace transient resize widths.
+  const savedWidthKey = JSON.stringify([externalColumnWidths, columns.map(column => [column.id, column.width])]);
+  useEffect(() => { setInternalWidths({}); }, [savedWidthKey]);
 
   const handleColumnResize = useCallback(
     (columnId: string, width: number) => {
@@ -516,19 +520,19 @@ export function DataGrid<T = Record<string, unknown>>({
   // Pinned left offset calculation
   const pinnedLeftOffsets = useMemo(() => {
     const offsets: Record<string, number> = {};
-    let currentOffset = selectable ? CHECKBOX_COLUMN_WIDTH : 0;
+    let currentOffset = (rowActions ? ROW_ACTIONS_WIDTH : 0) + (selectable ? CHECKBOX_COLUMN_WIDTH : 0);
     for (const col of pinnedLeftColumns) {
       offsets[col.id] = currentOffset;
       currentOffset += getColumnWidth(col);
     }
     return offsets;
-  }, [pinnedLeftColumns, getColumnWidth, selectable]);
+  }, [pinnedLeftColumns, getColumnWidth, selectable, rowActions]);
 
   // Total pinned left width (for shadow boundary)
   const totalPinnedLeftWidth = useMemo(() => {
-    const base = selectable ? CHECKBOX_COLUMN_WIDTH : 0;
+    const base = (rowActions ? ROW_ACTIONS_WIDTH : 0) + (selectable ? CHECKBOX_COLUMN_WIDTH : 0);
     return base + pinnedLeftColumns.reduce((sum, col) => sum + getColumnWidth(col), 0);
-  }, [pinnedLeftColumns, getColumnWidth, selectable]);
+  }, [pinnedLeftColumns, getColumnWidth, selectable, rowActions]);
 
   // ─── Container height ──────────────────────────────────────────────────
   const containerStyle = useMemo(() => {
@@ -809,7 +813,7 @@ export function DataGrid<T = Record<string, unknown>>({
                   scope="col"
                   className={cn(
                     'sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
-                    'px-3 text-left group/header relative',
+                    'px-3 text-left group/header',
                     'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
                     // Last pinned column shows inset shadow when scrolled, subtle border otherwise
                     isLastPinned && isScrolled
@@ -875,6 +879,7 @@ export function DataGrid<T = Record<string, unknown>>({
                           columnId={col.id}
                           columnLabel={col.header}
                           isRequired={col.required}
+                          isSortable={col.sortable}
                           isPinned={col.pinned === 'left'}
                           sortDirection={sortDir}
                           onSortAsc={(id) => { onSortChange?.({ field: id, direction: 'asc' }); }}
@@ -913,7 +918,7 @@ export function DataGrid<T = Record<string, unknown>>({
                     scope="col"
                     className={cn(
                       'sticky right-0 z-30 bg-white dark:bg-slate-900',
-                      'px-3 text-left group/header relative',
+                      'px-3 text-left group/header',
                       'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
                       'shadow-[inset_1px_0_0_0_#eef0f3] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
                       col.sortable && 'cursor-pointer hover:text-[#3C4858] dark:hover:text-slate-300 select-none',

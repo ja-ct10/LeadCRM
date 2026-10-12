@@ -106,7 +106,7 @@ export default function EmojiPicker({ onSelect }: EmojiPickerProps): React.React
   const filteredCategories = useMemo(() => {
     if (!searchQuery.trim()) return CATEGORIES;
 
-    const query = searchQuery.toLowerCase();
+    const query = searchQuery.trim().toLowerCase();
     return CATEGORIES
       .map((cat) => ({
         ...cat,

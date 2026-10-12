@@ -1,0 +1,34 @@
+/** Public Lead list/detail projection. Product IDs are distinct from display names. */
+export type LeadRead = {
+  id: string;
+  tenantId: string;
+  firstName: string;
+  lastName: string;
+  status: string;
+  email: string | null;
+  phone: string | null;
+  companyName: string | null;
+  address: string | null;
+  source: string | null;
+  accountId: string | null;
+  assignedUserId: string | null;
+  productInterestIds: string[];
+  productInterest: string[];
+  productInterests: string[];
+  createdAt: string;
+  updatedAt: string;
+  createdById: string | null;
+  updatedById: string | null;
+  lastStatusChangedAt: string | null;
+  contactId: string | null;
+  convertedAt: string | null;
+  convertedById: string | null;
+  isArchived: boolean;
+  deletedAt: string | null;
+  deletedBy: string | null;
+  assignedUser?: LeadUserSummary | null;
+  account?: { id: string; name: string } | null;
+  createdBy?: LeadUserSummary | null;
+  updatedBy?: LeadUserSummary | null;
+};
+export interface LeadUserSummary { id: string; firstName: string; lastName: string }

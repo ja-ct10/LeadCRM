@@ -31,7 +31,7 @@ import {
 import type { SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { ACCOUNTS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
 import type { Account } from '../types/account.types';
 
 // ─── Props Interface ─────────────────────────────────────────────────────────
@@ -67,6 +67,7 @@ interface AccountsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  onColumnWidthChange?: (columnId: string, width: number) => void;
   /** Display mode: wrap or clip cell content */
   viewMode?: 'wrap' | 'clip';
   /** Row ID to highlight (navigated from global search) */
@@ -92,6 +93,7 @@ export function AccountsDataGrid({
   onArchive,
   onManageColumns,
   onHideColumn,
+  onColumnWidthChange,
   viewMode = 'clip',
   highlightRowId,
 }: AccountsDataGridProps): React.ReactElement {
@@ -173,10 +175,8 @@ export function AccountsDataGrid({
     registry: ACCOUNTS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
-    sortableColumns: [
-      'name', 'industry', 'size',
-      'city', 'country', 'createdAt',
-    ],
+    pinnedColumns: ['name'],
+    sortableColumns: ACCOUNTS_TABLE_SORT_FIELDS,
     resizableColumns: 'all',
     defaultWidths: {
       name: 240,
@@ -229,6 +229,9 @@ export function AccountsDataGrid({
       onSortChange={onSortChange}
       onRowClick={onRowClick}
       onHideColumn={onHideColumn}
+      enableColumnMenu={!!onHideColumn}
+      onColumnWidthChange={onColumnWidthChange}
+      columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       rowActions={getRowActions}
       onSettingsClick={onManageColumns}
       summaryLabel={`${totalRecords} total records`}

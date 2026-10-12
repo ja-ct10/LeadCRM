@@ -17,6 +17,7 @@ import { ManageFieldGroups } from './manage-field-groups';
 import { SortableFieldLayoutItem } from './sortable-field-layout';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { toast } from 'sonner';
+import { matchesSearch } from '@/shared/utils/search';
 
 const endpoint = '/administration/closing-requirements';
 type LayoutResponse = { layout: FieldLayout; fields: CrmFieldCatalogEntry[] };
@@ -85,7 +86,7 @@ export function ClosingFieldsSettings() {
   const fields = override?.fields ?? getCrmFieldCatalog(module, data?.definitions ?? [], layout);
   const ready = !!data && !query.error && !query.isInitialLoad;
   const term = search.trim().toLowerCase();
-  const filtered = fields.filter(field => `${field.label} ${field.technicalKey} ${field.canonicalTechnicalKey ?? ''} ${field.group} ${field.type} ${field.kind}`.toLowerCase().includes(term));
+  const filtered = fields.filter(field => matchesSearch(search, field.label, field.technicalKey, field.canonicalTechnicalKey, field.group, field.type, field.kind));
   useEffect(() => { if (!pending && data && optimistic && (data.layout.revision ?? 0) >= (optimistic.layout.revision ?? 0)) setOptimistic(null); }, [data, optimistic, pending]);
   const switchModule = (value: CustomFieldModule) => { if (saving.current) return; setModule(value); setPanel(null); setOptimistic(null); };
   const mutateLayout = async (input: FieldLayoutAction): Promise<boolean> => {

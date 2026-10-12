@@ -6,7 +6,7 @@ import {
 import { preferencesApi } from "@/shared/services/preferences.api";
 import { USE_MOCK_DATA } from "@/lib/config";
 import { normalizeTaskColumns } from "./task-columns";
-const defaults = () =>
+const defaults = (): ColumnConfigItem[] =>
   TASK_COLUMN_DEFINITIONS.map((column) => ({
     id: column.id,
     visible: column.defaultVisible,
@@ -49,17 +49,42 @@ export function useTaskColumns(identity: string, enabled: boolean) {
     };
   }, [identity, enabled, revision]);
   const columns = state?.identity === identity ? state.columns : defaults();
-  const save = async (input: ColumnConfigItem[]) => {
+  const latestColumns = useRef(columns);
+  latestColumns.current = columns;
+  const writeQueue = useRef<Promise<void>>(Promise.resolve());
+  const write = (input?: () => ColumnConfigItem[]): Promise<void> => {
     const started = identity;
-    const saved = USE_MOCK_DATA
-      ? input
-      : (await preferencesApi.saveUserPreference("tasks", input)).data.columns;
-    if (current.current !== started) return;
-    setState({ identity, columns: normalizeTaskColumns(saved) });
+    const pending = writeQueue.current.catch(() => {}).then(async () => {
+      if (current.current !== started) throw new Error('Your session changed. Reload column preferences.');
+      const config = input ? normalizeTaskColumns(input()) : undefined;
+      const previous = latestColumns.current;
+      if (config) { latestColumns.current = config; setState({ identity, columns: config }); }
+      try {
+        const saved = USE_MOCK_DATA ? config ?? defaults()
+          : config ? (await preferencesApi.saveUserPreference('tasks', config)).data.columns
+          : (await preferencesApi.deleteUserPreference('tasks')).data.columns;
+        if (current.current !== started) return;
+        const normalized = normalizeTaskColumns(saved);
+        latestColumns.current = normalized;
+        setState({ identity, columns: normalized });
+      } catch (error) {
+        if (current.current === started) { latestColumns.current = previous; setState({ identity, columns: previous }); }
+        throw error;
+      }
+    });
+    writeQueue.current = pending;
+    return pending;
   };
+  const save = (input: ColumnConfigItem[]) => write(() => input);
+  const reset = () => write();
+  const saveWidth = (columnId: string, width: number): Promise<void> => write(() =>
+    latestColumns.current.map(column => column.id === columnId
+      ? { ...column, width: Math.max(80, Math.min(800, Math.round(width))) } : column));
   return {
     columns,
     save,
+    reset,
+    saveWidth,
     loading: enabled && state?.identity !== identity,
     error: state?.identity === identity ? state.error : undefined,
     retry: () => setRevision((value) => value + 1),

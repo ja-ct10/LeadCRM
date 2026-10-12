@@ -49,8 +49,8 @@ export const CountryCodeSelector = ({ selectedCode, onChange, disabled, id }: Pr
   }, []);
 
   const filtered = COUNTRIES.filter(c => 
-    c.name.toLowerCase().includes(search.toLowerCase()) || 
-    c.code.includes(search)
+    c.name.toLowerCase().includes(search.trim().toLowerCase()) ||
+    c.code.includes(search.trim())
   );
 
   const activeCountry = COUNTRIES.find(c => c.code === selectedCode) || COUNTRIES[2]; // Default Philippines

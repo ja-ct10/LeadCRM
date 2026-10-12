@@ -4,6 +4,7 @@ import { useDraggable } from '@dnd-kit/core';
 import { GripVertical, Search, Zap, GitBranch, Play } from 'lucide-react';
 import type { ActionDefinition, TriggerDefinition } from '@leadcrm/shared';
 import { Input } from '@/shared/components/ui/input';
+import { matchesSearch } from '@/shared/utils/search';
 import type { LibraryItem } from '../services/workflow-editor';
 
 export const stepIcons = { trigger: Zap, condition: GitBranch, action: Play };
@@ -95,8 +96,7 @@ export function WorkflowLibrary({
       setSearch('');
     }
   }, [insertAt]);
-  const match = (text: string) =>
-    text.toLowerCase().includes(search.trim().toLowerCase());
+  const match = (text: string) => matchesSearch(search, text);
   const entries: Array<{
     item: LibraryItem;
     title: string;

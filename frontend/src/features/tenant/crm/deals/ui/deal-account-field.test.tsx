@@ -12,6 +12,9 @@ import { render, screen, fireEvent, waitFor, act } from '@testing-library/react'
 import React from 'react';
 import { DealAccountField } from './deal-account-field';
 
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', tenantId: 't1' } }) }));
+vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: true }));
+
 // ─── Mock DataContext ─────────────────────────────────────────────────────────
 
 const MOCK_ORGANIZATIONS = [

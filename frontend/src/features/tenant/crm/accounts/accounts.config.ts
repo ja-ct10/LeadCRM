@@ -1,3 +1,4 @@
+import { ACCOUNTS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 /**
  * Accounts Module_Config — declarative configuration for the Data_View_System.
  * References the column registry directly (same array instance, not a copy).
@@ -10,12 +11,7 @@ export const ACCOUNTS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'accounts',
   columnRegistry: ACCOUNTS_COLUMN_REGISTRY,
   availableViews: ['table'],
-  sortableFields: [
-    { id: 'name', label: 'Name' },
-    { id: 'industry', label: 'Industry' },
-    { id: 'website', label: 'Website' },
-    { id: 'createdAt', label: 'Created Date' },
-  ],
+  sortableFields: ACCOUNTS_TABLE_SORT_FIELDS.map(id => ({ id, label: ACCOUNTS_COLUMN_REGISTRY.find(column => column.id === id)!.label })),
   filterGroups: [
     {
       id: 'industry',

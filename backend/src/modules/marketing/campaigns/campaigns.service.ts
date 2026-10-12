@@ -19,6 +19,7 @@ import { readAuthUser } from '../../../core/auth/auth-user';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { assertPermissions } from '../../../core/permissions/permission.service';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 export async function getCampaignReport(id: string, tenantId: string) {
   const report = await findCampaignReport(id, tenantId);
@@ -113,7 +114,7 @@ export async function getCampaigns(tenantId: string, query: Record<string, unkno
   const where: Prisma.CampaignWhereInput = { ...campaignScope(tenantId), isArchived: query.archived === 'true',
     ...(query.status ? { status: { in: z.array(z.nativeEnum(CampaignStatus)).parse(String(query.status).split(',')) } } : {}),
     ...(query.type ? { type: { in: z.array(z.nativeEnum(CampaignType)).parse(String(query.type).split(',')) } } : {}),
-    ...(query.search ? { OR: ['name', 'subject'].map(field => ({ [field]: { contains: String(query.search).slice(0, 150), mode: 'insensitive' as const } })) } : {}) };
+    AND: buildSearchClauses(query.search, ['name', 'subject']) };
   const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['name', 'type', 'status', 'createdAt'], (page - 1) * limit, limit,
     () => prisma.campaign.findMany({ where, select: { id: true, name: true, type: true, status: true, createdAt: true } }));
   const [data, total] = await Promise.all([

@@ -137,7 +137,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
 
   const filtered = useMemo(() => {
     return tenantUsers.filter((u) => {
-      const matchSearch = !search || `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(search.toLowerCase());
+      const matchSearch = search.trim().toLowerCase().split(/\s+/).every(term => `${u.firstName} ${u.lastName} ${u.email}`.toLowerCase().includes(term));
       const matchRole = roleFilter.length === 0 || roleFilter.includes(u.role);
       const matchStatus = statusFilter.length === 0 || statusFilter.some((s) => s.toLowerCase() === (u.status ?? '').toLowerCase());
       return matchSearch && matchRole && matchStatus && (groupFilter.length === 0 || u.groups?.some(group => groupFilter.includes(group.id)));
@@ -249,7 +249,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
           }} />
         <div className="min-w-0 flex-1 space-y-4">
           {loading ? <TableLoadingState label="Loading users..." /> : loadError ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
-            <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
+            <DataGrid<User> sort={sort} sortingMode="external" onSortChange={next => setSort(next ?? { field: 'createdAt', direction: 'desc' })} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu={false} ariaLabel="Team Management table" emptyMessage="No users found"
               onRowClick={u => openUser(u)} rowActions={u => [
                 { id: 'view', label: 'View', onClick: () => openUser(u) },
                 ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [

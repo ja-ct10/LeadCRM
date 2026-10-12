@@ -17,17 +17,35 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const records = [
-  { id: 'z', firstName: 'Zulu', lastName: 'Test Zulu', email: 'z@test.example', phone: '300', companyName: 'Z', status: 'Warm', createdAt: '2026-03-01', source: 'Z' },
-  { id: 'a', firstName: 'Alpha', lastName: 'Test Alpha', email: 'a@test.example', phone: '100', companyName: 'A', status: 'Cold', createdAt: '2026-01-01', source: 'A' },
+  { id: 'z', tenantId: 'tenant', firstName: 'Zulu', lastName: 'Test Zulu', email: 'z@test.example', phone: '300', companyName: 'Z', status: 'Warm', createdAt: '2026-03-01', source: 'Z' },
+  { id: 'a', tenantId: 'tenant', firstName: 'Alpha', lastName: 'Test Alpha', email: 'a@test.example', phone: '100', companyName: 'A', status: 'Cold', createdAt: '2026-01-01', source: 'A' },
 ];
-const columns = LEADS_COLUMN_REGISTRY.filter(c => c.defaultVisible || ['createdAt', 'source'].includes(c.id)).map(c => ({ id: c.id, visible: true, order: c.defaultOrder }));
+const columns = LEADS_COLUMN_REGISTRY.map(c => ({ id: c.id, visible: c.defaultVisible || ['firstName', 'lastName', 'createdAt', 'source'].includes(c.id), order: c.defaultOrder }));
 function LeadHarness() {
   const [sort, setSort] = useState<SortState | null>(null);
   const rows = sort ? [...records].sort((a, b) => compareSortValues(a[sort.field as keyof typeof a], b[sort.field as keyof typeof b], sort.direction)) : records;
   return <LeadsDataGrid leads={rows as any} totalRecords={2} effectiveColumns={columns} sort={sort} onSortChange={setSort}
     onRowClick={() => {}} selectedIds={new Set()} onSelectionChange={() => {}} getOwnerName={() => ''} getOwnerInitials={() => ''} />;
 }
-it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Source'])('cycles %s ascending, descending and default with matching rows', label => {
+
+it.each([[true, true, 84], [true, false, 44], [false, true, 40], [false, false, 0]] as const)('offsets pinned cells after selection=%s and row actions=%s', (selectable, actions, offset) => {
+  render(<DataGrid columns={[{ id: 'firstName', header: 'Name', accessor: row => row.firstName, pinned: 'left' }]}
+    data={records} getRowId={row => row.id} selectable={selectable} rowActions={actions ? () => [] : undefined} />);
+  expect(screen.getByRole('columnheader', { name: 'Name' }).style.left).toBe(`${offset}px`);
+  const row = screen.getAllByRole('row')[1];
+  expect(row.querySelectorAll('td')[Number(selectable) + Number(actions)].style.left).toBe(`${offset}px`);
+});
+
+it('does not sort when the Name resize handle is clicked or released', () => {
+  const sort = vi.fn();
+  render(<LeadsDataGrid leads={records} totalRecords={records.length} effectiveColumns={columns}
+    selectedIds={new Set()} onSelectionChange={vi.fn()} onRowClick={vi.fn()} getOwnerName={() => '—'} getOwnerInitials={() => '?'} onSortChange={sort} />);
+  const handle = screen.getByRole('columnheader', { name: 'Name' }).querySelector('.cursor-col-resize');
+  expect(handle).toBeTruthy();
+  fireEvent.click(handle!);
+  expect(sort).not.toHaveBeenCalled();
+});
+it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Lead Source'])('cycles %s ascending, descending and default with matching rows', label => {
   render(<LeadHarness />);
   const header = screen.getByRole('columnheader', { name: label });
   const firstName = () => screen.getAllByRole('row').slice(1).find(row => row.textContent?.includes('Test'))!.textContent;
@@ -35,6 +53,20 @@ it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 
   fireEvent.click(header); expect(header.getAttribute('aria-sort')).toBe('ascending'); expect(firstName()).toContain('Alpha');
   fireEvent.click(header); expect(header.getAttribute('aria-sort')).toBe('descending'); expect(firstName()).toContain('Zulu');
   fireEvent.click(header); expect(header.getAttribute('aria-sort')).toBe('none'); expect(firstName()).toContain('Zulu');
+});
+it('emits the shared Name sort field through the existing header cycle', () => {
+  const onSortChange = vi.fn();
+  const props = { leads: records as any, totalRecords: 2, effectiveColumns: columns, onSortChange,
+    onRowClick: () => {}, selectedIds: new Set<string>(), onSelectionChange: () => {}, getOwnerName: () => '', getOwnerInitials: () => '' };
+  const view = render(<LeadsDataGrid {...props} sort={null} />);
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' }));
+  expect(onSortChange).toHaveBeenLastCalledWith({ field: 'name', direction: 'asc' });
+  view.rerender(<LeadsDataGrid {...props} sort={{ field: 'name', direction: 'asc' }} />);
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' }));
+  expect(onSortChange).toHaveBeenLastCalledWith({ field: 'name', direction: 'desc' });
+  view.rerender(<LeadsDataGrid {...props} sort={{ field: 'name', direction: 'desc' }} />);
+  fireEvent.click(screen.getByRole('columnheader', { name: 'Name' }));
+  expect(onSortChange).toHaveBeenLastCalledWith(null);
 });
 it('never reorders an externally sorted server page', () => {
   render(<DataGrid columns={[{ id: 'firstName', header: 'Name', accessor: row => row.firstName, sortable: true }]}

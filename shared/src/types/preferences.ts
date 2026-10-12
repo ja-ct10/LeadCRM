@@ -33,4 +33,8 @@ export interface ColumnDefinition {
   group?: string;
   /** Responsive priority — determines hide order as viewport narrows. */
   priority: ColumnPriority;
+  /** Display identity stays first; unrelated modules may reorder their required columns. */
+  fixedPosition?: 'first';
+  pinned?: 'left';
+  sortable?: boolean;
 }

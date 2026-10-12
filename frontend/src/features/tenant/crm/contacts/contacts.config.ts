@@ -1,3 +1,4 @@
+import { CONTACTS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 /**
  * Contacts Module_Config — declarative configuration for the Data_View_System.
  * References the column registry directly (same array instance, not a copy).
@@ -11,13 +12,7 @@ export const CONTACTS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'contacts',
   columnRegistry: CONTACTS_COLUMN_REGISTRY,
   availableViews: ['table'],
-  sortableFields: [
-    { id: 'firstName', label: 'Name' },
-    { id: 'email', label: 'Email' },
-    { id: 'companyName', label: 'Company' },
-    { id: 'status', label: 'Status' },
-    { id: 'createdAt', label: 'Created Date' },
-  ],
+  sortableFields: CONTACTS_TABLE_SORT_FIELDS.map(id => ({ id, label: CONTACTS_COLUMN_REGISTRY.find(column => column.id === id)!.label })),
   filterGroups: [
     {
       id: 'status',

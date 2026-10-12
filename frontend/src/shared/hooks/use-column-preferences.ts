@@ -1,9 +1,9 @@
 'use client';
-
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { reconcileTableColumns, normalizeModuleColumns, type ColumnConfigItem } from '@leadcrm/shared';
 import { preferencesApi } from '@/shared/services/preferences.api';
-import { normalizeModuleColumns } from '@leadcrm/shared';
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { MODULE_COLUMN_REGISTRIES } from '@/shared/constants/column-registries';
+import { useAuth } from '@/store/AuthContext';
 
 interface UseColumnPreferencesReturn {
   effectiveColumns: ColumnConfigItem[];
@@ -11,165 +11,73 @@ interface UseColumnPreferencesReturn {
   isSaving: boolean;
   saveError: string | null;
   saveColumns: (config: ColumnConfigItem[]) => Promise<void>;
+  saveColumnWidth: (columnId: string, width: number) => Promise<void>;
   resetColumns: () => Promise<void>;
   retryCount: number;
 }
 
-/**
- * Generic hook to manage column preferences for ANY module.
- * Fetches effective columns from the API on mount, provides save/reset operations
- * with optimistic updates, rollback on failure, and retry logic (max 3 attempts).
- *
- * Usage:
- *   const { effectiveColumns, saveColumns, resetColumns } = useColumnPreferences('leads');
- *   const { effectiveColumns, saveColumns, resetColumns } = useColumnPreferences('accounts');
- *   const { effectiveColumns, saveColumns, resetColumns } = useColumnPreferences('contacts');
- */
+/** Serialize writes so resize, Save and Reset never roll back a newer preference. */
 export function useColumnPreferences(module: string): UseColumnPreferencesReturn {
+  const { user, tenant } = useAuth();
+  const identity = [module, tenant?.id, user?.id].join(':');
+  const identityRef = useRef(identity);
+  identityRef.current = identity;
   const [effectiveColumns, setEffectiveColumns] = useState<ColumnConfigItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-
-  // Track the previous state for rollback on failure
-  const previousColumnsRef = useRef<ColumnConfigItem[]>([]);
-  // Track if the component is still mounted
+  const columnsRef = useRef<ColumnConfigItem[]>([]);
+  const queueRef = useRef<Promise<void>>(Promise.resolve());
+  const mutationVersion = useRef(0);
   const mountedRef = useRef(true);
-
-  useEffect(() => {
-    mountedRef.current = true;
-    return () => {
-      mountedRef.current = false;
-    };
+  const normalize = useCallback((columns: ColumnConfigItem[]) => {
+    const registry = MODULE_COLUMN_REGISTRIES[module];
+    return registry ? reconcileTableColumns(module, columns, registry) : normalizeModuleColumns(module, columns);
+  }, [module]);
+  const publish = useCallback((columns: ColumnConfigItem[]) => {
+    columnsRef.current = columns; setEffectiveColumns(columns);
   }, []);
 
-  // Fetch effective columns on mount
+  useEffect(() => { mountedRef.current = true; return () => { mountedRef.current = false; }; }, []);
   useEffect(() => {
     let cancelled = false;
+    const version = mutationVersion.current;
+    publish([]); setIsLoading(true); setIsSaving(false); setSaveError(null); setRetryCount(0);
+    preferencesApi.getEffectiveColumns(module).then(response => {
+      if (!cancelled && mountedRef.current && identityRef.current === identity && version === mutationVersion.current) publish(normalize(response.data.columns));
+    }).catch((error: unknown) => {
+      if (!cancelled && mountedRef.current && version === mutationVersion.current) setSaveError(error instanceof Error ? error.message : 'Failed to load column preferences');
+    }).finally(() => { if (!cancelled && mountedRef.current) setIsLoading(false); });
+    return () => { cancelled = true; };
+  }, [identity, module, normalize, publish]);
 
-    async function fetchColumns(): Promise<void> {
-      setIsLoading(true);
+  const mutate = useCallback((getColumns?: () => ColumnConfigItem[]): Promise<void> => {
+    const owner = identity;
+    mutationVersion.current += 1;
+    const operation = queueRef.current.catch(() => {}).then(async () => {
+      if (!mountedRef.current || owner !== identityRef.current) throw new Error('Your session changed. Please reload column preferences.');
+      const previous = columnsRef.current;
+      const config = getColumns ? normalize(getColumns()) : undefined;
+      if (config) publish(config);
+      setIsSaving(true); setSaveError(null);
       try {
-        const response = await preferencesApi.getEffectiveColumns(module);
-        if (!cancelled && mountedRef.current) {
-          setEffectiveColumns(normalizeModuleColumns(module, response.data.columns));
-          setSaveError(null);
-        }
+        const response = config ? await preferencesApi.saveUserPreference(module, config) : await preferencesApi.deleteUserPreference(module);
+        if (mountedRef.current && owner === identityRef.current) { publish(normalize(response.data.columns)); setSaveError(null); setRetryCount(0); }
       } catch (error: unknown) {
-        // On fetch failure, keep whatever state we have (empty on first load)
-        // The table will render system defaults via its own fallback
-        if (!cancelled && mountedRef.current) {
-          setSaveError(
-            error instanceof Error ? error.message : 'Failed to load column preferences'
-          );
+        if (mountedRef.current && owner === identityRef.current) {
+          publish(previous); setSaveError(error instanceof Error ? error.message : 'Unable to save column preferences');
+          setRetryCount(count => count + 1);
         }
-      } finally {
-        if (!cancelled && mountedRef.current) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    fetchColumns();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [module]);
-
-  /**
-   * Save column configuration with optimistic update.
-   * Flow:
-   * 1. Store previous state (for rollback)
-   * 2. Optimistically update local state
-   * 3. Call API to persist
-   * 4. On success: confirm state, clear error, reset retryCount
-   * 5. On failure: rollback to previous state, set saveError, increment retryCount
-   */
-  const saveColumns = useCallback(async (config: ColumnConfigItem[]): Promise<void> => {
-    // Store previous state for rollback
-    previousColumnsRef.current = [...effectiveColumns];
-
-    // Optimistic update — apply immediately before API response
-    setEffectiveColumns(config);
-    setIsSaving(true);
-    setSaveError(null);
-
-    try {
-      const response = await preferencesApi.saveUserPreference(module, config);
-
-      if (mountedRef.current) {
-        // Confirm with server response (server is authoritative)
-        setEffectiveColumns(normalizeModuleColumns(module, response.data.columns));
-        setSaveError(null);
-        setRetryCount(0);
-      }
-    } catch (error: unknown) {
-      if (mountedRef.current) {
-        // Rollback to previous state
-        setEffectiveColumns(previousColumnsRef.current);
-        const errorMessage = error instanceof Error
-          ? error.message
-          : 'Unable to save column preferences';
-        setSaveError(errorMessage);
-        setRetryCount((prev) => prev + 1);
-      }
-      // Re-throw so callers (e.g. onColumnReorder) can handle with a toast
-      throw error;
-    } finally {
-      if (mountedRef.current) {
-        setIsSaving(false);
-      }
-    }
-  }, [module, effectiveColumns]);
-
-  /**
-   * Reset columns by deleting user preference.
-   * Flow:
-   * 1. Call DELETE API
-   * 2. On success: update local state with returned fallback columns
-   * 3. On failure: keep current state, set error
-   */
-  const resetColumns = useCallback(async (): Promise<void> => {
-    // Store previous state for rollback on failure
-    previousColumnsRef.current = [...effectiveColumns];
-
-    setIsSaving(true);
-    setSaveError(null);
-
-    try {
-      const response = await preferencesApi.deleteUserPreference(module);
-
-      if (mountedRef.current) {
-        // Update with the fallback (tenant default or system default)
-        setEffectiveColumns(normalizeModuleColumns(module, response.data.columns));
-        setSaveError(null);
-        setRetryCount(0);
-      }
-    } catch (error: unknown) {
-      if (mountedRef.current) {
-        // Keep current state on failure
-        setEffectiveColumns(previousColumnsRef.current);
-        const errorMessage = error instanceof Error
-          ? error.message
-          : 'Unable to reset column preferences';
-        setSaveError(errorMessage);
-      }
-    } finally {
-      if (mountedRef.current) {
-        setIsSaving(false);
-      }
-    }
-  }, [module, effectiveColumns]);
-
-  return {
-    effectiveColumns,
-    isLoading,
-    isSaving,
-    saveError,
-    saveColumns,
-    resetColumns,
-    retryCount,
-  };
+        throw error;
+      } finally { if (mountedRef.current && owner === identityRef.current) setIsSaving(false); }
+    });
+    queueRef.current = operation;
+    return operation;
+  }, [identity, module, normalize, publish]);
+  const saveColumns = useCallback((columns: ColumnConfigItem[]) => mutate(() => columns), [mutate]);
+  const resetColumns = useCallback(() => mutate(), [mutate]);
+  const saveColumnWidth = useCallback((columnId: string, width: number) => mutate(() => normalize(columnsRef.current)
+    .map(column => column.id === columnId ? { ...column, width: Math.round(Math.min(800, Math.max(80, width))) } : column)), [mutate, normalize]);
+  return { effectiveColumns, isLoading, isSaving, saveError, saveColumns, saveColumnWidth, resetColumns, retryCount };
 }

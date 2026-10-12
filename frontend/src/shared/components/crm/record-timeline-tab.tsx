@@ -26,6 +26,7 @@ import { activitiesService } from '@/features/tenant/crm/activities/services/act
 import { useRecordActivities, type RecordActivityFilters, type TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useAuth } from '@/store/AuthContext';
+import { matchesSearch } from '@/shared/utils/search';
 import { useData } from '@/store/DataContext';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { getPageCacheGeneration } from '@/shared/cache/page-cache';
@@ -213,7 +214,9 @@ export function RecordTimelineTab({ activities, module, recordId, onActivityCrea
     setFilter(nextFilter); setSearchTerm(search);
     onFiltersChange?.({ type: FILTER_MAPPING[nextFilter].join(',') || undefined, search: search.trim() || undefined });
   };
-  const filteredActivities = allActivities.filter(activity => (filter === 'All' || FILTER_MAPPING[filter].includes(activity.type)) && (!searchTerm.trim() || [activity.title, activity.description, activityActorName(activity), activityEmail(activity)?.body, activityEmail(activity)?.subject].filter(Boolean).join(' ').toLowerCase().includes(searchTerm.trim().toLowerCase())));
+  const filteredActivities = onFiltersChange && !USE_MOCK_DATA ? activities : allActivities.filter(activity =>
+    (filter === 'All' || FILTER_MAPPING[filter].includes(activity.type)) && matchesSearch(searchTerm,
+      activity.title, activity.description, [activity.createdBy?.firstName, activity.createdBy?.lastName].filter(Boolean).join(' ')));
   const entries = [
     ...groupEmailActivities(filteredActivities.filter(activity => activity.type === 'email')).map(thread => ({ id: `thread:${thread.key}`, createdAt: thread.createdAt, content: <EmailThread thread={thread} /> })),
     ...filteredActivities.filter(activity => activity.type !== 'email').map(activity => ({ id: activity.id, createdAt: activity.createdAt, content: <div className="min-w-0 overflow-hidden rounded-xl border border-border bg-card"><TimelineEntry activity={activity} compact={compact} /></div> })),
@@ -235,7 +238,7 @@ export function RecordTimelineTab({ activities, module, recordId, onActivityCrea
       <h3 className={heading}>Activity Timeline</h3>
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
       <div className="flex flex-wrap gap-1">{ACTIVITY_FILTERS.map(value => <button key={value} type="button" aria-pressed={filter === value} onClick={() => changeFilters(value, searchTerm)} className={cn('min-h-8 rounded-full border border-border px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-ring', filter === value ? 'bg-primary text-primary-foreground' : 'hover:bg-accent')}>{value}</button>)}</div>
-      <div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Search activities" placeholder="Search activities..." value={searchTerm} onChange={event => changeFilters(filter, event.target.value)} className="h-9 pl-8 text-xs" /></div>
+      <div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Search activities" placeholder="Search titles, descriptions or current agent names…" value={searchTerm} onChange={event => changeFilters(filter, event.target.value)} className="h-9 pl-8 text-xs" /></div>
       {loading && !allActivities.length && <div role="status" aria-label="Loading activity history"><DataLoadingSkeleton rowCount={3} columnCount={1} /></div>}
       {entries.map(entry => <React.Fragment key={entry.id}>{entry.content}</React.Fragment>)}
       {!loading && !entries.length && <p className="py-6 text-center text-sm text-muted-foreground">{filter === 'All' && !searchTerm ? 'No activity recorded for this record.' : 'No activities match your filter.'}</p>}

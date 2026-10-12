@@ -9,6 +9,7 @@ import { salesTransaction } from '../leads/lead-automation.service';
 import { assertClosedStatus, cancelOpenDeals, contactStatusValue } from '../engagement.service';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
 
 const CONTACT_FILTER_FIELDS: FilterFields = {
@@ -47,6 +48,10 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
   }
   const clauses = buildPrismaFilters(filters, CONTACT_FILTER_FIELDS);
+  clauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'company', 'phone', 'source'], contains => [
+    { account: { name: contains } },
+    ...(['HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'].includes(contains.contains.toUpperCase()) ? [{ status: contains.contains.toUpperCase() }] : []),
+  ]));
   const scope = filters.find(filter => filter.field === 'scope')?.value;
   if (scope === 'my') clauses.push({ assignedUserId: String(query.currentUserId ?? '') });
   if (scope === 'active') clauses.push({ status: { in: ['HOT', 'WARM'] } });
@@ -82,19 +87,6 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   if (query.lifecycleStage) {
     where['lifecycleStage'] = String(query.lifecycleStage);
-  }
-
-  // Full-text search across name, email, company, phone
-  if (query.search) {
-    const term = String(query.search);
-    where['OR'] = [
-      { firstName: { contains: term, mode: 'insensitive' } },
-      { lastName:  { contains: term, mode: 'insensitive' } },
-      { email:     { contains: term, mode: 'insensitive' } },
-      { company:   { contains: term, mode: 'insensitive' } },
-      { account:   { name: { contains: term, mode: 'insensitive' } } },
-      { phone:     { contains: term, mode: 'insensitive' } },
-    ];
   }
 
   const sort = typeof query.sort === 'string' ? query.sort.replace(/^companyName:/, 'company:') : query.sort;

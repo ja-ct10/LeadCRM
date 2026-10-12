@@ -5,6 +5,7 @@ import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateActivityDto, UpdateActivityDto } from './activities.dto';
 import { AppError } from '../../../shared/errors/app-error';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 async function taskVisibility(tenantId: string): Promise<Prisma.ActivityWhereInput> {
   const actor = crmActor.getStore();
@@ -67,15 +68,9 @@ export async function findAllActivities(
 
   // ── Type filter ─────────────────────────────────────────────────────────────
   if (query.type) where.type = { in: String(query.type).split(',') };
-  if (query.search && String(query.search).trim()) {
-    const contains = String(query.search).trim();
-    (where.AND as Prisma.ActivityWhereInput[]).push({ OR: [
-      { title: { contains, mode: 'insensitive' } },
-      { description: { contains, mode: 'insensitive' } },
-      { createdBy: { firstName: { contains, mode: 'insensitive' } } },
-      { createdBy: { lastName: { contains, mode: 'insensitive' } } },
-    ] });
-  }
+  (where.AND as Prisma.ActivityWhereInput[]).push(...buildSearchClauses(query.search, ['title', 'description'], contains => [
+    { createdBy: { firstName: contains } }, { createdBy: { lastName: contains } },
+  ]));
 
   // ── User filter ─────────────────────────────────────────────────────────────
   if (query.createdById) where.createdById = String(query.createdById);

@@ -1,3 +1,4 @@
+import { DEALS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 /**
  * Deals Module_Config — declarative configuration for the Data_View_System.
  * References the column registry directly (same array instance, not a copy).
@@ -11,13 +12,7 @@ export const DEALS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'deals',
   columnRegistry: DEALS_COLUMN_REGISTRY,
   availableViews: ['table', 'list', 'grid', 'tile', 'kanban'],
-  sortableFields: [
-    { id: 'title', label: 'Name' },
-    { id: 'stageId', label: 'Stage' },
-    { id: 'value', label: 'Value' },
-    { id: 'expectedCloseDate', label: 'Expected Close Date' },
-    { id: 'createdAt', label: 'Created Date' },
-  ],
+  sortableFields: DEALS_TABLE_SORT_FIELDS.map(id => ({ id, label: DEALS_COLUMN_REGISTRY.find(column => column.id === id)!.label })),
   filterGroups: [
     {
       id: 'stageId',

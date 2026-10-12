@@ -2,7 +2,8 @@ import type { Lead as LeadRecord } from '@prisma/client';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
-import { normalizeCrmStatus } from '@leadcrm/shared';
+import { normalizeCrmStatus, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 import { readRecordValues, saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { productRelationData } from '../leads/product-relations';
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
@@ -50,6 +51,11 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
   }
   const filterClauses = buildPrismaFilters(parsedFilters, CONTACT_FILTER_FIELDS, CONTACT_FIELD_ALIASES);
+  filterClauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'companyName', 'source'], contains => [
+    { account: { name: contains } },
+    ...(['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
+      .map(status => ({ status: { in: [status, status.toUpperCase()] } }))),
+  ]));
   const scope = parsedFilters.find(filter => filter.field === 'scope')?.value;
   if (scope === 'my') filterClauses.push({ assignedUserId: String(query.currentUserId ?? '') });
   if (scope === 'active') filterClauses.push({ status: { in: ['Hot','Warm','HOT','WARM'] } });
@@ -64,28 +70,20 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(query.archived === 'true' ? {} : { convertedAt: null, deletedAt: null }),
     // accountId direct param (still used by relationship lookups)
     ...(query.accountId ? { accountId: String(query.accountId) } : {}),
-    ...(query.search
-      ? {
-          OR: [
-            { firstName:   { contains: String(query.search), mode: 'insensitive' as const } },
-            { lastName:    { contains: String(query.search), mode: 'insensitive' as const } },
-            { email:       { contains: String(query.search), mode: 'insensitive' as const } },
-            { companyName: { contains: String(query.search), mode: 'insensitive' as const } },
-          ],
-        }
-      : {}),
     // filter[field]=operator:value clauses — all AND-combined at query level
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
   const [sortKey, direction] = String(query.sort ?? 'createdAt:desc').split(':');
-  const allowed = new Set(['firstName','lastName','email','phone','companyName','status','source','createdAt','updatedAt']);
+  const allowed = new Set(LEADS_TABLE_SORT_FIELDS);
   const sortField = allowed.has(sortKey) ? sortKey : 'createdAt';
   const sortDirection = direction === 'asc' ? 'asc' as const : 'desc' as const;
   const [data, total] = await Promise.all([
     prisma.lead.findMany({
       where, skip, take: limit,
-      orderBy: [{ [sortField]: sortDirection }, { id: 'asc' }],
+      orderBy: sortField === 'name'
+        ? [{ firstName: sortDirection }, { lastName: sortDirection }, { id: 'asc' }]
+        : [{ [sortField]: sortDirection }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
         account:      { select: { id: true, name: true } },

@@ -20,6 +20,7 @@ import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { matchesSearch } from '@/shared/utils/search';
 
 interface GroupsSubTabProps {
   tenantUsers: User[];
@@ -143,11 +144,11 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     if (canManageMembers && group.members.length) await addMembers(created.id, group.members.map(member => member.userId));
     toast.success('Group duplicated');
   });
-  const visibleGroups = groups.filter(group => group.name.toLowerCase().includes(search.trim().toLowerCase()));
+  const visibleGroups = groups.filter(group => matchesSearch(search, group.name));
   const members = active?.members ?? [];
-  const visibleMembers = members.filter(member => `${memberName(member.user)} ${member.user.email} ${member.user.role}`.toLowerCase().includes(memberSearch.trim().toLowerCase()));
+  const visibleMembers = members.filter(member => matchesSearch(memberSearch, memberName(member.user), member.user.email, member.user.role));
   const availableUsers = tenantUsers.filter(user => (modal === 'create' || !members.some(member => member.userId === user.id)) &&
-    `${user.firstName} ${user.lastName} ${user.email} ${user.role}`.toLowerCase().includes(userSearch.trim().toLowerCase()));
+    matchesSearch(userSearch, user.firstName, user.lastName, user.email, user.role));
   const columns: DataGridColumnDef<TenantGroupMember>[] = [
     { id: 'name', header: `${members.length} Member${members.length === 1 ? '' : 's'}`, accessor: member => memberName(member.user), width: 250,
       cell: (_, member) => <AvatarCell name={memberName(member.user)} initials={initials(member.user)} /> },

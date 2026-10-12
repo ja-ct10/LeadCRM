@@ -287,8 +287,8 @@ export function TrelloFilter({
                             )}
                           </summary>
                           <div className="border-t border-slate-200 dark:border-slate-800 p-2 space-y-0.5 max-h-48 overflow-y-auto bg-white dark:bg-slate-900 relative">
-                            {members.filter(m => m.label.toLowerCase().includes(memberSearch.toLowerCase())).length > 0 ? (
-                              members.filter(m => m.label.toLowerCase().includes(memberSearch.toLowerCase())).map(m => (
+                            {members.filter(m => m.label.toLowerCase().includes(memberSearch.trim().toLowerCase())).length > 0 ? (
+                              members.filter(m => m.label.toLowerCase().includes(memberSearch.trim().toLowerCase())).map(m => (
                                 <div 
                                   key={m.id}
                                   onClick={() => toggleMember(m.id)}

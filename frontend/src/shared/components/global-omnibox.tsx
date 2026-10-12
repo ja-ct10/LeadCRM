@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Search, Mail, Phone, ExternalLink, X, ChevronDown, User, Building, Briefcase, Target, Tag } from 'lucide-react';
-import { useData } from '@/store/DataContext';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
@@ -11,6 +10,8 @@ import { leadsService } from '@/features/tenant/crm/leads/services/leads.service
 import { accountsService } from '@/features/tenant/crm/accounts/services/accounts.service';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
+import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
+import { dealsApi } from '@/shared/services/deals.api';
 import type { Contact, Organization, Deal } from '@/store/types';
 
 type ScopedModule = 'all' | 'leads' | 'contacts' | 'accounts' | 'deals';
@@ -36,10 +37,9 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
   const router = useRouter();
   const searchVersion = useRef(0);
 
-  // Only need deals from DataContext (still loaded at startup for cross-module use).
-  // Leads, contacts, accounts are now fetched server-side on search.
-  const { deals: contextDeals } = useData();
-  const { tenant, user } = useAuth();
+  const { tenant, user, userCan } = useAuth();
+  const canLeads = userCan('leads', 'canView'), canContacts = userCan('contacts', 'canView');
+  const canAccounts = userCan('accounts', 'canView'), canDeals = userCan('deals', 'canView');
   const debouncedQuery = useDebounce(query, 300);
   const tenantCurrency = useMemo(() => getTenantCurrency(tenant), [tenant]);
 
@@ -47,36 +47,46 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
   const [serverLeads,    setServerLeads]    = useState<Contact[]>([]);
   const [serverContacts, setServerContacts] = useState<Contact[]>([]);
   const [serverAccounts, setServerAccounts] = useState<Organization[]>([]);
+  const [serverDeals, setServerDeals] = useState<Deal[]>([]);
   const [isSearching,    setIsSearching]    = useState(false);
+  const [searchError, setSearchError] = useState('');
 
-  const isTagSearch = debouncedQuery.startsWith('#');
+  const isTagSearch = debouncedQuery.trim().startsWith('#');
   const cleanQuery  = isTagSearch
-    ? debouncedQuery.slice(1).trim().toLowerCase()
+    ? debouncedQuery.trim().slice(1).trim().toLowerCase()
     : debouncedQuery.trim().toLowerCase();
 
   const searchServer = useCallback(async (term: string, scope: ScopedModule): Promise<void> => {
     const version = ++searchVersion.current;
+    setSearchError('');
     if (term.length < 3) {
       setIsSearching(false);
       setServerLeads([]);
       setServerContacts([]);
       setServerAccounts([]);
+      setServerDeals([]);
       return;
     }
     setIsSearching(true);
     try {
-      const [leadsRes, contactsRes, accountsRes] = await Promise.allSettled([
-        (scope === 'all' || scope === 'leads')
+      const [leadsRes, contactsRes, accountsRes, dealsRes] = await Promise.allSettled([
+        canLeads && (scope === 'all' || scope === 'leads')
           ? leadsService.getAll({ search: term, limit: 4 })
           : Promise.resolve(null),
-        (scope === 'all' || scope === 'contacts')
+        canContacts && (scope === 'all' || scope === 'contacts')
           ? contactsV2Api.list({ search: term, limit: 4 })
           : Promise.resolve(null),
-        (scope === 'all' || scope === 'accounts')
+        canAccounts && (scope === 'all' || scope === 'accounts')
           ? accountsService.getAll({ search: term, limit: 4 })
+          : Promise.resolve(null),
+        canDeals && (scope === 'all' || scope === 'deals')
+          ? dealsApi.list({ search: term, limit: 4 })
           : Promise.resolve(null),
       ]);
       if (version !== searchVersion.current) return;
+      if ([leadsRes, contactsRes, accountsRes, dealsRes].some(result => result.status === 'rejected')) {
+        setSearchError('Some records could not be searched. Please try again.');
+      }
       setServerLeads(
         leadsRes.status === 'fulfilled' && leadsRes.value
           ? (leadsRes.value?.data ?? []) as Contact[]
@@ -92,38 +102,28 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
           ? (accountsRes.value?.data ?? []).map(toFrontendOrg) as Organization[]
           : [],
       );
+      setServerDeals(dealsRes.status === 'fulfilled' && dealsRes.value
+        ? dealsRes.value.data.map(toFrontendDeal).filter((deal): deal is Deal => !!deal && !deal.isArchived) : []);
     } catch {
       // Silent — partial results are fine; nav still works
     } finally {
       if (version === searchVersion.current) setIsSearching(false);
     }
-  }, [tenant?.id, user?.id]);
+  }, [tenant?.id, user?.id, canLeads, canContacts, canAccounts, canDeals]);
 
   useEffect(() => {
-    setServerLeads([]); setServerContacts([]); setServerAccounts([]);
-    if (isFocused) void searchServer(cleanQuery, module);
+    setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]);
+    const current = query.trim().replace(/^#/, '').trim().toLowerCase();
+    if (isFocused && current === cleanQuery) void searchServer(cleanQuery, module);
     return () => { searchVersion.current++; };
-  }, [cleanQuery, module, searchServer, isFocused]);
-
-  // Deals: filter from DataContext since deals are still loaded at startup
-  const serverDeals = useMemo((): Deal[] => {
-    if (cleanQuery.length < 3) return [];
-    if (module !== 'all' && module !== 'deals') return [];
-    return contextDeals
-      .filter((d) => !d.isArchived && (
-        isTagSearch
-          ? (d.priority ?? '').toLowerCase().includes(cleanQuery) || (d.leadSource ?? '').toLowerCase().includes(cleanQuery)
-          : d.title.toLowerCase().includes(cleanQuery) || (d.companyName ?? '').toLowerCase().includes(cleanQuery)
-      ))
-      .slice(0, 4);
-  }, [cleanQuery, isTagSearch, module, contextDeals]);
+  }, [cleanQuery, module, searchServer, isFocused, query]);
 
   const results = useMemo(() => ({
-    leads:    serverLeads,
-    contacts: serverContacts,
-    accounts: serverAccounts,
-    deals:    serverDeals,
-  }), [serverLeads, serverContacts, serverAccounts, serverDeals]);
+    leads:    canLeads ? serverLeads : [],
+    contacts: canContacts ? serverContacts : [],
+    accounts: canAccounts ? serverAccounts : [],
+    deals:    canDeals ? serverDeals : [],
+  }), [serverLeads, serverContacts, serverAccounts, serverDeals, canLeads, canContacts, canAccounts, canDeals]);
 
   const totalResults = results.leads.length + results.contacts.length + results.accounts.length + results.deals.length;
   const showResults  = isFocused && query.trim().length >= 3 && cleanQuery.length >= 3;
@@ -132,7 +132,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) && target !== inputRef.current) {
+      if ((['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName) || target.isContentEditable) && e.key !== 'Escape') {
         return;
       }
 
@@ -183,7 +183,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
   const selectResult = (path: string, id: string) => {
     searchVersion.current++;
     setQuery('');
-    setServerLeads([]); setServerContacts([]); setServerAccounts([]);
+    setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]);
     setIsSearching(false);
     setIsDropdownOpen(false);
     setIsFocused(false);
@@ -205,10 +205,10 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
             aria-label="Scope Search Module"
           >
             <option value="all">All Modules</option>
-            <option value="leads">Leads</option>
-            <option value="contacts">Contacts</option>
-            <option value="accounts">Accounts</option>
-            <option value="deals">Deals</option>
+            {canLeads && <option value="leads">Leads</option>}
+            {canContacts && <option value="contacts">Contacts</option>}
+            {canAccounts && <option value="accounts">Accounts</option>}
+            {canDeals && <option value="deals">Deals</option>}
           </select>
           <ChevronDown size={11} className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
         </div>
@@ -225,8 +225,9 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
             type="text"
             value={query}
             onFocus={() => { setIsFocused(true); setIsDropdownOpen(true); }}
-            onChange={(e) => { setQuery(e.target.value); setIsDropdownOpen(true); }}
-            placeholder={isTagSearch ? "Filter by tag or category..." : "Search records (Press '/' or '#')..."}
+            onChange={(e) => { searchVersion.current++; setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]); setIsSearching(false); setQuery(e.target.value); setIsDropdownOpen(true); }}
+            aria-label="Search CRM records"
+            placeholder={isTagSearch ? "Search sources or categories..." : "Search records (Press '/' or '#')..."}
             className="min-w-0 w-full h-full pl-8 pr-8 text-[12px] bg-transparent text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none"
           />
           {isSearching && cleanQuery.length >= 3 && (
@@ -237,7 +238,9 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
           )}
           {query ? (
             <button
-              onClick={() => setQuery('')}
+              type="button"
+              aria-label="Clear global search"
+              onClick={() => { searchVersion.current++; setQuery(''); setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]); setIsSearching(false); }}
               className="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-0.5 rounded"
             >
               <X size={13} />
@@ -255,9 +258,10 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
       {/* Results Dropdown Overlay */}
       {isDropdownOpen && showResults && (
         <div className="absolute top-full mt-2 left-0 right-0 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-2 z-50 max-h-[70vh] overflow-y-auto space-y-3 custom-scrollbar backdrop-blur-md">
+          {searchError && <p role="alert" className="px-2 py-1 text-xs text-destructive">{searchError}</p>}
           {totalResults === 0 ? (
             <div className="py-6 text-center text-xs text-slate-500">
-              {isSearching ? 'Searching records…' : <>No matching records found for &ldquo;{cleanQuery}&rdquo;.</>}
+              {isSearching ? 'Searching records…' : searchError ? 'Search is temporarily unavailable.' : <>No matching records found for &ldquo;{cleanQuery}&rdquo;.</>}
             </div>
           ) : (
             <>

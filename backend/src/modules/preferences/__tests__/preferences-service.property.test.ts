@@ -254,7 +254,7 @@ describe('Feature: manage-columns-persistence, Property 2: Registry Reconciliati
     );
   });
 
-  it('should insert new columns at their registry-defined defaultOrder and defaultVisible', () => {
+  it('should append optional new columns in registry order without disrupting saved order', () => {
     // Generate a subset missing specific columns
     const subsetArb = fc
       .shuffledSubarray(registryIds, { minLength: 1, maxLength: registryIds.length - 1 })
@@ -268,17 +268,21 @@ describe('Feature: manage-columns-persistence, Property 2: Registry Reconciliati
 
     fc.assert(
       fc.property(subsetArb, (subsetColumns) => {
-        // Name-layout migration inserts Last Name beside a saved First Name before registry reconciliation.
+        // Migration adds fixed Name and the legacy optional Last Name choice first.
         const existingIds = new Set(normalizeLeadColumns(subsetColumns).map((c) => c.id));
         const config: ColumnConfig = { module: 'leads', columns: subsetColumns };
         const result = reconcileWithRegistry(config, 'leads');
 
-        // Check that newly inserted columns have registry defaults
+        expect(result.columns.map(column => column.order)).toEqual(result.columns.map((_, index) => index));
+        expect(result.columns[0]).toMatchObject({ id: 'name', visible: true, order: 0 });
+        const addedIds = result.columns.filter(column => !existingIds.has(column.id)).map(column => column.id);
+        expect(addedIds).toEqual([...registryColumns].sort((a, b) => a.defaultOrder - b.defaultOrder)
+          .filter(column => !existingIds.has(column.id)).map(column => column.id));
+        // New choices inherit their registry visibility; every order is sequential.
         for (const col of result.columns) {
           if (!existingIds.has(col.id)) {
             // This column was added by reconciliation
             const regCol = registryColumns.find((r) => r.id === col.id)!;
-            expect(col.order).toBe(regCol.defaultOrder);
             expect(col.visible).toBe(regCol.defaultVisible);
           }
         }

@@ -8,6 +8,7 @@ import { getPageCache, getPageCacheGeneration, requestPageCache } from '@/shared
 import { activitiesService, type ActivityRecord } from '@/features/tenant/crm/activities/services/activities.service';
 import { useCachedPage } from './use-cached-page';
 import { useHasPermission } from './use-permissions';
+import { matchesSearch } from '@/shared/utils/search';
 
 export type ActivityModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 export type TimelineActivity = Pick<ActivityRecord, 'id' | 'type' | 'title' | 'createdAt' | 'description' | 'metadata'> & { createdBy?: ActivityRecord['createdBy'] };
@@ -58,7 +59,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       return { ...activity, createdBy: actor ? { id: actor.id, firstName: actor.firstName, lastName: actor.lastName, email: actor.email } : undefined };
     })
     .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
-  const mockFiltered = mockActivities.filter(activity => (!filters.type || filters.type.split(',').includes(activity.type)) && (!filters.search || `${activity.title} ${activity.description ?? ''}`.toLowerCase().includes(filters.search.toLowerCase())));
+  const mockFiltered = mockActivities.filter(activity => (!filters.type || filters.type.split(',').includes(activity.type)) && matchesSearch(filters.search ?? '', activity.title, activity.description, activity.createdBy?.firstName, activity.createdBy?.lastName));
   return { ...result,
     isInitialLoad: result.isInitialLoad && !page,
     activities: !canRead ? [] : USE_MOCK_DATA ? mockFiltered : providedActivities ?? page?.data ?? [],

@@ -180,6 +180,22 @@ describe('useColumnResize', () => {
   });
 
   describe('onResizeEnd (pointer-up persistence)', () => {
+    it('persists the latest pointer width when pointer-up precedes the pending animation frame', () => {
+      const onResize = vi.fn();
+      const onResizeEnd = vi.fn();
+      const { result } = renderHook(() => useColumnResize({ onResize, onResizeEnd }));
+      act(() => result.current.startResize('col1', 100, 200));
+      act(() => {
+        document.dispatchEvent(createPointerEvent('pointermove', 150));
+        document.dispatchEvent(createPointerEvent('pointermove', 185));
+        document.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+      });
+      expect(onResizeEnd).toHaveBeenCalledTimes(1);
+      expect(onResizeEnd).toHaveBeenCalledWith('col1', 285);
+      expect(onResize).toHaveBeenLastCalledWith('col1', 285);
+      expect(result.current.isResizing).toBe(false);
+    });
+
     it('fires onResizeEnd with final width on pointer-up', () => {
       const onResize = vi.fn();
       const onResizeEnd = vi.fn();

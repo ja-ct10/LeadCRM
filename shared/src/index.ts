@@ -12,6 +12,8 @@ export * from './validation/auth.schema';
 export * from './contracts/profile.contract';
 export * from './contracts/record-sort';
 export * from './contracts/lead-column-migration';
+export * from './contracts/lead-table-columns';
+export * from './contracts/column-config';
 
 export * from './validation/administration-user.schema';
 export * from './validation/crm-import.schema';
@@ -40,6 +42,7 @@ export * from './constants/company-industries';
 export * from './contracts/deal-batch';
 export * from './contracts/deal-pipeline';
 export * from './contracts/lead.contract';
+export * from './contracts/lead-read.contract';
 export * from './contracts/dashboard.contract';
 export * from './contracts/pipeline-stage.contract';
 export * from './contracts/workspace-access';

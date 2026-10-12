@@ -4,21 +4,14 @@
  */
 
 import type { ModuleConfig } from '@leadcrm/shared';
-import { LEAD_STATUSES } from '@leadcrm/shared';
+import { LEAD_STATUSES, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 
 export const LEADS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'leads',
   columnRegistry: LEADS_COLUMN_REGISTRY,
   availableViews: ['table'],
-  sortableFields: [
-    { id: 'firstName', label: 'Name' },
-    { id: 'email', label: 'Email' },
-    { id: 'companyName', label: 'Company' },
-    { id: 'status', label: 'Status' },
-    { id: 'source', label: 'Source' },
-    { id: 'createdAt', label: 'Created Date' },
-  ],
+  sortableFields: LEADS_TABLE_SORT_FIELDS.map(id => ({ id, label: LEADS_COLUMN_REGISTRY.find(column => column.id === id)!.label })),
   filterGroups: [
     {
       id: 'status',

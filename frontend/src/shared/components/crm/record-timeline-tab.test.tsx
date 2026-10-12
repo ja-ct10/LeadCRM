@@ -46,14 +46,23 @@ it('keeps a failed draft and excludes duplicate clicks while saving', async () =
 });
 it('keeps Notes and actual Tasks before Timeline independent of filters', () => {
   const onFiltersChange = vi.fn();
-  render(<RecordTimelineTab canEditRecord activities={[note, { id: 'call', type: 'call', title: 'Historical call', createdAt: note.createdAt }]} notes={[note]} tasks={<section aria-label="Tasks">Actual Task</section>} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
+  const view = render(<RecordTimelineTab canEditRecord activities={[note, { id: 'call', type: 'call', title: 'Historical call', createdAt: note.createdAt }]} notes={[note]} tasks={<section aria-label="Tasks">Actual Task</section>} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
   expect(screen.getAllByRole('region').map(region => region.getAttribute('aria-label'))).toEqual(['Notes','Tasks','Activity Timeline']);
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
+  expect(onFiltersChange).toHaveBeenCalledWith({ type: 'email', search: undefined });
+  view.rerender(<RecordTimelineTab canEditRecord activities={[]} notes={[note]} tasks={<section aria-label="Tasks">Actual Task</section>} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
   expect(within(screen.getByRole('region', { name: 'Notes' })).getByText(note.title)).toBeTruthy();
   expect(screen.getByText('Actual Task')).toBeTruthy();
   expect(within(screen.getByRole('region', { name: 'Activity Timeline' })).queryByText(note.title)).toBeNull();
   expect(onFiltersChange).toHaveBeenCalledWith({ type: 'email', search: undefined });
   expect(screen.queryByText('Quick Log')).toBeNull(); expect(screen.queryByText('Log an activity')).toBeNull();
+});
+it('keeps server search results authoritative instead of filtering only the returned page again', () => {
+  const onFiltersChange = vi.fn();
+  render(<RecordTimelineTab activities={[note]} notes={[]} module="leads" recordId="lead" onFiltersChange={onFiltersChange} />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search activities' }), { target: { value: 'query matched on server' } });
+  expect(onFiltersChange).toHaveBeenCalledWith({ type: undefined, search: 'query matched on server' });
+  expect(within(screen.getByRole('region', { name: 'Activity Timeline' })).getByText(note.title)).toBeTruthy();
 });
 it('loads older Notes and Timeline from their separate readers', () => {
   const olderNotes = vi.fn(), olderEvents = vi.fn();

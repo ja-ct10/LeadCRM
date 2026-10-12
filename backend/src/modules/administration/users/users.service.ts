@@ -17,6 +17,7 @@ import { NotFoundError, ConflictError, ForbiddenError, ValidationError } from '.
 import { hashPassword } from '../../../shared/helpers/crypto';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { Prisma } from '@prisma/client';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
@@ -30,17 +31,11 @@ const SAFE_USER_SELECT = {
 export async function getAll(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
-  const where = {
+  const where: Prisma.UserWhereInput = {
     tenantId,
     ...(query.status ? { status: String(query.status) as 'ACTIVE' | 'INACTIVE' | 'PENDING' } : {}),
     ...(query.role   ? { role:   String(query.role) }   : {}),
-    ...(query.search ? {
-      OR: [
-        { firstName: { contains: String(query.search), mode: 'insensitive' as const } },
-        { lastName:  { contains: String(query.search), mode: 'insensitive' as const } },
-        { email:     { contains: String(query.search), mode: 'insensitive' as const } },
-      ],
-    } : {}),
+    AND: buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'role', 'jobTitle']),
   };
   const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['firstName', 'email', 'role', 'status', 'createdAt'], skip, limit,
     () => prisma.user.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, role: true, status: true, createdAt: true } }),

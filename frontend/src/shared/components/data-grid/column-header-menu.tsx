@@ -39,6 +39,7 @@ export interface ColumnHeaderMenuProps {
   columnLabel: string;
   /** Whether column is required (cannot be hidden) */
   isRequired?: boolean;
+  isSortable?: boolean;
   /** Whether column is currently pinned */
   isPinned?: boolean;
   /** Current sort direction for this column */
@@ -111,6 +112,7 @@ export function ColumnHeaderMenu({
   columnId,
   columnLabel,
   isRequired = false,
+  isSortable = true,
   isPinned = false,
   sortDirection = null,
   onSortAsc,
@@ -128,14 +130,14 @@ export function ColumnHeaderMenu({
   // Build the list of menu items (for index-based navigation)
   const menuItems = React.useMemo(() => {
     const items: Array<{ id: string; disabled: boolean }> = [
-      { id: 'sort-asc', disabled: false },
-      { id: 'sort-desc', disabled: false },
+      { id: 'sort-asc', disabled: !isSortable },
+      { id: 'sort-desc', disabled: !isSortable },
     ];
     if (onPinColumn) items.push({ id: 'pin', disabled: false });
     if (onFilterBy) items.push({ id: 'filter', disabled: false });
     if (onHideColumn) items.push({ id: 'hide', disabled: isRequired });
     return items;
-  }, [onPinColumn, onFilterBy, onHideColumn, isRequired]);
+  }, [onPinColumn, onFilterBy, onHideColumn, isRequired, isSortable]);
 
   // Close menu helper — returns focus to trigger
   const closeMenu = useCallback(() => {
@@ -298,6 +300,7 @@ export function ColumnHeaderMenu({
           <MenuItem
             icon={<ArrowUp size={14} />}
             label="Asc"
+            disabled={!isSortable}
             onClick={() => { onSortAsc(columnId); closeMenu(); }}
             active={sortDirection === 'asc'}
             isFocused={focusedIndex === itemIndex}
@@ -306,6 +309,7 @@ export function ColumnHeaderMenu({
           <MenuItem
             icon={<ArrowDown size={14} />}
             label="Desc"
+            disabled={!isSortable}
             onClick={() => { onSortDesc(columnId); closeMenu(); }}
             active={sortDirection === 'desc'}
             isFocused={focusedIndex === itemIndex}

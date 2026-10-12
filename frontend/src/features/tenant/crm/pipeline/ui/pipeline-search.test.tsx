@@ -1,0 +1,25 @@
+import React from 'react';
+import { beforeEach, afterEach, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/react';
+const state = vi.hoisted(() => ({ get: vi.fn(), replace: vi.fn(), pipelines: [{ id: 'sales', name: 'Sales Pipeline', stages: [] }] }));
+vi.mock('next/navigation', () => { const router = { replace: state.replace }; return { useRouter: () => router, useSearchParams: () => new URLSearchParams('highlight=selected') }; });
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', tenantId: 'tenant' }, tenant: { id: 'tenant' } }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipelines, deals: [], users: [], refreshPipelines: vi.fn() }) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: [], refetch: vi.fn(), setData: vi.fn() }) }));
+vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: state.get } }));
+vi.mock('@/shared/components/crm', () => ({ DealPanel: ({ open, deal }: any) => open ? <p>{deal.title}</p> : null }));
+vi.mock('@/features/tenant/crm/deals/ui/deal-form', () => ({ DealFormSheet: () => null }));
+vi.mock('./pipeline-kanban-board', () => ({ PipelineKanbanBoard: () => null }));
+vi.mock('./pipeline-stages-dialog', () => ({ PipelineStagesDialog: () => null }));
+vi.mock('./forecast-bar', () => ({ default: () => null }));
+import PipelinePage from './pipeline-page';
+beforeEach(() => { vi.clearAllMocks(); }); afterEach(cleanup);
+it('opens a Deal selected by global search and selects its pipeline even outside the initial list', async () => {
+  state.get.mockResolvedValue({ data: { id: 'selected', title: 'Search-selected Deal', pipelineId: 'other-pipeline', stageId: 'stage' } });
+  render(<PipelinePage />);
+  await screen.findByText('Search-selected Deal');
+  expect(state.get).toHaveBeenCalledWith('/crm/deals/selected', { signal: expect.any(AbortSignal) });
+  expect(state.replace).toHaveBeenCalledWith('/crm/deals?pipelineId=other-pipeline', { scroll: false });
+});

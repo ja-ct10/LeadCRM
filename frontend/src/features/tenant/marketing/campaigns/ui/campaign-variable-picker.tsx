@@ -5,6 +5,7 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
+import { matchesSearch } from '@/shared/utils/search';
 
 export function useCampaignFields(source?: 'LEADS' | 'CONTACTS') {
   const query = useCachedPage<CrmFieldCatalogEntry[]>({ module: source === 'LEADS' ? 'leads' : 'contacts', params: { fieldCatalog: source }, disabled: !source, revalidateOnInvalidation: true, fetchFn: async () => (await audiencesApi.fields(source!)).data });
@@ -17,7 +18,7 @@ export function useCampaignVariableFields(enabled = true) {
 }
 export function CampaignVariablePicker({ choices, onInsert }: { choices: CampaignVariableChoice[]; onInsert: (token: string) => void }) {
   const [search, setSearch] = useState('');
-  const filtered = choices.filter(field => `${field.label} ${field.technicalKey} ${field.category} ${field.category === 'Standard Fields' ? 'System' : ''} ${field.origins.map(origin => origin.module).join(' ')}`.toLowerCase().includes(search.trim().toLowerCase()));
+  const filtered = choices.filter(field => matchesSearch(search, field.label, field.technicalKey, field.category, field.category === 'Standard Fields' ? 'System' : '', field.origins.map(origin => origin.module).join(' ')));
   return <div className="max-h-80 w-72 max-w-[80vw] overflow-y-auto rounded-lg border border-gray-200 bg-white p-2 shadow-xl dark:border-white/10 dark:bg-slate-900">
     <div className="mb-2"><ModuleSearchInput label="Search variables" placeholder="Search fields, keys or modules" value={search} onChange={setSearch} fullWidth /></div>
     {CAMPAIGN_VARIABLE_CATEGORIES.map(category => <div key={category}>

@@ -10,6 +10,7 @@ import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
 import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 export type TaskClient = Prisma.TransactionClient;
 const person = {
@@ -135,20 +136,13 @@ export function taskWhere(
     const id = query[`${kind}Id`];
     if (id) AND.push(taskContextWhere(kind, id, tenantId));
   }
+  AND.push(...buildSearchClauses(query.search, ['title', 'description']));
   return {
     tenantId,
     isArchived: query.archived,
     AND,
     ...(query.priority ? { priority: query.priority } : {}),
     ...(query.assignedUserId ? { assignedUserId: query.assignedUserId } : {}),
-    ...(query.search
-      ? {
-          OR: [
-            { title: { contains: query.search, mode: "insensitive" } },
-            { description: { contains: query.search, mode: "insensitive" } },
-          ],
-        }
-      : {}),
   };
 }
 export async function findAllTasks(tenantId: string, query: TaskQuery) {
@@ -267,9 +261,8 @@ export async function findTaskOptions(
   search: string,
   leadIds: string[] = [],
 ) {
-  const contains = { contains: search, mode: "insensitive" as const };
   const people = {
-    OR: [{ firstName: contains }, { lastName: contains }, { email: contains }],
+    AND: buildSearchClauses(search, ['firstName', 'lastName', 'email']),
   };
   if (kind === "user") {
     const rows = await prisma.user.findMany({
@@ -302,7 +295,7 @@ export async function findTaskOptions(
         ? await prisma.lead.findMany(args)
         : await prisma.contact.findMany({
             ...args,
-            where: { ...args.where, AND: [related.contact] },
+            where: { ...args.where, AND: [...people.AND, related.contact] },
           });
     return rows.map((row) => ({
       id: row.id,
@@ -315,7 +308,7 @@ export async function findTaskOptions(
     const actor = crmActor.getStore();
     const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
     const rows = await prisma.deal.findMany({
-      where: { ...where, title: contains, deletedAt: null, AND: [related.deal],
+      where: { ...where, deletedAt: null, AND: [...buildSearchClauses(search, ['title']), related.deal],
         ...(policy?.assignmentRestricted ? { assignedUserId: policy.userId } : {}) },
       take: 50,
       orderBy: [{ title: "asc" }, { id: "asc" }],
@@ -324,7 +317,7 @@ export async function findTaskOptions(
     return rows.map((row) => ({ id: row.id, label: row.title }));
   }
   const rows = await prisma.account.findMany({
-    where: { ...where, name: contains, AND: [related.account] },
+    where: { ...where, AND: [...buildSearchClauses(search, ['name']), related.account] },
     take: 50,
     orderBy: [{ name: "asc" }, { id: "asc" }],
     select: { id: true, name: true },

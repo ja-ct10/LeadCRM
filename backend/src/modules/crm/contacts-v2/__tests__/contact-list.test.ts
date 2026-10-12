@@ -50,3 +50,17 @@ it('supports every visible sort column and sorts the displayed Account name', as
   expect(result.data.map(row => row.id)).toEqual(['a', 'b']);
   for (const field of ['lastName', 'phone', 'status', 'source']) await expect(findAllContacts('tenant', { sort: `${field}:asc` })).resolves.toBeDefined();
 });
+
+it('searches full Contact names and related Accounts before pagination while retaining scope', async () => {
+  await findAllContacts('tenant', { page: 3, limit: 25, search: '  Mary   Jane de la Cruz  ', currentUserId: 'agent', filter: { scope: 'equals:my' } });
+  const { where, skip, take } = db.contact.findMany.mock.calls[0][0];
+  expect({ skip, take }).toEqual({ skip: 50, take: 25 });
+  expect(where).toMatchObject({ tenantId: 'tenant', isArchived: false });
+  expect(where.AND).toContainEqual({ assignedUserId: 'agent' });
+  for (const term of ['Mary', 'Jane', 'de', 'la', 'Cruz']) expect(where.AND).toContainEqual({ OR: expect.arrayContaining([
+    { firstName: { contains: term, mode: 'insensitive' } },
+    { lastName: { contains: term, mode: 'insensitive' } },
+    { account: { name: { contains: term, mode: 'insensitive' } } },
+  ]) });
+  expect(db.contact.count.mock.calls[0][0].where).toEqual(where);
+});

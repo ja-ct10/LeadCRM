@@ -1,147 +1,88 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
 const MIGRATION_KEY = 'leadcrm_leads_columns';
-const MIGRATION_DONE_KEY = 'leadcrm_leads_columns_migrated';
-
-const { mockSaveUserPreference } = vi.hoisted(() => ({
-  mockSaveUserPreference: vi.fn().mockResolvedValue({ success: true, data: {} }),
-}));
-
-// Mock the preferences API module used by the migration source.
-vi.mock('@/shared/services/preferences.api', () => ({
-  preferencesApi: {
-    saveUserPreference: mockSaveUserPreference,
-  },
-}));
-
-// Import the function under test after mocking
+const MIGRATION_DONE_KEY = 'leadcrm_leads_columns_migrated_v2';
+const { mockSaveUserPreference } = vi.hoisted(() => ({ mockSaveUserPreference: vi.fn() }));
+vi.mock('@/shared/services/preferences.api', () => ({ preferencesApi: { saveUserPreference: mockSaveUserPreference } }));
 import { migrateLocalStorageColumns } from '../local-storage-migration';
 
 describe('migrateLocalStorageColumns', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    vi.clearAllMocks();
-  });
+  beforeEach(() => { localStorage.clear(); mockSaveUserPreference.mockReset().mockResolvedValue({ success: true, data: {} }); });
+  afterEach(() => localStorage.clear());
+  const saved = () => mockSaveUserPreference.mock.calls[0][1];
 
-  afterEach(() => {
-    localStorage.clear();
-  });
-
-  it('migrates valid localStorage data to server via API and clears localStorage', async () => {
-    const validConfig = [
-      { id: 'firstName', visible: true, order: 0 },
-      { id: 'lastName', visible: true, order: 1 },
-      { id: 'email', visible: true, order: 2 },
-    ];
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify(validConfig));
-
+  it('imports supported custom choices and widths with fixed Name and contiguous orders', async () => {
+    localStorage.setItem(MIGRATION_KEY, JSON.stringify([
+      { id: 'firstName', visible: true, order: 0, width: 210 },
+      { id: 'lastName', visible: true, order: 1 }, { id: 'email', visible: false, order: 2 },
+    ]));
     await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).toHaveBeenCalledWith('leads', validConfig);
-    expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
-    expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
-  });
-
-  it('handles invalid JSON by clearing localStorage without calling API', async () => {
-    localStorage.setItem(MIGRATION_KEY, 'not-valid-json{{{');
-
-    await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).not.toHaveBeenCalled();
-    expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
-    expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
-  });
-
-  it('filters out unknown column ids and sends only valid ones to API', async () => {
-    const mixedConfig = [
-      { id: 'firstName', visible: true, order: 0 },
-      { id: 'unknownColumn', visible: true, order: 1 },
-      { id: 'email', visible: true, order: 2 },
-      { id: 'anotherInvalid', visible: false, order: 3 },
-    ];
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify(mixedConfig));
-
-    await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).toHaveBeenCalledWith('leads', [
-      { id: 'firstName', visible: true, order: 0 },
-      { id: 'email', visible: true, order: 2 },
+    expect(mockSaveUserPreference.mock.calls[0][0]).toBe('leads');
+    expect(saved().slice(0, 4)).toEqual([
+      { id: 'name', visible: true, order: 0 },
+      { id: 'firstName', visible: true, order: 1, width: 210 },
+      { id: 'lastName', visible: true, order: 2 }, { id: 'email', visible: false, order: 3 },
     ]);
+    expect(saved().every((column: { order: number }, index: number) => column.order === index)).toBe(true);
     expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
-  });
-
-  it('does not call API and does not throw when localStorage is empty', async () => {
-    await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).not.toHaveBeenCalled();
     expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
   });
 
-  it('does not re-run migration when migration done flag is already set', async () => {
-    localStorage.setItem(MIGRATION_DONE_KEY, 'true');
-    const validConfig = [{ id: 'firstName', visible: true, order: 0 }];
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify(validConfig));
-
-    await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).not.toHaveBeenCalled();
-    // Original localStorage data remains untouched since migration skipped
-    expect(localStorage.getItem(MIGRATION_KEY)).not.toBeNull();
-  });
-
-  it('does not throw when API call fails and sets migration done flag', async () => {
+  it('retains the original source on a transient save failure and retries on the next visit', async () => {
+    const source = JSON.stringify([{ id: 'email', visible: false, order: 0, width: 240 }]);
+    localStorage.setItem(MIGRATION_KEY, source);
     mockSaveUserPreference.mockRejectedValueOnce(new Error('Network error'));
-    const validConfig = [
-      { id: 'firstName', visible: true, order: 0 },
-      { id: 'lastName', visible: true, order: 1 },
-    ];
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify(validConfig));
-
-    // Should not throw — migration failure is silent
     await expect(migrateLocalStorageColumns()).resolves.toBeUndefined();
-
-    // Migration done flag is set to prevent re-runs
+    expect(localStorage.getItem(MIGRATION_KEY)).toBe(source);
+    expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBeNull();
+    await migrateLocalStorageColumns();
+    expect(mockSaveUserPreference).toHaveBeenCalledTimes(2);
+    expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
     expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
   });
 
-  it('discards data when all column ids are unknown', async () => {
-    const invalidConfig = [
-      { id: 'unknownCol1', visible: true, order: 0 },
-      { id: 'unknownCol2', visible: false, order: 1 },
-    ];
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify(invalidConfig));
-
+  it.each(['not-valid-json{{{', JSON.stringify({ id: 'firstName', visible: true }), JSON.stringify([{ id: 'unknownCol', visible: true, order: 0 }])])('discards unusable browser data without a server write: %s', async raw => {
+    localStorage.setItem(MIGRATION_KEY, raw);
     await migrateLocalStorageColumns();
-
     expect(mockSaveUserPreference).not.toHaveBeenCalled();
     expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
     expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
   });
 
-  it('discards data when localStorage contains a non-array JSON value', async () => {
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify({ id: 'firstName', visible: true }));
-
+  it('salvages valid entries while removing invalid shapes and unknown IDs', async () => {
+    localStorage.setItem(MIGRATION_KEY, JSON.stringify([
+      { id: 'firstName', visible: true, order: 0 }, { id: 'email' },
+      { id: 'phone', visible: true }, { id: 'unknownColumn', visible: true, order: 3 },
+      { id: 'address', visible: true, order: 4, width: 320 },
+    ]));
     await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).not.toHaveBeenCalled();
-    expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
-    expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
+    expect(saved()).toContainEqual({ id: 'firstName', visible: true, order: 1 });
+    expect(saved()).toContainEqual({ id: 'address', visible: true, order: 2, width: 320 });
+    expect(saved().some((column: { id: string }) => column.id === 'unknownColumn')).toBe(false);
   });
 
-  it('filters out entries with invalid shape (missing fields)', async () => {
-    const partialConfig = [
-      { id: 'firstName', visible: true, order: 0 }, // valid
-      { id: 'email' }, // missing visible and order
-      { id: 'phone', visible: true }, // missing order
-      { visible: true, order: 3 }, // missing id
-    ];
-    localStorage.setItem(MIGRATION_KEY, JSON.stringify(partialConfig));
-
+  it('retires known unsupported fields and expands the historical combined contact column', async () => {
+    localStorage.setItem(MIGRATION_KEY, JSON.stringify([
+      { id: 'emailAndPhone', visible: true, order: 0 }, { id: 'emailCount', visible: true, order: 79 },
+    ]));
     await migrateLocalStorageColumns();
-
-    expect(mockSaveUserPreference).toHaveBeenCalledWith('leads', [
-      { id: 'firstName', visible: true, order: 0 },
+    expect(saved().slice(0, 3).map((column: { id: string; visible: boolean }) => [column.id, column.visible])).toEqual([
+      ['name', true], ['email', true], ['phone', true],
     ]);
-    expect(localStorage.getItem(MIGRATION_KEY)).toBeNull();
+    expect(saved().some((column: { id: string }) => ['emailAndPhone', 'emailCount'].includes(column.id))).toBe(false);
+  });
+
+  it('skips completed v2 imports but rechecks an obsolete v1 marker', async () => {
+    localStorage.setItem('leadcrm_leads_columns_migrated', 'true');
+    localStorage.setItem(MIGRATION_KEY, JSON.stringify([{ id: 'address', visible: true, order: 0 }]));
+    await migrateLocalStorageColumns();
+    await migrateLocalStorageColumns();
+    expect(mockSaveUserPreference).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks an empty browser source complete without a write', async () => {
+    await migrateLocalStorageColumns();
+    expect(mockSaveUserPreference).not.toHaveBeenCalled();
+    expect(localStorage.getItem(MIGRATION_DONE_KEY)).toBe('true');
   });
 });

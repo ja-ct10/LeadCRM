@@ -52,11 +52,13 @@ export default function AccountsPage(): React.ReactElement {
     effectiveColumns,
     isLoading: isColumnsLoading,
     saveColumns,
+    saveColumnWidth,
     resetColumns,
   } = useColumnPreferences('accounts');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
-  const manageColumnsButtonRef = useRef<HTMLButtonElement>(null);
+  const manageColumnsButtonRef = useRef<HTMLElement | null>(null);
+  const openManageColumns = () => { manageColumnsButtonRef.current = document.activeElement as HTMLElement; setIsManageColumnsOpen(true); };
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
   const {
@@ -395,7 +397,7 @@ export default function AccountsPage(): React.ReactElement {
         refreshDisabled={isLoading || isRefreshing}
         loading={isLoading || isColumnsLoading}
         loadingLabel={isLoading ? 'Loading accounts...' : 'Loading columns...'}
-        onManageColumns={() => setIsManageColumnsOpen(true)}
+        onManageColumns={openManageColumns}
       >
         {highlightId && <div className="mb-3 flex items-center justify-between gap-3 text-sm text-slate-500">
           <span>Showing selected search result</span>
@@ -443,6 +445,8 @@ export default function AccountsPage(): React.ReactElement {
                 toast.error('Failed to hide column. Reverted.');
               }
             }}
+            onManageColumns={openManageColumns}
+            onColumnWidthChange={(id, width) => { void saveColumnWidth(id, width).catch(error => toast.error(error instanceof Error ? error.message : 'Unable to save column width.')); }}
             highlightRowId={highlightId}
             viewMode={viewMode}
           />

@@ -63,14 +63,14 @@ export function useColumnResize({
       if (!columnId) return;
 
       const delta = e.clientX - startX;
-      const newWidth = Math.min(maxWidth, Math.max(minWidth, startWidth + delta));
+      const newWidth = Math.round(Math.min(maxWidth, Math.max(minWidth, startWidth + delta)));
+      stateRef.current.lastWidth = newWidth;
 
       // Throttle via requestAnimationFrame — at most one update per frame
       if (rafRef.current !== null) {
         cancelAnimationFrame(rafRef.current);
       }
       rafRef.current = requestAnimationFrame(() => {
-        stateRef.current.lastWidth = newWidth;
         onResize(columnId, newWidth);
         rafRef.current = null;
       });
@@ -85,10 +85,11 @@ export function useColumnResize({
       rafRef.current = null;
     }
 
-    const { columnId, startX, startWidth, lastWidth } = stateRef.current;
+    const { columnId, startWidth, lastWidth } = stateRef.current;
 
     // Compute final clamped width (in case last rAF was cancelled)
     const finalWidth = lastWidth || startWidth;
+    if (columnId) onResize(columnId, finalWidth);
 
     // Fire persistence callback with final width
     if (columnId && onResizeEnd) {
@@ -101,7 +102,7 @@ export function useColumnResize({
     stateRef.current.lastWidth = 0;
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
-  }, [onResizeEnd]);
+  }, [onResize, onResizeEnd]);
 
   useEffect(() => {
     if (!isResizing) return;
@@ -117,6 +118,8 @@ export function useColumnResize({
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
     };
   }, [isResizing, handlePointerMove, handlePointerUp]);
 

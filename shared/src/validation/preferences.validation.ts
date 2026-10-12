@@ -19,6 +19,7 @@ export const ColumnItemSchema = z.object({
   }),
   visible: z.boolean(),
   order: z.number().int().nonnegative(),
+  width: z.number().int().min(80).max(800).optional(),
 });
 
 /** Full save payload — max 64KB enforced at middleware level. */

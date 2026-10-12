@@ -2,11 +2,11 @@
 
 import { useMemo, useCallback } from 'react';
 import { useModuleData } from '@/shared/hooks/use-module-data';
-import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
+import { toFrontendLead } from '@/lib/api/adapters/lead.adapter';
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 import { useAuth } from '@/store/AuthContext';
-import type { Contact } from '@/store/types';
-import type { FilterCondition } from '@leadcrm/shared';
+import type { Lead } from '@/store/types';
+import type { FilterCondition, LeadRead } from '@leadcrm/shared';
 import type { SortPreference } from '@/shared/services/table-preferences.api';
 
 export interface UseLeadsDataParams {
@@ -26,7 +26,7 @@ export interface UseLeadsDataMeta {
 }
 
 export interface UseLeadsDataReturn {
-  leads: Contact[];
+  leads: Lead[];
   facets?: Record<string, number>;
   meta: UseLeadsDataMeta | null;
   isInitialLoad: boolean;
@@ -38,8 +38,8 @@ export interface UseLeadsDataReturn {
 
 export function useLeadsData(params: UseLeadsDataParams): UseLeadsDataReturn {
   const { tenant } = useAuth();
-  const result = useModuleData({ moduleId: 'leads', ...params });
-  const leads = useMemo(() => result.data.map(toFrontendContact) as Contact[], [result.data]);
+  const result = useModuleData<LeadRead>({ moduleId: 'leads', ...params });
+  const leads = useMemo(() => result.data.map(toFrontendLead), [result.data]);
   const invalidate = useCallback(() => {
     if (tenant?.id) invalidatePageCache('leads', tenant.id);
   }, [tenant?.id]);

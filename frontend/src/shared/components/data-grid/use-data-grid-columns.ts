@@ -28,6 +28,7 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { ColumnConfigItem, ColumnDefinition } from '@leadcrm/shared';
+import { reconcileTableColumns } from '@leadcrm/shared';
 import type { DataGridColumnDef, PinPosition } from './types';
 
 // ─── Cell Renderer Map ───────────────────────────────────────────────────────
@@ -42,6 +43,7 @@ export type CellRendererMap<T = Record<string, unknown>> = Record<string, CellRe
 // ─── Options ─────────────────────────────────────────────────────────────────
 
 interface UseDataGridColumnsOptions<T = Record<string, unknown>> {
+  module?: string;
   /** The full column registry for the module */
   registry: ColumnDefinition[];
   /** Effective columns from useColumnPreferences (visibility + order) */
@@ -66,6 +68,7 @@ interface UseDataGridColumnsReturn<T = Record<string, unknown>> {
 }
 
 export function useDataGridColumns<T = Record<string, unknown>>({
+  module = '',
   registry,
   effectiveColumns,
   cellRenderers = {},
@@ -75,17 +78,8 @@ export function useDataGridColumns<T = Record<string, unknown>>({
   defaultWidths = {},
 }: UseDataGridColumnsOptions<T>): UseDataGridColumnsReturn<T> {
   const visibleColumns = useMemo((): ColumnConfigItem[] => {
-    if (effectiveColumns.length === 0) {
-      // Fallback to system defaults
-      return registry
-        .filter((col) => col.defaultVisible)
-        .sort((a, b) => a.defaultOrder - b.defaultOrder)
-        .map((col) => ({ id: col.id, visible: true, order: col.defaultOrder }));
-    }
-    return [...effectiveColumns]
-      .filter((col) => col.visible)
-      .sort((a, b) => a.order - b.order);
-  }, [effectiveColumns, registry]);
+    return reconcileTableColumns(module, effectiveColumns, registry).filter(column => column.visible);
+  }, [module, effectiveColumns, registry]);
 
   const gridColumns = useMemo((): DataGridColumnDef<T>[] => {
     const registryMap = new Map(registry.map((r) => [r.id, r]));
@@ -101,9 +95,9 @@ export function useDataGridColumns<T = Record<string, unknown>>({
       const label = def?.label ?? colId;
 
       let pinned: PinPosition = null;
-      if (pinnedSet.has(colId)) pinned = 'left';
+      if (pinnedSet.has(colId) || def?.pinned === 'left') pinned = 'left';
 
-      const isSortable = sortableSet.has(colId);
+      const isSortable = def?.sortable ?? sortableSet.has(colId);
       const isResizable = resizableSet === null || resizableSet.has(colId);
 
       const cellRenderer = cellRenderers[colId];

@@ -1,7 +1,7 @@
 'use client';
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
-import { LEAD_SOURCES } from '@leadcrm/shared';
+import { LEAD_SOURCES, formatLeadName, reconcileTableColumns } from '@leadcrm/shared';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
 import { LeadCreatedFilter, createdFilterCondition, emptyCreatedFilter, type CreatedFilterDraft } from './lead-created-filter';
@@ -10,14 +10,14 @@ import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { leadsService } from '../services/leads.service';
-import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useAuth } from '@/store/AuthContext';
 import { useLeadsData } from '../hooks/use-leads-data';
 import { DataErrorState } from '@/shared/components/crm/data-view-states';
-import type { Lead, Organization } from '@/store/types';
-import { ModuleWorkspace, ViewType, LeadPanel, StatusBadge } from '@/shared/components/crm';
+import type { Lead } from '@/store/types';
+import { ModuleWorkspace, ViewType, LeadPanel } from '@/shared/components/crm';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
@@ -25,8 +25,6 @@ import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { migrateLocalStorageColumns } from '../services/local-storage-migration';
 import { ManageColumnsDrawer } from '@/shared/components/manage-columns-drawer';
-import { LeadsTileView, LeadsGridView, LeadsKanbanView, LeadDrawerOverview, LeadDrawerRelated } from './leads-view-components';
-import { LeadsListView } from './leads-list-view';
 import { LeadsDataGrid } from './leads-data-grid';
 import { LeadFormSheet } from './lead-form';
 import { ConvertLeadDialog } from './convert-lead-dialog';
@@ -39,7 +37,6 @@ import { useRouter } from 'next/navigation';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
-import { Edit, Phone, Mail, ListTodo, MoreHorizontal } from 'lucide-react';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
@@ -49,9 +46,7 @@ export default function LeadsPage(): React.ReactElement {
   const {
     addContact: addLead,
     updateContact: updateLead,
-    refreshContacts,
     users,
-    organizations,
   } = useData();
   const { user } = useAuth();
   const { dialogProps, confirm, close } = useConfirmDialog();
@@ -68,9 +63,12 @@ export default function LeadsPage(): React.ReactElement {
     isLoading: isColumnsLoading,
     saveColumns,
     resetColumns,
+    saveColumnWidth,
   } = useColumnPreferences('leads');
 
   const [isManageColumnsOpen, setIsManageColumnsOpen] = useState(false);
+  const columnsTriggerRef = useRef<HTMLElement | null>(null);
+  const openManageColumns = () => { columnsTriggerRef.current = document.activeElement as HTMLElement; setIsManageColumnsOpen(true); };
 
   // ── Table Preferences (pageSize, viewMode, sort) ──────────────────────
   const {
@@ -91,22 +89,8 @@ export default function LeadsPage(): React.ReactElement {
     migrateLocalStorageColumns();
   }, []);
 
-  /** Visible columns sorted by order — drives table rendering */
-  const visibleColumns = useMemo(() => {
-    if (effectiveColumns.length === 0) {
-      // Fallback to system default when no preferences loaded yet
-      return LEADS_COLUMN_REGISTRY
-        .filter((col) => col.defaultVisible)
-        .sort((a, b) => a.defaultOrder - b.defaultOrder)
-        .map((col) => ({ id: col.id, visible: true, order: col.defaultOrder }));
-    }
-    return [...effectiveColumns]
-      .filter((col) => col.visible)
-      .sort((a, b) => a.order - b.order);
-  }, [effectiveColumns]);
-
   // ── State ────────────────────────────────────────────────────────────
-  const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
+  const activeView: ViewType = 'table';
   const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
@@ -118,7 +102,6 @@ export default function LeadsPage(): React.ReactElement {
   const [mergingLead, setMergingLead] = useState<Lead | null>(null);
   const [mergeSecondaryId, setMergeSecondaryId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
-  const [drawerTab, setDrawerTab] = useState('overview');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Multi-criteria filter state
@@ -138,7 +121,7 @@ export default function LeadsPage(): React.ReactElement {
 
   useEffect(() => {
     if (!highlightId) return;
-    setSearchTerm(''); setActiveTab('all'); setActiveView('table'); setCurrentPage(1);
+    setSearchTerm(''); setActiveTab('all'); setCurrentPage(1);
     setSelectedSystemFilters([]);
     setSelectedStatuses([]);
     setSelectedSources([]);
@@ -167,7 +150,7 @@ export default function LeadsPage(): React.ReactElement {
 
     // Source filter — frontend calls it 'leadSource'; backend Prisma field is 'source'
     if (selectedSources.length > 0) {
-      conditions.push({ field: 'leadSource', operator: 'in', value: selectedSources });
+      conditions.push({ field: 'source', operator: 'in', value: selectedSources });
     }
 
     // Owner filter
@@ -212,7 +195,7 @@ export default function LeadsPage(): React.ReactElement {
     updateParams({
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
-      view: activeView !== 'list' ? activeView : null,
+      view: null,
       system: selectedSystemFilters,
       statuses: selectedStatuses,
       sources: selectedSources,
@@ -229,7 +212,7 @@ export default function LeadsPage(): React.ReactElement {
       conditions.push({ field: 'status', operator: 'in', value: selectedStatuses });
     }
     if (selectedSources.length > 0) {
-      conditions.push({ field: 'leadSource', operator: 'in', value: selectedSources });
+      conditions.push({ field: 'source', operator: 'in', value: selectedSources });
     }
     if (selectedOwners.length > 0) {
       conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
@@ -256,45 +239,12 @@ export default function LeadsPage(): React.ReactElement {
   }, [debouncedSearch, activeTab, selectedStatuses, selectedSources, selectedOwners, selectedRelated, selectedSystemFilters, createdFilter, pageSize, sort]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
-  const getInitials = (lead: Lead): string => {
-    const name = lead.leadPerson ?? lead.displayName ?? lead.firstName ?? '';
-    const parts = name.split(' ');
-    if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-    return name.slice(0, 2).toUpperCase();
-  };
-
-  const getLeadName = (lead: Lead): string => {
-    return lead.leadPerson ?? lead.displayName ?? (`${lead.firstName ?? ''} ${lead.lastName ?? ''}`.trim() || 'Unknown');
-  };
-
-
   const getOwnerInitials = (userId?: string): string => {
     if (!userId) return '?';
     const u = users.find((usr) => usr.id === userId);
     if (!u) return '?';
     return `${u.firstName?.[0] ?? ''}${u.lastName?.[0] ?? ''}`.toUpperCase();
   };
-
-  const getStatusVariant = (status: string): 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral' => {
-    const map: Record<string, 'success' | 'info' | 'warn' | 'danger' | 'purple' | 'neutral'> = {
-      Qualified: 'success',
-      New: 'info',
-      Contacted: 'info',
-      Nurturing: 'purple',
-      Unqualified: 'danger',
-      Hot: 'danger',
-      Warm: 'warn',
-      Cold: 'neutral',
-    };
-    return map[status] ?? 'neutral';
-  };
-
-  const formatCurrency = (value?: number): string => {
-    if (!value) return '$0';
-    if (value >= 1000) return `$${(value / 1000).toFixed(value % 1000 === 0 ? 0 : 1)}k`;
-    return `$${value.toLocaleString()}`;
-  };
-
 
   // ── Filter groups for the rail ───────────────────────────────────────
   const statusCounts = useMemo(() => Object.fromEntries(['Hot','Warm','Cold','Closed','Cancelled'].map(status => [status, facets?.['status:' + status] ?? 0])), [facets]);
@@ -384,28 +334,7 @@ export default function LeadsPage(): React.ReactElement {
 
   const handleRowClick = useCallback((lead: Lead) => {
     setSelectedLead(lead);
-    setDrawerTab('overview');
   }, []);
-
-  const handleToggleSelect = useCallback((id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  }, []);
-
-  const handleSelectAll = useCallback(() => {
-    if (selectedIds.size === leads.length) {
-      setSelectedIds(new Set());
-    } else {
-      setSelectedIds(new Set(leads.map((l) => l.id)));
-    }
-  }, [selectedIds.size, leads]);
 
   // ── Render ───────────────────────────────────────────────────────────
   const confirmArchive = (ids: string[], name: string) => confirm({
@@ -417,7 +346,6 @@ export default function LeadsPage(): React.ReactElement {
       const results = await Promise.allSettled(ids.map(id => leadsService.archive(id)));
       const failedIds = ids.filter((_, index) => results[index].status === 'rejected');
       setSelectedIds(previous => new Set([...previous].filter(id => failedIds.includes(id))));
-      refetchLeads();
       if (failedIds.length) {
         confirmArchive(failedIds, ids.length === 1 ? name : `${failedIds.length} lead${failedIds.length === 1 ? '' : 's'}`);
         const failure = results.find(result => result.status === 'rejected');
@@ -442,7 +370,7 @@ export default function LeadsPage(): React.ReactElement {
         canCreate={canCreate}
         availableViews={['table']}
         activeView={'table' as ViewType}
-        onViewChange={setActiveView}
+        onViewChange={() => {}}
         savedTabs={[
           { id: 'all', label: 'All Leads' },
           { id: 'my', label: 'My Leads' },
@@ -467,12 +395,12 @@ export default function LeadsPage(): React.ReactElement {
         onViewModeChange={setViewMode}
         onRefresh={refetchLeads}
         refreshDisabled={isLeadsInitialLoad || isLeadsRefreshing}
-        loading={(activeView === 'list' || activeView === 'table') && (isLeadsInitialLoad || isColumnsLoading)}
+        loading={(isLeadsInitialLoad || isColumnsLoading)}
         loadingLabel={isLeadsInitialLoad ? 'Loading leads...' : 'Loading columns...'}
-        onManageColumns={() => setIsManageColumnsOpen(true)}
-        onResetColumns={() => {
-          resetColumns();
-          toast.success('Columns reset to default');
+        onManageColumns={openManageColumns}
+        onResetColumns={async () => {
+          try { await resetColumns(); toast.success('Columns reset to default'); }
+          catch { toast.error('Unable to reset columns. Please try again.'); }
         }}
         bulkSelection={
           selectedIds.size > 0
@@ -498,14 +426,14 @@ export default function LeadsPage(): React.ReactElement {
         </div>}
         {/* ── List View ─────────────────────────────────────────── */}
         {/* Error state: only show when there's no data at all to display */}
-        {(activeView === 'list' || activeView === 'table') && leadsError && !isLeadsInitialLoad && leads.length === 0 && (
+        {leadsError && !isLeadsInitialLoad && leads.length === 0 && (
           <DataErrorState
             message={leadsError}
             onRetry={refetchLeads}
           />
         )}
 
-        {(activeView === 'list' || activeView === 'table') && !(leadsError && leads.length === 0) && (
+        {!(leadsError && leads.length === 0) && (
           <LeadsDataGrid
             sort={sort}
             onSortChange={setSort}
@@ -520,11 +448,11 @@ export default function LeadsPage(): React.ReactElement {
             canEdit={canEdit}
             canArchive={canDelete}
             onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
-            onArchive={(lead) => confirmArchive([lead.id], lead.leadPerson ?? lead.contactPerson ?? `${lead.firstName ?? ''} ${lead.lastName ?? ''}`)}
+            onArchive={(lead) => confirmArchive([lead.id], formatLeadName(lead))}
             onConvert={(lead) => setConvertingLead(lead)}
             onMerge={(lead) => setMergingLead(lead)}
             onHideColumn={async (columnId) => {
-              const updated = effectiveColumns.map((col) =>
+              const updated = reconcileTableColumns('leads', effectiveColumns, LEADS_COLUMN_REGISTRY).map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,
               );
               try {
@@ -534,49 +462,19 @@ export default function LeadsPage(): React.ReactElement {
                 toast.error('Failed to hide column. Reverted.');
               }
             }}
+            onManageColumns={openManageColumns}
+            onColumnWidthChange={(id, width) => { void saveColumnWidth(id, width).catch(() => toast.error('Unable to save column width. Please try again.')); }}
             highlightRowId={highlightId}
             viewMode={viewMode}          />
         )}
 
         {/* ── Bottom Pagination + Per Page ─────────────────────── */}
-        {(activeView === 'list' || activeView === 'table') && !isColumnsLoading && !isLeadsInitialLoad && serverTotal > 0 && (
+        {!isColumnsLoading && !isLeadsInitialLoad && serverTotal > 0 && (
           <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize}
             onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }}
             refreshing={isLeadsRefreshing} />
         )}
 
-        {/* ── Tile View ─────────────────────────────────────────── */}
-        {activeView === 'tile' && (
-          <LeadsTileView
-            leads={leads}
-            onCardClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
-            getStatusVariant={getStatusVariant}
-            formatCurrency={formatCurrency}
-          />
-        )}
-
-        {/* ── Grid View ─────────────────────────────────────────── */}
-        {activeView === 'grid' && (
-          <LeadsGridView
-            leads={leads}
-            onCardClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
-          />
-        )}
-
-        {/* ── Kanban View ───────────────────────────────────────── */}
-        {activeView === 'kanban' && (
-          <LeadsKanbanView
-            leads={leads}
-            onCardClick={handleRowClick}
-            getInitials={getInitials}
-            getLeadName={getLeadName}
-            getStatusVariant={getStatusVariant}
-          />
-        )}
       </ModuleWorkspace>
 
       {/* ── Slide-Over Record Panel ─────────────────────────────────── */}
@@ -604,12 +502,12 @@ export default function LeadsPage(): React.ReactElement {
               await addLead(data as any);
               toast.success('Lead created');
             }
-            refetchLeads();
+            setIsFormOpen(false);
+            setEditingLead(undefined);
           } catch (err: unknown) {
             showCrmMutationError(err, 'Failed to save lead');
+            throw err;
           }
-          setIsFormOpen(false);
-          setEditingLead(undefined);
         }}
       />
 
@@ -665,6 +563,7 @@ export default function LeadsPage(): React.ReactElement {
         onClose={() => setIsManageColumnsOpen(false)}
         module="leads"
         registry={LEADS_COLUMN_REGISTRY}
+        triggerRef={columnsTriggerRef}
         effectiveColumns={effectiveColumns}
         onSave={saveColumns}
         onReset={resetColumns}

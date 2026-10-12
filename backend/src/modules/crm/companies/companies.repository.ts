@@ -9,6 +9,7 @@ import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateCompanyDto, UpdateCompanyDto } from './companies.dto';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
 
 // Allowed filter fields for accounts
@@ -29,6 +30,7 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   // Parse filter[field]=operator:value params
   const parsedFilters = parseFilterParams(query);
   const filterClauses = buildPrismaFilters(parsedFilters, COMPANY_FILTER_FIELDS, COMPANY_FIELD_ALIASES);
+  filterClauses.push(...buildSearchClauses(query.search, ['name', 'industry', 'city', 'website', 'country']));
   if (parsedFilters.find(filter => filter.field === 'scope')?.value === 'my') filterClauses.push({ assignedUserId: String(query.currentUserId ?? '') });
 
   const where = {
@@ -36,15 +38,6 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
     isArchived: query.archived === 'true',
     // Legacy direct params (backward compat)
     ...(query.assignedUserId ? { assignedUserId: String(query.assignedUserId) } : {}),
-    ...(query.search
-      ? {
-          OR: [
-            { name:     { contains: String(query.search), mode: 'insensitive' as const } },
-            { industry: { contains: String(query.search), mode: 'insensitive' as const } },
-            { city:     { contains: String(query.search), mode: 'insensitive' as const } },
-          ],
-        }
-      : {}),
     // filter[field]=operator:value clauses (AND-combined)
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };

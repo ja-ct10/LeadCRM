@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { toast } from 'sonner';
 import type { RoleListItem, RoleDetail } from '@/store/types/roles.types';
 import { rolesService } from '../services/roles.service';
+import { matchesSearch } from '@/shared/utils/search';
 
 interface UseRolesReturn {
   roles:          RoleListItem[];
@@ -51,11 +52,7 @@ export function useRoles(): UseRolesReturn {
 
   const filteredRoles = useMemo(() => {
     if (!searchQuery.trim()) return roles;
-    const q = searchQuery.toLowerCase();
-    return roles.filter(r =>
-      r.name.toLowerCase().includes(q) ||
-      (r.description ?? '').toLowerCase().includes(q),
-    );
+    return roles.filter(r => matchesSearch(searchQuery, r.name, r.description));
   }, [roles, searchQuery]);
 
   const openDetail = useCallback(async (id: string) => {

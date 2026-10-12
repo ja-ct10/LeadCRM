@@ -298,7 +298,7 @@ export default function NotesSidePanel({ isOpen, onClose }: NotesSidePanelProps)
 
       // 2. Search Query
       if (!searchQuery.trim()) return true;
-      const query = searchQuery.toLowerCase();
+      const query = searchQuery.trim().toLowerCase();
       return (
         note.title.toLowerCase().includes(query) ||
         note.content.toLowerCase().includes(query) ||

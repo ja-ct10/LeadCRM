@@ -59,12 +59,12 @@ interface LeadFormProps {
   initialData?: Lead;
   isOpen: boolean;
   onClose: () => void;
-  onSave: (data: Partial<Lead>) => void;
+  onSave: (data: Partial<Lead>) => void | Promise<void>;
 }
 
 interface AddLeadFormProps {
   initialData?: Lead;
-  onSave: (data: Partial<Lead>) => void;
+  onSave: (data: Partial<Lead>) => void | Promise<void>;
   onCancel: () => void;
 }
 
@@ -81,7 +81,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    formState: { errors, isSubmitting },
     reset,
     setFocus,
     control,
@@ -106,6 +106,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
   // Product interest state (for custom dropdown UX)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   // Philippine phone — local 10-digit number, no country code
   const [phoneLocal, setPhoneLocal] = useState('');
@@ -131,6 +132,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   });
 
   useEffect(() => {
+    setSubmitError(null);
     if (initialData) {
       const phone = initialData.phone || '';
       setPhoneLocal(normalizePhInput(phone));
@@ -146,7 +148,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         source: OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').data ?? '',
         accountId: initialData.accountId || initialData.organizationId || '',
         assignedUserId: initialData.assignedUserId || '',
-        productInterest: initialData.productInterests || initialData.productInterest || [],
+        productInterest: initialData.productInterestIds ?? [],
         address: initialData.address || '',
       });
     } else {
@@ -170,7 +172,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     }
   }, [initialData, reset]);
 
-  const onFormSubmit = (data: LeadFormData): void => {
+  const onFormSubmit = async (data: LeadFormData): Promise<void> => {
     if (!canSubmit) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate()) return;
@@ -198,7 +200,9 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       address: data.address?.trim() ?? '',
     };
 
-    onSave(payload);
+    setSubmitError(null);
+    try { await onSave(payload); }
+    catch (error: unknown) { setSubmitError(error instanceof Error ? error.message : 'Unable to save lead. Please try again.'); }
   };
 
   // Shared field classes
@@ -399,21 +403,23 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
       </div>{/* end scrollable body */}
 
+      {submitError && <p role="alert" className="px-6 py-3 text-sm text-red-700 dark:text-red-400">{submitError}</p>}
       {/* Sticky Footer */}
       <div className="shrink-0 px-6 py-4 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-slate-900 flex items-center justify-end gap-3">
         <button
           type="button"
           onClick={onCancel}
+          disabled={isSubmitting}
           className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors"
         >
           Cancel
         </button>
         <button
           type="submit"
-          disabled={!canSubmit || customFields.blocked || productsLoading || !!productError}
+          disabled={isSubmitting || !canSubmit || customFields.blocked || productsLoading || !!productError}
           className="px-6 py-2.5 text-sm font-semibold text-white bg-primary hover:bg-primary/90 active:scale-95 rounded-xl transition-all shadow-lg shadow-primary/25"
         >
-          {isEdit ? 'Save Changes' : 'Create Lead'}
+          {isSubmitting ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Lead'}
         </button>
       </div>
     </form>

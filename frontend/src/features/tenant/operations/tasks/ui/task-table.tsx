@@ -35,6 +35,7 @@ interface Props {
   onArchive: (task: TaskRecord) => void;
   totalRecords: number;
   onManageColumns: () => void;
+  onColumnWidthChange?: (columnId: string, width: number) => void;
 }
 export function TaskTable({
   tasks,
@@ -52,6 +53,7 @@ export function TaskTable({
   onArchive,
   totalRecords,
   onManageColumns,
+  onColumnWidthChange,
 }: Props) {
   const selectable = canEdit || canArchive || canComplete || canAssign;
   const relation = (text?: string | null, context?: string) =>
@@ -149,13 +151,7 @@ export function TaskTable({
                 aria-label="Overdue"
               />
             )}
-            {new Date(task.dueDate).toLocaleString([], {
-              month: "short",
-              day: "numeric",
-              year: "numeric",
-              hour: "numeric",
-              minute: "2-digit",
-            })}
+            {formatDateTime(task.dueDate)}
           </span>
         );
       case "lead":
@@ -171,7 +167,7 @@ export function TaskTable({
         return <span title={formatDateTime(task.createdAt, { seconds: true })}>{formatDateTime(task.createdAt, { seconds: true })}</span>;
       case "completedAt":
         return task.completedAt
-          ? new Date(task.completedAt).toLocaleString()
+          ? formatDateTime(task.completedAt)
           : "—";
       default:
         return "—";
@@ -244,6 +240,8 @@ export function TaskTable({
         },
       ]}
       onSettingsClick={onManageColumns}
+      onColumnWidthChange={onColumnWidthChange}
+      columnWidths={Object.fromEntries(columns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       summaryLabel={`${totalRecords} total records`}
       emptyMessage="No tasks match these filters. Try a different date, status, or search."
       ariaLabel="Tasks data grid"

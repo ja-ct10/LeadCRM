@@ -5,13 +5,14 @@ import prisma from '../../../config/database.config';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError } from '../../../shared/errors/http-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 export async function getTemplates(tenantId: string, query: Record<string, unknown>) {
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
   const where = { ...campaignScope(tenantId), isArchived: query.archived === 'true',
     ...(query.type   ? { type:   String(query.type) }   : {}),
-    ...(query.search ? { name:   { contains: String(query.search), mode: 'insensitive' as const } } : {}),
+    AND: buildSearchClauses(query.search, ['name']),
   };
   const [data, total] = await Promise.all([
     prisma.template.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),

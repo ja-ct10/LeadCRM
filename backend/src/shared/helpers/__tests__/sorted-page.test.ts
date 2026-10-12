@@ -43,7 +43,7 @@ it('uses a bounded database page for date sorting while preserving natural text 
 it('migrates combined columns once and preserves independent preferences afterwards', () => {
   const old = [{ id: 'emailAndPhone', visible: true, order: 1 }, { id: 'email', visible: false, order: 2 }, { id: 'phone', visible: false, order: 3 }];
   const migrated = normalizeLeadColumns(old);
-  expect(migrated.map(col => [col.id, col.visible])).toEqual([['email', true], ['phone', true]]);
+  expect(migrated.map(col => [col.id, col.visible])).toEqual([['name', true], ['email', true], ['phone', true], ['lastName', false]]);
   const customized = migrated.map(col => ({ ...col, visible: col.id !== 'email' }));
   expect(normalizeLeadColumns(customized)).toEqual(customized);
   expect(old).toHaveLength(3);

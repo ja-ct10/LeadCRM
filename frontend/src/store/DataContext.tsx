@@ -62,7 +62,7 @@ import { workflowsApi } from "@/shared/services/workflows.api";
 import { campaignsApi } from "@/shared/services/campaigns.api";
 import { templatesApi } from "@/shared/services/templates.api";
 import { preferencesApi } from "@/shared/services/preferences.api";
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { LEADS_TABLE_COLUMNS, reconcileTableColumns, type ColumnConfigItem } from '@leadcrm/shared';
 import {
   toBackendCreateContact,
   toBackendUpdateContact,
@@ -189,20 +189,7 @@ interface DataContextType {
 }
 
 // Column defaults remain available when preferences cannot be loaded.
-const LEADS_SYSTEM_DEFAULT: ColumnConfigItem[] = [
-  { id: 'firstName', visible: true, order: 0 },
-  { id: 'lastName', visible: true, order: 1 },
-  { id: 'email', visible: true, order: 2 },
-  { id: 'phone', visible: true, order: 3 },
-  { id: 'companyName', visible: true, order: 4 },
-  { id: 'status', visible: true, order: 5 },
-  { id: 'source', visible: true, order: 6 },
-  { id: 'assignedUserId', visible: true, order: 7 },
-  { id: 'productInterest', visible: false, order: 8 },
-  { id: 'address', visible: false, order: 9 },
-  { id: 'createdAt', visible: true, order: 10 },
-  { id: 'accountId', visible: false, order: 11 },
-];
+const LEADS_SYSTEM_DEFAULT = reconcileTableColumns('leads', [], LEADS_TABLE_COLUMNS);
 
 const DataContext = createContext<DataContextType | undefined>(undefined);
 
@@ -743,11 +730,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await contactsService.create(dto);
         const contact = toFrontendContact((res as any).data ?? res) as Contact;
         setContacts((prev) => [contact, ...prev]);
-        // Invalidate leads + contacts page cache so next navigation shows fresh data
-        const cTenantId = tenant?.id || user?.tenantId || '';
-        invalidatePageCache('leads',    cTenantId);
-        invalidatePageCache('deals', cTenantId);
-        invalidatePageCache('contacts', cTenantId);
         addAuditLog(
           "Contact Created",
           `Added contact '${contact.contactPerson}' (${contact.companyName}) with status '${contact.status}'.`,
@@ -782,8 +764,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const res = await contactsService.update(id, dto);
         const contact = toFrontendContact((res as any).data ?? res) as Contact;
         setContacts((prev) => prev.map((l) => (l.id === id ? contact : l)));
-        invalidatePageCache('leads',    tenant?.id || user?.tenantId || '');
-        invalidatePageCache('contacts', tenant?.id || user?.tenantId || '');
         addAuditLog("Contact Updated", `Updated contact '${contact.contactPerson}'.`, id);
       } catch (err: unknown) {
         throw new Error(err instanceof Error ? err.message : 'Failed to update contact');

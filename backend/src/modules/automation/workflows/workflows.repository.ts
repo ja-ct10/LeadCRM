@@ -9,6 +9,7 @@ import { ValidationError } from '../../../shared/errors/http-error';
 import { cleanWorkflowName, workflowNameKey, WORKFLOW_NAME_CONFLICT } from './workflow-names';
 import { assignmentOptions } from '../assignment/workflow-assignment.repository';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
+import { buildSearchClauses } from '../../../shared/helpers/search';
 
 export async function builderOptions(tenantId: string, marketing: boolean, access: { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles?: boolean; groups?: boolean } = { contacts: false, accounts: false, leads: false, deals: false, products: false, users: false }) {
   const [assignments, pipelines, templates, productInterests, accounts, contacts, leads, senders] = await Promise.all([
@@ -42,7 +43,7 @@ export async function listWorkflows(tenantId: string, query: Record<string, unkn
     ...(query.status ? { status: { in: String(query.status).split(',') } } : {}),
     ...(query.trigger ? { trigger: { in: String(query.trigger).split(',') } } : {}),
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
-    ...(query.search ? { name: { contains: String(query.search), mode: 'insensitive' } } : {}) };
+    AND: buildSearchClauses(query.search, ['name']) };
   const ids = await sortedPageIds(query.sort === 'createdAt:desc' ? undefined : query.sort, ['name', 'status', 'createdAt'], (page - 1) * limit, limit,
     () => prisma.workflow.findMany({ where, select: { id: true, name: true, status: true, createdAt: true } }));
   const [rows, total] = await Promise.all([

@@ -88,6 +88,8 @@ export default function TaskBoard() {
   const [owners, setOwners] = useState<TaskOption[]>([]),
     [ownerError, setOwnerError] = useState("");
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const columnsTriggerRef = useRef<HTMLElement | null>(null);
+  const openColumns = () => { columnsTriggerRef.current = document.activeElement as HTMLElement; setColumnsOpen(true); };
   const mutationPending = useRef(false),
     refreshPending = useRef(false);
   useEffect(() => {
@@ -407,7 +409,7 @@ export default function TaskBoard() {
         refreshDisabled={busy || data.loading || data.refreshing}
         loading={data.loading || columnPreferences.loading}
         loadingLabel={data.loading ? "Loading tasks..." : "Loading columns..."}
-        onManageColumns={() => setColumnsOpen(true)}
+        onManageColumns={openColumns}
         directManageColumns
       >
         {(error || data.error || ownerError) && (
@@ -447,7 +449,11 @@ export default function TaskBoard() {
               canAssign={canAssign}
               canArchive={canDelete}
               totalRecords={total}
-              onManageColumns={() => setColumnsOpen(true)}
+              onManageColumns={openColumns}
+              onColumnWidthChange={(id, width) => {
+                void columnPreferences.saveWidth(id, width).catch(error =>
+                  toast.error(error instanceof Error ? error.message : 'Unable to save column width.'));
+              }}
             />
             <LeadsPagination
               currentPage={page}
@@ -628,15 +634,8 @@ export default function TaskBoard() {
         registry={TASK_COLUMN_DEFINITIONS}
         effectiveColumns={columnPreferences.columns}
         onSave={columnPreferences.save}
-        onReset={() =>
-          columnPreferences.save(
-            TASK_COLUMN_DEFINITIONS.map((column) => ({
-              id: column.id,
-              visible: column.defaultVisible,
-              order: column.defaultOrder,
-            })),
-          )
-        }
+        onReset={columnPreferences.reset}
+        triggerRef={columnsTriggerRef}
       />
       {editor && (
         <TaskEditor

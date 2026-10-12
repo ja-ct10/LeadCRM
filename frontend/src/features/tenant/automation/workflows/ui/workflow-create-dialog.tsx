@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import type { ActionDefinition, TriggerDefinition, WorkflowEntity } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
+import { matchesSearch } from '@/shared/utils/search';
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from '@/shared/components/ui/dialog';
 import { WORKFLOW_STARTER_TEMPLATES } from '../services/workflow-recipes';
 import { actionSummary, workflowActionLabel } from '../services/workflow-editor';
@@ -62,11 +63,10 @@ export function WorkflowCreateDialog({ triggers, actions, onClose, onChoose }: P
     return { recipe, index, templateId, trigger, issues: templateAvailability(recipe, triggers, actions) };
   }), [triggers, actions]);
   const records = [...new Set(catalog.flatMap(entry => entry.trigger ? [entry.trigger.entity] : []))];
-  const query = search.trim().toLowerCase();
   const filtered = catalog.filter(({ recipe, trigger }) =>
     (record === 'all' || trigger?.entity === record) &&
     (action === 'all' || recipe.actions.some(entry => entry.type === action)) &&
-    `${recipe.name} ${recipe.description ?? ''} ${trigger?.label ?? ''} ${recipe.actions.map(entry => workflowActionLabel(entry.type)).join(' ')}`.toLowerCase().includes(query),
+    matchesSearch(search, recipe.name, recipe.description, trigger?.label, recipe.actions.map(entry => workflowActionLabel(entry.type)).join(' ')),
   );
   const current = catalog.find(entry => entry.index === selected);
   const hasFilters = !!search || record !== 'all' || action !== 'all';

@@ -25,6 +25,9 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { cn } from '@/lib/utils';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
+import { useConfiguredColumnDefinitions } from '@/shared/hooks/use-field-layout';
+import { reconcileTableColumns } from '@leadcrm/shared';
+import { matchesSearch } from '@/shared/utils/search';
 import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 
 // ─────────────────────────────────────────────────────
@@ -57,6 +60,7 @@ interface DisplayColumn extends ColumnConfigItem {
   label: string;
   required: boolean;
   group: string;
+  fixed: boolean;
 }
 
 interface SortableColumnItemProps {
@@ -67,7 +71,7 @@ interface SortableColumnItemProps {
 }
 
 function SortableColumnItem({ col, index, total, onToggle }: SortableColumnItemProps): React.ReactElement {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: col.id, disabled: col.fixed });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -83,15 +87,15 @@ function SortableColumnItem({ col, index, total, onToggle }: SortableColumnItemP
         'bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800',
         isDragging && 'opacity-50 shadow-lg z-10'
       )}
-      {...attributes}
     >
-      <span
-        className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500 touch-none"
+      <button type="button" disabled={col.fixed}
+        className="flex-shrink-0 cursor-grab active:cursor-grabbing text-gray-400 dark:text-gray-500 touch-none disabled:cursor-default"
         aria-label={`Drag to reorder ${col.label}`}
+        {...attributes}
         {...listeners}
       >
         <GripVertical className="h-4 w-4" />
-      </span>
+      </button>
       <span className="flex-1 text-sm text-gray-900 dark:text-gray-100 truncate">{col.label}</span>
       {col.required ? (
         <span className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400" aria-label={`${col.label} is required`}>
@@ -112,9 +116,11 @@ function SortableColumnItem({ col, index, total, onToggle }: SortableColumnItemP
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
 export function ManageColumnsDrawer({
-  isOpen, onClose, module, registry, effectiveColumns, onSave, onReset, triggerRef,
+  isOpen, onClose, module, registry: rawRegistry, effectiveColumns, onSave, onReset, triggerRef,
 }: ManageColumnsDrawerProps): React.ReactElement | null {
+  const registry = useConfiguredColumnDefinitions(module, rawRegistry);
   const [localColumns, setLocalColumns] = useState<ColumnConfigItem[]>([]);
+  const [baseline, setBaseline] = useState<ColumnConfigItem[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [saveState, setSaveState] = useState<SaveState>('idle');
   const [resetError, setResetError] = useState<string | null>(null);
@@ -125,58 +131,54 @@ export function ManageColumnsDrawer({
   const drawerRef = useRef<HTMLDivElement>(null);
   const owner = useId();
   const wasOpen = useRef(false);
+  const initialized = useRef(false);
+  const sourceColumns = reconcileTableColumns(module, effectiveColumns, registry);
+  const sourceRef = useRef(sourceColumns);
+  sourceRef.current = sourceColumns;
+  const hasChanges = JSON.stringify(localColumns) !== JSON.stringify(baseline);
 
   // Sync local columns when drawer opens or effectiveColumns change
   useEffect(() => {
-    if (isOpen) {
-      // If effectiveColumns is empty (API not available / loading), build from registry defaults
-      const columns = effectiveColumns.length > 0
-        ? [...effectiveColumns]
-        : registry.map((col) => ({ id: col.id, visible: col.defaultVisible, order: col.defaultOrder }));
-      setLocalColumns(columns);
+    if (!isOpen) { initialized.current = false; return; }
+    if (!initialized.current) {
+      initialized.current = true;
+      setLocalColumns(sourceRef.current);
+      setBaseline(sourceRef.current);
       setSearchQuery('');
       setSaveState('idle');
       setResetError(null);
       setShowResetConfirm(false);
       setShowCloseConfirm(false);
       setRetryCount(0);
+    } else if (!hasChanges && saveState !== 'saving' && JSON.stringify(baseline) !== JSON.stringify(sourceRef.current)) {
+      setLocalColumns(sourceRef.current);
+      setBaseline(sourceRef.current);
     }
-  }, [isOpen, effectiveColumns, registry]);
+  }, [isOpen, effectiveColumns, rawRegistry, baseline, hasChanges, saveState]);
 
   useEffect(() => {
     return () => { if (savedTimerRef.current) clearTimeout(savedTimerRef.current); };
   }, []);
-
-  const hasChanges = useMemo(() => {
-    if (localColumns.length !== effectiveColumns.length) return true;
-    return localColumns.some((col, idx) => {
-      const orig = effectiveColumns[idx];
-      return col.id !== orig.id || col.visible !== orig.visible || col.order !== orig.order;
-    });
-  }, [localColumns, effectiveColumns]);
 
   const displayColumns: DisplayColumn[] = useMemo(() => {
     const sorted = [...localColumns].sort((a, b) => a.order - b.order);
     return sorted
       .map((col) => {
         const def = registry.find((r) => r.id === col.id);
-        return { ...col, label: def?.label ?? col.id, required: def?.required ?? false, group: def?.group ?? 'General' };
+        return { ...col, label: def?.label ?? col.id, required: def?.required ?? false, fixed: def?.fixedPosition === 'first', group: def?.group ?? 'General' };
       })
-      .filter((col) => col.label.toLowerCase().includes(searchQuery.toLowerCase()));
+      .filter((col) => matchesSearch(searchQuery, col.label));
   }, [localColumns, registry, searchQuery]);
 
   /** Columns grouped by registry-defined group labels */
   const groupedColumns = useMemo(() => {
     const groups: { name: string; columns: DisplayColumn[] }[] = [];
-    const seenGroups = new Set<string>();
-
     for (const col of displayColumns) {
       const groupName = col.group;
-      if (!seenGroups.has(groupName)) {
-        seenGroups.add(groupName);
+      if (groups.at(-1)?.name !== groupName) {
         groups.push({ name: groupName, columns: [] });
       }
-      groups.find((g) => g.name === groupName)!.columns.push(col);
+      groups.at(-1)!.columns.push(col);
     }
 
     return groups;
@@ -194,6 +196,7 @@ export function ManageColumnsDrawer({
   const handleDragEnd = useCallback((event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
+    if (registry.some(column => column.fixedPosition === 'first' && (column.id === active.id || column.id === over.id))) return;
 
     setLocalColumns((prev) => {
       const allSorted = [...prev].sort((a, b) => a.order - b.order);
@@ -216,7 +219,7 @@ export function ManageColumnsDrawer({
           return c;
         });
 
-        return rebuilt.map((col, idx) => ({ ...col, order: idx }));
+        return reconcileTableColumns(module, rebuilt.map((col, idx) => ({ ...col, order: idx })), registry);
       }
 
       const oldIndex = allSorted.findIndex((c) => c.id === active.id);
@@ -224,15 +227,16 @@ export function ManageColumnsDrawer({
       if (oldIndex === -1 || newIndex === -1) return prev;
 
       const reordered = arrayMove(allSorted, oldIndex, newIndex);
-      return reordered.map((col, idx) => ({ ...col, order: idx }));
+      return reconcileTableColumns(module, reordered.map((col, idx) => ({ ...col, order: idx })), registry);
     });
-  }, [searchQuery, displayColumns]);
+  }, [module, registry, searchQuery, displayColumns]);
 
   const handleToggleVisibility = useCallback((columnId: string) => {
+    if (saveState === 'saving' || registry.some(column => column.id === columnId && column.required)) return;
     setLocalColumns((prev) =>
       prev.map((col) => (col.id === columnId ? { ...col, visible: !col.visible } : col))
     );
-  }, []);
+  }, [saveState, registry]);
 
   const handleSave = useCallback(async () => {
     if (!hasChanges || saveState === 'saving') return;
@@ -240,6 +244,7 @@ export function ManageColumnsDrawer({
     setResetError(null);
     try {
       await onSave(localColumns);
+      setBaseline(localColumns);
       setSaveState('saved');
       setRetryCount(0);
       savedTimerRef.current = setTimeout(() => setSaveState('idle'), 2000);
@@ -260,6 +265,8 @@ export function ManageColumnsDrawer({
     setSaveState('saving');
     try {
       await onReset();
+      setLocalColumns(sourceRef.current);
+      setBaseline(sourceRef.current);
       setSaveState('idle');
       setRetryCount(0);
     } catch {
@@ -347,8 +354,8 @@ export function ManageColumnsDrawer({
             <SortableContext items={displayColumnIds} strategy={verticalListSortingStrategy}>
               {groupedColumns.length > 0 ? (
                 <div className="space-y-4" role="list" aria-label="Column list">
-                  {groupedColumns.map((group) => (
-                    <div key={group.name}>
+                  {groupedColumns.map((group, groupIndex) => (
+                    <div key={`${group.name}-${groupIndex}`}>
                       <h3 className="text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 px-1 pb-1.5 border-b border-gray-100 dark:border-gray-800 mb-1.5">
                         {group.name}
                       </h3>

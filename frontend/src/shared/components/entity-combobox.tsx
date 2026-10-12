@@ -6,6 +6,11 @@ import { ThemedPortal } from '@/shared/components/theme-scope';
 import { cn } from '@/lib/utils';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
+import { useAuth } from '@/store/AuthContext';
+import { USE_MOCK_DATA } from '@/lib/config';
+import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
+import { accountsService } from '@/features/tenant/crm/accounts/services/accounts.service';
+import { contactsV2Api } from '@/shared/services/contacts-v2.api';
 import type { Organization, Contact, User, Pipeline, Stage, Lead } from '@/store/types';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
@@ -151,6 +156,15 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [retry, setRetry] = useState(0);
+  const [remoteOptions, setRemoteOptions] = useState<EntityOption[]>([]);
+  const [knownOptions, setKnownOptions] = useState<Record<string, EntityOption>>({});
+  const requestVersion = useRef(0);
+  const { user } = useAuth();
+  const useServer = !USE_MOCK_DATA && ['accounts', 'contacts', 'leads'].includes(entityType);
+  const selectedIds: string[] = props.multiple ? props.values : props.value ? [props.value] : [];
+  const selectionKey = JSON.stringify(selectedIds);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
@@ -163,9 +177,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
   // Retry mechanism for data load errors
   const handleRetry = useCallback((): void => {
     setLoadError(null);
-    // Re-trigger by toggling open state
-    setIsOpen(false);
-    setTimeout(() => setIsOpen(true), 100);
+    setRetry(value => value + 1);
   }, []);
 
   // Get the raw entity list from DataContext
@@ -178,7 +190,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           entities = dataContext.organizations;
           break;
         case 'contacts':
-          entities = dataContext.contacts;
+          entities = USE_MOCK_DATA ? dataContext.contacts : [];
           break;
         case 'leads':
           entities = dataContext.contacts; // Leads are stored as 'contacts' in DataContext
@@ -201,11 +213,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
         }
       }
 
-      if (loadError) {
-        setLoadError(null);
-      }
-
-      return entities.map((entity) => ({
+      return entities.filter(entity => !('isArchived' in entity) || !entity.isArchived).map((entity) => ({
         id: entity.id,
         label: getDisplayName(entity, entityType),
         sublabel: getSublabel(entity, entityType),
@@ -214,28 +222,72 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
       setLoadError('Failed to load data. Please try again.');
       return [];
     }
-  }, [dataContext, entityType, pipelineId, loadError]);
+  }, [dataContext, entityType, pipelineId]);
+
+  useEffect(() => {
+    setRemoteOptions([]); setKnownOptions({}); setLoadError(null);
+    return () => { requestVersion.current++; };
+  }, [user?.id, user?.tenantId, entityType]);
+
+  useEffect(() => {
+    if (!useServer || !isOpen || searchTerm.trim() !== debouncedSearch.trim()) return;
+    const version = ++requestVersion.current, controller = new AbortController();
+    const term = debouncedSearch.trim();
+    setLoading(true); setLoadError(null);
+    const query = { search: term.length >= minSearchChars ? term : '', limit: MAX_RESULTS };
+    const request = entityType === 'leads' ? leadsService.getAll(query, controller.signal)
+      : entityType === 'contacts' ? contactsV2Api.list(query, controller.signal)
+      : accountsService.getAll(query, controller.signal);
+    void request.then(response => {
+      if (version !== requestVersion.current || controller.signal.aborted) return;
+      const options = response.data.filter(entity => !entity.isArchived).map(entity => ({
+        id: entity.id, label: getDisplayName(entity, entityType), sublabel: getSublabel(entity, entityType),
+      }));
+      setRemoteOptions(options);
+      setKnownOptions(previous => ({ ...previous, ...Object.fromEntries(options.map(option => [option.id, option])) }));
+    }).catch(error => {
+      if (version !== requestVersion.current || controller.signal.aborted) return;
+      setRemoteOptions([]); setLoadError(error instanceof Error ? error.message : 'Unable to load options.');
+    }).finally(() => { if (version === requestVersion.current) setLoading(false); });
+    return () => { controller.abort(); requestVersion.current++; };
+  }, [useServer, isOpen, debouncedSearch, searchTerm, minSearchChars, entityType, user?.id, user?.tenantId, retry]);
+
+  // A saved association may be beyond the first page and must retain its label.
+  useEffect(() => {
+    if (!useServer) return;
+    let active = true;
+    const ids: string[] = JSON.parse(selectionKey);
+    void Promise.allSettled(ids.map(async id => {
+      const response = entityType === 'leads' ? await leadsService.getById(id)
+        : entityType === 'contacts' ? await contactsV2Api.get(id) : await accountsService.getById(id);
+      return { id, label: getDisplayName(response.data, entityType), sublabel: getSublabel(response.data, entityType) };
+    })).then(results => {
+      if (!active) return;
+      setKnownOptions(previous => ({ ...previous, ...Object.fromEntries(results.flatMap(result => result.status === 'fulfilled' ? [[result.value.id, result.value]] : [])) }));
+    });
+    return () => { active = false; };
+  }, [useServer, selectionKey, entityType, user?.id, user?.tenantId]);
 
   // Filter entities based on debounced search
   const filteredOptions = useMemo((): EntityOption[] => {
-    if (debouncedSearch.length < minSearchChars) {
+    if (useServer) return remoteOptions;
+    const term = debouncedSearch.trim();
+    if (term.length < minSearchChars) {
       return entityType === 'users' ? rawEntities : rawEntities.slice(0, MAX_RESULTS);
     }
 
-    const searchLower = debouncedSearch.toLowerCase();
-    const matches = rawEntities.filter(option => [option.label, option.sublabel].filter(Boolean).join(' ').toLowerCase().includes(searchLower));
+    const terms = term.toLowerCase().split(/\s+/);
+    const matches = rawEntities.filter(option => terms.every(term => [option.label, option.sublabel].filter(Boolean).join(' ').toLowerCase().includes(term)));
     return entityType === 'users' ? matches : matches.slice(0, MAX_RESULTS);
-  }, [rawEntities, debouncedSearch, minSearchChars, entityType]);
+  }, [rawEntities, debouncedSearch, minSearchChars, entityType, useServer, remoteOptions]);
 
   // Determine if "No results found" should show
-  const showNoResults = debouncedSearch.length >= minSearchChars && filteredOptions.length === 0 && !loadError;
-
-  // Selected values helpers
-  const selectedIds: string[] = props.multiple ? props.values : props.value ? [props.value] : [];
+  const showNoResults = filteredOptions.length === 0 && !loadError && !loading;
 
   const selectedOptions = useMemo((): EntityOption[] => {
-    return rawEntities.filter((opt) => selectedIds.includes(opt.id));
-  }, [rawEntities, selectedIds]);
+    const options = new Map([...(useServer ? [] : rawEntities), ...Object.values(knownOptions)].map(option => [option.id, option]));
+    return selectedIds.flatMap(id => options.get(id) ? [options.get(id)!] : []);
+  }, [rawEntities, knownOptions, selectionKey, useServer]);
 
   // Close on outside click
   useEffect(() => {
@@ -448,7 +500,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
             aria-describedby={error ? errorId : undefined}
             className="w-full pl-9 pr-10 bg-white dark:bg-slate-900 border-2 border-[var(--primary)] rounded-lg py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none shadow-sm transition-all"
             value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
+            onChange={(e) => { requestVersion.current++; setRemoteOptions([]); setSearchTerm(e.target.value); }}
             onKeyDown={handleSearchKeyDown}
             placeholder={displayPlaceholder}
           />
@@ -476,6 +528,7 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           className="fixed z-[300] bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 rounded-xl shadow-lg overflow-y-auto overscroll-contain py-1"
         >
           {/* Error state with retry */}
+          {loading && <p role="status" className="px-4 py-3 text-center text-sm text-muted-foreground">Loading options…</p>}
           {loadError && (
             <div className="px-4 py-5 text-center">
               <AlertCircle size={20} className="mx-auto mb-2 text-rose-500" />

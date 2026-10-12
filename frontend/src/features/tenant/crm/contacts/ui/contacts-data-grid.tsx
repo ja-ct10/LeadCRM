@@ -26,13 +26,13 @@ import {
   useDataGridColumns,
   buildDefaultRowActions,
   renderDate,
-  renderLink,
   MODULE_ACCENT_COLORS,
 } from '@/shared/components/data-grid';
 import type { SortState, RowActionItem } from '@/shared/components/data-grid';
 import type { CellRendererMap } from '@/shared/components/data-grid';
 import { CONTACTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
-import type { ColumnConfigItem } from '@leadcrm/shared';
+import { CONTACTS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
+import Link from 'next/link';
 import type { Contact } from '@/store/types';
 
 // ─── Props Interface ─────────────────────────────────────────────────────────
@@ -70,6 +70,7 @@ interface ContactsDataGridProps {
   onManageColumns?: () => void;
   /** Hide a specific column */
   onHideColumn?: (columnId: string) => void;
+  onColumnWidthChange?: (columnId: string, width: number) => void;
   /** Display mode: wrap or clip cell content */
   viewMode?: 'wrap' | 'clip';
   /** Row ID to highlight (navigated from global search) */
@@ -97,6 +98,7 @@ export function ContactsDataGrid({
   onArchive,
   onManageColumns,
   onHideColumn,
+  onColumnWidthChange,
   viewMode = 'clip',
   highlightRowId,
 }: ContactsDataGridProps): React.ReactElement {
@@ -140,16 +142,13 @@ export function ContactsDataGrid({
       <p className="text-[12px] text-[#3C4858] dark:text-slate-200 truncate">{row.phone ?? '—'}</p>
     ),
 
-    companyName: (_value: unknown, row: Contact) => {
-      const accountName = getAccountName(row);
-      return renderLink(accountName || null);
-    },
+    companyName: (_value: unknown, row: Contact) => <span>{row.companyName?.trim() || '—'}</span>,
 
     status: (_value: unknown, row: Contact) => <CrmStatusIndicator status={row.status} />,
 
     source: (_value: unknown, row: Contact) => (
       <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {(row as unknown as Record<string, unknown>).source as string ?? '—'}
+        {row.source ?? '—'}
       </p>
     ),
 
@@ -161,11 +160,11 @@ export function ContactsDataGrid({
       </p>
     ),
 
-    accountId: (_value: unknown, row: Contact) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {getAccountName(row)}
-      </p>
-    ),
+    accountId: (_value: unknown, row: Contact) => {
+      const accountId = row.accountId ?? row.account?.id ?? row.organizationId;
+      return accountId ? <Link href={`/crm/accounts/${encodeURIComponent(accountId)}`} onClick={event => event.stopPropagation()}
+        className="text-[12px] text-blue-600 dark:text-blue-400 hover:underline truncate">{getAccountName(row)}</Link> : '—';
+    },
 
     createdAt: (_value: unknown, row: Contact) => renderDate(row.createdAt),
   }), [getAccountName, getAssignedUserName]);
@@ -176,10 +175,8 @@ export function ContactsDataGrid({
     registry: CONTACTS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
-    sortableColumns: [
-      'firstName', 'lastName', 'email', 'phone', 'companyName',
-      'status', 'source', 'createdAt',
-    ],
+    pinnedColumns: ['firstName'],
+    sortableColumns: CONTACTS_TABLE_SORT_FIELDS,
     resizableColumns: 'all',
     defaultWidths: {
       firstName: 200,
@@ -233,6 +230,9 @@ export function ContactsDataGrid({
       onSortChange={onSortChange}
       onRowClick={onRowClick}
       onHideColumn={onHideColumn}
+      enableColumnMenu={!!onHideColumn}
+      onColumnWidthChange={onColumnWidthChange}
+      columnWidths={Object.fromEntries(effectiveColumns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}
       rowActions={getRowActions}
       onSettingsClick={onManageColumns}
       summaryLabel={`${totalRecords} total records`}
