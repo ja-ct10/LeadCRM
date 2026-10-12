@@ -139,14 +139,11 @@ export function LeadsDataGrid({
   const router = useRouter();
   const cellRenderers: CellRendererMap<Lead> = useMemo(() => ({
 
-    // ── Name (pinned left) ─────────────────────────────────────────────
+    // ── First Name ────────────────────────────────────────────────────
     firstName: (_value: unknown, row: Lead) => {
-      const name = row.leadPerson ?? row.displayName ?? (`${row.firstName ?? ''} ${row.lastName ?? ''}`.trim() || 'Unknown');
-      const initials = (() => {
-        const parts = name.split(' ');
-        if (parts.length >= 2) return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
-        return name.slice(0, 2).toUpperCase();
-      })();
+      const initials = (row.firstName && row.lastName
+        ? `${row.firstName[0]}${row.lastName[0]}`
+        : (row.firstName || row.lastName || '').slice(0, 2)).toUpperCase();
       return (
         <div className="flex items-center gap-2.5 min-w-0">
           <div className={`w-7 h-7 rounded-full ${MODULE_ACCENT_COLORS.leads} flex items-center justify-center text-white font-bold text-[10px] shrink-0`}>
@@ -154,17 +151,18 @@ export function LeadsDataGrid({
           </div>
           <div className="min-w-0">
             <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate leading-tight hover:underline cursor-pointer">
-              {name}
+              {row.firstName || '—'}
             </p>
-            {row.companyName && (
-              <p className="text-[11px] text-[#8899a6] dark:text-slate-500 truncate">
-                {row.companyName}
-              </p>
-            )}
           </div>
         </div>
       );
     },
+
+    lastName: (_value: unknown, row: Lead) => (
+      <p className="text-[13px] text-[#3C4858] dark:text-slate-200 truncate">
+        {row.lastName || '—'}
+      </p>
+    ),
 
     // ── Phone icon column (clickable) ──────────────────────────────────
     phoneAction: (_value: unknown, row: Lead) => {
@@ -303,12 +301,13 @@ export function LeadsDataGrid({
     effectiveColumns,
     cellRenderers,
     sortableColumns: [
-      'firstName', 'email', 'phone', 'companyName', 'status',
+      'firstName', 'lastName', 'email', 'phone', 'companyName', 'status',
       'source', 'createdAt', 'updatedAt',
     ],
     resizableColumns: 'all',
     defaultWidths: {
       firstName:               240,
+      lastName:                160,
       phoneAction:             52,
       emailAction:             52,
       email:                   200,

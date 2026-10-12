@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 import type { ColumnConfig, ColumnConfigItem } from '@leadcrm/shared';
+import { normalizeLeadColumns } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
 
 import {
@@ -267,7 +268,8 @@ describe('Feature: manage-columns-persistence, Property 2: Registry Reconciliati
 
     fc.assert(
       fc.property(subsetArb, (subsetColumns) => {
-        const existingIds = new Set(subsetColumns.map((c) => c.id));
+        // Name-layout migration inserts Last Name beside a saved First Name before registry reconciliation.
+        const existingIds = new Set(normalizeLeadColumns(subsetColumns).map((c) => c.id));
         const config: ColumnConfig = { module: 'leads', columns: subsetColumns };
         const result = reconcileWithRegistry(config, 'leads');
 

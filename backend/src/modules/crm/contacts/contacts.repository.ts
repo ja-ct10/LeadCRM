@@ -79,7 +79,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   };
 
   const [sortKey, direction] = String(query.sort ?? 'createdAt:desc').split(':');
-  const allowed = new Set(['firstName','email','phone','companyName','status','source','createdAt','updatedAt']);
+  const allowed = new Set(['firstName','lastName','email','phone','companyName','status','source','createdAt','updatedAt']);
   const sortField = allowed.has(sortKey) ? sortKey : 'createdAt';
   const sortDirection = direction === 'asc' ? 'asc' as const : 'desc' as const;
   const [data, total] = await Promise.all([

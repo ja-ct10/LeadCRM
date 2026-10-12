@@ -17,17 +17,17 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const records = [
-  { id: 'z', firstName: 'Zulu', lastName: 'Test', email: 'z@test.example', phone: '300', companyName: 'Z', status: 'Warm', createdAt: '2026-03-01', source: 'Z' },
-  { id: 'a', firstName: 'Alpha', lastName: 'Test', email: 'a@test.example', phone: '100', companyName: 'A', status: 'Cold', createdAt: '2026-01-01', source: 'A' },
+  { id: 'z', firstName: 'Zulu', lastName: 'Test Zulu', email: 'z@test.example', phone: '300', companyName: 'Z', status: 'Warm', createdAt: '2026-03-01', source: 'Z' },
+  { id: 'a', firstName: 'Alpha', lastName: 'Test Alpha', email: 'a@test.example', phone: '100', companyName: 'A', status: 'Cold', createdAt: '2026-01-01', source: 'A' },
 ];
-const columns = LEADS_COLUMN_REGISTRY.filter(c => c.defaultVisible).map(c => ({ id: c.id, visible: true, order: c.defaultOrder }));
+const columns = LEADS_COLUMN_REGISTRY.filter(c => c.defaultVisible || ['createdAt', 'source'].includes(c.id)).map(c => ({ id: c.id, visible: true, order: c.defaultOrder }));
 function LeadHarness() {
   const [sort, setSort] = useState<SortState | null>(null);
   const rows = sort ? [...records].sort((a, b) => compareSortValues(a[sort.field as keyof typeof a], b[sort.field as keyof typeof b], sort.direction)) : records;
   return <LeadsDataGrid leads={rows as any} totalRecords={2} effectiveColumns={columns} sort={sort} onSortChange={setSort}
     onRowClick={() => {}} selectedIds={new Set()} onSelectionChange={() => {}} getOwnerName={() => ''} getOwnerInitials={() => ''} />;
 }
-it.each(['Name', 'Email address', 'Phone number', 'Company', 'Status', 'Created', 'Source'])('cycles %s ascending, descending and default with matching rows', label => {
+it.each(['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Status', 'Created', 'Source'])('cycles %s ascending, descending and default with matching rows', label => {
   render(<LeadHarness />);
   const header = screen.getByRole('columnheader', { name: label });
   const firstName = () => screen.getAllByRole('row').slice(1).find(row => row.textContent?.includes('Test'))!.textContent;
@@ -47,9 +47,9 @@ it.each([320, 1440])('keeps separate email/phone toggles and removes the retired
   const props = { leads: records as any, totalRecords: 2, onRowClick: () => {}, selectedIds: new Set<string>(), onSelectionChange: () => {}, getOwnerName: () => '', getOwnerInitials: () => '' };
   const view = render(<LeadsDataGrid {...props} effectiveColumns={migrated} />);
   expect(screen.queryByText('Email & Phone')).toBeNull();
-  expect(screen.getByRole('columnheader', { name: 'Email address' })).toBeTruthy();
-  expect(screen.getByRole('columnheader', { name: 'Phone number' })).toBeTruthy();
+  expect(screen.getByRole('columnheader', { name: 'Email' })).toBeTruthy();
+  expect(screen.getByRole('columnheader', { name: 'Phone' })).toBeTruthy();
   view.rerender(<LeadsDataGrid {...props} effectiveColumns={migrated.map(col => col.id === 'email' ? { ...col, visible: false } : col)} />);
-  expect(screen.queryByRole('columnheader', { name: 'Email address' })).toBeNull();
-  expect(screen.getByRole('columnheader', { name: 'Phone number' })).toBeTruthy();
+  expect(screen.queryByRole('columnheader', { name: 'Email' })).toBeNull();
+  expect(screen.getByRole('columnheader', { name: 'Phone' })).toBeTruthy();
 });
