@@ -46,9 +46,12 @@ test('the complete release history deploys reviewed transitions while guarded co
   const crm = '20261110000000_retire_unused_crm_columns';
   const lead = '20261112000000_retire_lead_nonform_columns';
   const contact = '20261129000000_retire_contact_obsolete_columns';
+  const contactJobTitle = '20261130000000_remove_contact_job_title';
+  const accountAddress = '20261201000000_accounts_full_address';
+  const accountRetirement = '20261202000000_retire_account_address_columns';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, contact);
-  assert.deepEqual(plan.exclude, [relationship, crm, lead, contact]);
+  assert.equal(plan.through, accountRetirement);
+  assert.deepEqual(plan.exclude, [relationship, crm, lead, contact, contactJobTitle, accountRetirement]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
     '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_mailbox_thread_metadata', '20261114000000_notification_delivery',
@@ -60,15 +63,34 @@ test('the complete release history deploys reviewed transitions while guarded co
     '20261125010000_mailbox_operation_recovery', '20261125020000_import_source_identity',
     '20261125030000_durable_workflow_dispatch', '20261125040000_activity_mailbox_authorization',
     '20261126000000_notification_policy', '20261127000000_login_attempt_lockout',
-    '20261128000000_preserve_contact_retirement_history']) {
+    '20261128000000_preserve_contact_retirement_history', accountAddress]) {
     assert.ok(selected.includes(name), name);
   }
   assert.throws(() => deploymentPlan(rows, [...names, '20261115000000_unreviewed']), /REVIEW_MIGRATIONS/);
   assert.throws(() => deploymentPlan([...rows, { migration_name: selected.at(-1) }], names), /FAILED_MIGRATION/);
   rows.push({ migration_name: relationship, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [crm, lead, contact] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [crm, lead, contact, contactJobTitle, accountRetirement] });
   rows.push({ migration_name: crm, finished_at: new Date() }, { migration_name: lead, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contact] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contact, contactJobTitle, accountRetirement] });
   rows.push({ migration_name: contact, finished_at: new Date() });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contactJobTitle, accountRetirement] });
+  rows.push({ migration_name: contactJobTitle, finished_at: new Date() }, { migration_name: accountRetirement, finished_at: new Date() });
   assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [] });
+});
+
+test('new field retirements stay deferred until finished, including rolled-back attempts', () => {
+  const imports = { migration_name: '20261028000000_retire_legacy_crm_imports', finished_at: new Date() };
+  const relationship = '20261102000000_retire_relationship_compatibility';
+  const jobTitle = '20261130000000_remove_contact_job_title';
+  const address = '20261201000000_accounts_full_address';
+  const retirement = '20261202000000_retire_account_address_columns';
+  const names = [relationship, jobTitle, address, retirement];
+  const rolledBack = { migration_name: jobTitle, finished_at: null, rolled_back_at: new Date() };
+  assert.deepEqual(deploymentPlan([imports, rolledBack], names), {
+    through: retirement, exclude: [relationship, jobTitle, retirement],
+  });
+  assert.deepEqual(deploymentPlan([imports, { migration_name: jobTitle, finished_at: new Date() }], names), {
+    through: retirement, exclude: [relationship, retirement],
+  });
+  assert.throws(() => deploymentPlan([imports, { migration_name: retirement, finished_at: null }], names), /FAILED_MIGRATION_REQUIRES_RECOVERY/);
 });
