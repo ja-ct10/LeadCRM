@@ -107,7 +107,7 @@ export default function CampaignsPage() {
   const templateSmsSettings = useCachedPage<CampaignSmsSettings>({ module: 'settings', params: { campaignSender: 'SMS' }, disabled: !(isTemplateModalOpen && newTemplateType === 'SMS' || previewTemplate?.type === 'SMS'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.smsSettings()).data });
   const templateSubjectRef = useRef<HTMLInputElement>(null), templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const templateActiveField = useRef<'subject' | 'content'>('content');
-  const templateChoices = campaignVariableChoices(templateCatalog.fields, templateSource);
+  const templateChoices = campaignVariableChoices(templateCatalog.fields, templateSource, { forInsertion: true });
   const [showVarDropdown, setShowVarDropdown] = useState(false);
 
 

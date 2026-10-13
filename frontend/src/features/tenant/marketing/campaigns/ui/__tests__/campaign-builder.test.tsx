@@ -51,6 +51,33 @@ function fill() {
   fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Hi {{first_name}}' } });
 }
 describe('campaign composer', () => {
+  it.each([
+    ['Email', 'create'], ['Email', 'edit'], ['SMS', 'create'], ['SMS', 'edit'],
+  ] as const)('limits the %s %s picker to Lead/Contact fields and preserves Quick Fields', async (type, mode) => {
+    const body = 'Saved {{first_name}} {{website}} {{value}}';
+    render(<CampaignBuilder onBack={vi.fn()} initialType={type} initialCampaign={mode === 'edit' ? { id: 'saved-id', name: 'Existing', type, status: 'Draft', subject: 'Saved subject', body, audienceSource: 'LEADS' } as never : undefined} />);
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    const search = await screen.findByLabelText('Search variables');
+    await screen.findByRole('button', { name: /First Name.*firstName.*Leads, Contacts/ });
+    const picker = search.closest('.max-h-80')!;
+    for (const source of ['LEADS', 'CONTACTS']) {
+      fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: source } });
+      expect(picker.textContent).not.toMatch(/Accounts|Deals/);
+      for (const key of ['website', 'value', 'industry', 'pipelineId', 'stageId']) expect(within(picker as HTMLElement).queryByText(`{{${key}}}`)).toBeNull();
+      expect(within(picker as HTMLElement).getAllByText('{{firstName}}')).toHaveLength(1);
+      expect(screen.getByRole('button', { name: source === 'LEADS' ? '{{companyName}}' : '{{company}}' })).toBeTruthy();
+      expect(within(picker as HTMLElement).getByText('{{sender_name}}')).toBeTruthy();
+      expect(within(picker as HTMLElement).getByText('{{sender_email}}')).toBeTruthy();
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    if (mode === 'edit') {
+      expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe(body);
+      expect(screen.queryByText(/Repair unavailable variables for this source/)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
+      await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('saved-id', expect.objectContaining({ body })));
+    }
+  });
   it('uses one modal preview on small screens, traps focus and preserves form values', async () => {
     vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() }));
     try {

@@ -32,15 +32,21 @@ function campaignPersonalizationAvailable(field) {
     return field.active && field.personalizationAvailable && (field.visibleInForm || field.visibleInDetails);
 }
 /** Same token is never a relationship binding. Custom definition identities stay separate. */
-function campaignVariableChoices(fields, source) {
+function campaignVariableChoices(fields, source, { forInsertion = false } = {}) {
+    // Limit new picker entries without narrowing validation of saved variables.
+    if (forInsertion)
+        fields = fields.filter(field => field.active && (field.module === 'leads' || field.module === 'contacts'));
     fields = sourceFields(fields, source);
     const module = source === 'LEADS' ? 'leads' : source === 'CONTACTS' ? 'contacts' : undefined;
     const choices = new Map();
     for (const field of fields) {
-        const id = field.customFieldId ? `${field.module}:${field.customFieldId}` : JSON.stringify([field.kind, field.technicalKey, field.label, field.type, field.reference]);
+        const id = field.customFieldId ? `${field.module}:${field.customFieldId}` : JSON.stringify([field.kind, field.technicalKey, forInsertion ? undefined : field.label, field.type, field.reference]);
         const existing = choices.get(id);
-        if (existing)
+        if (existing) {
             existing.origins.push(field);
+            if (forInsertion && field.module === module)
+                existing.label = field.label;
+        }
         else
             choices.set(id, { id, technicalKey: field.technicalKey, label: field.label, category: field.kind === 'System' ? 'Standard Fields' : 'Custom Fields', origins: [field], personalizationAvailable: false });
     }

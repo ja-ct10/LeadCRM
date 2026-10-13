@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog } from '@leadcrm/shared';
+import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, type ClosingField } from '@leadcrm/shared';
 import { clearPageCache } from '@/shared/cache/page-cache';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
@@ -93,6 +93,32 @@ it('replaces the active template selection with the exact catalog token and rest
   expect(content.value).toBe('Keep {{sender_email}} body.');
   expect(screen.queryByLabelText('Search variables')).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(content));
+});
+
+it.each(['Email', 'SMS'] as const)('limits the %s template picker to active Lead/Contact fields from the tenant catalog', async type => {
+  const definitions = CUSTOM_FIELD_MODULES.map((module, index): ClosingField => ({ id: `definition-${index}`, version: 1, module, name: `${module} Custom`, technicalAlias: `${module}Custom`, type: 'Text', active: true, required: false, description: '', visibleInForm: true, visibleInDetails: true, group: 'Basic Information', order: 0, options: [] }));
+  const inactive = { ...definitions[0], id: 'inactive', technicalAlias: 'inactive', name: 'Inactive Custom', active: false };
+  mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module, [...definitions, inactive])) });
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+  await screen.findByRole('button', { name: /leads Custom.*customFieldValues.leadsCustom/ });
+  const picker = screen.getByLabelText('Search variables').closest('.max-h-80')! as HTMLElement;
+  for (const source of ['LEADS', 'CONTACTS']) {
+    fireEvent.change(screen.getByLabelText('Template field source'), { target: { value: source } });
+    expect(picker.textContent).not.toMatch(/Accounts|Deals|accounts Custom|deals Custom|Inactive Custom/);
+    expect([...picker.querySelectorAll('p')].map(node => node.textContent)).toEqual(['Standard Fields', 'Custom Fields', 'Sender']);
+    for (const key of ['value', 'website', 'customFieldValues.accountsCustom', 'customFieldValues.dealsCustom', 'customFieldValues.inactive']) expect(within(picker).queryByText(`{{${key}}}`)).toBeNull();
+    expect(within(picker).getByRole('button', { name: /leads Custom/ }).hasAttribute('disabled')).toBe(source !== 'LEADS');
+    expect(within(picker).getByRole('button', { name: /contacts Custom/ }).hasAttribute('disabled')).toBe(source !== 'CONTACTS');
+    expect(within(picker).getAllByText('{{firstName}}')).toHaveLength(1);
+    expect(within(picker).getByText('{{sender_name}}')).toBeTruthy();
+    expect(within(picker).getByText('{{sender_email}}')).toBeTruthy();
+  }
+  fireEvent.focus(screen.getByLabelText(/Message Content/));
+  fireEvent.click(within(picker).getByRole('button', { name: /contacts Custom/ }));
+  expect((screen.getByLabelText(/Message Content/) as HTMLTextAreaElement).value).toBe('{{customFieldValues.contactsCustom}}');
 });
 
 it.each(['Email', 'SMS'] as const)('previews %s templates with current configured sender identity and compatible tokens', async type => {
