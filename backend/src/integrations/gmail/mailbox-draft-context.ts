@@ -6,7 +6,7 @@ import { assertStoredMessages, type MailboxScope } from './mailbox-scope';
 
 type DraftContext = { composeMode: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string };
 type RestoredDraftContext = Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired'>;
-function receiptContext(value: Prisma.JsonValue | null): DraftContext | undefined {
+export function receiptComposeContext(value: Prisma.JsonValue | null): DraftContext | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !('composeMode' in value)) return;
   const parsed = MailboxComposeContextSchema.safeParse(value);
   return parsed.success ? parsed.data : undefined;
@@ -17,7 +17,7 @@ export async function draftComposeContext(account: Pick<EmailAccount, 'id' | 'te
   const receipt = row.draftId ? await prisma.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id,
     providerDraftId: row.draftId, providerMessageId: row.providerMessageId, operation: { in: ['draft', 'schedule'] }, status: { in: ['saved', 'queued', 'cancelled'] } },
     orderBy: { createdAt: 'desc' }, select: { authorizationContext: true } }) : null;
-  const context = receiptContext(receipt?.authorizationContext ?? null);
+  const context = receiptComposeContext(receipt?.authorizationContext ?? null);
   if (context) return context;
   // A source-free header does not prove Compose: old Forward drafts also omit
   // In-Reply-To. Only acknowledged operation evidence can restore an action.
@@ -32,7 +32,7 @@ export async function draftComposeContexts(account: Pick<EmailAccount, 'id' | 't
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], select: { providerDraftId: true, providerMessageId: true, authorizationContext: true } }) : [];
   return new Map(rows.map(row => {
     const receipt = receipts.find(item => item.providerDraftId === row.draftId && item.providerMessageId === row.providerMessageId);
-    return [row.id, receiptContext(receipt?.authorizationContext ?? null) ?? { draftContextRequired: true }];
+    return [row.id, receiptComposeContext(receipt?.authorizationContext ?? null) ?? { draftContextRequired: true }];
   }));
 }
 
@@ -42,7 +42,7 @@ export async function resolveDraftOperationContext(account: Pick<EmailAccount, '
 }, scope?: { account: EmailAccount; scope: MailboxScope }): Promise<DraftContext> {
   if (input.replyToMessageId || input.forwardSourceMessageId || !input.draftId) return MailboxComposeContextSchema.parse(input);
   const previous = await prisma.mailboxSendReceipt.findUnique({ where: { accountId_requestId: { accountId: account.id, requestId: input.requestId } }, select: { authorizationContext: true } });
-  const savedOperation = receiptContext(previous?.authorizationContext ?? null);
+  const savedOperation = receiptComposeContext(previous?.authorizationContext ?? null);
   if (savedOperation) return MailboxComposeContextSchema.parse(input.composeMode ? input : savedOperation);
   const row = await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, tenantId: account.tenantId, draftId: input.draftId, labels: { has: 'DRAFT' } } });
   if (!row) throw new AppError('Draft is no longer available.', 404);

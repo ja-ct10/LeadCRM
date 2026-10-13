@@ -947,6 +947,42 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/emails?filter=sent')).body.emails).toHaveLength(1);
     expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: test.item.id } })).status).toBe('sent');
   });
+  it.each(['reply source', 'forward content', 'compose content'])('blocks a provider replacement of scheduled %s even when its recipients and RFC operation ID stay unchanged', async change => {
+    const queued = await queuedEmail();
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
+    const changed = apiMail({ ...mail(account.email, 'replacement-draft', ['DRAFT']), to: [leadEmail], subject: `Changed ${change}` }, [
+      { name: 'Message-ID', value: scheduleMessageId(queued.item.id) },
+      ...(change === 'reply source' ? [{ name: 'In-Reply-To', value: '<different-source@example.test>' }, { name: 'References', value: '<different-source@example.test>' }] : []),
+    ]);
+    const provider = vi.fn(async (input: string | URL, init?: RequestInit) => String(input).includes('?format=metadata') && String(input).includes('/drafts/')
+      ? Response.json({ message: changed }) : queued.provider(input, init));
+    vi.stubGlobal('fetch', provider);
+    await runScheduledMailboxEmails();
+    expect(provider).toHaveBeenCalledTimes(1); expect(queued.sends()).toBe(0);
+    expect(await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).toMatchObject({ status: 'failed', lastError: expect.stringContaining('edited in Gmail') });
+    expect(await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, draftId: queued.item.draftId } })).toMatchObject({ labels: expect.arrayContaining(['DRAFT']) });
+  });
+  it('pauses a legacy scheduled receipt without known compose/source context before any provider call', async () => {
+    const queued = await queuedEmail();
+    await prisma.mailboxSendReceipt.update({ where: { accountId_requestId: { accountId: account.id, requestId: queued.input.requestId } }, data: { authorizationContext: { recipients: [leadEmail] } } });
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
+    queued.provider.mockClear();
+    await runScheduledMailboxEmails();
+    expect(queued.provider).not.toHaveBeenCalled(); expect(queued.sends()).toBe(0);
+    expect(await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).toMatchObject({ status: 'failed', lastError: expect.stringContaining('verified operation context') });
+  });
+  it('rechecks the receipt source when mutable draft metadata has lost its original source pointer', async () => {
+    const queued = await queuedEmail();
+    await scope(() => ingestMailboxMessages(account, [mail(contactEmail, 'saved-forward-source')], permissions));
+    await prisma.mailboxSendReceipt.update({ where: { accountId_requestId: { accountId: account.id, requestId: queued.input.requestId } }, data: { authorizationContext: { recipients: [leadEmail], composeMode: 'forward', forwardSourceMessageId: 'saved-forward-source' } } });
+    await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId: queued.item.draftId }, data: { sourceMessageId: null } });
+    await prisma.contact.updateMany({ where: { tenantId, email: contactEmail }, data: { assignedUserId: null } });
+    await prisma.scheduledMailboxEmail.update({ where: { id: queued.item.id }, data: { scheduledAt: new Date(0) } });
+    queued.provider.mockClear();
+    await runScheduledMailboxEmails();
+    expect(queued.provider).not.toHaveBeenCalled(); expect(queued.sends()).toBe(0);
+    expect((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: queued.item.id } })).status).toBe('failed');
+  });
 
   it.each([
     ['missing message ID', { threadId: 'sent-schedule' }],

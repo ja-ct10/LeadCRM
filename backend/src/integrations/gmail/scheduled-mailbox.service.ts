@@ -13,7 +13,7 @@ import { ingestMailboxMessages } from './mailbox-ingestion.service';
 import { authorizeMailboxOperation, normalizedRecipients, mailboxIntentHash, reserveMailboxOperation, markMailboxOperationAttempt, failMailboxOperation, type MailboxOperationContext } from './mailbox-operations';
 import { recoverMailboxProviderResult, persistRecoveredDraft } from './mailbox-recovery';
 import { MAILBOX_METADATA_HEADERS } from './mailbox-scope';
-import { resolveDraftOperationContext } from './mailbox-draft-context';
+import { receiptComposeContext, resolveDraftOperationContext } from './mailbox-draft-context';
 
 export const scheduleMessageId = (id: string) => `<leadcrm-schedule-${id}@leadcrm.invalid>`;
 
@@ -165,10 +165,13 @@ async function runScheduledMailboxPass() {
       if (!uncertain) await assertStoredMessages(account, scope, [storedDraft.providerMessageId]);
       if (storedDraft?.sourceMessageId) await assertStoredMessages(account, scope, [storedDraft.sourceMessageId], true);
       await assertMailboxRecipients(account, scope, permissions, item.recipients, storedDraft?.threadId);
-      const token = await getValidAccessToken(item.tenantId, item.createdById);
       const receipt = await prisma.mailboxSendReceipt.findUnique({ where: { accountId_requestId: { accountId: item.accountId, requestId: item.requestId } } });
-      const rfcMessageId = receipt?.rfcMessageId ?? scheduleMessageId(item.id);
-      const context = { recipients: item.recipients, draftId: item.draftId, ...(storedDraft.sourceMessageId ? { replyToMessageId: storedDraft.sourceMessageId } : {}), threadId: storedDraft.threadId };
+      const source = receiptComposeContext(receipt?.authorizationContext ?? null);
+      if (!source || !receipt?.rfcMessageId) throw new AppError('This scheduled draft has no verified operation context. Review it in Gmail and save a verified draft before scheduling again.', 409, 'MAILBOX_DRAFT_CONTEXT_REQUIRED');
+      const rfcMessageId = receipt.rfcMessageId;
+      const context = { recipients: item.recipients, draftId: item.draftId, ...source, threadId: storedDraft.threadId };
+      await authorizeMailboxOperation(account, context);
+      const token = await getValidAccessToken(item.tenantId, item.createdById);
       let result: { id: string; threadId: string };
       if (uncertain) {
         const query = new URLSearchParams({ q: 'in:sent rfc822msgid:' + rfcMessageId, maxResults: '2' });
@@ -187,6 +190,11 @@ async function runScheduledMailboxPass() {
       } else {
         const draft = await readGmailJson<{ message: GmailApiMessage }>(token, 'drafts/' + encodeURIComponent(item.draftId) + '?format=metadata');
         const email = parseGmailMessage(draft.message);
+        // Gmail replaces a draft's immutable message whenever its content changes.
+        // The container ID alone cannot prove the scheduled mode/source/content.
+        if (receipt.providerDraftId !== item.draftId || !receipt.providerMessageId || email.id !== receipt.providerMessageId) {
+          throw new AppError('This draft was edited in Gmail after scheduling. Save and schedule it again with the original authorized source selected.', 409, 'MAILBOX_DRAFT_CONTEXT_REQUIRED');
+        }
         // The CRM composer does not support Bcc; provider edits must not add hidden delivery targets.
         if (draft.message.payload?.headers?.some(header => header.name.toLowerCase() === 'bcc' && header.value.trim())) throw new AppError('Scheduled draft has unsupported recipients. Review it in Gmail.', 403);
         const current = await authorizeMailboxOperation(account, context);
@@ -227,7 +235,7 @@ async function runScheduledMailboxPass() {
       const status = unknown ? 'uncertain' : transient && item.attemptCount < 2 ? 'pending' : 'failed';
       await update({ status,
         retryAt: unknown && item.attemptCount >= 3 ? null : error instanceof AppError && error.retryAt ? new Date(error.retryAt) : new Date(Date.now() + 60000 * 2 ** Math.min(item.attemptCount, 4)),
-        lastError: unknown ? 'Delivery needs verification. Automatic resend is paused.' : error instanceof AppError && [403, 404].includes(error.statusCode) ? 'Mailbox authorization or CRM assignment changed. Email was not sent.' : 'Gmail could not send this scheduled email. Reconnect or review the draft.' });
+        lastError: unknown ? 'Delivery needs verification. Automatic resend is paused.' : error instanceof AppError && error.code === 'MAILBOX_DRAFT_CONTEXT_REQUIRED' ? error.message : error instanceof AppError && [403, 404].includes(error.statusCode) ? 'Mailbox authorization or CRM assignment changed. Email was not sent.' : 'Gmail could not send this scheduled email. Reconnect or review the draft.' });
       await prisma.mailboxSendReceipt.updateMany({ where: { accountId: item.accountId, requestId: item.requestId, operation: 'schedule', status: { in: ['queued', 'sending', 'uncertain'] } }, data: { status: unknown ? 'uncertain' : status === 'pending' ? 'queued' : 'failed', leaseId: null, leaseUntil: null, lastError: unknown ? 'Delivery unconfirmed. No automatic resend.' : 'Scheduled delivery rejected.' } });
     } finally {
       await prisma.scheduledMailboxEmail.updateMany({ where: { id: item.id, leaseId }, data: { leaseId: null, leaseUntil: null } });
