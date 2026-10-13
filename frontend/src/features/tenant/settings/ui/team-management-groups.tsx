@@ -20,6 +20,7 @@ import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { matchesSearch } from '@/shared/utils/search';
 
 interface GroupsSubTabProps {
@@ -181,7 +182,8 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       <DataGrid ariaLabel="Group members" columns={columns} data={visibleMembers} getRowId={member => member.id} height="auto" emptyMessage={members.length ? 'No members match your search.' : canManageMembers ? 'No members yet. Use Add Members to add users to this group.' : 'No members yet.'} />
     </> : <>
       <ModuleTableToolbar label="Groups" search={search} onSearch={setSearch} placeholder="Search groups..." refreshing={loading} onRefresh={loadGroups} />
-      {loading && !loaded ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
+      {loading && !loaded ? <Card role="status" aria-label="Loading groups" className="rounded-xl shadow-none overflow-hidden"><div aria-hidden="true"><DataLoadingSkeleton rowCount={4} columnCount={2} rowHeight={64} /></div></Card> : loaded && <Card className="relative rounded-xl shadow-none overflow-hidden" aria-busy={loading}>
+        {loading && <DataLoadingSpinner label="Refreshing groups..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
         {visibleGroups.map(group => <div key={group.id} className="flex min-w-0 items-center gap-2 border-b border-slate-100 dark:border-slate-800 last:border-0 px-3 py-2">
           <button aria-label={`Open ${group.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-lg p-1 text-left hover:bg-slate-50 dark:hover:bg-slate-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" onClick={() => { setActiveId(group.id); setMemberSearch(''); }}>
             <span className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-2 text-blue-500"><Users size={16} /></span>

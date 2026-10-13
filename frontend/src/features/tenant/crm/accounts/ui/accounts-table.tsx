@@ -34,7 +34,7 @@ export default function AccountsTable({
             <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Account</th>
             <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Industry</th>
             <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Size</th>
-            <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">City</th>
+            <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Full Address</th>
             <th className="pb-3 font-medium text-slate-500 dark:text-slate-400">Actions</th>
           </tr>
         </thead>
@@ -64,7 +64,7 @@ export default function AccountsTable({
                 {account.size ?? '—'}
               </td>
               <td className="py-3 pr-4 text-slate-600 dark:text-slate-300">
-                {account.city ?? '—'}
+                {account.address || '—'}
               </td>
               <td className="py-3">
                 <div className="flex items-center gap-1">

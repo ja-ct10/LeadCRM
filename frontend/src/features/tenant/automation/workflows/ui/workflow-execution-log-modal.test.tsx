@@ -47,7 +47,7 @@ it('preserves retired assignment labels in historical runs', async () => {
   mount(); await settled();
   expect(screen.getByText(/Assigned to Ana · Sales team · Previous assignee \/ Sticky assignment/)).toBeTruthy();
 });
-it('uses shared pagination, hides it while loading, and refreshes definition plus current run page', async () => {
+it('uses shared pagination and retains loaded runs while refreshing definition plus current run page', async () => {
   const close = vi.fn(); mount(close);
   expect(screen.getByRole('status', { name: 'Loading workflow runs' })).toBeTruthy();
   expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
@@ -59,7 +59,10 @@ it('uses shared pagination, hides it while loading, and refreshes definition plu
   fireEvent.click(screen.getByRole('button', { name: 'Next page' })); await screen.findByText('Page 2 of 3');
   expect(workflowsApi.getExecutions).toHaveBeenLastCalledWith('wf', 2, 25);
   fireEvent.click(screen.getByLabelText('Refresh workflow activity')); fireEvent.click(screen.getByLabelText('Refresh workflow activity'));
-  expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull(); await settled();
+  expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Refreshing workflow runs...' })).toBeTruthy();
+  expect(dialog.querySelectorAll('details')).toHaveLength(25);
+  await settled();
   expect(workflowsApi.get).toHaveBeenCalledTimes(2); expect(workflowsApi.getExecutions).toHaveBeenCalledTimes(3);
   fireEvent.click(screen.getByLabelText('Records per page')); fireEvent.click(screen.getByRole('option', { name: '10' }));
   await screen.findByText('Page 1 of 6'); expect(workflowsApi.getExecutions).toHaveBeenLastCalledWith('wf', 1, 10);

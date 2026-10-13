@@ -1,4 +1,5 @@
 import { productRelationData } from '../leads/product-relations';
+import { consolidateAccountAddress } from '../companies/account-address';
 import type { Prisma } from '@prisma/client';
 import { importIdentity, importRowSchemas, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -181,7 +182,7 @@ async function createContact(tx: Tx, tenantId: string, actorId: string, jobId: s
 async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
   const d = row.data;
   return (await tx.account.create({ data: { tenantId, name: d.name, industry: d.industry, website: d.website,
-    address: d.address, city: d.city, province: d.province, country: d.country || 'Philippines', size: d.size || null,
+    address: consolidateAccountAddress(d), size: d.size || null,
     ...await productRelationData(tx, 'account', tenantId, { ids: row.products.map(p => p.id) }), tags: [],
   } })).id;
 }

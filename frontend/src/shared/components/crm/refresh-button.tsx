@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { toast } from 'sonner';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
@@ -11,12 +11,14 @@ export function RefreshButton({ onClick, disabled, refreshing, silent = false, l
 }) {
   const pending = useRef(false);
   const [busy, setBusy] = useState(false);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const refresh = async () => {
     if (pending.current || disabled || refreshing) return;
     pending.current = true; setBusy(true);
     try { await onClick(); }
-    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to refresh. Please try again.'); }
-    finally { pending.current = false; setBusy(false); }
+    catch (error) { if (mounted.current) toast.error(error instanceof Error ? error.message : 'Unable to refresh. Please try again.'); }
+    finally { pending.current = false; if (mounted.current) setBusy(false); }
   };
   return <TooltipProvider><Tooltip><TooltipTrigger asChild>
     <button type="button" onClick={() => void refresh()} disabled={disabled || refreshing || busy} aria-label={label} aria-busy={refreshing || busy} title={label}

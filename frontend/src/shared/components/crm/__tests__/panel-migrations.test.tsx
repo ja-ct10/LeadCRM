@@ -184,6 +184,18 @@ it('disables invalid Lead email and omits missing phone/address actions', async 
   expect(screen.queryByRole('button', { name: /^Copy (phone|address)/ })).toBeNull();
 });
 
+it('shows a consolidated Account address once and retains its Notes', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/accounts/accounts-1'
+    ? { data: { ...records.accounts, address: '42 Main Street, Manila, Philippines', city: 'Manila', country: 'Philippines', notes: 'Retained Account notes' } }
+    : original(path));
+  render(<CrmRecordView module="accounts" id="accounts-1" onClose={vi.fn()} />);
+  await screen.findAllByText('42 Main Street, Manila, Philippines');
+  expect(screen.queryByText('42 Main Street, Manila, Philippines, Manila, Philippines')).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByText('Retained Account notes');
+});
+
 it.each(['accounts', 'deals'] as const)('keeps phone and address chip behavior for %s', async module => {
   render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   await screen.findByRole('heading', { level: 1 });

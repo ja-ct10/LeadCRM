@@ -23,6 +23,7 @@ import { ModuleFilterRail, type FilterGroup } from './module-filter-rail';
 import { ModuleSearchInput } from './module-search-input';
 import { FilterButton } from './filter-button';
 import { RefreshButton } from './refresh-button';
+import { TableRefreshContext } from './data-view-states';
 import { TableSettingsMenu } from './table-settings-menu';
 import { getTableSortFields } from '@/shared/constants/column-registries';
 import { TableLoadingState } from './table-loading-state';
@@ -539,7 +540,8 @@ export function ModuleWorkspace({
         />
 
         {/* Content area */}
-        <div className="flex-1 min-w-0 flex flex-col">
+        <TableRefreshContext.Provider value={refreshing}>
+        <div className="flex-1 min-w-0 flex flex-col" aria-busy={refreshing}>
           {/* Render active view from VIEW_OPTIONS registry when moduleConfig is provided */}
           {loading ? (
             <TableLoadingState label={loadingLabel} />
@@ -569,6 +571,7 @@ export function ModuleWorkspace({
             />
           )}
         </div>
+        </TableRefreshContext.Provider>
       </div>
 
       {bulkSelection && <SelectedRowsBar count={bulkSelection.count} onClear={bulkSelection.onClear}>{bulkSelection.actions}</SelectedRowsBar>}

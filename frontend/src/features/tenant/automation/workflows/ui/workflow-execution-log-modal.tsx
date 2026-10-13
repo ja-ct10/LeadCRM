@@ -10,7 +10,7 @@ import { Button } from '@/shared/components/ui/button';
 import { StatusBadge } from '@/shared/components/crm/record-drawer';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
-import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
+import { DataLoadingSkeleton, DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { useAuth } from '@/store/AuthContext';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
@@ -154,17 +154,18 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
   }, [workflowId, page, pageSize, retry, refreshVersion, onLoadingChange]);
   return (
     <div className={'min-w-0 [overflow-wrap:anywhere] ' + (layout === 'panel' ? 'flex min-h-0 flex-1 flex-col' : 'space-y-4')}>
-      <div className={layout === 'panel' ? panelBodyClass + ' space-y-4' : 'space-y-4'}>
+      <div className={'relative ' + (layout === 'panel' ? panelBodyClass + ' space-y-4' : 'space-y-4')} aria-busy={loading}>
+        {loading && !!runs.length && <DataLoadingSpinner label="Refreshing workflow runs..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
         <p className="text-sm text-[var(--muted-foreground)]">
           Runs show the action order at execution time. Older runs may differ from
           the current canvas.
         </p>
         {layout === 'inline' && <RefreshButton label="Refresh workflow activity" refreshing={loading} onClick={() => { setLoading(true); setRetry(value => value + 1); }} />}
-        {loading ? (
+        {loading && !runs.length ? (
           <div role="status" aria-label="Loading workflow runs"><DataLoadingSkeleton rowCount={4} columnCount={2} /></div>
-        ) : error ? (
+        ) : error && !runs.length ? (
           <p role="alert" className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700 dark:border-rose-500/20 dark:bg-rose-500/10 dark:text-rose-300">{error}</p>
-        ) : !runs.length ? (
+        ) : !loading && !runs.length ? (
           <p className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm leading-relaxed text-slate-600 dark:border-white/10 dark:bg-slate-800/50 dark:text-slate-300">
             No runs on this page. Activity appears after a matching CRM event.
           </p>
@@ -223,8 +224,9 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
             </details>
           ))
         )}
+        {error && !!runs.length && <p role="alert" className="text-sm text-destructive">{error}</p>}
       </div>
-      {!loading && !error && <div className={layout === 'panel' ? 'shrink-0 px-2 pb-3' : undefined}>
+      {(!loading || !!runs.length) && <div className={layout === 'panel' ? 'shrink-0 px-2 pb-3' : undefined}>
         <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
       </div>}
     </div>

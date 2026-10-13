@@ -9,7 +9,7 @@ import { AppError } from '../../../shared/errors/app-error';
 const definitions: Record<ArchiveType, { table: string; name: string; detail: string; search: string[]; deletedAt?: boolean }> = {
   Lead: { table: 'Lead', name: `btrim(concat(r."firstName", ' ', r."lastName"))`, detail: `coalesce(r."email", '')`, search: ['firstName', 'lastName', 'email'], deletedAt: true },
   Contact: { table: 'Contact', name: `btrim(concat(r."firstName", ' ', r."lastName"))`, detail: `coalesce(r."email", '')`, search: ['firstName', 'lastName', 'email'], deletedAt: true },
-  Account: { table: 'Account', name: `r."name"`, detail: `coalesce(nullif(r."website", ''), r."city", '')`, search: ['name', 'website', 'city'], deletedAt: true },
+  Account: { table: 'Account', name: `r."name"`, detail: `coalesce(nullif(r."website", ''), r."address", '')`, search: ['name', 'website', 'address'], deletedAt: true },
   Deal: { table: 'Deal', name: `r."title"`, detail: `case when r."value" is null then '' else concat_ws(' ', nullif(r."currency", ''), r."value"::text) end`, search: ['title'], deletedAt: true },
   User: { table: 'User', name: `btrim(concat(r."firstName", ' ', r."lastName"))`, detail: `r."email"`, search: ['firstName', 'lastName', 'email'] },
   Task: { table: 'Task', name: `r."title"`, detail: `''::text`, search: ['title'] },

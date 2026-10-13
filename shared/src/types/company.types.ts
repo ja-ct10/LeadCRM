@@ -23,9 +23,6 @@ export interface Company {
   website?: string;
   tags?: string[];
   address?: string;
-  city?: string;
-  province?: string;
-  country?: string;
   assignedUserId?: string;
   notes?: string;
   internalNotes?: string;
@@ -49,9 +46,6 @@ export interface CreateCompanyRequest {
   website?: string;
   tags?: string[];
   address?: string;
-  city?: string;
-  province?: string;
-  country?: string;
   assignedUserId?: string;
   notes?: string;
   internalNotes?: string;

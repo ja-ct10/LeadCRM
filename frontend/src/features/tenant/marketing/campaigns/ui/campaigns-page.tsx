@@ -426,7 +426,7 @@ export default function CampaignsPage() {
                 }}
               />
               <div className="min-w-0 flex-1">
-                {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); goToPage(1); }}
+                {isInitialLoad ? <TableLoadingState label="Loading campaigns..." /> : <DataGrid<Campaign> isRefreshing={isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: 'createdAt', direction: 'desc' }} onSortReset={() => setSort(null)} onSortChange={next => { setSort(next); goToPage(1); }}
                   columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={filteredCampaigns} getRowId={row => row.id} height="auto" selectable={canDeleteCampaign} selectedIds={selected} onSelectionChange={setSelected}
                   enableColumnMenu ariaLabel="Campaigns table" summaryLabel={`${totalItems} total records`} onRowClick={viewCampaign}
                   rowActions={campaign => [

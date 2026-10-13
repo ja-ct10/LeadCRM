@@ -24,7 +24,6 @@ import { toast } from 'sonner';
 import { Users } from 'lucide-react';
 import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
-import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useRouter } from 'next/navigation';
 import { contactDisplay, contactsV2Api, type ContactV2Query, type ContactsV2Response } from '@/shared/services/contacts-v2.api';
 import { apiClient } from '@/lib/api/client';
@@ -114,7 +113,9 @@ export default function ContactsPage(): React.ReactElement {
     params: highlightId ? { recordId: highlightId } : { ...query },
     fetchFn: async signal => {
       if (!highlightId) return contactsV2Api.list(query, signal);
-      return (await apiClient.get<{ data: Contact }>(`/crm/contacts/${encodeURIComponent(highlightId)}`, { signal })).data;
+      const record = (await apiClient.get<{ data: Contact }>(`/crm/contacts/${encodeURIComponent(highlightId)}`, { signal })).data;
+      if (!record || record.id !== highlightId || record.isArchived || (record as Contact & { deletedAt?: string }).deletedAt) throw new Error('This Contact is no longer available.');
+      return record;
     },
   });
   // The selected Contact shares the raw record cache with its drawer/full page.
@@ -351,8 +352,7 @@ export default function ContactsPage(): React.ReactElement {
       {/* ── List / Table View — DataGrid ─────────────────── */}
       {(activeView === 'list' || activeView === 'table') && (
         <div aria-busy={manualRefreshing} aria-label="Contacts table area">
-          {manualRefreshing && <TableLoadingState label="Loading contacts..." />}
-          <div hidden={manualRefreshing}>
+          <div>
             {contactsError && !filteredContacts.length && <div role="alert" className="space-y-2 p-4 text-sm"><p>{contactsError}</p><Button variant="outline" onClick={refreshContacts} disabled={isRefreshing || manualRefreshing}>Retry</Button></div>}
             {filteredContacts.length === 0 && !contactsError && (
               <ActionableEmptyState
@@ -404,7 +404,7 @@ export default function ContactsPage(): React.ReactElement {
 
       {/* ── Bottom Pagination + Per Page ─────────────────────── */}
       {filteredContacts.length > 0 && (
-        <div hidden={manualRefreshing}>
+        <div>
           <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize} onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }} refreshing={isRefreshing} />
         </div>
       )}

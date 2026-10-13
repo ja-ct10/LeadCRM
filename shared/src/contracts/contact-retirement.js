@@ -5,7 +5,7 @@ exports.isRetiredContactField = isRetiredContactField;
 exports.retiredContactReferences = retiredContactReferences;
 exports.withoutRetiredContactFields = withoutRetiredContactFields;
 /** Contact database properties retired by the governed column rollout. */
-exports.RETIRED_CONTACT_FIELDS = ['customerType', 'recordType', 'score', 'linkedinUrl', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason'];
+exports.RETIRED_CONTACT_FIELDS = ['customerType', 'recordType', 'score', 'linkedinUrl', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason', 'jobTitle'];
 const retiredKeys = new Set([...exports.RETIRED_CONTACT_FIELDS, 'activeProductIds', 'linkedin']);
 function isRetiredContactField(field, entity) {
     return field.startsWith('contact.') ? retiredKeys.has(field.slice(8)) : entity === 'contact' && retiredKeys.has(field);

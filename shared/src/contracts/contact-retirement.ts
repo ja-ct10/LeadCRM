@@ -1,5 +1,5 @@
 /** Contact database properties retired by the governed column rollout. */
-export const RETIRED_CONTACT_FIELDS = ['customerType', 'recordType', 'score', 'linkedinUrl', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason'] as const;
+export const RETIRED_CONTACT_FIELDS = ['customerType', 'recordType', 'score', 'linkedinUrl', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason', 'jobTitle'] as const;
 const retiredKeys = new Set<string>([...RETIRED_CONTACT_FIELDS, 'activeProductIds', 'linkedin']);
 
 export function isRetiredContactField(field: string, entity?: string): boolean {

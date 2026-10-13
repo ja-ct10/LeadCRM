@@ -71,9 +71,6 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     website: initialData?.website || '',
     tags: initialData?.tags || [],
     address: initialData?.address || '',
-    city: initialData?.city || '',
-    province: initialData?.province || '',
-    country: 'Philippines',
     assignedUserId: initialData?.assignedUserId || '',
     notes: initialData?.notes || '',
     internalNotes: initialData?.internalNotes || '',
@@ -117,12 +114,8 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       website: data.website || undefined,
       tags: data.tags && data.tags.length > 0 ? data.tags : undefined,
       address: data.address || undefined,
-      city: data.city || undefined,
-      province: data.province || undefined,
-      country: 'Philippines',
       assignedUserId: data.assignedUserId || undefined,
-      notes: data.notes || undefined,
-      ...(isEdit ? { internalNotes: data.internalNotes || undefined, activeProducts: data.activeProducts } : {}),
+      ...(isEdit ? { notes: data.notes || undefined, internalNotes: data.internalNotes || undefined, activeProducts: data.activeProducts } : {}),
       productInterests: data.productInterests ?? [],
 
     };
@@ -239,7 +232,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         <div className="space-y-4">
           <SectionHeader num={2} title="Address" />
 
-          <FieldWrap fieldKey="address" label="Street Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
+          <FieldWrap fieldKey="address" label="Full Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea
@@ -249,43 +242,11 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
                 aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
                 rows={2}
                 className={`w-full pl-9 pr-4 bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.address ? inputErrorCls : ''}`}
-                placeholder="123 Main Street, Suite 100"
+                placeholder="123 Main Street, Suite 100, Makati City, Metro Manila, Philippines"
               />
             </div>
           </FieldWrap>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <FieldWrap fieldKey="city" label="City" htmlFor={`${fieldId}-city`} error={errors.city?.message}>
-              <input
-                {...register('city')}
-                id={`${fieldId}-city`}
-                aria-invalid={!!errors.city}
-                aria-describedby={errors.city ? `${fieldId}-city-error` : undefined}
-                className={`${inputCls} ${errors.city ? inputErrorCls : ''}`}
-                placeholder="Makati City"
-              />
-            </FieldWrap>
-            <FieldWrap fieldKey="province" label="Province" htmlFor={`${fieldId}-province`} error={errors.province?.message}>
-              <input
-                {...register('province')}
-                id={`${fieldId}-province`}
-                aria-invalid={!!errors.province}
-                aria-describedby={errors.province ? `${fieldId}-province-error` : undefined}
-                className={`${inputCls} ${errors.province ? inputErrorCls : ''}`}
-                placeholder="Metro Manila"
-              />
-            </FieldWrap>
-            <FieldWrap fieldKey="country" label="Country" htmlFor={`${fieldId}-country`} error={errors.country?.message}>
-              <input
-                value="Philippines" readOnly
-                id={`${fieldId}-country`}
-                aria-invalid={!!errors.country}
-                aria-describedby={errors.country ? `${fieldId}-country-error` : undefined}
-                className={`${inputCls} ${errors.country ? inputErrorCls : ''}`}
-                placeholder="Philippines"
-              />
-            </FieldWrap>
-          </div>
           <CustomFieldGroup form={customFields} group="Address" />
         </div>
 
@@ -377,7 +338,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         </div>
 
         {/* Section 5: Notes */}
-        <div className="space-y-4">
+        {isEdit && <div className="space-y-4">
           <SectionHeader num={5} title="Notes" />
 
           <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
@@ -404,8 +365,8 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
             />
           </FieldWrap>}
           <CustomFieldGroup form={customFields} group="Notes" />
-        </div>
-        <CustomFieldExtraGroups form={customFields} startNumber={6} />
+        </div>}
+        <CustomFieldExtraGroups form={customFields} startNumber={isEdit ? 6 : 5} />
         </ConfiguredFormLayout>
       </div>
 

@@ -141,7 +141,8 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
       body: JSON.stringify({ name: 'Updated Account', industry: 'IT', taxId: 'obsolete', customerType: 'obsolete', customerSince: 'obsolete' }) });
     expect(response.status).toBe(200);
     const updated = await response.json();
-    expect(updated.data).toMatchObject({ name: 'Updated Account', industry: 'IT', country: 'Philippines' });
+    expect(updated.data).toMatchObject({ name: 'Updated Account', industry: 'IT' });
+    expect(updated.data).not.toHaveProperty('country');
     const detail = await call(`/crm/accounts/${id}`);
     const list = await call('/crm/accounts');
     expect(detail.status).toBe(200);

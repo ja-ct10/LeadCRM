@@ -83,6 +83,7 @@ interface PipelineKanbanBoardProps {
   onLoadMore: (stageId: string) => void;
   loadingStages: Set<string>;
   hasMoreByStage: Record<string, boolean>;
+  highlightDealId?: string;
 }
 
 // ─── Deal Card Content ───────────────────────────────────────────────────────
@@ -243,6 +244,7 @@ interface SortableDealCardProps {
   onMutated?: (deal?: Deal) => void;
   canDrag?: boolean;
   isAutomatedOnly?: boolean;
+  highlighted?: boolean;
 }
 
 function SortableDealCard({
@@ -252,7 +254,18 @@ function SortableDealCard({
   onMutated,
   canDrag = true,
   isAutomatedOnly = false,
+  highlighted = false,
 }: SortableDealCardProps): React.ReactElement {
+  const cardRef = React.useRef<HTMLDivElement | null>(null);
+  React.useEffect(() => {
+    if (!highlighted) return;
+    // Scroll both the stage's vertical viewport and the board's horizontal viewport.
+    const frame = requestAnimationFrame(() => cardRef.current?.scrollIntoView({
+      block: 'center', inline: 'center',
+      behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth',
+    }));
+    return () => cancelAnimationFrame(frame);
+  }, [highlighted, deal.stageId]);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: deal.id,
     data: { type: 'Deal', deal },
@@ -286,10 +299,12 @@ function SortableDealCard({
 
   return (
     <div
-      ref={setNodeRef}
+      ref={node => { cardRef.current = node; setNodeRef(node); }}
+      data-deal-id={deal.id}
+      data-search-highlight={highlighted || undefined}
       style={style}
       onClick={() => onClick(deal)}
-      className={`p-4 rounded-xl border transition-colors cursor-pointer group relative select-none ${
+      className={`search-highlight-card p-4 rounded-xl border transition-colors cursor-pointer group relative select-none ${
         isDragging
           ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20 shadow-2xl'
           : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
@@ -404,8 +419,23 @@ export function PipelineKanbanBoard({
   onLoadMore,
   loadingStages,
   hasMoreByStage,
+  highlightDealId,
 }: PipelineKanbanBoardProps): React.ReactElement {
   const recordAccess = useCrmRecordAccess();
+  const boardRef = React.useRef<HTMLDivElement>(null);
+  const [boardHeight, setBoardHeight] = React.useState<number>();
+  React.useEffect(() => {
+    const board = boardRef.current;
+    if (!board) return;
+    // Give percentage-height stage columns a definite viewport. Otherwise a long
+    // stage grows the page and scrollIntoView scrolls the page instead of the stage.
+    const measure = () => setBoardHeight(Math.max(440, window.innerHeight - Math.max(0, board.getBoundingClientRect().top) - 16));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(board.parentElement!);
+    window.addEventListener('resize', measure);
+    return () => { observer.disconnect(); window.removeEventListener('resize', measure); };
+  }, [pipeline.id]);
   const [activeDeal, setActiveDeal] = React.useState<Deal | null>(null);
   const [optimisticStageMap, setOptimisticStageMap] = React.useState<Record<string, string>>({});
 
@@ -482,7 +512,7 @@ export function PipelineKanbanBoard({
       onDragEnd={handleDragEnd}
       onDragCancel={event => { setActiveDeal(null); clearPreview(String(event.active.id)); }}
     >
-      <div role="region" aria-label="Deal pipeline" className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain pb-4 custom-scrollbar">
+      <div ref={boardRef} role="region" aria-label="Deal pipeline" style={boardHeight ? { height: boardHeight } : undefined} className="min-w-0 flex-1 overflow-x-auto overscroll-x-contain pb-4 custom-scrollbar">
         <div className="flex gap-6 h-full min-w-max items-start">
           {pipeline.stages.map((stage) => {
             const stageDeals = deals
@@ -514,6 +544,7 @@ export function PipelineKanbanBoard({
                       <SortableDealCard
                         key={deal.id}
                         deal={deal}
+                        highlighted={boardHeight !== undefined && deal.id === highlightDealId}
                         assignedUser={deal.assignedUser ?? users.find((u) => u.id === deal.assignedUserId)}
                         onClick={onDealClick}
                         canDrag={canEdit && recordAccess.canMutate(deal) && !pendingDeals.has(deal.id)}

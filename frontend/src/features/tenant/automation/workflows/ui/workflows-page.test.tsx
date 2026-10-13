@@ -102,7 +102,8 @@ it('disables refresh and spins its icon until the in-flight request finishes', a
   expect(refresh.disabled).toBe(true);
   expect(screen.getByRole('grid')).toBeTruthy();
   expect(screen.getByLabelText('Search workflows')).toBeTruthy();
-  expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
+  expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+  expect(within(screen.getByRole('region', { name: 'Workflows table' })).getByRole('status', { name: 'Refreshing data...' })).toBeTruthy();
   expect(refresh.querySelector('.animate-spin')).toBeTruthy();
   expect(workflowsApi.list).toHaveBeenCalledTimes(calls + 1);
   resolve({ success: true, data: [workflow], meta: { total: 1, page: 1, limit: 10, hasMore: false } });

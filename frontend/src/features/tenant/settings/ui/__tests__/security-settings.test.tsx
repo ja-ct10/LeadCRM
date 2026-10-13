@@ -37,6 +37,10 @@ it('renders only password settings and uses the canonical password-change date',
   expect(screen.getAllByRole('button').map(button => button.textContent)).toEqual(['Change Password']);
   expect(screen.getByText(/^Last changed:/)).toBeTruthy();
   expect(Object.values(api).every(mock => mock.mock.calls.length === 0)).toBe(true);
+  const button = screen.getByRole('button', { name: 'Change Password' });
+  expect(button.style.backgroundColor).toBe('var(--primary)');
+  expect(button.className).toContain('focus-visible:ring-2');
+  expect(button.className).toContain('hover:brightness-110');
 });
 
 it('requires all rules and confirmation, preserves password characters and blocks duplicate submission', async () => {

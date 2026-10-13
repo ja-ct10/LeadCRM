@@ -229,6 +229,8 @@ export interface DataGridProps<T = Record<string, unknown>> {
    *  The highlighted row gets a blue ring + tinted background and auto-scrolls
    *  into view on mount. Highlight fades after 2.5 s. */
   highlightRowId?: string;
+  /** Background refresh keeps rows mounted and shows an indicator inside the grid. */
+  isRefreshing?: boolean;
 }
 
 // ─── Empty State Types ────────────────────────────────────────────────────────

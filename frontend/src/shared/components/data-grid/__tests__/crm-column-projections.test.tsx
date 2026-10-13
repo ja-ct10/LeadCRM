@@ -29,12 +29,14 @@ it('uses the same module choices in the client fallback and server defaults', ()
 });
 
 it('renders each offered Account column from the row or its included assigned user', () => {
-  const account: Account = { id: 'account', tenantId: 'tenant', name: 'Acme', industry: 'Services', size: 'Small', city: 'Manila', country: 'PH', assignedUserId: 'user', assignedUser: { id: 'user', firstName: 'Sam', lastName: 'Agent' }, website: 'example.test', tags: ['Partner'], createdAt: '2026-10-01T00:00:00Z' };
+  const account: Account = { id: 'account', tenantId: 'tenant', name: 'Acme', industry: 'Services', size: 'Small', address: '42 Main Street, Manila, Philippines', assignedUserId: 'user', assignedUser: { id: 'user', firstName: 'Sam', lastName: 'Agent' }, website: 'example.test', tags: ['Partner'], createdAt: '2026-10-01T00:00:00Z' };
   render(<AccountsDataGrid accounts={[account]} totalRecords={1} effectiveColumns={all(ACCOUNTS_TABLE_COLUMNS)} getOwnerName={() => 'Incorrect fallback'} {...controls} />);
   for (const column of ACCOUNTS_TABLE_COLUMNS) expect(screen.getByRole('columnheader', { name: new RegExp(column.label) })).toBeTruthy();
   const cells = screen.getAllByRole('row')[1].querySelectorAll('td');
   expect([...cells].slice(2).every(cell => cell.textContent?.trim() && cell.textContent.trim() !== '—')).toBe(true);
   expect(screen.getByText('Sam Agent')).toBeTruthy();
+  expect(screen.getAllByText('42 Main Street, Manila, Philippines').length).toBeGreaterThan(0);
+  for (const label of ['Active Products', 'Internal Notes', 'City', 'Province', 'Country']) expect(screen.queryByRole('columnheader', { name: label })).toBeNull();
 });
 
 it('keeps Contact company text separate from the linked Account and navigates by its ID', () => {

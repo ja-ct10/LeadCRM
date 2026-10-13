@@ -77,24 +77,24 @@ async function main() {
 
   // ── Organizations ──────────────────────────────────────────────────
   const orgs = await Promise.all([
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: 'BGC, Taguig, Metro Manila', country: 'Philippines' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Nexwave Digital', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: 'Ortigas, Pasig', country: 'Philippines' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: 'Makati, Metro Manila', country: 'Philippines' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'BrightPath BPO', industry: 'Business Process Outsourcing', size: '51-200', address: 'Cebu City, Cebu', country: 'Philippines' } }),
-    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: 'Davao City', country: 'Philippines' } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Antigravity Solutions Inc.', industry: 'Information Technology', size: '11-50', website: 'https://antigravity.ph', address: "BGC, Taguig, Metro Manila, Philippines" } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'Nexwave Digital', industry: 'Software Development', size: '1-10', website: 'https://nexwave.ph', address: "Ortigas, Pasig, Philippines" } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'CloudPH Telecom', industry: 'Telecommunications', size: '200+', address: "Makati, Metro Manila, Philippines" } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'BrightPath BPO', industry: 'Business Process Outsourcing', size: '51-200', address: "Cebu City, Cebu, Philippines" } }),
+    prisma.account.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, name: 'GreenTech Energy PH', industry: 'Renewable Energy', size: '11-50', address: "Davao City, Philippines" } }),
   ]);
   console.log('[Seed] Organizations created.');
 
   // ── Contacts ───────────────────────────────────────────────────────
   const contacts = await Promise.all([
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Anna', lastName: 'Reyes', email: 'anna.reyes@antigravity.ph', phone: '+63 917 100 0001', jobTitle: 'CTO', status: 'HOT', source: 'Referral', productInterests: ['CRM Enterprise'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[1].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Marco', lastName: 'Dela Cruz', email: 'marco@nexwave.ph', phone: '+63 918 200 0002', jobTitle: 'CEO', status: 'WARM', source: 'LinkedIn', productInterests: ['CRM Pro'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Patricia', lastName: 'Gomez', email: 'p.gomez@cloudph.com', phone: '+63 919 300 0003', jobTitle: 'Procurement Manager', status: 'HOT', source: 'Cold Email', productInterests: ['Service Orders', 'CRM Enterprise'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[3].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Luis', lastName: 'Santos', email: 'luis.santos@brightpath.ph', phone: '+63 920 400 0004', jobTitle: 'VP Operations', status: 'COLD', source: 'Website' } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[4].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Sofia', lastName: 'Villanueva', email: 'sofia.v@greentech.ph', phone: '+63 921 500 0005', jobTitle: 'Director', status: 'WARM', source: 'Trade Show' } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Jerico', lastName: 'Tan', email: 'jerico.tan@gmail.com', phone: '+63 922 600 0006', jobTitle: 'Freelance Consultant', status: 'WARM', source: 'Website' } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Camille', lastName: 'Bautista', email: 'c.bautista@antigravity.ph', phone: '+63 923 700 0007', jobTitle: 'IT Manager', status: 'HOT', source: 'Referral', productInterests: ['Workflow Automation'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Danilo', lastName: 'Cruz', email: 'd.cruz@cloudph.com', phone: '+63 924 800 0008', jobTitle: 'Account Executive', status: 'CLOSED', lifecycleStage: 'CUSTOMER', source: 'Cold Call' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Anna', lastName: 'Reyes', email: 'anna.reyes@antigravity.ph', phone: '+63 917 100 0001', status: 'HOT', source: 'Referral', productInterests: ['CRM Enterprise'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[1].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Marco', lastName: 'Dela Cruz', email: 'marco@nexwave.ph', phone: '+63 918 200 0002', status: 'WARM', source: 'LinkedIn', productInterests: ['CRM Pro'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Patricia', lastName: 'Gomez', email: 'p.gomez@cloudph.com', phone: '+63 919 300 0003', status: 'HOT', source: 'Cold Email', productInterests: ['Service Orders', 'CRM Enterprise'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[3].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Luis', lastName: 'Santos', email: 'luis.santos@brightpath.ph', phone: '+63 920 400 0004', status: 'COLD', source: 'Website' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[4].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Sofia', lastName: 'Villanueva', email: 'sofia.v@greentech.ph', phone: '+63 921 500 0005', status: 'WARM', source: 'Trade Show' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Jerico', lastName: 'Tan', email: 'jerico.tan@gmail.com', phone: '+63 922 600 0006', status: 'WARM', source: 'Website' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Camille', lastName: 'Bautista', email: 'c.bautista@antigravity.ph', phone: '+63 923 700 0007', status: 'HOT', source: 'Referral', productInterests: ['Workflow Automation'] } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Danilo', lastName: 'Cruz', email: 'd.cruz@cloudph.com', phone: '+63 924 800 0008', status: 'CLOSED', lifecycleStage: 'CUSTOMER', source: 'Cold Call' } }),
   ]);
   console.log('[Seed] Contacts created.');
 

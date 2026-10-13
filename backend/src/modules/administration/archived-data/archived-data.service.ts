@@ -57,7 +57,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
   const personWhere = { ...where, ...searchWhere('firstName', 'lastName', 'email') };
   const titleWhere = { ...where, ...searchWhere('title') };
   const nameWhere = { ...where, ...searchWhere('name') };
-  const accountWhere = { ...where, ...searchWhere('name', 'website', 'city') };
+  const accountWhere = { ...where, ...searchWhere('name', 'website', 'address') };
   const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, ...searchWhere('firstName', 'lastName', 'email') };
   const pageArgs = (skip: number, take: number) => ({ skip, take, orderBy: { id: 'asc' as const } });
   const person = (r: { id: string; firstName: string; lastName: string; email: string | null; deletedAt: Date | null }) =>
@@ -67,7 +67,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     Task: source(() => prisma.task.count({ where: titleWhere }), (skip, take) => prisma.task.findMany({ where: titleWhere, ...pageArgs(skip, take), select: { id: true, title: true } }), r => ({ id: r.id, name: r.title })),
     Lead: source(() => prisma.lead.count({ where: personWhere }), (skip, take) => prisma.lead.findMany({ where: personWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
     Contact: source(() => prisma.contact.count({ where: personWhere }), (skip, take) => prisma.contact.findMany({ where: personWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true, deletedAt: true } }), person),
-    Account: source(() => prisma.account.count({ where: accountWhere }), (skip, take) => prisma.account.findMany({ where: accountWhere, ...pageArgs(skip, take), select: { id: true, name: true, website: true, city: true, deletedAt: true } }), r => ({ id: r.id, name: r.name, detail: r.website || r.city || '', archivedAt: r.deletedAt })),
+    Account: source(() => prisma.account.count({ where: accountWhere }), (skip, take) => prisma.account.findMany({ where: accountWhere, ...pageArgs(skip, take), select: { id: true, name: true, website: true, address: true, deletedAt: true } }), r => ({ id: r.id, name: r.name, detail: r.website || r.address || '', archivedAt: r.deletedAt })),
     Deal: source(() => prisma.deal.count({ where: titleWhere }), (skip, take) => prisma.deal.findMany({ where: titleWhere, ...pageArgs(skip, take), select: { id: true, title: true, value: true, currency: true, deletedAt: true } }), r => ({ id: r.id, name: r.title, detail: r.value === null ? '' : [r.currency, String(r.value)].filter(Boolean).join(' '), archivedAt: r.deletedAt })),
     Pipeline: source(() => prisma.pipeline.count({ where }), (skip, take) => prisma.pipeline.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     User: source(() => prisma.user.count({ where: usersWhere }), (skip, take) => prisma.user.findMany({ where: usersWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true } }), r => ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email })),

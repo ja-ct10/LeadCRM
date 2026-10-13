@@ -46,7 +46,7 @@ export function ArchivedData(): React.ReactElement {
   const records = data?.data ?? EMPTY_RECORDS;
   const total = data?.meta.total ?? 0;
   useEffect(() => {
-    const available = new Set(error ? [] : records.map(rowId));
+    const available = new Set(records.map(rowId));
     setSelectedIds(previous => {
       const next = new Set([...previous].filter(id => available.has(id)));
       return next.size === previous.size ? previous : next;
@@ -126,8 +126,8 @@ export function ArchivedData(): React.ReactElement {
         <ModuleTableToolbar label="Archived records" search={search} onSearch={value => { setSearch(value); changePage(1); }} placeholder="Search archived records..."
           disabled={restoring} refreshing={isInitialLoad || isRefreshing} onRefresh={refetch} />
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
-        {isInitialLoad || isRefreshing ? <TableLoadingState label="Loading archived records..." /> : (
-          <DataGrid<ArchivedRecord> columns={columns} data={error ? EMPTY_RECORDS : records} getRowId={rowId} sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'archivedAt', direction: 'desc' }); setPage(1); }}
+        {isInitialLoad ? <TableLoadingState label="Loading archived records..." /> : (
+          <DataGrid<ArchivedRecord> isRefreshing={isRefreshing} columns={columns} data={records} getRowId={rowId} sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'archivedAt', direction: 'desc' }); setPage(1); }}
             height="auto" selectable selectedIds={selectedIds}
             onSelectionChange={ids => {
               if (!restoring) setSelectedIds(ids);
@@ -135,7 +135,7 @@ export function ArchivedData(): React.ReactElement {
             enableColumnMenu={false} emptyMessage={error ? 'Unable to load archived records.' : 'No archived records found.'}
             ariaLabel="Archived data grid" />
         )}
-        {!isInitialLoad && !error && <div inert={restoring}>
+        {!isInitialLoad && (!error || records.length > 0) && <div inert={restoring}>
           <LeadsPagination currentPage={page} totalRecords={total} pageSize={pageSize}
             onPageChange={changePage} onPageSizeChange={size => { setPageSize(size); changePage(1); }}
             refreshing={isRefreshing} disabled={restoring || isRefreshing} />

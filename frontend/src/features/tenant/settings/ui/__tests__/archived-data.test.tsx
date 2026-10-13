@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ArchivedData } from '../archived-data';
 import { clearPageCache } from '@/shared/cache/page-cache';
@@ -138,6 +138,25 @@ it('shows a fetch error with retry and recovers', async () => {
   expect(screen.queryByText('No archived records found.')).toBeNull();
   failFetch = false; fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
   await screen.findByText('Saved Lead');
+});
+
+it('retains archived rows, pagination and checkbox selection during a failed refresh', async () => {
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  const checkbox = screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }) as HTMLInputElement;
+  fireEvent.click(checkbox);
+  let finish!: (response: Response) => void;
+  request.mockReturnValueOnce(new Promise(done => { finish = done; }));
+  fireEvent.click(screen.getByRole('button', { name: /^Refresh$/ }));
+  expect(within(screen.getByRole('region', { name: 'Archived data grid' })).getByRole('status', { name: 'Refreshing data...' })).toBeTruthy();
+  expect(screen.getByText('Saved Lead')).toBeTruthy();
+  expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+  expect(checkbox.checked).toBe(true);
+  await act(async () => finish(new Response(JSON.stringify({ error: 'Refresh failed' }), { status: 500 })));
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('status', { name: 'Refreshing data...' })).toBeNull();
+  expect(checkbox.checked).toBe(true);
+  expect(screen.getByText('Saved Lead')).toBeTruthy();
+  expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
 });
 
 it('searches server records beyond the visible page and resets pagination', async () => {

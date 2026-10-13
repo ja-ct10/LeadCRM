@@ -55,7 +55,7 @@ function getWorkflowUpdateFields(entity, customFields = [], layout) {
         ];
     else if (entity === 'account')
         standard = [text('name', 'Account Name', true, 255), choice('industry', 'Industry', company_industries_1.COMPANY_INDUSTRIES),
-            choice('size', 'Size', record_experience_1.COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Street Address'), text('city', 'City'), text('province', 'Province'), text('country', 'Country'), assignment, product,
+            choice('size', 'Size', record_experience_1.COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'), assignment, product,
             { ...text('notes', 'Notes'), multiline: true },
             // These remain editable in Account Edit; retain their supported automation contract.
             { ...text('internalNotes', 'Internal Notes'), multiline: true }, { field: 'activeProductIds', label: 'Active Products', type: 'products' },

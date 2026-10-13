@@ -3,7 +3,7 @@ import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
-import { LEAD_SOURCES } from '@leadcrm/shared';
+import { LEAD_SOURCES, defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
@@ -71,6 +71,21 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const { users } = useData();
   const isEdit = !!initialData;
 
+  // New Contacts use the requested section order without rewriting saved layouts.
+  const configuredFields = useMemo(() => {
+    if (isEdit) return customFields;
+    const defaults = defaultFieldLayout('contacts');
+    const saved = customFields.layout ?? defaults;
+    const builtInIds = new Set(defaults.groups.map(group => group.id));
+    const groups = [...defaults.groups, ...saved.groups.filter(group => !builtInIds.has(group.id)).sort((a, b) => a.order - b.order).map((group, index) => ({ ...group, order: defaults.groups.length + index }))];
+    const fields = { ...saved.fields };
+    for (const field of getCrmFieldCatalog('contacts')) {
+      const override = fields[field.technicalKey];
+      if (override) fields[field.technicalKey] = { ...override, groupId: field.groupId, order: field.order };
+    }
+    return { ...customFields, layout: { ...saved, groups, fields } };
+  }, [customFields, isEdit]);
+
   // Map initialData to form values that match the backend schema
   const defaultValues = useMemo((): CreateContactFormValues => ({
     firstName: initialData?.firstName || '',
@@ -78,7 +93,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     email: initialData?.email || '',
     phone: initialData?.phone || '',
     companyName: initialData?.companyName || '',
-    jobTitle: initialData?.jobTitle || '',
     notes: initialData?.notes || '',
     status: normalizeCrmStatus(initialData?.status),
     source: initialData?.leadSource || '',
@@ -137,8 +151,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       email: data.email || undefined,
       phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
       companyName: data.companyName || (isEdit ? '' : undefined),
-      jobTitle: data.jobTitle || (isEdit ? '' : undefined),
-      notes: data.notes || (isEdit ? '' : undefined),
+      ...(isEdit ? { notes: data.notes || '' } : {}),
       status: data.status || 'Warm',
       leadSource: data.source || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || undefined,
@@ -164,7 +177,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
-        <ConfiguredFormLayout form={customFields} module="contacts">
+        <ConfiguredFormLayout form={configuredFields} module="contacts">
         {/* Section 1: Basic Information */}
         <div className="space-y-4">
           <SectionHeader num={1} title="Basic Information" />
@@ -229,15 +242,12 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               placeholder="Company or organization name"
             />
           </FieldWrap>
-          <FieldWrap fieldKey="jobTitle" label="Job Title" htmlFor={`${fieldId}-jobTitle`} error={errors.jobTitle?.message}>
-            <input {...register('jobTitle')} id={`${fieldId}-jobTitle`} aria-invalid={!!errors.jobTitle} className={`${inputCls} ${errors.jobTitle ? inputErrorCls : ''}`} placeholder="Job title" />
-          </FieldWrap>
           <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
 
-        {/* Section 2: Status & Classification */}
+        {/* Section 2: Status & Interest */}
         <div className="space-y-4">
-          <SectionHeader num={2} title="Status & Classification" />
+          <SectionHeader num={2} title="Status & Interest" />
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Status */}
@@ -265,12 +275,12 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
             </FieldWrap>
           </div>
-          <CustomFieldGroup form={customFields} group="Status & Classification" />
+          <CustomFieldGroup form={customFields} group="Status & Interest" />
         </div>
 
-        {/* Section 3: Relationships */}
+        {/* Section 3: Organization */}
         <div className="space-y-4">
-          <SectionHeader num={3} title="Relationships" />
+          <SectionHeader num={3} title="Organization" />
 
           {/* Account (organization) selector */}
           <FieldWrap fieldKey="accountId" label="Account">
@@ -289,29 +299,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             />
           </FieldWrap>
 
-          {/* Assigned User */}
-          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
-            <Controller
-              name="assignedUserId"
-              control={control}
-              render={({ field }) => (
-                <AssignedAgentSelect
-                  modules={isEdit ? ['contacts'] : ['contacts', 'deals']}
-                  id={`${fieldId}-assignedUserId`}
-                  value={field.value ?? ''}
-                  name={field.name}
-                  onBlur={field.onBlur}
-                  onChange={field.onChange}
-                  users={recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
-                  placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
-                  className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
-                  invalid={!!errors.assignedUserId}
-                  describedBy={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
-                />
-              )}
-            />
-          </FieldWrap>
-          <CustomFieldGroup form={customFields} group="Relationships" />
+          <CustomFieldGroup form={customFields} group="Organization" />
         </div>
 
         {/* Section 4: Additional Information */}
@@ -349,12 +337,39 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
               />
             </div>
           </FieldWrap>
-          <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
+          {isEdit && <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
             <textarea {...register('notes')} id={`${fieldId}-notes`} rows={3} maxLength={10000} className={`${inputCls} ${errors.notes ? inputErrorCls : ''}`} placeholder="Add notes" />
-          </FieldWrap>
+          </FieldWrap>}
           <CustomFieldGroup form={customFields} group="Additional Information" />
         </div>
-        <CustomFieldExtraGroups form={customFields} startNumber={5} />
+        {/* Section 5: Assigned Agent */}
+        <div className="space-y-4">
+          <SectionHeader num={5} title="Assigned Agent" />
+          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
+            <Controller
+              name="assignedUserId"
+              control={control}
+              render={({ field }) => (
+                <AssignedAgentSelect
+                  modules={isEdit ? ['contacts'] : ['contacts', 'deals']}
+                  id={`${fieldId}-assignedUserId`}
+                  value={field.value ?? ''}
+                  name={field.name}
+                  onBlur={field.onBlur}
+                  onChange={field.onChange}
+                  users={recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
+                  placeholder={isEdit ? 'Unassigned' : 'Assign automatically'}
+                  className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
+                  invalid={!!errors.assignedUserId}
+                  describedBy={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
+                />
+              )}
+            />
+          </FieldWrap>
+          <CustomFieldGroup form={customFields} group="Assigned Agent" />
+        </div>
+
+        <CustomFieldExtraGroups form={customFields} startNumber={6} />
         </ConfiguredFormLayout>
       </div>
 

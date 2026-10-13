@@ -36,7 +36,7 @@ const CONTACT_MERGE_FIELDS = [
 const ACCOUNT_MERGE_FIELDS = [
   'name', 'industry', 'size', 'website', 'notes', 'internalNotes',
   'tags', 'productInterests', 'activeProducts',
-  'address', 'city', 'province', 'country', 'assignedUserId',
+  'address', 'assignedUserId',
 ];
 
 /**

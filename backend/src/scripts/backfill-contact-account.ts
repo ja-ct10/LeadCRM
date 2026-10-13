@@ -25,6 +25,7 @@
  * and re-run the inventory (inventory-account-organization.ts) against production first.
  */
 import { PrismaClient } from '@prisma/client';
+import { consolidateAccountAddress } from '../modules/crm/companies/account-address';
 
 const prisma = new PrismaClient({ log: ['error'] });
 
@@ -67,10 +68,7 @@ function accountDataFromOrganization(org: {
     size:             org.size,
     website:          org.website,
     tags:             org.tags,
-    address:          org.address,
-    city:             org.city,
-    province:         org.province,
-    country:          org.country,
+    address:          consolidateAccountAddress(org),
     activeProducts:   org.activeProducts,
     internalNotes:    org.internalNotes,
     notes:            org.notes,

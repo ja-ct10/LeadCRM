@@ -196,7 +196,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
   const owner = personName(object(record.assignedUser)) || 'Unassigned';
   const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
-  const location = [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
+  const location = module === 'accounts' ? text(record.address)
+    : [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
   const email = text(person?.email);
   const phone = text(person?.phone);
@@ -207,7 +208,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const dealProductNames = record.productInterests as string[] | undefined;
   const dealProductName = text(object(record.productInterestRecord)?.name) || (record.productInterestRecord !== null && dealProductIds.length === 1 && dealProductNames?.length === 1 ? dealProductNames[0] : '');
   const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined) : null;
-  const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || text(record.jobTitle) || location;
+  const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || (module === 'leads' ? text(record.jobTitle) : '') || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
   const statusLabel = status === status.toUpperCase() ? status.charAt(0) + status.slice(1).toLowerCase() : status;
@@ -222,7 +223,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const rows: [string, unknown][] = [
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
     ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', formatDateTime(record.createdAt as string | null | undefined)]] as [string, unknown][] : []),
-    ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', record.jobTitle], ['Website', record.website],
+    ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', module === 'leads' ? record.jobTitle : undefined], ['Website', record.website],
     ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Assigned Agent', owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
   ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
@@ -248,16 +249,12 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       { label: 'Industry', value: record.industry, apiField: 'industry' },
       { label: 'Company size', value: record.size, apiField: 'size', type: 'select' as const, options: ['1-10', '11-50', '51-200', '200+'] },
       { label: 'Website', value: record.website, apiField: 'website', type: 'url' as const },
-      { label: 'City', value: record.city, apiField: 'city' },
-      { label: 'Province', value: record.province, apiField: 'province' },
-      { label: 'Country', value: record.country, apiField: 'country' },
     ] : [
       { label: 'First name', value: record.firstName, apiField: 'firstName', required: true },
       { label: 'Last name', value: record.lastName, apiField: 'lastName', required: true },
       { label: 'Email', value: record.email, apiField: 'email', type: 'email' as const },
       { label: 'Phone', value: record.phone, apiField: 'phone', type: 'tel' as const },
       { label: 'Company', value: module === 'leads' ? record.companyName : record.company, apiField: module === 'leads' ? 'companyName' : 'company' },
-      ...(module === 'contacts' ? [{ label: 'Job title', value: record.jobTitle, apiField: 'jobTitle' }] : []),
       ...(canReadAccounts ? [{ technicalKey: 'accountId', label: 'Account', value: object(record.account)?.name ?? object(record.organization)?.name }] : []),
       { label: 'Source', value: source, apiField: 'source' },
     ]),

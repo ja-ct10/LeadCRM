@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, FieldLayoutActionSchema, upgradeAssignmentLayout, customFieldNameKey, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
+import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, FieldLayoutActionSchema, upgradeAssignmentLayout, customFieldNameKey, defaultFieldLayout, defaultFieldGroupId, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { readFields, readFieldsForDisplay } from './closing-requirements.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -22,7 +22,7 @@ export async function readFieldLayout(tx: Tx, tenantId: string, module: CustomFi
   const layout = defaultFieldLayout(module);
   const fields = definitions ?? await readFields(tx, tenantId);
   for (const field of fields.filter(field => field.module === module)) {
-    if (!layout.groups.some(group => customFieldNameKey(group.label) === customFieldNameKey(field.group))) layout.groups.push({ id: field.groupId ?? randomUUID(), label: field.group, order: layout.groups.length });
+    if (!layout.groups.some(group => customFieldNameKey(group.label) === customFieldNameKey(field.group) || module === 'contacts' && group.id === (field.groupId ?? defaultFieldGroupId(module, field.group)))) layout.groups.push({ id: field.groupId ?? randomUUID(), label: field.group, order: layout.groups.length });
   }
   const created = await tx.tenantPreference.upsert({ where: { tenantId_module_key: where }, create: { ...where, value: layout as unknown as Prisma.InputJsonValue }, update: {} });
   return FieldLayoutSchema.parse(created.value);

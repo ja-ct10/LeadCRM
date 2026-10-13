@@ -239,12 +239,39 @@ describe('real cached request lifecycle', () => {
   });
 });
 
-it.each(['leads', 'accounts', 'deals'])('loads a selected %s by ID independently of stale text filters and pagination', async moduleId => {
+it.each(['leads', 'contacts', 'accounts', 'deals'])('loads a selected %s by ID independently of stale text filters and pagination', async moduleId => {
   mocks.get.mockResolvedValue({ data: { id: 'selected', firstName: 'Johnny', isArchived: false } });
   const hook = renderHook(() => useModuleData({ moduleId, page: 8, pageSize: 25, search: 'wrong name', filter: [{ field: 'status', operator: 'equals', value: 'COLD' }], recordId: 'selected' }));
   await waitFor(() => expect(hook.result.current.data[0]?.id).toBe('selected'));
   expect(mocks.get).toHaveBeenCalledWith(`/crm/${moduleId}/selected`, { signal: expect.any(AbortSignal) });
   expect(hook.result.current.meta).toMatchObject({ page: 1, total: 1 });
+});
+
+it('coalesces rapid manual refreshes and a pending background read into one awaitable operation', async () => {
+  const initial = deferred<string[]>();
+  const fetchFn = vi.fn().mockReturnValue(initial.promise);
+  const hook = renderHook(() => useCachedPage({ module: 'coalesced', params: {}, fetchFn, disabled: false }));
+  let first!: Promise<void>, second!: Promise<void>;
+  act(() => { first = hook.result.current.refetch(); second = hook.result.current.refetch(); });
+  expect(first).toBe(second);
+  expect(fetchFn).toHaveBeenCalledOnce();
+  let finished = false;
+  void first.then(() => { finished = true; });
+  expect(finished).toBe(false);
+  await act(async () => { initial.resolve(['current']); await first; });
+  expect(finished).toBe(true);
+  expect(hook.result.current.data).toEqual(['current']);
+});
+
+it.each(['leads', 'contacts', 'accounts'])('rejects wrong and archived %s targets instead of displaying another row', async moduleId => {
+  mocks.get.mockResolvedValueOnce({ data: { id: 'wrong' } });
+  const hook = renderHook(() => useModuleData({ moduleId, page: 2, pageSize: 25, recordId: 'selected' }));
+  await waitFor(() => expect(hook.result.current.error).toBe('This record is no longer available.'));
+  expect(hook.result.current.data).toEqual([]);
+  mocks.get.mockResolvedValueOnce({ data: { id: 'selected', isArchived: true } });
+  await act(async () => { await hook.result.current.refetch(); });
+  expect(hook.result.current.data).toEqual([]);
+  expect(hook.result.current.error).toBe('This record is no longer available.');
 });
 
 it.each(['leads', 'contacts', 'accounts', 'deals'])('shares one raw selected %s response for concurrent readers', async moduleId => {

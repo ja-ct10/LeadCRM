@@ -9,9 +9,6 @@ export interface Account {
   email?: string;
   phone?: string;
   address?: string;
-  city?: string;
-  province?: string;
-  country?: string;
   assignedUserId?: string;
   assignedUser?: { id: string; firstName: string; lastName: string };
   tags?: string[];

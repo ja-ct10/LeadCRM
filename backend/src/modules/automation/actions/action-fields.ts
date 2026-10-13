@@ -31,8 +31,8 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
   const field = getWorkflowUpdateFields(entity, customFields).find(f => f.field === key);
   if (!field) {
     const retired = entity === 'lead' ? ['website', 'description', 'tags', 'productInterest']
-      : entity === 'contact' ? ['jobTitle', 'notes', 'tags', 'productInterests', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason']
-      : entity === 'account' ? ['tags', 'productInterests', 'activeProducts'] : ['description', 'billingFrequency', 'tags'];
+      : entity === 'contact' ? ['notes', 'tags', 'productInterests', 'activeProducts', 'lastContactedAt', 'qualifiedAt', 'disqualifiedReason']
+      : entity === 'account' ? ['tags', 'productInterests', 'activeProducts', 'city', 'province', 'country'] : ['description', 'billingFrequency', 'tags'];
     if (incomplete && (retired.includes(String(config.field)) || /^customFieldValues\.[\w-]+$/.test(String(config.field)) || !config.field)) return {};
     throw new ValidationError('Choose an editable field for this record.');
   }

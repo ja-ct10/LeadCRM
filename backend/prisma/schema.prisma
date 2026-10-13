@@ -390,9 +390,6 @@ model Account {
   productInterests String[] @default([])
   activeProducts   String[] @default([])
   address          String?
-  city             String?
-  province         String?
-  country          String?   @default("Philippines")
   isArchived       Boolean   @default(false)
   deletedAt        DateTime?
   deletedBy        String?
@@ -519,7 +516,6 @@ model Contact {
   email               String?
   phone               String?
   company             String?
-  jobTitle            String?
   status              ContactStatus        @default(WARM)
   source              String?
   notes               String?

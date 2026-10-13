@@ -23,13 +23,16 @@ exports.FieldLayoutActionSchema = zod_1.z.discriminatedUnion('action', [
     zod_1.z.object({ action: zod_1.z.literal('reorderGroups'), groupIds: zod_1.z.array(zod_1.z.string().min(1)).min(1).max(100), expectedRevision: layoutRevision }).strict(),
     zod_1.z.object({ action: zod_1.z.literal('reorderFields'), groupId: zod_1.z.string().min(1), technicalKeys: zod_1.z.array(zod_1.z.string().min(1)).min(1).max(200), expectedRevision: layoutRevision }).strict(),
 ]);
-const defaultFieldGroupId = (module, label) => module === 'deals' && (0, closing_requirements_1.customFieldNameKey)(label) === 'closed won requirements' ? closing_requirements_1.CLOSED_WON_GROUP_ID : `${module}:section:${closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module].findIndex(group => (0, closing_requirements_1.customFieldNameKey)(group) === (0, closing_requirements_1.customFieldNameKey)(label))}`;
+const defaultFieldGroupId = (module, label) => {
+    const legacyContactGroup = module === 'contacts' ? { 'status & classification': 1, relationships: 2 }[(0, closing_requirements_1.customFieldNameKey)(label)] : undefined;
+    return module === 'deals' && (0, closing_requirements_1.customFieldNameKey)(label) === 'closed won requirements' ? closing_requirements_1.CLOSED_WON_GROUP_ID : `${module}:section:${legacyContactGroup ?? closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module].findIndex(group => (0, closing_requirements_1.customFieldNameKey)(group) === (0, closing_requirements_1.customFieldNameKey)(label))}`;
+};
 exports.defaultFieldGroupId = defaultFieldGroupId;
 const person = [['firstName', 'First Name', 'text', 0, true], ['lastName', 'Last Name', 'text', 0, true], ['email', 'Email', 'text', 0, true], ['phone', 'Phone', 'text', 0], ['status', 'Status', 'dropdown', 1, false, record_experience_1.CRM_STATUSES], ['productInterestIds', 'Product Interest', 'products', 1], ['source', 'Lead Source', 'dropdown', 3, false, record_experience_1.LEAD_SOURCES], ['assignedUserId', 'Assigned Agent', 'reference', 4, false, undefined, 'user'], ['address', 'Full Address', 'longText', 3]];
 const native = {
     leads: [...person, ['companyName', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account']],
-    contacts: [...person, ['company', 'Company Name', 'text', 0], ['jobTitle', 'Job Title', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account'], ['notes', 'Notes', 'longText', 3]],
-    accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, company_industries_1.COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, record_experience_1.COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Street Address', 'longText', 1], ['city', 'City', 'text', 1], ['province', 'Province', 'text', 1], ['country', 'Country', 'text', 1], ['assignedUserId', 'Assigned Agent', 'reference', 2, false, undefined, 'user'], ['productInterestIds', 'Product Interest', 'products', 3], ['activeProductIds', 'Active Products', 'products', 3], ['notes', 'Notes', 'longText', 4], ['internalNotes', 'Internal Notes', 'longText', 4]],
+    contacts: [...person, ['company', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account'], ['notes', 'Notes', 'longText', 3]],
+    accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, company_industries_1.COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, record_experience_1.COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Full Address', 'longText', 1], ['assignedUserId', 'Assigned Agent', 'reference', 2, false, undefined, 'user'], ['productInterestIds', 'Product Interest', 'products', 3], ['activeProductIds', 'Active Products', 'products', 3], ['notes', 'Notes', 'longText', 4], ['internalNotes', 'Internal Notes', 'longText', 4]],
     deals: [['title', 'Title', 'text', 0, true], ['value', 'Deal Value', 'number', 0], ['productInterestIds', 'Product Interest', 'products', 0, true], ['pipelineId', 'Pipeline', 'reference', 0, true, undefined, 'pipeline'], ['stageId', 'Stage', 'reference', 0, true, undefined, 'stage'], ['priority', 'Priority', 'dropdown', 0, false, ['LOW', 'MEDIUM', 'HIGH']], ['expectedCloseDate', 'Expected Close Date', 'date', 2], ['assignedUserId', 'Assigned Agent', 'reference', 4, false, undefined, 'user'], ['accountId', 'Account', 'reference', 1, false, undefined, 'account'], ['leadSource', 'Lead Source', 'dropdown', 2, false, record_experience_1.LEAD_SOURCES], ['industry', 'Industry', 'dropdown', 2, false, company_industries_1.COMPANY_INDUSTRIES], ['address', 'Address', 'longText', 2]],
 };
 exports.CRM_SYSTEM_FIELDS = Object.fromEntries(closing_requirements_1.CUSTOM_FIELD_MODULES.map(module => [module, [...native[module], ['createdAt', 'Created', 'date', 0]].map(([technicalKey, label, type, groupIndex, mandatory = false, options, reference], order) => ({ technicalKey, label: module === 'contacts' && technicalKey === 'source' ? 'Source' : label, module, kind: 'System', type, groupId: (0, exports.defaultFieldGroupId)(module, closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex]), group: closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex], order, required: mandatory, mandatory, active: true, visibleInForm: !['value', 'createdAt'].includes(technicalKey), visibleInDetails: true, conditionAvailable: true, personalizationAvailable: true, ...(options ? { options } : {}), ...(reference ? { reference } : {}) }))]));
@@ -39,6 +42,8 @@ function getCrmFieldCatalog(module, definitions = [], layout) {
     const standard = exports.CRM_SYSTEM_FIELDS[module].map(field => {
         const override = layout?.fields[field.technicalKey];
         const resolved = { ...field, ...(override ? { ...override, label: override.label } : {}) };
+        if (module === 'accounts' && field.technicalKey === 'address' && resolved.label === 'Street Address')
+            resolved.label = 'Full Address';
         return { ...resolved, group: groups.find(group => group.id === resolved.groupId)?.label ?? field.group };
     });
     const custom = definitions.map(closing_requirements_1.normalizeCustomField).filter(field => field.module === module && !field.deletedAt).map((field) => {
@@ -54,6 +59,9 @@ function defaultFieldLayout(module) {
 function upgradeAssignmentLayout(layout, definitions = []) {
     const next = structuredClone(layout);
     const module = layout.module;
+    if (module === 'accounts')
+        for (const key of ['city', 'province', 'country'])
+            delete next.fields[key];
     if (layout.fields.assignedUserId || layout.module !== 'accounts' && layout.groups.some(group => group.id === layout.module + ':section:4'))
         return next;
     const sourceIndex = module === 'deals' ? 1 : module === 'leads' ? 3 : 2;

@@ -131,7 +131,8 @@ describe.skipIf(!disposable)('organization and account settings over authenticat
     const accountId = created.body.data.id;
     const updated = await call(`/crm/accounts/${accountId}`, 'PUT', { name: 'Saved account', industry: 'Technology' });
     expect(updated.status).toBe(200);
-    expect(updated.body.data).toMatchObject({ name: 'Saved account', industry: 'Technology', country: 'Philippines' });
+    expect(updated.body.data).toMatchObject({ name: 'Saved account', industry: 'Technology' });
+    expect(updated.body.data).not.toHaveProperty('country');
     const saved = await prisma.account.findUniqueOrThrow({ where: { id: accountId } });
     for (const value of [created.body.data, updated.body.data, saved]) {
       for (const field of ['taxId', 'customerType', 'customerSince']) expect(value).not.toHaveProperty(field);

@@ -118,9 +118,9 @@ export function AccountsDataGrid({
             <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate leading-tight hover:underline cursor-pointer">
               {row.name}
             </p>
-            {row.city && (
+            {row.address && (
               <p className="text-[11px] text-[#5A6B85] dark:text-slate-400 truncate">
-                {[row.city, row.country].filter(Boolean).join(', ')}
+                {row.address}
               </p>
             )}
           </div>
@@ -141,15 +141,9 @@ export function AccountsDataGrid({
       </p>
     ),
 
-    city: (_value: unknown, row: Account) => (
-      <p className="text-[12.5px] text-[#3C4858] dark:text-slate-200 truncate">
-        {row.city ?? '—'}
-      </p>
-    ),
-
-    country: (_value: unknown, row: Account) => (
-      <p className="text-[12.5px] text-[#3C4858] dark:text-slate-200 truncate">
-        {row.country ?? '—'}
+    address: (_value: unknown, row: Account) => (
+      <p title={row.address || undefined} className={`text-[12.5px] text-[#3C4858] dark:text-slate-200 ${viewMode === 'wrap' ? 'whitespace-pre-wrap break-words' : 'truncate'}`}>
+        {row.address || '—'}
       </p>
     ),
 
@@ -168,11 +162,12 @@ export function AccountsDataGrid({
     ),
 
     createdAt: (_value: unknown, row: Account) => renderDate(row.createdAt),
-  }), [getOwnerName]);
+  }), [getOwnerName, viewMode]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
 
   const { gridColumns } = useDataGridColumns<Account>({
+    module: 'accounts',
     registry: ACCOUNTS_COLUMN_REGISTRY,
     effectiveColumns,
     cellRenderers,
@@ -183,8 +178,7 @@ export function AccountsDataGrid({
       name: 240,
       industry: 160,
       size: 140,
-      city: 140,
-      country: 140,
+      address: 280,
       assignedUserId: 160,
       website: 180,
       tags: 160,

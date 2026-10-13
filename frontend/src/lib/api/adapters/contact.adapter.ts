@@ -90,7 +90,6 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
     contactPerson: contactPerson || 'Unknown',
     firstName,
     lastName,
-    jobTitle: backendContact.jobTitle || '',
     email: backendContact.email || '',
     phone: backendContact.phone || '',
     productInterestIds: backendContact.productInterestIds,

@@ -15,9 +15,6 @@ export function toBackendCreateOrg(data: Record<string, any>): Record<string, an
     website: data.website || undefined,
     tags: Array.isArray(data.tags) ? data.tags : [],
     address: data.address || undefined,
-    city: data.city || undefined,
-    province: data.province || undefined,
-    country: data.country || 'Philippines',
     assignedUserId: data.assignedUserId || undefined,
   };
 }
@@ -38,9 +35,6 @@ export function toBackendUpdateOrg(data: Record<string, any>): Record<string, an
   if (data.website !== undefined) result.website = data.website || undefined;
   if (data.tags !== undefined) result.tags = Array.isArray(data.tags) ? data.tags : [];
   if (data.address !== undefined) result.address = data.address || undefined;
-  if (data.city !== undefined) result.city = data.city || undefined;
-  if (data.province !== undefined) result.province = data.province || undefined;
-  if (data.country !== undefined) result.country = data.country || undefined;
   if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
 
   return result;
@@ -76,9 +70,6 @@ export function toFrontendOrg(backendOrg: any): Record<string, any> {
     createdAt: backendOrg.createdAt || new Date().toISOString(),
     isArchived: !!backendOrg.isArchived,
     address: backendOrg.address || '',
-    city: backendOrg.city || '',
-    province: backendOrg.province || '',
-    country: backendOrg.country || 'Philippines',
     postalCode: backendOrg.postalCode || '',
   };
 }

@@ -13,7 +13,8 @@ export function useConfiguredCrmColumns<T extends { id: string; header: string }
 }
 function configuredLabel(module: string, id: string, fallback: string, layout: FieldLayout): string {
   const aliases: Record<string, string> = { productInterests: 'productInterestIds', productInterest: 'productInterestIds', activeProducts: 'activeProductIds', organizationId: 'accountId', assignedUser: 'assignedUserId', ...(module === 'contacts' ? { companyName: 'company' } : {}) };
-  return layout.fields[aliases[id] ?? id]?.label ?? fallback;
+  const label = layout.fields[aliases[id] ?? id]?.label ?? fallback;
+  return module === 'accounts' && id === 'address' && label === 'Street Address' ? 'Full Address' : label;
 }
 /** Grid and selector resolve the same native labels; display-only metadata remains stable. */
 export function useConfiguredColumnDefinitions(module: string, columns: ColumnDefinition[]): ColumnDefinition[] {

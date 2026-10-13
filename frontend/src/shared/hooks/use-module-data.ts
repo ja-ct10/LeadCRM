@@ -42,8 +42,9 @@ export function useModuleData<T extends object = Record<string, unknown>>({ modu
         const response = await apiClient.get<ApiResponse<T>>(
           `/crm/${moduleId}/${encodeURIComponent(recordId)}`, { signal },
         );
-        if (!response.data) throw new Error('Record not found');
-        return response.data;
+        const record = response.data as T & { id?: string; isArchived?: boolean; deletedAt?: string | null };
+        if (!record || record.id !== recordId || record.isArchived || record.deletedAt) throw new Error('This record is no longer available.');
+        return record;
       }
       return apiClient.get<ModulePaginatedResponse<T>>(`/crm/${moduleId}`, { params, signal });
     },

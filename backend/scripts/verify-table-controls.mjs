@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
+import { setAcceptanceTheme } from './verify-browser-matrix.mjs';
 
 /** Runs against the parent's disposable SQL, authenticated HTTP and production browser. */
 export async function verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output }) {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await setAcceptanceTheme(page, 'Light');
   const modules = [
     { id: 'leads', path: '/crm/leads', api: '/crm/leads', model: 'lead', field: 'firstName', search: 'Josh', region: 'Leads data grid', hide: 'Email' },
     { id: 'contacts', path: '/crm/contacts', api: '/crm/contacts', model: 'contact', field: 'firstName', search: 'Search Target', region: 'Contacts data grid', hide: 'Email' },
@@ -16,7 +19,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
   const sortFields = {
     leads: ['name', 'firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'updatedAt'],
     contacts: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt'],
-    accounts: ['name', 'industry', 'size', 'city', 'country', 'createdAt'], tasks: ['title', 'dueDate', 'createdAt', 'updatedAt'],
+    accounts: ['name', 'industry', 'size', 'address', 'createdAt'], tasks: ['title', 'dueDate', 'createdAt', 'updatedAt'],
     workflows: ['name', 'status', 'createdAt'], campaigns: ['name', 'createdAt'], users: ['name', 'role', 'email', 'status', 'groups', 'createdAt'],
   };
   const common = { tenantId: tenant.id };
@@ -51,7 +54,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
         leads: { firstName: index % 2 ? 'josh' : 'Josh', companyName: text, phone: text ? `+63917${index % 3}123456` : text, source: ['Website', 'Referral', 'Google Ads', null][index % 4], status: statuses[index % 3], createdAt: date, updatedAt: date },
         contacts: { firstName: index % 2 ? 'search target' : 'Search Target', company: text, accountId: index % 2 ? null : linkedAccount.id,
           phone: text ? `+63917${index % 3}123456` : text, email: text ? `person${index % 3}@example.test` : text, source: ['Website', 'Referral', null][index % 3], status: statuses[index % 3].toUpperCase(), createdAt: date },
-        accounts: { industry: text, size: ['200+', '1-10', '51-200', '11-50', null][index % 5], city: text, country: text, createdAt: date },
+        accounts: { industry: text, size: ['200+', '1-10', '51-200', '11-50', null][index % 5], address: text, createdAt: date },
         tasks: { dueDate: date, createdAt: date, updatedAt: date },
         workflows: { status: ['DRAFT', 'ACTIVE', 'PAUSED', 'ACTIVE'][index % 4], isActive: index % 4 === 1, createdAt: date },
         campaigns: { createdAt: date },
@@ -134,7 +137,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     const menu = page.getByRole('menu').last();
     assert.equal(await menu.getByText('Sort field', { exact: true }).count(), 0);
     assert.equal(await menu.getByText(/^Current:/).count(), 0);
-    assert.equal(await menu.getByRole('menuitemradio').count(), 2);
+    await until(async () => await menu.getByRole('menuitemradio').count() === 2, module.id + ' sortable column menu rendered');
     await until(async () => await menu.evaluate(element => getComputedStyle(element).opacity) === '1', module.id + ' menu animation settled');
     await page.screenshot({ path: resolve(output, `${module.id}-column-menu.png`) });
     await menu.getByRole('menuitemradio', { name: 'Sort A–Z', exact: true }).click();
@@ -271,10 +274,15 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     await until(async () => control.pending === 1, module.id + ' refresh reached HTTP');
     assert.equal(await refresh.isDisabled(), true);
     assert.ok(await refresh.locator('.animate-spin').count());
+    const spinner = region.getByRole('status', { name: 'Refreshing data...' });
+    assert.ok(await spinner.isVisible(), module.id + ' spinner is inside the affected table');
+    assert.ok(await region.locator('tbody tr').first().isVisible(), module.id + ' rows remain visible during refresh');
+    assert.equal(await region.getAttribute('aria-busy'), 'true');
     await refresh.evaluate(element => { element.click(); element.click(); });
     assert.equal(count(), calls + 1, module.id + ' repeated refresh shares one request');
     control.release();
     await until(async () => !await refresh.isDisabled(), module.id + ' refresh completed');
+    assert.equal(await spinner.count(), 0, module.id + ' spinner clears after success');
     assert.equal(count(), calls + 1, module.id + ' one list refresh');
     assert.ok((await region.textContent()).includes(newText), module.id + ' fresh rows displayed');
     assert.equal(await search.inputValue(), module.search);
@@ -287,6 +295,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     control.failPath = module.api;
     await refresh.click();
     await until(async () => !await refresh.isDisabled(), module.id + ' failed refresh completed');
+    assert.equal(await spinner.count(), 0, module.id + ' spinner clears after failure');
     assert.ok((await page.textContent('body')).includes('Refresh unavailable'), module.id + ' visible refresh error');
     assert.ok((await region.textContent()).includes(newText), module.id + ' failed refresh retains rows');
     await refresh.click(); await until(async () => !await refresh.isDisabled(), module.id + ' retry completed');

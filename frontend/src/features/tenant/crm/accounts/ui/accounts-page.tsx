@@ -484,7 +484,7 @@ export default function AccountsPage(): React.ReactElement {
                       {account.name}
                     </p>
                     <p className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 truncate">
-                      {account.industry ?? '—'} · {account.city ?? ''}
+                      {account.industry ?? '—'} · {account.address ?? ''}
                     </p>
                   </div>
                 </div>

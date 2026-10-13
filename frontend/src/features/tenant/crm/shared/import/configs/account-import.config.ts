@@ -48,7 +48,7 @@ export const accountImportConfig: ImportModuleConfig = {
     },
     {
       key: 'address',
-      label: 'Address',
+      label: 'Full Address',
       required: false,
       type: 'text',
       autoMapPatterns: ['address', 'street', 'street address', 'street_address', 'full address', 'full_address'],

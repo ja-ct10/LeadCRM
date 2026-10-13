@@ -11,6 +11,7 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 import { verifyTableControls } from './verify-table-controls.mjs';
+import { verifySearchHighlighting } from './verify-search-highlighting.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, '.tmp/leads-table-browser'));
@@ -250,7 +251,8 @@ try {
     await page.keyboard.press('Escape');
   }
   record('All eight Light/Dark viewport layouts, trimmed column search and keyboard Escape work');
-  await verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output });
+  if (!process.argv.includes('--search-table-only')) await verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output });
+  await verifySearchHighlighting({ page, prisma, tenant, foreignTenant, admin, call, until, record, control, output });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'passed', environment: 'Local production build + disposable PGlite SQL; background SSE paused to isolate manual refresh', checks, errors }, null, 2));
 } finally {

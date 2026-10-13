@@ -1,4 +1,6 @@
 import { salesContext } from '../leads/sales-context';
+import { ACCOUNTS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { consolidateAccountAddress } from './account-address';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { assertCrmRecordMutation, assertCrmCreateAssignment, runCrmAutomaticCreation } from '../access/crm-record-access.service';
 import { resolveSalesAgent } from '../leads/lead-automation.service';
@@ -15,7 +17,7 @@ import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../
 
 // Allowed filter fields for accounts
 const COMPANY_FILTER_FIELDS: FilterFields = {
-  industry: { kind: 'text' }, assignedUserId: { kind: 'reference' }, city: { kind: 'text' }, size: { kind: 'choice' },
+  industry: { kind: 'text' }, assignedUserId: { kind: 'reference' }, address: { kind: 'text' }, size: { kind: 'choice' },
   scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my'], handled: true },
 };
 const COMPANY_FIELD_ALIASES: Record<string, string> = {
@@ -31,7 +33,7 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
   // Parse filter[field]=operator:value params
   const parsedFilters = parseFilterParams(query);
   const filterClauses = buildPrismaFilters(parsedFilters, COMPANY_FILTER_FIELDS, COMPANY_FIELD_ALIASES);
-  filterClauses.push(...buildSearchClauses(query.search, ['name', 'industry', 'city', 'website', 'country']));
+  filterClauses.push(...buildSearchClauses(query.search, ['name', 'industry', 'address', 'website']));
   if (parsedFilters.find(filter => filter.field === 'scope')?.value === 'my') filterClauses.push({ assignedUserId: String(query.currentUserId ?? '') });
 
   const where = {
@@ -43,8 +45,8 @@ export async function findAllCompanies(tenantId: string, query: Record<string, u
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
-  const ids = await sortedPageIds(query.sort, ["name","industry","size","city","country","createdAt"], skip, limit,
-    () => (salesContext.getStore() ?? prisma).account.findMany({ where, select: { id: true, name: true, industry: true, size: true, city: true, country: true, createdAt: true } }),
+  const ids = await sortedPageIds(query.sort, ACCOUNTS_TABLE_SORT_FIELDS, skip, limit,
+    () => (salesContext.getStore() ?? prisma).account.findMany({ where, select: { id: true, name: true, industry: true, size: true, address: true, createdAt: true } }),
     direction => (salesContext.getStore() ?? prisma).account.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     (salesContext.getStore() ?? prisma).account.findMany({
@@ -73,6 +75,7 @@ export async function createCompany(tenantId: string, dto: CreateCompanyDto, act
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests);
   normalizeProductOther(dto, (dto.productInterests as string[] | undefined) ?? []);
   const { customFieldValues, ...data } = dto;
+  data.address = consolidateAccountAddress(dto) ?? undefined;
   return salesTransaction(async tx => {
     const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId, ['accounts']);
     const account = await runCrmAutomaticCreation(tx, 'accounts', agent?.id ?? null, async () => await tx.account.create({ data: { ...data, assignedUserId: agent?.id ?? null, ...await productRelationData(tx, 'account', tenantId, { names: dto.productInterests, activeNames: dto.activeProducts }), tenantId } as never }));

@@ -7,14 +7,13 @@ export const ACCOUNTS_TABLE_COLUMNS: ColumnDefinition[] = [
   { id: 'name', label: 'Account Name', required: true, defaultVisible: true, defaultOrder: 0, group: 'Account Info', priority: 'required' },
   { id: 'industry', label: 'Industry', required: false, defaultVisible: true, defaultOrder: 1, group: 'Account Info', priority: 'medium' },
   { id: 'size', label: 'Company Size', required: false, defaultVisible: true, defaultOrder: 2, group: 'Account Info', priority: 'medium' },
-  { id: 'city', label: 'City', required: false, defaultVisible: true, defaultOrder: 3, group: 'Location', priority: 'low' },
-  { id: 'country', label: 'Country', required: false, defaultVisible: false, defaultOrder: 4, group: 'Location', priority: 'low' },
-  { id: 'assignedUserId', label: 'Assigned Agent', required: false, defaultVisible: true, defaultOrder: 5, group: 'Account Info', priority: 'medium' },
-  { id: 'website', label: 'Website', required: false, defaultVisible: false, defaultOrder: 6, group: 'Account Info', priority: 'low' },
-  { id: 'tags', label: 'Tags', required: false, defaultVisible: false, defaultOrder: 7, group: 'Account Info', priority: 'low' },
-  { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 8, group: 'System', priority: 'low' },
+  { id: 'address', label: 'Full Address', required: false, defaultVisible: true, defaultOrder: 3, group: 'Location', priority: 'low' },
+  { id: 'assignedUserId', label: 'Assigned Agent', required: false, defaultVisible: true, defaultOrder: 4, group: 'Account Info', priority: 'medium' },
+  { id: 'website', label: 'Website', required: false, defaultVisible: false, defaultOrder: 5, group: 'Account Info', priority: 'low' },
+  { id: 'tags', label: 'Tags', required: false, defaultVisible: false, defaultOrder: 6, group: 'Account Info', priority: 'low' },
+  { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 7, group: 'System', priority: 'low' },
 ];
-export const ACCOUNTS_TABLE_SORT_FIELDS = ['name', 'industry', 'size', 'city', 'country', 'createdAt'];
+export const ACCOUNTS_TABLE_SORT_FIELDS = ['name', 'industry', 'size', 'address', 'createdAt'];
 
 export const CONTACTS_TABLE_COLUMNS: ColumnDefinition[] = [
   { id: 'firstName', label: 'First Name', required: true, defaultVisible: true, defaultOrder: 0, group: 'Contact Info', priority: 'required' },
@@ -47,6 +46,14 @@ export const DEALS_TABLE_SORT_FIELDS = ['title', 'value', 'stageId', 'priority',
 /** Preserve saved visibility/order when an existing table column is renamed. */
 export function normalizeModuleColumns(module: string, columns: ColumnConfigItem[]): ColumnConfigItem[] {
   if (module === 'leads') return normalizeLeadColumns(columns);
+  if (module === 'accounts') {
+    const legacyAddressIds = ['city', 'province', 'country'];
+    const removedIds = ['activeProductIds', 'activeProducts', 'internalNotes', ...legacyAddressIds];
+    const replacement = columns.some(column => column.id === 'address') ? undefined
+      : [...columns].sort((a, b) => a.order - b.order).find(column => legacyAddressIds.includes(column.id));
+    return columns.flatMap(column => column === replacement ? [{ ...column, id: 'address' }]
+      : removedIds.includes(column.id) ? [] : [column]);
+  }
   if (module !== 'users' || !columns.some(column => column.id === 'department')) return columns;
   const hasGroups = columns.some(column => column.id === 'groups');
   return columns.flatMap(column => column.id !== 'department' ? [column]

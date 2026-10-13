@@ -388,13 +388,15 @@ describe('campaign composer', () => {
   });
 
   it('uses the newly selected source catalog after a failed schedule returns to Draft', async () => {
-    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Repair schedule', type: 'Email', status: 'Draft', subject: 'Hi', body: 'Hello {{jobTitle}}', audienceSource: 'LEADS', scheduleConfig: { source: 'LEADS', matchMode: 'AND', conditions: [], timezone: 'Asia/Manila', scheduleFailureReason: 'No eligible recipients.' } } as never} />);
+    const contactField = { ...getCrmFieldCatalog('contacts')[0], technicalKey: 'contactNote', label: 'Contact Note', kind: 'Custom' as const, required: false, mandatory: false };
+    vi.mocked(campaignsApi.variableFields).mockResolvedValue({ success: true, data: [...CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module)), contactField] });
+    render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Repair schedule', type: 'Email', status: 'Draft', subject: 'Hi', body: 'Hello {{contactNote}}', audienceSource: 'LEADS', scheduleConfig: { source: 'LEADS', matchMode: 'AND', conditions: [], timezone: 'Asia/Manila', scheduleFailureReason: 'No eligible recipients.' } } as never} />);
     fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'CONTACTS' } });
     fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
-    expect(await screen.findByRole('button', { name: /Job Title.*jobTitle/ })).toBeTruthy();
+    expect(await screen.findByRole('button', { name: /Contact Note.*contactNote/ })).toBeTruthy();
     expect(screen.queryByText(/Repair unavailable variables for this source/)).toBeNull();
     const frame = screen.getByTitle('Email body preview');
-    expect(frame.getAttribute('srcdoc')).toContain('Hello Example Job Title');
+    expect(frame.getAttribute('srcdoc')).toContain('Hello Example Contact Note');
     await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ source: 'CONTACTS' })));
     expect(screen.getByText('Schedule failed: No eligible recipients.')).toBeTruthy();
   });

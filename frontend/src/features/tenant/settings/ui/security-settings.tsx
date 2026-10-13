@@ -4,6 +4,7 @@ import { useAuth } from '@/store/AuthContext';
 import { Dialog, DialogContent, DialogTitle } from '@/shared/components/ui/dialog';
 import { PasswordChangeForm } from './password-change-form';
 import { ShieldCheck } from 'lucide-react';
+import { Button } from '@/shared/components/ui/button';
 
 export function SecuritySettings() {
   const { user } = useAuth();
@@ -12,7 +13,7 @@ export function SecuritySettings() {
     <div><h3 className="font-semibold">Security</h3><p className="text-xs text-slate-500">Manage your password</p></div>
     <div className="rounded-xl bg-muted p-3 flex items-center justify-between gap-3">
       <div><p className="text-sm font-semibold">Password</p>{user?.passwordChangedAt && <p className="text-xs text-slate-500">Last changed: {new Date(user.passwordChangedAt).toLocaleDateString()}</p>}</div>
-      <button className="rounded-lg border px-3 py-2 text-sm disabled:opacity-50" onClick={() => setPasswordOpen(true)}>Change Password</button>
+      <Button type="button" className="rounded-lg px-3" onClick={() => setPasswordOpen(true)}>Change Password</Button>
     </div>
     {passwordOpen && <PasswordDialog key={user?.id} onClose={() => setPasswordOpen(false)} />}
   </section>;

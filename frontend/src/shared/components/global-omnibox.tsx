@@ -391,7 +391,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
                             {account.name}
                           </p>
                           <p className="text-[11px] text-slate-400 truncate">
-                            {account.industry ?? 'General'} &middot; {account.city ?? 'Global'}
+                            {account.industry ?? 'General'} &middot; {account.address ?? ''}
                           </p>
                         </div>
                         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

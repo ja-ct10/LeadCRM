@@ -26,7 +26,6 @@ export interface Contact extends SharedContact {
   organizationId?: string;
   contactPerson?: string;
   leadPerson?: string;
-  jobTitle?: string;
   leadSource?: string;
   estimatedValue?: number;
   expectedCloseDate?: string;

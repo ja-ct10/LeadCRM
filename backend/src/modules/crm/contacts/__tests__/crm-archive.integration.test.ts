@@ -19,7 +19,7 @@ vi.mock('../../../../config/database.config', async () => {
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient, server: Server, storage: Awaited<ReturnType<typeof createPrivateStorageFixture>>;
 let base: string, tenantId: string, otherTenantId: string, adminCookie: string, viewerCookie: string;
 const legacyId = randomUUID();
-const retiredFields = ['customerType','recordType','score','linkedinUrl','activeProducts','lastContactedAt','qualifiedAt','disqualifiedReason'];
+const retiredFields = ['customerType','recordType','score','linkedinUrl','activeProducts','lastContactedAt','qualifiedAt','disqualifiedReason','jobTitle'];
 const modules = ['leads', 'contacts', 'accounts'] as const;
 type Module = typeof modules[number];
 const delegate = (module: Module) => module === 'leads' ? db.lead : module === 'contacts' ? db.contact : db.account;
@@ -317,9 +317,9 @@ it('supports Contact CRUD without retired properties and rejects them before any
   }
   const since = new Date('2020-01-01T00:00:00Z');
   await db.contact.update({where:{id},data:{lifecycleStage:'CUSTOMER',customerSince:since,convertedAt:since}});
-  const updated = await call(`contacts/${id}`,'PUT',adminCookie,{jobTitle:'Buyer',notes:'Retained note'});
+  const updated = await call(`contacts/${id}`,'PUT',adminCookie,{notes:'Retained note'});
   expect(updated.status).toBe(200);
-  expect(updated.body.data).toMatchObject({jobTitle:'Buyer',notes:'Retained note',lifecycleStage:'CUSTOMER',customerSince:since.toISOString(),convertedAt:since.toISOString()});
+  expect(updated.body.data).toMatchObject({notes:'Retained note',lifecycleStage:'CUSTOMER',customerSince:since.toISOString(),convertedAt:since.toISOString()});
   const listed = await call('contacts?search=retirement-crud&sort=firstName:asc&page=1&limit=1');
   expect(listed.status).toBe(200); expect(listed.body.data.map((row:any)=>row.id)).toEqual([id]);
   const detail = await call(`contacts/${id}`);
@@ -332,6 +332,33 @@ it('supports Contact CRUD without retired properties and rejects them before any
   expect((await call(`contacts/${id}/archive`,'PATCH')).status).toBe(200);
   expect((await call(`contacts/${id}/restore`,'PATCH')).status).toBe(200);
   expect(await db.contact.count({where:{email:'invalid@example.test'}})).toBe(0);
+});
+
+it('creates, edits and imports Contacts with persisted Account, Product Interest, Status and eligible Agent', async () => {
+  const role = await db.roleDefinition.create({ data: { tenantId, name: 'Contact assignment fixture', permissions: { create: ['contacts', 'deals'].map(module => ({ module, canView: true, canEdit: true, canCreate: true })) } } });
+  const agent = await db.user.create({ data: { tenantId, email: 'contact-agent@example.test', firstName: 'Contact', lastName: 'Agent', role: role.name, userRoles: { create: { roleId: role.id } } } });
+  const account = await db.account.create({ data: { tenantId, name: 'Contact association fixture' } });
+  const product = await db.productInterest.create({ data: { tenantId, name: 'Contact fixture product', dealValue: 1500 } });
+  const payload = { requestId: randomUUID(), firstName: 'Association', lastName: 'Contact', email: 'contact-associations@example.test', accountId: account.id, assignedUserId: agent.id, productInterestIds: [product.id], status: 'Hot' };
+  const created = await call('contacts', 'POST', adminCookie, payload);
+  expect(created.status, JSON.stringify(created.body)).toBe(201);
+  const id = created.body.data.id;
+  expect(await db.contact.findUniqueOrThrow({ where: { id }, include: { productLinks: true, contactDeals: true } })).toMatchObject({ accountId: account.id, assignedUserId: agent.id, status: 'HOT', productLinks: [{ productInterestId: product.id, interested: true }], contactDeals: [{ dealId: expect.any(String) }] });
+  const edited = await call(`contacts/${id}`, 'PUT', adminCookie, { status: 'Cold', notes: 'Notes still supported', accountId: account.id, assignedUserId: agent.id });
+  expect(edited.status, JSON.stringify(edited.body)).toBe(200);
+  expect(await db.contact.findUniqueOrThrow({ where: { id } })).toMatchObject({ accountId: account.id, assignedUserId: agent.id, status: 'COLD', notes: 'Notes still supported' });
+  const detail = await call(`contacts/${id}`);
+  expect(detail.body.data).toMatchObject({ id, account: { id: account.id }, assignedUser: { id: agent.id }, productInterests: [product.name] });
+  const admin = await db.user.findFirstOrThrow({ where: { tenantId, role: 'Client Admin' } });
+  expect((await call('contacts', 'POST', adminCookie, { ...payload, requestId: randomUUID(), email: 'invalid-admin-agent@example.test', assignedUserId: admin.id })).status).toBe(400);
+
+  const keys = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address', 'productInterest'];
+  const input = { fileName: 'contacts.csv', csvText: `${keys.join(',')}\nImported,Contact,imported-contact@example.test,+639171234567,Acme,Manila,${product.name}`, mappings: Object.fromEntries(keys.map((key, index) => [key, index])), idempotencyKey: randomUUID() };
+  let imported = await call('contacts/imports', 'POST', adminCookie, input);
+  for (let attempt = 0; imported.body.data?.status === 'importing' && attempt < 10; attempt++) imported = await call('contacts/imports', 'POST', adminCookie, input);
+  expect(imported.body.data, JSON.stringify(imported.body)).toMatchObject({ successfulRecords: 1, failedRecords: 0 });
+  expect(await db.contact.findFirstOrThrow({ where: { tenantId, email: 'imported-contact@example.test' } })).toMatchObject({ firstName: 'Imported', company: 'Acme', address: 'Manila', productInterests: [product.name] });
+  expect((await call('contacts/imports', 'POST', adminCookie, { ...input, idempotencyKey: randomUUID(), mappings: { ...input.mappings, jobTitle: 0 } })).status).toBe(400);
 });
 
 it('Contact merge preserves historical Product IDs and purchase flags on both the survivor and archived source', async () => {

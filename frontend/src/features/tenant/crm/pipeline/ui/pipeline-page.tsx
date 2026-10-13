@@ -17,6 +17,7 @@ import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/module-filter-rail';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
+import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { DealPanel } from '@/shared/components/crm';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
@@ -38,11 +39,22 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const { user, tenant } = useAuth();
   const canManageStages = useHasPermission('deals.manage_stages');
   const canCreate = useHasPermission('deals.create'), canEdit = useHasPermission('deals.edit'), canDelete = useHasPermission('deals.archive');
+  const highlightId = searchParams.get('highlight');
+  // A deliberate detail destination remains distinct from a search locator.
+  const detailId = searchParams.get('dealId');
+  const targetId = highlightId || detailId;
+  const targetKey = `${user?.id}:${tenant?.id}:${targetId}`;
+  const [resolvedTarget, setResolvedTarget] = useState<{ key: string; deal: Deal } | null>(null);
+  const [targetError, setTargetError] = useState('');
+  const [locatedTargetKey, setLocatedTargetKey] = useState<string>();
+  const target = resolvedTarget?.key === targetKey ? resolvedTarget.deal : undefined;
   const availablePipelines = pipelines.filter(p => !p.isArchived);
   const defaultPipeline = availablePipelines.find(p => p.name.trim().toLowerCase() === 'sales pipeline') ?? availablePipelines[0];
-  const pipeline = availablePipelines.find(p => p.id === searchParams.get('pipelineId')) ?? defaultPipeline;
+  const pipeline = target ? availablePipelines.find(p => p.id === target.pipelineId)
+    : availablePipelines.find(p => p.id === searchParams.get('pipelineId')) ?? defaultPipeline;
   const selectPipeline = (id: string) => {
     const next = new URLSearchParams(searchParams.toString()); next.set('pipelineId', id);
+    next.delete('highlight'); next.delete('dealId');
     router.replace('/crm/deals?' + next.toString(), { scroll: false });
     setFilters(previous => ({ ...previous, stage: [] }));
   };
@@ -54,23 +66,36 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const refreshPending = useRef(false);
   const [pipelineError, setPipelineError] = useState('');
   const [selected, setSelected] = useState<Deal | null>(null);
-  const highlightId = searchParams.get('highlight');
   useEffect(() => {
-    if (!highlightId) return;
+    setResolvedTarget(null); setTargetError('');
+    if (!targetId || !user?.id || !tenant?.id) return;
     const controller = new AbortController();
     setSelected(null);
-    void apiClient.get<{ data: Record<string, unknown> }>('/crm/deals/' + encodeURIComponent(highlightId), { signal: controller.signal }).then(response => {
+    const read = USE_MOCK_DATA ? Promise.resolve({ data: deals.find(deal => deal.id === targetId) })
+      : apiClient.get<{ data: Record<string, unknown> }>('/crm/deals/' + encodeURIComponent(targetId), { signal: controller.signal });
+    void read.then(async response => {
       if (controller.signal.aborted) return;
-      const deal = toFrontendDeal(response.data);
-      setSelected(deal);
-      const params = new URLSearchParams(window.location.search);
+      if (!response.data || response.data.id !== targetId || response.data.isArchived || ('deletedAt' in response.data && response.data.deletedAt)) {
+        throw new Error('This Deal is no longer available.');
+      }
+      const deal = USE_MOCK_DATA ? response.data as Deal : toFrontendDeal(response.data as Record<string, unknown>);
+      if (!USE_MOCK_DATA && !availablePipelines.some(p => p.id === deal.pipelineId && p.stages.some(stage => stage.id === deal.stageId))) {
+        await refreshPipelines();
+        if (controller.signal.aborted) return;
+      }
+      setResolvedTarget({ key: targetKey, deal });
+      if (detailId && !highlightId) setSelected(deal);
+      const params = new URLSearchParams(searchParams.toString());
       if (deal.pipelineId && params.get('pipelineId') !== deal.pipelineId) {
         params.set('pipelineId', deal.pipelineId);
         router.replace('/crm/deals?' + params.toString(), { scroll: false });
       }
-    }).catch(error => { if (!controller.signal.aborted) toast.error(error instanceof Error ? error.message : 'Unable to open Deal.'); });
+    }).catch(error => { if (!controller.signal.aborted) {
+      const message = error instanceof Error ? error.message : 'This Deal is unavailable or you do not have access.';
+      setTargetError(message); toast.error(message);
+    } });
     return () => controller.abort();
-  }, [highlightId, user?.id, user?.tenantId, router]);
+  }, [targetKey, router]);
   const [createStage, setCreateStage] = useState<string>();
   const [lost, setLost] = useState<{ id: string; stageId: string }>();
   const query = useCachedPage<Deal[]>({ module: 'deals', params: { pipelineId: pipeline?.id }, disabled: USE_MOCK_DATA || !pipeline,
@@ -83,6 +108,15 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
       }
       return records;
     } });
+  useEffect(() => {
+    setLocatedTargetKey(undefined);
+    if (!target || target.pipelineId !== pipeline?.id) return;
+    let current = true;
+    // A second search in the same pipeline must revalidate its list too: a newly
+    // created or moved Deal may not be in the previously loaded board snapshot.
+    void Promise.resolve(query.refetch()).then(() => { if (current) setLocatedTargetKey(targetKey); });
+    return () => { current = false; };
+  }, [targetKey, target?.id, pipeline?.id, query.refetch]);
   const reloadPipelines = async () => {
     setPipelineError('');
     try { await refreshPipelines(); }
@@ -103,6 +137,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const all = (USE_MOCK_DATA ? deals : query.data ?? []).filter(d => d.pipelineId === pipeline?.id && !d.isArchived);
   const stageStatus = (deal: Deal) => { const stage = pipeline?.stages.find(s => s.id === deal.stageId); return stage?.isWon ? 'Won' : stage?.isLost ? 'Lost' : 'Open'; };
   const visible = all.filter(deal => {
+    if (highlightId && target?.id === deal.id) return true;
     const terms = `${deal.title} ${deal.companyName ?? ''} ${deal.contactPerson ?? ''}`.toLowerCase();
     return (!searchParams.get('accountId') && !searchParams.get('organizationId') || (deal.accountId ?? deal.organizationId) === (searchParams.get('accountId') || searchParams.get('organizationId')))
       && (!searchParams.get('leadId') || deal.leadIds?.includes(searchParams.get('leadId')!) || deal.leadId === searchParams.get('leadId'))
@@ -115,6 +150,10 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
       && (!filters.status?.length || filters.status.includes(stageStatus(deal)))
       && (!filters.created?.length || filters.created.some(days => new Date(deal.createdAt).getTime() >= Date.now() - Number(days) * 86400000));
   });
+  const locatedDeal = target && all.find(deal => deal.id === target.id);
+  const locatorMessage = targetError || (target && !query.isInitialLoad && !query.isRefreshing && !query.error &&
+    (!pipeline || locatedTargetKey === targetKey && (!locatedDeal || !pipeline.stages.some(stage => stage.id === locatedDeal.stageId)))
+    ? 'This Deal is no longer available in an accessible pipeline stage.' : '');
   const groups: FilterGroup[] = [
     { id: 'stage', label: 'Stage', items: pipeline?.stages.map(s => ({ id: s.id, label: s.name })) ?? [] },
     { id: 'owner', label: 'Assigned Agent', items: [...getAssignableAgents(users, ['deals']).map(u => ({ id: u.id, label: `${u.firstName} ${u.lastName}` })), { id: 'unassigned', label: 'Unassigned' }] },
@@ -142,13 +181,14 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
           onImport={() => router.push('/crm/deals/import')} />}
       </div>} />
     <div className="mb-3 flex gap-1 border-b border-border">{['All Deals', 'My Deals'].map((label, i) => <button key={label} onClick={() => setMyDeals(!!i)} className={`min-h-11 px-3 text-sm ${myDeals === !!i ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>{label}</button>)}</div>
-    <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2"><label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<select aria-label="Pipeline" value={pipeline?.id ?? ''} onChange={event => selectPipeline(event.target.value)} className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] rounded-lg border border-border bg-card px-2 text-foreground">{availablePipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div className="relative min-w-32 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={() => void refresh()} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
+    <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2"><label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<select aria-label="Pipeline" value={pipeline?.id ?? ''} onChange={event => selectPipeline(event.target.value)} className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] rounded-lg border border-border bg-card px-2 text-foreground">{availablePipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div className="relative min-w-32 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
       <ModuleFilterRail showFilters={showFilters} filterGroups={groups} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={all.length} onClearFilters={() => setFilters({})} onFilterToggle={(group, item) => setFilters(old => ({ ...old, [group]: old[group]?.includes(item) ? old[group].filter(id => id !== item) : [...(old[group] ?? []), item] }))} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         <ForecastBar deals={visible} pipelines={pipeline ? [pipeline] : []} tenant={tenant} />
         {(query.error || pipelineError) && <p role="alert" className="rounded border border-red-200 p-3 text-sm text-red-600">{query.error || pipelineError}</p>}
-        {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError) ? <KanbanBoardSkeleton /> : pipeline ? <div className="flex min-h-[440px] min-w-0 flex-1 overflow-hidden"><PipelineKanbanBoard pipeline={pipeline} deals={visible} users={users} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealMutated={patch} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
+        {locatorMessage && <p role="alert" className="text-sm text-destructive">{locatorMessage}</p>}
+        {!USE_MOCK_DATA && (query.isInitialLoad && !query.data || !pipeline && !pipelineError && !locatorMessage) ? <KanbanBoardSkeleton /> : pipeline ? <div className="relative flex min-h-[440px] min-w-0 flex-1 overflow-hidden" aria-busy={refreshing || query.isRefreshing}>{(refreshing || query.isRefreshing) && <DataLoadingSpinner label="Refreshing deals..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}<PipelineKanbanBoard pipeline={pipeline} deals={visible} highlightDealId={!locatorMessage && locatedDeal?.id === highlightId ? highlightId : undefined} users={users} canCreate={canCreate} canEdit={canEdit} canDelete={canDelete} currencyConfig={getTenantCurrency(tenant)} onDealClick={setSelected} onDealMutated={patch} onDealDragEnd={move} onAddDeal={setCreateStage} onLoadMore={() => {}} loadingStages={new Set()} hasMoreByStage={{}} /></div> : null}
       </div>
     </div>
     {manageStages && pipeline && <PipelineStagesDialog pipelineId={pipeline.id} onClose={() => setManageStages(false)} onChanged={async () => { await refreshPipelines(); await query.refetch(); }} />}

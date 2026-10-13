@@ -6,6 +6,9 @@ import { cn } from '@/lib/utils';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import type { PermissionKey } from '@leadcrm/shared';
 
+/** Workspace refresh state is consumed by its table without replacing rows. */
+export const TableRefreshContext = React.createContext(false);
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface ColumnSkeletonProps {
@@ -281,6 +284,6 @@ export function DataErrorState({
   );
 }
 
-export function DataLoadingSpinner({ label = 'Loading...', hideLabel = false }: { label?: string; hideLabel?: boolean }) {
-  return <div role="status" aria-label={label} className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-slate-500"><Loader2 aria-hidden="true" size={24} className="text-primary animate-spin motion-reduce:animate-none" />{!hideLabel && label}</div>;
+export function DataLoadingSpinner({ label = 'Loading...', hideLabel = false, className }: { label?: string; hideLabel?: boolean; className?: string }) {
+  return <div role="status" aria-label={label} className={cn('flex flex-col items-center justify-center gap-3 py-16 text-sm text-slate-500', className)}><Loader2 aria-hidden="true" size={24} className="text-primary animate-spin motion-reduce:animate-none" />{!hideLabel && label}</div>;
 }

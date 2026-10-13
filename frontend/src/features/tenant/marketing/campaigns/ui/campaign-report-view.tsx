@@ -61,9 +61,10 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const [showAllLinks, setShowAllLinks] = useState(false);
   const request = useRef(0);
   const inFlight = useRef(false);
+  const pendingReport = useRef<Promise<CampaignReportResponse> | null>(null);
   const activeRequest = useRef<AbortController | null>(null);
   const fetchReport = useCallback(async (background = false) => {
-    if (inFlight.current) { if (!background) setLoading(true); return; }
+    if (inFlight.current) { if (!background) setLoading(true); await pendingReport.current?.catch(() => {}); return; }
     inFlight.current = true;
     const sequence = ++request.current;
     const controller = new AbortController();
@@ -71,7 +72,9 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     if (!background) setLoading(true);
     setError('');
     try {
-      const result = await campaignsApi.report(campaign.id, controller.signal);
+      const pending = campaignsApi.report(campaign.id, controller.signal);
+      pendingReport.current = pending;
+      const result = await pending;
       if (sequence === request.current) setReport(result.data);
     } catch (failure) {
       if (sequence === request.current) {
@@ -204,14 +207,14 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       <section aria-labelledby="recipients-title" className="min-w-0 space-y-3" aria-busy={initialLoading}>
         <div><h2 id="recipients-title" className="text-sm font-semibold text-slate-900 dark:text-white">Recipient performance</h2>
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{initialLoading ? 'Recipient activity' : `${visibleRecipients.length} of ${recipients.length} recipients`}</p></div>
-        <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={initialLoading} silentRefresh onRefresh={() => fetchReport()}
+        <ModuleTableToolbar label="Recipients" search={search} onSearch={setSearch} placeholder="Search recipients..." refreshing={loading} silentRefresh onRefresh={() => fetchReport()}
           filter={<FilterButton title="recipients" open={showFilters} active={!!(deliveryFilter.length || engagementFilter.length)} onClick={() => setShowFilters(value => !value)} />} />
         <div className="flex min-w-0 items-start gap-3">
           <ModuleFilterRail showFilters={showFilters} filterGroups={filterGroups} onToggleFilters={() => setShowFilters(false)}
             filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} onFilterToggle={toggleFilter} totalRecords={recipients.length}
             onClearFilters={() => { setDeliveryFilter([]); setEngagementFilter([]); setFilterSearch(''); setSearch(''); }} />
           <div className="relative min-w-0 flex-1">
-            <DataGrid ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
+            <DataGrid isRefreshing={loading && !initialLoading} ariaLabel="Recipient performance table" columns={columns} data={visibleRecipients} getRowId={row => row.id} isLoading={initialLoading} height="auto"
               emptyMessage={recipients.length ? 'No recipients match your search and filter.' : 'No recipients yet.'} />
 
           </div>
@@ -221,7 +224,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
         <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top Clicked Links</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Each recipient counts once per link.</p></div>
           {(report?.topLinks.length ?? 0) > 5 && <Button variant="outline" size="sm" onClick={() => setShowAllLinks(value => !value)}>{showAllLinks ? 'Show Top Five' : 'Show All'}</Button>}</div>
         {initialLoading ? <div aria-hidden="true"><DataLoadingSkeleton rowCount={1} columnCount={2} /></div> : report?.topLinks.length ?
-          <DataGrid ariaLabel="Top links clicked table" columns={linkColumns} data={showAllLinks ? report.topLinks : report.topLinks.slice(0, 5)} getRowId={row => row.url} height="auto" /> :
+          <DataGrid isRefreshing={loading && !initialLoading} ariaLabel="Top links clicked table" columns={linkColumns} data={showAllLinks ? report.topLinks : report.topLinks.slice(0, 5)} getRowId={row => row.url} height="auto" /> :
           <Card className="rounded-lg p-4 shadow-none text-xs text-slate-500 dark:text-slate-400">{trackingMessage}</Card>}
       </section>}
     </>}

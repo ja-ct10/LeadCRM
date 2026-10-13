@@ -1,7 +1,6 @@
 import { CrmEmailSchema } from '@leadcrm/shared';
 /**
- * Contact form validation schemas — mirrors backend CreateContactSchema/UpdateContactSchema
- * from backend/src/modules/crm/contacts/contacts.dto.ts
+ * Contact form validation schemas — mirrors the contacts-v2 API DTOs.
  */
 import { z } from 'zod';
 import { CrmStatusSchema } from '@leadcrm/shared';
@@ -12,7 +11,6 @@ export const CreateContactFormSchema = z.object({
   email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
-  jobTitle: z.string().max(255).optional(),
   notes: z.string().max(10000).optional(),
   status: CrmStatusSchema.default('Warm'),
   source: z.string().optional(),
@@ -28,7 +26,6 @@ export const UpdateContactFormSchema = z.object({
   email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
-  jobTitle: z.string().max(255).optional(),
   notes: z.string().max(10000).optional(),
   status: CrmStatusSchema.optional(),
   source: z.string().optional(),

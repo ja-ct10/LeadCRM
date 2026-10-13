@@ -12,33 +12,46 @@ export function useProductInterests() {
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [revision, setRevision] = useState(0);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const pending = useRef<AbortController | null>(null);
-  const refresh = useCallback(() => setRevision(v => v + 1), []);
-  useEffect(() => {
+  const pendingPromise = useRef<Promise<void> | null>(null);
+  const refresh = useCallback((): Promise<void> => {
     if (authLoading || authError || !user?.tenantId) {
       setProducts([]); setLoading(false);
-      return;
+      return Promise.resolve();
     }
+    if (pending.current && !pending.current.signal.aborted && pendingPromise.current) return pendingPromise.current;
     const controller = new AbortController();
     pending.current = controller;
     setLoading(true); setError('');
-    apiClient.get<ProductInterestResponse>(PRODUCT_INTEREST_ENDPOINT, { signal: controller.signal })
+    const promise = apiClient.get<ProductInterestResponse>(PRODUCT_INTEREST_ENDPOINT, { signal: controller.signal })
       .then(result => { if (!controller.signal.aborted) { setProducts(result.data); setEnabled(result.meta?.enabled !== false); } })
-      .catch(e => { if (!controller.signal.aborted) { setError(e.message); } })
-      .finally(() => { if (!controller.signal.aborted) setLoading(false); });
-    return () => controller.abort();
-  }, [user?.tenantId, authLoading, authError, revision]);
+      .catch(e => { if (!controller.signal.aborted) {
+        if ([401, 403, 404].includes(e.status)) setProducts([]);
+        setError(e instanceof Error ? e.message : 'Unable to load products.');
+      } })
+      .finally(() => { if (!controller.signal.aborted) { setLoading(false); setHasLoaded(true); }
+        if (pending.current === controller) { pending.current = null; pendingPromise.current = null; }
+      });
+    pendingPromise.current = promise;
+    return promise;
+  }, [user?.id, user?.tenantId, authLoading, authError]);
+  useEffect(() => {
+    setProducts([]); setHasLoaded(false);
+    void refresh();
+    return () => { pending.current?.abort(); };
+  }, [refresh]);
   useEffect(() => {
     const onChanged = (event: Event) => {
       pending.current?.abort();
       const result = (event as CustomEvent<ProductInterestResponse>).detail;
       if (result) { setProducts(result.data); setEnabled(result.meta.enabled); setError(''); }
-      refresh();
+      void refresh();
     };
     window.addEventListener('product-interests-changed', onChanged);
-    window.addEventListener('focus', refresh);
-    return () => { window.removeEventListener('product-interests-changed', onChanged); window.removeEventListener('focus', refresh); };
+    const onFocus = () => { void refresh(); };
+    window.addEventListener('focus', onFocus);
+    return () => { window.removeEventListener('product-interests-changed', onChanged); window.removeEventListener('focus', onFocus); };
   }, [refresh]);
-  return { products, enabled, loading, error, refresh };
+  return { products, enabled, loading, error, refresh, hasLoaded };
 }

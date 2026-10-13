@@ -77,7 +77,7 @@ export function ClientTable({ data, viewMode, onEdit, onView, organizations, onE
                     <div className="text-[11px] text-slate-400">{org.size || 'N/A'}</div>
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
-                    {[org.city, org.province, org.country].filter(Boolean).join(', ') || org.address || '-'}
+                    {org.address || '-'}
                   </td>
                   <td className="px-4 py-3 text-xs text-slate-600 dark:text-slate-400">
                     <span className="font-medium text-slate-800 dark:text-slate-200">{orgLeads.length} Leads</span>

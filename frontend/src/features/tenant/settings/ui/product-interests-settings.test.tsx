@@ -54,16 +54,19 @@ it('pins Others after all sorted products, including descending order', async ()
   fireEvent.click(screen.getByRole('columnheader', { name: 'Deal Value' })); expect(last()).toContain('Others');
 });
 
-it('replaces rows with the Leads spinner and hides pagination during a deduplicated refresh', async () => {
+it('retains rows and pagination with the existing spinner during a deduplicated refresh', async () => {
   render(<ProductsPage />); await screen.findByRole('grid');
+  await waitFor(() => expect((screen.getByLabelText('Refresh products') as HTMLButtonElement).disabled).toBe(false));
   let finish!: (value: any) => void;
   vi.mocked(apiClient.get).mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
   const calls = vi.mocked(apiClient.get).mock.calls.length;
   fireEvent.click(screen.getByLabelText('Refresh products')); fireEvent.click(screen.getByLabelText('Refresh products'));
-  expect(screen.queryByRole('grid')).toBeNull(); expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
-  expect(screen.getByText('Loading products').querySelector('.animate-spin')).toBeTruthy(); expect(document.querySelector('.animate-pulse')).toBeNull();
+  expect(screen.getByRole('grid')).toBeTruthy(); expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Refreshing data...' }).querySelector('.animate-spin')).toBeTruthy(); expect(document.querySelector('.animate-pulse')).toBeNull();
   expect(apiClient.get).toHaveBeenCalledTimes(calls + 1);
-  finish({ data: [product], meta: { enabled: true } }); await screen.findByRole('grid'); expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
+  finish({ data: [product], meta: { enabled: true } });
+  await waitFor(() => expect(screen.queryByRole('status', { name: 'Refreshing data...' })).toBeNull());
+  expect(screen.getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
 });
 it('can enable the existing product field from Products after removing its Custom Fields card', async () => {
   vi.mocked(apiClient.get).mockResolvedValueOnce({ data: [], meta: { enabled: false } });

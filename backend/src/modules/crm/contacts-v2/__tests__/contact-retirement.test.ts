@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { RETIRED_CONTACT_FIELDS, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, normalizeWorkflowReferences, retiredContactReferences, campaignFields, campaignFieldsForSource, campaignApprovedVariableKeys } from '@leadcrm/shared';
+import { RETIRED_CONTACT_FIELDS, defaultFieldLayout, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, normalizeWorkflowReferences, retiredContactReferences, campaignFields, campaignFieldsForSource, campaignApprovedVariableKeys } from '@leadcrm/shared';
 import { CreateClientContactSchema, UpdateClientContactSchema } from '../contacts-v2.dto';
 import { validateWorkflowConditions } from '../../../automation/workflows/workflow-validation';
 
@@ -29,4 +29,11 @@ it('retains historical selectors unchanged and blocks Contact activation before 
   expect(retiredContactReferences({ field: 'account.activeProducts', body: 'contact.score', config: { field: 'customFieldValues.score' } }, 'account')).toEqual([]);
   expect(retiredContactReferences({ field: 'event.changedFields', value: 'activeProducts' }, 'contact')).toEqual(['activeProducts']);
   expect(retiredContactReferences({ field: 'event.changedFields', value: 'score' }, 'lead')).toEqual([]);
+});
+it('uses the requested Contact sections while preserving historical custom-field group identity', () => {
+  expect(defaultFieldLayout('contacts').groups.map(group => group.label)).toEqual(['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent']);
+  const definitions = ['Status & Classification', 'Relationships'].map((group, index) => ({ id: `historic-${index}`, name: `Preserved ${index}`, type: 'Text', module: 'contacts', group, active: true, visibleInForm: true, visibleInDetails: true, order: 0 }));
+  const fields = getCrmFieldCatalog('contacts', definitions as never);
+  expect(fields.find(field => field.customFieldId === 'historic-0')).toMatchObject({ groupId: 'contacts:section:1', group: 'Status & Interest' });
+  expect(fields.find(field => field.customFieldId === 'historic-1')).toMatchObject({ groupId: 'contacts:section:2', group: 'Organization' });
 });

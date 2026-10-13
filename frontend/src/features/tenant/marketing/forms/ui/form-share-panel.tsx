@@ -44,7 +44,7 @@ export function FormSharePanel({ form, dirty, shareLink, embedCode }: { form: Fo
       <div className="flex items-center justify-between gap-2"><h2 className="min-w-0 font-semibold">Submission History</h2><RefreshButton label="Refresh submissions" refreshing={busy} onClick={() => load(1)} /></div>
       {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <div className="relative min-w-0" aria-busy={busy}>
-      {busy && <div className={history.length ? 'absolute inset-0 z-10 flex items-center justify-center overflow-hidden rounded bg-background/90' : ''}><DataLoadingSpinner label="Loading submissions" hideLabel /></div>}
+      {busy && <DataLoadingSpinner label="Loading submissions" hideLabel className={history.length ? 'pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3' : undefined} />}
       {!!page && !busy && !error && !history.length && <p className="text-sm text-slate-500">No submissions yet.</p>}
       <div className="space-y-3">{history.map(s => <details key={s.id} className="min-w-0 border rounded p-3 text-sm"><summary className="cursor-pointer [overflow-wrap:anywhere]">{formatDateTime(s.submittedAt)} · Version {s.publishedVersion} · {s.contactId ? 'Contact' : 'Lead'}</summary>
         <dl className="mt-3 space-y-2">{s.publishedConfig.fields.filter(f => f.id in s.values).map(f => <div key={f.id}><dt className="font-semibold [overflow-wrap:anywhere]">{f.label}</dt><dd className="whitespace-pre-wrap [overflow-wrap:anywhere]">{f.mapToField === 'productInterest'

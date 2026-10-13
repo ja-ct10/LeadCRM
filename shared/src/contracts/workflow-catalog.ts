@@ -45,7 +45,7 @@ export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: Cl
     { field: 'contactIds', label: 'Contacts', type: 'contacts' }, { field: 'leadIds', label: 'Leads', type: 'leads' },
   ];
   else if (entity === 'account') standard = [text('name', 'Account Name', true, 255), choice('industry', 'Industry', COMPANY_INDUSTRIES),
-    choice('size', 'Size', COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Street Address'), text('city', 'City'), text('province', 'Province'), text('country', 'Country'), assignment, product,
+    choice('size', 'Size', COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'), assignment, product,
     { ...text('notes', 'Notes'), multiline: true },
     // These remain editable in Account Edit; retain their supported automation contract.
     { ...text('internalNotes', 'Internal Notes'), multiline: true }, { field: 'activeProductIds', label: 'Active Products', type: 'products' },

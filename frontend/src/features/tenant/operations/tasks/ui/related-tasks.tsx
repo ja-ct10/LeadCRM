@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { TaskListQuery, TaskRecord } from "@leadcrm/shared";
 import { TASK_STATUS_LABELS, isTaskOverdue } from "@leadcrm/shared";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { Button } from "@/shared/components/ui/button";
 import { RefreshButton } from "@/shared/components/crm/refresh-button";
-import { DataLoadingSkeleton } from "@/shared/components/crm/data-view-states";
+import { DataLoadingSkeleton, DataLoadingSpinner } from "@/shared/components/crm/data-view-states";
 import { useTasks } from "../use-tasks";
 import { TaskEditor, type TaskLinks } from "./task-editor";
 
@@ -19,8 +19,6 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
     Object.entries(links).filter(([, value]) => !!value),
   ) as TaskListQuery;
   const data = useTasks({ ...query, page, limit: 10 }, true);
-  const refreshing = useRef(false);
-  useEffect(() => { if (!data.loading) refreshing.current = false; }, [data.loading]);
   const key = JSON.stringify(links) + data.identity;
   useEffect(() => {
     onCountChange?.(data.canRead && !data.loading && !data.error ? data.summary?.total : undefined);
@@ -48,7 +46,7 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
             : "Tasks"}
         </span>
         <div className="flex gap-2">
-          <RefreshButton label="Refresh tasks" refreshing={data.loading} onClick={() => { if (refreshing.current || data.loading) return; refreshing.current = true; data.refresh(); }} />
+          <RefreshButton label="Refresh tasks" refreshing={data.loading || data.refreshing} onClick={data.refresh} />
           {allowCreate && !readOnly && !!(links.dealId || links.dealIds?.length) && canCreate && (
             <Button
               size="sm"
@@ -71,7 +69,8 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
           No tasks linked to this record.
         </p>
       )}
-      <div className="divide-y divide-border">
+      <div className="relative divide-y divide-border" aria-busy={data.refreshing}>
+        {data.refreshing && <DataLoadingSpinner label="Refreshing tasks..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
         {data.tasks.map((task) => (
           <button
             key={task.id}

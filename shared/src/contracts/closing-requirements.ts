@@ -9,7 +9,7 @@ export const CLOSED_WON_GROUP = 'Closed Won Requirements';
 export const CLOSED_WON_GROUP_ID = 'deals:closing-evidence';
 export const CUSTOM_FIELD_BUILT_IN_GROUPS: Record<CustomFieldModule, readonly string[]> = {
   leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent'],
-  contacts: ['Basic Information', 'Status & Classification', 'Relationships', 'Additional Information', 'Assigned Agent'],
+  contacts: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent'],
   accounts: ['Basic Information', 'Address', 'Assigned Agent', 'Products & Interests', 'Notes'],
   deals: ['Deal Information', 'Relationships', 'Additional Details', CLOSED_WON_GROUP, 'Assigned Agent'],
 };

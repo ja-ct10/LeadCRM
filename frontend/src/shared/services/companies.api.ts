@@ -11,9 +11,6 @@ export interface Company {
   website?: string;
   tags: string[];
   address?: string;
-  city?: string;
-  province?: string;
-  country: string;
   isArchived: boolean;
   assignedUserId?: string;
   assignedUser?: { id: string; firstName: string; lastName: string };

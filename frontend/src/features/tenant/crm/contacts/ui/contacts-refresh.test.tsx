@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
+import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import ContactsPage from './contacts-page';
 
 const mocks = vi.hoisted(() => ({ list: vi.fn(), toast: vi.fn(), persist: vi.fn(), updateParams: vi.fn() }));
@@ -19,10 +20,11 @@ vi.mock('@/shared/hooks/use-table-preferences', () => ({ useTablePreferences: ()
 vi.mock('@/shared/hooks/use-filter-url-sync', () => ({ useFilterUrlSync: () => ({ getParam: () => '', getArrayParam: () => [], updateParams: mocks.updateParams }) }));
 vi.mock('@/shared/components/crm', () => ({
   ContactPanel: () => null, StatusBadge: () => null,
-  ModuleWorkspace: ({ loading, loadingLabel, onRefresh, refreshDisabled, searchTerm, onSearch, totalRecords, children }: any) => <div>
+  ModuleWorkspace: ({ loading, loadingLabel, refreshing, onRefresh, refreshDisabled, searchTerm, onSearch, totalRecords, children }: any) => <div>
     <h1>Contacts</h1><input aria-label="Search contacts" value={searchTerm} onChange={event => onSearch(event.target.value)} />
     <output aria-label="Contact count">{totalRecords}</output>
     <RefreshButton onClick={onRefresh} disabled={refreshDisabled} />
+    {refreshing && <DataLoadingSpinner label="Refreshing data..." />}
     {loading ? <TableLoadingState label={loadingLabel} /> : children}
   </div>,
 }));
@@ -47,11 +49,11 @@ it.each(['success', 'failure'])('keeps rows, page structure and search during ma
   let resolve!: (value: unknown) => void, reject!: (error: Error) => void;
   mocks.list.mockReturnValueOnce(new Promise((yes, no) => { resolve = yes; reject = no; }));
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
-  expect(await screen.findByText('Loading contacts...')).toBeTruthy();
+  expect(await screen.findByRole('status', { name: 'Refreshing data...' })).toBeTruthy();
   expect(screen.getByTestId('contacts').textContent).toBe('Original');
   expect(screen.getByTestId('contacts')).toBe(originalTable);
   expect(screen.getByLabelText('Contact count').textContent).toBe('1');
-  expect(originalTable.closest('[hidden]')).not.toBeNull();
+  expect(originalTable.closest('[hidden]')).toBeNull();
   expect(screen.getByRole('heading', { name: 'Contacts' })).toBeTruthy();
   expect((screen.getByLabelText('Search contacts') as HTMLInputElement).value).toBe('Contact');
   expect((screen.getByRole('button', { name: 'Refresh' }) as HTMLButtonElement).disabled).toBe(true);
@@ -59,7 +61,7 @@ it.each(['success', 'failure'])('keeps rows, page structure and search during ma
   expect(mocks.list).toHaveBeenCalledTimes(3);
   expect(mocks.list.mock.lastCall?.[0]).toEqual(expect.objectContaining({ page: 1, limit: 25, search: 'Contact', filters: [] }));
   await act(async () => { if (outcome === 'success') resolve(response('Updated', 3)); else reject(new Error('Refresh unavailable')); });
-  await waitFor(() => expect(screen.queryByText('Loading contacts...')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('status', { name: 'Refreshing data...' })).toBeNull());
   expect(screen.getByTestId('contacts').textContent).toBe(outcome === 'success' ? 'Updated' : 'Original');
   expect(screen.getByTestId('contacts')).toBe(originalTable);
   expect(originalTable.closest('[hidden]')).toBeNull();

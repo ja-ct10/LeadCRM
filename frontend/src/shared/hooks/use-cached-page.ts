@@ -30,19 +30,23 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
   const latest = useRef({ key, fetchFn, scopedParams });
   latest.current = { key, fetchFn, scopedParams };
   const activeRequest = useRef<AbortController | null>(null);
+  const pending = useRef<{ key: string; valid: () => boolean; promise: Promise<void> } | null>(null);
   const mounted = useRef(false);
 
-  const refetch = useCallback(async () => {
-    if (!enabled || !mounted.current || latest.current.key !== key) return;
+  const refetch = useCallback((): Promise<void> => {
+    if (!enabled || !mounted.current || latest.current.key !== key) return Promise.resolve();
+    // Manual and background readers await the same current request. Invalidation
+    // makes its guard obsolete, so a post-mutation read still supersedes it.
+    if (pending.current?.key === key && pending.current.valid() && !activeRequest.current?.signal.aborted) return pending.current.promise;
     activeRequest.current?.abort();
     const controller = new AbortController();
     activeRequest.current = controller;
     const validCache = createPageCacheGuard(module);
     const request = latest.current;
-    const current = () => !controller.signal.aborted && latest.current.key === key && validCache();
+    const current = () => mounted.current && !controller.signal.aborted && latest.current.key === key && validCache();
     const initial = getPageCache<T>(module, tenantId, request.scopedParams);
     setState((prev) => ({ key, data: prev.key === key ? prev.data : initial?.data, fetching: true, error: null }));
-    try {
+    const run = async () => { try {
       const data = await requestPageCache(module, tenantId, request.scopedParams, request.fetchFn, controller.signal);
       if (!current()) return;
       setPageCache(module, tenantId, request.scopedParams, data);
@@ -52,7 +56,7 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
       const unavailable = status === 401 || status === 403 || status === 404;
       // Every shared reader must clear an authoritative denial. The first reader's
       // eviction invalidates guards belonging to the other readers of this request.
-      if (controller.signal.aborted || latest.current.key !== key || (!unavailable && !validCache())) return;
+      if (!mounted.current || controller.signal.aborted || latest.current.key !== key || (!unavailable && !validCache())) return;
       if (unavailable) invalidatePageCache(module, tenantId, false);
       setState((prev) => ({
         ...prev,
@@ -63,11 +67,14 @@ export function useCachedPage<T>({ module, params, fetchFn, intervalMs, pauseWhe
         errorStatus: status,
       }));
     } finally {
-      if (activeRequest.current === controller) activeRequest.current = null;
-      if (!controller.signal.aborted && latest.current.key === key) {
+      if (activeRequest.current === controller) { activeRequest.current = null; pending.current = null; }
+      if (mounted.current && !controller.signal.aborted && latest.current.key === key) {
         setState((prev) => prev.key === key ? { ...prev, fetching: false } : prev);
       }
-    }
+    } };
+    const promise = run();
+    pending.current = { key, valid: validCache, promise };
+    return promise;
   }, [key, enabled, module, tenantId]);
 
   useEffect(() => {

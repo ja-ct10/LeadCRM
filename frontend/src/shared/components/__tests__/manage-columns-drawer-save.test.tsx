@@ -12,9 +12,20 @@ import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-libra
 import React from 'react';
 import { ManageColumnsDrawer } from '../manage-columns-drawer';
 import type { ColumnDefinition, ColumnConfigItem } from '@leadcrm/shared';
-import { LEADS_TABLE_COLUMNS } from '@leadcrm/shared';
+import { LEADS_TABLE_COLUMNS, ACCOUNTS_TABLE_COLUMNS, reconcileTableColumns } from '@leadcrm/shared';
 
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined }) }));
+
+it('offers Full Address and excludes removed Account columns after saved preference reconciliation', async () => {
+  const columns = reconcileTableColumns('accounts', [{ id: 'name', visible: true, order: 0 }, { id: 'city', visible: true, order: 1, width: 245 }, { id: 'internalNotes', visible: true, order: 2 }, { id: 'activeProductIds', visible: true, order: 3 }], ACCOUNTS_TABLE_COLUMNS);
+  const save = vi.fn().mockResolvedValue(undefined);
+  renderDrawer({ module: 'accounts', registry: ACCOUNTS_TABLE_COLUMNS, effectiveColumns: columns, onSave: save });
+  for (const label of ['Active Products', 'Internal Notes', 'City', 'Province', 'Country']) expect(screen.queryByText(label)).toBeNull();
+  fireEvent.click(screen.getByRole('switch', { name: 'Toggle Full Address visibility' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0].find((column: ColumnConfigItem) => column.id === 'address')).toMatchObject({ visible: false, width: 245 });
+});
 
 it('confirms both name switches in the draft, cancels without changes, and saves through the existing action', async () => {
   const save = vi.fn().mockResolvedValue(undefined);

@@ -8,7 +8,7 @@ const ContactFields = ContactCreationIdentitySchema.extend({
   firstName: recordName(), lastName: recordName(),
   email: CrmEmailSchema,
   phone: recordText(100).optional(), company: recordText().optional(),
-  address: recordText().optional(), jobTitle: recordText().optional(),
+  address: recordText().optional(),
   source: recordText().optional(), notes: recordText(10000).optional(),
   status: CrmStatusSchema.default('Warm'),
   accountId: z.string().uuid().nullable().optional(),

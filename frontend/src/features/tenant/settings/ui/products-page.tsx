@@ -97,7 +97,7 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <div className="relative min-h-40 min-w-0 max-w-full" aria-busy={loading}>
           <DataGrid columns={columns} data={deals} getRowId={row => row.id} height="auto" viewMode="wrap" enableColumnMenu={false} ariaLabel="Closed Won table" emptyMessage={loading || error ? '' : 'No Closed Won records found.'} />
-          {loading && <div className="absolute inset-0 flex items-center justify-center rounded-xl bg-background/90"><DataLoadingSpinner label="Loading Closed Won" hideLabel /></div>}
+          {loading && <DataLoadingSpinner label="Loading Closed Won" hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
         </div>
         <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={total ?? 0} disabled={loading} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
       </>}
@@ -106,7 +106,7 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
 }
 
 export function ProductsPage() {
-  const { products, loading, error, refresh, enabled } = useProductInterests();
+  const { products, loading, error, refresh, enabled, hasLoaded } = useProductInterests();
   const canEdit = useHasPermission('products.edit'), canCreate = useHasPermission('products.create'), canArchive = useHasPermission('products.archive');
   const { user } = useAuth();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -170,12 +170,12 @@ export function ProductsPage() {
     <div data-selection-toolbar role="toolbar" aria-label="Products controls" className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!enabled && <div className="space-y-2"><p className="text-sm text-muted-foreground">Enable Product Interest to add products.</p>{canCreate && <Button variant="outline" disabled={busy} onClick={() => void enableProducts()}>Enable Product Interest</Button>}</div>}
-    {loading ? <TableLoadingState label="Loading products" /> : <DataGrid columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canArchive} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
+    {loading && !hasLoaded && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid isRefreshing={loading} columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canArchive} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}
       rowActions={product => [{ id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => setPanel({ mode: 'view', product }) }, ...((canEdit || canArchive) ? [
         { id: 'edit', label: 'Edit', icon: <Edit size={14} />, disabled: busy || !canEdit, onClick: () => setPanel({ mode: 'edit', product }) },
         { id: 'archive', label: 'Archive', icon: <Archive size={14} />, separator: true, disabled: busy || !canArchive, onClick: () => setArchiveIds([product.id]) },
       ] : [])]} />}
-    <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} loading={loading} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
+    <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} loading={loading && !hasLoaded} refreshing={loading && hasLoaded} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
     <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canArchive && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} eyebrow={panel?.mode === 'view' ? 'Product Record' : undefined} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'}>
       <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-6 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} initialProduct={panel.product!} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>

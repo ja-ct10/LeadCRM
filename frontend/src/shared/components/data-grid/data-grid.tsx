@@ -1,4 +1,4 @@
-﻿/**
+/**
  * DataGrid — A modern, reusable data-grid component for LeadCRM.
  *
  * Features:
@@ -44,6 +44,7 @@
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
+import { DataLoadingSpinner, TableRefreshContext } from '@/shared/components/crm/data-view-states';
 import { SearchX, Inbox, Plus, EyeOff } from 'lucide-react';
 import { useColumnResize } from './use-column-resize';
 import { useDataGridSort } from './use-data-grid-sort';
@@ -116,6 +117,7 @@ interface DataGridRowProps<T> {
   scrollableColumns: DataGridColumnDef<T>[];
   pinnedRightColumns: DataGridColumnDef<T>[];
   pinnedLeftOffsets: Record<string, number>;
+  pinnedRightOffsets: Record<string, number>;
   isScrolled: boolean;
   viewMode: 'wrap' | 'clip';
   rowHeight: number;
@@ -142,6 +144,7 @@ function DataGridRowInner<T>({
   scrollableColumns,
   pinnedRightColumns,
   pinnedLeftOffsets,
+  pinnedRightOffsets,
   isScrolled,
   viewMode,
   rowHeight,
@@ -161,19 +164,18 @@ function DataGridRowInner<T>({
   // Auto-scroll highlighted row into view on mount
   React.useEffect(() => {
     if (!highlighted || !rowRef.current) return;
-    rowRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    // Fade out the highlight after 2.5 s by triggering a re-render via the parent
-    // (the parent controls `highlightRowId` and can clear it if desired; we don't
-    // self-clear here to keep this component pure)
-  }, [highlighted]);
+    rowRef.current.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'center', inline: 'nearest' });
+  }, [highlighted, rowIdx]);
 
   return (
     <tr
       ref={rowRef}
+      data-row-id={rowId}
+      data-search-highlight={highlighted || undefined}
       className={cn(
         'transition-colors duration-100 cursor-pointer group/row border-b border-[#eef0f3] dark:border-slate-800',
         highlighted
-          ? 'ring-2 ring-inset ring-primary dark:ring-primary bg-blue-50/70 dark:bg-primary/15 animate-pulse-once'
+          ? 'bg-blue-50 dark:bg-primary/15'
           : selected
             ? 'bg-blue-50 dark:bg-primary/10'
             : 'hover:bg-[#f7f8fa] dark:hover:bg-slate-800/50',
@@ -190,7 +192,7 @@ function DataGridRowInner<T>({
       {hasRowActions && rowActions && (
         <td
           className={cn(
-            'sticky left-0 z-10 px-1 text-center border-r border-[#eef0f3] dark:border-slate-800',
+            'grid-pinned-cell sticky left-0 z-10 px-1 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
               ? 'bg-blue-50/60 dark:bg-primary/5'
               : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
@@ -207,7 +209,7 @@ function DataGridRowInner<T>({
       {selectable && (
         <td
           className={cn(
-            'sticky z-10 px-3 text-center border-r border-[#eef0f3] dark:border-slate-800',
+            'grid-pinned-cell sticky z-10 px-3 text-center border-r border-[#eef0f3] dark:border-slate-800',
             selected
               ? 'bg-blue-50/60 dark:bg-primary/5'
               : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
@@ -239,7 +241,7 @@ function DataGridRowInner<T>({
           <td
             key={col.id}
             className={cn(
-              'sticky z-10 px-3 border-r border-[#eef0f3] dark:border-slate-800',
+              'grid-pinned-cell sticky z-10 px-3 border-r border-[#eef0f3] dark:border-slate-800',
               selected
                 ? 'bg-blue-50/60 dark:bg-primary/5'
                 : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
@@ -312,7 +314,7 @@ function DataGridRowInner<T>({
           <td
             key={col.id}
             className={cn(
-              'sticky right-0 z-10 px-3',
+              'grid-pinned-cell sticky z-10 px-3',
               selected
                 ? 'bg-blue-50/60 dark:bg-primary/5'
                 : 'bg-white dark:bg-slate-900 group-hover/row:bg-[#f7f8fa] dark:group-hover/row:bg-slate-800/50',
@@ -322,6 +324,7 @@ function DataGridRowInner<T>({
               'text-[13px] text-[#0F172A] dark:text-slate-200',
               viewMode === 'wrap' && 'py-2',
             )}
+            style={{ right: pinnedRightOffsets[col.id] }}
           >
             {shouldShowTooltip ? (
               <TruncatedCellTooltip
@@ -447,7 +450,10 @@ export function DataGrid<T = Record<string, unknown>>({
   emptyState,
   hiddenColumnsCount,
   highlightRowId,
+  isRefreshing = false,
 }: DataGridProps<T>): React.ReactElement {
+  const workspaceRefreshing = React.useContext(TableRefreshContext);
+  const refreshing = isRefreshing || workspaceRefreshing;
   const [internalSort, setInternalSort] = useState<import('./types').SortState | null>(null);
   const sort = controlledSort === undefined ? internalSort : controlledSort;
   const changeSort = onSortChange ?? setInternalSort;
@@ -542,6 +548,16 @@ export function DataGrid<T = Record<string, unknown>>({
     }
     return offsets;
   }, [pinnedLeftColumns, getColumnWidth, selectable, rowActions]);
+
+  const pinnedRightOffsets = useMemo(() => {
+    const offsets: Record<string, number> = {};
+    let offset = 0;
+    for (const col of [...pinnedRightColumns].reverse()) {
+      offsets[col.id] = offset;
+      offset += getColumnWidth(col);
+    }
+    return offsets;
+  }, [pinnedRightColumns, getColumnWidth]);
 
   // Total pinned left width (for shadow boundary)
   const totalPinnedLeftWidth = useMemo(() => {
@@ -729,11 +745,13 @@ export function DataGrid<T = Record<string, unknown>>({
   // ─── Render ────────────────────────────────────────────────────────────
   return (
     <div
-      className="bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden flex flex-col"
+      className="relative bg-white dark:bg-slate-800/40 border border-[#E4E9F0] dark:border-slate-700 rounded-xl overflow-hidden flex flex-col"
       style={containerStyle}
       role="region"
       aria-label={ariaLabel}
+      aria-busy={refreshing}
     >
+      {refreshing && <DataLoadingSpinner label="Refreshing data..." hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-40 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
       {/* Scroll container — two-axis overflow */}
       <div
         ref={scrollRef}
@@ -780,7 +798,7 @@ export function DataGrid<T = Record<string, unknown>>({
               {rowActions && (
                 <th
                   scope="col"
-                  className="sticky left-0 z-30 bg-white dark:bg-slate-900"
+                  className="grid-pinned-cell sticky left-0 z-30 bg-white dark:bg-slate-900"
                 />
               )}
 
@@ -789,7 +807,7 @@ export function DataGrid<T = Record<string, unknown>>({
                 <th
                   scope="col"
                   className={cn(
-                    'sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
+                    'grid-pinned-cell sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
                     'px-3 text-center',
                     // If no pinned left columns, checkbox is the last pinned element
                     pinnedLeftColumns.length === 0 && isScrolled
@@ -821,7 +839,7 @@ export function DataGrid<T = Record<string, unknown>>({
                   aria-label={col.header}
                   scope="col"
                   className={cn(
-                    'sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
+                    'grid-pinned-cell sticky z-30 bg-white dark:bg-slate-900 border-r border-[#eef0f3] dark:border-slate-800',
                     'px-3 text-left group/header',
                     'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
                     // Last pinned column shows inset shadow when scrolled, subtle border otherwise
@@ -895,11 +913,12 @@ export function DataGrid<T = Record<string, unknown>>({
                     aria-label={col.header}
                     scope="col"
                     className={cn(
-                      'sticky right-0 z-30 bg-white dark:bg-slate-900',
+                      'grid-pinned-cell sticky z-30 bg-white dark:bg-slate-900',
                       'px-3 text-left group/header',
                       'text-[12px] font-medium text-[#8899a6] dark:text-slate-500',
                       'shadow-[inset_1px_0_0_0_#eef0f3] dark:shadow-[inset_1px_0_0_0_rgba(255,255,255,0.06)]',
                     )}
+                    style={{ right: pinnedRightOffsets[col.id] }}
                     aria-sort={
                       sortDir === 'asc' ? 'ascending' :
                       sortDir === 'desc' ? 'descending' : undefined
@@ -968,6 +987,8 @@ export function DataGrid<T = Record<string, unknown>>({
                 <td
                   colSpan={columns.length + (selectable ? 1 : 0) + (hasQuickActions ? 1 : 0)}
                   className="py-16 text-center"
+                  style={{ visibility: refreshing ? 'hidden' : undefined }}
+                  aria-hidden={refreshing || undefined}
                 >
                   {emptyState?.variant === 'filtered' ? (
                     <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -1055,6 +1076,7 @@ export function DataGrid<T = Record<string, unknown>>({
                   scrollableColumns={scrollableColumns}
                   pinnedRightColumns={pinnedRightColumns}
                   pinnedLeftOffsets={pinnedLeftOffsets}
+                  pinnedRightOffsets={pinnedRightOffsets}
                   isScrolled={isScrolled}
                   viewMode={viewMode}
                   rowHeight={rowHeight}
