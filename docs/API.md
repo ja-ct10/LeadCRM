@@ -16,6 +16,12 @@ use `MailboxThreadAssociation`; generic mailbox-thread preferences are retired.
 Column retirement uses `db:relations:retire` only after exact-release verification.
 
 ## Base URL
+
+The frontend public `GET /api/release` returns only `{ status, commit, env }`
+from runtime `SOURCE_COMMIT` with caching disabled. Together with backend
+`GET /api/v1/health` and frontend `/api/proxy/health`, it identifies the exact
+serving revisions. See [coordinated releases](setup/ci-coolify-release.md).
+
 ```
 http://localhost:4000/api/v1
 ```

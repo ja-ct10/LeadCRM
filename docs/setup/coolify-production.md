@@ -3,6 +3,11 @@
 Both applications build from the repository root and deploy the same reviewed
 full Git SHA. Keep the root workspace lockfile and npm 11.19.1.
 
+Use [verified GitHub CI and coordinated Coolify releases](ci-coolify-release.md)
+for the protected-PR release gate, production environment setup, backup policy,
+exact SHA pinning and backend-before-frontend webhooks. The database runs
+independently; application commits do not redeploy it.
+
 Docker alternatives are `infrastructure/docker/Dockerfile.frontend` and
 `infrastructure/docker/Dockerfile.backend`, both with repository-root context.
 Supply frontend API_URL as build argument and runtime variable. Standalone

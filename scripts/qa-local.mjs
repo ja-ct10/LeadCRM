@@ -164,6 +164,7 @@ async function execute(section) {
     await importHistory();
   } else if (section === 'unit') {
     await check('QA isolation regression tests', ['--test', 'scripts/qa-safety.test.cjs']);
+    await check('Coolify release orchestration regressions', ['--test', 'scripts/deploy-coolify.test.mjs']);
     try { await vitest('backend unit tests', 'backend', ['--exclude=**/*.integration.test.ts']); }
     catch (error) { recordFailure('backend unit tests', error); }
     await vitest('frontend tests', 'frontend', ['--testTimeout=20000']);

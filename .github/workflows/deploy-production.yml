@@ -1,0 +1,60 @@
+name: Deploy verified main to Coolify
+
+on:
+  workflow_run:
+    workflows: [CI — Local acceptance and container compatibility]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+  actions: read
+
+concurrency:
+  group: leadcrm-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.head_repository.id == github.repository_id &&
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      github.repository == 'reymarkjpanes/LeadCRM'
+    name: Backend then frontend — verified SHA
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    environment: production
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+          package-manager-cache: false
+      - name: Coordinate source builds and verify serving revisions
+        run: node scripts/deploy-coolify.mjs
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COOLIFY_CONFIG_TOKEN: ${{ secrets.COOLIFY_CONFIG_TOKEN }}
+          COOLIFY_DEPLOY_TOKEN: ${{ secrets.COOLIFY_DEPLOY_TOKEN }}
+          COOLIFY_URL: ${{ vars.COOLIFY_URL }}
+          COOLIFY_BACKEND_UUID: ${{ vars.COOLIFY_BACKEND_UUID }}
+          COOLIFY_FRONTEND_UUID: ${{ vars.COOLIFY_FRONTEND_UUID }}
+          COOLIFY_DATABASE_UUID: ${{ vars.COOLIFY_DATABASE_UUID }}
+          COOLIFY_BACKUP_UUID: ${{ vars.COOLIFY_BACKUP_UUID }}
+          COOLIFY_BACKUP_TIMEOUT_SECONDS: ${{ vars.COOLIFY_BACKUP_TIMEOUT_SECONDS }}
+          RELEASE_API_URL: ${{ vars.RELEASE_API_URL }}
+          RELEASE_FRONTEND_URL: ${{ vars.RELEASE_FRONTEND_URL }}
+      - name: Preserve release outcome without credentials or backup data
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
+        with:
+          name: coolify-release-${{ github.event.workflow_run.head_sha }}
+          path: coolify-release.json
+          if-no-files-found: error
