@@ -117,6 +117,9 @@ function deploymentPlan(records, localNames) {
     contactJobTitleRetirement,
     accountAddressExpansion,
     accountAddressRetirement,
+    // Corrects untouched seeded requirement flags only; preserves admin choices
+    // and closing evidence without depending on any column retirement.
+    '20261203000000_optional_closed_won_defaults',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
