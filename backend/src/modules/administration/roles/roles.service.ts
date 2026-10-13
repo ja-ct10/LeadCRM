@@ -1,10 +1,8 @@
-import { PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS, type ResolvedPermissions } from '@leadcrm/shared';
+import type { ResolvedPermissions } from '@leadcrm/shared';
 import * as repo from './roles.repository';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ForbiddenError, ConflictError } from '../../../shared/errors/http-error';
-import { isSuperRole as checkIsSuperRole } from '../../../shared/utils/is-super-role';
 import type { CreateRoleDto, UpdateRoleDto } from './roles.dto';
-import prisma from '../../../config/database.config';
 import { Prisma } from '@prisma/client';
 
 // Reserved names that cannot be used for custom roles (case-insensitive).
@@ -146,13 +144,5 @@ export async function getUserPermissions(
   userId: string,
   tenantId: string,
 ): Promise<ResolvedPermissions> {
-
-
-  const target = await prisma.user.findFirst({ where: { id: userId, tenantId }, select: { role: true } });
-  if (!target) throw new NotFoundError('User');
-  if (checkIsSuperRole(target.role)) {
-    return Object.fromEntries(PERMISSION_MODULES.map(m => [m.key, { ...EMPTY_PERMISSION_FLAGS, ...Object.fromEntries(m.actions.map(action => [action, true])) }]));
-  }
-
   return repo.findUserEffectivePermissions(userId, tenantId);
 }

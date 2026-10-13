@@ -38,6 +38,8 @@ import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { LEADS_MODULE_CONFIG } from '../leads.config';
 import { toast } from 'sonner';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
+import { ActionableEmptyState } from '@/shared/components/actionable-empty-state';
+import { Target } from 'lucide-react';
 
 // ── Leads Page ────────────────────────────────────────────────────────────────
 
@@ -189,6 +191,7 @@ export default function LeadsPage(): React.ReactElement {
   // Total record count from server metadata (falls back to current page
   // length while metadata is still loading on first render)
   const serverTotal = leadsMeta?.total ?? leads.length;
+  const showNoMatches = Boolean(debouncedSearch.trim() || serverFilters.length || highlightId || serverTotal > 0);
 
   // Sync to URL
   useEffect(() => {
@@ -437,7 +440,19 @@ export default function LeadsPage(): React.ReactElement {
           />
         )}
 
-        {!(leadsError && leads.length === 0) && (
+        {!isLeadsInitialLoad && !isColumnsLoading && !leadsError && leads.length === 0 && (
+          <ActionableEmptyState
+            icon={Target}
+            title={showNoMatches ? 'No matching records' : 'No leads yet'}
+            description={showNoMatches
+              ? 'Try a different search term or clear your filters.'
+              : 'Add your first lead to start tracking potential customers.'}
+            actionLabel={!showNoMatches && canCreate ? 'Add Lead' : undefined}
+            onAction={!showNoMatches && canCreate ? handleCreate : undefined}
+          />
+        )}
+
+        {leads.length > 0 && (
           <LeadsDataGrid
             sort={sort}
             onSortChange={next => { setSort(next); setCurrentPage(1); }}
@@ -472,7 +487,7 @@ export default function LeadsPage(): React.ReactElement {
         )}
 
         {/* ── Bottom Pagination + Per Page ─────────────────────── */}
-        {!isColumnsLoading && !isLeadsInitialLoad && serverTotal > 0 && (
+        {!isColumnsLoading && !isLeadsInitialLoad && leads.length > 0 && serverTotal > 0 && (
           <LeadsPagination currentPage={currentPage} totalRecords={serverTotal} pageSize={pageSize}
             onPageChange={setCurrentPage} onPageSizeChange={size => { setPageSize(size); setCurrentPage(1); }}
             refreshing={isLeadsRefreshing} />

@@ -54,6 +54,39 @@ async function review(module: CrmImportModule, valid: number, duplicate: number,
 beforeEach(() => { vi.resetAllMocks(); window.history.replaceState(null, '', '/crm/leads/import'); mocks.refresh.mockResolvedValue(undefined); });
 afterEach(cleanup);
 
+it('downloads the Accounts template with exactly six headers', async () => {
+  const create = vi.fn((_blob: Blob) => 'blob:accounts-template');
+  const revoke = vi.fn();
+  const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
+  URL.createObjectURL = create; URL.revokeObjectURL = revoke;
+  const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {});
+  try {
+    render(<ImportPage moduleKey="accounts" />);
+    fireEvent.click(screen.getByRole('button', { name: 'Download CSV template' }));
+    expect(click.mock.instances[0]).toMatchObject({ download: 'account-import-template.csv' });
+    const reader = new FileReader();
+    const content = await new Promise(resolve => { reader.onload = () => resolve(reader.result); reader.readAsText(create.mock.calls[0][0]); });
+    expect(content).toBe('Company Name,Product Interest,Industry,Website,Full Address,Company Size\n');
+    expect(revoke).toHaveBeenCalledWith('blob:accounts-template');
+  } finally { URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; click.mockRestore(); }
+});
+
+it('shows a consolidated legacy Account address without retired mapping destinations', async () => {
+  const csvText = 'Company Name,Full Address,City,Province / State,Country\nLegacy Company,10 Street,Toronto,Ontario,Canada';
+  mocks.post.mockResolvedValue({ data: [] });
+  const view = render(<ImportPage moduleKey="accounts" />);
+  fireEvent.change(view.container.querySelector('input[type=file]')!, { target: { files: [new File([csvText], 'old-template.csv')] } });
+  await screen.findByRole('heading', { name: 'Map your columns' });
+  expect(screen.getAllByRole('combobox')).toHaveLength(6);
+  for (const label of ['City', 'Province / State', 'Country']) expect(screen.queryByRole('combobox', { name: `Map CSV column for ${label}` })).toBeNull();
+  expect(screen.getByText('10 Street, Toronto, Ontario, Canada')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalled());
+  const request = mocks.post.mock.calls[0][1];
+  expect(request.csvText).toBe(csvText);
+  expect(request.mappings).toEqual({ name: 0, address: 1 });
+});
+
 it('invalidates Contact and automatic Deal caches after a completed Contact import', async () => {
   clearPageCache();
   const affected = ['contacts', 'counts-contacts', 'deals', 'counts-deals', 'pipeline', 'activities', 'dashboard', 'reports'];

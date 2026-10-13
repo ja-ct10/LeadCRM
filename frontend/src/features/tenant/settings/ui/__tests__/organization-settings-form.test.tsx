@@ -56,6 +56,17 @@ it('reloads from the API and never offers Edit without permission', async () => 
   expect(mocks.get).toHaveBeenCalledTimes(2);
 });
 
+it('closes an already-open organization edit form after Edit revocation and rejects submission', async () => {
+  const view = render(<OrganizationSettingsForm />); await screen.findByDisplayValue('Original');
+  fireEvent.click(screen.getByText('Edit'));
+  fireEvent.change(name(), { target: { value: 'Revoked unsaved change' } });
+  const form = name().closest('form')!;
+  mocks.canEdit = false; view.rerender(<OrganizationSettingsForm />);
+  expect(name().readOnly).toBe(true); expect(name().value).toBe('Original');
+  expect(screen.queryByText('Edit')).toBeNull(); expect(screen.queryByText('Save Changes')).toBeNull();
+  fireEvent.submit(form); expect(mocks.save).not.toHaveBeenCalled();
+});
+
 it('ignores stale fetches after a tenant change and resets editing', async () => {
   let resolve!: (value: { data: typeof saved }) => void;
   mocks.get.mockReturnValueOnce(new Promise(done => { resolve = done; }));

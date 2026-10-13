@@ -40,6 +40,8 @@ import { useTaskColumns } from "../use-task-columns";
 import { useTasks } from "../use-tasks";
 import { manilaLocalDateTime, manilaTaskDueInstant } from "../task-data";
 import { TaskEditor, TaskSelector } from "./task-editor";
+import { ActionableEmptyState } from "@/shared/components/actionable-empty-state";
+import { ListTodo } from "lucide-react";
 
 type Period = "all" | "overdue" | "today" | "week";
 const periods = [
@@ -375,6 +377,13 @@ export default function TaskBoard() {
       updateFilter({ [group]: filters[group] === value ? undefined : value });
   };
   const total = data.meta?.total ?? 0;
+  const showNoMatches = Boolean(
+    total > 0 || debounced.trim() || period !== "all" ||
+    filters.status || filters.priority || filters.assignedUserId ||
+    filters.leadId || filters.contactId || filters.dealId || filters.accountId ||
+    filters.archived || filters.overdue || filters.dueFrom || filters.dueTo ||
+    (filters.state && filters.state !== "all")
+  );
   if (!data.canRead)
     return (
       <div className="p-8 text-muted-foreground">
@@ -441,40 +450,55 @@ export default function TaskBoard() {
         )}
         {(!data.error || data.tasks.length > 0) && (
           <>
-            <TaskTable
-              tasks={data.tasks}
-              columns={columnPreferences.columns}
-              selected={selected}
-              onSelect={setSelected}
-              onOpen={(task) => setEditor({ task, readOnly: true })}
-              onEdit={(task) => setEditor({ task })}
-              onArchive={(task) => setArchiveIds([task.id])}
-              onStatus={(task) => void change(task)}
-              onSort={next => { setSort({ field: next.sortBy ?? "createdAt", direction: next.sortOrder ?? "desc" }); setPage(1); }}
-              query={query}
-              busy={busy}
-              canEdit={canEdit}
-              canComplete={canComplete}
-              canAssign={canAssign}
-              canArchive={canDelete}
-              totalRecords={total}
-              onManageColumns={openColumns}
-              onColumnWidthChange={(id, width) => {
-                void columnPreferences.saveWidth(id, width).catch(error =>
-                  toast.error(error instanceof Error ? error.message : 'Unable to save column width.'));
-              }}
-            />
-            <LeadsPagination
-              currentPage={page}
-              totalRecords={total}
-              pageSize={limit}
-              onPageChange={setPage}
-              onPageSizeChange={(size) => {
-                setLimit(size);
-                setPage(1);
-              }}
-              disabled={busy || data.loading}
-            />
+            {!data.loading && !columnPreferences.loading && data.tasks.length === 0 && (
+              <ActionableEmptyState
+                icon={ListTodo}
+                title={showNoMatches ? "No matching records" : "No tasks yet"}
+                description={showNoMatches
+                  ? "Try a different search term or clear your filters."
+                  : "Create your first task to start managing follow-ups and activities."}
+                actionLabel={!showNoMatches && canCreate ? "Add Task" : undefined}
+                onAction={!showNoMatches && canCreate ? () => setEditor({}) : undefined}
+              />
+            )}
+            {data.tasks.length > 0 && (
+              <TaskTable
+                tasks={data.tasks}
+                columns={columnPreferences.columns}
+                selected={selected}
+                onSelect={setSelected}
+                onOpen={(task) => setEditor({ task, readOnly: true })}
+                onEdit={(task) => setEditor({ task })}
+                onArchive={(task) => setArchiveIds([task.id])}
+                onStatus={(task) => void change(task)}
+                onSort={next => { setSort({ field: next.sortBy ?? "createdAt", direction: next.sortOrder ?? "desc" }); setPage(1); }}
+                query={query}
+                busy={busy}
+                canEdit={canEdit}
+                canComplete={canComplete}
+                canAssign={canAssign}
+                canArchive={canDelete}
+                totalRecords={total}
+                onManageColumns={openColumns}
+                onColumnWidthChange={(id, width) => {
+                  void columnPreferences.saveWidth(id, width).catch(error =>
+                    toast.error(error instanceof Error ? error.message : 'Unable to save column width.'));
+                }}
+              />
+            )}
+            {data.tasks.length > 0 && total > 0 && (
+              <LeadsPagination
+                currentPage={page}
+                totalRecords={total}
+                pageSize={limit}
+                onPageChange={setPage}
+                onPageSizeChange={(size) => {
+                  setLimit(size);
+                  setPage(1);
+                }}
+                disabled={busy || data.loading}
+              />
+            )}
             <p className="mt-2 flex flex-wrap gap-3 text-xs text-muted-foreground">
               <span>{data.summary?.active ?? 0} active</span>
               <span>{data.summary?.overdue ?? 0} overdue</span>

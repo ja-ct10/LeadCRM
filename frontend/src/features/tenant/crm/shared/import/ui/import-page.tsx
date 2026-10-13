@@ -39,7 +39,7 @@ import type {
   ImportSummary,
   FieldDefinition,
 } from '../types/import.types';
-import { CSV_MAX_BYTES, CSV_MAX_ROWS, type ImportReviewRow, type CreateCrmImportInput, type PermissionKey } from '@leadcrm/shared';
+import { CSV_MAX_BYTES, CSV_MAX_ROWS, normalizeAccountImportRow, resolveAccountImportMappings, type ImportReviewRow, type CreateCrmImportInput, type PermissionKey } from '@leadcrm/shared';
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
@@ -90,6 +90,14 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
 
   // ── Derived State ──────────────────────────────────────────────────────
 
+  const sourceMappings = useMemo(() => Object.fromEntries(Object.entries(mappings)
+    .filter(([, mapping]) => mapping.csvColumnIndex !== null)
+    .map(([key, mapping]) => [key, mapping.csvColumnIndex!])), [mappings]);
+  const compatibility = useMemo(() => {
+    try { return { mappings: moduleKey === 'accounts' ? resolveAccountImportMappings(csvHeaders, sourceMappings) : sourceMappings, error: '' }; }
+    catch (error) { return { mappings: sourceMappings, error: error instanceof Error ? error.message : 'Invalid legacy address columns.' }; }
+  }, [moduleKey, csvHeaders, sourceMappings]);
+
   const allRequiredMapped = useMemo(
     () => config.requiredFields.every((f) => mappings[f.key]?.csvColumnIndex != null),
     [config.requiredFields, mappings],
@@ -97,25 +105,30 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
 
   const unmappedColumns = useMemo(() => {
     const mappedIndices = new Set(
-      Object.values(mappings)
-        .map((m) => m.csvColumnIndex)
-        .filter((i): i is number => i !== null),
+      Object.values(compatibility.mappings),
     );
     return csvHeaders
       .map((name, index) => ({ name, index }))
       .filter((col) => !mappedIndices.has(col.index));
-  }, [mappings, csvHeaders]);
+  }, [compatibility.mappings, csvHeaders]);
 
   const mapRow = useCallback(
     (row: string[]): Record<string, string> => {
       const result: Record<string, string> = {};
       for (const field of allFields) {
-        const idx = mappings[field.key]?.csvColumnIndex;
+        const idx = compatibility.mappings[field.key];
         result[field.key] = idx !== null && idx !== undefined ? (row[idx] || '') : '';
+      }
+      if (moduleKey === 'accounts') {
+        for (const key of ['city', 'province', 'country']) {
+          const index = compatibility.mappings[key];
+          result[key] = index === undefined ? '' : row[index] || '';
+        }
+        return normalizeAccountImportRow(result);
       }
       return result;
     },
-    [mappings, allFields],
+    [compatibility.mappings, allFields, moduleKey],
   );
 
   const previewRows = useMemo(() => {
@@ -247,6 +260,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
   }, [allFields, config.templateFileName]);
 
   const buildRequest = useCallback(async (): Promise<CreateCrmImportInput> => {
+    if (compatibility.error) throw new Error(compatibility.error);
     if (!idempotencyKey.current) {
       const url = new URL(window.location.href);
       idempotencyKey.current = url.searchParams.get('importKey') || crypto.randomUUID();
@@ -270,8 +284,8 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
       source = { uploadId: uploadedSource.current!.uploadId };
     }
     return { fileName: file!.name, ...source, idempotencyKey: idempotencyKey.current,
-      mappings: Object.fromEntries(Object.entries(mappings).filter(([, m]) => m.csvColumnIndex !== null).map(([key, m]) => [key, m.csvColumnIndex!])) };
-  }, [file, csvText, mappings, config.importApiPath]);
+      mappings: sourceMappings };
+  }, [file, csvText, sourceMappings, compatibility.error, config.importApiPath]);
 
   const handleContinue = useCallback(async () => {
     if (busyRef.current) return;
@@ -420,6 +434,8 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                 {moduleKey === 'deals' && <p className="mb-4 text-sm text-slate-500">Each row creates one Deal for one active Product. Deal Value comes from Settings &gt; Products. Use pipeline and stage names or IDs. Accounts accept names or IDs; customers and assigned agents accept email addresses or IDs. Dates use YYYY-MM-DD. Relationships must already exist in this workspace.</p>}
                 {step === 1 && <Step1Upload config={config} file={file} recordCount={csvRows.length} isDragging={isDragging} fileInputRef={fileInputRef} onFileChange={handleFileChange} onDrop={handleDrop} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onReplaceFile={() => fileInputRef.current?.click()} onDownloadTemplate={handleDownloadTemplate} />}
                 {step === 2 && <Step2MapColumns config={config} csvHeaders={csvHeaders} mappings={mappings} unmappedColumns={unmappedColumns} allRequiredMapped={allRequiredMapped} previewRows={previewRows} firstUnmappedRequired={firstUnmappedRequired} onMappingChange={handleMappingChange} mappedRequiredCount={mappedRequiredCount} totalRecords={csvRows.length} />}
+                {step === 2 && compatibility.error && <p role="alert" className="mt-3 text-sm text-red-600">{compatibility.error}</p>}
+                {step === 2 && moduleKey === 'accounts' && ['city', 'province', 'country'].some(key => compatibility.mappings[key] !== undefined) && !compatibility.error && <p className="mt-3 text-sm text-slate-500">Legacy address columns are combined into Full Address.</p>}
                 {step === 3 && serverRows !== null && <Step3Review config={config} validatedRows={validatedRows} validCount={validCount} totalCount={csvRows.length} />}
                 {step === 3 && canResume && <p role="status" className="mt-3 text-sm text-slate-500">{progress} row results saved. Resume to recheck and process the remaining rows.</p>}
 
@@ -433,7 +449,7 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
                     </button>
                   )}
                   {step < 3 ? (
-                    <button onClick={handleContinue} disabled={isParsing || isValidating || (step === 1 && !(file && csvRows.length > 0)) || (step === 2 && !allRequiredMapped)} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped)) ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
+                    <button onClick={handleContinue} disabled={isParsing || isValidating || (step === 1 && !(file && csvRows.length > 0)) || (step === 2 && (!allRequiredMapped || !!compatibility.error))} className={cn('inline-flex items-center gap-1.5 h-9 px-5 text-[13px] font-semibold rounded-lg transition-colors', ((step === 1 && file && csvRows.length > 0) || (step === 2 && allRequiredMapped && !compatibility.error)) ? 'text-white bg-primary hover:bg-primary/90 cursor-pointer' : 'text-slate-400 bg-slate-100 dark:bg-slate-800 dark:text-slate-500 cursor-not-allowed')}>
                       {isValidating ? <><Loader2 size={14} className="animate-spin" /> Validating…</> : <>Continue <ArrowRight size={14} /></>}
                     </button>
                   ) : (

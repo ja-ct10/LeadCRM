@@ -308,6 +308,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   // dropdown state
   const [openDropdownId, setOpenDropdownId] = useState<string | null>(null);
 
+  const canView = userCan('roles', 'canView');
   const canCreate = userCan('roles', 'canCreate');
   const canEdit = userCan('roles', 'canEdit');
   const canArchive = userCan('roles', 'canArchive');
@@ -342,6 +343,9 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   };
 
   const handleSave = async (name: string, description: string, permIds: string[]) => {
+    if (!canView || (view === 'new' ? !canCreate : view !== 'edit' || !canEdit)) {
+      throw new Error('You do not have permission to save this role.');
+    }
     if (view === 'new') {
       await addRole({ name, description, permissions: permIds, isSystemRole: false, userCount: 0 });
       toast.success(`Role "${name}" created`);
@@ -353,6 +357,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   };
 
   const handleCopy = async (role: RoleDefinition) => {
+    if (!canView || !canCreate) return;
     try {
       await addRole({ name: `${role.name} (Copy)`, description: role.description, permissions: [...role.permissions], isSystemRole: false, userCount: 0 });
       toast.success(`"${role.name}" duplicated`); setOpenDropdownId(null);
@@ -360,6 +365,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   };
 
   const handleDeleteConfirm = async (id: string) => {
+    if (!canView || !canArchive) throw new Error('You do not have permission to archive roles.');
     try {
       await deleteRole(id); toast.success('Role archived'); setDeleteConfirmId(null);
       if (view === 'edit' && selectedRole?.id === id) goList();
@@ -367,11 +373,19 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   };
 
   useEffect(() => { setView('list'); setSelectedRole(null); onViewActiveChange?.(false); }, [tenant?.id]);
+  useEffect(() => {
+    if (!canView || view === 'edit' && !canEdit || view === 'new' && !canCreate) {
+      setView('list'); setSelectedRole(null); onViewActiveChange?.(false);
+    }
+    if (!canView || !canArchive) setDeleteConfirmId(null);
+    if (!canView || !canManage) setOpenDropdownId(null);
+  }, [canView, canEdit, canCreate, canArchive, canManage, view, onViewActiveChange]);
 
+  if (!canView) return <p role="alert">You do not have permission to access this settings section.</p>;
 
   // ── Editor views ─────────────────────────────────────────────────────────────
 
-  if (view === 'edit' && selectedRole) {
+  if (view === 'edit' && selectedRole && canEdit) {
     const freshRole = roles.find((r) => r.id === selectedRole.id) ?? selectedRole;
     return (
       <AnimatePresence mode="wait">
@@ -386,7 +400,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
     );
   }
 
-  if (view === 'new') {
+  if (view === 'new' && canCreate) {
     return (
       <AnimatePresence mode="wait">
         <RoleEditor
@@ -415,6 +429,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         </div>
         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed pt-1">
           Roles allow you to control what users can see and do within the application. System roles provide foundational access levels and cannot be deleted, while Custom roles can be tailored specifically to your organization's unique requirements.{' '}
+          A user's effective permissions combine all active assigned custom roles. Disabling a permission here does not remove a grant from another assigned custom role.{' '}
           <button className="text-slate-900 dark:text-white font-medium hover:underline underline-offset-4 transition-all">Learn more about RBAC</button>
         </p>
       </div>

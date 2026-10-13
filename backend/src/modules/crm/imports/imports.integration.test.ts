@@ -78,6 +78,34 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
+  it('imports canonical and old Account templates with identical preview/persistence and retained Products/history', async () => {
+    const headers = 'Company Name,Product Interest,Industry,Website,Full Address,City,Province / State,Country,Company Size';
+    const input = { fileName:'old-accounts.csv', csvText: headers + '\nLegacy Address Account,Biometrics,IT,https://example.test,"10 Street\nToronto",Toronto,Ontario,Canada,1-10',
+      mappings:{name:0,productInterest:1,industry:2,website:3,address:4,size:8},idempotencyKey:randomUUID() };
+    expect((await request('accounts','/preview','POST',input,denied)).status).toBe(403);
+    const preview = await request('accounts','/preview','POST',input);
+    expect(preview.status).toBe(200);
+    expect(preview.body.data[0]).toMatchObject({isValid:true,data:{address:'10 Street\nToronto, Ontario, Canada',productInterest:'Biometrics'}});
+    for (const field of ['city','province','country']) expect(preview.body.data[0].data).not.toHaveProperty(field);
+    const result = await run('accounts',input);
+    expect(result.successfulRecords).toBe(1);
+    const account = await prisma.account.findFirstOrThrow({where:{tenantId,name:'Legacy Address Account'},include:{productLinks:true}});
+    expect(account.address).toBe(preview.body.data[0].data.address);
+    expect(account.productLinks.map(link=>link.productInterestId)).toEqual([bio]);
+    expect((await run('accounts',input)).id).toBe(result.id);
+    expect((await run('accounts',{...input,idempotencyKey:randomUUID()})).duplicateRecords).toBe(1);
+    const history = await request('accounts',`/${result.id}/results`);
+    expect(history.body.data[0]).toMatchObject({recordId:account.id,data:{address:'10 Street\nToronto',city:'Toronto',province:'Ontario',country:'Canada'}});
+    expect((await request('accounts',`/${result.id}`,'GET',undefined,foreign)).status).toBe(404);
+    expect(await prisma.account.count({where:{tenantId,name:account.name}})).toBe(1);
+    const full = await run('accounts',csv([{name:'Canonical Address Account',address:'42 Queen Street\nParis, France',productInterest:'Biometrics'}]));
+    expect(full.successfulRecords).toBe(1);
+    expect((await prisma.account.findFirstOrThrow({where:{tenantId,name:'Canonical Address Account'}})).address).toBe('42 Queen Street\nParis, France');
+    const country = await run('accounts', {fileName:'country.csv',csvText:'Company Name,Country\nExplicit Country Account,Philippines',mappings:{name:0},idempotencyKey:randomUUID()});
+    expect(country.successfulRecords).toBe(1);
+    expect((await prisma.account.findFirstOrThrow({where:{tenantId,name:'Explicit Country Account'}})).address).toBe('Philippines');
+  });
+
   it('imports one Lead / one Product with automatic priced Deal', async () => {
     const result = await run('leads', csv([person('one@example.com', 'CCTV Surveillance System')]));
     expect(result.successfulRecords).toBe(1);

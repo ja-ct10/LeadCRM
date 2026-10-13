@@ -1,12 +1,12 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const state = vi.hoisted(() => ({ tab: 'profile', canView: true, replace: vi.fn(), redirect: vi.fn() }));
+const state = vi.hoisted(() => ({ tab: 'profile', canView: true, restricted: [] as string[], replace: vi.fn(), redirect: vi.fn() }));
 vi.mock('next/navigation', () => {
   const router = { replace: state.replace };
   return { useSearchParams: () => new URLSearchParams({ tab: state.tab }), useRouter: () => router, redirect: state.redirect };
 });
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, userCan: () => state.canView }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, userCan: (module: string) => state.canView && !state.restricted.includes(module) }) }));
 vi.mock('../organization-settings-form', () => ({ OrganizationSettingsForm: () => <p>Authoritative organization</p> }));
 vi.mock('../profile-form', () => ({ ProfileForm: () => <p>Personal profile</p> }));
 vi.mock('../security-settings', () => ({ SecuritySettings: () => <p>Personal security</p> }));
@@ -20,8 +20,31 @@ import SettingsPage from '../settings-page';
 import LegacyAccountPage from '../../../../../../app/(tenant)/settings/account/page';
 import { PATH_TO_PATHNAME, resolveModulePath } from '@/lib/route-map';
 
-beforeEach(() => { vi.clearAllMocks(); state.tab = 'profile'; state.canView = true; localStorage.clear(); });
+beforeEach(() => { vi.clearAllMocks(); state.tab = 'profile'; state.canView = true; state.restricted = []; localStorage.clear(); });
 afterEach(cleanup);
+
+it.each(['roles', 'org-general'])('denies direct %s access and hides both restricted sections from desktop and mobile navigation', async tab => {
+  state.tab = tab; state.restricted = ['roles', 'settings'];
+  render(<SettingsPage />);
+  expect(await screen.findByRole('alert')).toBeTruthy();
+  expect(screen.queryByText('Roles content')).toBeNull();
+  expect(screen.queryByText('Authoritative organization')).toBeNull();
+  const select = screen.getByLabelText('Settings section') as HTMLSelectElement;
+  expect([...select.options].map(option => option.value)).not.toContain('roles');
+  expect([...select.options].map(option => option.value)).not.toContain('org-general');
+  expect(screen.queryByRole('button', { name: 'Roles & Permissions' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'General' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'Profile Settings' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Appearance' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Team Management' })).toBeTruthy();
+});
+it.each([['roles', 'Roles content', 'roles'], ['org-general', 'Authoritative organization', 'settings']])('removes the active %s section after revocation without logout', async (tab, content, module) => {
+  state.tab = tab; const view = render(<SettingsPage />);
+  await screen.findByText(content);
+  state.restricted = [module]; view.rerender(<SettingsPage />);
+  expect(screen.queryByText(content)).toBeNull();
+  expect(screen.getByRole('alert')).toBeTruthy();
+});
 
 it('keeps the required groups and sections with no Account category or Details item', () => {
   render(<SettingsPage />);

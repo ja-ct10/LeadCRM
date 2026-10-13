@@ -1,6 +1,8 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ImportResultsQuerySchema = exports.ImportListQuerySchema = exports.CsvUploadChunkSchema = exports.CreateCrmImportSchema = exports.importRequiredFields = exports.importRowSchemas = exports.ImportDealRowSchema = exports.ImportAccountRowSchema = exports.ImportContactRowSchema = exports.ImportLeadRowSchema = exports.splitProductInterests = exports.importIdentity = exports.CSV_MAX_COLUMNS = exports.CSV_MAX_ROWS = exports.CSV_MAX_BYTES = void 0;
+exports.normalizeAccountImportRow = normalizeAccountImportRow;
+exports.resolveAccountImportMappings = resolveAccountImportMappings;
 exports.parseImportCsv = parseImportCsv;
 exports.mapImportCsv = mapImportCsv;
 const zod_1 = require("zod");
@@ -38,9 +40,46 @@ exports.ImportLeadRowSchema = zod_1.z.object({ ...person, firstName: lead_contra
 }).strict();
 exports.ImportContactRowSchema = zod_1.z.object(person).strict();
 exports.ImportAccountRowSchema = zod_1.z.object({ name: required('Company Name').transform(v => v.replace(/\s+/g, ' ')),
+    // Split components are accepted only for legacy CSV/API compatibility.
     industry: optional(255), website, address: optional(500), city: optional(100), province: optional(100), country: optional(100),
     size: optional(20).refine(v => !v || ['1-10', '11-50', '51-200', '200+'].includes(v), 'Invalid Company Size.'), productInterest: products,
 }).strict();
+/** CSV values are explicit: never infer or discard a supplied country. */
+function normalizeAccountImportRow(data) {
+    const { city, province, country, ...canonical } = data;
+    let address = data.address ?? '';
+    const normalize = (value) => value.toLowerCase().replace(/[\s,;]+/g, ' ').trim();
+    for (const value of [city, province, country]) {
+        const component = value?.trim();
+        if (!component || ` ${normalize(address)} `.includes(` ${normalize(component)} `))
+            continue;
+        address = address.trim() ? `${address.replace(/[\s,;]+$/g, '')}, ${component}` : component;
+    }
+    return { ...canonical, address };
+}
+/** Resolve old headers without exposing retired fields as new mapping destinations. */
+function resolveAccountImportMappings(headers, mappings) {
+    const resolved = { ...mappings };
+    const used = new Set(Object.values(mappings));
+    const aliases = {
+        city: ['city', 'town', 'municipality'],
+        province: ['province', 'state', 'region', 'province state', 'state province'],
+        country: ['country', 'nation', 'country name'],
+    };
+    for (const [key, patterns] of Object.entries(aliases)) {
+        if (mappings[key] !== undefined)
+            continue;
+        const matches = headers.flatMap((header, index) => !used.has(index)
+            && patterns.includes(header.toLowerCase().trim().replace(/[_\s/]+/g, ' ')) ? [index] : []);
+        if (matches.length > 1)
+            throw new Error(`Ambiguous legacy address columns for ${key}. Combine them into Full Address before importing.`);
+        if (matches.length === 1) {
+            resolved[key] = matches[0];
+            used.add(matches[0]);
+        }
+    }
+    return resolved;
+}
 exports.ImportDealRowSchema = zod_1.z.object({
     title: required('Deal Title'), pipeline: required('Pipeline'), stage: required('Stage'),
     productInterest: required('Product Interest', 200).refine(v => (0, exports.splitProductInterests)(v).length === 1, 'Each Deal must have exactly one Product Interest.'),
@@ -158,7 +197,8 @@ function mapImportCsv(module, input) {
     for (const key of exports.importRequiredFields[module])
         if (input.mappings[key] === undefined)
             throw new Error(`Missing required column mapping: ${key}.`);
+    const mappings = module === 'accounts' ? resolveAccountImportMappings(parsed.headers, input.mappings) : input.mappings;
     return parsed.rows.map((row, index) => ({ rowNumber: parsed.rowNumbers[index],
-        data: Object.fromEntries(fields.map(key => [key, input.mappings[key] === undefined ? '' : row[input.mappings[key]]])),
+        data: Object.fromEntries(fields.map(key => [key, mappings[key] === undefined ? '' : row[mappings[key]]])),
     }));
 }

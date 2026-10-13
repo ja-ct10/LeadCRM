@@ -11,9 +11,9 @@ export function SecuritySettings() {
   const [passwordOpen, setPasswordOpen] = useState(false);
   return <section className="rounded-2xl border bg-card p-5 space-y-4">
     <div><h3 className="font-semibold">Security</h3><p className="text-xs text-slate-500">Manage your password</p></div>
-    <div className="rounded-xl bg-muted p-3 flex items-center justify-between gap-3">
-      <div><p className="text-sm font-semibold">Password</p>{user?.passwordChangedAt && <p className="text-xs text-slate-500">Last changed: {new Date(user.passwordChangedAt).toLocaleDateString()}</p>}</div>
-      <Button type="button" className="rounded-lg px-3" onClick={() => setPasswordOpen(true)}>Change Password</Button>
+    <div className="rounded-xl bg-muted p-3 flex flex-col items-start justify-between gap-3 sm:flex-row sm:items-center">
+      <div className="min-w-0"><p className="text-sm font-semibold">Password</p>{user?.passwordChangedAt && <p className="text-xs text-slate-500">Last changed: {new Date(user.passwordChangedAt).toLocaleDateString()}</p>}</div>
+      <Button type="button" className="w-full shrink-0 rounded-lg px-3 sm:w-auto" onClick={() => setPasswordOpen(true)}>Change Password</Button>
     </div>
     {passwordOpen && <PasswordDialog key={user?.id} onClose={() => setPasswordOpen(false)} />}
   </section>;
