@@ -120,6 +120,9 @@ function deploymentPlan(records, localNames) {
     // Corrects untouched seeded requirement flags only; preserves admin choices
     // and closing evidence without depending on any column retirement.
     '20261203000000_optional_closed_won_defaults',
+    // Additive current-entry identity on canonical Deal/history tables only.
+    // Preserves historical rows and does not depend on compatibility retirement.
+    '20261204000000_workflow_stage_entry_identity',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

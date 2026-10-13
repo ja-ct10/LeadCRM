@@ -127,6 +127,18 @@ Task service, assignment services, Workflow catalog and worker. Principal files:
 
 ## Rollout and limits
 
+The first Coolify backend rollout of `e7200c26` built successfully but stopped at
+startup with `REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT`. The new
+stage-entry migration was missing from the deployment runner's reviewed list.
+The follow-up registers that specific additive migration and updates the existing
+complete-history regression. Unknown migrations, checksum verification, failed
+migration recovery and deferred column-retirement gates remain enforced.
+`npm run test:migrations` subsequently passed Prisma validation, 15 rollout/SQL
+tests, 16 Contact preservation checks and 18 populated-history HTTP tests, with
+unchanged source (run `1791900347879-041100c9-7182-4b2f-8f04-d019c2980197`).
+This deployment-script regression was omitted from the original affected-suite
+run; local application verification alone did not prove the hosting startup path.
+
 Apply `20261204000000_workflow_stage_entry_identity` after the existing migration
 history using the guarded deployment process. Stop old writers, back up/rehearse,
 deploy matching frontend/backend builds, and regenerate Prisma. The migration

@@ -50,8 +50,9 @@ test('the complete release history deploys reviewed transitions while guarded co
   const accountAddress = '20261201000000_accounts_full_address';
   const accountRetirement = '20261202000000_retire_account_address_columns';
   const optionalClosedWonDefaults = '20261203000000_optional_closed_won_defaults';
+  const workflowStageEntryIdentity = '20261204000000_workflow_stage_entry_identity';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, optionalClosedWonDefaults);
+  assert.equal(plan.through, workflowStageEntryIdentity);
   assert.deepEqual(plan.exclude, [relationship, crm, lead, contact, contactJobTitle, accountRetirement]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
@@ -64,7 +65,7 @@ test('the complete release history deploys reviewed transitions while guarded co
     '20261125010000_mailbox_operation_recovery', '20261125020000_import_source_identity',
     '20261125030000_durable_workflow_dispatch', '20261125040000_activity_mailbox_authorization',
     '20261126000000_notification_policy', '20261127000000_login_attempt_lockout',
-    '20261128000000_preserve_contact_retirement_history', accountAddress, optionalClosedWonDefaults]) {
+    '20261128000000_preserve_contact_retirement_history', accountAddress, optionalClosedWonDefaults, workflowStageEntryIdentity]) {
     assert.ok(selected.includes(name), name);
   }
   assert.throws(() => deploymentPlan(rows, [...names, '20261115000000_unreviewed']), /REVIEW_MIGRATIONS/);
