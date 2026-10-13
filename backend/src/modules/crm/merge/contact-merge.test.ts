@@ -19,7 +19,7 @@ it('validates a selected secondary owner before moving relationships or writing 
   mocks.db.contact.findFirst.mockImplementation(({ where }: any) => Promise.resolve({ id: where.id, assignedUserId: where.id === 'primary' ? 'current-owner' : 'unavailable-owner' }));
   mocks.validateOwner.mockRejectedValue(new Error('Assigned Agent is inactive'));
   await expect(execute({ tenantId: 'tenant', userId: 'actor', entityType: 'contact', primaryId: 'primary', secondaryId: 'secondary', fieldResolutions: { assignedUserId: 'secondary' } })).rejects.toThrow('Assigned Agent is inactive');
-  expect(mocks.validateOwner).toHaveBeenCalledWith(mocks.db, 'tenant', 'unavailable-owner');
+  expect(mocks.validateOwner).toHaveBeenCalledWith(mocks.db, 'tenant', 'unavailable-owner', ['contacts']);
   expect(mocks.reassign).not.toHaveBeenCalled(); expect(mocks.db.contact.update).not.toHaveBeenCalled();
 });
 

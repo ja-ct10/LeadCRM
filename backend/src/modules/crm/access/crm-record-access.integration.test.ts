@@ -323,6 +323,28 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
       secondaryId: records[module].other.id, fieldResolutions: {} })).status).toBe(403);
     expect(await snapshot()).toEqual(before);
   });
+  it.each(['leads', 'contacts', 'accounts'] as const)('%s merge accepts only current owner grants for that module without requiring unrelated modules', async module => {
+    const roles = await Promise.all(['canView', 'canEdit'].map(flag => prisma.roleDefinition.create({ data: { tenantId,
+      name: `Merge ${module} ${flag} ${randomUUID()}`, permissions: { create: { module, [flag]: true } },
+    } })));
+    const assignee = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@example.test`, firstName: 'Module', lastName: 'Owner', role: roles[0].name,
+      userRoles: { create: roles.map(role => ({ roleId: role.id })) } } });
+    const model = db[delegates[module]];
+    const identity = module === 'accounts' ? { name: 'Module merge' } : { firstName: 'Module', lastName: 'Merge' };
+    const primary = await model.create({ data: { tenantId, ...identity, assignedUserId: a.id } });
+    const secondary = await model.create({ data: { tenantId, ...identity, assignedUserId: assignee.id } });
+    const input = { entityType: module.slice(0, -1), primaryId: primary.id, secondaryId: secondary.id, fieldResolutions: { assignedUserId: 'secondary' } };
+    await prisma.rolePermission.updateMany({ where: { tenantId, roleId: roles[1].id, module }, data: { canEdit: false } });
+    const before = await snapshot();
+    const denied = await call('/merge', admin, 'POST', input);
+    expect(denied.status, JSON.stringify(denied.body)).toBe(400);
+    expect(await snapshot()).toEqual(before);
+    await prisma.rolePermission.updateMany({ where: { tenantId, roleId: roles[1].id, module }, data: { canEdit: true } });
+    const allowed = await call('/merge', admin, 'POST', input);
+    expect(allowed.status, JSON.stringify(allowed.body)).toBe(200);
+    expect(await model.findUniqueOrThrow({ where: { id: primary.id } })).toMatchObject({ assignedUserId: assignee.id, isArchived: false });
+    expect(await model.findUniqueOrThrow({ where: { id: secondary.id } })).toMatchObject({ assignedUserId: assignee.id, isArchived: true });
+  });
   it.each(Object.keys(delegates))('%s custom-field and note writes require current assignment', async module => {
     const fieldId = `qa-${module}-text`;
     await prisma.closingFieldDefinition.create({ data: { tenantId, id: fieldId, definition: { id: fieldId, module, name: 'QA Text', type: 'Text',

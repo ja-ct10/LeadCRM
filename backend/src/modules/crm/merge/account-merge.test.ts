@@ -37,7 +37,7 @@ it('rejects an unavailable secondary owner before relationship reassignment', as
   mocks.db.account.findFirst.mockImplementation(({ where }: any) => Promise.resolve({ id: where.id, assignedUserId: where.id === 'primary' ? 'current' : 'inactive' }));
   mocks.validateOwner.mockRejectedValue(new Error('Assigned Agent is inactive'));
   await expect(execute({ ...input, fieldResolutions: { assignedUserId: 'secondary' } })).rejects.toThrow('Assigned Agent is inactive');
-  expect(mocks.validateOwner).toHaveBeenCalledWith(mocks.db, 'tenant', 'inactive');
+  expect(mocks.validateOwner).toHaveBeenCalledWith(mocks.db, 'tenant', 'inactive', ['accounts']);
   expect(mocks.reassign).not.toHaveBeenCalled(); expect(mocks.db.account.update).not.toHaveBeenCalled();
 });
 

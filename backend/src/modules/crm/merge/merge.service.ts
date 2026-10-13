@@ -118,7 +118,7 @@ async function executeLeadMerge(
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
 
-    if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId));
+    if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId), ['leads']);
     // 1. Reassign relationships
     const reassignedCounts = await repo.reassignLeadRelationships(tx, primaryId, secondaryId, tenantId);
 
@@ -208,7 +208,7 @@ async function executeContactMerge(
     const mergedData = resolveFields(primary, secondary, fieldResolutions, CONTACT_MERGE_FIELDS);
 
     if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) {
-      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId));
+      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId), ['contacts']);
     }
 
     const reassignedCounts = await repo.reassignContactRelationships(tx, primaryId, secondaryId, tenantId);
@@ -296,7 +296,7 @@ async function executeAccountMerge(
     if (!secondary) throw new NotFoundError('Secondary account');
     const mergedData = resolveFields(primary, secondary, fieldResolutions, ACCOUNT_MERGE_FIELDS);
     if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) {
-      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId));
+      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId), ['accounts']);
     }
     const reassignedCounts = await repo.reassignAccountRelationships(tx, primaryId, secondaryId, tenantId);
     if (mergedData.productInterests !== undefined || mergedData.activeProducts !== undefined) Object.assign(mergedData, await productRelationData(tx, 'account', tenantId, { names: mergedData.productInterests as string[] | undefined, activeNames: mergedData.activeProducts as string[] | undefined }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests], activeProducts: [...primary.activeProducts, ...secondary.activeProducts] }, true));
