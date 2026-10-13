@@ -73,12 +73,14 @@ test('Clean browser acceptance uses the installed snapshot Playwright package an
   assert.deepEqual(cleanPhaseEnvironment(directory, 'unit', inherited), inherited);
 });
 test('QA excludes inherited secrets and rejects remote database overrides', () => {
-  const saved = process.env.BREVO_API_KEY;
+  const saved = { BREVO_API_KEY: process.env.BREVO_API_KEY, PLAYWRIGHT_MODULE: process.env.PLAYWRIGHT_MODULE };
   process.env.BREVO_API_KEY = 'must-not-be-inherited';
+  process.env.PLAYWRIGHT_MODULE = resolve(root, '.tmp', 'missing-playwright-module');
   try {
     const env = qaEnvironment(root);
     assert.equal(env.BREVO_API_KEY, '');
     assert.equal(env.TEXTBEE_API_KEY, '');
+    assert.equal(env.PLAYWRIGHT_MODULE, resolve(root, 'node_modules/playwright'));
     assert.match(env.DATABASE_URL, /127\.0\.0\.1:1/);
     assert.equal(env.TEMP, env.TMP);
     assert.equal(env.TMP, env.TMPDIR);
@@ -89,7 +91,12 @@ test('QA excludes inherited secrets and rejects remote database overrides', () =
     assert.ok(env.TEMP.startsWith(process.platform === 'linux' ? '/tmp/leadcrm-qa-' : resolve(root, 'data/outputs/system-audit') + require('node:path').sep));
     assert.throws(() => qaEnvironment(root, { DATABASE_URL: 'postgresql://user:password@remote.invalid/leadcrm_test' }), /loopback/);
     assert.throws(() => qaEnvironment(root, { DATABASE_URL: 'postgresql://user:password@127.0.0.1/production' }), /disposable/);
-  } finally { if (saved === undefined) delete process.env.BREVO_API_KEY; else process.env.BREVO_API_KEY = saved; }
+  } finally {
+    for (const [name, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[name];
+      else process.env[name] = value;
+    }
+  }
 });
 
 test('Nested QA environments preserve the selected npm executable without inheriting credentials', () => {

@@ -1,7 +1,7 @@
 'use strict';
 
 const { randomBytes } = require('node:crypto');
-const { mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 
 /** Keep account credentials and application .env files out of local acceptance. */
@@ -42,7 +42,13 @@ function qaEnvironment(root, overrides = {}) {
     LEADCRM_PRODUCTION_EMAIL_ALLOWLIST: '', LEADCRM_TEST_AUTH_ENABLED: 'false',
     LEADCRM_TEST_EMAIL_ALLOWLIST: '', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false',
   });
-  for (const name of ['PLAYWRIGHT_MODULE', 'PLAYWRIGHT_NODE_PATH', 'PLAYWRIGHT_BROWSERS_PATH', 'POSTGRES_TEST_BIN', 'LEADCRM_TEST_POSTGRES_BIN']) {
+  const inheritedPlaywright = process.env.PLAYWRIGHT_MODULE;
+  if (inheritedPlaywright && existsSync(inheritedPlaywright)) env.PLAYWRIGHT_MODULE = inheritedPlaywright;
+  else {
+    const installedPlaywright = resolve(root, 'node_modules/playwright');
+    if (existsSync(installedPlaywright)) env.PLAYWRIGHT_MODULE = installedPlaywright;
+  }
+  for (const name of ['PLAYWRIGHT_NODE_PATH', 'PLAYWRIGHT_BROWSERS_PATH', 'POSTGRES_TEST_BIN', 'LEADCRM_TEST_POSTGRES_BIN']) {
     if (process.env[name]) env[name] = process.env[name];
   }
   Object.assign(env, overrides);
