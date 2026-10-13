@@ -56,6 +56,22 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     expect((await call(`/crm/leads/${id}/custom-fields`)).body.data.values[budget.id]).toBe(30000);
     expect(await prisma.closingFieldDefinition.count({ where: { tenantId, id: budget.id } })).toBe(1);
   });
+  it('serves concurrent initialized field metadata without writing the shared configuration lock', async () => {
+    await field('leads', 'Display metadata');
+    const lead = (await call('/crm/leads', 'POST', person())).body.data;
+    const pipeline = await tenantContext.run({ tenantId }, () => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: pipeline.pipeline.id, name: 'Lead' } });
+    const deal = await prisma.deal.create({ data: { tenantId, title: 'Display metadata', pipelineId: pipeline.pipeline.id, stageId: stage.id } });
+    await call('/crm/leads/field-layout');
+    const where = { tenantId_module_key: { tenantId, module: 'custom-fields', key: 'configuration-lock' } };
+    const before = await prisma.tenantPreference.findUniqueOrThrow({ where });
+    const definitions = await prisma.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: { id: 'asc' } });
+    const paths = ['/administration/closing-requirements', '/crm/leads/custom-fields', `/crm/leads/${lead.id}/custom-fields`, '/crm/leads/field-layout', `/crm/deals/${deal.id}/closing-requirements`];
+    const results = await Promise.all(Array.from({ length: 3 }, () => paths).flat().map(path => call(path)));
+    for (const result of results) expect(result.status, JSON.stringify(result.body)).toBe(200);
+    expect(await prisma.tenantPreference.findUniqueOrThrow({ where })).toEqual(before);
+    expect(await prisma.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: { id: 'asc' } })).toEqual(definitions);
+  });
 
   it('scopes groups and definitions by module; normalizes names and rejects unsafe changes', async () => {
     const original = await field('contacts', '  Preferred Contact Time  ', { group: '  Additional Information  ' });

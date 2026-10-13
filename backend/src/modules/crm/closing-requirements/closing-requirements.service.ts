@@ -3,7 +3,7 @@ import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { Prisma } from '@prisma/client';
 import { ClosingFieldInputSchema, ClosingValuesPatchSchema, customFieldNameKey, getCrmFieldCatalog, isClosedWonField, isSystemClosingField, normalizeCustomField, type ClosingField, type ClosingValues, type ClosingRequirementsState } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { readFields, readClosingFields, validateValues } from './closing-requirements.repository';
+import { readFields, readFieldsForDisplay, readClosingFields, readClosingFieldsForDisplay, validateValues } from './closing-requirements.repository';
 import { canonicalFieldValues, persistValues } from './custom-field-values.repository';
 import { moveDealStage } from '../deals/deals.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -13,7 +13,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { readFieldLayout, bumpFieldLayoutRevision } from './field-layout.service';
 import { newTechnicalAlias } from './custom-field-aliases';
 
-export const listFields = (tenantId: string) => salesTransaction(tx => readFields(tx, tenantId));
+export const listFields = (tenantId: string) => salesTransaction(tx => readFieldsForDisplay(tx, tenantId));
 export async function saveField(tenantId: string, actorId: string, input: unknown, id?: string) {
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw new ValidationError('Supply a field configuration object.');
   return salesTransaction(async tx => {
@@ -100,7 +100,7 @@ async function readState(tx: Prisma.TransactionClient, tenantId: string, dealId:
   if (!deal) throw new NotFoundError('Deal');
   const snapshot = deal.closingSnapshot as { fields?: ClosingField[]; values?: ClosingValues } | null;
   const locked = deal.stage.isWon || deal.stage.isLost || !!snapshot;
-  const fields = snapshot?.fields?.map(normalizeCustomField) ?? (locked ? [] : await readClosingFields(tx, tenantId));
+  const fields = snapshot?.fields?.map(normalizeCustomField) ?? (locked ? [] : await readClosingFieldsForDisplay(tx, tenantId));
   const values = snapshot?.values ?? deal.closingValues as ClosingValues;
   const files = await tx.recordFile.findMany({ where: { tenantId, dealId }, select: { id: true, name: true, size: true, type: true } });
   return { fields, values, locked, closedAt: deal.wonConfirmedAt?.toISOString(), errors: locked ? {} : await validateValues(tx, tenantId, dealId, fields, values),

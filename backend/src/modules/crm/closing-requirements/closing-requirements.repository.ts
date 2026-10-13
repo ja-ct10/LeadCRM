@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { DEFAULT_CLOSING_FIELDS, closingValueError, CLOSING_FILE_MAX_BYTES, normalizeCustomField, isClosedWonField, type ClosingField, type ClosingValues } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
-import { backfillTechnicalAliases, lockFieldConfiguration } from './custom-field-aliases';
+import { backfillTechnicalAliases, lockFieldConfiguration, planTechnicalAliases } from './custom-field-aliases';
 
 type Tx = Prisma.TransactionClient;
 export const configurationKey = (tenantId: string) => ({ tenantId, module: 'closing-requirements', key: 'fields' });
@@ -21,7 +21,18 @@ export async function readFields(tx: Tx, tenantId: string, includeRetired = fals
   const fields = await backfillTechnicalAliases(tx, tenantId, rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField)));
   return fields.filter(field => includeRetired || !field.deletedAt).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
 }
+/** Steady-state display reads must not update the shared configuration lock row.
+ * Legacy initialization/backfill still uses the locked write policy. Mutations
+ * continue to call readFields so definitions and values retain their write fence.
+ */
+export async function readFieldsForDisplay(tx: Tx, tenantId: string, includeRetired = false): Promise<ClosingField[]> {
+  const rows = await tx.closingFieldDefinition.findMany({ where: { tenantId }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
+  const fields = rows.map(row => normalizeCustomField(row.definition as unknown as ClosingField));
+  if (!fields.length || fields.some(field => !field.technicalAlias)) return readFields(tx, tenantId, includeRetired);
+  return planTechnicalAliases(fields).filter(field => includeRetired || !field.deletedAt).sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
+}
 export async function readClosingFields(tx: Tx, tenantId: string) { return (await readFields(tx, tenantId)).filter(isClosedWonField); }
+export async function readClosingFieldsForDisplay(tx: Tx, tenantId: string) { return (await readFieldsForDisplay(tx, tenantId)).filter(isClosedWonField); }
 export async function validateValues(tx: Tx, tenantId: string, dealId: string, fields: ClosingField[], values: ClosingValues) {
   const errors: Record<string, string> = {};
   for (const field of fields.filter(f => f.active)) {

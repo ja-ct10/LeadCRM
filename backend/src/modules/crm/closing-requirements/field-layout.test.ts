@@ -25,12 +25,20 @@ vi.mock('../../automation/triggers/triggers.service', () => ({ fireDealStageChan
 vi.mock('../deals/deals.repository', () => ({ moveDealStage: vi.fn() }));
 import { getFieldLayout, updateFieldLayout } from './field-layout.service';
 import { deleteField, referencesCustomField, saveField } from './closing-requirements.service';
-import { readFields } from './closing-requirements.repository';
+import { readFields, readFieldsForDisplay } from './closing-requirements.repository';
 import { canonicalFieldValues } from './custom-field-values.repository';
 import { customFieldAliasBase, resolveCustomFieldReference } from '@leadcrm/shared';
 
 beforeEach(() => { for (const values of Object.values(state)) values.length = 0; state.definitions.push(...DEFAULT_CLOSING_FIELDS.map(definition => ({ tenantId: 'tenant', id: definition.id, definition }))); vi.clearAllMocks(); });
 const createField = (extra = {}) => saveField('tenant', 'actor', { module: 'leads', group: 'Basic Information', type: 'Number', name: 'Budget', required: false, ...extra });
+
+it('initializes display metadata once and keeps subsequent display reads free of configuration writes', async () => {
+  await getFieldLayout('tenant', 'leads');
+  vi.clearAllMocks();
+  await Promise.all([readFieldsForDisplay(tx as any, 'tenant'), getFieldLayout('tenant', 'leads'), readFieldsForDisplay(tx as any, 'tenant', true)]);
+  expect(tx.tenantPreference.upsert).not.toHaveBeenCalled(); expect(tx.tenantPreference.update).not.toHaveBeenCalled();
+  expect(tx.closingFieldDefinition.update).not.toHaveBeenCalled(); expect(tx.closingFieldDefinition.createMany).not.toHaveBeenCalled();
+});
 
 describe('field configuration identity and preservation', () => {
   it('keeps native technical keys and custom IDs stable across labels, hiding and saved section ordering', async () => {

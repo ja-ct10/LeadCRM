@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { CLOSED_WON_GROUP_ID, CRM_SYSTEM_FIELDS, CUSTOM_FIELD_MODULES, FieldLayoutSchema, FieldLayoutActionSchema, upgradeAssignmentLayout, customFieldNameKey, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { readFields } from './closing-requirements.repository';
+import { readFields, readFieldsForDisplay } from './closing-requirements.repository';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 
 type Tx = Prisma.TransactionClient;
@@ -28,7 +28,7 @@ export async function readFieldLayout(tx: Tx, tenantId: string, module: CustomFi
   return FieldLayoutSchema.parse(created.value);
 }
 export const getFieldLayout = (tenantId: string, module: CustomFieldModule) => salesTransaction(async tx => {
-  const fields = await readFields(tx, tenantId), layout = await readFieldLayout(tx, tenantId, module, fields);
+  const fields = await readFieldsForDisplay(tx, tenantId), layout = await readFieldLayout(tx, tenantId, module, fields);
   return { layout, fields: getCrmFieldCatalog(module, fields, layout) };
 });
 export async function bumpFieldLayoutRevision(tx: Tx, tenantId: string, layout: FieldLayout) {
