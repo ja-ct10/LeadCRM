@@ -3,7 +3,7 @@ import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { workflowStatusLabel } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import { getWorkflowConditionFields, customFieldTechnicalKey, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
+import { getCrmFieldCatalog, getWorkflowConditionFields, customFieldTechnicalKey, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
 import { workflowCustomFields } from './workflow-fields';
 import { readRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -163,6 +163,10 @@ export async function entityContext(entity: WorkflowEntity, id: string, tenantId
   // Internal dispatch identity and suppression are deliberately not condition fields.
   const context: Record<string, unknown> = { [entity + '.id']: record.id };
   const source = record as unknown as Record<string, unknown>;
+  for (const field of getCrmFieldCatalog(WORKFLOW_MODULES[entity])) {
+    const value = source[field.technicalKey];
+    context[`${entity}.${field.technicalKey}`] = value instanceof Date ? value.toISOString().slice(0, 10) : value;
+  }
   for (const field of getWorkflowConditionFields(entity)) {
     const key = field.field.slice(entity.length + 1), value = source[key];
     context[field.field] = value instanceof Date ? value.toISOString().slice(0, 10) : value;
@@ -195,6 +199,7 @@ export function findActor(id: string, tenantId: string) {
   return prisma.user.findFirst({ where: { id, tenantId, status: 'ACTIVE' }, select: { id: true } });
 }
 export function recordRunActivity(tenantId: string, actorId: string, entity: WorkflowEntity, entityId: string, workflowId: string, runId: string, name: string, status: string, db: Prisma.TransactionClient = prisma) {
+  if (status === 'skipped') return Promise.resolve(null);
   return db.activity.create({ data: { tenantId, createdById: actorId, type: 'workflow', title: `Workflow: ${name}`,
     description: `Run ${status}.`, metadata: { workflowId, runId, status },
     ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) } });

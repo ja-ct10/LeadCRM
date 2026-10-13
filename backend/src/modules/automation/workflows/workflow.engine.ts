@@ -13,7 +13,7 @@ import { findTrigger } from '../triggers/trigger-catalog';
 import { evaluateCondition } from './workflow-conditions';
 import { dispatchAction, safeWorkflowError } from '../actions/action-dispatcher';
 import { assertWorkflowPermissions } from '../actions/action-permissions';
-import { validateWorkflow } from './workflow-validation';
+import { validateConditionReferences, validateWorkflow } from './workflow-validation';
 export { evaluateCondition } from './workflow-conditions';
 
 export interface WorkflowFireParams {
@@ -72,23 +72,32 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
       let recordedSteps = 0;
       let pendingStepId: string | undefined;
       try {
-        if (!actorAvailable) throw new ValidationError('Workflow dispatch skipped: no active, authorized event actor.');
         const parsed = WorkflowDraftSchema.safeParse(await compatibleWorkflow({ name: workflow.name, description: workflow.description, trigger: workflow.trigger,
           conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive }, params.tenantId));
         if (!parsed.success) throw new ValidationError('This workflow uses an invalid configuration. Edit and save it before activating.');
         const draft: WorkflowDraft = parsed.data;
-        await validateWorkflow(draft, params.tenantId, workflow.conditions);
-        if (!workflow.activatedById) throw new ValidationError('Reactivate this workflow to confirm its author permissions.');
-        await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
+        await validateConditionReferences(draft, params.tenantId);
         if (draft.conditions && !evaluateCondition(draft.conditions, context)) status = 'skipped';
         if (params.triggerType === 'deal.stage_changed' && context['deal.isQualified'] === true &&
           (context['deal.hasEverBeenWon'] !== false || context['deal.wonHistoryVerified'] !== true)) {
           status = 'skipped';
           errorMessage = context['deal.hasEverBeenWon'] ? 'This deal previously reached Won.' : 'This deal’s earlier stage history needs verification.';
         }
+        if (status === 'completed') {
+          if (!actorAvailable) throw new ValidationError('Workflow dispatch skipped: no active, authorized event actor.');
+          await validateWorkflow(draft, params.tenantId, workflow.conditions);
+          if (!workflow.activatedById) throw new ValidationError('Reactivate this workflow to confirm its author permissions.');
+          await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
+        }
         for (let index = 0; index < draft.actions.length; index++) {
           await fenceWorkflowLease();
           const action = draft.actions[index];
+          if (status !== 'completed' || action.enabled === false) {
+            await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped',
+              output: { reason: action.enabled === false ? 'Action disabled' : errorMessage ?? (draft.conditions && !evaluateCondition(draft.conditions, context) ? 'Workflow conditions did not match.' : 'Earlier action stopped execution.') } });
+            recordedSteps++;
+            continue;
+          }
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
           if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime())) status = 'skipped';
           const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
@@ -96,13 +105,13 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
           if (status === 'completed' && params.triggerType === 'deal.stage_changed' && (!freshContext || freshContext['deal.stageId'] !== context['event.newStageId'])) status = 'skipped';
           if (status === 'completed' && freshContext && draft.conditions?.conditions.some(rule => rule.field === 'deal.hasEverBeenWon' && rule.value === false) &&
             (freshContext['deal.hasEverBeenWon'] !== false || freshContext['deal.wonHistoryVerified'] !== true)) status = 'skipped';
-          if (status !== 'completed' || action.enabled === false) {
+          if (status !== 'completed') {
             await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped',
-              ...(action.enabled === false ? { output: { reason: 'Action disabled' } } : {}) });
+              output: { reason: 'Workflow or triggering record changed before the action.' } });
             recordedSteps++;
             continue;
           }
-          await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById);
+          await assertWorkflowPermissions(draft, params.tenantId, workflow.activatedById!);
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
           await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: step.id, tenantId: params.tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify({ version: 1, action, context: freshContext })) } }));

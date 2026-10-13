@@ -1,5 +1,6 @@
 import { productRelationData } from './product-relations';
-import type { Deal, Prisma } from '@prisma/client';
+import type { ContactStatus, Deal, Prisma } from '@prisma/client';
+import { normalizeCrmStatus } from '@leadcrm/shared';
 import { ConflictError, NotFoundError } from '../../../shared/errors/http-error';
 import { fireContactCreated, fireContactStatusChanged, fireContactUpdated, fireDealUpdated, fireLeadStatusChanged, fireLeadUpdated } from '../../automation/triggers/triggers.service';
 import { recordChanges } from '../record-updates';
@@ -12,10 +13,11 @@ export interface LeadConversionEvents {
   emitLeadEvents?: boolean;
   /** The Won transition captures this Deal's final stage and relationship changes. */
   dealEventHandledByCaller?: string;
+  accountName?: string;
 }
 
 /** Runs in the caller's serializable sales transaction. Original records and FKs are retained. */
-export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: string, leadId: string, actorId: string, events: LeadConversionEvents = {}) {
+export async function convertLead(tx: Prisma.TransactionClient, tenantId: string, leadId: string, actorId: string, events: LeadConversionEvents = {}, completedSale = false) {
   const lead = await tx.lead.findFirst({ where: { tenantId, id: leadId } });
   if (!lead || lead.isArchived || lead.deletedAt) throw new NotFoundError('Lead');
   if (lead.convertedAt && lead.contactId) {
@@ -23,7 +25,7 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
     if (!contact) throw new ConflictError('The converted Contact is unavailable.');
     return { lead, contact, accountId: lead.accountId };
   }
-  if (lead.status !== 'Closed') throw new ConflictError('Persist Closed status before converting this Lead.');
+  if (completedSale && lead.status !== 'Closed') throw new ConflictError('Persist Closed status before converting this Lead.');
   const deals = await tx.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId } } }, include: { stage: true } });
   const source = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId }, select: { productsNormalized: true } });
   const initialInterests = source.productsNormalized ? { ids: lead.productInterestIds } : { names: lead.productInterest };
@@ -42,7 +44,7 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
     const productInterests = [...new Set([...record.productInterests, ...lead.productInterest])];
     return productRelationData(tx, kind, tenantId, { names: productInterests, ...(kind === 'account' ? { activeNames: record.activeProducts ?? [] } : {}) }, { ...previous, productInterests }, true);
   };
-  const conflict = () => new ConflictError('Multiple, archived, or conflicting Contact/Account matches found. Resolve the CRM relationship before closing this Lead.');
+  const conflict = () => new ConflictError('Multiple, archived, or conflicting Contact/Account matches found. Resolve the CRM relationship before converting this Lead.');
   let contact = lead.contactId ? await tx.contact.findFirst({ where: { tenantId, id: lead.contactId } }) : null;
   if (lead.contactId && !contact) throw conflict();
   if (!contact && lead.email?.trim()) {
@@ -61,8 +63,9 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
     if (relatedAccounts.length > 1) throw conflict();
     accountId = relatedAccounts[0] ?? null;
   }
-  if (!accountId && lead.companyName?.trim()) {
-    const name = lead.companyName.trim().replace(/\s+/g, ' ');
+  const accountName = events.accountName?.trim() || lead.companyName?.trim();
+  if (!accountId && accountName) {
+    const name = accountName.replace(/\s+/g, ' ');
     const matches = (await tx.account.findMany({ where: { tenantId, name: { contains: name.split(' ')[0], mode: 'insensitive' } } }))
       .filter(row => companyIdentity(row.name) === companyIdentity(name));
     if (matches.length > 1 || matches[0]?.isArchived || matches[0]?.deletedAt) throw conflict();
@@ -80,15 +83,17 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
   const legacyDescription = await tx.customFieldValue.findFirst({ where: { tenantId, leadId, fieldId: 'retired-lead-description', module: 'leads' } });
   const now = new Date();
   const firstWon = deals.flatMap(deal => deal.wonConfirmedAt ? [deal.wonConfirmedAt] : []).sort((a, b) => a.getTime() - b.getTime())[0];
-  if (!firstWon) throw new ConflictError('Confirmed Won evidence is required before conversion.');
+  if (completedSale && !firstWon) throw new ConflictError('Confirmed Won evidence is required before conversion.');
+  const status = (firstWon ? 'CLOSED' : normalizeCrmStatus(lead.status).toUpperCase()) as ContactStatus;
   if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, address: lead.address,
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
-    ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: 'CLOSED', lifecycleStage: 'CUSTOMER',
-    customerSince: firstWon, convertedAt: now, lastStatusChangedAt: now } });
+    ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
+    customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });
   else contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: { accountId,
-    status: 'CLOSED', lifecycleStage: 'CUSTOMER', customerSince: contact.customerSince && contact.customerSince <= firstWon ? contact.customerSince : firstWon,
-    convertedAt: contact.convertedAt ?? now, lastStatusChangedAt: contact.status === 'CLOSED' ? contact.lastStatusChangedAt : now,
+    ...(firstWon ? { status: 'CLOSED', lifecycleStage: 'CUSTOMER', customerSince: contact.customerSince && contact.customerSince <= firstWon ? contact.customerSince : firstWon,
+      lastStatusChangedAt: contact.status === 'CLOSED' ? contact.lastStatusChangedAt : now } : {}),
+    convertedAt: contact.convertedAt ?? now,
     ...await mergedProducts('contact', contact) } });
   // Link every original Deal, including archived/terminal history, without changing its sales data.
   const updatedDeals: { before: Deal; after: Deal }[] = [];
@@ -103,7 +108,7 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
   if (!lead.convertedAt) {
     const metadata = { contactId: contact.id, accountId, convertedAt: now.toISOString(), sourceLeadId: leadId };
     await tx.activity.create({ data: { tenantId, leadId, createdById: actorId, type: 'conversion', title: 'Lead converted to Contact',
-      description: 'Lead reached Closed status after successful sales completion.', metadata } });
+      description: firstWon ? 'Contact linked with existing confirmed Won evidence.' : 'Contact created or linked; existing sales status and Deal stages preserved.', metadata } });
     await tx.activity.create({ data: { tenantId, contactId: contact.id, createdById: actorId, type: 'conversion', title: 'Contact linked to converted Lead',
       description: 'Original Lead, email, activity and Deal history retained.', metadata } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'lead.converted', entityType: 'Lead', entityId: leadId, metadata } });
@@ -130,4 +135,9 @@ export async function convertClosedLead(tx: Prisma.TransactionClient, tenantId: 
     }
   });
   return { lead: convertedLead, contact, accountId };
+}
+
+/** Sales completion retains its Won-evidence guard; basic conversion uses convertLead. */
+export function convertClosedLead(tx: Prisma.TransactionClient, tenantId: string, leadId: string, actorId: string, events: LeadConversionEvents = {}) {
+  return convertLead(tx, tenantId, leadId, actorId, events, true);
 }

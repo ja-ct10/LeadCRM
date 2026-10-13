@@ -220,7 +220,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   const renderStep4 = (): React.ReactElement => (
     <div className="space-y-4">
       <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2"><Briefcase size={18} className="text-blue-500" /> Deal</h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400">A related Deal must already be confirmed Closed Won. Conversion preserves all existing Deals, Products, prices, and sales history.</p>
+      <p className="text-sm text-slate-500 dark:text-slate-400">Conversion links existing Deals to the Contact and preserves their stages, Products, prices, and sales history. You can also convert a Lead without a Deal.</p>
     </div>
   );
 
@@ -233,7 +233,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       <div className={cn(cardCls, 'space-y-3')}>
         <div className="flex items-start gap-2 text-sm">
           <Check size={16} className="text-green-500 mt-0.5 shrink-0" />
-          <span className="text-slate-700 dark:text-slate-300">Lead status will change to <strong>Closed</strong></span>
+          <span className="text-slate-700 dark:text-slate-300">Lead will be marked as <strong>converted</strong> and linked to the Contact</span>
         </div>
         <div className="flex items-start gap-2 text-sm">
           <Check size={16} className="text-blue-500 mt-0.5 shrink-0" />
@@ -254,7 +254,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
         <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
         <p className="text-xs text-amber-700 dark:text-amber-300">
-          This action will convert the lead and set its status to &quot;Closed&quot;. This cannot be easily reversed.
+          This action creates or links a Contact and retains the original Lead history. Sales completion remains a separate Closed Won operation.
         </p>
       </div>
     </div>

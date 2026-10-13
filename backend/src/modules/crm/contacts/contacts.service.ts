@@ -6,8 +6,7 @@ import { CreateContactSchema, UpdateContactSchema, ConvertContactSchema, CreateC
 import { paginate } from '../../../shared/helpers/pagination';
 import { fireLeadStatusChanged, fireLeadUpdated } from '../../automation/triggers/triggers.service';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { convertClosedLead } from '../leads/lead-conversion.service';
-import { assertClosedStatus, changeCustomerStatus } from '../engagement.service';
+import { convertLead } from '../leads/lead-conversion.service';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
@@ -54,24 +53,21 @@ export async function restoreContact(id: string, tenantId: string, userId: strin
     entityType: 'Lead', entityId: id, after: { isArchived: false } });
 }
 
-/** The legacy endpoint uses the same successful-sales conversion transaction. */
+/** Basic conversion retains sales status and uses the existing atomic relationship writer. */
 export async function convertContact(id: string, tenantId: string, userId: string, dto: ConvertContactDto) {
   dto = ConvertContactSchema.parse(dto);
   return salesTransaction(async tx => {
     await assertCrmRecordMutation(tx, 'leads', id);
     const lead = await tx.lead.findFirst({ where: { tenantId, id, isArchived: false, deletedAt: null } });
     if (!lead) throw new NotFoundError('Lead');
-    if (dto.createDeal) throw new ValidationError('Complete an existing Deal before converting this Lead.');
+    if (dto.createDeal) throw new ValidationError('Create Deals separately from Lead conversion.');
     if (dto.dealId && !await tx.deal.findFirst({ where: { tenantId, id: dto.dealId,
       leadDeals: { some: { tenantId, leadId: id } } } })) throw new ValidationError('Choose a Deal already associated with this Lead.');
-    await assertClosedStatus(tx, tenantId, { leadId: id });
     // Never replace the identity of a previously converted customer on a retry.
     if (!lead.convertedAt) await tx.lead.update({ where: { tenantId, id }, data: {
       ...(dto.contactId ? { contactId: dto.contactId } : {}), ...(dto.accountId ? { accountId: dto.accountId } : {}),
-      ...(!lead.companyName?.trim() && dto.accountName?.trim() ? { companyName: dto.accountName.trim() } : {}),
     } });
-    if (!lead.convertedAt) await changeCustomerStatus(tx, tenantId, userId, { leadId: id }, 'Closed', 'Staff confirmed completed sales conversion.', new Date(), { previousLead: lead });
-    const converted = await convertClosedLead(tx, tenantId, id, userId, { previousLead: lead });
+    const converted = await convertLead(tx, tenantId, id, userId, { previousLead: lead, accountName: dto.accountName });
     const account = converted.accountId ? await tx.account.findFirst({ where: { tenantId, id: converted.accountId } }) : null;
     const deal = dto.dealId ? await tx.deal.findFirst({ where: { tenantId, id: dto.dealId } }) : null;
     return { lead: converted.lead, contact: { ...converted.contact, status: normalizeCrmStatus(converted.contact.status) }, account, deal };

@@ -36,7 +36,11 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
       closingValues: { 'reference-number': `REF-${randomUUID()}` }, tags: [] } }));
     return { lead, deals };
   }
-  const close = (id: string) => scope(() => saveValues(tenantId, adminId, id, { values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': new Date().toISOString().slice(0, 10) } }));
+  const close = (id: string) => scope(async () => {
+    const result = await saveValues(tenantId, adminId, id, { values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': new Date().toISOString().slice(0, 10) } });
+    if (!result.locked) await moveDealStage(id, tenantId, stages['Closed Won'], adminId);
+    return { ...result, locked: true };
+  });
   beforeAll(async () => {
     const tenant = await prisma.tenant.create({ data: { name: 'Completion tests', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
     tenantId = tenant.id;
@@ -110,9 +114,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => updateLead(lead.id, tenantId, { status: 'Closed' }, adminId));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId).toBeTruthy();
   });
-  it('legacy conversion endpoint uses successful sales, reuses explicit relations and is idempotent', async () => {
+  it('conversion endpoint reuses explicit relations and is idempotent', async () => {
     const { lead, deals } = await customer('Do not duplicate company', 1);
-    expect((await call(`/crm/leads/${lead.id}/convert`, 'POST', {})).status).toBe(400);
     const account = await prisma.account.create({ data: { tenantId, name: 'Explicit company' } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Known', lastName: 'Person', email: 'different@example.test', accountId: account.id } });
     await prisma.deal.update({ where: { id: deals[0].id }, data: { accountId: account.id, stageId: stages['Closed Won'], wonConfirmedAt: new Date() } });
@@ -120,6 +123,36 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     expect(result.status).toBe(200); expect(result.body.data.contact).toMatchObject({ id: contact.id, status: 'Closed', accountId: account.id });
     expect((await call(`/crm/leads/${lead.id}/convert`, 'POST', {})).status).toBe(200);
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'conversion' } })).toBe(1);
+  });
+  it.each([null, 'Lead', 'Contacted', 'Qualified', 'Closed Lost', 'Closed Won'])('basic conversion preserves %s Deals and actual customer evidence on concurrent retries', async stage => {
+    const { lead, deals } = await customer(`Conversion ${randomUUID()}`, stage ? 1 : 0);
+    const confirmedAt = new Date('2026-10-01T08:00:00Z');
+    if (stage) await prisma.deal.update({ where: { id: deals[0].id }, data: { stageId: stages[stage], ...(stage === 'Closed Won' ? { wonConfirmedAt: confirmedAt, wonConfirmedById: adminId, closingSnapshot: { genuine: true } } : {}) } });
+    const beforeDeal = stage ? await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } }) : null;
+    const original = await prisma.activity.create({ data: { tenantId, leadId: lead.id, createdById: adminId, type: 'note', title: 'Preserved original activity' } });
+    const responses = await Promise.all([call(`/crm/leads/${lead.id}/convert`, 'POST', {}), call(`/crm/leads/${lead.id}/convert`, 'POST', {})]);
+    for (const result of responses) expect(result.status, JSON.stringify(result.body)).toBe(200);
+    const saved = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    const contact = await prisma.contact.findUniqueOrThrow({ where: { id: saved.contactId! } });
+    expect(saved.status).toBe(lead.status); expect(saved.convertedAt).not.toBeNull();
+    expect(contact).toMatchObject({ assignedUserId: agentId, lifecycleStage: stage === 'Closed Won' ? 'CUSTOMER' : 'CONTACT', customerSince: stage === 'Closed Won' ? confirmedAt : null });
+    expect(await prisma.contact.count({ where: { tenantId, email: lead.email } })).toBe(1);
+    expect(await prisma.account.count({ where: { tenantId, name: lead.companyName! } })).toBe(1);
+    expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'conversion' } })).toBe(1);
+    expect((await call(`/crm/contacts/${contact.id}/relationships`)).body.data.activities.map((row: { id: string }) => row.id)).toContain(original.id);
+    if (beforeDeal) {
+      expect(await prisma.deal.findUniqueOrThrow({ where: { id: beforeDeal.id } })).toMatchObject({ stageId: beforeDeal.stageId, wonConfirmedAt: beforeDeal.wonConfirmedAt, closingSnapshot: beforeDeal.closingSnapshot, value: beforeDeal.value });
+      expect(await prisma.contactDeal.count({ where: { contactId: contact.id, dealId: beforeDeal.id } })).toBe(1);
+    }
+  });
+  it('all Closed Won defaults are optional and saving optional evidence does not complete a sale', async () => {
+    const fields = (await call('/administration/closing-requirements')).body.data;
+    expect(fields.filter((field: { id: string }) => ['confirmation-type', 'confirmation-date', 'reference-number', 'required-document', 'closing-notes'].includes(field.id)).every((field: { required: boolean }) => !field.required)).toBe(true);
+    const { deals } = await customer(null, 1);
+    await scope(() => saveValues(tenantId, adminId, deals[0].id, { values: { 'closing-notes': 'Optional note' } }));
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Qualified);
+    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Closed Won'], adminId));
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).wonConfirmedAt).not.toBeNull();
   });
   it('creates separate custom-field rows, updates by ID, preserves values and enforces RBAC', async () => {
     const input = { name: 'New evidence', type: 'Text', appliesTo: 'Closed Won Requirements', required: false, active: true, options: [], description: '' };

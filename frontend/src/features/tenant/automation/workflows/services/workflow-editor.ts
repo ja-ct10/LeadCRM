@@ -3,6 +3,8 @@ import {
   conditionOperatorLabel,
   missingWorkflowConditionValues,
   workflowMessageVariableKeys,
+  workflowMessageVariableError,
+  workflowMessageEntity,
   WORKFLOW_MODULES,
   getWorkflowUpdateFields,
   getAvailableActions,
@@ -360,17 +362,11 @@ export function actionIssues(
         value > 365)
     )
       issues.push(`${field.label}: enter a whole number from 0 to 365.`);
-    if (
-      ['title', 'description', 'subject', 'body', 'message'].includes(key) &&
-      typeof value === 'string' &&
-      [...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].some(
-        (match) =>
-          !workflowMessageVariableKeys(entity).has(match[1]),
-      )
-    )
-      issues.push(
-        `${field.label}: use the supported personalization variables.`,
-      );
+    if (['title', 'description', 'subject', 'body', 'message'].includes(key) && typeof value === 'string') {
+      const messageEntity = workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined);
+      const error = workflowMessageVariableError(value, workflowMessageVariableKeys(messageEntity, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[messageEntity]]));
+      if (error) issues.push(`${field.label}: ${error}`);
+    }
   }
   if (
     action.type === 'send_email' &&

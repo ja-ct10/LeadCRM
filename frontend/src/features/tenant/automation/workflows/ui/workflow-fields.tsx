@@ -10,7 +10,7 @@ import type {
   WorkflowEntity,
   WorkflowDraft,
 } from '@leadcrm/shared';
-import { conditionOperatorLabel, conditionOperatorValueShape, missingWorkflowConditionValues, getWorkflowUpdateFields, getWorkflowMessageVariables, WORKFLOW_MODULES, workflowOperators } from '@leadcrm/shared';
+import { conditionOperatorLabel, conditionOperatorValueShape, missingWorkflowConditionValues, getWorkflowUpdateFields, getWorkflowMessageVariables, workflowMessageEntity, WORKFLOW_MODULES, workflowOperators } from '@leadcrm/shared';
 import { transitionConditionField, transitionConditionOperator } from '@/shared/services/condition-editor';
 import { Button } from '@/shared/components/ui/button';
 import { ConditionFieldSelect, ConditionOperatorSelect, ConditionScalarInput } from '@/shared/components/condition-controls';
@@ -401,7 +401,7 @@ export function ActionFields({
                 className="flex flex-wrap gap-1"
                 aria-label={`Personalize ${field.label}`}
               >
-                {(entity ? getWorkflowMessageVariables(entity, options.fieldLayouts?.[WORKFLOW_MODULES[entity]]) : []).map(({ token, label }) => (
+                {(entity ? getWorkflowMessageVariables(workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined), options.fieldLayouts?.[WORKFLOW_MODULES[workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined)]], options.customFields) : []).map(({ token, label }) => (
                   <button
                     key={token}
                     type="button"

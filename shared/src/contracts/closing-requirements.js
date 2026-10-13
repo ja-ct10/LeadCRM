@@ -50,8 +50,8 @@ const normalizeCustomField = (field) => ({ ...field, module: field.module ?? 'de
 exports.normalizeCustomField = normalizeCustomField;
 exports.ClosingValuesPatchSchema = zod_1.z.object({ values: zod_1.z.record(zod_1.z.string().min(1).max(100), zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.number().finite(), zod_1.z.null()])).refine(v => Object.keys(v).length > 0 && Object.keys(v).length <= 100, 'Supply 1–100 field values.') }).strict();
 exports.DEFAULT_CLOSING_FIELDS = [
-    { id: 'confirmation-type', name: 'Confirmation Type', type: 'Dropdown', required: true, options: ['Approved Quotation', 'Signed Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'] },
-    { id: 'confirmation-date', name: 'Confirmation Date', type: 'Date', required: true },
+    { id: 'confirmation-type', name: 'Confirmation Type', type: 'Dropdown', required: false, options: ['Approved Quotation', 'Signed Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'] },
+    { id: 'confirmation-date', name: 'Confirmation Date', type: 'Date', required: false },
     { id: 'reference-number', name: 'Reference Number', type: 'Text', required: false },
     { id: 'required-document', name: 'Required Document', type: 'File Upload', required: false },
     { id: 'closing-notes', name: 'Closing Notes', type: 'Long Text', required: false },

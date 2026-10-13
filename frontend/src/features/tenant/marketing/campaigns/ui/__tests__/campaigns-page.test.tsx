@@ -103,3 +103,13 @@ it.each(['Email', 'SMS'] as const)('previews %s templates with current configure
   const text = type === 'Email' ? 'John John Provider sender provider@example.test' : 'John John SMS organization contact@example.test';
   await screen.findByText(text);
 });
+it('inserts a canonical variable in a new SMS template', async () => {
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'SMS Templates' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create First SMS Template' }));
+  const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
+  fireEvent.focus(content);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+  fireEvent.click(await screen.findByRole('button', { name: /First Name.*firstName/ }));
+  expect(content.value).toBe('{{firstName}}');
+});

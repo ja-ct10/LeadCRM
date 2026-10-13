@@ -1,9 +1,11 @@
-import { getWorkflowConditionFields, getWorkflowUpdateFields, workflowAssignmentTarget, WorkflowAssignmentTargetSchema, type WorkflowDraft } from '@leadcrm/shared';
+import { campaignFieldsForSource, campaignVariableKeys, getWorkflowConditionFields, getWorkflowUpdateFields, workflowAssignmentTarget, WorkflowAssignmentTargetSchema, workflowMessageEntity, WORKFLOW_MODULES, type WorkflowDraft } from '@leadcrm/shared';
 import { findUser } from './actions.repository';
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import type { PermissionKey } from '../../../shared/constants/permissions';
 import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
+import { findTemplate } from './actions.repository';
+import { campaignVariableFields } from '../../marketing/campaigns/audiences.service';
 
 export async function assertAssignmentReferencePermissions(draft: WorkflowDraft, tenantId: string, userId: string) {
   const required: PermissionKey[] = [];
@@ -34,6 +36,23 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
   }
   for (const action of draft.actions) {
     if (action.enabled === false) continue;
+    if (entity && ['create_task', 'send_email', 'send_sms'].includes(action.type)) {
+      const template = action.type === 'send_email' && action.config.templateId ? await findTemplate(String(action.config.templateId), tenantId) : null;
+      const content = action.type === 'send_email' ? `${action.config.subject || template?.subject || ''} ${action.config.body || template?.content || ''}`
+        : action.type === 'send_sms' ? String(action.config.message ?? '') : `${action.config.title ?? ''} ${action.config.description ?? ''}`;
+      const keys = campaignVariableKeys(content);
+      if (keys.length) {
+        const messageEntity = workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined);
+        const catalog = await campaignVariableFields(tenantId);
+        const fields = messageEntity === 'lead' || messageEntity === 'contact' ? campaignFieldsForSource(catalog, messageEntity === 'lead' ? 'LEADS' : 'CONTACTS') : catalog.filter(field => field.module === WORKFLOW_MODULES[messageEntity]);
+        for (const field of fields.filter(field => keys.includes(field.technicalKey) || !!field.canonicalTechnicalKey && keys.includes(field.canonicalTechnicalKey))) {
+          required.push(`${field.module}.view` as PermissionKey);
+          if (field.reference) required.push(field.reference === 'user' ? 'users.view' : field.reference === 'account' ? 'accounts.view' : 'deals.view');
+          if (field.type === 'products') required.push('products.view');
+        }
+        if (keys.includes('company_name')) required.push('accounts.view');
+      }
+    }
     if (['create_task', 'assign_owner'].includes(action.type)) {
       const target = WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action));
       if (target.success && target.data.type !== 'record_owner') required.push(target.data.type === 'role' ? 'roles.view' : target.data.type === 'group' ? 'groups.view' : 'users.view');

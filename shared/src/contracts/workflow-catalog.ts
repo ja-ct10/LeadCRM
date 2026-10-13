@@ -4,6 +4,7 @@ import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { isClosedWonField, type ClosingField, type CustomFieldModule } from './closing-requirements';
 import { getCrmFieldCatalog, type FieldLayout } from './field-catalog';
 import { isRetiredContactField } from './contact-retirement';
+import { campaignFieldsForSource, campaignApprovedVariableKeys, campaignPersonalizationAvailable } from './campaign-fields';
 
 export const WORKFLOW_MODULES: Record<WorkflowEntity, CustomFieldModule> = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 export const WORKFLOW_MESSAGE_VARIABLES = [
@@ -12,15 +13,30 @@ export const WORKFLOW_MESSAGE_VARIABLES = [
   { token: 'email', label: 'Email', fields: ['email'], legacyToken: 'email' },
   { token: 'company', label: 'Company Name', fields: ['company', 'companyName'], legacyToken: 'company' },
 ] as const;
-export function getWorkflowMessageVariables(entity: WorkflowEntity, layout?: FieldLayout) {
-  const catalog = getCrmFieldCatalog(WORKFLOW_MODULES[entity], [], layout);
-  return WORKFLOW_MESSAGE_VARIABLES.flatMap(variable => {
-    const field = catalog.find(field => variable.fields.some(key => key === field.technicalKey));
-    return field ? [{ token: field.technicalKey, label: field.label, legacyToken: variable.legacyToken, fields: [field.technicalKey] }] : [];
-  });
+export function workflowMessageEntity(entity: WorkflowEntity, recipient?: unknown): WorkflowEntity {
+  return recipient && (entity === 'account' || entity === 'deal') ? recipient === 'primary_lead' ? 'lead' : 'contact' : entity;
 }
-export function workflowMessageVariableKeys(entity: WorkflowEntity) {
-  return new Set<string>([...WORKFLOW_MESSAGE_VARIABLES.map(variable => variable.legacyToken), ...getWorkflowMessageVariables(entity).map(variable => variable.token)]);
+function messageCatalog(entity: WorkflowEntity, definitions: ClosingField[], layout?: FieldLayout) {
+  const module = WORKFLOW_MODULES[entity];
+  const direct = getCrmFieldCatalog(module, definitions, layout);
+  return entity === 'lead' || entity === 'contact' ? campaignFieldsForSource([
+    ...direct, ...getCrmFieldCatalog('accounts', definitions), ...getCrmFieldCatalog('deals', definitions),
+  ], entity === 'lead' ? 'LEADS' : 'CONTACTS') : direct.filter(campaignPersonalizationAvailable);
+}
+export function getWorkflowMessageVariables(entity: WorkflowEntity, layout?: FieldLayout, definitions: ClosingField[] = []) {
+  const catalog = messageCatalog(entity, definitions, layout);
+  return [...new Map(catalog.map(field => [field.technicalKey, { token: field.technicalKey, label: field.label }])).values(),
+    { token: 'sender_name', label: 'Sender Name' }, { token: 'sender_email', label: 'Sender Email' }];
+}
+export function workflowMessageVariableKeys(entity: WorkflowEntity, definitions: ClosingField[] = [], layout?: FieldLayout) {
+  const keys = campaignApprovedVariableKeys(messageCatalog(entity, definitions, layout));
+  // Older Workflow company tokens use the same person-field meaning.
+  if (entity === 'lead' && keys.has('companyName')) keys.add('company');
+  return keys;
+}
+export function workflowMessageVariableError(value: string, keys: ReadonlySet<string>): string | undefined {
+  const unsupported = [...new Set([...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map(match => match[1]).filter(key => !keys.has(key)))];
+  return unsupported.length ? `Unsupported message variable${unsupported.length === 1 ? '' : 's'}: ${unsupported.map(key => '{{' + key + '}}').join(', ')}. Choose an available technical key from Customize Fields for this record or recipient.` : undefined;
 }
 const text = (field: string, label: string, required = false, maxLength = 2000): WorkflowField => ({ field, label, type: 'string', required, maxLength });
 const choice = (field: string, label: string, options: readonly string[]): WorkflowField => ({ field, label, type: 'enum', options: [...options] });

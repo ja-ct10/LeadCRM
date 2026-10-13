@@ -23,5 +23,6 @@ export async function smsRecipient(action: WorkflowAction, entity: WorkflowEntit
     recipient = { phone: contacts[0].phone, doNotContact: contacts[0].doNotContact, id: contacts[0].id, firstName: contacts[0].firstName, lastName: contacts[0].lastName, email: contacts[0].email, company: contacts[0].company };
   }
   if (recipient.doNotContact === true) throw new ValidationError('The SMS recipient is marked Do not contact.');
-  return { phone: normalizeSmsPhone(recipient.phone), id: String(recipient.id), context: Object.fromEntries(Object.entries(recipient).map(([key, value]) => [`${entity}.${key}`, value])) };
+  const recipientEntity = entity === 'lead' || action.config.recipient === 'primary_lead' ? 'lead' : 'contact';
+  return { phone: normalizeSmsPhone(recipient.phone), id: String(recipient.id), entity: recipientEntity as 'lead' | 'contact', context: Object.fromEntries(Object.entries(recipient).map(([key, value]) => [`${entity}.${key}`, value])) };
 }

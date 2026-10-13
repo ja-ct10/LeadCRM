@@ -12,6 +12,7 @@ beforeEach(() => { vi.clearAllMocks(); mocks.error = null; mocks.data = { fields
 afterEach(cleanup);
 
 it('shows truthful completion and warns about automatic closing before the last required save', () => {
+  mocks.data!.fields = DEFAULT_CLOSING_FIELDS.map(field => ({ ...field, required: ['confirmation-type', 'confirmation-date'].includes(field.id) }));
   render(<DealClosingRequirements dealId="deal" canEdit onSaved={() => {}} />);
   expect(screen.getByText('0 of 2 required complete')).toBeTruthy();
   expect(screen.getByText(/Add optional details before saving the final required field/)).toBeTruthy();
@@ -53,7 +54,7 @@ it('requires a successful persistent upload and an explicit save before completi
 });
 
 it('locks every open inline editor when the backend confirms closing', async () => {
-  mocks.data!.fields = DEFAULT_CLOSING_FIELDS.filter(f => ['confirmation-type', 'closing-notes'].includes(f.id));
+  mocks.data!.fields = DEFAULT_CLOSING_FIELDS.filter(f => ['confirmation-type', 'closing-notes'].includes(f.id)).map(field => ({ ...field, required: field.id === 'confirmation-type' }));
   mocks.patch.mockResolvedValue({ data: { ...mocks.data, values: { 'confirmation-type': 'Approved Quotation' }, locked: true } });
   render(<DealClosingRequirements dealId="deal" canEdit onSaved={() => {}} />);
   fireEvent.click(screen.getByRole('button', { name: 'Edit Closing Notes' }));
@@ -66,6 +67,7 @@ it('locks every open inline editor when the backend confirms closing', async () 
 });
 
 it('uses the shared collapse and restores the same requirement content', () => {
+  mocks.data!.fields = DEFAULT_CLOSING_FIELDS.map(field => ({ ...field, required: ['confirmation-type', 'confirmation-date'].includes(field.id) }));
   const view = render(<DealClosingRequirements dealId="deal" canEdit onSaved={() => {}} />);
   const toggle = screen.getByRole('button', { name: 'Closed Won Requirements' });
   fireEvent.click(toggle);
@@ -74,6 +76,13 @@ it('uses the shared collapse and restores the same requirement content', () => {
   view.rerender(<DealClosingRequirements dealId="deal" canEdit focusRequested onSaved={() => {}} />);
   expect(toggle.getAttribute('aria-expanded')).toBe('true');
   expect(screen.getByRole('progressbar')).toBeTruthy();
+});
+it('shows optional defaults without automatic closing guidance', () => {
+  render(<DealClosingRequirements dealId="deal" canEdit />);
+  expect(screen.getByText('0 of 0 required complete')).toBeTruthy();
+  expect(screen.getByText(/Saving optional details preserves the Deal stage/)).toBeTruthy();
+  expect(screen.queryByText(/automatically closes it as won/)).toBeNull();
+  expect(screen.queryByRole('progressbar')).toBeNull();
 });
 it('retains loaded closing evidence on refresh failure and removes evidence when the cache is cleared', () => {
   const field = DEFAULT_CLOSING_FIELDS.find(field => field.id === 'reference-number')!;

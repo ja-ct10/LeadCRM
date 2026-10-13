@@ -132,7 +132,7 @@ export async function saveValues(tenantId: string, actorId: string, dealId: stri
     await tx.activity.create({ data: { tenantId, dealId, createdById: actorId, type: 'note', title: 'Closed Won requirements updated', description: fields.filter(f => changed.includes(f.id)).map(f => f.name).join(', '), metadata: { source: 'closing_requirements', fieldIds: changed } } });
     let transition: Awaited<ReturnType<typeof moveDealStage>> = null;
     const missingRequired = fields.some(field => field.active && field.required && errors[field.id]);
-    if (deal.stage.name.trim().toLowerCase() === 'qualified' && !missingRequired) {
+    if (deal.stage.name.trim().toLowerCase() === 'qualified' && fields.some(field => field.active && field.required) && !missingRequired) {
       const wonStages = await tx.stage.findMany({ where: { tenantId, pipelineId: deal.pipelineId, isWon: true, isLost: false } });
       if (wonStages.length !== 1) throw new ValidationError('Configure exactly one Closed Won stage in this pipeline.');
       transition = await moveDealStage(dealId, tenantId, wonStages[0].id, actorId, undefined, undefined, undefined, undefined, tx);

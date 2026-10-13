@@ -117,6 +117,43 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
+  it('accepts a legacy Campaign template with company_name and canonical custom variables', async () => {
+    const fieldId = randomUUID();
+    await prisma.closingFieldDefinition.create({ data: { tenantId, id: fieldId, definition: { id: fieldId, technicalAlias: 'project-code', name: 'Project Code', module: 'leads', group: 'Basic Information', type: 'Text', active: true, required: false, visibleInForm: true, visibleInDetails: true, options: [], description: '', order: 0, version: 1 } } });
+    await prisma.customFieldValue.create({ data: { tenantId, fieldId, module: 'leads', leadId: lead.id, value: '<P-1>' } });
+    await prisma.lead.update({ where: { id: lead.id }, data: { companyName: 'Example Company' } });
+    const legacy = await prisma.template.create({ data: { tenantId, type: 'Email', name: 'Legacy Campaign', subject: 'Hello {{first_name}} at {{company_name}}', content: '<p>{{lastName}} {{companyName}} {{customFieldValues.project-code}}</p>' } });
+    vi.mocked(sendEmail).mockResolvedValueOnce({ messageId: randomUUID(), threadId: randomUUID() });
+    const workflow = await create([{ type: 'send_email', config: { templateId: legacy.id, senderUserId: actor.id } }]);
+    await fire();
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    expect(sendEmail).toHaveBeenCalledWith(tenantId, actor.id, lead.email, 'Hello Ada at Example Company', '<p>Lead Example Company &lt;P-1&gt;</p>', undefined, undefined, undefined, expect.any(Object));
+    expect((await prisma.template.findUniqueOrThrow({ where: { id: legacy.id } })).subject).toBe(legacy.subject);
+    await expect(create([{ type: 'send_email', config: { subject: 'Hello {{unknownField}}', body: 'Message', senderUserId: actor.id } }])).rejects.toThrow('unknownField');
+  });
+
+  it.each(['lead', 'contact', 'account', 'deal'] as const)('skips false %s conditions before action validation and creates no activity on retries', async entity => {
+    const record = entity === 'lead' ? lead : entity === 'contact' ? contact : entity === 'deal' ? deal : await prisma.account.create({ data: { tenantId, name: 'Skip Account' } });
+    const trigger = entity === 'account' ? 'account.updated' : `${entity}.created`;
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: `False conditions ${entity}`, trigger, isActive: true, status: 'ACTIVE', activatedById: actor.id,
+      conditions: { operator: 'AND', conditions: [{ field: `${entity}.${entity === 'deal' ? 'title' : entity === 'account' ? 'name' : 'lastName'}`, operator: 'equals', value: 'Never matches' }] },
+      actions: [{ type: 'update_field', config: { field: 'unsupportedField', value: 'Invalid action should not run' } }] } });
+    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: trigger, context: entity === 'account' ? { 'event.changedFields': ['name'] } : {} };
+    await scope(() => fireWorkflowTrigger(event));
+    await scope(() => fireWorkflowTrigger(event));
+    const executions = await runs(workflow.id);
+    expect(executions).toHaveLength(1);
+    expect(executions[0].status).toBe('skipped');
+    expect(executions[0].steps.every(step => step.status === 'skipped')).toBe(true);
+    expect(await prisma.activity.count({ where: { tenantId, title: `Workflow: ${workflow.name}` } })).toBe(0);
+    const queuedEvent = { ...event, eventId: randomUUID() };
+    await scope(() => salesTransaction(tx => enqueueWorkflowTrigger(tx, queuedEvent)));
+    await scope(() => salesTransaction(tx => enqueueWorkflowTrigger(tx, queuedEvent)));
+    await flushWorkflowQueue(tenantId);
+    expect((await runs(workflow.id)).map(run => run.status)).toEqual(['skipped', 'skipped']);
+    expect(await prisma.activity.count({ where: { tenantId, title: `Workflow: ${workflow.name}` } })).toBe(0);
+  });
+
   it.each(['lead', 'contact'] as const)('persists tasks with canonical and legacy variables for %s', async entity => {
     const company = entity === 'lead' ? 'companyName' : 'company';
     await create([{ type: 'create_task', config: { title: `Follow up with {{firstName}} {{lastName}} {{${company}}}`, description: 'Legacy {{first_name}} {{last_name}} {{company}} {{email}}', assignedUserId: owner.id } }], { trigger: `${entity}.created` });
@@ -584,6 +621,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     await fire(); const [failed] = await runs(workflow.id);
     expect(failed.status).toBe('failed'); expect(failed.errorMessage).not.toContain('credential detail');
     expect(failed.steps.map(step => step.status)).toEqual(['failed', 'skipped']);
+    expect(await prisma.activity.findFirst({ where: { tenantId, title: `Workflow: ${workflow.name}`, description: 'Run failed.' } })).toMatchObject({ metadata: { workflowId: workflow.id, runId: failed.id, status: 'failed' } });
     expect(await prisma.emailDeliveryLog.count({ where: { tenantId, status: 'failed' } })).toBe(1);
     expect(await prisma.task.count({ where: { tenantId, title: 'After email' } })).toBe(1);
   });
@@ -632,6 +670,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(sendEmail).toHaveBeenCalledTimes(1);
     const history = await runs(workflow.id);
     expect(history).toHaveLength(1); expect(history[0].status).toBe('interrupted');
+    expect(await prisma.activity.findFirst({ where: { tenantId, title: `Workflow: ${workflow.name}`, description: 'Run interrupted.' } })).toMatchObject({ metadata: { workflowId: workflow.id, runId: history[0].id, status: 'interrupted' } });
     expect(history[0].steps[0]).toMatchObject({ status: 'failed', output: null });
     const stored = await prisma.workflowExecutionStep.findFirstOrThrow({ where: { tenantId, executionId: history[0].id, actionType: 'send_email' } });
     expect(stored.resolvedInput).toMatchObject({ messageId: `<workflow-${stored.id}@leadcrm.local>` });

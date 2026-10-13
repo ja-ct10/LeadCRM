@@ -55,8 +55,8 @@ export interface ClosingRequirementsState {
   files: { id: string; name: string; type: string; size: number; url: string }[];
 }
 export const DEFAULT_CLOSING_FIELDS: ClosingField[] = [
-  { id: 'confirmation-type', name: 'Confirmation Type', type: 'Dropdown', required: true, options: ['Approved Quotation', 'Signed Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'] },
-  { id: 'confirmation-date', name: 'Confirmation Date', type: 'Date', required: true },
+  { id: 'confirmation-type', name: 'Confirmation Type', type: 'Dropdown', required: false, options: ['Approved Quotation', 'Signed Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'] },
+  { id: 'confirmation-date', name: 'Confirmation Date', type: 'Date', required: false },
   { id: 'reference-number', name: 'Reference Number', type: 'Text', required: false },
   { id: 'required-document', name: 'Required Document', type: 'File Upload', required: false },
   { id: 'closing-notes', name: 'Closing Notes', type: 'Long Text', required: false },

@@ -1,5 +1,6 @@
 import { resolveDealTargets, relatedDealMoveGuard } from './action-deal-targets';
-import { WORKFLOW_MESSAGE_VARIABLES, getWorkflowMessageVariables, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
+import { renderMessage as render, resolveMessageValues } from './action-message';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { sendEmail } from '../../../integrations/gmail/gmail.service';
@@ -38,7 +39,8 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
       recordOwnerId: context[`${entity}.assignedUserId`] as string | undefined, entity, entityId, ...execution,
     }) : undefined;
     if (action.type === 'create_task') {
-      const taskInput = { requestId: execution?.stepId, title: render(String(config.title).trim(), context, entity, false), description: config.description ? render(String(config.description).trim(), context, entity, false) : undefined,
+      const values = await resolveMessageValues(`${config.title} ${config.description ?? ''}`, tenantId, entity, context);
+      const taskInput = { requestId: execution?.stepId, title: render(String(config.title).trim(), values, false), description: config.description ? render(String(config.description).trim(), values, false) : undefined,
         priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
         dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
         assignedUserId: assignment!.resolvedUserId,
@@ -50,10 +52,12 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     }
     if (action.type === 'send_sms') {
       const recipient = await smsRecipient(action, entity, tenantId, context);
-      if (execution?.stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: { resolvedInput: { version: 1, phone: recipient.phone, message: render(String(config.message), { ...context, ...recipient.context }, entity, false), recipientId: recipient.id } } }));
+      const values = await resolveMessageValues(String(config.message), tenantId, recipient.entity, { [`${recipient.entity}.id`]: recipient.id });
+      const message = render(String(config.message), values, false);
+      if (execution?.stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: { resolvedInput: { version: 1, phone: recipient.phone, message, recipientId: recipient.id } } }));
       await fenceWorkflowLease();
       smsAttempted = true;
-      const receipt = await sendSms(recipient.phone, render(String(config.message), { ...context, ...recipient.context }, entity, false), { beforeProviderWrite: () => fenceWorkflowLease() });
+      const receipt = await sendSms(recipient.phone, message, { beforeProviderWrite: () => fenceWorkflowLease() });
       return { success: true, output: { ...receipt, recipientId: recipient.id, status: 'submitted' } };
     }
     if (action.type === 'send_email') return { success: true, output: await deliverEmail(action, context, tenantId, execution?.stepId) };
@@ -88,20 +92,17 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
   } catch (error) { if (isWorkflowLeaseLost(error)) throw error; return { success: false, error: safeWorkflowError(error), ...(error instanceof AppError && error.code === 'GMAIL_OUTCOME_UNKNOWN' || error instanceof SmsSubmissionError && error.outcome === 'unconfirmed' || smsAttempted && (!(error instanceof AppError) || error.statusCode >= 500) ? { output: { outcomeUnknown: true } } : assignment ? { output: assignmentOutput(assignment) } : {}) }; }
   finally { if (assignment) await completeWorkflowAssignment(tenantId, assignment); }
 }
-function render(content: string, context: Record<string, unknown>, entity: WorkflowEntity, html = true): string {
-  const values: Record<string, unknown> = Object.fromEntries(WORKFLOW_MESSAGE_VARIABLES.map(variable => [variable.legacyToken,
-    variable.fields.map(field => context[`${entity}.${field}`]).find(value => typeof value === 'string' || typeof value === 'number') ?? '']));
-  for (const variable of getWorkflowMessageVariables(entity)) values[variable.token] = context[`${entity}.${variable.token}`] ?? '';
-  return content.replace(/\{\{\s*([^{}]+?)\s*\}\}/g, (_, key: string) => (html ? String(values[key] ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!)) : String(values[key] ?? '').replace(/[\x00-\x1f\x7f]/g, ' ')));
-}
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, stepId?: string): Promise<Record<string, unknown>> {
   const entity = actionEntity(context);
   const senderId = String(action.config.senderUserId);
   const [template, sender] = await Promise.all([action.config.templateId ? repo.findTemplate(String(action.config.templateId), tenantId) : Promise.resolve(null), repo.findSender(senderId, tenantId)]);
   if ((action.config.templateId && !template) || !sender) throw new ValidationError('Reconnect the sender and choose an available email template.');
   const recipient = String(context[`${entity}.email`]);
-  const subject = EmailSubjectSchema.parse(render(String(action.config.subject || template?.subject || ''), context, entity, false));
-  const body = sanitizeCampaignHtml(render(String(action.config.body || template?.content || ''), context, entity));
+  const subjectTemplate = String(action.config.subject || template?.subject || '');
+  const bodyTemplate = String(action.config.body || template?.content || '');
+  const values = await resolveMessageValues(subjectTemplate + '\n' + bodyTemplate, tenantId, entity, context, senderId);
+  const subject = EmailSubjectSchema.parse(render(subjectTemplate, values, false));
+  const body = sanitizeCampaignHtml(render(bodyTemplate, values));
   const messageId = stepId ? `<workflow-${stepId}@leadcrm.local>` : undefined;
   if (stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: stepId, tenantId }, data: { resolvedInput: { version: 1, senderId, recipient, subject, body, messageId } } }));
   const log = await workflowLeaseWrite(async tx => {

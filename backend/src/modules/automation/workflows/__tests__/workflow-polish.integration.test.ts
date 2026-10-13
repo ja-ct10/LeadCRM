@@ -251,6 +251,18 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     expect(sendSms).toHaveBeenCalledWith('+639181234567', 'Hello Contact', { beforeProviderWrite: expect.any(Function) });
     expect((await runs(workflow.id))[0].status).toBe('completed');
   });
+  it.each(['lead', 'contact'] as const)('renders canonical and legacy %s SMS variables and exact custom technical keys', async entity => {
+    const record = entity === 'lead' ? lead : contact;
+    const company = entity === 'lead' ? 'companyName' : 'company';
+    const field = await scope(() => saveField(tenantId, actor.id, { module: entity === 'lead' ? 'leads' : 'contacts', group: 'Basic Information', name: 'Message Code', type: 'Text', required: false }));
+    await prisma.customFieldValue.create({ data: { tenantId, fieldId: field.id, module: field.module, [entity === 'lead' ? 'leadId' : 'contactId']: record.id, value: 'CODE-1' } });
+    const update = (data: any) => scope(() => entity === 'lead' ? updateLead(record.id, tenantId, actor.id, data) : updateContact(record.id, tenantId, data, actor.id));
+    await update({ [company]: 'Canonical Company', phone: record.phone });
+    const workflow = await create({ trigger: `${entity}.updated`, actions: [{ type: 'send_sms', config: { recipient: 'record', message: `{{firstName}} {{last_name}} {{${company}}} {{customFieldValues.${field.technicalAlias}}}` } }] });
+    await update({ address: randomUUID() });
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    expect(sendSms).toHaveBeenCalledWith(record.phone, `${record.firstName} Test Canonical Company CODE-1`, { beforeProviderWrite: expect.any(Function) });
+  });
   it('preserves retired steps in drafts but refuses activation until they are disabled or removed', async () => {
     const workflow = await create({ isActive: false, actions: [{ type: 'create_notification', config: { title: 'Legacy' } }] });
     await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/retired/);

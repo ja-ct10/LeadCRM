@@ -1,8 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RETIRED_WORKFLOW_ACTIONS = exports.findTrigger = exports.WORKFLOW_TRIGGERS = exports.WORKFLOW_MESSAGE_VARIABLES = exports.WORKFLOW_MODULES = void 0;
+exports.workflowMessageEntity = workflowMessageEntity;
 exports.getWorkflowMessageVariables = getWorkflowMessageVariables;
 exports.workflowMessageVariableKeys = workflowMessageVariableKeys;
+exports.workflowMessageVariableError = workflowMessageVariableError;
 exports.getWorkflowCustomFields = getWorkflowCustomFields;
 exports.getWorkflowUpdateFields = getWorkflowUpdateFields;
 exports.getWorkflowConditionFields = getWorkflowConditionFields;
@@ -13,6 +15,7 @@ const company_industries_1 = require("../constants/company-industries");
 const closing_requirements_1 = require("./closing-requirements");
 const field_catalog_1 = require("./field-catalog");
 const contact_retirement_1 = require("./contact-retirement");
+const campaign_fields_1 = require("./campaign-fields");
 exports.WORKFLOW_MODULES = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 exports.WORKFLOW_MESSAGE_VARIABLES = [
     { token: 'firstName', label: 'First Name', fields: ['firstName'], legacyToken: 'first_name' },
@@ -20,15 +23,31 @@ exports.WORKFLOW_MESSAGE_VARIABLES = [
     { token: 'email', label: 'Email', fields: ['email'], legacyToken: 'email' },
     { token: 'company', label: 'Company Name', fields: ['company', 'companyName'], legacyToken: 'company' },
 ];
-function getWorkflowMessageVariables(entity, layout) {
-    const catalog = (0, field_catalog_1.getCrmFieldCatalog)(exports.WORKFLOW_MODULES[entity], [], layout);
-    return exports.WORKFLOW_MESSAGE_VARIABLES.flatMap(variable => {
-        const field = catalog.find(field => variable.fields.some(key => key === field.technicalKey));
-        return field ? [{ token: field.technicalKey, label: field.label, legacyToken: variable.legacyToken, fields: [field.technicalKey] }] : [];
-    });
+function workflowMessageEntity(entity, recipient) {
+    return recipient && (entity === 'account' || entity === 'deal') ? recipient === 'primary_lead' ? 'lead' : 'contact' : entity;
 }
-function workflowMessageVariableKeys(entity) {
-    return new Set([...exports.WORKFLOW_MESSAGE_VARIABLES.map(variable => variable.legacyToken), ...getWorkflowMessageVariables(entity).map(variable => variable.token)]);
+function messageCatalog(entity, definitions, layout) {
+    const module = exports.WORKFLOW_MODULES[entity];
+    const direct = (0, field_catalog_1.getCrmFieldCatalog)(module, definitions, layout);
+    return entity === 'lead' || entity === 'contact' ? (0, campaign_fields_1.campaignFieldsForSource)([
+        ...direct, ...(0, field_catalog_1.getCrmFieldCatalog)('accounts', definitions), ...(0, field_catalog_1.getCrmFieldCatalog)('deals', definitions),
+    ], entity === 'lead' ? 'LEADS' : 'CONTACTS') : direct.filter(campaign_fields_1.campaignPersonalizationAvailable);
+}
+function getWorkflowMessageVariables(entity, layout, definitions = []) {
+    const catalog = messageCatalog(entity, definitions, layout);
+    return [...new Map(catalog.map(field => [field.technicalKey, { token: field.technicalKey, label: field.label }])).values(),
+        { token: 'sender_name', label: 'Sender Name' }, { token: 'sender_email', label: 'Sender Email' }];
+}
+function workflowMessageVariableKeys(entity, definitions = [], layout) {
+    const keys = (0, campaign_fields_1.campaignApprovedVariableKeys)(messageCatalog(entity, definitions, layout));
+    // Older Workflow company tokens use the same person-field meaning.
+    if (entity === 'lead' && keys.has('companyName'))
+        keys.add('company');
+    return keys;
+}
+function workflowMessageVariableError(value, keys) {
+    const unsupported = [...new Set([...value.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)].map(match => match[1]).filter(key => !keys.has(key)))];
+    return unsupported.length ? `Unsupported message variable${unsupported.length === 1 ? '' : 's'}: ${unsupported.map(key => '{{' + key + '}}').join(', ')}. Choose an available technical key from Customize Fields for this record or recipient.` : undefined;
 }
 const text = (field, label, required = false, maxLength = 2000) => ({ field, label, type: 'string', required, maxLength });
 const choice = (field, label, options) => ({ field, label, type: 'enum', options: [...options] });

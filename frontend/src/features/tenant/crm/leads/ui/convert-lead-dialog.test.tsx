@@ -1,0 +1,24 @@
+import React from 'react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { Lead } from '@/store/types';
+import { ConvertLeadDialog } from './convert-lead-dialog';
+const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined) }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { post: mocks.post } }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshContacts: mocks.refresh, refreshOrganizations: mocks.refresh, refreshDeals: mocks.refresh }) }));
+vi.mock('@/shared/components/sliding-drawer', () => ({ SlidingDrawer: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <div /> }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+afterEach(cleanup);
+it('confirms conversion without promising Closed status or requiring a Won Deal', async () => {
+  mocks.post.mockResolvedValue({ data: {} });
+  const onSuccess = vi.fn();
+  render(<ConvertLeadDialog isOpen onClose={vi.fn()} onSuccess={onSuccess} lead={{ id: 'lead', firstName: 'Ada', lastName: 'Lead', status: 'Warm', companyName: 'Example' } as Lead} />);
+  for (let step = 1; step <= 4; step++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(screen.getByText(/Lead will be marked as/).textContent).toContain('converted');
+  expect(screen.getByText(/Sales completion remains a separate Closed Won operation/)).toBeTruthy();
+  expect(screen.queryByText(/must already be confirmed/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/crm/leads/lead/convert', { accountName: 'Example', createContact: true, createDeal: false }));
+  await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+});

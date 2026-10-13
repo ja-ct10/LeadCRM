@@ -228,6 +228,18 @@ function personalized(row: Record<string, unknown>, fields: CrmFieldCatalogEntry
   const approved = campaignApprovedVariableKeys(fields);
   return { values: { ...values, ...Object.fromEntries(Object.entries(legacy).filter(([key]) => approved.has(key))) }, unresolved };
 }
+/** Workflows reuse the Campaign catalog and exact tenant-scoped relationship resolver. */
+export async function workflowRecipientValues(tenantId: string, entity: 'lead' | 'contact', id: string, requiredVariables: ReadonlySet<string>) {
+  const fields = await campaignFieldsForAudienceSource(tenantId, entity === 'lead' ? 'LEADS' : 'CONTACTS');
+  const where = { tenantId, id, isArchived: false, deletedAt: null };
+  const row = entity === 'lead' ? await prisma.lead.findFirst({ where, select: { ...leadRecipientProjection, companyName: true } })
+    : await prisma.contact.findFirst({ where, select: { ...contactRecipientProjection, company: true, notes: true } });
+  if (!row) throw new AppError('The message recipient is unavailable.', 404);
+  const result = personalized(row, fields, tenantId, requiredVariables);
+  if (result.unresolved.length) throw new AppError(`Resolve message variable relationships: ${result.unresolved.join(', ')}. Select one eligible related Deal or repair the Account link.`, 400);
+  if (entity === 'lead') result.values.company = result.values.companyName ?? '';
+  return result.values;
+}
 export interface ResolvedRecipient { leadId?: string; contactId?: string; email: string | null; phone?: string | null; personalization: EmailVariables; reason: string | null; unresolvedVariables?: string[] }
 const emptyBreakdown = (): AudienceBreakdown => ({ matched: 0, eligible: 0, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, missingPhone: 0, invalidPhone: 0, duplicatePhone: 0, doNotContact: 0 });
 const reasonCounts = { MISSING_EMAIL: 'missingEmail', INVALID_EMAIL: 'invalidEmail', DUPLICATE_EMAIL: 'duplicateEmail', STAFF_EMAIL: 'staffEmail', UNSUBSCRIBED: 'unsubscribed', BLOCKED: 'blocked', INACTIVE: 'inactive', RECIPIENT_NOT_ALLOWED: 'recipientNotAllowed', MISSING_PHONE: 'missingPhone', INVALID_PHONE: 'invalidPhone', DUPLICATE_PHONE: 'duplicatePhone', DO_NOT_CONTACT: 'doNotContact' } as const;
