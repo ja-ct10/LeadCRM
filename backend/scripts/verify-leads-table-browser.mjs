@@ -1,3 +1,4 @@
+import { acceptanceWidths, isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Production frontend + real HTTP/auth/SQL against a disposable in-memory database.
 // Requires compiled backend/frontend and an installed Playwright package.
 import { PGlite } from '@electric-sql/pglite';
@@ -12,7 +13,7 @@ import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 import { verifyTableControls } from './verify-table-controls.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = resolve(root, '.tmp/leads-table-browser');
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, '.tmp/leads-table-browser'));
 mkdirSync(output, { recursive: true });
 writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'running', checks: [], errors: [] }));
 const db = await PGlite.create();
@@ -112,11 +113,13 @@ try {
   await until(async () => { try { return (await fetch(base + '/login')).ok; } catch { return false; } }, 'Frontend did not start');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   // Stream responses cannot be buffered by route.fulfill. Pause background SSE
   // in this manual-refresh runner so request counts have one explicit owner.
   await context.addInitScript(() => { Object.defineProperty(window, 'EventSource', { value: undefined, configurable: true }); });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  const page = await context.newPage(); page.setDefaultTimeout(20000);
+  const page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000);
   page.on('pageerror', error => errors.push(error.message));
   const failures = { preference: 0, reset: 0, create: 0 };
   const reads = [];
@@ -125,6 +128,7 @@ try {
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url());
     const path = url.pathname.replace('/api/proxy', '');
+    if (path.endsWith('/events') || path === '/crm/record-events') return route.continue({ url: apiBase + path + url.search, headers: { ...request.headers(), authorization: `Bearer ${token}` } });
     if (request.method() === (control.failMethod ?? 'GET') && path === control.failPath) { control.failPath = ''; control.failMethod = 'GET'; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ error: 'Refresh unavailable. Please retry.' }) }); return; }
     if (request.method() === 'GET' && path === control.holdPath) { control.pending++; await new Promise(resolve => { control.release = resolve; }); control.pending--; control.holdPath = ''; }
     const kind = path === '/preferences/columns/leads' && request.method() === 'PUT' ? 'preference'
@@ -234,13 +238,9 @@ try {
   for (const close of await page.locator('[data-sonner-toast] [data-close-button]').all()) await close.click().catch(() => {});
   await until(async () => await page.locator('[data-sonner-toast]').count() === 0, 'Toasts did not close');
   await page.screenshot({ path: resolve(output, 'leads-table-1440.png') });
-  for (const dark of [false, true]) for (const width of [320, 768, 1440]) {
+  for (const dark of [false, true]) for (const width of acceptanceWidths) {
     await page.setViewportSize({ width, height: 900 });
-    await page.evaluate(dark => {
-      localStorage.setItem('app_theme', dark ? 'Dark' : 'Light');
-      window.dispatchEvent(new StorageEvent('storage', { key: 'app_theme', storageArea: localStorage }));
-    }, dark);
-    await until(async () => await page.evaluate(() => document.documentElement.dataset.appTheme) === (dark ? 'dark' : 'light'), 'Appearance preference did not resolve');
+    await setAcceptanceTheme(page, dark ? 'Dark' : 'Light');
     await openColumns();
     const bounds = await drawer().boundingBox(); assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1);
     assert.equal(await drawer().evaluate(element => element.closest('[data-theme-container]').classList.contains('dark')), dark);
@@ -249,13 +249,13 @@ try {
     await page.screenshot({ path: resolve(output, `drawer-${width}-${dark ? 'dark' : 'light'}.png`) });
     await page.keyboard.press('Escape');
   }
-  record('Light/dark 320/768/1440 layouts, trimmed column search and keyboard Escape work');
+  record('All eight Light/Dark viewport layouts, trimmed column search and keyboard Escape work');
   await verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'passed', environment: 'Local production build + disposable PGlite SQL; background SSE paused to isolate manual refresh', checks, errors }, null, 2));
 } finally {
   closing = true;
   await browser?.close(); frontend?.kill();
-  if (api) await new Promise(done => api.close(done));
+  if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
   await prisma.$disconnect(); await socket.stop(); await db.close();
 }

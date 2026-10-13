@@ -1,3 +1,4 @@
+import { isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Real production UI + authenticated Express API against a fresh, migration-replayed
 // in-memory database. No existing tenant, provider, or deployment is contacted.
 // Build first; set PLAYWRIGHT_MODULE to an installed Playwright package.
@@ -14,7 +15,7 @@ import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const runName = process.env.DEAL_ACTIONS_BROWSER_RUN_NAME || '';
 assert.ok(!runName || /^[a-z0-9_-]+$/.test(runName));
-const output = resolve(root, '.tmp/deal-actions-browser', runName);
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, '.tmp/deal-actions-browser', runName));
 mkdirSync(output, { recursive: true });
 const apiLog = createWriteStream(resolve(output, 'api.log'));
 const originalError = console.error.bind(console);
@@ -40,6 +41,7 @@ const { saveField } = require('../dist/backend/src/modules/crm/closing-requireme
 const { updateFieldLayout } = require('../dist/backend/src/modules/crm/closing-requirements/field-layout.service.js');
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
 const checks = [], pageErrors = [], transportErrors = [], serverErrors = [];
+const closingContexts = new WeakSet();
 let api, frontend, browser, page, apiBase, closing = false;
 const record = (label, detail = {}) => { checks.push({ label, passed: true, ...detail }); console.log(`PASS ${label}`); };
 try {
@@ -63,7 +65,7 @@ try {
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
   const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', assignedUserId: agents[0].id } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
-  const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, activeProducts: [], productInterests: [] } });
+  const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
   const fixtures = {};
   for (const title of ['Action Deal','Desktop Drag','Mobile Drag','Won Evidence','Lost Action']) {
     const deal = await prisma.deal.create({ data: { tenantId: tenant.id, title, pipelineId: pipeline.id, stageId: title==='Won Evidence'?qualified.id:initial.id, accountId: account.id, assignedUserId: agents[0].id, ownerId: admin.id, productsNormalized: true, productInterestId: product.id, productInterestIds: [product.id], value: 25000, productInterests: [product.name], tags: [] } });
@@ -83,6 +85,8 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(auth, options = {}) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ...options });
+
+    await isolateBrowserContext(context);
     await context.addInitScript(() => {
       const NativeEventSource = window.EventSource;
       window.__recordPlanStreams = {};
@@ -104,7 +108,7 @@ try {
       const headers = { ...request.headers(), authorization: `Bearer ${auth}` };
       if (path.endsWith('/events') || path === '/crm/record-events') return route.continue({ url: local, headers });
       try { const response = await tab.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 }); if (response.status() >= 500) { const failure = `${request.method()} ${path}: ${await response.text()}`; serverErrors.push(failure); console.error(failure); } await route.fulfill({ response }); }
-      catch (error) { if (!closing) transportErrors.push(`${request.method()} ${path}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); }
+      catch (error) { if (!closing && !closingContexts.has(context)) transportErrors.push(`${request.method()} ${path}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); }
     });
     return tab;
   }
@@ -193,7 +197,7 @@ try {
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
   await observer.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({timeout:12000});
-  await observer.context().close();
+  closingContexts.add(observer.context()); await observer.context().close();
   record('Edit correct Deal, complete 61-agent directory, portal selection and second-session sync preserves draft');
   await prisma.pipeline.update({where:{id:destination.id},data:{isArchived:false}});await page.reload();
 
@@ -208,6 +212,9 @@ try {
 
   await action('Action Deal Updated','Add a task');
   const taskEditor=page.getByRole('dialog');await taskEditor.getByLabel(/^Title/).fill('Deal action browser task');
+  await taskEditor.getByRole('button', { name: /^Assigned Agent/ }).click();
+  await page.getByRole('dialog', { name: 'Select owner', exact: true }).getByLabel('Agent 00', { exact: true }).check();
+  await page.getByLabel('Search owner', { exact: true }).press('Escape');
   await taskEditor.getByRole('button',{name:'Create task',exact:true}).click();
   await until(async()=>!!await prisma.task.findFirst({where:{title:'Deal action browser task',tenantId:tenant.id}}),'Context task did not persist');
   const task=await prisma.task.findFirst({where:{title:'Deal action browser task',tenantId:tenant.id},include:{dealLinks:true}});
@@ -382,7 +389,7 @@ try {
   record('320x500 touch viewport saves a stage in Sales and permits/cancels a different-pipeline selection');
   closing=true;await browser.close();browser=undefined;page=undefined;
   const mailbox=await prisma.emailAccount.create({data:{tenantId:tenant.id,userId:admin.id,email:admin.email,accessToken:'local-fixture-only',scopes:[]}});
-  const messageData={tenantId:tenant.id,accountId:mailbox.id,direction:'outbound',from:admin.email,fromAddress:admin.email,recipients:[contact.email],recipientAddresses:[contact.email],subject:'Fixture conversation',body:'Local verification',snippet:'Local verification',labels:['SENT'],sentAt:new Date(),contactId:contact.id};
+  const messageData={tenantId:tenant.id,accountId:mailbox.id,direction:'outbound',from:admin.email,fromAddress:admin.email,recipients:[contact.email],recipientAddresses:[contact.email],authorizationParticipants:[admin.email,contact.email],participantPolicyVersion:1,subject:'Fixture conversation',body:'Local verification',snippet:'Local verification',labels:['SENT'],sentAt:new Date(),contactId:contact.id};
   await prisma.mailboxMessage.create({data:{...messageData,providerMessageId:'local-message',threadId:'local-thread'}});
   const associate=async(threadId,dealId)=>fetch(apiBase+'/integrations/gmail/threads/'+threadId+'/deal',{method:'PATCH',headers:{authorization:'Bearer '+token,'content-type':'application/json'},body:JSON.stringify({dealId})});
   const linked=await associate('local-thread',moved.id);assert.equal(linked.status,200,await linked.text());
@@ -390,12 +397,12 @@ try {
   assert.equal(await prisma.mailboxThreadAssociation.count({where:{tenantId:tenant.id,threadId:'local-thread',dealId:moved.id}}),1);
   assert.equal(await prisma.activity.count({where:{tenantId:tenant.id,dealId:moved.id,title:'Email conversation associated with this Deal'}}),1);
   const closedLink=await associate('local-thread',fixtures['Won Evidence'].id);assert.equal(closedLink.status,400,await closedLink.text());
-  const secondContact=await prisma.contact.create({data:{tenantId:tenant.id,firstName:'Second',lastName:'Recipient',email:'second@example.test',assignedUserId:admin.id,activeProducts:[],productInterests:[]}});
-  await prisma.mailboxMessage.createMany({data:[{...messageData,providerMessageId:'ambiguous-one',threadId:'ambiguous-thread'},{...messageData,providerMessageId:'ambiguous-two',threadId:'ambiguous-thread',contactId:secondContact.id,recipients:[secondContact.email],recipientAddresses:[secondContact.email]}]});
+  const secondContact=await prisma.contact.create({data:{tenantId:tenant.id,firstName:'Second',lastName:'Recipient',email:'second@example.test',assignedUserId:admin.id,productInterests:[]}});
+  await prisma.mailboxMessage.createMany({data:[{...messageData,providerMessageId:'ambiguous-one',threadId:'ambiguous-thread'},{...messageData,providerMessageId:'ambiguous-two',threadId:'ambiguous-thread',contactId:secondContact.id,recipients:[secondContact.email],recipientAddresses:[secondContact.email],authorizationParticipants:[admin.email,secondContact.email]}]});
   const ambiguous=await associate('ambiguous-thread',moved.id);assert.equal(ambiguous.status,409,await ambiguous.text());
   assert.equal(await prisma.mailboxThreadAssociation.count({where:{tenantId:tenant.id,threadId:'ambiguous-thread'}}),0);
   record('Existing email association API persists once, replays safely and rejects closed Deals and ambiguous people');
-  assert.deepEqual(pageErrors,[]);assert.deepEqual(serverErrors,[]);
+  assert.deepEqual(pageErrors,[]);assert.deepEqual(serverErrors,[]);assert.deepEqual(transportErrors,[]);
   writeFileSync(resolve(output,'results.json'),JSON.stringify({checks,pageErrors,transportErrors,serverErrors},null,2));
   console.log('Deal Actions acceptance passed: '+checks.length+' checks.');
 } catch (error) {

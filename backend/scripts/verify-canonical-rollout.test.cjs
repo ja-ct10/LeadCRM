@@ -45,9 +45,10 @@ test('the complete release history deploys reviewed transitions while guarded co
   const relationship = '20261102000000_retire_relationship_compatibility';
   const crm = '20261110000000_retire_unused_crm_columns';
   const lead = '20261112000000_retire_lead_nonform_columns';
+  const contact = '20261129000000_retire_contact_obsolete_columns';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, '20261127000000_login_attempt_lockout');
-  assert.deepEqual(plan.exclude, [relationship, crm, lead]);
+  assert.equal(plan.through, contact);
+  assert.deepEqual(plan.exclude, [relationship, crm, lead, contact]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
     '20261111000000_crm_ownership_safety', '20261113000000_mailbox_message_headers', '20261114000000_mailbox_thread_metadata', '20261114000000_notification_delivery',
@@ -55,13 +56,19 @@ test('the complete release history deploys reviewed transitions while guarded co
     '20261116000000_user_groups', '20261117000000_campaign_submission_recovery', '20261118000000_group_revisions',
     '20261119000000_notification_utc_timestamps', '20261120000000_password_recovery_security', '20261121000000_mailbox_reply_header',
     '20261121000000_task_creator_sales_group', '20261123000000_campaign_schedule', '20261124000000_crm_content_revisions',
-    '20261125000000_crm_assignment_policy', '20261126000000_notification_policy', '20261127000000_login_attempt_lockout']) {
+    '20261125000000_crm_assignment_policy', '20261125000000_contact_creation_receipts',
+    '20261125010000_mailbox_operation_recovery', '20261125020000_import_source_identity',
+    '20261125030000_durable_workflow_dispatch', '20261125040000_activity_mailbox_authorization',
+    '20261126000000_notification_policy', '20261127000000_login_attempt_lockout',
+    '20261128000000_preserve_contact_retirement_history']) {
     assert.ok(selected.includes(name), name);
   }
   assert.throws(() => deploymentPlan(rows, [...names, '20261115000000_unreviewed']), /REVIEW_MIGRATIONS/);
   assert.throws(() => deploymentPlan([...rows, { migration_name: selected.at(-1) }], names), /FAILED_MIGRATION/);
   rows.push({ migration_name: relationship, finished_at: new Date() });
-  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [crm, lead] });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [crm, lead, contact] });
   rows.push({ migration_name: crm, finished_at: new Date() }, { migration_name: lead, finished_at: new Date() });
+  assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [contact] });
+  rows.push({ migration_name: contact, finished_at: new Date() });
   assert.deepEqual(deploymentPlan(rows, names), { through: '\uffff', exclude: [] });
 });

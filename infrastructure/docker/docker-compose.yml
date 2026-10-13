@@ -1,40 +1,51 @@
-version: '3.9'
-
+# Deployment rehearsal requires a verified HTTPS ingress for API_URL.
+# No automatic seed or compatibility-column retirement.
 services:
   db:
     image: postgres:16-alpine
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-leadcrm}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-leadcrm_dev}
-      POSTGRES_DB: ${POSTGRES_DB:-leadcrm_dev}
-    ports:
-      - '5432:5432'
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set a private database password}
+      POSTGRES_DB: ${POSTGRES_DB:-leadcrm}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
   backend:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.backend
-    ports:
-      - '4000:4000'
+    restart: unless-stopped
+    env_file:
+      - ${BACKEND_ENV_FILE:?Provide a private backend production environment file}
     environment:
-      DATABASE_URL: postgresql://${POSTGRES_USER:-leadcrm}:${POSTGRES_PASSWORD:-leadcrm_dev}@db:5432/${POSTGRES_DB:-leadcrm_dev}
-      NODE_ENV: development
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leadcrm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-leadcrm}
+      DIRECT_URL: postgresql://${POSTGRES_USER:-leadcrm}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-leadcrm}
+      NODE_ENV: production
+      STORAGE_ROOT: /var/lib/leadcrm/files
+    expose: ['4000']
+    volumes:
+      - private_files:/var/lib/leadcrm/files
     depends_on:
-      - db
-
+      db:
+        condition: service_healthy
   frontend:
     build:
       context: ../..
       dockerfile: infrastructure/docker/Dockerfile.frontend
-    ports:
-      - '3000:3000'
+      args:
+        API_URL: ${API_URL:?Set the verified HTTPS API origin ending /api/v1}
+    restart: unless-stopped
     environment:
-      NEXT_PUBLIC_API_URL: http://backend:4000/api/v1
+      API_URL: ${API_URL}
+    expose: ['3000']
     depends_on:
-      - backend
-
+      backend:
+        condition: service_healthy
 volumes:
   postgres_data:
+  private_files:

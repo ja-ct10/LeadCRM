@@ -1,4 +1,4 @@
-name: CI — Lint & Typecheck
+name: CI — Local acceptance and container compatibility
 
 on:
   push:
@@ -7,77 +7,55 @@ on:
     branches: [main]
 
 jobs:
-  frontend:
-    name: Frontend — TypeScript Check
+  acceptance:
+    name: Clean checkout — build, isolated QA, native PostgreSQL
     runs-on: ubuntu-latest
-
+    timeout-minutes: 120
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          # Monorepo: lock file lives at root, not in subpackage directories
+          node-version: '24'
+          cache: npm
           cache-dependency-path: package-lock.json
-
-      - name: Install dependencies (monorepo root)
-        run: npx --yes npm@11.19.1 ci
-
-      - name: TypeScript check
-        working-directory: frontend
-        run: npx tsc --noEmit
-
-      - name: Lint
-        working-directory: frontend
-        run: npm run lint
-
-  backend:
-    name: Backend — TypeScript Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies (monorepo root)
-        run: npx --yes npm@11.19.1 ci
-
+      - name: Install locked workspaces
+        run: npx --yes npm@11.19.1 ci --include=dev
+      - name: Install local browser and PostgreSQL tooling
+        run: |
+          npx playwright install --with-deps chrome
+          sudo apt-get update
+          sudo apt-get install -y postgresql openssl
+          echo "POSTGRES_TEST_BIN=$(pg_config --bindir)" >> "$GITHUB_ENV"
       - name: Generate Prisma client
-        working-directory: backend
-        run: npx prisma generate
-
-      - name: TypeScript check
-        working-directory: backend
-        run: npx tsc --noEmit
-
-  shared:
-    name: Shared Package — TypeScript Check
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+        run: npm --prefix backend run db:generate
+      - name: Execute counted local acceptance
+        run: npm run qa:local -- --native
+      - name: Verify generated contract companions
+        run: git diff --exit-code -- shared/src
+      - name: Preserve QA counts and fixture evidence
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: package-lock.json
-
-      - name: Install dependencies (monorepo root)
-        run: npx --yes npm@11.19.1 ci
-
-      - name: TypeScript check
-        working-directory: shared
-        run: npx tsc --noEmit
+          name: disposable-qa-evidence
+          path: |
+            data/outputs/system-audit/**/*.json
+            data/outputs/system-audit/**/*.log
+            data/outputs/*-browser/results.json
+            .tmp/*-browser/results.json
+          if-no-files-found: error
+  containers:
+    name: Root-context Docker compatibility
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build backend including guarded migration entrypoint
+        run: docker build -f infrastructure/docker/Dockerfile.backend -t leadcrm-backend:qa .
+      - name: Build frontend standalone output
+        run: docker build -f infrastructure/docker/Dockerfile.frontend --build-arg API_URL=https://leadcrm-build.example/api/v1 -t leadcrm-frontend:qa .
+      - name: Validate compose contract with dummy values
+        env:
+          POSTGRES_PASSWORD: disposable-ci-password
+          BACKEND_ENV_FILE: ../../backend/.env.example
+          API_URL: https://leadcrm-build.example/api/v1
+        run: docker compose -f infrastructure/docker/docker-compose.yml config --quiet

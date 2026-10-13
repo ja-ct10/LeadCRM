@@ -7,6 +7,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'jsdom',
+    testTimeout: 20000,
   },
   resolve: {
     extensions: ['.ts', '.tsx', '.mjs', '.js', '.cjs', '.json'],

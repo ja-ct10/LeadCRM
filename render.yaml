@@ -3,7 +3,7 @@ services:
   - type: web
     name: leadcrm-backend
     runtime: node
-    buildCommand: npx --yes npm@11.19.1 ci --include=dev && npm --prefix backend run build
+    buildCommand: npx --yes npm@11.19.1 ci --include=dev && npm --prefix shared run build && npm --prefix backend run build
     # Apply expansion migrations before accepting requests. Import table retirement
     # runs separately after authenticated API verification; never use bare migrate deploy.
     startCommand: npm --prefix backend run db:deploy && npm --prefix backend start

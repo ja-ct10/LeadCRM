@@ -10,11 +10,12 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const runName = process.env.RECORD_PLAN_BROWSER_RUN_NAME || '';
 assert.ok(!runName || /^[a-z0-9_-]+$/.test(runName));
-const output = resolve(root, '.tmp/record-plan-browser', runName);
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, '.tmp/record-plan-browser', runName));
 mkdirSync(output, { recursive: true });
 const apiLog = createWriteStream(resolve(output, 'api.log'));
 const originalError = console.error.bind(console);
@@ -51,7 +52,7 @@ try {
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
   const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', website: 'https://example.test', assignedUserId: admin.id } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
-  const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, activeProducts: [], productInterests: [] } });
+  const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
   const source = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Converted', lastName: 'Source', email: 'source@example.test', accountId: account.id, assignedUserId: admin.id, contactId: contact.id, convertedAt: new Date() } });
   const deal = await prisma.deal.create({ data: { tenantId: tenant.id, title: 'Acceptance Deal', pipelineId: pipeline.id, stageId: initial.id, accountId: account.id, assignedUserId: admin.id, ownerId: admin.id, productsNormalized: true, productInterestId: product.id, productInterestIds: [product.id], value: 25000, productInterests: [product.name], tags: [] } });
   await prisma.leadDeal.createMany({ data: [lead, source].map(item => ({ tenantId: tenant.id, leadId: item.id, dealId: deal.id, addedById: admin.id })) });
@@ -93,6 +94,7 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(auth) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+    await isolateBrowserContext(context);
     await context.addInitScript(() => {
       const NativeEventSource = window.EventSource;
       window.__recordPlanStreams = {};
@@ -154,9 +156,10 @@ try {
     await navigate(mode === 'page' ? `/crm/${module}/${records[module].id}` : `/crm/${module}?highlight=${records[module].id}`);
     if (mode === 'drawer') {
       if (module === 'contacts') await page.getByRole('row').filter({ hasText: 'contact@example.test' }).getByText('Acceptance', { exact: true }).click();
+      else if (module === 'deals') await page.getByRole('heading', { name: titles[module], exact: true, level: 1 }).waitFor();
       else await page.getByText(titles[module], { exact: true }).first().click();
     }
-    await page.getByRole('heading', { name: titles[module], exact: true }).waitFor();
+    await page.getByRole('heading', { name: titles[module], exact: true, level: 1 }).waitFor();
     if (module === 'leads') await page.getByText('lead@example.test', { exact: true }).first().waitFor();
     if (module === 'contacts') await page.getByText('contact@example.test', { exact: true }).first().waitFor();
     if (module === 'accounts') await page.getByText('https://example.test', { exact: true }).first().waitFor();
@@ -164,15 +167,15 @@ try {
     await taskSection(page).getByText(`Actual ${module} task`, { exact: true }).waitFor();
   }
   async function responsive(label, focus) {
-    for (const width of [1440, 390, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(300);
       if (focus) await focus.scrollIntoViewIfNeeded();
       const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, controls: [...document.querySelectorAll('input,textarea,select')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label') || el.getAttribute('name')) }));
       assert.ok(dimensions.scroll <= width + 1 && !dimensions.controls.length, `${label}: ${JSON.stringify(dimensions)}`);
       if (label.endsWith('-activity')) await page.locator('[data-record-scroll]').evaluate(el => { el.scrollTop = 0; });
-      await page.screenshot({ path: resolve(output, `${label}-${width}.png`) });
-      record(`${label} ${width}px`, dimensions);
+      await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) });
+      record(`${label} ${theme} ${width}px`, { theme, ...dimensions });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
   }
@@ -240,7 +243,7 @@ try {
   record('Second-session custom value silently updates, preserving Details tab and scroll');
   await page.getByRole('tab', { name: /^Activity/ }).click();
   const taskScrollBefore = await preserveScrollBefore(page);
-  const taskResponse = await other.request.post(apiBase + '/operations/tasks', { headers: { authorization: `Bearer ${token}` }, data: { title: 'Remote actual task', assignedUserId: admin.id, dueDate: '2026-12-02T09:00:00Z', leadIds: [lead.id] } });
+  const taskResponse = await other.request.post(apiBase + '/operations/tasks', { headers: { authorization: `Bearer ${token}` }, data: { requestId: randomUUID(), title: 'Remote actual task', assignedUserId: staff.id, dueDate: '2026-12-02T09:00:00Z', dealIds: [deal.id] } });
   assert.equal(taskResponse.status(), 201, await taskResponse.text());
   await taskSection(page).getByText('Remote actual task', { exact: true }).waitFor({ timeout: 12000 });
   assert.equal(await notes(page).getByLabel('Note', { exact: true }).inputValue(), 'Preserve my unfinished draft');

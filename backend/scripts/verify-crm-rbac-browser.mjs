@@ -1,3 +1,4 @@
+import { isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Invoked only by the disposable PostgreSQL runner. No configured tenant/database.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -9,7 +10,7 @@ import assert from 'node:assert/strict';
 const url = new URL(process.env.DATABASE_URL);
 assert.equal(url.hostname, '127.0.0.1'); assert.equal(url.pathname, '/leadcrm_forms_test_2');
 const root = resolve(import.meta.dirname, '../..');
-const output = resolve(tmpdir(), `leadcrm-rbac-browser-${Date.now()}`);
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(tmpdir(), `leadcrm-rbac-browser-${Date.now()}`));
 mkdirSync(output, { recursive: true });
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) {
@@ -55,7 +56,7 @@ try {
   const log = createWriteStream(resolve(output, 'frontend.log'));
   frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'],
-    env: { ...process.env, NODE_ENV: 'development', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' },
+    env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' },
   });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   let ready = false;
@@ -66,8 +67,10 @@ try {
   assert.ok(ready, 'Next dev server did not become ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: a.token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  const page = await context.newPage(); page.setDefaultTimeout(30000);
+  const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
   page.on('pageerror', error => errors.push(error.message));
   const widths = [320,375,390,430,768,1024,1440,1920];
   async function capture(name, width) {
@@ -141,5 +144,5 @@ try {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors, failure: error.message }, null, 2));
   originalLog(`Browser RBAC failed; evidence: ${output}`); throw error;
 } finally {
-  await browser?.close(); frontend?.kill(); if (api) await new Promise(done => api.close(done)); await prisma.$disconnect(); runtimeLog.end();
+  await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); } await prisma.$disconnect(); runtimeLog.end();
 }

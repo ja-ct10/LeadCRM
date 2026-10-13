@@ -1,7 +1,5 @@
+import { isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Disposable PostgreSQL and local application only. Screenshots stay outside Git.
-import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
-import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -10,14 +8,13 @@ import { resolve } from 'node:path';
 import { tmpdir, homedir } from 'node:os';
 import assert from 'node:assert/strict';
 const root = resolve(import.meta.dirname, '../..');
-const output = resolve(tmpdir(), `leadcrm-tasks-browser-${Date.now()}`);
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(tmpdir(), `leadcrm-tasks-browser-${Date.now()}`));
 mkdirSync(output, { recursive: true });
-const db = await PGlite.create();
-await replayCrmMigrations(db);
-const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
-await socket.start();
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1');
+assert.equal(database.pathname, '/leadcrm_forms_test_2');
 const base = 'http://localhost:3023';
-Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_tasks_browser?connection_limit=1`,
+Object.assign(process.env, { NODE_ENV: 'test',
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -36,6 +33,8 @@ try {
   const tenantId = (await prisma.tenant.create({ data: { name: 'Tasks Browser QA', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
   const admin = await prisma.user.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Admin', email: 'tasks-browser@camxian.com', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const { token } = await issueAuthSession(admin);
+  const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Tasks QA staff', permissions: { create: { module: 'tasks', canView: true } } } });
+  const staff = await prisma.user.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Staff', email: 'tasks-staff@camxian.com', role: role.name, userRoles: { create: { roleId: role.id } } } });
   const account = await prisma.account.create({ data: { tenantId, name: 'Tasks QA Account', assignedUserId: admin.id } });
   const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Contact', assignedUserId: admin.id } });
   const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Lead', assignedUserId: admin.id, contactId: contact.id, convertedAt: new Date() } });
@@ -50,11 +49,11 @@ try {
     const response = await fetch(apiBase + path, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}) });
     assert.ok(response.ok, `${method} ${path} ${response.status} ${await response.clone().text()}`); return response.json();
   }
-  for (let i = 0; i < 12; i++) await call('/operations/tasks', 'POST', { title: `Browser QA Task ${String(i).padStart(2, '0')}`, assignedUserId: admin.id, dueDate: new Date(Date.now() + 86400000).toISOString(), dealIds: deals.map(x => x.id) });
+  for (let i = 0; i < 12; i++) await call('/operations/tasks', 'POST', { requestId: randomUUID(), title: `Browser QA Task ${String(i).padStart(2, '0')}`, assignedUserId: staff.id, dueDate: new Date(Date.now() + 86400000).toISOString(), dealIds: deals.map(x => x.id) });
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3023', '-H', '127.0.0.1'], {
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3023', '-H', '127.0.0.1'], {
     cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'],
-    env: { ...process.env, NODE_ENV: 'development', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' },
+    env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' },
   });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   let ready = false;
@@ -62,9 +61,25 @@ try {
   assert.ok(ready, 'Local frontend did not start');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext();
+
+  await isolateBrowserContext(context);
   await context.addInitScript(() => localStorage.setItem('app_theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light'));
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(90000);
+  page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
+  await page.route('**/api/proxy/**', async route => {
+    const request = route.request(), url = new URL(request.url());
+    const local = `${apiBase}${url.pathname.replace('/api/proxy', '')}${url.search}`;
+    const headers = { ...request.headers(), authorization: `Bearer ${token}` };
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: local, headers });
+    try {
+      await route.fulfill({ response: await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined,
+        maxRetries: ['GET', 'HEAD'].includes(request.method()) ? 2 : 0 }) });
+    } catch (error) {
+      if (page.isClosed() || request.failure()?.errorText === 'net::ERR_ABORTED') return;
+      errors.push(`${request.method()} ${url.pathname}: ${String(error).split('\n')[0]}`);
+      await route.abort('failed').catch(() => {});
+    }
+  });
   page.on('pageerror', error => errors.push(error.message));
   async function capture(name) {
     await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"]')].every(dialog => {
@@ -81,6 +96,7 @@ try {
       await page.setViewportSize({ width, height: 900 });
       for (const [module, record] of Object.entries(records)) {
         await page.goto(`${base}/crm/${module}/${record.id}`, { waitUntil: 'domcontentloaded' });
+        await setAcceptanceTheme(page, theme === 'dark' ? 'Dark' : 'Light');
         await page.getByRole('tab', { name: /^Activity/ }).click();
         const refresh = page.getByRole('button', { name: 'Refresh tasks', exact: true });
         await refresh.waitFor();
@@ -126,6 +142,9 @@ try {
   await page.goto(`${base}/crm/deals/${deals[0].id}`);
   await page.getByRole('button', { name: 'Add task', exact: true }).click();
   await page.getByRole('dialog').getByRole('textbox', { name: /^Title/ }).fill('Deal-created canonical Task');
+  await page.getByRole('button', { name: /^Assigned Agent/ }).click();
+  await page.getByRole('dialog', { name: 'Select owner', exact: true }).getByLabel('Tasks Staff', { exact: true }).check();
+  await page.getByLabel('Search owner', { exact: true }).press('Escape');
   const dealSaved = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/operations/tasks'));
   await page.getByRole('button', { name: 'Create task', exact: true }).click();
   assert.equal((await dealSaved).status(), 201);
@@ -141,6 +160,9 @@ try {
   await page.goto(base + '/operations/taskboard');
   await page.getByRole('button', { name: 'Create Task', exact: true }).click();
   await page.getByRole('dialog').getByRole('textbox', { name: /^Title/ }).fill('Browser-created canonical Task');
+  await page.getByRole('button', { name: /^Assigned Agent/ }).click();
+  await page.getByRole('dialog', { name: 'Select owner', exact: true }).getByLabel('Tasks Staff', { exact: true }).check();
+  await page.getByLabel('Search owner', { exact: true }).press('Escape');
   await page.getByRole('button', { name: 'Create task', exact: true }).last().click();
   await page.getByText('Select at least one Deal to associate with this task.', { exact: true }).waitFor();
   await page.getByRole('button', { name: /Associate task to deal/ }).click();
@@ -165,6 +187,6 @@ try {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors, failure: error.stack }, null, 2));
   originalLog(`Tasks browser failed; evidence: ${output}`); throw error;
 } finally {
-  await browser?.close(); frontend?.kill(); if (api) await new Promise(done => api.close(done));
-  await prisma.$disconnect(); await socket.stop(); await db.close(); runtimeLog.end();
+  await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
+  await prisma.$disconnect(); runtimeLog.end();
 }

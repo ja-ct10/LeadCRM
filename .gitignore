@@ -97,3 +97,10 @@ data/outputs/retired-features-*.json
 /data/outputs/notification-verification/
 /data/outputs/organization-settings-browser/
 /data/outputs/campaign-clicks/
+/data/outputs/system-audit/
+/data/outputs/campaign-groups/
+/data/outputs/scoped-cleanup/
+/data/outputs/scoped-cleanup-tests.json
+/data/outputs/scoped-cleanup-final-retests.json
+__pycache__/
+*.pyc

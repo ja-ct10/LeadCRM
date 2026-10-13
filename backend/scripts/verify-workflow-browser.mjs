@@ -9,7 +9,8 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/workflow-browser');
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/workflow-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -43,6 +44,7 @@ try {
   records.account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Workflow Account', assignedUserId: admin.id } });
   const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id } });
   records.deal = await prisma.deal.create({ data: { tenantId: tenant.id, title: 'Workflow Deal', pipelineId: stage.pipelineId, stageId: stage.id, assignedUserId: admin.id } });
+  await prisma.leadDeal.create({ data: { tenantId: tenant.id, leadId: records.lead.id, dealId: records.deal.id } });
   const definitions = {}, saved = {};
   for (const [entity, module] of Object.entries({ lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' })) {
     definitions[entity] = await scope(() => saveField(tenant.id, admin.id, { module, group: entity === 'account' ? 'Notes' : entity === 'deal' ? 'Additional Details' : 'Additional Information', name: 'Site Access', type: 'Dropdown', required: false, options: ['Standard', 'Restricted'] }));
@@ -56,8 +58,9 @@ try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   // Only the browser transport is redirected; authentication and all data use the real local API/SQL.
   await page.route('**/api/proxy/**', async route => {
     const request = route.request();
@@ -80,12 +83,12 @@ try {
 
   const record = label => { checks.push({ label }); console.log('PASS', label); };
   async function responsive(label) {
-    for (const width of [1440, 1024, 768, 390, 375, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(300);
       const dimensions = await page.evaluate(() => ({ width: innerWidth, overflow: document.documentElement.scrollWidth > innerWidth + 1, outside: [...document.querySelectorAll('input, select, textarea')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label')) }));
       assert.equal(dimensions.overflow, false, JSON.stringify(dimensions)); assert.deepEqual(dimensions.outside, [], JSON.stringify(dimensions));
-      await page.screenshot({ path: resolve(output, label + '-' + width + '.png') }); record(label + ' at ' + width);
+      await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) }); record(`${label} ${theme} ${width}px`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
   }

@@ -1,24 +1,22 @@
-FROM node:20-alpine AS base
-
-# Install dependencies
-FROM base AS deps
+FROM node:24-bookworm-slim AS builder
 WORKDIR /app
-COPY frontend/package.json ./
-RUN npm install
+COPY package.json package-lock.json ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
+COPY shared/package.json shared/package.json
+RUN npx --yes npm@11.19.1 ci --include=dev
+COPY . .
+ARG API_URL
+ENV API_URL=$API_URL NEXT_TELEMETRY_DISABLED=1
+RUN npm --prefix shared run build && npm --prefix frontend run build
 
-# Build
-FROM base AS builder
+FROM node:24-bookworm-slim AS runner
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY frontend/ .
-RUN npm run build
-
-# Production runner
-FROM base AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app/.next/standalone ./
-COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public
+ENV NODE_ENV=production PORT=3000 HOSTNAME=0.0.0.0 NEXT_TELEMETRY_DISABLED=1
+COPY --from=builder --chown=node:node /app/frontend/.next/standalone ./
+COPY --from=builder --chown=node:node /app/frontend/.next/static ./frontend/.next/static
+COPY --from=builder --chown=node:node /app/frontend/public ./frontend/public
+USER node
 EXPOSE 3000
-CMD ["node", "server.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s CMD node -e "fetch('http://127.0.0.1:3000/login').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["node", "frontend/server.js"]

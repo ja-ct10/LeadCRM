@@ -1,3 +1,4 @@
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Real UI/API acceptance in a disposable database; no production data or email sends.
 // Pass an installed Playwright module path as the first argument.
 import { PGlite } from '@electric-sql/pglite';
@@ -10,7 +11,7 @@ import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 
-const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/product-share-browser');
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/product-share-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -19,7 +20,7 @@ Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postg
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
-const { chromium } = require(process.argv[2] || 'playwright');
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || process.argv[2] || 'playwright');
 const prisma = require('../dist/backend/src/config/database.config.js').default;
 const app = require('../dist/backend/src/app.js').default;
 const { tenantContext } = require('../dist/backend/src/core/tenant/tenant-context.js');
@@ -54,10 +55,13 @@ try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url());
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`, headers: { ...request.headers(), authorization: `Bearer ${token}` } });
     requests.push({ path: url.pathname + url.search, method: request.method() });
     try {
       if (delayPath && url.pathname.endsWith(delayPath)) await new Promise(done => setTimeout(done, delayMs));
@@ -67,7 +71,7 @@ try {
   });
   const navigate = path => page.goto(base + path);
   async function responsive(label, locator, refreshLabel) {
-    for (const width of [1440, 1024, 768, 390, 375, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 }); await page.waitForTimeout(250);
       const dimensions = await locator.evaluate(element => ({ pageOverflow: document.documentElement.scrollWidth > innerWidth + 1, overflow: element.scrollWidth > element.clientWidth + 1, font: getComputedStyle(element).fontFamily }));
       assert.equal(dimensions.pageOverflow, false, JSON.stringify({ width, ...dimensions }));
@@ -77,13 +81,25 @@ try {
       if (label === 'product') {
         assert.equal(await locator.locator('table').count(), 1);
         const grid = locator.getByRole('region', { name: 'Closed Won table' });
-        const scrolls = await grid.locator('table').evaluate(table => table.parentElement.scrollWidth > table.parentElement.clientWidth);
-        assert.equal(scrolls, width <= 390, `Table overflow at ${width}px`);
+        const tableAccess = await grid.locator('table').evaluate(table => {
+          const container = table.parentElement;
+          const scrolls = container.scrollWidth > container.clientWidth + 1;
+          container.scrollLeft = container.scrollWidth;
+          const last = table.querySelector('thead th:last-child').getBoundingClientRect();
+          const bounds = container.getBoundingClientRect();
+          const result = { scrolls, overflowX: getComputedStyle(container).overflowX,
+            lastColumnReachable: last.left >= bounds.left - 1 && last.right <= bounds.right + 1 };
+          container.scrollLeft = 0;
+          return result;
+        });
+        if (width >= 768) assert.equal(tableAccess.scrolls, false, `Table overflow at ${width}px`);
+        if (tableAccess.scrolls) assert.ok(['auto', 'scroll'].includes(tableAccess.overflowX));
+        assert.equal(tableAccess.lastColumnReachable, true, `Last column inaccessible at ${width}px`);
         await locator.getByText('Product Name', { exact: true }).scrollIntoViewIfNeeded();
-        await page.screenshot({ path: resolve(output, `${label}-${width}-top.png`) });
+        await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}-top.png`) });
         await locator.getByRole('button', { name: 'Records per page' }).scrollIntoViewIfNeeded();
       }
-      await page.screenshot({ path: resolve(output, `${label}-${width}.png`) }); record(`${label}: ${width}px, contained overflow, refresh reachable, font ${dimensions.font}`);
+      await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) }); record(`${label}: ${width}px, contained overflow, refresh reachable, font ${dimensions.font}`);
     }
   }
 

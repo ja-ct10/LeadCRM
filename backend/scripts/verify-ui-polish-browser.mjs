@@ -1,6 +1,4 @@
 // Real local API + disposable SQL acceptance. Requires built workspaces and PLAYWRIGHT_MODULE.
-import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -8,15 +6,15 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { replayCrmMigrations } from './replay-crm-migrations.mjs';
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = resolve(process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-ui-polish'));
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-ui-polish')));
 mkdirSync(output, { recursive: true });
-const db = await PGlite.create(); await replayCrmMigrations(db);
-const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
 const base = 'http://localhost:3025';
-Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_ui_polish?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base, BREVO_API_KEY: '', BREVO_SMS_SENDER: '' });
+Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base, BREVO_API_KEY: '', BREVO_SMS_SENDER: '' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
@@ -39,15 +37,19 @@ try {
   const tenant = await prisma.tenant.create({ data: { name: 'UI Polish Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Polish', lastName: 'Tester', email: 'polish-preview@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const { token } = await issueAuthSession(admin), scope = run => tenantContext.run({ tenantId: tenant.id }, run);
+  const taskRole = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Polish task agents', permissions: { create: { module: 'tasks', canView: true } } } });
+  const taskAgent = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Polish', lastName: 'Agent', email: 'polish-agent@camxian.com', role: taskRole.name,
+    userRoles: { create: { roleId: taskRole.id } } } });
   const pipeline = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id } });
   const instant = new Date('2026-10-10T10:39:48Z');
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Fixture', lastName: 'Lead', assignedUserId: admin.id } });
   const deal = await prisma.deal.create({ data: { tenantId: tenant.id, title: 'Polish Deal', pipelineId: stage.pipelineId, stageId: stage.id, assignedUserId: admin.id, createdAt: new Date('2026-10-08T23:35:37.695Z') } });
+  await prisma.leadDeal.create({ data: { tenantId: tenant.id, leadId: lead.id, dealId: deal.id } });
   for (let i = 1; i <= 30; i++) await prisma.contact.create({ data: { tenantId: tenant.id, firstName: `Polish ${String(i).padStart(2, '0')}`, lastName: 'Contact', status: 'WARM', assignedUserId: admin.id } });
   for (const [name, createdAt] of [['Polish Task', instant], ['Polish Older Task', new Date('2026-01-01T00:00:00Z')]]) await prisma.task.create({ data: { tenantId: tenant.id, title: name, assignedUserId: admin.id, dueDate: new Date('2027-01-01T00:00:00Z'), createdAt } });
   for (const [name, createdAt] of [['Polish Campaign', instant], ['Polish Older Campaign', new Date('2026-01-01T00:00:00Z')]]) await prisma.campaign.create({ data: { tenantId: tenant.id, name, type: 'EMAIL', status: 'DRAFT', createdAt } });
-  const draft = { name: 'Polish Active', trigger: 'lead.updated', isActive: true, conditions: { operator: 'OR', conditions: ['Fixture', 'Middle', 'Last'].map(value => ({ field: 'lead.firstName', operator: 'equals', value })) }, actions: [{ type: 'create_task', config: { title: 'History task', assignedUserId: admin.id } }] };
+  const draft = { name: 'Polish Active', trigger: 'lead.updated', isActive: true, conditions: { operator: 'OR', conditions: ['Fixture', 'Middle', 'Last'].map(value => ({ field: 'lead.firstName', operator: 'equals', value })) }, actions: [{ type: 'create_task', config: { title: 'History task', assignedUserId: taskAgent.id } }] };
   const active = await scope(() => workflows.createWorkflow(tenant.id, admin.id, draft));
   await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: lead.id, triggerType: 'lead.updated', context: { 'event.changedFields': ['address'] } }));
   const execution = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { workflowId: active.id } });
@@ -67,13 +69,14 @@ try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'America/New_York' });
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/proxy', '');
     const localUrl = apiBase + path + url.search, headers = { ...request.headers(), authorization: `Bearer ${token}` };
-    if (path === '/auth/events' || path === '/crm/pipelines/events') return route.continue({ url: localUrl, headers });
-    if (path === '/crm/contacts' && request.method() === 'GET') {
+    if (path.endsWith('/events') || path === '/crm/record-events') return route.continue({ url: localUrl, headers });
+    if (path === '/crm/contacts' && request.method() === 'GET' && url.searchParams.get('search') === 'Polish') {
       contactRequests++;
       if (contactsGate) await contactsGate.promise;
       if (failContacts) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Acceptance: contacts unavailable' } }) });
@@ -86,12 +89,12 @@ try {
     catch (error) { if (!closing) transportErrors.push(`${request.method()} ${path}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); }
   });
   async function responsive(label, target = page.locator('body')) {
-    for (const width of [1440, 1024, 768, 390, 375, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(250); // Wait for responsive layout/transition, never production loading.
       const dimensions = await target.evaluate(root => ({ pageOverflow: document.documentElement.scrollWidth > innerWidth + 1, controlsOutside: [...root.querySelectorAll('input,select,textarea')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label')) }));
       assert.equal(dimensions.pageOverflow, false, JSON.stringify(dimensions)); assert.deepEqual(dimensions.controlsOutside, [], JSON.stringify(dimensions));
-      await page.screenshot({ path: resolve(output, `${label}-${width}.png`) }); record(`${label} ${width}px`);
+      await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) }); record(`${label} ${theme} ${width}px`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
   }
@@ -115,10 +118,10 @@ try {
   await page.getByPlaceholder('Search tasks...').fill('Polish');
   const tasksGrid = page.getByRole('grid');
   await tasksGrid.getByText('Oct 10, 2026 06:39:48 PM', { exact: true }).waitFor();
-  await tasksGrid.getByRole('columnheader', { name: 'Task title', exact: true }).getByText('Task title', { exact: true }).click();
+  await tasksGrid.getByRole('button', { name: 'Column options for Created', exact: true }).click();
   await Promise.all([
     page.waitForResponse(response => response.url().includes('/operations/tasks') && response.url().includes('sortBy=createdAt') && response.url().includes('sortOrder=asc') && response.ok()),
-    tasksGrid.getByRole('columnheader', { name: 'Created', exact: true }).getByText('Created', { exact: true }).click(),
+    page.getByRole('menuitemradio', { name: /Oldest/ }).click(),
   ]);
   await tasksGrid.locator('tbody tr').first().filter({ hasText: 'Polish Older Task' }).waitFor();
   record('Tasks Created uses Manila Format B in a New York browser');
@@ -126,10 +129,10 @@ try {
   await page.goto(base + '/marketing/campaigns');
   const campaignsGrid = page.getByRole('grid');
   await campaignsGrid.getByText('Oct 10, 2026 06:39 PM', { exact: true }).waitFor();
-  await campaignsGrid.getByRole('columnheader', { name: 'Campaign', exact: true }).getByText('Campaign', { exact: true }).click();
+  await campaignsGrid.getByRole('button', { name: 'Column options for Created', exact: true }).click();
   await Promise.all([
     page.waitForResponse(response => response.url().includes('/marketing/campaigns') && new URL(response.url()).searchParams.get('sort') === 'createdAt:asc' && response.ok()),
-    campaignsGrid.getByRole('columnheader', { name: 'Created', exact: true }).getByText('Created', { exact: true }).click(),
+    page.getByRole('menuitemradio', { name: /Oldest/ }).click(),
   ]);
   await campaignsGrid.getByText('Jan 1, 2026 08:00 AM', { exact: true }).waitFor();
   await campaignsGrid.locator('tbody tr').first().filter({ hasText: 'Polish Older Campaign' }).waitFor();
@@ -259,11 +262,15 @@ try {
   await page.waitForURL(url => url.searchParams.get('tab') === 'my');
   await page.getByPlaceholder('Search contacts...').fill('Polish');
   await page.waitForURL(url => url.searchParams.get('search') === 'Polish');
-  await contactsGrid.getByRole('columnheader', { name: 'First Name', exact: true }).getByText('First Name', { exact: true }).click();
+  await contactsGrid.getByRole('button', { name: 'Column options for First Name', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Sort A–Z', exact: true }).click();
   await page.getByRole('button', { name: 'Next page', exact: true }).click();
   await page.getByText('Page 2 of 2', { exact: true }).waitFor();
   let original = await contactsGrid.textContent();
   for (const failure of [false, true]) {
+    // A committed Contact also triggers the normal SSE reconciliation. Let that
+    // read finish before reserving the next deliberately held manual response.
+    await page.waitForFunction(() => { const button = document.querySelector('button[aria-label="Refresh"]'); return button && !button.disabled; });
     const beforeRequests = contactRequests;
     contactsGate = deferred(); failContacts = failure;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -271,13 +278,19 @@ try {
     assert.equal(await contactsGrid.textContent(), original);
     assert.equal(await contactsGrid.isVisible(), false);
     assert.equal(await contactsArea.getByRole('status').count(), 1);
-    const loaderBounds = await contactsArea.getByRole('status').boundingBox(), tableBounds = await contactsArea.boundingBox();
-    assert.ok(Math.abs(loaderBounds.width - tableBounds.width) < 1);
+    const dimensions = await contactsArea.evaluate(area => {
+      const loader = area.querySelector('[role="status"]');
+      return { loader: loader?.getBoundingClientRect().toJSON(), table: area.getBoundingClientRect().toJSON() };
+    });
+    assert.ok(dimensions.loader && dimensions.loader.width > 0 && Math.abs(dimensions.loader.width - dimensions.table.width) < 1, JSON.stringify(dimensions));
     assert.equal(await page.getByPlaceholder('Search contacts...').inputValue(), 'Polish');
     assert.equal(new URL(page.url()).searchParams.get('tab'), 'my');
     assert.equal(await page.getByRole('button', { name: 'Refresh', exact: true }).isDisabled(), true);
-    await responsive(failure ? 'contacts-refresh-failure' : 'contacts-refresh', contactsArea);
+    await page.getByRole('button', { name: 'Refresh', exact: true }).evaluate(button => { button.click(); button.click(); });
     assert.equal(contactRequests, beforeRequests + 1);
+    // Later SSE invalidations are independently governed reconciliation, not
+    // duplicate manual clicks. Cross-session behavior has its own record suite.
+    await responsive(failure ? 'contacts-refresh-failure' : 'contacts-refresh', contactsArea);
     if (!failure) await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Polish Refreshed', lastName: 'Contact', status: 'WARM', assignedUserId: admin.id } });
     contactsGate.resolve(); contactsGate = undefined;
     await page.getByText('Loading contacts...', { exact: true }).waitFor({ state: 'hidden' });
@@ -316,5 +329,5 @@ try {
 } finally {
   closing = true; contactsGate?.resolve(); optionsGate?.resolve();
   await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
-  await prisma.$disconnect(); await socket.stop(); await db.close();
+  await prisma.$disconnect();
 }

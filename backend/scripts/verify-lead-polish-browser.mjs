@@ -1,3 +1,4 @@
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Browser acceptance against a disposable DB and locally built application.
 // Usage: set PLAYWRIGHT_MODULE to an installed Playwright package, then run.
 import { PGlite } from '@electric-sql/pglite';
@@ -9,7 +10,7 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/lead-polish-browser');
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/lead-polish-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -59,12 +60,15 @@ try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   // Only the browser transport is redirected; authentication and all data use the real local API/SQL.
   await page.route('**/api/proxy/**', async route => {
     const request = route.request();
     const url = new URL(request.url());
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`, headers: { ...request.headers(), authorization: `Bearer ${token}` } });
     try {
       const response = await page.request.fetch(`http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`, { method: request.method(), headers: { ...request.headers(), authorization: `Bearer ${token}` }, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 });
       await route.fulfill({ response });
@@ -76,7 +80,7 @@ try {
   const navigate = path => page.goto(base + path);
   const record = label => { checks.push({ label }); console.log('PASS', label); };
   async function responsive(label, rootLocator) {
-    for (const width of [1440, 1024, 768, 390, 375, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(350);
       const dimensions = await rootLocator.evaluate(root => ({ width: innerWidth, overflow: root.scrollWidth > root.clientWidth + 1, outside: [...root.querySelectorAll('input, select, textarea, button')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label') || el.textContent) }));
@@ -90,8 +94,8 @@ try {
         const footer = rootLocator.getByRole('button', { name: 'Create Audience', exact: true });
         const bounds = await footer.boundingBox(); assert.ok(bounds && bounds.y >= 0 && bounds.y + bounds.height <= 900);
       }
-      await page.screenshot({ path: resolve(output, `${label}-${width}.png`) });
-      checks.push({ label, ...dimensions });
+      await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) });
+      checks.push({ label, theme, ...dimensions });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
   }
@@ -125,7 +129,7 @@ try {
   await navigate('/settings?tab=users');
   await page.getByRole('button', { name: 'Deactivate Departure Agent', exact: true }).click();
   const transfer = page.getByRole('alertdialog');
-  await transfer.getByText('Reassign CRM Records', { exact: true }).waitFor();
+  await transfer.getByText('Reassign Records and Tasks', { exact: true }).waitFor();
   assert.equal(await transfer.getByRole('button', { name: 'Continue', exact: true }).isDisabled(), true);
   await transfer.getByLabel('Assigned Agent').selectOption(replacement.id);
   await responsive('deactivation-reassignment', transfer);

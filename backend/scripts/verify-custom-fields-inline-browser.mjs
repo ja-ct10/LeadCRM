@@ -1,6 +1,5 @@
+import { isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Real UI + authenticated HTTP + disposable SQL. No configured database or providers.
-import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -8,15 +7,14 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
-import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = process.env.CUSTOM_FIELDS_OUTPUT || resolve(tmpdir(), 'leadcrm-custom-fields-inline');
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.CUSTOM_FIELDS_OUTPUT || resolve(tmpdir(), 'leadcrm-custom-fields-inline'));
 mkdirSync(output, { recursive: true });
-const db = await PGlite.create(); await replayCrmMigrations(db);
-const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
 const base = 'http://localhost:3017';
-Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_customize_fields_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, BREVO_API_KEY: '' });
+Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, ALLOWED_ORIGINS: base, BREVO_API_KEY: '' });
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
@@ -44,17 +42,31 @@ try {
     const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, hasTouch: true });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(30000); page.on('pageerror', error => errors.push(error.message));
-  // The real storage boundary validates bytes/authorization. Only the external bucket is simulated.
-  const originalFetch = globalThis.fetch;
-  Object.assign(process.env, { SUPABASE_URL: 'https://storage.example.test', SUPABASE_SERVICE_ROLE_KEY: 'disposable-only', SUPABASE_RECORD_FILES_BUCKET: 'test' });
-  globalThis.fetch = (input, init) => String(input).startsWith('https://storage.example.test') ? Promise.resolve(new Response('%PDF-fixture', { status: 200 })) : originalFetch(input, init);
+  page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/proxy/**', async route => {
+    const request = route.request(), url = new URL(request.url());
+    const local = `${apiBase}${url.pathname.replace('/api/proxy', '')}${url.search}`;
+    const headers = { ...request.headers(), authorization: `Bearer ${token}` };
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: local, headers });
+    try {
+      await route.fulfill({ response: await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined,
+        maxRetries: ['GET', 'HEAD'].includes(request.method()) ? 2 : 0 }) });
+    } catch (error) {
+      if (page.isClosed() || request.failure()?.errorText === 'net::ERR_ABORTED') return;
+      errors.push(`${request.method()} ${url.pathname}: ${String(error).split('\n')[0]}`);
+      await route.abort('failed').catch(() => {});
+    }
+  });
+  // The coordinator supplies a private disposable mount; uploads exercise the
+  // actual byte validation, storage service and authenticated record boundary.
   const modules = ['leads', 'contacts', 'accounts', 'deals'];
   const fields = {}, records = { leads: lead.id };
   const titles = { leads: 'Alias Acceptance', contacts: 'Contact Acceptance', accounts: 'Account Acceptance', deals: 'Inline Acceptance' };
@@ -64,7 +76,7 @@ try {
   const pipeline = await tenantContext.run({ tenantId: tenant.id }, () => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id, name: 'Lead' } });
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Inline Test Product', dealValue: 100 } });
-  records.contacts = (await call('/crm/contacts', 'POST', { firstName: 'Contact', lastName: 'Acceptance', email: 'contact@example.test' })).id;
+  records.contacts = (await call('/crm/contacts', 'POST', { requestId: randomUUID(), firstName: 'Contact', lastName: 'Acceptance', email: 'contact@example.test' })).id;
   records.accounts = (await call('/crm/accounts', 'POST', { name: titles.accounts })).id;
   records.deals = (await call('/crm/deals/batch', 'POST', { title: titles.deals, pipelineId: pipeline.pipeline.id, stageId: stage.id, productInterestIds: [product.id], idempotencyKey: randomUUID() })).deals[0].id;
   for (const module of modules) {
@@ -230,6 +242,7 @@ try {
   checks.push('Specialized Closed Won Edit, progress and evidence PATCH still work after ordinary inline changes');
   for (const width of [320, 375, 390, 430, 768, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 }); await details('leads');
+    await setAcceptanceTheme(page, 'Light');
     await page.getByRole('button', { name: 'Edit Test Long Text', exact: true }).click();
     assert.ok(await page.locator('[data-record-scroll]').evaluate(node => node.scrollWidth <= node.clientWidth + 1), `Full page overflow ${width}`);
     await page.screenshot({ path: resolve(output, `inline-page-${width}.png`) }); checks.push(`Full-page inline controls and no horizontal overflow at ${width}px`);
@@ -246,16 +259,17 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 }); await page.goto(base + '/settings?tab=appearance'); await page.getByRole('button', { name: 'Select Dark theme', exact: true }).click();
   for (const width of [320, 375, 390, 430, 768, 1024, 1440, 1920]) {
     await page.setViewportSize({ width, height: 900 }); await details('leads'); await page.getByRole('button', { name: 'Edit Test Text', exact: true }).click();
+    await setAcceptanceTheme(page, 'Dark');
     assert.ok(await page.locator('[data-record-scroll]').evaluate(node => node.scrollWidth <= node.clientWidth + 1));
     await page.screenshot({ path: resolve(output, `inline-dark-${width}.png`) }); checks.push(`Dark mode inline editor at ${width}px`);
   }
   assert.equal(errors.length, 0, errors.join('\n'));
-  writeFileSync(resolve(output, 'report.json'), JSON.stringify({ checks, pageErrors: errors, database: 'disposable', externalStorage: 'simulated bucket; actual upload service and SQL', providerSends: 0 }, null, 2));
+  writeFileSync(resolve(output, 'report.json'), JSON.stringify({ checks, pageErrors: errors, database: 'disposable', privateStorage: 'isolated local mount; actual upload service and SQL', providerSends: 0 }, null, 2));
   process.stdout.write(JSON.stringify({ passed: checks.length, pageErrors: errors.length, output }) + '\n');
 } catch (error) {
   if (page) await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {});
   writeFileSync(resolve(output, 'report.json'), JSON.stringify({ checks, pageErrors: errors, failure: String(error) }, null, 2)); throw error;
 } finally {
   await browser?.close(); if (frontend) frontend.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
-  await prisma.$disconnect(); await socket.stop(); await db.close();
+  await prisma.$disconnect();
 }

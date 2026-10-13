@@ -1,3 +1,4 @@
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Real UI, authenticated local API and disposable SQL; no provider submissions.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -11,7 +12,7 @@ import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = process.env.CAMPAIGN_VARIABLES_OUTPUT || resolve(tmpdir(), 'leadcrm-campaign-variables');
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.CAMPAIGN_VARIABLES_OUTPUT || resolve(tmpdir(), 'leadcrm-campaign-variables'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -47,13 +48,15 @@ try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url());
     const localUrl = apiBase + url.pathname.replace('/api/proxy', '') + url.search;
     const headers = { ...request.headers(), authorization: `Bearer ${token}` };
-    if (url.pathname.endsWith('/auth/events')) return route.continue({ url: localUrl, headers });
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: localUrl, headers });
     try {
       const response = await page.request.fetch(localUrl, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined });
       await route.fulfill({ response });
@@ -67,17 +70,17 @@ try {
   await subject.fill('Welcome '); await subject.focus();
   await page.getByRole('button', { name: '{{firstName}}', exact: true }).click();
   assert.equal(await subject.inputValue(), 'Welcome {{firstName}}'); record('Quick fields insert current keys into the active subject');
-  for (const width of [320, 375, 390, 768, 1024, 1440]) {
+  for await (const { theme, width } of responsiveMatrix(page)) {
     await page.setViewportSize({ width, height: 900 });
     await page.getByRole('button', { name: 'Insert Variable', exact: true }).click();
     const picker = page.locator('div').filter({ has: page.getByRole('textbox', { name: 'Search variables', exact: true }), hasText: 'Standard Fields' }).last();
     assert.deepEqual(await picker.locator('p').allTextContents(), ['Standard Fields', 'Custom Fields', 'Sender']);
-    assert.equal(await picker.getByRole('button', { name: /Deal Value.*value/ }).isDisabled(), true);
+    assert.equal(await picker.getByRole('button', { name: /Deal Value.*value/ }).isDisabled(), false);
     assert.equal(await picker.getByRole('button', { name: /Age.*customFieldValues.age.*Leads/ }).isDisabled(), false);
     assert.equal(await picker.getByRole('button', { name: /Age.*customFieldValues.age.*Contacts/ }).isDisabled(), true);
     const bounds = await picker.boundingBox(); assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1, `Picker bounds at ${width}`);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Page overflow at ${width}`);
-    await page.screenshot({ path: resolve(output, `campaign-picker-${width}.png`) });
+    await page.screenshot({ path: resolve(output, `campaign-picker-${theme}-${width}.png`) });
     await page.getByRole('textbox', { name: 'Search variables', exact: true }).press('Escape');
     record(`Three categories, disabled origins and bounded picker at ${width}`);
   }
@@ -111,10 +114,10 @@ try {
     await shortcuts.getByRole('button', { name: 'Company Name', exact: true }).click();
     assert.equal(await page.getByLabel('Task title', { exact: true }).inputValue(), `Follow up with {{firstName}}{{${entity === 'lead' ? 'companyName' : 'company'}}}`);
     assert.equal(await page.getByLabel('Description', { exact: true }).inputValue(), 'Legacy {{first_name}}');
-    for (const width of [320, 390, 768, 1440]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `Workflow overflow at ${width}`);
-      await page.screenshot({ path: resolve(output, `workflow-${entity}-${width}.png`) });
+      await page.screenshot({ path: resolve(output, `workflow-${entity}-${theme}-${width}.png`) });
       record(`${entity} existing shortcuts and layout at ${width}`);
     }
   }

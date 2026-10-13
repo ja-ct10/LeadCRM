@@ -9,7 +9,8 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-const root = resolve(import.meta.dirname, '../..'), output = process.env.MAILBOX_VERIFY_OUTPUT ? resolve(process.env.MAILBOX_VERIFY_OUTPUT) : resolve(root, 'data/outputs/mailbox-browser');
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.MAILBOX_VERIFY_OUTPUT ? resolve(process.env.MAILBOX_VERIFY_OUTPUT) : resolve(root, 'data/outputs/mailbox-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -85,20 +86,32 @@ try {
   await prisma.emailAccount.update({ where: { id: account.id }, data: { syncScopeHash: (await resolveMailboxScope(account, rights)).hash } });
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const apiBase = `http://127.0.0.1:${api.address().port}/api/v1`;
+  const initialList = await realFetch(apiBase + '/integrations/gmail/emails?filter=all&sort=newest&query=&maxResults=30', { headers: { Authorization: `Bearer ${token}` } });
+  const initialPayload = await initialList.json();
+  writeFileSync(resolve(output, 'initial-api.json'), JSON.stringify({ status: initialList.status, payload: initialPayload }, null, 2));
+  assert.equal(initialList.status, 200);
+  assert.equal(await prisma.mailboxMessage.count({ where: { accountId: account.id } }), seed.length, 'Every authorized synthetic seed must persist before browser acceptance');
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3018', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', API_URL: apiBase } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3018', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 90; attempt++) { try { if ((await realFetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  // Compile the cold development route before starting browser navigation timing.
+  const warmedInbox = await realFetch(base + '/inbox', { signal: AbortSignal.timeout(180000) });
+  assert.equal(warmedInbox.status, 200, 'The local Inbox route must be available before browser assertions');
+  await warmedInbox.arrayBuffer();
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  const page = await context.newPage(); page.setDefaultTimeout(30000); page.on('pageerror', error => pageErrors.push(error.message));
+  const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   page.on('requestfailed', request => { if (!request.url().includes('/events') && request.failure()?.errorText !== 'net::ERR_ABORTED') transportErrors.push({ url: request.url(), error: request.failure()?.errorText }); });
   let browserSyncs = 0; context.on('request', request => { if (request.url().includes('/integrations/gmail/sync')) browserSyncs++; });
-  await page.goto(base + '/inbox'); await page.getByText(seed[0].subject, { exact: true }).waitFor();
+  await page.goto(base + '/inbox', { waitUntil: 'domcontentloaded' });
+  try { await page.getByText(seed[0].subject, { exact: true }).waitFor({ timeout: 120000 }); }
+  catch (error) { await page.screenshot({ path: resolve(output, 'startup-failure.png'), fullPage: true }); writeFileSync(resolve(output, 'startup-page.txt'), await page.locator('body').innerText()); throw error; }
   await page.addStyleTag({ content: 'nextjs-portal { display: none !important; }' });
   const responsive = async (label, toolbar = false) => {
-    for (const width of [1440, 1024, 768, 390, 375, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 }); await page.waitForTimeout(350);
       const dimensions = await page.evaluate(() => ({ viewport: innerWidth, document: document.documentElement.scrollWidth, toolbar: (() => { const bar = document.querySelector('[role="toolbar"][aria-label="Message formatting"]'); if (!bar) return null; return { width: bar.clientWidth, scroll: bar.scrollWidth, positions: [...bar.querySelectorAll('button')].map(el => Math.round(el.getBoundingClientRect().top)), sendBottom: document.querySelector('[aria-label="Send email"]').getBoundingClientRect().bottom }; })() }));
       assert.ok(dimensions.document <= width + 1, `${label}: page overflow ${JSON.stringify(dimensions)}`);
@@ -110,7 +123,7 @@ try {
         assert.equal(counts.length, 2); assert.ok(counts.every(count => count.visible), `Message count clipped at ${width}px: ${JSON.stringify(counts)}`);
       }
       if (toolbar) { assert.equal(new Set(dimensions.toolbar.positions).size, 1); assert.ok(dimensions.toolbar.positions[0] >= dimensions.toolbar.sendBottom); }
-      checks.push({ label, width, ...dimensions }); await page.screenshot({ path: resolve(output, `${label}-${width}.png`) });
+      checks.push({ label, theme, width, ...dimensions }); await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) });
     }
   };
   await responsive('inbox');
@@ -164,7 +177,7 @@ try {
   await page.getByRole('combobox', { name: 'Associate conversation with Deal' }).last().selectOption(deals[1].id);
   await page.getByRole('button', { name: 'Associate Deal', exact: true }).last().click(); await page.getByRole('link', { name: 'View related Deal' }).first().waitFor();
   assert.equal((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId, initial.id);
-  await page.evaluate(() => document.documentElement.classList.add('dark')); await responsive('dark-conversation'); await page.evaluate(() => document.documentElement.classList.remove('dark'));
+  await responsive('associated-conversation');
   checks.push({ label: 'Vertical order, keyboard collapse, sanitized expandable quote, persisted read, one read write and Deal association without stage movement' });
   await page.getByRole('button', { name: 'Reply', exact: true }).first().click(); await page.getByLabel('To', { exact: true }).waitFor(); assert.equal(await page.getByLabel('To', { exact: true }).inputValue(), 'doris@example.test');
   await responsive('composer', true);
@@ -181,7 +194,8 @@ try {
   await page.reload(); await page.getByText(seed[0].subject, { exact: true }).waitFor();
   secondBrowser = await chromium.launch({ channel: 'chrome', headless: true });
   const secondContext = await secondBrowser.newContext({ storageState: await context.storageState(), viewport: { width: 1440, height: 900 } });
-  const second = await secondContext.newPage(); await second.goto(base + '/inbox'); await second.getByText(seed[0].subject, { exact: true }).waitFor();
+  await isolateBrowserContext(secondContext);
+  const second = await secondContext.newPage(); second.setDefaultNavigationTimeout(120000); await second.goto(base + '/inbox', { waitUntil: 'domcontentloaded' }); await second.getByText(seed[0].subject, { exact: true }).waitFor();
   const events = [];
   for (const [index, target] of [page, second].entries()) {
     const session = await target.context().newCDPSession(target); await session.send('Network.enable');

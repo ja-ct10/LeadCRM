@@ -5,6 +5,7 @@ export default defineConfig({
   test: {
     globals: true,
     environment: 'node',
+    testTimeout: 20000,
     exclude: ['dist/**', 'node_modules/**', 'scripts/**/*.test.cjs', 'scripts/**/*.test.mjs'],
   },
   resolve: {

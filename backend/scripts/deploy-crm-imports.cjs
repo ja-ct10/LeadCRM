@@ -95,6 +95,14 @@ function deploymentPlan(records, localNames) {
     '20261124000000_crm_content_revisions',
     // Additive server-managed Sales classification; preserves all CRM history.
     '20261125000000_crm_assignment_policy',
+    // Additive receipts, mailbox recovery, import identity and Workflow dispatch
+    // use existing canonical tables and do not depend on deferred retirements.
+    '20261125000000_contact_creation_receipts',
+    '20261125010000_mailbox_operation_recovery',
+    '20261125020000_import_source_identity',
+    '20261125030000_durable_workflow_dispatch',
+    // Nullable Activity evidence, exact same-tenant backfill and restrict FK only.
+    '20261125040000_activity_mailbox_authorization',
     // Forward notification catalog/triggers only; no relationship columns retire.
     '20261126000000_notification_policy',
     // Additive shared login counters/IP budgets; no account or session changes.

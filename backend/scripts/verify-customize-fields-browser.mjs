@@ -1,3 +1,4 @@
+import { isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Real UI + authenticated HTTP + disposable SQL. No configured database or providers.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -11,7 +12,7 @@ import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = process.env.CUSTOM_FIELDS_OUTPUT || resolve(tmpdir(), 'leadcrm-customize-fields');
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.CUSTOM_FIELDS_OUTPUT || resolve(tmpdir(), 'leadcrm-customize-fields'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
@@ -40,13 +41,15 @@ try {
     const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(30000); page.on('pageerror', error => errors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => errors.push(error.message));
   const settings = async () => { await page.goto(base + '/settings?tab=custom-fields'); await page.getByRole('heading', { name: 'Customize Fields', exact: true }).waitFor(); await page.getByRole('button', { name: 'Edit Age', exact: true }).waitFor(); };
   await settings();
   assert.equal((await call('/administration/closing-requirements')).find(field => field.id === ageId).technicalAlias, 'age');
@@ -105,6 +108,7 @@ try {
   await page.waitForFunction(expected => [...document.querySelectorAll('button[aria-label^="Reorder "]')].map(node => node.getAttribute('aria-label')).join('|') === expected, before.fields.map(field => `Reorder ${field.label}`).join('|'));
   assert.deepEqual((await call('/administration/closing-requirements/layout/leads')).fields, before.fields); await page.unroute(failingLayout); checks.push('Failed reorder restores saved order and shows an error');
   async function pointerDrag(from, to, touch = false) {
+    await from.click({ trial: true }); // The failed-save refetch must release disabled handles.
     await from.scrollIntoViewIfNeeded(); const source = await from.boundingBox(), destination = await to.boundingBox();
     const x = source.x + source.width / 2, y = source.y + source.height / 2, targetY = destination.y + destination.height / 2;
     let writes = 0;

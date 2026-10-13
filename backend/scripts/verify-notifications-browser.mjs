@@ -1,3 +1,4 @@
+import { isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Uses an isolated PostgreSQL cluster and the built application. No external messages.
 // Set PLAYWRIGHT_MODULE to an installed Playwright package.
 import { notificationTestPostgres } from './notification-test-postgres.mjs';
@@ -7,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-const root = resolve(import.meta.dirname, '../..'), output = process.env.NOTIFICATION_EVIDENCE_DIR || resolve(root, 'data/outputs/notification-verification/browser');
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.NOTIFICATION_EVIDENCE_DIR || resolve(root, 'data/outputs/notification-verification/browser'));
 mkdirSync(output, { recursive: true });
 const pg = await notificationTestPostgres();
 const base = 'http://localhost:3021';
@@ -47,6 +48,8 @@ try {
   await eventually(async()=>{try{return (await fetch(base+'/login')).ok;}catch{return false;}});
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(15000); page.on('pageerror', error => pageErrors.push(error.message));
   // Redirect only transport; all authentication, authorization and persistence use local API/SQL.

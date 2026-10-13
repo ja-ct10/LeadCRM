@@ -1,3 +1,4 @@
+import { isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Real cookies, Next proxy (including streamed SSE), Express and disposable SQL.
 // Requires backend and frontend production builds; pass an installed Playwright package as argv[2].
 import { PGlite } from '@electric-sql/pglite';
@@ -13,7 +14,7 @@ import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const uiPolish = process.argv.includes('--ui-polish');
-const root = resolve(import.meta.dirname, '../..'), output = resolve(process.env.DASHBOARD_VERIFICATION_OUTPUT || (uiPolish ? process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-dashboard-leads-ui') : resolve(root, 'data/outputs/dashboard-verification')));
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(process.env.DASHBOARD_VERIFICATION_OUTPUT || (uiPolish ? process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-dashboard-leads-ui') : resolve(root, 'data/outputs/dashboard-verification'))));
 const clockOnly = process.argv.includes('--clock-only');
 mkdirSync(output, { recursive: true });
 const pg = await PGlite.create(); await replayCrmMigrations(pg);
@@ -72,7 +73,7 @@ try {
     const result = await response.json(); assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3031', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'], env: { ...process.env, NODE_ENV: 'development', API_URL: `http://127.0.0.1:${port}/api/v1`, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3031', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: `http://127.0.0.1:${port}/api/v1`, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   await until(async () => { try { return (await fetch(internalBase + '/login')).ok; } catch { return false; } }, 'Next ready', 90000);
   gateway = createHttpsServer({key:readFileSync(key),cert:readFileSync(cert)},(request,response)=>{
@@ -87,6 +88,8 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(token) {
     const context = await browser.newContext({ ignoreHTTPSErrors:true, hasTouch:uiPolish, viewport: { width: 1440, height: 1000 } });
+
+    await isolateBrowserContext(context);
     await context.addInitScript(() => {
       const Native = window.EventSource; window.__dashboardEvents = [];
       window.EventSource = class extends Native {
@@ -180,12 +183,17 @@ try {
   const losing = await http('/crm/deals','POST',{ pipelineId: pipeline.id, stageId: stages[0].id, title: 'Lost and Reopened', productInterestIds:[products[0].id], assignedUserId:agent.id });
   await mutation('Lost closure and Win Rate denominator', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[4].id, lostReason:'Deferred' }), () => expectValue('Win Rate','50%'));
   await mutation('Lost reopening removes current outcome and restores pipeline', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[2].id }), async () => { await expectValue('Active Deals','1'); await expectValue('Win Rate','100%'); });
-  const task = await mutation('Task creation updates Action Center', () => http('/operations/tasks','POST',{ title:'Browser overdue follow-up', dueDate:new Date(Date.now()-86400000).toISOString(), priority:'High', assignedUserId:agent.id, dealIds:[deal.id] }), async () => { await page.getByText('Browser overdue follow-up',{exact:true}).waitFor(); await staffSession.tab.getByText('Browser overdue follow-up',{exact:true}).waitFor(); });
+  const task = await mutation('Task creation updates Action Center', () => http('/operations/tasks','POST',{ requestId:randomUUID(), title:'Browser overdue follow-up', dueDate:new Date(Date.now()-86400000).toISOString(), priority:'High', assignedUserId:agent.id, dealIds:[deal.id] }), async () => { await page.getByText('Browser overdue follow-up',{exact:true}).waitFor(); await staffSession.tab.getByText('Browser overdue follow-up',{exact:true}).waitFor(); });
   const actionLayout = await page.getByRole('link').filter({hasText:'Browser overdue follow-up'}).evaluate(el=>({height:el.parentElement.clientHeight,itemHeight:el.getBoundingClientRect().height,overflow:getComputedStyle(el.parentElement).overflowY,clipped:el.getBoundingClientRect().bottom>el.parentElement.getBoundingClientRect().bottom+1})); assert.ok(Math.abs(actionLayout.height-actionLayout.itemHeight)<=1); assert.ok(actionLayout.itemHeight<108); assert.equal(actionLayout.overflow,'auto'); assert.equal(actionLayout.clipped,false); record('Action Center uses a compact content-based scroll viewport',actionLayout);
   await mutation('Task completion removes pending action', () => http(`/operations/tasks/${task.id}/complete`,'PATCH'), async () => until(async () => await page.getByText('Browser overdue follow-up',{exact:true}).count() === 0, 'Task disappeared'));
   const workflows = require('../dist/backend/src/modules/automation/workflows/workflows.service.js');
   const workflow = await scope(() => workflows.createWorkflow(tenant.id,admin.id,{ name:'Dashboard movement', trigger:'deal.updated', isActive:true, conditions:{operator:'AND',conditions:[{field:'deal.title',operator:'equals',value:'Workflow Ready'}]},actions:[{type:'move_deal_stage',config:{stageId:stages[1].id}}] }));
-  await mutation('Committed Workflow stage movement synchronizes', () => http(`/crm/deals/${losing.id}`,'PUT',{title:'Workflow Ready'}), async () => until(() => page.getByText('Contacted: 1 (100%)',{exact:true}).isVisible(),'Workflow stage visible'));
+  const { dispatchQueuedWorkflows } = require('../dist/backend/src/modules/automation/workflows/workflow-queue.js');
+  await mutation('Committed Workflow stage movement synchronizes', async () => {
+    await http(`/crm/deals/${losing.id}`,'PUT',{title:'Workflow Ready'});
+    // This API-only fixture explicitly exercises the bounded production consumer.
+    await dispatchQueuedWorkflows();
+  }, async () => until(() => page.getByText('Contacted: 1 (100%)',{exact:true}).isVisible(),'Workflow stage visible'));
   await scope(() => workflows.toggleWorkflow(workflow.id,tenant.id,admin.id,false));
   await mutation('Archive changes eligibility', () => http(`/crm/deals/${losing.id}/archive`,'PATCH'), () => expectValue('Active Deals','0'));
   await mutation('Restore changes eligibility', () => http(`/crm/deals/${losing.id}/restore`,'PATCH'), () => expectValue('Active Deals','1'));
@@ -265,7 +273,9 @@ try {
     await until(async()=>{
       const rows=await Promise.all([http('/reporting/dashboard'),http('/reporting/dashboard','GET',undefined,agentToken)]);
       if(!rows.every(row=>row.pipeline.stages[index].color===color)) return false;
-      const selectors = [page,staffSession.tab].map(tab=>index>2 ? tab.getByText(stage.name,{exact:true}).locator('span').first() : tab.getByText(stage.name+': '+(index===1?'1 (100%)':'0 (0%)'),{exact:true}).locator('span').first());
+      const selectors = [page,staffSession.tab].map(tab=>index>2
+        ? tab.locator('p').filter({ hasText: new RegExp(`^${stage.name}$`) }).locator('span').first()
+        : tab.getByText(stage.name+': '+(index===1?'1 (100%)':'0 (0%)'),{exact:true}).locator('span').first());
       return (await Promise.all(selectors.map(selector=>selector.evaluate(el=>el.style.backgroundColor)))).every(value=>value===`rgb(18, 52, ${80+index})`);
     },'Saved stage color reaches Dashboard');
     const observerColor = observerSession.tab.getByRole('heading',{name:stage.name,exact:true}).locator('..').locator('..').locator('[aria-hidden="true"]').first();
@@ -297,7 +307,7 @@ try {
     await page.evaluate(theme => { localStorage.setItem('app_theme',theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange',{detail:{theme,mode:theme === 'dark' ? 'Dark' : 'Light'}})); },theme);
     await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((el, dark) => el.classList.contains('dark') === dark, theme === 'dark'), `${theme} theme applied`);
     assert.equal(await page.locator('.crm-shell[data-theme-container]').evaluate(el=>el.classList.contains('dark')),theme === 'dark');
-    for (const width of [1440,1024,768,390,375,320]) {
+    for (const width of [320,375,390,430,768,1024,1440,1920]) {
       await page.setViewportSize({width,height:1000}); await wait(300);
       const dimensions = await page.evaluate(() => ({width:innerWidth,scrollWidth:document.documentElement.scrollWidth,overflow:document.documentElement.scrollWidth > innerWidth+1,
         chartsOutside:[...document.querySelectorAll('[role="img"]')].filter(el=>{const r=el.getBoundingClientRect();return r.width && (r.left<0 || r.right>innerWidth+1);}).length,

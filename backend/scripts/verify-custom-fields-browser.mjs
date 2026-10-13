@@ -1,20 +1,18 @@
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Browser acceptance against a disposable DB and locally built application.
 // Usage: set PLAYWRIGHT_MODULE to an installed Playwright package, then run.
-import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-const root = resolve(import.meta.dirname, '../..'), output = resolve(root, 'data/outputs/custom-fields-browser');
+const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/custom-fields-browser'));
 mkdirSync(output, { recursive: true });
-const db = await PGlite.create(); await replayCrmMigrations(db);
-const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
 const base = 'http://localhost:3016';
-Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_custom_fields_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base });
+Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
@@ -25,6 +23,7 @@ const { tenantContext } = require('../dist/backend/src/core/tenant/tenant-contex
 const { salesPipeline, salesTransaction } = require('../dist/backend/src/modules/crm/leads/lead-automation.service.js');
 const { saveField } = require('../dist/backend/src/modules/crm/closing-requirements/closing-requirements.service.js');
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
+const { updateFieldLayout } = require('../dist/backend/src/modules/crm/closing-requirements/field-layout.service.js');
 let api, frontend, browser, page;
 const checks = [], pageErrors = [];
 try {
@@ -37,20 +36,30 @@ try {
   const fields = {};
   for (const module of ['leads', 'contacts', 'accounts', 'deals']) {
     fields[module] = await scope(() => saveField(tenant.id, admin.id, { module, group: module === 'accounts' ? 'Basic Information' : module === 'deals' ? 'Additional Details' : 'Additional Information', name: 'Project Budget', type: 'Number', required: true }));
+    await scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'add', label: 'Technical Requirements' }));
     await scope(() => saveField(tenant.id, admin.id, { module, group: 'Technical Requirements', name: 'Installation Notes', type: 'Long Text', required: false }));
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3016', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: `http://127.0.0.1:${api.address().port}/api/v1` } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3016', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+
+  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
+  page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
+  await page.route('**/api/proxy/**', async route => {
+    const request = route.request(), url = new URL(request.url());
+    const local = `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`;
+    const headers = { ...request.headers(), authorization: `Bearer ${token}` };
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: local, headers });
+    await route.fulfill({ response: await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined }) });
+  });
   const navigate = path => page.goto(base + path);
   async function responsive(label) {
-    for (const width of [1440, 768, 390, 375, 320]) {
+    for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       // Account sheets use a CSS transition; let it and drawer springs settle.
       await page.waitForTimeout(500);
@@ -58,28 +67,55 @@ try {
       if (await customNotes.isVisible()) await customNotes.scrollIntoViewIfNeeded();
       await page.waitForFunction(() => [...document.querySelectorAll('#sliding-drawer-container')].every(el => el.getBoundingClientRect().right <= innerWidth + 1));
       await page.evaluate(() => new Promise(done => requestAnimationFrame(() => requestAnimationFrame(done))));
-      const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth, overflowing: [...document.querySelectorAll('input,textarea,select,form')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => ({ tag: el.tagName, name: el.getAttribute('name'), width: el.getBoundingClientRect().width })) }));
+      const dimensions = await page.evaluate(() => {
+        const contained = element => {
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            const rect = parent.getBoundingClientRect();
+            if (['auto', 'scroll'].includes(getComputedStyle(parent).overflowX)
+              && parent.scrollWidth > parent.clientWidth && rect.left >= -1 && rect.right <= innerWidth + 1) return true;
+          }
+          return false;
+        };
+        return { width: innerWidth, scroll: document.documentElement.scrollWidth,
+          overflowing: [...document.querySelectorAll('input,textarea,select,form')]
+            .filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1) && !contained(el))
+            .map(el => ({ tag: el.tagName, name: el.getAttribute('name'), width: el.getBoundingClientRect().width })) };
+      });
       assert.ok(dimensions.scroll <= width + 1 && !dimensions.overflowing.length, `${label}: ${JSON.stringify(dimensions)}`);
-      checks.push({ label, ...dimensions });
-      await page.screenshot({ path: resolve(output, `${label}-${width}.png`) });
+      // The settings table intentionally scrolls inside the page. Its final
+      // controls must remain reachable rather than being clipped off-screen.
+      if (label === 'settings') {
+        const table = page.locator('table').first(), scroller = table.locator('..');
+        const reachable = await scroller.evaluate(node => {
+          node.scrollLeft = node.scrollWidth;
+          const target = node.querySelector('tbody tr:last-child td:last-child');
+          const bounds = node.getBoundingClientRect(), end = target?.getBoundingClientRect();
+          const result = !!end && end.right <= bounds.right + 1 && end.left >= bounds.left - 1;
+          node.scrollLeft = 0;
+          return result;
+        });
+        assert.ok(reachable, `Settings final column must be reachable at ${width}px`);
+      }
+      checks.push({ label, theme, ...dimensions });
+      await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) });
     }
     await page.setViewportSize({ width: 1440, height: 900 });
   }
-  await navigate('/settings?tab=custom-fields'); await page.getByRole('button', { name: 'Add New Field', exact: true }).waitFor();
-  await page.getByRole('button', { name: 'Project Budget', exact: true }).first().waitFor();
+  await navigate('/settings?tab=custom-fields'); await page.getByRole('button', { name: 'Add Field', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Edit Project Budget', exact: true }).first().waitFor();
   await responsive('settings');
-  await page.getByRole('button', { name: 'Add New Field', exact: true }).click();
-  await page.getByLabel('Field Name', { exact: false }).fill('Preferred Installation Date');
-  await page.getByLabel('Field Type', { exact: false }).selectOption('Date');
-  await page.getByLabel('Group / Section', { exact: false }).fill('Additional Information');
+  await page.getByRole('button', { name: 'Add Field', exact: true }).click();
+  await page.getByLabel('Display label', { exact: true }).fill('Preferred Installation Date');
+  await page.getByRole('combobox', { name: /^Type/ }).selectOption('Date');
+  await page.getByRole('combobox', { name: /^Group/ }).selectOption({ label: 'Additional Information' });
   await responsive('new-field');
   const definitionResponse = page.waitForResponse(r => r.url().endsWith('/administration/closing-requirements') && r.request().method() === 'POST');
-  await page.getByRole('button', { name: 'Create Field', exact: true }).click(); assert.equal((await definitionResponse).status(), 200);
-  await page.getByRole('button', { name: 'Manage Preferred Installation Date', exact: true }).click();
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).waitFor(); await responsive('edit-field');
-  await page.getByLabel('Description / Help Text', { exact: true }).fill('Preferred date for scheduling the installation.');
+  await page.getByRole('button', { name: 'Save field', exact: true }).click(); assert.equal((await definitionResponse).status(), 200);
+  await page.getByRole('button', { name: 'Edit Preferred Installation Date', exact: true }).click();
+  await page.getByRole('button', { name: 'Save field', exact: true }).waitFor(); await responsive('edit-field');
+  await page.getByLabel('Description', { exact: true }).fill('Preferred date for scheduling the installation.');
   const definitionUpdate = page.waitForResponse(r => r.url().includes('/administration/closing-requirements/') && r.request().method() === 'PATCH');
-  await page.getByRole('button', { name: 'Save Changes', exact: true }).click(); assert.equal((await definitionUpdate).status(), 200);
+  await page.getByRole('button', { name: 'Save field', exact: true }).click(); assert.equal((await definitionUpdate).status(), 200);
 
   const records = {};
   for (const [module, create] of [['leads', 'Create Lead'], ['contacts', 'Create Contact'], ['accounts', 'Add Account'], ['deals', 'New Deal']]) {
@@ -89,14 +125,14 @@ try {
     await page.getByLabel('Project Budget', { exact: false }).waitFor();
     await page.getByLabel('Installation Notes', { exact: false }).fill('Keep the configured custom group and record values.');
     await responsive(`${module}-create`);
-    if (module === 'accounts') await page.getByLabel('Account Name', { exact: false }).fill('Custom Acceptance Account');
+    if (module === 'accounts') await page.getByRole('textbox', { name: /^Account Name/ }).fill('Custom Acceptance Account');
     else if (module === 'deals') {
-      await page.getByLabel('Title', { exact: false }).fill('Custom Acceptance Deal');
+      await page.getByRole('textbox', { name: /^Title/ }).fill('Custom Acceptance Deal');
       await page.getByRole('button', { name: 'Product Interest', exact: true }).click();
       await page.getByRole('checkbox', { name: 'CCTV Acceptance', exact: true }).check(); await page.getByRole('button', { name: 'Product Interest', exact: true }).click();
     } else {
-      await page.getByLabel('First Name', { exact: false }).fill('Acceptance'); await page.getByLabel('Last Name', { exact: false }).fill(module);
-      await page.getByLabel('Email', { exact: false }).fill(`${module}@example.test`);
+      await page.getByRole('textbox', { name: /^First Name/ }).fill('Acceptance'); await page.getByRole('textbox', { name: /^Last Name/ }).fill(module);
+      await page.getByRole('textbox', { name: /^Email/ }).fill(`${module}@example.test`);
     }
     const submit = page.locator('form button[type="submit"]');
     await submit.click(); await page.getByRole('alert').filter({ hasText: 'Project Budget is required' }).waitFor();
@@ -107,10 +143,9 @@ try {
     assert.equal((await prisma.customFieldValue.findFirstOrThrow({ where: { tenantId: tenant.id, fieldId: fields[module].id, [module === 'accounts' ? 'accountId' : module === 'contacts' ? 'contactId' : module === 'leads' ? 'leadId' : 'dealId']: records[module] } })).value, 25000);
     await navigate(`/crm/${module}`);
     if (module === 'deals') {
-      await page.getByText('Custom Acceptance Deal', { exact: true }).first().click();
-      await page.getByRole('button', { name: 'Record actions', exact: true }).click();
-      await page.getByRole('menuitem', { name: 'Edit deal', exact: true }).click();
-      await page.getByRole('button', { name: 'Edit custom fields', exact: true }).click();
+      await navigate(`/crm/deals/${records[module]}`);
+      await page.getByRole('tab', { name: /^Details/ }).click();
+      await page.getByRole('button', { name: 'Edit Project Budget', exact: true }).click();
     } else {
       await page.getByRole('button', { name: 'Row actions', exact: true }).first().click();
       await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
@@ -120,17 +155,28 @@ try {
     await responsive(`${module}-edit`);
     await page.getByLabel('Project Budget', { exact: false }).fill('30000');
     const updated = page.waitForResponse(r => r.url().endsWith(`/crm/${module}/${records[module]}`) && r.request().method() === 'PUT');
-    await page.locator('form button[type="submit"]').click(); assert.equal((await updated).status(), 200);
+    if (module === 'deals') await page.getByLabel('Project Budget', { exact: true }).locator('xpath=ancestor::dd').getByRole('button', { name: 'Save', exact: true }).click();
+    else await page.locator('form button[type="submit"]').click();
+    assert.equal((await updated).status(), 200);
     assert.equal((await prisma.customFieldValue.findFirstOrThrow({ where: { tenantId: tenant.id, fieldId: fields[module].id, [module === 'accounts' ? 'accountId' : module === 'contacts' ? 'contactId' : module === 'leads' ? 'leadId' : 'dealId']: records[module] } })).value, 30000);
     checks.push({ label: `${module}-create-edit-persistence`, passed: true });
   }
   for (const visible of [false, true]) {
     await navigate('/settings?tab=custom-fields');
-    await page.getByLabel('Filter by module', { exact: true }).selectOption('leads');
-    await page.getByRole('button', { name: 'Project Budget actions', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit Project Budget', exact: true }).click();
+    await page.getByLabel('Show in Forms', { exact: true }).setChecked(visible);
     const visibilityUpdate = page.waitForResponse(r => r.url().endsWith(`/closing-requirements/${fields.leads.id}`) && r.request().method() === 'PATCH');
-    await page.getByRole('menuitem', { name: visible ? 'Show in Form' : 'Hide in Form', exact: true }).click();
-    assert.equal((await visibilityUpdate).status(), 200);
+    await page.getByRole('button', { name: 'Save field', exact: true }).click();
+    const visibilityResponse = await visibilityUpdate;
+    if (!visible) {
+      assert.equal(visibilityResponse.status(), 400);
+      assert.match(JSON.stringify(await visibilityResponse.json()), /Turn off Required before hiding/);
+      checks.push({ label: 'required-field-cannot-be-hidden', passed: true });
+      await page.getByLabel('Required', { exact: true }).setChecked(false);
+      const optionalVisibilityUpdate = page.waitForResponse(r => r.url().endsWith(`/closing-requirements/${fields.leads.id}`) && r.request().method() === 'PATCH');
+      await page.getByRole('button', { name: 'Save field', exact: true }).click();
+      assert.equal((await optionalVisibilityUpdate).status(), 200);
+    } else assert.equal(visibilityResponse.status(), 200);
     await navigate('/crm/leads');
     await page.getByRole('button', { name: 'Row actions', exact: true }).first().click();
     await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
@@ -150,5 +196,5 @@ try {
   throw error;
 } finally {
   await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
-  await prisma.$disconnect(); await socket.stop(); await db.close();
+  await prisma.$disconnect();
 }

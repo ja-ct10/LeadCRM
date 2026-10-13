@@ -1,3 +1,4 @@
+import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
 // Local production-build acceptance with disposable PostgreSQL; never opens the configured database.
 // Run after npm run build. Pass an installed Playwright package path as the first argument if needed.
 import assert from 'node:assert/strict';
@@ -11,7 +12,7 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
-const output = resolve(root, 'data/outputs/organization-settings-browser');
+const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/organization-settings-browser'));
 mkdirSync(output, { recursive: true });
 const base = 'http://localhost:3023';
 const db = await PGlite.create(); await replayCrmMigrations(db);
@@ -63,6 +64,8 @@ try {
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function open(token) {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+
+    await isolateBrowserContext(context);
     await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on('pageerror', error => pageErrors.push(error.message));
@@ -70,6 +73,7 @@ try {
     // Match existing local acceptance scripts: redirect transport only; auth, RBAC, services and SQL are real.
     await page.route('**/api/proxy/**', async route => {
       const request = route.request(), url = new URL(request.url());
+      if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`, headers: { ...request.headers(), authorization: `Bearer ${token}` } });
       if (failSave && request.method() === 'PATCH' && url.pathname.endsWith('/organization-settings')) {
         failSave = false; await route.fulfill({ status: 500, json: { error: 'Acceptance save failure' } }); return;
       }
@@ -101,16 +105,16 @@ try {
   await page.getByText('Account ID copied', { exact: true }).waitFor();
   assert.equal(await page.evaluate(() => navigator.clipboard.readText()), tenant.id);
   pass('Full Account ID copies to the real browser clipboard with confirmation');
-  for (const width of [1440, 1024, 768, 390, 375, 320]) {
+  for await (const { theme, width } of responsiveMatrix(page)) {
     await page.setViewportSize({ width, height: 900 });
     const layout = await page.locator('form').evaluate(form => ({
       overflow: form.scrollWidth > form.clientWidth + 1,
       outside: [...form.querySelectorAll('input, select, textarea, button')].some(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)),
     }));
     assert.deepEqual(layout, { overflow: false, outside: false }, `width ${width}`);
-    await page.screenshot({ path: resolve(output, `general-${width}.png`), fullPage: true });
+    await page.screenshot({ path: resolve(output, `general-${theme}-${width}.png`), fullPage: true });
     await system.scrollIntoViewIfNeeded();
-    await page.screenshot({ path: resolve(output, `system-information-${width}.png`) });
+    await page.screenshot({ path: resolve(output, `system-information-${theme}-${width}.png`) });
     await page.getByRole('heading', { name: 'General', exact: true }).scrollIntoViewIfNeeded();
     pass(`General form and System Information fit at ${width}px`);
   }
@@ -147,7 +151,7 @@ try {
   pass('Legacy route redirects and navigation reloads persisted profile values');
   for (const [tab, heading] of [
     ['profile', 'Personal Information'], ['appearance', 'System Appearance'], ['users', 'Team Management'],
-    ['roles', 'Roles & Permissions'], ['custom-fields', 'Custom Fields'], ['products', 'Products'],
+    ['roles', 'Roles & Permissions'], ['custom-fields', 'Customize Fields'], ['products', 'Products'],
     ['archived', 'Archived Data Recovery'], ['forms', 'Forms'],
   ]) {
     await page.goto(base + `/settings?tab=${tab}`);
@@ -173,6 +177,6 @@ try {
 } finally {
   closing = true;
   await browser?.close(); frontend?.kill();
-  if (api) await new Promise(done => api.close(done));
+  if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
   await prisma.$disconnect(); await socket.stop(); await db.close();
 }

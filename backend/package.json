@@ -45,6 +45,7 @@
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@leadcrm/shared": "0.0.1",
     "@prisma/client": "^5.22.0",
     "@types/bcryptjs": "^2.4.6",
     "@types/compression": "^1.8.1",
@@ -63,7 +64,6 @@
     "express-rate-limit": "^7.5.0",
     "helmet": "8.2.0",
     "jsonwebtoken": "^9.0.2",
-    "resend": "^6.18.1",
     "sanitize-html": "^2.17.7",
     "sharp": "^0.35.4",
     "typescript": "~5.8.2",

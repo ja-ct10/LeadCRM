@@ -1,21 +1,27 @@
-FROM node:20-alpine AS base
-
-FROM base AS deps
+FROM node:24-bookworm-slim AS builder
 WORKDIR /app
-COPY backend/package.json ./
-RUN npm install
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/*
+COPY package.json package-lock.json ./
+COPY backend/package.json backend/package.json
+COPY frontend/package.json frontend/package.json
+COPY shared/package.json shared/package.json
+RUN npx --yes npm@11.19.1 ci --include=dev
+COPY . .
+RUN npm --prefix shared run build && npm --prefix backend run build
 
-FROM base AS builder
+FROM node:24-bookworm-slim AS runner
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
-COPY backend/ .
-RUN npm run build
-
-FROM base AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/prisma ./prisma
+ENV NODE_ENV=production PORT=4000 STORAGE_ROOT=/var/lib/leadcrm/files
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates && rm -rf /var/lib/apt/lists/* && mkdir -p /var/lib/leadcrm/files && chown node:node /var/lib/leadcrm/files
+# Prisma CLI and guarded deployment scripts are required at startup.
+COPY --from=builder --chown=node:node /app/node_modules ./node_modules
+COPY --from=builder --chown=node:node /app/package.json /app/package-lock.json ./
+COPY --from=builder --chown=node:node /app/backend/package.json ./backend/package.json
+COPY --from=builder --chown=node:node /app/backend/dist ./backend/dist
+COPY --from=builder --chown=node:node /app/backend/prisma ./backend/prisma
+COPY --from=builder --chown=node:node /app/backend/scripts ./backend/scripts
+COPY --from=builder --chown=node:node /app/shared ./shared
+USER node
 EXPOSE 4000
-CMD ["node", "dist/server.js"]
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s CMD node -e "fetch('http://127.0.0.1:4000/health').then(r=>{if(!r.ok)process.exit(1)}).catch(()=>process.exit(1))"
+CMD ["sh", "-c", "npm --prefix backend run db:deploy && exec node backend/dist/start.js"]
