@@ -40,6 +40,13 @@ search/page-size results before opening menus.
 Existing governed Qualified → Won integration cases continue to verify sales
 completion. Basic Lead conversion preserves Lead status and existing Deals.
 
+Deal card action forms use a stable, session-scoped host. A realtime stage update
+can move a card between columns without discarding its unsaved Deal or Task draft.
+The host keeps the existing forms, cache reads and mutation services, reevaluates
+record access and permissions, and clears actions on identity or route changes.
+The browser regression waits for the second session's new column before checking
+each draft, then verifies persisted Task associations and governed stage outcomes.
+
 ## Activation checklist
 
 Activate only after the repair PR has both green CI checks and a private SQL-only

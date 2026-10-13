@@ -9,6 +9,7 @@ import { useTheme } from '@/shared/hooks/use-theme';
 import { usesWorkspaceAppearance } from '@/lib/appearance-config';
 import { ThemeScope } from '@/shared/components/theme-scope';
 import { Toaster } from 'sonner';
+import { DealActionsProvider } from '@/shared/components/crm/deal-card-menu';
 
 function AppearanceToaster() {
   const { user } = useAuth();
@@ -24,7 +25,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
   return (
     <AuthProvider>
       <DataProvider>
-        {children}
+        <DealActionsProvider>{children}</DealActionsProvider>
         <AppearanceToaster />
       </DataProvider>
     </AuthProvider>
