@@ -86,7 +86,7 @@ test('QA excludes inherited secrets and rejects remote database overrides', () =
     assert.equal(require('node:fs').statSync(env.STORAGE_ROOT).isDirectory(), true);
     assert.ok(env.STORAGE_ROOT.startsWith(env.TEMP + require('node:path').sep));
     assert.notEqual(env.STORAGE_ROOT, qaEnvironment(root).STORAGE_ROOT);
-    assert.ok(env.TEMP.startsWith(resolve(root, 'data/outputs/system-audit') + require('node:path').sep));
+    assert.ok(env.TEMP.startsWith(process.platform === 'linux' ? '/tmp/leadcrm-qa-' : resolve(root, 'data/outputs/system-audit') + require('node:path').sep));
     assert.throws(() => qaEnvironment(root, { DATABASE_URL: 'postgresql://user:password@remote.invalid/leadcrm_test' }), /loopback/);
     assert.throws(() => qaEnvironment(root, { DATABASE_URL: 'postgresql://user:password@127.0.0.1/production' }), /disposable/);
   } finally { if (saved === undefined) delete process.env.BREVO_API_KEY; else process.env.BREVO_API_KEY = saved; }
@@ -120,6 +120,29 @@ test('Standalone native fixture runner removes inherited credentials and install
   }
 });
 
+test('Linux QA temporaries stay short, private and independent of nested TMPDIR and checkout length', { skip: process.platform !== 'linux' }, () => {
+  const fs = require('node:fs'), os = require('node:os');
+  const directory = fs.mkdtempSync('/tmp/leadcrm-path-test-');
+  const saved = process.env.TMPDIR;
+  try {
+    const longRoot = resolve(directory, 'checkout-'.repeat(18));
+    const outer = qaEnvironment(longRoot);
+    process.env.TMPDIR = outer.TMPDIR;
+    const inner = qaEnvironment(longRoot);
+    for (const env of [outer, inner]) {
+      assert.equal(require('node:path').dirname(env.TMPDIR), '/tmp');
+      assert.ok(Buffer.byteLength(env.TMPDIR + '/com.google.Chrome.abcdef/SingletonSocket') < 108);
+      assert.equal(fs.statSync(env.TMPDIR).mode & 0o777, 0o700);
+    }
+    assert.notEqual(outer.TMPDIR, inner.TMPDIR);
+    assert.equal(os.tmpdir(), outer.TMPDIR);
+    fs.rmSync(outer.TMPDIR, { recursive: true }); fs.rmSync(inner.TMPDIR, { recursive: true });
+  } finally {
+    if (saved === undefined) delete process.env.TMPDIR; else process.env.TMPDIR = saved;
+    fs.rmSync(directory, { recursive: true });
+  }
+});
+
 test('Disposable native initialization retains runtime durability and stops its cluster when verification fails', async () => {
   const fs = require('node:fs'), path = require('node:path'), processes = require('node:child_process'), Module = require('node:module');
   const bin = qaEnvironment(root).TEMP, savedExec = processes.execFileSync, savedBin = process.env.POSTGRES_TEST_BIN;
@@ -137,8 +160,12 @@ test('Disposable native initialization retains runtime durability and stops its 
     assert.deepEqual(pg.durability, { fsync: 'on', synchronous_commit: 'on', full_page_writes: 'on' });
     assert.ok(commands.find(call => call.command === 'initdb').args.includes('--no-sync'));
     const startup = commands.find(call => call.command === 'pg_ctl' && call.args.includes('start'));
+    assert.match(fs.readFileSync(resolve(pg.directory, 'postgresql.conf'), 'utf8'), /unix_socket_directories = ''/);
+    assert.ok(startup.args.some(value => value.includes('-h 127.0.0.1')));
     assert.ok(!startup.args.some(value => /(?:^|\s)-F(?:\s|$)|(?:fsync|full_page_writes|synchronous_commit)=off/.test(value)));
-    pg.stop();
+    pg.stop(); pg.stop();
+    assert.equal(fs.existsSync(pg.directory), false);
+    assert.equal(commands.filter(call => call.command === 'pg_ctl' && call.args.includes('stop')).length, 1);
     for (const value of ['off|on|on\n', 'on|off|on\n', 'on|on|off\n', 'on|on\n']) {
       settings = value; const before = commands.length;
       await assert.rejects(notificationTestPostgres(), /runtime durability must remain enabled/);
@@ -153,6 +180,39 @@ test('Disposable native initialization retains runtime durability and stops its 
 test('QA blocks fetch and Node transports before an external connection', () => {
   const result = child(`const assert=require('node:assert/strict');(async()=>{await assert.rejects(fetch('https://example.invalid'),/QA_EXTERNAL_NETWORK_BLOCKED/);assert.throws(()=>require('https').get('https://example.invalid'),/QA_EXTERNAL_NETWORK_BLOCKED/);assert.throws(()=>require('http').request({hostname:'example.invalid'}),/QA_EXTERNAL_NETWORK_BLOCKED/);})().catch(e=>{console.error(e);process.exitCode=1;});`);
   assert.equal(result.status, 0, result.stderr);
+});
+
+test('Native startup failure preserves server diagnostics and cleans only its owned directory', async () => {
+  const fs = require('node:fs'), path = require('node:path'), processes = require('node:child_process'), Module = require('node:module');
+  const bin = qaEnvironment(root).TEMP, savedExec = processes.execFileSync, savedBin = process.env.POSTGRES_TEST_BIN;
+  fs.writeFileSync(resolve(bin, process.platform === 'win32' ? 'initdb.exe' : 'initdb'), 'fixture tool placeholder');
+  const sentinel = resolve(bin, 'unrelated-server'); fs.writeFileSync(sentinel, 'preserve');
+  let directory, stops = 0;
+  try {
+    process.env.POSTGRES_TEST_BIN = bin;
+    processes.execFileSync = (executable, args) => {
+      if (path.basename(executable).startsWith('initdb')) directory = args[args.indexOf('-D') + 1];
+      if (path.basename(executable).startsWith('pg_ctl') && args.includes('start')) {
+        fs.writeFileSync(resolve(directory, 'server.log'), 'FATAL: fixture socket directory is not writable');
+        fs.writeFileSync(resolve(directory, 'postmaster.pid'), 'owned fixture');
+        throw Object.assign(Error('pg_ctl startup failed'), { status: 1 });
+      }
+      if (args.includes('stop')) { stops++; assert.equal(args[args.indexOf('-D') + 1], directory); }
+      return Buffer.from('');
+    };
+    Module.syncBuiltinESMExports();
+    const { notificationTestPostgres } = await import('../backend/scripts/notification-test-postgres.mjs');
+    await assert.rejects(notificationTestPostgres(), error => {
+      assert.match(error.message, /FATAL: fixture socket directory is not writable/);
+      const evidence = error.message.match(/Native PostgreSQL evidence: ([^\n]+)/)[1];
+      assert.match(fs.readFileSync(evidence, 'utf8'), /FATAL:/); return true;
+    });
+    assert.equal(stops, 1); assert.equal(fs.existsSync(directory), false);
+    assert.equal(fs.readFileSync(sentinel, 'utf8'), 'preserve');
+  } finally {
+    processes.execFileSync = savedExec; Module.syncBuiltinESMExports();
+    if (savedBin === undefined) delete process.env.POSTGRES_TEST_BIN; else process.env.POSTGRES_TEST_BIN = savedBin;
+  }
 });
 test('QA refuses dotenv files and Next local environment loading', () => {
   const result = child(`const assert=require('node:assert/strict');const fs=require('node:fs');assert.equal(fs.readFileSync('backend/.env','utf8'),'');assert.equal(fs.readFileSync('frontend/.env.local','utf8'),'');const dotenv=require('dotenv');dotenv.config({path:'backend/.env'});assert.equal(process.env.BREVO_API_KEY,'');const nextEnv=require('@next/env');const result=nextEnv.loadEnvConfig('frontend');assert.deepEqual(result.loadedEnvFiles,[]);`);

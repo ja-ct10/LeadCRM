@@ -10,7 +10,9 @@ function qaEnvironment(root, overrides = {}) {
   mkdirSync(directory, { recursive: true });
   const empty = resolve(directory, 'empty.env');
   writeFileSync(empty, '# Disposable QA only.\n');
-  const temporary = mkdtempSync(join(directory, 'qa-temp-'));
+  // Chromium's singleton socket has a 108-byte Unix path limit. Never inherit
+  // TMPDIR here: nested fixture launches must have equally short private paths.
+  const temporary = mkdtempSync(process.platform === 'linux' ? '/tmp/leadcrm-qa-' : join(directory, 'qa-temp-'));
   const storage = resolve(temporary, 'private-files');
   mkdirSync(storage);
   const env = {};

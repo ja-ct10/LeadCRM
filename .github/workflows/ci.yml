@@ -6,26 +6,43 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   acceptance:
     name: Clean checkout — build, isolated QA, native PostgreSQL
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          node-version: '24'
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
           cache: npm
           cache-dependency-path: package-lock.json
-      - name: Install locked workspaces
-        run: npx --yes npm@11.19.1 ci --include=dev
+          package-manager-cache: false
+      - name: Select pinned npm and install locked workspaces
+        run: |
+          npm install --global npm@11.19.1
+          npm --version
+          npm ci --include=dev
       - name: Install local browser and PostgreSQL tooling
         run: |
           npx playwright install --with-deps chrome
           sudo apt-get update
-          sudo apt-get install -y postgresql openssl
-          echo "POSTGRES_TEST_BIN=$(pg_config --bindir)" >> "$GITHUB_ENV"
+          sudo apt-get install -y postgresql-common openssl
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get update
+          sudo apt-get install -y postgresql-18 postgresql-client-18
+          /usr/lib/postgresql/18/bin/postgres --version
+          echo "POSTGRES_TEST_BIN=/usr/lib/postgresql/18/bin" >> "$GITHUB_ENV"
       - name: Generate Prisma client
         run: npm --prefix backend run db:generate
       - name: Execute counted local acceptance
@@ -34,7 +51,7 @@ jobs:
         run: git diff --exit-code -- shared/src
       - name: Preserve QA counts and fixture evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: disposable-qa-evidence
           path: |
@@ -45,10 +62,12 @@ jobs:
           if-no-files-found: error
   containers:
     name: Root-context Docker compatibility
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
       - name: Build backend including guarded migration entrypoint
         run: docker build -f infrastructure/docker/Dockerfile.backend -t leadcrm-backend:qa .
       - name: Build frontend standalone output

@@ -115,6 +115,7 @@ async function integration() {
   if (!files.length) throw new Error('No integration suites match the requested filter');
   let pg;
   if (native) {
+    await check('Populated guarded db:deploy and backend startup rehearsal', ['backend/scripts/test-guarded-startup.mjs']);
     const { notificationTestPostgres } = await import('../backend/scripts/notification-test-postgres.mjs');
     pg = await notificationTestPostgres();
     records.push({ label: 'Disposable native PostgreSQL fixture', status: 'PASS', version: pg.version, durability: pg.durability, directory: relative(root, pg.directory).replaceAll('\\', '/') });

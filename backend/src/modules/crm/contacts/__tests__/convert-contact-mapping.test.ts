@@ -20,15 +20,20 @@ it('maps Lead fields into real Contact columns and normalized Product links afte
   expect(await fixture.db.contact.findUniqueOrThrow({ where: { id: contact.id }, select: {
     productInterests: true, productLinks: { select: { productInterestId: true } },
   } })).toEqual({ productInterests: ['CRM Enterprise'], productLinks: [{ productInterestId: 'product' }] });
-  expect(result.lead).toMatchObject({ status: 'Closed', contactId: contact.id, accountId: contact.accountId });
+  expect(result.lead).toMatchObject({ status: lead.status, contactId: contact.id, accountId: contact.accountId });
   expect(result.lead.convertedAt).toBeInstanceOf(Date);
   expect(await fixture.db.contactDeal.count({ where: { contactId: contact.id, dealId: deal.id } })).toBe(1);
   expect(await fixture.db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ value: 12500, stageId: 'won', title: 'Original sale' });
 });
-it('rejects conversion before a confirmed sale without changing the Lead or creating a Contact', async () => {
-  const { lead } = await fixture.inquiry('Not yet sold', false);
-  const before = await fixture.db.lead.findUniqueOrThrow({ where: { id: lead.id } });
-  await expect(fixture.convert(lead.id)).rejects.toThrow('Closed Won');
-  expect(await fixture.db.lead.findUniqueOrThrow({ where: { id: lead.id } })).toEqual(before);
-  expect(await fixture.db.contact.count({ where: { email: lead.email } })).toBe(0);
+it('basic conversion preserves the Lead status and existing open Deal without recording a sale', async () => {
+  const { lead, deal } = await fixture.inquiry('Not yet sold', false);
+  const result = await fixture.convert(lead.id);
+  expect(result.lead).toMatchObject({ status: lead.status, contactId: result.contact.id });
+  expect(result.lead.convertedAt).toBeInstanceOf(Date);
+  const contact = await fixture.db.contact.findUniqueOrThrow({ where: { id: result.contact.id } });
+  expect(contact.status).toBe('WARM');
+  expect(contact.lifecycleStage).not.toBe('CUSTOMER');
+  expect(contact.customerSince).toBeNull();
+  expect(await fixture.db.contactDeal.count({ where: { contactId: contact.id, dealId: deal.id } })).toBe(1);
+  expect(await fixture.db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ stageId: 'open', wonConfirmedAt: null, hasEverBeenWon: false });
 });
