@@ -80,9 +80,9 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const single = await http('/reporting/dashboard?range=thisMonth&revenueInterval=month');
   assert.equal(single.trend.length, 1); assert.equal(single.trend[0].revenue, 45000);
   const singleLayout = await layout('Single actual PHP 45,000 observation fills card');
-  assert.ok(singleLayout.points.some(point => point.radius === 4), 'Single data point is drawn');
+  assert.ok(singleLayout.points.some(point => point.radius === 6), 'Single data point is drawn');
   await wait(1100); // Existing Chart.js value animation must finish before hit testing.
-  const singlePoint = await revenue().locator('canvas').evaluate(c => c.__points.find(p => p.radius === 4));
+  const singlePoint = await revenue().locator('canvas').evaluate(c => c.__points.find(p => p.radius === 6));
   await revenue().locator('canvas').hover({ position: { x: singlePoint.x, y: singlePoint.y } });
   await until(() => revenue().locator('canvas').evaluate(canvas => canvas.__labels.some(text => text.startsWith('Revenue (PHP):') && text.includes('45,000.00'))), 'Single-point currency tooltip');
   await page.mouse.move(0, 0);

@@ -20,9 +20,30 @@ it('applies actual monetary formatting to the revenue area tooltip', () => {
   expect(captured.line.options.plugins.tooltip.callbacks.label({ dataset: { label: 'Revenue' }, parsed: { y: 45000 } })).toBe('Revenue: ₱45000');
   expect(captured.line.data.labels).toEqual(['2020-01-01']);
   expect(captured.line.data.datasets[0].data).toEqual([45000]);
-  expect(captured.line.data.datasets[0].pointRadius).toBe(4);
+  expect(captured.line.data.datasets[0].pointRadius).toBe(6);
+  expect(captured.line.data.datasets[0].pointHitRadius).toBe(12);
+  expect(captured.line.options.scales.x.offset).toBe(true);
   expect(captured.line.options.responsive).toBe(true);
   expect(captured.line.options.maintainAspectRatio).toBe(false);
+});
+it('formats vertical category ticks and tooltip titles while preserving data and stage colors', () => {
+  render(<BarChart data={[{ name: '2020-01-01', won: 2 }]}><XAxis dataKey="name" tickFormatter={value => value === '2020-01-01' ? 'Jan 2020' : 'wrong'} /><YAxis /><Tooltip labelFormatter={() => 'Jan 2020'} /><Bar dataKey="won" fill="#059669" /></BarChart>);
+  expect(captured.bar.options.indexAxis).toBe('x');
+  expect(captured.bar.options.scales.x.ticks.callback(0)).toBe('Jan 2020');
+  expect(captured.bar.options.plugins.tooltip.callbacks.title([{ label: '2020-01-01' }])).toBe('Jan 2020');
+  expect(captured.bar.data.datasets[0].data).toEqual([2]);
+  expect(captured.bar.data.datasets[0].backgroundColor).toBe('#059669');
+});
+it('formats horizontal numeric ticks and category labels on the correct axes', () => {
+  render(<BarChart layout="vertical" data={[{ name: 'Lead', value: 1200000000 }]}><XAxis tickFormatter={value => `₱${value}`} /><YAxis dataKey="name" tickFormatter={value => `Stage ${value}`} /><Bar dataKey="value" /></BarChart>);
+  expect(captured.bar.options.scales.x.ticks.callback(1200000000)).toBe('₱1200000000');
+  expect(captured.bar.options.scales.y.ticks.callback(0)).toBe('Stage Lead');
+});
+it('formats the actual area bucket tooltip and leaves multiple observations unchanged', () => {
+  render(<AreaChart data={[{ name: '2020-01-01', revenue: 10 },{ name: '2020-02-01', revenue: 20 }]}><Tooltip labelFormatter={() => 'Jan 2020'} /><Area dataKey="revenue" /></AreaChart>);
+  expect(captured.line.options.plugins.tooltip.callbacks.title([{ label: '2020-01-01' }])).toBe('Jan 2020');
+  expect(captured.line.data.datasets[0].data).toEqual([10,20]);
+  expect(captured.line.options.scales.x.offset).toBe(false);
 });
 it('anchors a zero-only revenue period at zero and formats readable calendar ticks', () => {
   render(<AreaChart data={[{ name: '2020-01-01', revenue: 0 }]}><XAxis dataKey="name" tickFormatter={() => 'Jan 2020'} /><YAxis domain={[0, 'auto']} /><Area dataKey="revenue" /></AreaChart>);

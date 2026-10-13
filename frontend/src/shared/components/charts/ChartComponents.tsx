@@ -86,6 +86,7 @@ interface LineItemProps {
 interface TooltipProps {
   contentStyle?: object; itemStyle?: object;
   formatter?: (v: unknown, n: string) => unknown;
+  labelFormatter?: (label: string) => string;
   cursor?: boolean | object;
   content?: (props: unknown) => React.ReactNode;
 }
@@ -194,6 +195,7 @@ export function BarChart({ data, children, layout }: BarChartProps) {
   let yTickFormatter: ((v: any) => string) | undefined;
   let xTickFormatter: ((v: any) => string) | undefined;
   let tooltipFormatter: TooltipProps['formatter'];
+  let tooltipLabelFormatter: TooltipProps['labelFormatter'];
   const horizontal = layout === 'vertical';
   const bars: BarProps[] = [];
   let showLegend = false;
@@ -203,7 +205,7 @@ export function BarChart({ data, children, layout }: BarChartProps) {
     const t = child.type;
     if (t === XAxis) { if (!horizontal) xDataKey = child.props.dataKey || 'name'; xTickFormatter = child.props.tickFormatter; }
     if (t === YAxis) { if (horizontal) xDataKey = child.props.dataKey || 'name'; yTickFormatter = child.props.tickFormatter; }
-    if (t === TooltipStub) tooltipFormatter = child.props.formatter;
+    if (t === TooltipStub) { tooltipFormatter = child.props.formatter; tooltipLabelFormatter = child.props.labelFormatter; }
     if (t === BarStub) bars.push(child.props);
     if (t === LegendStub) showLegend = true;
   });
@@ -230,15 +232,20 @@ export function BarChart({ data, children, layout }: BarChartProps) {
       legend: showLegend
         ? { labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12 } }
         : { display: false },
-      tooltip: { ...getTooltipStyle(dark), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(horizontal ? context.parsed.x : context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
+      tooltip: { ...getTooltipStyle(dark), callbacks: {
+        ...(tooltipLabelFormatter ? { title: items => tooltipLabelFormatter!(items[0]?.label ?? '') } : {}),
+        ...(tooltipFormatter ? { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(horizontal ? context.parsed.x : context.parsed.y, context.dataset.label ?? ''))}` } : {}),
+      } },
     },
     scales: {
-      x: { ...getAxisDefaults(dark), grid: { color: 'transparent' }, ...(horizontal ? { beginAtZero: true, ticks: { ...getAxisDefaults(dark).ticks, callback: xTickFormatter } } : {}) },
+      x: { ...getAxisDefaults(dark), grid: { color: 'transparent' }, ...(horizontal ? { beginAtZero: true } : {}),
+        ticks: { ...getAxisDefaults(dark).ticks, maxRotation: 0, maxTicksLimit: 6,
+          callback: horizontal ? xTickFormatter : value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
       y: {
         ...getAxisDefaults(dark),
         ...(horizontal ? {} : { beginAtZero: true }),
         ticks: { ...getAxisDefaults(dark).ticks, ...(horizontal ? {} : { precision: 0 }),
-          callback: yTickFormatter || (horizontal ? (value => labels[Number(value)] ?? '') : ((v: any) => v)) },
+          callback: horizontal ? value => yTickFormatter ? yTickFormatter(labels[Number(value)]) : labels[Number(value)] ?? '' : yTickFormatter || ((v: any) => v) },
       },
     },
   };
@@ -260,6 +267,7 @@ export function AreaChart({ data, children }: BarChartProps) {
   let yDomain: YAxisProps['domain'];
   let yTickFormatter: ((v: any) => string) | undefined;
   let tooltipFormatter: TooltipProps['formatter'];
+  let tooltipLabelFormatter: TooltipProps['labelFormatter'];
   const areas: AreaProps[] = [];
 
   React.Children.forEach(children, (child: any) => {
@@ -267,7 +275,7 @@ export function AreaChart({ data, children }: BarChartProps) {
     const t = child.type;
     if (t === XAxis) { xDataKey = child.props.dataKey || 'name'; xTickFormatter = child.props.tickFormatter; }
     if (t === YAxis) { yTickFormatter = child.props.tickFormatter; yDomain = child.props.domain; }
-    if (t === TooltipStub) tooltipFormatter = child.props.formatter;
+    if (t === TooltipStub) { tooltipFormatter = child.props.formatter; tooltipLabelFormatter = child.props.labelFormatter; }
     if (t === AreaStub) areas.push(child.props);
   });
 
@@ -289,7 +297,8 @@ export function AreaChart({ data, children }: BarChartProps) {
       return gradient;
     },
     tension: 0.4,
-    pointRadius: data.length === 1 ? 4 : 0,
+    pointRadius: data.length === 1 ? 6 : 0,
+    pointHitRadius: 12,
     pointHoverRadius: 6,
   }));
 
@@ -298,10 +307,13 @@ export function AreaChart({ data, children }: BarChartProps) {
     maintainAspectRatio: false,
     plugins: {
       legend: { display: false },
-      tooltip: { ...getTooltipStyle(dark), ...(tooltipFormatter ? { callbacks: { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(context.parsed.y, context.dataset.label ?? ''))}` } } : {}) },
+      tooltip: { ...getTooltipStyle(dark), callbacks: {
+        ...(tooltipLabelFormatter ? { title: items => tooltipLabelFormatter!(items[0]?.label ?? '') } : {}),
+        ...(tooltipFormatter ? { label: context => `${context.dataset.label}: ${String(tooltipFormatter!(context.parsed.y, context.dataset.label ?? ''))}` } : {}),
+      } },
     },
     scales: {
-      x: { ...getAxisDefaults(dark), grid: { color: 'transparent' }, ticks: { ...getAxisDefaults(dark).ticks, autoSkip: true, maxRotation: 0, maxTicksLimit: 6, callback: value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
+      x: { ...getAxisDefaults(dark), offset: data.length === 1, grid: { color: 'transparent' }, ticks: { ...getAxisDefaults(dark).ticks, autoSkip: true, maxRotation: 0, maxTicksLimit: 6, callback: value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
       y: {
         ...getAxisDefaults(dark),
         ...(typeof yDomain?.[0] === 'number' ? { min: yDomain[0], beginAtZero: yDomain[0] === 0 } : {}),

@@ -75,6 +75,7 @@ export interface DashboardReport {
   metrics: {
     totalRevenue: number | null; forecastedRevenue: number | null; activeDeals: number | null;
     totalLeads: number | null; won: number | null; lost: number | null; winRate: number | null; averageDealDays: number | null;
+    currentWon: number | null; totalDeals: number | null; unattributedWon: number | null; unattributedRevenue: number | null;
     openPipelineValue: number | null; forecastMissing: number; monetaryMissing: number; currencyExcluded: number; closingDateMissing: number;
   };
   trend: Array<{ name: string; revenue: number; won: number; lost: number }>;
@@ -86,7 +87,7 @@ export interface DashboardReport {
     leadToContacted: number | null; contactedToQualified: number | null;
     qualifiedToWon: number | null; qualifiedToLost: number | null;
   } | null;
-  leaderboard: Array<{ id: string; firstName: string; lastName: string; won: number; revenue: number }>;
+  leaderboard: Array<{ id: string; firstName: string; lastName: string; won: number; revenue: number | null }>;
   actions: Array<{ id: string; title: string; kind: 'task' | 'lead' | 'deal'; dueDate: string | null; priority: string; overdue: boolean; href: string }>;
   pendingActions: number; warnings: string[];
 }
@@ -100,7 +101,10 @@ export function dashboardCsv(report: DashboardReport): string {
     ['Total Revenue', report.metrics.totalRevenue, `Period / ${report.currency}`],
     ['Forecasted Revenue', report.metrics.forecastedRevenue, `Current open pipeline / ${report.currency}`],
     ['Active Deals', report.metrics.activeDeals, 'Current'], ['Total Leads', report.metrics.totalLeads, 'Current unconverted, unarchived'],
-    ['Win Rate', report.metrics.winRate, 'Period / %'], ['Average Deal Velocity', report.metrics.averageDealDays, 'Period / days'],
+    ['Win Rate', report.metrics.winRate, 'Current eligible Sales Pipeline / %'],
+    ['Current Won Deals', report.metrics.currentWon, 'Current eligible Sales Pipeline'], ['Total Deals', report.metrics.totalDeals, 'Current eligible Sales Pipeline'],
+    ['Unattributed Won Deals', report.metrics.unattributedWon, 'Period'], ['Unattributed Revenue', report.metrics.unattributedRevenue, `Period / ${report.currency}`],
+    ['Average Deal Velocity', report.metrics.averageDealDays, 'Period / days'],
     ['Open Pipeline Value', report.metrics.openPipelineValue, `Current / ${report.currency}`],
     ['Bucket', 'Revenue', 'Won', 'Lost'], ...report.trend.map(row => [row.name, report.metrics.totalRevenue === null ? null : row.revenue, row.won, row.lost]),
     ['Open stage', 'Deal count', `Value (${report.currency})`, 'Percentage'], ...report.distribution.map(row => [row.name, row.count, row.value, row.percentage]),

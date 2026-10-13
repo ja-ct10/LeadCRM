@@ -14,6 +14,7 @@ import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const uiPolish = process.argv.includes('--ui-polish');
+const metricsOnly = process.argv.includes('--metrics-only');
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(process.env.DASHBOARD_VERIFICATION_OUTPUT || (uiPolish ? process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-dashboard-leads-ui') : resolve(root, 'data/outputs/dashboard-verification'))));
 const clockOnly = process.argv.includes('--clock-only');
 mkdirSync(output, { recursive: true });
@@ -96,7 +97,7 @@ try {
         constructor(...args) { super(...args); this.addEventListener('dashboard-change', () => window.__dashboardEvents.push(Date.now())); }
       };
     });
-    if (uiPolish) await context.addInitScript(() => {
+    if (uiPolish || metricsOnly) await context.addInitScript(() => {
       const clear = CanvasRenderingContext2D.prototype.clearRect;
       const text = CanvasRenderingContext2D.prototype.fillText;
       const arc = CanvasRenderingContext2D.prototype.arc;
@@ -108,7 +109,7 @@ try {
     });
     await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const tab = await context.newPage(); tab.setDefaultTimeout(25000); tab.on('pageerror', error => pageErrors.push(error.message));
-    await tab.goto(base + '/dashboard'); await tab.getByRole('heading', { name: 'Revenue Trend by Month', exact: true }).waitFor();
+    await tab.goto(base + '/dashboard', { waitUntil: 'domcontentloaded' }); await tab.getByRole('heading', { name: 'Revenue Trend by Month', exact: true }).waitFor();
     await until(async () => (await tab.evaluate(() => window.__dashboardEvents.length)) > 0,'Dashboard subscription established'); return { context, tab };
   }
   const adminSession = await session(adminToken); page = adminSession.tab;
@@ -123,7 +124,7 @@ try {
     const eventAt = await page.evaluate(start => window.__dashboardEvents.filter(time => time >= start).at(-1),wallStart);
     const displayMs = Math.round(performance.now() - committed); latencies.push({ label, responseToDisplayMs: displayMs, requestToDisplayMs: Math.round(performance.now() - started), eventReceiptToVerifiedDisplayMs:eventAt ? displayed-eventAt : null }); record(label, { displayMs }); return result;
   }
-  await expectValue('Active Deals', '0'); await expectValue('Win Rate', 'Unavailable'); await page.screenshot({path:resolve(output,'empty-zero-revenue.png'),fullPage:true}); record('Authenticated empty state through actual Next proxy and two SSE sessions');
+  await expectValue('Active Deals', '0'); await expectValue('Win Rate', '0%'); await page.screenshot({path:resolve(output,'empty-zero-revenue.png'),fullPage:true}); record('Authenticated empty state through actual Next proxy and two SSE sessions');
   const clock = page.getByLabel('Current date and time',{exact:true});
   await clock.waitFor();
   const firstTick = await clock.getAttribute('datetime');
@@ -157,6 +158,9 @@ try {
       await page.screenshot({path:resolve(output,`clock-${width}-funnel.png`),fullPage:true});
       record(`Clock, requested notes and responsive toolbar ${width}`,dimensions);
     }
+  } else if (metricsOnly) {
+    const { verifyDashboardMetrics } = await import('./verify-dashboard-metrics.mjs');
+    await verifyDashboardMetrics({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, agent, replacement, pipeline, stages, products, record, until, wait, expectValue });
   } else if (uiPolish) {
     const { verifyDashboardLeadsUi } = await import('./verify-dashboard-leads-ui.mjs');
     await verifyDashboardLeadsUi({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, admin, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, leadsOnly: process.argv.includes('--leads-only'), dashboardOnly: process.argv.includes('--dashboard-only') });
@@ -173,7 +177,7 @@ try {
   const legacy = await prisma.deal.create({data:{tenantId:tenant.id,pipelineId:pipeline.id,stageId:stages[0].id,title:'Legacy amount correction',value:500,assignedUserId:agent.id,ownerId:agent.id}});
   // Product pricing is an immutable snapshot in normal CRM APIs. Exercise a
   // committed database correction as an integration write, without weakening it.
-  await mutation('Committed integration amount correction updates pipeline and forecast', () => prisma.deal.update({where:{id:legacy.id},data:{value:1800}}), () => expectValue('Forecasted Revenue', '₱880.00'));
+  await mutation('Committed integration amount correction updates pipeline and forecast', () => prisma.deal.update({where:{id:legacy.id},data:{value:1800}}), () => expectValue('Forecasted Revenue', '₱2,800.00'));
   await http(`/crm/deals/${legacy.id}/archive`,'PATCH'); await expectValue('Active Deals','1');
   await mutation('Won closure updates revenue, trend, counts, rate and attribution', () => http(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[3].id }), async () => { await expectValue('Active Deals','0'); await expectValue('Total Revenue','₱1,000.00'); await expectValue('Win Rate','100%'); await page.getByText('1 won deals', { exact: true }).last().waitFor(); });
   const closeAt = (await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).closedAt;
@@ -182,7 +186,7 @@ try {
   assert.equal(await prisma.dealStageHistory.count({ where: { dealId: deal.id, newStageId: stages[3].id } }),1); record('Repeated closure has one revenue recognition and one history milestone');
   const losing = await http('/crm/deals','POST',{ pipelineId: pipeline.id, stageId: stages[0].id, title: 'Lost and Reopened', productInterestIds:[products[0].id], assignedUserId:agent.id });
   await mutation('Lost closure and Win Rate denominator', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[4].id, lostReason:'Deferred' }), () => expectValue('Win Rate','50%'));
-  await mutation('Lost reopening removes current outcome and restores pipeline', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[2].id }), async () => { await expectValue('Active Deals','1'); await expectValue('Win Rate','100%'); });
+  await mutation('Lost reopening removes current outcome and restores pipeline', () => http(`/crm/deals/${losing.id}/stage`,'PATCH',{ stageId:stages[2].id }), async () => { await expectValue('Active Deals','1'); await expectValue('Win Rate','50%'); });
   const task = await mutation('Task creation updates Action Center', () => http('/operations/tasks','POST',{ requestId:randomUUID(), title:'Browser overdue follow-up', dueDate:new Date(Date.now()-86400000).toISOString(), priority:'High', assignedUserId:agent.id, dealIds:[deal.id] }), async () => { await page.getByText('Browser overdue follow-up',{exact:true}).waitFor(); await staffSession.tab.getByText('Browser overdue follow-up',{exact:true}).waitFor(); });
   const actionLayout = await page.getByRole('link').filter({hasText:'Browser overdue follow-up'}).evaluate(el=>({height:el.parentElement.clientHeight,itemHeight:el.getBoundingClientRect().height,overflow:getComputedStyle(el.parentElement).overflowY,clipped:el.getBoundingClientRect().bottom>el.parentElement.getBoundingClientRect().bottom+1})); assert.ok(Math.abs(actionLayout.height-actionLayout.itemHeight)<=1); assert.ok(actionLayout.itemHeight<108); assert.equal(actionLayout.overflow,'auto'); assert.equal(actionLayout.clipped,false); record('Action Center uses a compact content-based scroll viewport',actionLayout);
   await mutation('Task completion removes pending action', () => http(`/operations/tasks/${task.id}/complete`,'PATCH'), async () => until(async () => await page.getByText('Browser overdue follow-up',{exact:true}).count() === 0, 'Task disappeared'));

@@ -85,7 +85,7 @@ describe('authoritative dashboard', () => {
   });
   it('renders an actually empty workspace without fabricated rates or velocity', async () => {
     const result = await report();
-    expect(result.metrics).toMatchObject({ totalRevenue: 0, activeDeals: 0, totalLeads: 0, forecastedRevenue: 0, winRate: null, averageDealDays: null });
+    expect(result.metrics).toMatchObject({ totalRevenue: 0, activeDeals: 0, totalLeads: 0, forecastedRevenue: 0, winRate: 0, currentWon: 0, totalDeals: 0, averageDealDays: null });
     expect(result.distribution.map(row => row.count)).toEqual([0,0,0]); expect(result.pendingActions).toBe(0);
   });
   it('reconciles revenue, outcomes, open counts, values, forecast and creation-to-close duration', async () => {
@@ -98,7 +98,7 @@ describe('authoritative dashboard', () => {
       { id: 'converted-lead', tenantId: 'a', firstName: 'Converted', lastName: 'Lead', convertedAt: now },
     ] });
     const result = await report();
-    expect(result.metrics).toMatchObject({ totalRevenue: 45000, won: 1, lost: 1, winRate: 50, activeDeals: 3, forecastedRevenue: 3000, openPipelineValue: 6000, totalLeads: 1, averageDealDays: 4 });
+    expect(result.metrics).toMatchObject({ totalRevenue: 45000, won: 1, lost: 1, winRate: 20, currentWon: 1, totalDeals: 5, activeDeals: 3, forecastedRevenue: 6000, openPipelineValue: 6000, totalLeads: 1, averageDealDays: 4 });
     expect(result.trend.reduce((sum, row) => sum + row.revenue, 0)).toBe(result.metrics.totalRevenue);
     expect(result.trend.reduce((sum, row) => sum + row.won, 0)).toBe(1);
     expect(result.trend.reduce((sum, row) => sum + row.lost, 0)).toBe(1);
@@ -117,9 +117,9 @@ describe('authoritative dashboard', () => {
     expect(staff.distribution).toEqual(organization.distribution); expect(staff.trend).toEqual(organization.trend);
     expect(staff.conversion).toEqual(organization.conversion); expect(staff.leaderboard).toEqual(organization.leaderboard);
     expect(organization.metrics).toMatchObject({ totalRevenue: before.metrics.totalRevenue! + 21000, activeDeals: before.metrics.activeDeals! + 1,
-      totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue! + 800, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
-    expect(organization.metrics).toMatchObject({ won: 2, lost: 1, winRate: 66.7, averageDealDays: 4 });
-    expect(organization.leaderboard.map(row => row.revenue).sort((a, b) => a - b)).toEqual([21000, 45000]);
+      totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue! + 2000, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
+    expect(organization.metrics).toMatchObject({ won: 2, lost: 1, currentWon: 2, totalDeals: 7, winRate: 28.6, averageDealDays: 4 });
+    expect(organization.leaderboard.map(row => row.revenue).sort((a, b) => a! - b!)).toEqual([21000, 45000]);
     expect(organization.leaderboard.map(row => row.id).sort()).toEqual(['agent', 'other-agent']);
     expect(organization.actions.some(row => row.id === 'second-agent-lead')).toBe(true);
     expect(staff.actions.some(row => row.id === 'second-agent-lead')).toBe(false);
@@ -173,13 +173,94 @@ describe('authoritative dashboard', () => {
     expect(result.trend[0]).toMatchObject({ name: '2020-01-01', revenue: 45250 });
     expect(result.trend.reduce((sum, row) => sum + row.revenue, 0)).toBe(result.metrics.totalRevenue);
   });
-  it('does not claim missing probabilities or missing monetary values are verified zero', async () => {
+  it('ignores probabilities and expected close dates while preserving unavailable monetary totals', async () => {
     await db.stage.update({ where: { id: 'lead' }, data: { probability: null } });
-    expect((await report()).metrics.forecastedRevenue).toBeNull();
+    await db.deal.update({ where: { id: 'open-lead' }, data: { expectedCloseDate: new Date('2030-01-01') } });
+    const unweighted = await report();
+    expect(unweighted.metrics.forecastedRevenue).toBe(unweighted.metrics.openPipelineValue);
+    expect(unweighted.metrics.forecastedRevenue).toBe(6000);
     await db.stage.update({ where: { id: 'lead' }, data: { probability: 10 } });
     await deal('missing-value', 'lead', null);
     expect((await report()).metrics).toMatchObject({ forecastedRevenue: null, openPipelineValue: null, totalRevenue: 45250 });
     await db.deal.update({ where: { id: 'missing-value' }, data: { isArchived: true } });
+  });
+  it('keeps current pipeline KPIs independent of period outcomes and excludes archive, deletion and other pipelines', async () => {
+    const before = await report();
+    await db.pipeline.create({ data: { id: 'other-pipeline', tenantId: 'a', name: 'Other Pipeline' } });
+    await db.stage.create({ data: { id: 'other-stage', tenantId: 'a', pipelineId: 'other-pipeline', name: 'Lead', order: 0 } });
+    const ids = ['accuracy-archived','accuracy-deleted','accuracy-outside'];
+    try {
+      await deal(ids[0], 'qualified', 900000, { isArchived: true });
+      await deal(ids[1], 'lead', 900000, { deletedAt: now });
+      await deal(ids[2], 'other-stage', 900000, { pipelineId: 'other-pipeline' });
+      const emptyPeriod = await scoped(() => dashboard(admin, { range: 'custom', start: '2020-01-12', end: '2020-01-13' }, now));
+      expect(emptyPeriod.metrics).toMatchObject({ won: 0, lost: 0, totalRevenue: 0, currentWon: before.metrics.currentWon,
+        totalDeals: before.metrics.totalDeals, winRate: before.metrics.winRate, activeDeals: before.metrics.activeDeals,
+        forecastedRevenue: before.metrics.openPipelineValue });
+      expect(emptyPeriod.leaderboard).toEqual([]);
+      expect(emptyPeriod.trend.every(row => row.revenue === 0 && row.won === 0 && row.lost === 0)).toBe(true);
+      expect(emptyPeriod.distribution.reduce((sum,row) => sum + row.percentage,0)).toBeCloseTo(100,0);
+      expect(emptyPeriod.warnings.join(' ')).toContain('outside the authoritative Sales Pipeline');
+    } finally { await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } }); }
+  });
+  it('groups all verified agents, preserves deactivated ownership, sorts ties and separates uncredited wins', async () => {
+    const before = await report();
+    const ids = ['credit-repeat','credit-admin','credit-unknown',...Array.from({ length: 6 }, (_,i) => `credit-extra-${i}`)];
+    try {
+      await deal(ids[0], 'qualified', 500); await close(ids[0], 'won');
+      await deal(ids[1], 'qualified', 900, { assignedUserId: 'admin' }); await close(ids[1], 'won');
+      await deal(ids[2], 'won', 700, { closedAt: new Date('2020-01-05') });
+      // Even a sales user's stage-change actor is not evidence of assigned ownership.
+      await db.dealStageHistory.create({ data: { tenantId: 'a', dealId: ids[2], newStageId: 'won', movedById: 'agent', movedAt: new Date('2020-01-05') } });
+      for (let i = 0; i < 6; i++) {
+        const userId = `credit-user-${i}`;
+        await db.user.create({ data: { id: userId, tenantId: 'a', firstName: 'Credited', lastName: String(i), email: `${userId}@camxian.com`, role: 'Sales' } });
+        await db.userRole.create({ data: { tenantId: 'a', userId, roleId: 'sales-role' } });
+        await deal(ids[i + 3], 'qualified', 100, { assignedUserId: userId }); await close(ids[i + 3], 'won');
+      }
+      await db.deal.update({ where: { id: ids[3] }, data: { assignedUserId: 'other-agent' } });
+      await db.user.update({ where: { id: 'credit-user-0' }, data: { status: 'INACTIVE' } });
+      await db.deal.update({ where: { id: ids[0] }, data: { assignedUserId: 'other-agent' } });
+      const result = await report();
+      expect(result.leaderboard).toHaveLength(7);
+      expect(result.leaderboard[0]).toMatchObject({ id: 'agent', won: before.leaderboard[0].won + 1, revenue: before.leaderboard[0].revenue! + 500 });
+      expect(result.leaderboard.slice(1).map(row => row.id)).toEqual(Array.from({ length: 6 }, (_,i) => `credit-user-${i}`));
+      expect(result.metrics).toMatchObject({ unattributedWon: 2, unattributedRevenue: 1600 });
+      expect(result.warnings.join(' ')).toContain('2 period wins lack verified historical agent attribution');
+      expect(result.leaderboard.some(row => row.id === 'admin')).toBe(false);
+    } finally {
+      await db.user.update({ where: { id: 'credit-user-0' }, data: { status: 'ACTIVE' } });
+      await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } });
+    }
+  });
+  it('keeps valid zero amounts and credited won counts when an amount is invalid', async () => {
+    const before = await report();
+    const ids = ['amount-zero','amount-invalid-open','amount-invalid-won','amount-currency-open'];
+    try {
+      await deal(ids[0], 'lead', 0);
+      await deal(ids[1], 'qualified', -5);
+      await deal(ids[2], 'qualified', null); await close(ids[2], 'won');
+      await deal(ids[3], 'contacted', 999999, { currency: 'USD' });
+      const result = await report();
+      expect(result.metrics).toMatchObject({ totalRevenue: null, openPipelineValue: null, forecastedRevenue: null, forecastMissing: 1, monetaryMissing: 2, currencyExcluded: 1,
+        activeDeals: before.metrics.activeDeals! + 3 });
+      expect(result.distribution.find(row => row.name === 'Lead')!.value).toBe(before.distribution[0].value);
+      expect(result.distribution.find(row => row.name === 'Qualified')!.value).toBeNull();
+      expect(result.leaderboard.find(row => row.id === 'agent')).toMatchObject({ won: before.leaderboard[0].won + 1, revenue: null });
+      expect(result.warnings.join(' ')).toContain('affected monetary totals are unavailable');
+    } finally { await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } }); }
+  });
+  it('uses identical half-open Manila boundaries for period revenue, wins, losses and attribution', async () => {
+    const ids = ['edge-before','edge-first','edge-last','edge-after'];
+    try {
+      for (const [index, date] of ['2020-01-09T15:59:59.999Z','2020-01-09T16:00:00.000Z','2020-01-10T15:59:59.999Z','2020-01-10T16:00:00.000Z'].entries()) {
+        await deal(ids[index], 'qualified', 100); await close(ids[index], index === 2 ? 'lost' : 'won', new Date(date));
+      }
+      const result = await scoped(() => dashboard(admin, { range: 'custom', start: '2020-01-10', end: '2020-01-10', revenueInterval: 'week' }, now));
+      expect(result.metrics).toMatchObject({ totalRevenue: 100, won: 1, lost: 1 });
+      expect(result.trend).toEqual([{ name: '2020-01-06', revenue: 100, won: 1, lost: 1 }]);
+      expect(result.leaderboard).toMatchObject([{ id: 'agent', won: 1, revenue: 100 }]);
+    } finally { await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } }); }
   });
   it('reconciles cent-normalized legacy amounts across dates and stage groups', async () => {
     const before = await report();

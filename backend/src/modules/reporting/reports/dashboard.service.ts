@@ -24,9 +24,9 @@ export function verifyDashboardStages(stages: DashboardStage[]) {
   }
 }
 
-type Totals = { revenue: number; won: number; lost: number; average: number | null; active: number; forecast: number;
-  openValue: number; forecastMissing: number; monetaryMissing: number; wonMissing: number; openMissing: number;
-  currencyExcluded: number; closingDateMissing: number; attributionMissing: number };
+type Totals = { revenue: number; won: number; lost: number; currentWon: number; totalDeals: number; average: number | null; active: number;
+  openValue: number; monetaryMissing: number; wonMissing: number; openMissing: number;
+  currencyExcluded: number; closingDateMissing: number; attributionMissing: number; unattributedRevenue: number; unattributedMissing: number };
 const percent = (numerator: number, denominator: number) => denominator ? Math.round(numerator / denominator * 1000) / 10 : null;
 
 export async function getDashboard(identity: AuthenticatedUser, input: unknown, now = new Date()): Promise<DashboardReport> {
@@ -56,7 +56,8 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       period: { start: period.start, end: period.end, timezone: period.timezone, interval },
       access: { deals: access.deals, leads: access.leads, tasks: access.tasks }, pipeline: null,
       metrics: { totalRevenue: null, forecastedRevenue: null, activeDeals: null, totalLeads: null, won: null, lost: null,
-        winRate: null, averageDealDays: null, openPipelineValue: null, forecastMissing: 0, monetaryMissing: 0,
+        winRate: null, currentWon: null, totalDeals: null, unattributedWon: null, unattributedRevenue: null,
+        averageDealDays: null, openPipelineValue: null, forecastMissing: 0, monetaryMissing: 0,
         currencyExcluded: 0, closingDateMissing: 0 },
       trend: [], distribution: [], conversion: null, leaderboard: [], actions: [], pendingActions: 0, warnings: [],
     };
@@ -83,30 +84,37 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       const resolved = Prisma.sql`d."closedAt" >= ${utc(period.from)} AND d."closedAt" < ${utc(period.until)}
         AND d."closedAt" >= d."createdAt" AND d."closedAt" <= ${utc(now)}`;
       const validMoney = Prisma.sql`d.currency = ${currency} AND d.value >= 0 AND d.value::text NOT IN ('NaN','Infinity','-Infinity')`;
+      // Only the immutable closure snapshot proves sales credit. Current roles,
+      // assignees and the stage-change actor cannot establish old ownership.
+      const credited = Prisma.sql`d."revenueOwnerEligible" = true AND d."revenueOwnerId" IS NOT NULL
+        AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = d."revenueOwnerId" AND u."tenantId" = ${tenantId})`;
       const raw = <T>(sql: Prisma.Sql) => tenantContext.exit(async () => await tx.$queryRaw<T>(sql));
       const totals = (await raw<Totals[]>(Prisma.sql`
-        WITH eligible AS (SELECT d.*, s."isWon", s."isLost", s.probability FROM "Deal" d
-          JOIN "Stage" s ON s.id = d."stageId" AND s."tenantId" = d."tenantId" WHERE ${scope})
+        WITH eligible AS (SELECT d.*, s."isWon", s."isLost" FROM "Deal" d
+          JOIN "Stage" s ON s.id = d."stageId" AND s."tenantId" = d."tenantId" AND s."pipelineId" = d."pipelineId" WHERE ${scope})
         SELECT COALESCE(round(SUM(round(d.value::numeric,2)) FILTER (WHERE d."isWon" AND ${resolved} AND ${validMoney}), 2),0)::float8 AS revenue,
           COUNT(*) FILTER (WHERE d."isWon" AND ${resolved})::int AS won,
           COUNT(*) FILTER (WHERE d."isLost" AND ${resolved})::int AS lost,
+          COUNT(*) FILTER (WHERE d."isWon")::int AS "currentWon", COUNT(*)::int AS "totalDeals",
           AVG(EXTRACT(EPOCH FROM (d."closedAt" - d."createdAt"))/86400) FILTER (WHERE d."isWon" AND ${resolved})::float8 AS average,
           COUNT(*) FILTER (WHERE NOT d."isWon" AND NOT d."isLost")::int AS active,
-          COALESCE(round(SUM(round(d.value::numeric,2) * d.probability / 100) FILTER (WHERE NOT d."isWon" AND NOT d."isLost" AND ${validMoney} AND d.probability BETWEEN 0 AND 100),2),0)::float8 AS forecast,
           COALESCE(round(SUM(round(d.value::numeric,2)) FILTER (WHERE NOT d."isWon" AND NOT d."isLost" AND ${validMoney}),2),0)::float8 AS "openValue",
-          COUNT(*) FILTER (WHERE NOT d."isWon" AND NOT d."isLost" AND d.currency = ${currency} AND (d.probability IS NULL OR d.probability NOT BETWEEN 0 AND 100 OR d.value IS NULL OR NOT (${validMoney})))::int AS "forecastMissing",
           COUNT(*) FILTER (WHERE d.currency = ${currency} AND NOT COALESCE((${validMoney}), false) AND (NOT d."isLost" AND (NOT d."isWon" OR ${resolved})))::int AS "monetaryMissing",
           COUNT(*) FILTER (WHERE d."isWon" AND ${resolved} AND d.currency = ${currency} AND NOT COALESCE((${validMoney}), false))::int AS "wonMissing",
           COUNT(*) FILTER (WHERE NOT d."isWon" AND NOT d."isLost" AND d.currency = ${currency} AND NOT COALESCE((${validMoney}), false))::int AS "openMissing",
           COUNT(*) FILTER (WHERE d.currency IS DISTINCT FROM ${currency} AND (NOT d."isWon" AND NOT d."isLost" OR ${resolved}))::int AS "currencyExcluded",
           COUNT(*) FILTER (WHERE (d."isWon" OR d."isLost") AND (d."closedAt" IS NULL OR d."closedAt" < d."createdAt" OR d."closedAt" > ${utc(now)}))::int AS "closingDateMissing",
-          COUNT(*) FILTER (WHERE d."isWon" AND ${resolved} AND d."revenueOwnerEligible" IS NULL)::int AS "attributionMissing"
+          COUNT(*) FILTER (WHERE d."isWon" AND ${resolved} AND NOT COALESCE((${credited}),false))::int AS "attributionMissing",
+          COALESCE(round(SUM(round(d.value::numeric,2)) FILTER (WHERE d."isWon" AND ${resolved} AND ${validMoney} AND NOT COALESCE((${credited}),false)),2),0)::float8 AS "unattributedRevenue",
+          COUNT(*) FILTER (WHERE d."isWon" AND ${resolved} AND d.currency = ${currency} AND NOT COALESCE((${validMoney}),false) AND NOT COALESCE((${credited}),false))::int AS "unattributedMissing"
         FROM eligible d`))[0];
       Object.assign(result.metrics, {
-        totalRevenue: totals.wonMissing ? null : totals.revenue, forecastedRevenue: totals.forecastMissing ? null : totals.forecast,
-        activeDeals: totals.active, won: totals.won, lost: totals.lost, winRate: percent(totals.won, totals.won + totals.lost),
+        totalRevenue: totals.wonMissing ? null : totals.revenue, forecastedRevenue: totals.openMissing ? null : totals.openValue,
+        activeDeals: totals.active, won: totals.won, lost: totals.lost, winRate: percent(totals.currentWon, totals.totalDeals) ?? 0,
+        currentWon: totals.currentWon, totalDeals: totals.totalDeals, unattributedWon: totals.attributionMissing,
+        unattributedRevenue: totals.unattributedMissing ? null : totals.unattributedRevenue,
         averageDealDays: totals.average === null ? null : Math.round(totals.average * 10) / 10,
-        openPipelineValue: totals.openMissing ? null : totals.openValue, forecastMissing: totals.forecastMissing,
+        openPipelineValue: totals.openMissing ? null : totals.openValue, forecastMissing: totals.openMissing,
         monetaryMissing: totals.monetaryMissing, currencyExcluded: totals.currencyExcluded, closingDateMissing: totals.closingDateMissing,
       });
       result.trend = await raw<DashboardReport['trend']>(Prisma.sql`
@@ -156,15 +164,16 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
         qualifiedToLost: history.missing ? null : percent(history.qualifiedLost, history.qualified),
       };
       result.leaderboard = await raw<DashboardReport['leaderboard']>(Prisma.sql`
-        SELECT u.id, u."firstName", u."lastName", COUNT(*)::int AS won, round(SUM(round(d.value::numeric,2)),2)::float8 AS revenue
+        SELECT u.id, u."firstName", u."lastName", COUNT(*)::int AS won,
+          CASE WHEN COUNT(*) FILTER (WHERE d.currency = ${currency} AND NOT COALESCE((${validMoney}),false)) > 0 THEN NULL
+            ELSE COALESCE(round(SUM(round(d.value::numeric,2)) FILTER (WHERE ${validMoney}),2),0)::float8 END AS revenue
         FROM "Deal" d JOIN "User" u ON u.id = d."revenueOwnerId" AND u."tenantId" = ${tenantId}
-        WHERE ${scope} AND ${resolved} AND d."stageId" = ${won.id} AND ${validMoney} AND d."revenueOwnerEligible" = true
-        GROUP BY u.id, u."firstName", u."lastName" ORDER BY revenue DESC, won DESC, u.id ASC LIMIT 5`);
+        WHERE ${scope} AND ${resolved} AND d."stageId" = ${won.id} AND ${credited}
+        GROUP BY u.id, u."firstName", u."lastName" ORDER BY revenue DESC NULLS LAST, won DESC, u.id ASC`);
       const excluded = await tx.deal.count({ where: { tenantId, isArchived: false, deletedAt: null, pipelineId: { not: pipeline.id } } });
       if (excluded) result.warnings.push(`${excluded} visible deals outside the authoritative Sales Pipeline are excluded; no records were changed.`);
       if (totals.currencyExcluded) result.warnings.push(`${totals.currencyExcluded} deals have another or unknown currency and are excluded from ${currency} monetary totals.`);
       if (totals.monetaryMissing) result.warnings.push(`${totals.monetaryMissing} deals have missing or invalid amounts; affected monetary totals are unavailable.`);
-      if (totals.forecastMissing) result.warnings.push(`${totals.forecastMissing} open deals have incomplete forecast data. Forecast uses current open stages, regardless of expected close date.`);
       if (totals.closingDateMissing) result.warnings.push(`${totals.closingDateMissing} closed deals have missing or invalid closing dates and are excluded from period results.`);
       if (totals.attributionMissing) result.warnings.push(`${totals.attributionMissing} period wins lack verified historical agent attribution and are excluded from the leaderboard.`);
       if (history.missing) result.warnings.push(`${history.missing} cohort deals lack a recorded starting milestone. Conversion counts show recorded events only; progression rates are unavailable and historical stages were not inferred.`);

@@ -49,6 +49,26 @@ it('does not turn failed requests into a zero-valued report', async () => {
   await waitFor(() => expect(hook.result.current.error).toBe('Database unavailable'));
   expect(hook.result.current.report).toBeNull(); expect(hook.result.current.connection).toBe('stale');
 });
+it('preserves the last authoritative report on a failed refresh', async () => {
+  const hook = renderHook(() => useDashboard({ range: 'thisMonth' }));
+  await waitFor(() => expect(hook.result.current.report?.metrics.totalRevenue).toBe(1));
+  mocks.get.mockRejectedValueOnce(new Error('Refresh failed'));
+  await act(async () => { expect(await hook.result.current.refresh()).toBe(false); });
+  expect(hook.result.current.report?.metrics.totalRevenue).toBe(1);
+  expect(hook.result.current.error).toBe('Refresh failed');
+});
+it('accepts only the latest of rapid refresh responses', async () => {
+  const hook = renderHook(() => useDashboard({ range: 'thisMonth' }));
+  await waitFor(() => expect(hook.result.current.report).not.toBeNull());
+  let resolveOld: (value: unknown) => void = () => {};
+  mocks.get.mockImplementationOnce(() => new Promise(resolve => { resolveOld = resolve; }));
+  let old: Promise<boolean>;
+  act(() => { old = hook.result.current.refresh(); });
+  mocks.get.mockResolvedValueOnce({ success: true, data: { metrics: { totalRevenue: 2 } } });
+  await act(async () => { expect(await hook.result.current.refresh()).toBe(true); });
+  await act(async () => { resolveOld({ success: true, data: { metrics: { totalRevenue: 999 } } }); expect(await old!).toBe(false); });
+  expect(hook.result.current.report?.metrics.totalRevenue).toBe(2);
+});
 it('marks disconnections stale and reconciles committed data on reconnection', async () => {
   const hook = renderHook(() => useDashboard({ range: 'thisMonth' }));
   await waitFor(() => expect(hook.result.current.report).not.toBeNull());
