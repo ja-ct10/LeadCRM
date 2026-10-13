@@ -5,6 +5,7 @@ import {
   TaskOptionKind,
   TaskAssociations,
   TaskLinkKind,
+  hasModulePermission,
 } from "@leadcrm/shared";
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
@@ -187,7 +188,7 @@ export function findTaskById(
     include: taskInclude,
   });
 }
-export function findTaskUser(
+export function findTaskActor(
   id: string,
   tenantId: string,
   client: TaskClient = prisma,
@@ -280,8 +281,11 @@ export async function findTaskOptions(
     AND: buildSearchClauses(search, ['firstName', 'lastName', 'email']),
   };
   if (kind === "user") {
+    const actor = crmActor.getStore();
+    const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
     const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     const rows = (await eligibleAssignedAgents(prisma, tenantId, TASK_ASSIGNEE_REQUIREMENTS))
+      .filter(user => !policy || policy.clientAdmin || hasModulePermission(policy.permissions, 'tasks', 'canAssign') || user.id === policy.userId)
       .filter(user => terms.every(term => `${user.firstName} ${user.lastName} ${user.email}`.toLocaleLowerCase().includes(term)))
       .sort((a, b) => a.firstName.localeCompare(b.firstName) || a.id.localeCompare(b.id)).slice(0, 50);
     return rows.map((row) => ({

@@ -392,6 +392,70 @@ describe.skipIf(!disposable)(
       expect(await prisma.auditLog.count({ where: { tenantId, action: 'task.created', changeset: { path: ['after', 'title'], equals: 'Invalid reference' } } })).toBe(0);
     });
 
+    it('uses authoritative role memberships for options and rejects invalid create, reassignment and bulk assignment without side effects', async () => {
+      const staffRole = await prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Task staff' } });
+      const adminRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', permissions: { create: { module: 'tasks', canView: true } } } });
+      const guestRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Guest', isArchived: true } });
+      const archivedRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Retired task staff', isArchived: true, permissions: { create: { module: 'tasks', canView: true } } } });
+      const candidate = async (name: string, roles: string[], status = 'ACTIVE', role = 'Task Staff') => {
+        const user = await prisma.user.create({ data: { tenantId, firstName: name, lastName: 'Eligibility', email: `${name}-${Date.now()}@camxian.com`, role, status } });
+        for (const roleId of roles) await prisma.userRole.create({ data: { tenantId, userId: user.id, roleId } });
+        return user;
+      };
+      const invalid = [actor, outsider,
+        await candidate('multi-admin', [staffRole.id, adminRole.id]),
+        await candidate('guest', [staffRole.id], 'INACTIVE', 'Guest'),
+        await candidate('multi-guest', [staffRole.id, guestRole.id]),
+        await candidate('inactive', [staffRole.id], 'INACTIVE'),
+        await candidate('no-task-access', []),
+        await candidate('archived-role', [archivedRole.id]),
+      ];
+      const options = await call('/operations/tasks/options?kind=user');
+      expect(options.status).toBe(200);
+      expect(options.body.data.map((row: any) => row.id)).toContain(owner.id);
+      for (const person of invalid) expect(options.body.data.map((row: any) => row.id)).not.toContain(person.id);
+      const saved = (await call('/operations/tasks', 'POST', draft('Eligibility transfer'))).body.data;
+      const taskCount = await prisma.task.count({ where: { tenantId } });
+      const auditCount = await prisma.auditLog.count({ where: { tenantId, entityType: 'Task' } });
+      const activityCount = await prisma.activity.count({ where: { tenantId } });
+      for (const person of invalid) {
+        expect((await call('/operations/tasks', 'POST', { ...draft('Invalid assignment'), assignedUserId: person.id })).status).toBe(404);
+        expect((await call(`/operations/tasks/${saved.id}`, 'PUT', { assignedUserId: person.id })).status).toBe(404);
+        const bulk = await call('/operations/tasks/bulk', 'POST', { operation: 'assign', ids: [saved.id], assignedUserId: person.id });
+        expect(bulk.body.data.succeeded).toEqual([]);
+        expect(bulk.body.data.failed).toHaveLength(1);
+      }
+      expect((await call('/operations/tasks', 'POST', { ...draft(), assignedUserId: '' })).status).toBe(400);
+      expect(await prisma.task.count({ where: { tenantId } })).toBe(taskCount);
+      expect(await prisma.auditLog.count({ where: { tenantId, entityType: 'Task' } })).toBe(auditCount);
+      expect(await prisma.activity.count({ where: { tenantId } })).toBe(activityCount);
+      expect(await prisma.task.findUniqueOrThrow({ where: { id: saved.id } })).toMatchObject({ assignedUserId: owner.id, createdById: actor.id });
+    });
+
+    it('preserves historical Client Admin assignment on an unrelated edit and permits a real eligible reassignment', async () => {
+      const saved = await scope(() => prisma.task.create({ data: { tenantId, title: 'Historical admin task', assignedUserId: actor.id, createdById: actor.id, dueDate: new Date(), dealLinks: { create: { dealId: deal.id } } } }));
+      expect((await call(`/operations/tasks/${saved.id}`, 'PUT', { title: 'Historical edited', assignedUserId: actor.id })).status).toBe(200);
+      expect(await prisma.task.findUniqueOrThrow({ where: { id: saved.id } })).toMatchObject({ title: 'Historical edited', assignedUserId: actor.id, createdById: actor.id });
+      expect((await call(`/operations/tasks/${saved.id}`, 'PUT', { assignedUserId: owner.id })).status).toBe(200);
+      expect(await prisma.task.findUniqueOrThrow({ where: { id: saved.id } })).toMatchObject({ assignedUserId: owner.id, createdById: actor.id, assignedById: actor.id });
+    });
+
+    it('retains authorized staff self-assignment while enforcing Tasks Assign permission for another agent', async () => {
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Self-assigned Task Staff', permissions: { create: [
+        { module: 'tasks', canView: true, canCreate: true }, { module: 'deals', canView: true },
+      ] } } });
+      const staff = await prisma.user.create({ data: { tenantId, firstName: 'Self', lastName: 'Staff', email: `task-self-${Date.now()}@camxian.com`, role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } });
+      await prisma.userRole.create({ data: { tenantId, userId: staff.id, roleId: role.id } });
+      const auth = (await issueAuthSession(staff)).token;
+      const options = await call('/operations/tasks/options?kind=user', 'GET', undefined, auth);
+      expect(options.body.data.map((row: any) => row.id)).toEqual([staff.id]);
+      const own = await call('/operations/tasks', 'POST', { ...draft('Explicit self-assignment'), assignedUserId: staff.id }, auth);
+      expect(own.status).toBe(201);
+      expect(own.body.data).toMatchObject({ assignedUserId: staff.id, createdById: staff.id });
+      expect((await call('/operations/tasks', 'POST', { ...draft('Unauthorized other assignment'), assignedUserId: owner.id }, auth)).status).toBe(403);
+      expect(await prisma.task.count({ where: { tenantId, title: 'Unauthorized other assignment' } })).toBe(0);
+    });
+
     it('commits actor, creator, assignment, completion, reschedule, archive and restore history once', async () => {
       const task = await create('Lifecycle');
       expect(task).toMatchObject({ createdById: actor.id, assignedUserId: owner.id, assignedById: actor.id });

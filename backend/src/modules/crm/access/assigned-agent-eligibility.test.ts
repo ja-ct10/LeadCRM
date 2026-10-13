@@ -22,7 +22,9 @@ describe('authoritative assignment eligibility', () => {
       [{ ...role([permission]), tenantId: 'other' }], [role([{ ...permission, tenantId: 'other' }])]]) {
       expect(hasAssignedAgentAccess(agent({ userRoles }), tenantId, TASK_ASSIGNEE_REQUIREMENTS)).toBe(false);
     }
-    expect(hasAssignedAgentAccess(agent({ userRoles: [role([permission], { name: 'Client Admin' })] }), tenantId, TASK_ASSIGNEE_REQUIREMENTS)).toBe(true);
+    for (const name of ['Client Admin', ' guest ']) {
+      expect(hasAssignedAgentAccess(agent({ userRoles: [role([permission]), role([], { name, isArchived: true })] }), tenantId, TASK_ASSIGNEE_REQUIREMENTS)).toBe(false);
+    }
   });
   it('filters picker candidates and rejects direct unauthorized assignment through the same policy', async () => {
     const db = { user: { findMany: vi.fn().mockResolvedValue([agent(), agent({ id: 'admin', role: 'Client Admin' })]), findFirst: vi.fn().mockResolvedValue(agent({ role: 'Client Admin' })) } };

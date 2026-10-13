@@ -175,7 +175,7 @@ async function validateReferences(
   client: repo.TaskClient,
   previousAssignee?: string,
 ) {
-  if (!(await repo.findTaskUser(userId, tenantId, client)))
+  if (!(await repo.findTaskActor(userId, tenantId, client)))
     throw new NotFoundError("Active workspace actor");
   if (
     data.assignedUserId && data.assignedUserId !== previousAssignee

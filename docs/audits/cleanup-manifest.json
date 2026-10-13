@@ -7,12 +7,12 @@
   },
   "current": {
     "trackedFiles": 2114,
-    "proposedFiles": 2159,
-    "newFiles": 45,
-    "markdownFiles": 259,
-    "trackedBytes": 26387769,
-    "proposedBytesExcludingManifest": 26631527,
-    "proposedBytes": 29219379
+    "proposedFiles": 2160,
+    "newFiles": 46,
+    "markdownFiles": 260,
+    "trackedBytes": 26408359,
+    "proposedBytesExcludingManifest": 26665128,
+    "proposedBytes": 29257887
   },
   "files": [
     {
@@ -8403,7 +8403,7 @@
       "category": "Test",
       "action": "BLOCKED",
       "reason": "Retained because complete runtime/dynamic/external or historical redundancy proof is unavailable; absence from a direct import graph does not authorize deletion.",
-      "dependencyCheck": "Textual consumers require further semantic review: docs/forms-builder-qa.md",
+      "dependencyCheck": "Textual consumers require further semantic review: docs/forms-builder-qa.md, docs/task-inbox-form-fixes-verification.md",
       "replacement": null,
       "risk": "Low",
       "verification": [
@@ -8413,7 +8413,8 @@
       "consumerEvidence": {
         "resolvedImports": [],
         "textualReferences": [
-          "docs/forms-builder-qa.md"
+          "docs/forms-builder-qa.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": null
       },
@@ -8678,7 +8679,7 @@
       "category": "Test",
       "action": "BLOCKED",
       "reason": "Retained because complete runtime/dynamic/external or historical redundancy proof is unavailable; absence from a direct import graph does not authorize deletion.",
-      "dependencyCheck": "Textual consumers require further semantic review: docs/tasks-audit-and-plan.md, docs/tasks-leads-alignment.md",
+      "dependencyCheck": "Textual consumers require further semantic review: docs/task-inbox-form-fixes-verification.md, docs/tasks-audit-and-plan.md, docs/tasks-leads-alignment.md",
       "replacement": null,
       "risk": "Low",
       "verification": [
@@ -8688,6 +8689,7 @@
       "consumerEvidence": {
         "resolvedImports": [],
         "textualReferences": [
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/tasks-audit-and-plan.md",
           "docs/tasks-leads-alignment.md"
         ],
@@ -13906,7 +13908,8 @@
           "backend/src/modules/notifications/notification-delivery.integration.test.ts"
         ],
         "textualReferences": [
-          "docs/leads-production-polish.md"
+          "docs/leads-production-polish.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": null
       },
@@ -13926,7 +13929,9 @@
       ],
       "consumerEvidence": {
         "resolvedImports": [],
-        "textualReferences": [],
+        "textualReferences": [
+          "docs/task-inbox-form-fixes-verification.md"
+        ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
       "evidenceStatus": "Retention justified by the recorded boundary/consumer; full runtime acceptance remains separate"
@@ -14513,7 +14518,9 @@
           "backend/src/modules/automation/workflows/__tests__/workflow-strategies.integration.test.ts",
           "backend/src/modules/automation/workflows/workflows.repository.ts"
         ],
-        "textualReferences": [],
+        "textualReferences": [
+          "docs/task-inbox-form-fixes-verification.md"
+        ],
         "frameworkEntry": null
       },
       "evidenceStatus": "Retention justified by the recorded boundary/consumer; full runtime acceptance remains separate"
@@ -14721,6 +14728,7 @@
       "consumerEvidence": {
         "resolvedImports": [],
         "textualReferences": [
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/workflows/workflow-assignment-history.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
@@ -14955,6 +14963,7 @@
       "consumerEvidence": {
         "resolvedImports": [],
         "textualReferences": [
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/workflows/workflow-assignment-history.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
@@ -19976,6 +19985,7 @@
           "docs/database/crm-workflow-audit/evidence.json",
           "docs/environment-removal-report.md",
           "docs/roles-permissions-report.md",
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/tasks-leads-alignment.md",
           "docs/ui-production-polish-2026-10-10.md"
         ],
@@ -20103,8 +20113,8 @@
           "docs/environment-removal-report.md",
           "docs/notifications-production-hardening.md",
           "docs/roles-permissions-report.md",
-          "docs/tasks-audit-and-plan.md",
-          "docs/verification/column-specific-sorting.md"
+          "docs/task-inbox-form-fixes-verification.md",
+          "docs/tasks-audit-and-plan.md"
         ],
         "frameworkEntry": null
       },
@@ -20136,6 +20146,7 @@
           "docs/database/normalization-inventory.md",
           "docs/environment-removal-report.md",
           "docs/roles-permissions-report.md",
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/tasks-audit-and-plan.md"
         ],
         "frameworkEntry": null
@@ -27406,6 +27417,28 @@
         "frameworkEntry": null
       },
       "evidenceStatus": "Incomplete; preserved pending review"
+    },
+    {
+      "path": "docs/task-inbox-form-fixes-verification.md",
+      "category": "Documentation",
+      "action": "HISTORICAL RETAIN",
+      "reason": "Unique original verification from remote main commit ae40d2b0 retained; the consolidated audit records the integrated implementation and current focused results.",
+      "dependencyCheck": "Referenced by docs/audits/system-audit.md; dated historical findings and original command evidence have no complete canonical replacement.",
+      "replacement": null,
+      "risk": "Low",
+      "verification": [
+        "TypeScript AST imports/exports/require and framework/package-entry graph",
+        "Textual path/basename consumer search; ambiguity explicitly blocked"
+      ],
+      "changeType": "ADD",
+      "consumerEvidence": {
+        "resolvedImports": [],
+        "textualReferences": [
+          "docs/audits/system-audit.md"
+        ],
+        "frameworkEntry": null
+      },
+      "evidenceStatus": "Historical retention verified; current merge and broader release verification are recorded separately."
     },
     {
       "path": "docs/tasks-audit-and-plan.md",
@@ -36518,6 +36551,7 @@
           "frontend/src/features/tenant/crm/leads/ui/leads-data-grid.tsx",
           "frontend/src/features/tenant/inbox/ui/compose-navigation.test.tsx",
           "frontend/src/features/tenant/inbox/ui/inbox-page.tsx",
+          "frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx",
           "frontend/src/shared/components/crm/crm-record-view.tsx",
           "frontend/src/shared/components/crm/deal-card-menu.tsx"
         ],
@@ -36686,7 +36720,8 @@
         "resolvedImports": [],
         "textualReferences": [
           "docs/database/crm-workflow-audit/evidence.json",
-          "docs/product-share-email-ui-verification.md"
+          "docs/product-share-email-ui-verification.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -36710,7 +36745,8 @@
           "docs/campaign-send-controls-report.md",
           "docs/database/crm-workflow-audit/evidence.json",
           "docs/inbox-conversation-production-report.md",
-          "docs/inbox-redesign-report.md"
+          "docs/inbox-redesign-report.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -36733,7 +36769,8 @@
         "textualReferences": [
           "docs/inbox-conversation-production-report.md",
           "docs/inbox-correspondent-grouping-report.md",
-          "docs/inbox-threading-refresh-report.md"
+          "docs/inbox-threading-refresh-report.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -36873,7 +36910,8 @@
         "resolvedImports": [],
         "textualReferences": [
           "docs/inbox-correspondent-grouping-report.md",
-          "docs/inbox-threading-refresh-report.md"
+          "docs/inbox-threading-refresh-report.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -36945,7 +36983,8 @@
           "docs/inbox-redesign-report.md",
           "docs/inbox-threading-refresh-report.md",
           "docs/notifications-production-hardening.md",
-          "docs/setup/coolify-production-recovery.md"
+          "docs/setup/coolify-production-recovery.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -37013,7 +37052,9 @@
       ],
       "consumerEvidence": {
         "resolvedImports": [],
-        "textualReferences": [],
+        "textualReferences": [
+          "docs/task-inbox-form-fixes-verification.md"
+        ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
       "evidenceStatus": "Retention justified by the recorded boundary/consumer; full runtime acceptance remains separate"
@@ -38241,7 +38282,7 @@
       "category": "Source",
       "action": "KEEP",
       "reason": "Resolved from a registered runtime/shared/test entrypoint in the source import graph.",
-      "dependencyCheck": "Reachable consumer(s): frontend/src/features/tenant/marketing/forms/ui/field-palette.test.tsx, frontend/src/features/tenant/marketing/forms/ui/form-builder-page.tsx",
+      "dependencyCheck": "Reachable consumer(s): frontend/src/features/tenant/marketing/forms/ui/field-palette.test.tsx, frontend/src/features/tenant/marketing/forms/ui/form-builder-page.tsx, frontend/src/features/tenant/marketing/forms/ui/forms.test.tsx",
       "replacement": null,
       "risk": "Low",
       "verification": [
@@ -38251,10 +38292,12 @@
       "consumerEvidence": {
         "resolvedImports": [
           "frontend/src/features/tenant/marketing/forms/ui/field-palette.test.tsx",
-          "frontend/src/features/tenant/marketing/forms/ui/form-builder-page.tsx"
+          "frontend/src/features/tenant/marketing/forms/ui/form-builder-page.tsx",
+          "frontend/src/features/tenant/marketing/forms/ui/forms.test.tsx"
         ],
         "textualReferences": [
-          "docs/forms-builder-qa.md"
+          "docs/forms-builder-qa.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": null
       },
@@ -38457,7 +38500,7 @@
           "docs/leads-ui-consistency-report.md",
           "docs/PRODUCT_INTEREST_IMPLEMENTATION.md",
           "docs/SALES_AUTOMATION_IMPLEMENTATION.md",
-          "docs/ui-behavior-fixes-verification.md"
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -38955,6 +38998,7 @@
           "docs/environment-removal-report.md",
           "docs/inbox-redesign-report.md",
           "docs/roles-permissions-report.md",
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/ui-behavior-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
@@ -39159,7 +39203,8 @@
         "resolvedImports": [],
         "textualReferences": [
           "docs/crm-panel-improvements-verification.md",
-          "docs/database/crm-workflow-audit/evidence.json"
+          "docs/database/crm-workflow-audit/evidence.json",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -39243,6 +39288,7 @@
           "docs/inbox-redesign-report.md",
           "docs/plans/side-panel-ui-polish-plan.md",
           "docs/roles-permissions-report.md",
+          "docs/task-inbox-form-fixes-verification.md",
           "docs/ui-behavior-fixes-verification.md",
           "frontend/src/features/tenant/help/content/index.ts"
         ],
@@ -39321,7 +39367,8 @@
         "textualReferences": [
           "docs/environment-removal-report.md",
           "docs/plans/side-panel-ui-polish-plan.md",
-          "docs/roles-permissions-report.md"
+          "docs/roles-permissions-report.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": null
       },
@@ -42130,7 +42177,8 @@
         "textualReferences": [
           "docs/database/crm-workflow-audit/evidence.json",
           "docs/inbox-conversation-production-report.md",
-          "docs/retired-features-cleanup.md"
+          "docs/retired-features-cleanup.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -47920,7 +47968,8 @@
         "textualReferences": [
           "docs/campaign-sms-improvements.md",
           "docs/database/crm-workflow-audit/evidence.json",
-          "docs/leads-production-polish.md"
+          "docs/leads-production-polish.md",
+          "docs/task-inbox-form-fixes-verification.md"
         ],
         "frameworkEntry": "Maintained regression source discovered by test tooling."
       },
@@ -54074,6 +54123,61 @@
       "pgliteIntegrationPassed": 120,
       "report": "data/outputs/system-audit/final-evidence-reconciliation.json",
       "reason": "Repairs/cleanup implemented; mandatory Linux storage boundary, Docker runtime and uninterrupted complete acceptance remain open. Live Gmail/production ledger/Coolify remain NOT TESTED."
+    },
+    {
+      "label": "Integration with remote main",
+      "status": "PASS",
+      "scope": "Focused merge verification; complete local acceptance remains BLOCKED",
+      "parents": [
+        "fe366748bf23162deae2bbfb46d1c475ee9e13c5",
+        "ae40d2b08eda46a7ccabe4b80273d0f6bc72d81d"
+      ],
+      "sourceSha256": "e95dbb75aeab0fcd41b7a6816c80478fe5f1ae5ce8917cf47efb25f754c5e76a",
+      "executableSourceSha256": "c1ba31b99c8bc5aff210f22bf4bda1cbbf9d871b2fdc24261eabfc34913c7333",
+      "lockSha256": "b597eed083a1caac4e8bd5ec6b387eef2f1c466d0c8d79669888c64f680012f0",
+      "backendUnits": {
+        "passed": 38,
+        "failed": 0,
+        "skipped": 0,
+        "report": "data/outputs/system-audit/main-merge-1791870910201/backend-units.json"
+      },
+      "frontendUnits": {
+        "passed": 144,
+        "failed": 0,
+        "skipped": 0,
+        "report": "data/outputs/system-audit/main-merge-1791871532451/frontend-units.json",
+        "process": "data/outputs/system-audit/main-merge-1791871532451/process.json"
+      },
+      "typechecks": {
+        "status": "PASS",
+        "workspaces": 3,
+        "log": "data/outputs/system-audit/main-merge-1791870910201/typechecks.log"
+      },
+      "nativeIntegration": {
+        "passed": 166,
+        "failed": 0,
+        "skipped": 0,
+        "report": "data/outputs/system-audit/1791871206861-c33d8113-2514-4eef-a22c-fa0944039f72/qa-integration-native.json"
+      },
+      "reconciliation": {
+        "changedAfterNativeVerification": [
+          "frontend/src/features/tenant/inbox/ui/compose-navigation.test.tsx"
+        ],
+        "applicationUnchanged": true,
+        "reason": "Align added Inbox expectation with approved independent unsent-work preservation; full selected frontend suites rerun at stable final source."
+      },
+      "retainedFailure": {
+        "report": "data/outputs/system-audit/main-merge-1791870910201/frontend-units.json",
+        "passed": 143,
+        "failed": 1,
+        "supersededBy": "data/outputs/system-audit/main-merge-1791871532451/frontend-units.json"
+      },
+      "markdown": {
+        "files": 260,
+        "checkedLocalLinks": 1935,
+        "broken": 0,
+        "log": "data/outputs/system-audit/main-merge-1791871532451/doc-links.log"
+      }
     }
   ],
   "classificationMethod": {
@@ -54081,7 +54185,7 @@
     "limitations": "Computed imports, external operators and unlinked unique historical evidence are not proved by static analysis. Such files are preserved as BLOCKED. KEEP indicates retention evidence, not all tests passed."
   },
   "classificationCounts": {
-    "HISTORICAL RETAIN": 312,
+    "HISTORICAL RETAIN": 313,
     "KEEP": 1382,
     "DELETE": 128,
     "BLOCKED": 393,

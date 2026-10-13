@@ -78,7 +78,7 @@ export function TaskEditor({
   const dueTrigger = useRef<HTMLButtonElement>(null);
   const closeDuePicker = () => { setDueDraft(null); dueTrigger.current?.focus({ preventScroll: true }); };
   const [assignedUserId, setOwner] = useState(
-    task?.assignedUserId ?? user?.id ?? "",
+    task?.assignedUserId ?? "",
   );
   const [dealIds, setDealIds] = useState(() => taskAssociationIds(task ?? links, 'deal'));
   const changeDeals = (ids: string[]) => setDealIds([...new Set([...ids,
@@ -266,7 +266,8 @@ export function TaskEditor({
                   <TaskSelector
                     appearance="panel"
                     kind="user"
-                    disabled={!canAssign}
+                    disabled={!!task && !canAssign}
+                    selfAssignmentOnly={!canAssign}
                     label="Assigned Agent"
                     required
                     value={assignedUserId}

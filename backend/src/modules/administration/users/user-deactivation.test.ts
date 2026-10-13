@@ -28,7 +28,7 @@ const matches = (task: typeof tasks[number], where: { tenantId: string; assigned
 
 beforeEach(() => {
   vi.resetAllMocks();
-  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : { ...target });
+  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : where.id === 'replacement' ? { id: 'replacement' } : { ...target });
   state.db.user.count.mockResolvedValue(2);
   state.validateOwner.mockResolvedValue({ id: 'replacement', role: 'Sales', userRoles: [{ role: { permissions: [{ module: 'tasks', canView: true }] } }] });
   for (const model of [state.db.lead, state.db.contact, state.db.account, state.db.deal]) {
@@ -94,4 +94,13 @@ it('does not require Task visibility when no unfinished Tasks are being transfer
   await deactivateUser(target.id, 'tenant', 'admin', 'replacement');
   expect(state.validateOwner).toHaveBeenCalledWith(state.db, 'tenant', 'replacement', []);
   expect(state.db.user.update).toHaveBeenCalledOnce();
+});
+
+it('rejects Client Admin and multi-role admin replacements before changing Tasks or deactivating the user', async () => {
+  state.db.user.findFirst.mockImplementation(async ({ where }) => where.id === 'admin' ? { id: 'admin' } : where.id === 'replacement' ? null : target);
+  state.validateOwner.mockRejectedValue(new Error('Protected Task role membership'));
+  await expect(deactivateUser(target.id, 'tenant', 'admin', 'replacement')).rejects.toMatchObject({ statusCode: 409 });
+  expect(state.db.task.updateMany).not.toHaveBeenCalled();
+  expect(state.db.user.update).not.toHaveBeenCalled();
+  expect(state.db.auditLog.create).not.toHaveBeenCalled();
 });

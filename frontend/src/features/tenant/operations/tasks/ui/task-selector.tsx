@@ -22,6 +22,7 @@ type TaskSelectorProps = {
   disabled?: boolean;
   leadIds?: string[];
   appearance?: "panel";
+  selfAssignmentOnly?: boolean;
 } & (
   | { multiple: true; value: string[]; onChange: (value: string[]) => void }
   | { multiple?: false; value: string; onChange: (value: string) => void }
@@ -38,6 +39,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     disabled = false,
     leadIds = [],
     appearance,
+    selfAssignmentOnly = false,
   } = props;
   const inputClass = appearance === "panel" ? panelInputClass : taskInputClass;
   const selectedIds = Array.isArray(value) ? value : value ? [value] : [];
@@ -89,7 +91,7 @@ export function TaskSelector(props: TaskSelectorProps) {
           rows =
             kind === "user"
               ? getAssignableAgents(users, ['tasks'])
-                  .filter((u) => u.status.toLowerCase() === "active")
+                  .filter((u) => u.tenantId === tenant?.id && u.status.toLowerCase() === "active")
                   .map((u) => ({
                     id: u.id,
                     label: u.firstName + " " + u.lastName,
@@ -132,7 +134,7 @@ export function TaskSelector(props: TaskSelectorProps) {
               ? tasksApi.options(kind, search, abort.signal, leadIds)
               : tasksApi.options(kind, search, abort.signal))
           ).data;
-        if (!abort.signal.aborted) setOptions(rows);
+        if (!abort.signal.aborted) setOptions(kind === 'user' && selfAssignmentOnly ? rows.filter(row => row.id === user?.id) : rows);
       } catch (e) {
         if (!abort.signal.aborted)
           setError(e instanceof Error ? e.message : "Unable to load options.");
@@ -151,6 +153,8 @@ export function TaskSelector(props: TaskSelectorProps) {
     retry,
     leadKey,
     tenant?.id,
+    user?.id,
+    selfAssignmentOnly,
     users,
     contacts,
     deals,
@@ -220,8 +224,8 @@ export function TaskSelector(props: TaskSelectorProps) {
         >
           {selectedIds.length
             ? caption
-            : "Select " +
-              (kind === "user" || kind === "account" ? "an " : "a ") +
+            : kind === "user" ? "Select Agent..." : "Select " +
+              (kind === "account" ? "an " : "a ") +
               singular}
         </span>
         <ChevronDown size={16} className={"shrink-0 " + (open ? "rotate-180" : "")} />
@@ -272,6 +276,12 @@ export function TaskSelector(props: TaskSelectorProps) {
               </div>
             ) : (
               <>
+                {kind === "user" && !search.trim() && selectedIds.filter(id => !options.some(option => option.id === id)).map(id => (
+                  <label key={id} className="flex items-start gap-3 rounded-lg px-2 py-3 text-sm text-muted-foreground">
+                    <input type="checkbox" checked disabled className="mt-0.5 accent-primary" />
+                    <span className="min-w-0 break-words">{labelFor(id)} (current assignment, read-only)</span>
+                  </label>
+                ))}
                 {visible.map((option) => (
                   <label
                     key={option.id}
@@ -306,7 +316,7 @@ export function TaskSelector(props: TaskSelectorProps) {
                 ))}
                 {!visible.length && (
                   <p className="p-3 text-sm text-muted-foreground">
-                    {filteredByLeads
+                    {kind === "user" && !search.trim() ? "No eligible agents available." : filteredByLeads
                       ? `No related ${kind === "contact" ? "contacts" : kind === "deal" ? "deals" : "accounts"} for the selected leads.`
                       : "No matching records."}
                   </p>

@@ -31,6 +31,7 @@ import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-reco
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { toast } from 'sonner';
 import { defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
+import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 
 const records = {
   deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
@@ -38,6 +39,31 @@ const records = {
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
+
+it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('opens the current $module recipient from the $surface Inbox icon', async ({ module, surface }) => {
+  const original = mocks.get.getMockImplementation()!;
+  const email = `${module}+sales@Example.test`;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUser: { email: 'agent@example.test' }, account: { email: 'account@example.test' } } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Open messages' }));
+  expect(mocks.push).toHaveBeenCalledWith(recordEmailComposeHref(email));
+  const url = new URL(mocks.push.mock.calls[0][0], 'https://example.test');
+  expect(url.searchParams.get('to')).toBe(email);
+  expect(url.searchParams.has('subject')).toBe(false);
+  expect(url.searchParams.has('body')).toBe(false);
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].flatMap(surface => ['', 'broken'].map(email => ({ module, surface, email })))))('disables $module $surface Inbox navigation for unusable email $email', async ({ module, surface, email }) => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUser: { email: 'agent@example.test' } } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  const button = await screen.findByRole('button', { name: 'Open messages' });
+  expect((button as HTMLButtonElement).disabled).toBe(true);
+  expect(button.title).toBe('No valid email address available.');
+  expect(button.parentElement?.tabIndex).toBe(0);
+  fireEvent.click(button);
+  expect(mocks.push).not.toHaveBeenCalled();
+});
 
 
 it.each(['Electric Fence', 'Laptop/Server/Data Cabinets'])('prefills Deal email from the Contact and canonical Product %s', async product => {

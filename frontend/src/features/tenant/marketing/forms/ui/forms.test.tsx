@@ -6,8 +6,31 @@ import { FormBuilderPage } from './form-builder-page';
 import PublicFormPage from './public-form-page';
 import FormsPage from './forms-page';
 import * as service from '../services/forms.service';
+import { FieldPalette, paletteFieldsFromCatalog } from './field-palette';
 vi.mock('../services/forms.service', () => ({ getLeadFormFieldCatalog: vi.fn(), updateForm: vi.fn(), publishForm: vi.fn(), getFormById: vi.fn(), getFormsByTenant: vi.fn(), createForm: vi.fn(), deleteForm: vi.fn(), unpublishForm: vi.fn(), duplicateForm: vi.fn(), getShareLink: () => 'https://example.com/forms/public', getEmbedCode: () => '<iframe />' }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
+
+it.each([true, false])('excludes native Lead Source from palette drag/tap controls (drag=%s) while retaining other fields', dragEnabled => {
+  const catalog = getCrmFieldCatalog('leads');
+  const source = catalog.find(field => field.technicalKey === 'source')!;
+  render(<FieldPalette dragEnabled={dragEnabled} catalog={[...catalog, { ...source, kind: 'Custom', technicalKey: 'custom-source', customFieldId: 'custom-source', label: 'Lead Source' }]} onAddField={vi.fn()} />);
+  expect(paletteFieldsFromCatalog(catalog).some(field => field.mapToField === 'source')).toBe(false);
+  expect(screen.queryByTitle('Add Lead Source' + (dragEnabled ? ' — or drag onto canvas' : ''))).toHaveProperty('textContent', expect.stringContaining('Lead Source'));
+  expect(screen.getAllByText('Lead Source')).toHaveLength(1);
+  for (const label of ['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Product Interest', 'Full Address', 'Header', 'Paragraph', 'Separator line']) expect(screen.getByText(label)).toBeTruthy();
+  expect(getCrmFieldCatalog('leads').find(field => field.technicalKey === 'source')).toEqual(source);
+});
+it.each(['draft', 'published'] as const)('keeps saved native Lead Source identity, options and settings when editing a %s Form', async status => {
+  const source = { id: 'historical-source', type: 'dropdown' as const, label: 'Lead Source', mapToField: 'source' as const, options: ['Website', 'Referral'], required: true };
+  const saved = { ...form, status, fields: [...form.fields, source] };
+  vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...saved, ...dto, revision: 1 }));
+  render(<FormBuilderPage form={saved} onBack={() => {}} onFormUpdate={() => {}} />);
+  expect(screen.getByLabelText('Edit Lead Source')).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Preserved source' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+  await waitFor(() => expect(service.updateForm).toHaveBeenCalled());
+  expect(vi.mocked(service.updateForm).mock.calls[0][1].fields?.find(field => field.id === source.id)).toEqual(source);
+});
 const permissions = vi.hoisted(() => ({ edit: true, publish: true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { }, userCan: (_module: string, permission: string) => permission === 'canEdit' ? permissions.edit : permission === 'canPublish' ? permissions.publish : true }) }));
 const products = [{ id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Smart Lock', dealValue: 5000, active: true, createdAt: '', updatedAt: '' }];

@@ -13,8 +13,10 @@ keeps initialized field metadata reads free of configuration writes.
 `d52786899056b70bad1d45fed22561d46f7aad1d` commits the isolated acceptance
 coordinator and monorepo packaging. `3d5e93fd` requires the acknowledged provider
 message identity and immutable source context when dispatching scheduled drafts.
+The broad evidence below describes the repair source at `fe366748`. Subsequent
+integration with remote `main` is recorded in the final section of this report.
 **Production readiness is not established.** No production migration, deployment,
-restart, merge or real customer send has been performed. Pipeline remains active.
+restart or real customer send has been performed. Pipeline remains active.
 
 ## Implemented repairs
 
@@ -197,7 +199,7 @@ supersedes it without changing authentication policy.
 | Migration / populated history | PASS | Guarded rollout 14/14 and Contact fixture 16 preservation checks; populated native import/HTTP rehearsal 18/18, no skips; altered job/result fields and invented source identity rejected |
 | Production builds | PASS | Final disposable snapshot shared/backend/frontend builds passed, including180 generated pages and standalone output. Subsequent source change is limited to one browser harness; application/build sources are unchanged. |
 | Locked clean install | PASS | Empty-cache426-package snapshot via pinned npm11.19.1, Prisma generate, three workspace typechecks and three builds passed in `.tmp/clean-acceptance/source-edbo5w`. The full coordinator was interrupted; individual executed gates and resumed browser evidence are separate. |
-| Markdown links | PASS | Final259 Markdown, 1,934 local links, zero broken (`final-doc-links-5.log`); final byte recount is recorded in the manifest |
+| Markdown links | PASS | Final260 Markdown, 1,935 local links, zero broken (`main-merge-1791871532451/doc-links.log`); final byte recount is recorded in the manifest |
 | Responsive / keyboard / themes | PASS | All18 maintained suites report1,652 passing checks with zero failures/skips in accepted assertion evidence and explicit reruns, plus worker restart. Source/process limitations are explicit above. Supplemental native Dark CRM RBAC93/93 with88 verified screenshots passed. Other responsive workspace suites verify actual Light/Dark; public reset preserves fixed appearance under both preferences. |
 | Docker images / startup | BLOCKED | Daemon unavailable; hidden startup attempted and bounded daemon read did not complete; dummy Compose config passes |
 | Live Gmail / production ledger / Coolify | NOT TESTED | Separate release gates outside authorized local execution |
@@ -223,7 +225,7 @@ supersedes it without changing authentication policy.
 | O — concurrent creation | PASS | Native Sales34: concurrent identical IDs yield one creation and authorized receipt replays; injected enqueue failure rolls back all source effects |
 | P — cleanup regression | PASS | Verified candidates removed; three fresh builds, applicable lint/typechecks, all42 integration files and all18 browser suites passed under the reconciled application source. Platform-required gates remain separately blocked. |
 | Q — clean checkout | BLOCKED | Empty-cache pinned install, Prisma, typechecks, builds, units and integrations executed in a fresh snapshot. Full invocation was interrupted and remaining browser suites explicitly rerun; mandatory Linux symlink case still blocked. No uninterrupted full PASS claimed. |
-| R — documentation | PASS | 259 retained Markdown files, 1,934 local links and zero broken; useful unique content and verified consolidations recorded in the manifest |
+| R — documentation | PASS | 260 retained Markdown files, 1,935 local links and zero broken; useful unique content and verified consolidations recorded in the manifest |
 | S — Coolify compatibility | BLOCKED | Packaging/Compose source checks passed; Docker image/startup and actual Coolify verification unavailable |
 
 ## Complete Inbox feature matrix
@@ -261,10 +263,10 @@ repaired. Final counts and byte measurements are recorded after the source freez
 in the manifest; ignored dependencies, private files and local QA outputs are
 excluded from repository-size measurements.
 
-The fixed baseline has2,246 files and33,695,168 bytes. The proposed tree has2,159
-files:2,114 baseline paths remain,45 new implementation/audit paths were added,
+The fixed baseline has2,246 files and33,695,168 bytes. The proposed tree has2,160
+files:2,114 baseline paths remain,46 new implementation/audit paths were added,
 and132 baseline paths were removed (128 DELETE,3 CONSOLIDATE,1 RELOCATE).
-Markdown count remains259. The inventory classifies all2,291 baseline/proposed
+Markdown count is260. The inventory classifies all2,292 baseline/proposed
 paths, including72 intentionally generated shared JavaScript companions and393
 BLOCKED candidates that were preserved. Final byte totals, package counts and
 per-file evidence belong to the machine-readable manifest. The removed plural
@@ -376,5 +378,35 @@ frontend worker-startup failure is retained and superseded by the complete174-fi
 run; its partial1551 assertions were never accepted as a full pass. All three
 workspace typechecks passed in this snapshot. Pinned-npm root lint also passed all
 three workspaces with zero cached tasks (`final-lint-console-4.log`). Application
-sources remain identical; the only later change is the explicitly repaired and
-rerun Deal-actions browser harness.
+sources at `fe366748` match that snapshot apart from the explicitly repaired and
+rerun Deal-actions browser harness. Later integration with `main` is covered below.
+
+## Integration with remote main before publication
+
+The user authorized committing and pushing the repairs to `main`. Remote commit
+`ae40d2b08eda46a7ccabe4b80273d0f6bc72d81d` was merged with repair tip `fe366748`.
+Its [historical verification](../task-inbox-form-fixes-verification.md) is retained.
+The merge keeps the canonical assignment policy, transaction fences, required
+Contact UUIDs and durable Workflow fixtures. Task assignments also exclude reserved
+Client Admin/Guest role memberships, including archived reserved roles. Users
+without Tasks Assign receive only their eligible self option before pagination.
+Explicit Task agent selection, historical read-only selections and validated
+Lead/Contact Inbox navigation from remote `main` are retained.
+
+Focused verification passed: **38 backend unit tests**, **144 frontend unit tests**,
+all three workspace typechecks, and **166 native PostgreSQL integration tests**
+with zero failures or skips. Native suites comprise Workflow assignment20,
+strategies15, main83, Forms27 and Tasks21. Coordinator run
+`1791871206861-c33d8113-2514-4eef-a22c-fa0944039f72` completed with process exit0
+and unchanged source hashes. The frontend rerun is recorded in
+`data/outputs/system-audit/main-merge-1791871532451` with process exit0 and unchanged
+source hashes. The initial frontend report retained143 passes and one failing
+assertion: it expected an independently edited unsent recipient to disappear on
+reopen. That expectation conflicted with the approved preservation requirement.
+Only that test changed after native verification; the complete144-test frontend
+selection then passed, including preservation until explicit discard and no send.
+The failed initial report remains retained in `main-merge-1791870910201`.
+
+These checks cover the merged changes. They do not replace the required complete
+Linux/container acceptance run or establish live Gmail/Coolify readiness. All
+previously identified release gates remain open.

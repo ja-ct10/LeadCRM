@@ -129,6 +129,18 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(task.description).toContain('Legacy Josh Variable Catalog Company');
     expect(task.description).not.toContain('{{');
   });
+  it('excludes Client Admin task candidates and rejects new and saved Workflow task assignments to admin', async () => {
+    const options = (await call('/automation/workflow-options')).body.data;
+    expect(options.taskAssignees.map((user: any) => user.id)).not.toContain(actor.id);
+    await expect(create([{ type: 'create_task', config: { title: 'Admin rejected', assignedUserId: actor.id } }])).rejects.toThrow(/assignee/);
+    const saved = await prisma.workflow.create({ data: { tenantId, name: 'Historical admin assignment', trigger: 'lead.created', isActive: true, status: 'ACTIVE', activatedById: actor.id,
+      actions: [{ type: 'create_task', config: { title: 'Saved admin rejected', assignedUserId: actor.id } }],
+    } });
+    await fire();
+    await flushWorkflowQueue(tenantId);
+    expect((await runs(saved.id))[0].status).toBe('failed');
+    expect(await prisma.task.count({ where: { tenantId, title: 'Saved admin rejected' } })).toBe(0);
+  });
 
   it('runs the real lead-created path through cookie-authenticated HTTP with ordered actions and persisted history', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Call lead', dueDaysFromNow: 0 } },

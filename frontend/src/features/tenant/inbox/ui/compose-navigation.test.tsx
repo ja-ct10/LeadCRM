@@ -17,16 +17,23 @@ vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, trans
 beforeEach(() => { vi.clearAllMocks(); sessionStorage.clear(); window.history.replaceState({}, '', '/inbox'); });
 afterEach(cleanup);
 
-it('consumes a Lead action once, preserves exact recipient, clears fresh compose and refresh, and never sends', async () => {
+it('consumes a Lead action once, preserves edited unsent work until explicit discard, clears refresh, and never sends', async () => {
   const email = 'Lina+sales@Example.test';
   window.history.replaceState({ retained: true }, '', `${recordEmailComposeHref(email)}&view=sent#mail`);
   const view = render(<StrictMode><InboxPage /></StrictMode>);
   await waitFor(() => expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe(email));
+  expect((screen.getByPlaceholderText('Subject') as HTMLInputElement).value).toBe('');
+  expect(document.querySelector('[contenteditable="true"]')?.textContent).toBe('');
+  fireEvent.change(screen.getByLabelText('To'), { target: { value: 'edited@example.test' } });
+  expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('edited@example.test');
   expect(window.location.search).toBe('?view=sent');
   expect(window.location.hash).toBe('#mail');
   expect(window.history.state).toEqual({ retained: true });
   expect(mocks.replace).toHaveBeenCalledWith('/inbox?view=sent#mail', { scroll: false });
   fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
+  expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('edited@example.test');
+  fireEvent.click(screen.getByRole('button', { name: 'Discard draft' }));
   fireEvent.click(await screen.findByRole('button', { name: 'Compose new email' }));
   expect((screen.getByLabelText('To') as HTMLInputElement).value).toBe('');
   view.unmount();

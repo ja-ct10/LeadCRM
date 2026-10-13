@@ -10,7 +10,7 @@ export const TASK_ASSIGNEE_REQUIREMENTS: AssignmentRequirements = [{ module: 'ta
 
 const assignmentInclude = (tenantId: string) => ({
   tenant: { select: { status: true } },
-  userRoles: { where: { tenantId, role: { tenantId, isArchived: false } }, include: { role: { include: { permissions: { where: { tenantId } } } } } },
+  userRoles: { where: { tenantId, role: { tenantId } }, include: { role: { include: { permissions: { where: { tenantId } } } } } },
 } satisfies Prisma.UserInclude);
 export type AssignedAgent = Prisma.UserGetPayload<{ include: ReturnType<typeof assignmentInclude> }>;
 
@@ -18,6 +18,9 @@ export type AssignedAgent = Prisma.UserGetPayload<{ include: ReturnType<typeof a
 export function hasAssignedAgentAccess(user: AssignedAgent, tenantId: string, requirements: AssignmentRequirements): boolean {
   if (user.tenantId !== tenantId || user.status !== 'ACTIVE' ||
       ['client admin', 'guest'].includes(user.role.trim().toLowerCase()) || !isWorkspaceAccessible(user.tenant.status)) return false;
+  // Tasks also exclude reserved role memberships, including historical archived roles.
+  if (requirements.some(requirement => requirement.module === 'tasks') && user.userRoles.some(link =>
+    link.tenantId === tenantId && link.role.tenantId === tenantId && ['client admin', 'guest'].includes(link.role.name?.trim().toLowerCase() ?? ''))) return false;
   const permissions = user.userRoles.filter(link => link.tenantId === tenantId && link.role.tenantId === tenantId && !link.role.isArchived)
     .flatMap(link => link.role.permissions.filter(permission => permission.tenantId === tenantId));
   return requirements.every(requirement => requirement.permissions.every(flag =>
