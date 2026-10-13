@@ -14,6 +14,10 @@ migration and real browser harnesses. Missing reports, crashes and required skip
 remain failures. Successful builds must leave generated shared companions clean.
 Actions are pinned to official release commits; CI has read-only repository
 permissions and cancels obsolete runs for the same branch/PR.
+The Actions summary lists each acceptance check and its available counts. Commands
+that only report an exit status show a dash rather than an invented test count.
+The disposable QA artifact retains browser failure screenshots/text alongside
+JSON reports and logs; it contains synthetic fixture data only.
 
 Linux fixture environments allocate private short directories directly under
 `/tmp`, independent of checkout depth and inherited TMPDIR. Windows keeps
@@ -28,6 +32,11 @@ populates synthetic CRM/history, invokes the actual `db:deploy` npm command,
 verifies the reviewed additive migration and deferred columns, rejects an
 unreviewed migration in a private release copy, and starts the built backend.
 The fixture has no application credentials and blocks external provider traffic.
+Nested QA launches preserve the selected npm executable without inheriting npm
+credentials. Browser harnesses resolve the locked Playwright package by default;
+an explicit local override remains supported. Acceptance fixtures configure their
+own required closing fields, and query-driven interactions wait for the requested
+search/page-size results before opening menus.
 Existing governed Qualified → Won integration cases continue to verify sales
 completion. Basic Lead conversion preserves Lead status and existing Deals.
 

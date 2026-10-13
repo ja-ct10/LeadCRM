@@ -115,7 +115,11 @@ try {
   await responsive('deal-details', panel);
 
   await page.goto(base + '/operations/taskboard');
-  await page.getByPlaceholder('Search tasks...').fill('Polish');
+  await Promise.all([
+    page.waitForResponse(response => { const url = new URL(response.url()); return response.request().method() === 'GET' && url.pathname === '/api/proxy/operations/tasks' && url.searchParams.get('search') === 'Polish' && response.ok(); }),
+    page.getByPlaceholder('Search tasks...').fill('Polish'),
+  ]);
+  await page.waitForFunction(() => { const refresh = document.querySelector('button[aria-label="Refresh tasks"]'); return refresh && !refresh.disabled; });
   const tasksGrid = page.getByRole('grid');
   await tasksGrid.getByText('Oct 10, 2026 06:39:48 PM', { exact: true }).waitFor();
   await tasksGrid.getByRole('button', { name: 'Column options for Created', exact: true }).click();

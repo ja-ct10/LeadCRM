@@ -255,7 +255,12 @@ try {
   await page.getByText(/Deals created .*Recorded milestones through/).filter({hasNotText:'current'}).waitFor();
   assert.equal(await page.getByText('View revenue and outcome data',{exact:true}).count(),0);
   assert.equal(await page.getByText(/Reporting limitations \(/).count(),0);
-  assert.equal(await page.getByText(/Automatic updates connected|Assigned records only|Lead → Contacted:/).count(),0);
+  assert.equal(await page.getByText(/Automatic updates connected|Assigned records only/).count(),0);
+  const cohort = await http(`/reporting/dashboard?range=custom&start=${today}&end=${today}&revenueInterval=month&funnelRange=custom&funnelStart=${today}&funnelEnd=${today}`);
+  for (const [label, rate] of [
+    ['Lead → Contacted', cohort.conversion.leadToContacted], ['Contacted → Qualified', cohort.conversion.contactedToQualified],
+    ['Qualified → Closed Won', cohort.conversion.qualifiedToWon], ['Qualified → Closed Lost', cohort.conversion.qualifiedToLost],
+  ]) await page.getByText(`${label}: ${rate === null ? 'Unavailable' : `${rate}%`}`, { exact: true }).waitFor();
   record('Revenue intervals, independent funnel periods, historical custom date controls and requested cleanup');
   const pipelineSession = await session(adminToken);
   await pipelineSession.tab.goto(base+'/crm/deals',{waitUntil:'domcontentloaded',timeout:60000});

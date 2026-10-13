@@ -125,16 +125,26 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     assert.ok(await settings.evaluate(element => document.activeElement === element), module.id + ' drawer restores settings focus');
 
     const search = page.getByRole('textbox', { name: new RegExp(`^Search ${module.id}(?:\\.\\.\\.)?$`, 'i') });
-    await search.fill(module.search);
+    if (module.id === 'users') {
+      await search.fill(module.search);
+      await until(async () => await region.locator('tbody tr').evaluateAll((rows, term) => rows.length > 0 && rows.every(row => row.textContent.toLowerCase().includes(term.toLowerCase())), module.search), 'users local search');
+    } else await Promise.all([
+      page.waitForResponse(response => { const url = new URL(response.url()); return response.request().method() === 'GET' && url.pathname === `/api/proxy${module.api}` && url.searchParams.get('search') === module.search && response.ok(); }),
+      search.fill(module.search),
+    ]);
     await until(async () => !await refresh.isDisabled() && (await region.locator('tbody tr').count()) > 0, `${module.id} initial search`);
     await page.getByRole('navigation', { name: 'Pagination' }).getByRole('button', { name: 'Records per page' }).click();
-    await page.getByRole('option', { name: '10', exact: true }).click();
-    await until(async () => await page.getByRole('navigation', { name: 'Pagination' }).count() > 0 && !await refresh.isDisabled(), `${module.id} page-size request`);
+    if (module.id === 'users') await page.getByRole('option', { name: '10', exact: true }).click();
+    else await Promise.all([
+      page.waitForResponse(response => { const url = new URL(response.url()); return response.request().method() === 'GET' && url.pathname === `/api/proxy${module.api}` && url.searchParams.get('search') === module.search && (url.searchParams.get('limit') === '10' || url.searchParams.get('pageSize') === '10') && response.ok(); }),
+      page.getByRole('option', { name: '10', exact: true }).click(),
+    ]);
+    await until(async () => await region.locator('tbody tr').count() === 10 && !await refresh.isDisabled(), `${module.id} requested page size rendered`);
 
     const primary = { leads: ['Name', 'name'], contacts: ['First Name', 'firstName'], accounts: ['Account Name', 'name'], tasks: ['Task title', 'title'], workflows: ['Name', 'name'], campaigns: ['Campaign', 'name'], users: ['User', 'name'] }[module.id];
     const primaryTrigger = region.getByRole('button', { name: `Column options for ${primary[0]}`, exact: true });
     await primaryTrigger.click();
-    const menu = page.getByRole('menu').last();
+    const menu = page.getByRole('menu', { name: `Options for ${primary[0]}`, exact: true });
     assert.equal(await menu.getByText('Sort field', { exact: true }).count(), 0);
     assert.equal(await menu.getByText(/^Current:/).count(), 0);
     await until(async () => await menu.getByRole('menuitemradio').count() === 2, module.id + ' sortable column menu rendered');

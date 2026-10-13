@@ -156,7 +156,7 @@ try {
     await navigate(mode === 'page' ? `/crm/${module}/${records[module].id}` : `/crm/${module}?highlight=${records[module].id}`);
     if (mode === 'drawer') {
       if (module === 'contacts') await page.getByRole('row').filter({ hasText: 'contact@example.test' }).getByText('Acceptance', { exact: true }).click();
-      else if (module === 'deals') await page.getByRole('heading', { name: titles[module], exact: true, level: 1 }).waitFor();
+      else if (module === 'deals') await page.getByRole('heading', { name: titles[module], exact: true, level: 4 }).click();
       else await page.getByText(titles[module], { exact: true }).first().click();
     }
     await page.getByRole('heading', { name: titles[module], exact: true, level: 1 }).waitFor();

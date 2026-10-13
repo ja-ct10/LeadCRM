@@ -63,7 +63,7 @@ try {
     } catch (error) { if (!closing) transportErrors.push(String(error).split('\n')[0]); await route.abort().catch(() => {}); }
   });
   await page.goto(base + '/marketing/campaigns');
-  await page.getByRole('button', { name: 'Create Campaign', exact: true }).click();
+  await page.getByRole('button', { name: 'Create Campaign', exact: true }).and(page.getByTitle('Create Campaign', { exact: true })).click();
   await page.getByLabel('Target Audience', { exact: false }).selectOption('LEADS');
   const body = page.getByLabel('Body', { exact: false }), subject = page.getByLabel('Subject Line', { exact: false });
   await body.fill('Hi {{firstName}}, your age is {{customFieldValues.age}}. {{sender_name}} {{sender_email}}');

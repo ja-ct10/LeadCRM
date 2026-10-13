@@ -92,6 +92,22 @@ test('QA excludes inherited secrets and rejects remote database overrides', () =
   } finally { if (saved === undefined) delete process.env.BREVO_API_KEY; else process.env.BREVO_API_KEY = saved; }
 });
 
+test('Nested QA environments preserve the selected npm executable without inheriting credentials', () => {
+  const savedCli = process.env.npm_execpath, savedToken = process.env.NPM_TOKEN;
+  const npmCli = resolve(qaEnvironment(root).TEMP, 'selected-npm-cli.cjs');
+  require('node:fs').writeFileSync(npmCli, 'console.log("selected npm executable");');
+  try {
+    process.env.npm_execpath = npmCli;
+    process.env.NPM_TOKEN = 'must-not-be-inherited';
+    const result = child(`const assert=require('node:assert/strict');const {qaEnvironment}=require('./scripts/qa-environment.cjs');const env=qaEnvironment(process.cwd());assert.equal(env.npm_execpath,process.env.npm_execpath);assert.equal(env.NPM_TOKEN,undefined);const run=require('node:child_process').spawnSync(process.execPath,[env.npm_execpath],{env,encoding:'utf8',windowsHide:true});assert.equal(run.status,0,run.stderr);assert.equal(run.stdout.trim(),'selected npm executable');`);
+    assert.equal(result.status, 0, result.stderr);
+  } finally {
+    for (const [name, value] of Object.entries({ npm_execpath: savedCli, NPM_TOKEN: savedToken })) {
+      if (value === undefined) delete process.env[name]; else process.env[name] = value;
+    }
+  }
+});
+
 test('Standalone native fixture runner removes inherited credentials and installs the outbound guard', async () => {
   const processes = require('node:child_process'), Module = require('node:module');
   const { EventEmitter } = require('node:events');

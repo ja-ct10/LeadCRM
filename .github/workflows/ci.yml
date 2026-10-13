@@ -57,6 +57,8 @@ jobs:
           path: |
             data/outputs/system-audit/**/*.json
             data/outputs/system-audit/**/*.log
+            data/outputs/system-audit/**/failure*.png
+            data/outputs/system-audit/**/failure*.txt
             data/outputs/*-browser/results.json
             .tmp/*-browser/results.json
           if-no-files-found: error

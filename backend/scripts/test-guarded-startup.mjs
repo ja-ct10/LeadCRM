@@ -11,6 +11,8 @@ import { notificationTestPostgres } from './notification-test-postgres.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('../../scripts/qa-environment.cjs');
+const npmCli = process.env.npm_execpath;
+assert.ok(npmCli, 'Run the guarded startup rehearsal through npm run test:integration:native');
 if (process.platform === 'linux') assert.notEqual(process.getuid(), 0, 'Native runner must initialize PostgreSQL as an unprivileged user');
 const pg = await notificationTestPostgres();
 const name = 'leadcrm_startup_test_1';
@@ -29,7 +31,7 @@ try {
     INSERT INTO "Stage" (id,"tenantId","pipelineId",name,"order","requiredFields") VALUES ('stage','startup','pipeline','Lead',0,ARRAY[]::text[]);
     INSERT INTO "Deal" (id,"tenantId",title,"pipelineId","stageId","ownerId","updatedAt") VALUES ('deal','startup','Preserved deal','pipeline','stage','actor',now());`);
   const before = pg.executeSql(name, `SELECT row_to_json(h) FROM "DealStageHistory" h ORDER BY id;`);
-  const deploy = run([process.env.npm_execpath || require.resolve('npm/bin/npm-cli.js'), '--prefix', 'backend', 'run', 'db:deploy']);
+  const deploy = run([npmCli, '--prefix', 'backend', 'run', 'db:deploy']);
   assert.equal(deploy.status, 0, deploy.stdout + deploy.stderr);
   assert.equal(pg.executeSql(name, `SELECT row_to_json(h) FROM "DealStageHistory" h ORDER BY id;`), before);
   assert.match(pg.executeSql(name, `SELECT title,"currentStageHistoryId" IS NOT NULL FROM "Deal" WHERE id='deal';`), /Preserved deal\s*\| t/);

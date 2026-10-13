@@ -149,7 +149,10 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 }); await page.waitForTimeout(250);
   await dialog.getByRole('button', { name: 'Rename Basic Information', exact: true }).click(); await dialog.getByLabel('Group label: Basic Information', { exact: true }).fill('Customer Information'); await dialog.getByRole('button', { name: 'Save', exact: true }).click(); await dialog.getByRole('button', { name: 'Rename Customer Information', exact: true }).waitFor(); checks.push('Group rename preserves assignments');
   await dialog.getByLabel('New group name', { exact: true }).fill('Empty acceptance'); await dialog.getByRole('button', { name: 'Add', exact: true }).click(); await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).click();
-  let confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true }); assert.equal(await confirmation.getByLabel('Move fields to', { exact: true }).count(), 0);
+  let confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true });
+  await confirmation.waitFor();
+  await page.waitForFunction(() => document.querySelector('[role="dialog"][aria-label="Delete field group"]')?.contains(document.activeElement));
+  assert.equal(await confirmation.getByLabel('Move fields to', { exact: true }).count(), 0);
   await page.keyboard.press('Escape'); await confirmation.waitFor({ state: 'hidden' }); assert.ok(await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).isVisible());
   await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true });
   await confirmation.getByRole('button', { name: 'Delete group', exact: true }).click(); await confirmation.waitFor({ state: 'hidden' }); checks.push('Empty group deletion requires confirmation and supports Escape cancellation');

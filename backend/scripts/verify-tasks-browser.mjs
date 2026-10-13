@@ -5,7 +5,7 @@ import { spawn } from 'node:child_process';
 import { randomUUID, randomBytes } from 'node:crypto';
 import { mkdirSync, createWriteStream, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { tmpdir, homedir } from 'node:os';
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(tmpdir(), `leadcrm-tasks-browser-${Date.now()}`));
@@ -21,7 +21,7 @@ const require = createRequire(import.meta.url), Module = require('node:module'),
 Module._resolveFilename = function(request, parent, isMain, options) {
   return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options);
 };
-const { chromium } = require(process.env.PLAYWRIGHT_MODULE || resolve(homedir(), '.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright'));
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const prisma = require('../dist/backend/src/config/database.config.js').default;
 const app = require('../dist/backend/src/app.js').default;
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
