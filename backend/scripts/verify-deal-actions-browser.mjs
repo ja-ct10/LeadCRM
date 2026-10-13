@@ -213,7 +213,11 @@ try {
   await action('Action Deal Updated','Add a task');
   const taskEditor=page.getByRole('dialog');await taskEditor.getByLabel(/^Title/).fill('Deal action browser task');
   await taskEditor.getByRole('button', { name: /^Assigned Agent/ }).click();
-  await page.getByRole('dialog', { name: 'Select owner', exact: true }).getByLabel('Agent 00', { exact: true }).check();
+  const taskOwners = page.getByRole('dialog', { name: 'Select owner', exact: true });
+  await taskOwners.getByLabel('Search owner', { exact: true }).fill('Agent 00');
+  await until(async () => await taskOwners.getByRole('checkbox').count() === 1 && await taskOwners.getByLabel('Agent 00', { exact: true }).count() === 1,
+    'Task assignment search must find the exact eligible agent beyond a bounded default page');
+  await taskOwners.getByLabel('Agent 00', { exact: true }).check();
   await page.getByLabel('Search owner', { exact: true }).press('Escape');
   await taskEditor.getByRole('button',{name:'Create task',exact:true}).click();
   await until(async()=>!!await prisma.task.findFirst({where:{title:'Deal action browser task',tenantId:tenant.id}}),'Context task did not persist');
