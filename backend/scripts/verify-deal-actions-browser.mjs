@@ -175,9 +175,21 @@ try {
   await stageChange.getByRole('button',{name:'Move deal',exact:true}).click();await stageChange.waitFor({state:'hidden'});
   await until(async()=>(await stored('Action Deal')).stageId===qualified.id,'Single-pipeline stage selection did not persist');
   assert.equal((await stored('Action Deal')).pipelineId,pipeline.id);assert.equal(await prisma.dealStageHistory.count({where:{dealId:fixtures['Action Deal'].id}}),initialStageHistory+1);
+  await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:'Qualified',exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor({timeout:12000});
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
-  await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:'Qualified',exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor({timeout:12000});
+  await action('Lost Action','Add a task',observer);
+  const pendingTask=observer.getByRole('dialog');
+  await pendingTask.getByLabel(/^Title/).fill('Keep this unfinished task');
+  await action('Lost Action','Change stage');
+  const contacted=allStages.find(stage=>stage.name==='Contacted');
+  await stageChange.getByLabel('Choose the target stage',{exact:true}).selectOption(contacted.id);
+  await stageChange.getByRole('button',{name:'Move deal',exact:true}).click();await stageChange.waitFor({state:'hidden'});
+  await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:contacted.name,exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Lost Action',exact:true}).waitFor({timeout:12000});
+  assert.equal(await pendingTask.getByLabel(/^Title/).inputValue(),'Keep this unfinished task');
+  assert.equal(await prisma.task.count({where:{tenantId:tenant.id,title:'Keep this unfinished task'}}),0);
+  await pendingTask.getByRole('button',{name:'Close',exact:true}).click();await pendingTask.waitFor({state:'hidden'});
+  record('Second-session stage synchronization preserves an unsaved Task draft without creating a record');
   await action('Action Deal','Edit deal',observer);await observer.getByRole('dialog').getByLabel('Title',{exact:false}).fill('Keep this unfinished edit');
   record('Single Sales Pipeline stage selection commits once and second-session sync preserves the open edit draft');
   await action('Action Deal','Edit deal');
@@ -276,9 +288,12 @@ try {
   await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({timeout:12000});record('Archive hides active card, preserves children and restores via existing path with realtime refresh');
 
   await page.getByLabel('Pipeline',{exact:true}).selectOption(pipeline.id);
+  const beforeLoss=(await stored('Lost Action')).stageId;
+  const beforeLossHistory=await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}});
   await action('Lost Action','Mark as lost');
   const lostDialog=page.getByRole('dialog',{name:'Close Deal as lost'});assert.equal(await lostDialog.getByRole('button',{name:'Save',exact:true}).isEnabled(),false);
-  await lostDialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal((await stored('Lost Action')).stageId,initial.id);
+  await lostDialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal((await stored('Lost Action')).stageId,beforeLoss);
+  assert.equal(await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}}),beforeLossHistory);
   await action('Lost Action','Mark as lost');await lostDialog.getByLabel('Lost reason').fill('Customer postponed project');await lostDialog.getByRole('button',{name:'Save',exact:true}).click();
   await until(async()=>(await stored('Lost Action')).stageId===lost.id,'Lost did not persist');assert.equal((await stored('Lost Action')).lostReason,'Customer postponed project');record('Lost requires nonblank reason, cancellation is inert, outcome persists');
 
