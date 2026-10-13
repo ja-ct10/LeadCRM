@@ -14,9 +14,9 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: authScop
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ addWorkflow: vi.fn(), updateWorkflow: vi.fn() }) }));
 vi.mock('@/shared/services/workflows.api', () => ({ getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions() }),
   withWorkflowTimeout: <T,>(request: Promise<T>) => request, workflowsApi: { options } }));
-vi.mock('./visual-workflow-builder', () => ({ default: ({ initial, templateIndex, triggers, options: choices }: { initial: { name: string }; templateIndex?: number; triggers: TriggerDefinition[]; options: WorkflowOptions }) => {
+vi.mock('./visual-workflow-builder', () => ({ default: ({ initial, templateIndex, templateIdentity, triggers, options: choices }: { initial: { name: string }; templateIndex?: number; templateIdentity?: string | number; triggers: TriggerDefinition[]; options: WorkflowOptions }) => {
   const [name, setName] = React.useState(initial.name);
-  return <><div data-testid="loaded-template">{initial.name}</div><output data-testid="template-index">{templateIndex}</output><input aria-label="Draft name" value={name} onChange={event => setName(event.target.value)} /><output data-testid="fields">{triggers.flatMap(trigger => trigger.fields.map(field => field.label)).join(',')}</output><output data-testid="users">{choices.users.map(user => user.name).join(',')}</output></>;
+  return <><div data-testid="loaded-template">{initial.name}</div><output data-testid="template-index">{templateIndex}</output><output data-testid="template-identity">{templateIdentity}</output><output data-testid="initial-draft">{JSON.stringify(initial)}</output><input aria-label="Draft name" value={name} onChange={event => setName(event.target.value)} /><output data-testid="fields">{triggers.flatMap(trigger => trigger.fields.map(field => field.label)).join(',')}</output><output data-testid="users">{choices.users.map(user => user.name).join(',')}</output></>;
 } }));
 beforeEach(() => { vi.clearAllMocks(); authScope.tenantId = 'tenant'; authScope.userId = 'user'; options.mockResolvedValue({ data: { users: [], pipelines: [], templates: [], campaigns: [] } }); navigation.query = new URLSearchParams(); });
 afterEach(cleanup);
@@ -116,4 +116,26 @@ it.each(['-1', '999', '1.5', 'unknown', ''])('rejects unavailable template URL %
   expect(screen.queryByTestId('loaded-template')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Back to workflows' }));
   expect(navigation.push).toHaveBeenCalledExactlyOnceWith('/automation/workflows');
+});
+
+it('resolves a stable configured stage URL to current IDs and an inactive independent draft', async () => {
+  const identity = 'stage:entry:pipeline:contacted';
+  navigation.query.set('template', identity);
+  options.mockResolvedValueOnce({ data: { users: [], templates: [], campaigns: [], pipelines: [{ id: 'pipeline', name: 'Current sales', stages: [{ id: 'contacted', name: 'Contacted' }] }] } });
+  render(<WorkflowBuilderPage />);
+  expect((await screen.findByTestId('loaded-template')).textContent).toBe('Current sales / Contacted: Stage entry follow-up');
+  expect(screen.getByTestId('template-identity').textContent).toBe(identity);
+  const draft = JSON.parse(screen.getByTestId('initial-draft').textContent!);
+  expect(draft.isActive).toBe(false);
+  expect(draft.conditions.conditions).toEqual([{ field: 'deal.pipelineId', operator: 'equals', value: 'pipeline' }, { field: 'event.newStageId', operator: 'equals', value: 'contacted' }]);
+});
+
+it('resolves stable existing starter IDs and rejects configured IDs unavailable to the current user', async () => {
+  navigation.query.set('template', 'won-deal-handoff');
+  const view = render(<WorkflowBuilderPage />);
+  expect((await screen.findByTestId('loaded-template')).textContent).toBe(WORKFLOW_RECIPES[18].name);
+  navigation.query.set('template', 'stage:entry:foreign:contacted');
+  view.rerender(<WorkflowBuilderPage />);
+  expect((await screen.findByRole('alert')).textContent).toContain('template is unavailable');
+  expect(screen.queryByTestId('loaded-template')).toBeNull();
 });

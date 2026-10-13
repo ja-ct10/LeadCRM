@@ -134,13 +134,14 @@ try {
   assert.equal(await page.getByLabel('Activate workflow', { exact: true }).count(), 3); record('List distinguishes Draft activation from Paused resume');
   await page.getByRole('button', { name: 'Create Workflow', exact: true }).click();
   await page.getByRole('dialog', { name: 'Create workflow', exact: true }).waitFor();
-  assert.equal(await page.locator('[data-template-index]').count(), 16);
+  assert.ok(await page.locator('[data-template-index]').count() >= 16);
+  assert.ok(await page.locator('[data-template-id^="stage:"]').count() > 0);
   await page.getByLabel('Search templates', { exact: true }).fill('Move Related Deal');
   assert.equal(await page.locator('[data-template-index]').count(), 2);
   await page.getByRole('button', { name: 'Preview Hot Lead → Move Related Deal', exact: true }).click();
   await page.getByRole('region', { name: 'Template setup requirements' }).waitFor();
   await page.getByRole('button', { name: 'Close create workflow', exact: true }).click();
-  record('The chooser exposes 16 searchable templates and related-deal setup requirements');
+  record('The chooser preserves searchable starters, adds configured stage templates and explains related-deal prerequisites');
   await page.goto(base + '/automation/workflows/new');
   await page.getByLabel('Workflow name', { exact: true }).waitFor(); record('Blank builder loads without creating a database record');
   assert.equal(await prisma.workflow.count({ where: { tenantId: tenant.id } }), 4);

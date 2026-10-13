@@ -4,15 +4,37 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-li
 import { WorkflowExecutionLogModal } from './workflow-execution-log-modal';
 import { workflowsApi } from '@/shared/services/workflows.api';
 const push = vi.fn();
+const permissions = vi.hoisted(() => ({ denied: [] as string[] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: () => true }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: (module: string) => !permissions.denied.includes(module) }) }));
 vi.mock('@/shared/services/workflows.api', () => ({ workflowsApi: { get: vi.fn(), getExecutions: vi.fn(), toggle: vi.fn(), duplicate: vi.fn(), archive: vi.fn() } }));
 const run = { id: 'run', status: 'completed', startedAt: '2026-10-01T12:00:00Z', completedAt: '2026-10-01T12:01:00Z', entityType: 'lead', trigger: { payload: { recordName: 'Ada Lovelace' }, triggerType: 'lead_created' }, steps: [{ id: 'step', stepIndex: 0, actionType: 'create_task', status: 'completed' }] };
 const workflow = { id: 'wf', name: 'Follow up', isActive: true, status: 'ACTIVE' };
 beforeEach(() => {
+  permissions.denied = [];
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.mocked(workflowsApi.get).mockResolvedValue({ data: workflow } as never);
   vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: Array.from({ length: 25 }, (_, i) => ({ ...run, id: `run-${i}` })), meta: { total: 51, page: 1, limit: 25, hasMore: true } } as never);
+});
+it('links persisted Tasks and source records and explains skipped actions without claiming assignment', async () => {
+  vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run, entityId: 'source/id',
+    steps: [{ ...run.steps[0], status: 'success', output: { taskId: 'task/id', cleanupWarning: 'Assignment reservation will expire.' } },
+      { ...run.steps[0], id: 'skip', stepIndex: 1, status: 'skipped', output: { resolvedUserId: 'user', resolvedUserName: 'Ana', reason: 'A newer stage entry superseded this event.' } }],
+  }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
+  mount(); await settled();
+  expect(screen.getByRole('link', { name: 'Open Task' }).getAttribute('href')).toBe('/operations/taskboard?taskId=task%2Fid');
+  expect(screen.getByRole('link', { name: 'Open lead' }).getAttribute('href')).toBe('/crm/leads/source%2Fid');
+  expect(screen.getByText('A newer stage entry superseded this event.')).toBeTruthy();
+  expect(screen.getByText('Selected assignee: Ana')).toBeTruthy();
+  expect(screen.queryByText(/Assigned to Ana/)).toBeNull();
+  expect(screen.getByText('Assignment reservation will expire.')).toBeTruthy();
+});
+it('hides output destinations when the viewer lacks their module permissions', async () => {
+  permissions.denied = ['tasks', 'leads'];
+  vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run, entityId: 'source', steps: [{ ...run.steps[0], output: { taskId: 'task' } }] }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
+  mount(); await settled();
+  expect(screen.queryByRole('link', { name: 'Open Task' })).toBeNull();
+  expect(screen.queryByRole('link', { name: 'Open lead' })).toBeNull();
 });
 afterEach(() => { cleanup(); vi.resetAllMocks(); vi.unstubAllGlobals(); });
 const mount = (close = vi.fn(), updated = vi.fn()) => render(<WorkflowExecutionLogModal workflowId="wf" name="Follow up" status="Active" onClose={close} onUpdated={updated} />);

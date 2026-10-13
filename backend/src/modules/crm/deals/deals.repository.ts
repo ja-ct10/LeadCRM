@@ -282,6 +282,7 @@ export async function moveDealStage(
       }
       stageHistory = await tx.dealStageHistory.create({ data: { ...scope, dealId: id, previousStageId: deal.stageId, newStageId, movedById,
         movedAt: now, note, timeInPrevStage: Math.floor((now.getTime() - (previous?.movedAt ?? deal.createdAt).getTime()) / 60000) } });
+      await tx.deal.update({ where: { id, ...scope }, data: { currentStageHistoryId: stageHistory.id } });
       await tx.activity.create({ data: { ...scope, dealId: id, createdById: movedById, type: 'stage_change',
         title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`, description: note ?? lostReason ?? 'Staff changed the Deal stage.' } });
     }
@@ -330,6 +331,7 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
     const stageHistory = await tx.dealStageHistory.create({ data: { tenantId, dealId: id, movedById: actorId,
       previousStageId: previousDeal.stageId, newStageId: stage.id, movedAt: now, note,
       timeInPrevStage: Math.floor((now.getTime() - (previousDeal.stageChangedAt ?? previousDeal.createdAt).getTime()) / 60000) } });
+    await tx.deal.update({ where: { id, tenantId }, data: { currentStageHistoryId: stageHistory.id } });
     const context = { sourcePipelineId: previousDeal.pipelineId, sourceStageId: previousDeal.stageId, targetPipelineId: pipeline.id, targetStageId: stage.id };
     await tx.activity.create({ data: { tenantId, dealId: id, createdById: actorId, type: 'stage_change', title: note, metadata: context } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.pipeline_changed', entityType: 'Deal', entityId: id,

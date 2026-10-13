@@ -55,7 +55,7 @@ import { leadsService as contactsService } from "@/features/tenant/crm/leads/ser
 import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
 import { activitiesService } from "@/features/tenant/crm/activities/services/activities.service";
-import { CreateTaskSchema, UpdateTaskSchema, TaskBulkSchema, TaskStatusSchema, type CreateTaskInput, type TaskBulkInput, type TaskBulkResult, type TaskListQuery, type TaskPage, type TaskSummary } from '@leadcrm/shared';
+import { CreateTaskSchema, UpdateTaskSchema, TaskBulkSchema, TaskStatusSchema, type CreateTaskInput, type UpdateTaskDto, type TaskBulkInput, type TaskBulkResult, type TaskListQuery, type TaskPage, type TaskSummary } from '@leadcrm/shared';
 import { useTaskQueries, taskDueInstant } from '@/features/tenant/operations/tasks/task-data';
 import { tasksApi } from "@/shared/services/tasks.api";
 import { workflowsApi } from "@/shared/services/workflows.api";
@@ -132,7 +132,7 @@ interface DataContextType {
   updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<void>;
   deletePipeline: (id: string) => Promise<void>;
   addTask: (task: CreateTaskInput) => Promise<void>;
-  updateTask: (id: string, updates: Partial<Task>) => Promise<void>;
+  updateTask: (id: string, updates: UpdateTaskDto) => Promise<void>;
   deleteTask: (id: string) => Promise<void>;
   addWorkflow: (
     workflow: WorkflowDraft,
@@ -1399,19 +1399,22 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (USE_MOCK_DATA) taskQueries.refreshTasks();
   };
 
-  const updateTask = async (id: string, updates: Partial<Task>): Promise<void> => {
+  const updateTask = async (id: string, updates: UpdateTaskDto): Promise<void> => {
     const identity = dataIdentityRef.current;
     const dto = UpdateTaskSchema.parse({ ...updates, ...(updates.dueDate ? { dueDate: taskDueInstant(updates.dueDate) } : {}) });
+    const { expectedUpdatedAt, reassignReason: _reason, ...changes } = dto;
+    if (USE_MOCK_DATA && expectedUpdatedAt && tasks.find(task => task.id === id)?.updatedAt !== expectedUpdatedAt)
+      throw Object.assign(new Error('This Task changed since you opened it. Reload the saved Task before saving your changes.'), { status: 409 });
     const updated = USE_MOCK_DATA ? null : (await tasksApi.update(id, dto)).data;
     if (identity !== dataIdentityRef.current) return;
     setTasks(previous => {
       const next = previous.map(task => {
         if (task.id !== id) return task;
         if (updated) return updated;
-        const completed = dto.status === 'completed';
-        return { ...task, ...dto, ...taskAssociationPatch(dto), description: dto.description === undefined ? task.description : dto.description ?? '',
-          ...(dto.status === undefined ? {} : { completedAt: completed ? task.completedAt ?? new Date().toISOString() : null, completedById: completed ? task.completedById ?? user?.id : null }),
-          ...(dto.assignedUserId && dto.assignedUserId !== task.assignedUserId ? { assignedById: user?.id } : {}) };
+        const completed = changes.status === 'completed';
+        return { ...task, ...changes, ...taskAssociationPatch(changes), updatedAt: new Date().toISOString(), description: changes.description === undefined ? task.description : changes.description ?? '',
+          ...(changes.status === undefined ? {} : { completedAt: completed ? task.completedAt ?? new Date().toISOString() : null, completedById: completed ? task.completedById ?? user?.id : null }),
+          ...(changes.assignedUserId && changes.assignedUserId !== task.assignedUserId ? { assignedById: user?.id } : {}) };
       });
       if (USE_MOCK_DATA) localStorage.setItem('leadcrm_tasks', JSON.stringify(next));
       return next;

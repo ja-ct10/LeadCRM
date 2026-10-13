@@ -382,6 +382,22 @@ The shared contract validates these settings; workflow options include eligible
 pool members for configuring overrides. Dry tests return the selection reason
 and applicable workload/limit without reserving work or changing assignment state.
 
+The test endpoint accepts `{ entityId, stageHistoryId? }`. For Deal stage/outcome
+triggers, an optional real, same-tenant Deal history ID supplies previous/new
+stage metadata. The server checks the recorded event against the current entry;
+superseded entries return a skipped reason. This is a read-only historical-event
+check against current state, not a future transition. Create Task previews render
+and validate the same payload used at execution and return resolved title, notes,
+priority, status, assignee, Deal IDs and due instant without creating a Task.
+
+Workflow options include stage order/default and terminal flags. The chooser
+generates templates bound to current tenant pipeline/stage IDs and opens inactive
+drafts; existing numeric template URLs and saved definitions remain compatible.
+Stage automation uses the internal `Deal.currentStageHistoryId` to distinguish
+rapid leave/re-entry. Each genuine current entry can create a new Task; retries
+reuse the same event result and superseded queued entries record skipped reasons.
+See [Task and Workflow integrity verification](workflows/task-workflow-integrity-report.md).
+
 ---
 
 ## Task endpoints
@@ -405,6 +421,13 @@ remain unchanged, including legacy Tasks without Deals. Sales association change
 require direct assignment to every added or removed Deal. `requestId` is an
 optional creation UUID: same actor/tenant/payload retries return the original Task;
 different values return 409. Concurrent mutations may return 409 and can be retried.
+
+Task updates accept optional offset-ISO `expectedUpdatedAt`. A mismatched saved
+version returns 409 before any mutation, Activity, AuditLog or notification write.
+The version is metadata and does not require edit permission for otherwise
+authorized assignment/completion-only updates. The editor sends changed fields
+and its saved version; clean detail panels refresh from canonical reads while
+dirty drafts require an explicit reload after a conflicting update.
 
 CRM Task lists derive participants through Deal relationships and retain legacy
 direct links. Lead, Contact, and Account panels open Task details read-only; Deal

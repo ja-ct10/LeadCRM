@@ -1,8 +1,9 @@
 "use client";
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { ManilaDateTimePicker } from "@/shared/components/ui/manila-date-time-picker";
-import { taskRecordOptions } from "../task-relations";
-import { useId, useRef, useState } from "react";
+import { taskRecordHref, taskRecordOptions } from "../task-relations";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
+import Link from 'next/link';
 import {
   TASK_STATUSES,
   taskAssociationIds,
@@ -10,11 +11,16 @@ import {
   TASK_STATUS_LABELS,
   type TaskRecord,
   type TaskOption,
+  type UpdateTaskDto,
 } from "@leadcrm/shared";
 import { useData } from "@/store/DataContext";
 import { useAuth } from "@/store/AuthContext";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { USE_MOCK_DATA } from "@/lib/config";
+import { useCachedPage } from '@/shared/hooks/use-cached-page';
+import { tasksApi } from '@/shared/services/tasks.api';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
+import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { TaskRecordCreator } from "./task-record-creator";
 import { Sheet, SheetContent } from "@/shared/components/ui/sheet";
 import { Button } from "@/shared/components/ui/button";
@@ -44,7 +50,7 @@ import { TaskSelector } from "./task-selector";
 export { TaskSelector, taskInputClass } from "./task-selector";
 
 export function TaskEditor({
-  task,
+  task: initialTask,
   links = {},
   readOnly = false,
   preserveContextLinks = false,
@@ -63,6 +69,14 @@ export function TaskEditor({
     canEdit = useHasPermission("tasks.edit"),
     canArchive = useHasPermission("tasks.archive");
   const canComplete = useHasPermission("tasks.complete"), canAssign = useHasPermission("tasks.assign");
+  const canRead = useHasPermission('tasks.view');
+  const readableRecords = { lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'),
+    deal: useHasPermission('deals.view'), account: useHasPermission('accounts.view') };
+  const detail = useCachedPage<TaskRecord>({ module: 'tasks', params: { recordId: initialTask?.id },
+    disabled: USE_MOCK_DATA || !initialTask || !canRead, revalidateOnInvalidation: true,
+    fetchFn: async signal => (await tasksApi.get(initialTask!.id, signal)).data });
+  const task = initialTask ? detail.data ?? initialTask : undefined;
+  const [baseline, setBaseline] = useState(task);
   const canCreateDeals = useHasPermission("deals.create");
   const editable = !readOnly && !task?.isArchived && (task ? canEdit : canCreate);
   const [title, setTitle] = useState(task?.title ?? "");
@@ -88,9 +102,27 @@ export function TaskEditor({
   const [busy, setBusy] = useState(false),
     [error, setError] = useState(""),
     [confirmArchive, setConfirmArchive] = useState(false);
+  const [saveConflict, setSaveConflict] = useState(false);
+  const dirty = !!baseline && (title !== baseline.title || description !== baseline.description || status !== baseline.status ||
+    priority !== (baseline.priority ?? 'Medium') || dueDate !== manilaLocalDateTime(baseline.dueDate) ||
+    assignedUserId !== baseline.assignedUserId || JSON.stringify(dealIds) !== JSON.stringify(taskAssociationIds(baseline, 'deal')));
+  const changed = !!baseline && !!detail.data && (baseline.updatedAt !== detail.data.updatedAt ||
+    !baseline.updatedAt && JSON.stringify(baseline) !== JSON.stringify(detail.data));
+  const conflict = saveConflict || dirty && changed;
+  const unavailable = !!initialTask && (!canRead || [401, 403, 404].includes(detail.errorStatus ?? 0));
+  const detailReady = !initialTask || USE_MOCK_DATA || !!detail.data;
+  const resetDraft = useCallback((saved: TaskRecord) => {
+    setBaseline(saved); setTitle(saved.title); setDescription(saved.description); setStatus(saved.status);
+    setPriority(saved.priority ?? 'Medium'); setDueDate(manilaLocalDateTime(saved.dueDate));
+    setOwner(saved.assignedUserId); setDealIds(taskAssociationIds(saved, 'deal'));
+    setDueDraft(null); setCreatedLabels([]); setSaveConflict(false); setError('');
+  }, []);
+  useEffect(() => {
+    if (initialTask && detail.data && !dirty && !busy && !saveConflict) resetDraft(detail.data);
+  }, [initialTask, detail.data, dirty, busy, saveConflict, resetDraft]);
   const heading = useId();
   const save = async () => {
-    if (busy || !editable) return;
+    if (busy || !editable || !detailReady || unavailable || conflict) return;
     setBusy(true);
     setError("");
     try {
@@ -98,7 +130,7 @@ export function TaskEditor({
       if (!assignedUserId) throw new Error("Select an assigned agent.");
       if (!dealIds.length && (!task || taskAssociationIds(task, "deal").length))
         throw new Error("Select at least one Deal to associate with this task.");
-      const dueDateUnchanged = !!task && dueDate === manilaLocalDateTime(task.dueDate);
+      const dueDateUnchanged = !!baseline && dueDate === manilaLocalDateTime(baseline.dueDate);
       const resolvedDueDate = resolveManilaTaskDueDateTime(dueDate);
       if (!dueDateUnchanged) {
         if (resolvedDueDate.slice(0, 10) < manilaCurrentDate())
@@ -108,33 +140,37 @@ export function TaskEditor({
       }
       if (resolvedDueDate !== dueDate) setDueDate(resolvedDueDate);
       const data = {
-        title,
+        title: title.trim(),
         description,
         status,
         priority,
         dueDate: dueDateUnchanged
-          ? task.dueDate
+          ? baseline!.dueDate
           : manilaTaskDueInstant(resolvedDueDate),
         assignedUserId,
         dealIds: [...new Set([...dealIds, ...(preserveContextLinks ? taskAssociationIds(links, "deal") : [])])],
       };
       if (task) {
-        const updates: Partial<TaskRecord> = { ...data };
+        const updates: UpdateTaskDto = { ...data };
         // Preserve untouched links, including historical archived relationships.
-        if (assignedUserId === task.assignedUserId)
-          delete updates.assignedUserId;
-        if (JSON.stringify(dealIds) === JSON.stringify(taskAssociationIds(task, 'deal'))) delete updates.dealIds;
-        await updateTask(task.id, updates);
+        for (const field of ['title', 'description', 'status', 'priority', 'dueDate', 'assignedUserId'] as const)
+          if (data[field] === baseline?.[field]) delete updates[field];
+        if (JSON.stringify(dealIds) === JSON.stringify(taskAssociationIds(baseline!, 'deal'))) delete updates.dealIds;
+        if (Object.keys(updates).length) {
+          if (baseline?.updatedAt) updates.expectedUpdatedAt = baseline.updatedAt;
+          await updateTask(task.id, updates);
+        }
       } else await addTask({ ...data, requestId: requestId.current });
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Unable to save task.");
+      if ((e as { status?: number })?.status === 409) { setSaveConflict(true); void detail.refetch(); }
     } finally {
       setBusy(false);
     }
   };
   const archive = async () => {
-    if (!task || readOnly || !canArchive || task.isArchived) return;
+    if (!task || readOnly || !canArchive || task.isArchived || unavailable || !detailReady) return;
     setBusy(true);
     setError("");
     try {
@@ -146,8 +182,8 @@ export function TaskEditor({
       setBusy(false);
     }
   };
-  const person =
-    task?.assignedUser ?? (assignedUserId === user?.id ? user : undefined);
+  const person = task?.assignedUser?.id === assignedUserId
+    ? task.assignedUser : assignedUserId === user?.id ? user : undefined;
   return (
     <Sheet
       open
@@ -179,7 +215,12 @@ export function TaskEditor({
             {creating ? "Create deal" : task ? "Task details" : "Create task"}
           </h2>
         </header>
-        {creating ? (
+        {unavailable ? (
+          <div className={panelBodyClass + ' space-y-4'}>
+            <p role="alert" className="text-sm text-destructive">{detail.error ?? 'Task access is restricted.'}</p>
+            <Button variant="outline" onClick={onClose}>Close</Button>
+          </div>
+        ) : creating ? (
           <TaskRecordCreator
             kind={creating}
             onBusy={setBusy}
@@ -199,6 +240,15 @@ export function TaskEditor({
             }}
           >
             <div className={panelBodyClass + " space-y-6"}>
+              {detail.isInitialLoad && <DataLoadingSpinner label="Loading task" hideLabel />}
+              {detail.error && <div role="alert" className="space-y-2 text-sm text-destructive">
+                <p>{detail.error}</p><Button type="button" variant="outline" onClick={() => void detail.refetch()}>Retry loading task</Button>
+              </div>}
+              {conflict && <div role="alert" className="space-y-2 rounded-lg border border-destructive/30 p-3 text-sm">
+                <p>This Task changed. Your unsaved changes are preserved. Reload the saved Task before saving.</p>
+                <Button type="button" variant="outline" disabled={!detail.data || detail.isRefreshing || busy}
+                  onClick={() => { if (detail.data) resetDraft(detail.data); }}>Reload saved task</Button>
+              </div>}
               {error && (
                 <p
                   role="alert"
@@ -208,7 +258,7 @@ export function TaskEditor({
                 </p>
               )}
               <fieldset
-                disabled={!editable || busy}
+                disabled={!editable || busy || !detailReady}
                 className="min-w-0 space-y-6"
               >
                 <section className="space-y-4">
@@ -312,11 +362,19 @@ export function TaskEditor({
                   </div>
                 </section>
               </fieldset>
+              {task && readableRecords.deal && !!taskRecordOptions(task, 'deal').length && (
+                <section aria-label="Associated Deal records" className="space-y-2 text-sm">
+                  <h3 className="font-semibold">Deal records</h3>
+                  {taskRecordOptions(task, 'deal').map(record => <p key={record.id}>
+                    <Link href={taskRecordHref('deal', record.id)} className="text-primary hover:underline">{record.label}</Link>
+                  </p>)}
+                </section>
+              )}
               {task && (['lead', 'contact', 'account'] as const).some(kind => taskRecordOptions(task, kind).length) && (
                 <section aria-label="Historical Task associations" className="space-y-2 text-sm">
                   <h3 className="font-semibold">Historical associations</h3>
-                  {(['lead', 'contact', 'account'] as const).flatMap(kind => taskRecordOptions(task, kind).map(record => (
-                    <p key={kind + record.id}><span className="capitalize text-muted-foreground">{kind}: </span>{record.label}</p>
+                  {(['lead', 'contact', 'account'] as const).filter(kind => readableRecords[kind]).flatMap(kind => taskRecordOptions(task, kind).map(record => (
+                    <p key={kind + record.id}><span className="capitalize text-muted-foreground">{kind}: </span><Link href={taskRecordHref(kind, record.id)} className="text-primary hover:underline">{record.label}</Link></p>
                   )))}
                 </section>
               )}
@@ -325,8 +383,8 @@ export function TaskEditor({
                   <h3 className="text-sm font-semibold">Related CRM records</h3>
                   <p className="text-xs text-muted-foreground">Connections from the records associated above. These do not change the task’s selected associations.</p>
                   <ul className="space-y-3">
-                    {task.relatedRecords.map(record => <li key={record.kind + record.id} className="min-w-0 text-sm [overflow-wrap:anywhere]">
-                      <span className="capitalize text-muted-foreground">{record.kind}: </span>{record.label}
+                    {task.relatedRecords.filter(record => readableRecords[record.kind]).map(record => <li key={record.kind + record.id} className="min-w-0 text-sm [overflow-wrap:anywhere]">
+                      <span className="capitalize text-muted-foreground">{record.kind}: </span><Link href={taskRecordHref(record.kind, record.id)} className="text-primary hover:underline">{record.label}</Link>
                       <p className="text-xs text-muted-foreground">Via {record.via}</p>
                     </li>)}
                   </ul>
@@ -335,10 +393,10 @@ export function TaskEditor({
               {task && (
                 <dl className="space-y-2 border-t border-border pt-4 text-xs text-muted-foreground">
                   <div><dt className="inline">Task Owner (Created by): </dt><dd className="inline">{task.createdBy ? `${task.createdBy.firstName} ${task.createdBy.lastName}` : 'Not recorded'}</dd></div>
-                  <div>Created {new Date(task.createdAt).toLocaleString()}</div>
+                  <div>Created {formatDateTime(task.createdAt)}</div>
                   {task.completedAt && (
                     <div>
-                      Completed {new Date(task.completedAt).toLocaleString()}
+                      Completed {formatDateTime(task.completedAt)}
                       {task.completedBy
                         ? " by " +
                           task.completedBy.firstName +
@@ -363,7 +421,7 @@ export function TaskEditor({
                   type="button"
                   variant="ghost"
                   className="h-[42px] rounded-xl"
-                  disabled={busy}
+                  disabled={busy || !detailReady}
                   onClick={() => setConfirmArchive(true)}
                 >
                   Archive
@@ -382,7 +440,7 @@ export function TaskEditor({
                   Close
                 </Button>
                 {editable && (
-                  <Button type="submit" className={panelPrimaryButtonClass} disabled={busy}>
+                  <Button type="submit" className={panelPrimaryButtonClass} disabled={busy || !detailReady || !!detail.error || conflict}>
                     {busy ? "Saving…" : task ? "Save changes" : "Create task"}
                   </Button>
                 )}
@@ -393,7 +451,7 @@ export function TaskEditor({
         <ConfirmActionDialog open={confirmArchive} onOpenChange={setConfirmArchive}
           title="Archive task?" description="This task will leave active views and can be restored from Archived Data."
           variant="destructive" confirmLabel="Archive" isLoading={busy}
-          confirmDisabled={!canArchive || readOnly || !!task?.isArchived} onConfirm={archive} />
+          confirmDisabled={!canArchive || readOnly || !!task?.isArchived || unavailable || !detailReady} onConfirm={archive} />
       </SheetContent>
     </Sheet>
   );

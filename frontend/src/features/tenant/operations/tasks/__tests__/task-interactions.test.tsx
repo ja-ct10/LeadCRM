@@ -50,6 +50,8 @@ it('renders legacy links and workflow CRM context in their Task table columns', 
   };
   render(<TaskTable tasks={[task]} columns={normalizeTaskColumns([])} selected={[]} onSelect={vi.fn()} onOpen={vi.fn()} onStatus={vi.fn()} onSort={vi.fn()} query={{}} busy={false} canEdit canArchive onEdit={vi.fn()} onArchive={vi.fn()} totalRecords={1} onManageColumns={vi.fn()} />);
   for (const name of ['Jordan Lee', 'Northstar', 'Expansion', 'Alex Morgan']) expect(screen.getByText(name, { exact: true }).closest('td')?.textContent).toBe(name);
+  expect(screen.getByRole('link', { name: 'Expansion' }).getAttribute('href')).toBe('/crm/deals/d');
+  expect(screen.getByRole('link', { name: 'Alex Morgan' }).getAttribute('href')).toBe('/crm/contacts/c');
 });
 
 it("searches inside the association dropdown, checks one explicit record, and supports clearing and creating", async () => {

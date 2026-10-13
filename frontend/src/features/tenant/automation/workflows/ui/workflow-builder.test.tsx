@@ -16,6 +16,7 @@ import {
 } from '@leadcrm/shared';
 import WorkflowBuilder from './visual-workflow-builder';
 import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
+import { resolveWorkflowTemplate } from '../services/workflow-stage-templates';
 import { toast } from 'sonner';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { workflowsApi } from '@/shared/services/workflows.api';
@@ -77,6 +78,43 @@ function setup(
 }
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
 describe('visual workflow editor', () => {
+  it('edits a configured stage template, saves an inactive draft and preserves custom actions across option refresh', async () => {
+    const save = vi.fn().mockResolvedValue(undefined);
+    const options = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'pipeline', name: 'Sales', stages: [{ id: 'contacted', name: 'Contacted' }, { id: 'won', name: 'Approved', isWon: true }] }] };
+    const identity = 'stage:entry:pipeline:contacted';
+    const draft = resolveWorkflowTemplate(identity, options)!.recipe;
+    const props = { initial: draft, templateIdentity: identity, options, triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions(), canActivate: true, onSave: save, onClose: vi.fn() };
+    const view = render(<WorkflowBuilder {...props} />);
+    fireEvent.click(button(/Configure action: 1. Create Task/));
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Administrator task wording' } });
+    fireEvent.change(screen.getByLabelText('Due in days'), { target: { value: '4' } });
+    const renamed = structuredClone(options); renamed.pipelines[0].stages[0].name = 'Contacted renamed';
+    view.rerender(<WorkflowBuilder {...props} options={renamed} />);
+    expect((screen.getByLabelText('Task title') as HTMLInputElement).value).toBe('Administrator task wording');
+    fireEvent.click(button(/Configure condition:/));
+    expect((screen.getByLabelText('Template entry stage') as HTMLSelectElement).value).toBe('contacted');
+    expect([...((screen.getByLabelText('Template entry stage') as HTMLSelectElement).options)].map(option => option.value)).toEqual(['', 'contacted']);
+    fireEvent.click(button('Save draft'));
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    expect(save.mock.calls[0][0]).toMatchObject({ isActive: false, actions: [{ type: 'create_task', config: { title: 'Administrator task wording', dueDaysFromNow: 4, assignmentTarget: { type: 'record_owner' } } }], conditions: { conditions: [{ field: 'deal.pipelineId', value: 'pipeline' }, { field: 'event.newStageId', value: 'contacted' }] } });
+  });
+
+  it('keeps an unavailable configured stage visible for repair and prevents saving without losing edits', async () => {
+    const save = vi.fn();
+    const options = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'pipeline', name: 'Sales', stages: [{ id: 'contacted', name: 'Contacted' }] }] };
+    const identity = 'stage:entry:pipeline:contacted';
+    const props = { initial: resolveWorkflowTemplate(identity, options)!.recipe, templateIdentity: identity, options, triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions(), canActivate: true, onSave: save, onClose: vi.fn() };
+    const view = render(<WorkflowBuilder {...props} />);
+    fireEvent.click(button(/Configure action: 1. Create Task/));
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Keep my edits' } });
+    view.rerender(<WorkflowBuilder {...props} options={{ ...options, pipelines: [] }} />);
+    expect((screen.getByLabelText('Task title') as HTMLInputElement).value).toBe('Keep my edits');
+    fireEvent.click(button('Save draft'));
+    await waitFor(() => expect(screen.getByRole('alert').textContent).toMatch(/unavailable|available record/));
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.getByRole('option', { name: 'Unavailable selection — repair required' })).toBeTruthy();
+  });
+
   it('links template source/target choices to persisted rules and action config from either inspector', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
     const options = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'pipeline', name: 'Sales', stages: [{ id: 'source', name: 'Lead', isWon: false, isLost: false }, { id: 'target', name: 'Contacted', isWon: false, isLost: false }, { id: 'won', name: 'Won', isWon: true, isLost: false }] }] };

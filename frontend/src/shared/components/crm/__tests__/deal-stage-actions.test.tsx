@@ -1,4 +1,4 @@
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.canAccess, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -6,11 +6,11 @@ import type { Deal, Pipeline } from '@/store/types';
 import { DealCardMenu } from '../deal-card-menu';
 import { DealStageDialog } from '../deal-stage-dialog';
 
-const mocks = vi.hoisted(() => ({ pipelines: [] as Pipeline[], deal: {} as Deal, canEdit: true, moveStage: vi.fn(), movePipeline: vi.fn() }));
+const mocks = vi.hoisted(() => ({ pipelines: [] as Pipeline[], deal: {} as Deal, canEdit: true, canTask: false, canAccess: true, moveStage: vi.fn(), movePipeline: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: mocks.pipelines, deals: [mocks.deal], contacts: [], moveDealStage: mocks.moveStage, moveDealPipeline: mocks.movePipeline }) }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', tenantId: 'tenant' }, tenant: { id: 'tenant' } }) }));
-vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => key === 'deals.edit' && mocks.canEdit }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => key === 'deals.edit' && mocks.canEdit || key === 'tasks.create' && mocks.canTask }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined, isInitialLoad: false, error: null }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/shared/hooks/use-confirm-dialog', () => ({ useConfirmDialog: () => ({ dialogProps: {}, confirm: vi.fn() }) }));
@@ -32,7 +32,7 @@ const menu = async (onMutated?: (deal?: Deal) => void) => {
   return screen.findByRole('menuitem', { name: /^Change stage/ });
 };
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.canEdit = true; mocks.pipelines = [sales];
+  vi.clearAllMocks(); mocks.canEdit = true; mocks.canTask = false; mocks.canAccess = true; mocks.pipelines = [sales];
   mocks.deal = { id: 'deal', title: 'Opportunity', pipelineId: sales.id, stageId: 'lead', tenantId: 'tenant', value: 500, companyName: '', contactPerson: '', order: 0, priority: 'Medium' } as Deal;
   mocks.moveStage.mockReset().mockResolvedValue({ ...mocks.deal, stageId: 'qualified' });
   mocks.movePipeline.mockReset().mockResolvedValue({ ...mocks.deal, pipelineId: renewals.id, stageId: 'review' });
@@ -125,4 +125,17 @@ it('hides the action without deals.edit permission', async () => {
   render(<DealCardMenu dealId={mocks.deal.id} dealTitle={mocks.deal.title} deal={mocks.deal} />);
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Opportunity' }));
   expect(screen.queryByRole('menuitem', { name: /^Change stage/ })).toBeNull();
+});
+it('allows authorized Task creation independently of Deal edit access', async () => {
+  mocks.canEdit = false; mocks.canTask = true;
+  render(<DealCardMenu dealId={mocks.deal.id} dealTitle={mocks.deal.title} deal={mocks.deal} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Opportunity' }));
+  expect(await screen.findByRole('menuitem', { name: 'Add a task' })).toBeTruthy();
+  expect(screen.queryByRole('menuitem', { name: /^Edit deal/ })).toBeNull();
+});
+it('hides Task creation when the Deal assignment policy denies association', async () => {
+  mocks.canTask = true; mocks.canAccess = false;
+  render(<DealCardMenu dealId={mocks.deal.id} dealTitle={mocks.deal.title} deal={mocks.deal} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Opportunity' }));
+  expect(screen.queryByRole('menuitem', { name: 'Add a task' })).toBeNull();
 });

@@ -7,8 +7,9 @@ import {
   type TriggerDefinition,
   type WorkflowDraft,
   type WorkflowEntity,
+  type WorkflowOptions,
 } from '@leadcrm/shared';
-import { operatorLabels } from './workflow-editor';
+import { conditionSummary, operatorLabels } from './workflow-editor';
 import { workflowTemplateDescriptor } from './workflow-template-bindings';
 
 export const workflowRecordLabels: Record<WorkflowEntity, string> = {
@@ -65,6 +66,7 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
     if (action.type === 'create_task' && WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action)).data?.type === 'record_owner') {
       notes.push('Tasks use the record’s assigned agent. Assign an agent to the record or choose a task assignee in the builder.');
     }
+    if (action.type === 'create_task' && trigger?.entity !== 'deal') notes.push('A connected eligible Deal is required. Missing Deals fail; several related Deals require an explicit connected Deal ID. Archived and foreign Deals are ineligible.');
     if (action.type === 'update_field') {
       const field = trigger && getWorkflowUpdateFields(trigger.entity).find(entry => entry.field === action.config.field);
       notes.push(`The ${field?.label.toLowerCase() ?? 'selected'} field will be replaced with the configured value.`);
@@ -87,7 +89,8 @@ export function templateBehaviorLabel(recipe: WorkflowDraft): string {
   return recipe.trigger === 'deal.stage_changed' ? 'Task on stage entry' : 'Create follow-up task';
 }
 
-export function templateConditionLabel(rule: NonNullable<WorkflowDraft['conditions']>['conditions'][number], trigger?: TriggerDefinition): string {
+export function templateConditionLabel(rule: NonNullable<WorkflowDraft['conditions']>['conditions'][number], trigger?: TriggerDefinition, options?: WorkflowOptions): string {
+  if (options) return conditionSummary(rule, trigger, options);
   const field = trigger?.fields.find(entry => entry.field === rule.field);
   const label = field?.label ?? rule.field;
   if (['is_empty', 'is_not_empty'].includes(rule.operator)) return `${label} ${operatorLabels[rule.operator]}`;

@@ -19,7 +19,7 @@ import { WORKFLOWS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
-import { workflowsApi, getWorkflowMetadata } from '@/shared/services/workflows.api';
+import { workflowsApi, getWorkflowMetadata, withWorkflowTimeout } from '@/shared/services/workflows.api';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
 import { Button, CreateButton } from '@/shared/components/ui/button';
 
@@ -141,7 +141,7 @@ export default function WorkflowsPage() {
         ...(canActivate ? [{ id: 'pause', label: 'Pause', destructive: false, onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, async id => { const current = (await workflowsApi.get(id)).data; if (current.isActive) await workflowsApi.toggle(id, false); }); await refreshWorkflows(); return result; } }] : []),
         ...(canDelete ? [{ id: 'archive', label: 'Archive', destructive: true, entityName: 'workflow', onExecute: async (ids: string[]) => { const result = await executeSelectedRows(ids, workflowsApi.archive); await refreshWorkflows(); return result; } }] : []),
       ]} />
-    {createOpen && canCreate && metadata && <WorkflowCreateDialog key={`${tenant?.id}:${user?.id}`} triggers={metadata.triggers} actions={metadata.actions} onClose={() => setCreateOpen(false)} onChoose={index => { router.push(index === undefined ? '/automation/workflows/new' : `/automation/workflows/new?template=${index}`); setCreateOpen(false); }} />}
+    {createOpen && canCreate && metadata && <WorkflowCreateDialog key={`${tenant?.id}:${user?.id}`} triggers={metadata.triggers} actions={metadata.actions} loadOptions={async () => (await withWorkflowTimeout(workflowsApi.options())).data} onClose={() => setCreateOpen(false)} onChoose={identity => { router.push(identity === undefined ? '/automation/workflows/new' : `/automation/workflows/new?template=${encodeURIComponent(identity)}`); setCreateOpen(false); }} />}
     {runs && <WorkflowExecutionLogModal key={runs.id} workflowId={runs.id} name={runs.name} status={runs.status === 'DRAFT' ? 'Draft' : runs.isActive ? 'Active' : 'Paused'} onUpdated={refreshWorkflows} onClose={() => setRuns(null)} />}
     <ConfirmActionDialog open={!!archiving} onOpenChange={open => {if (!open) setArchiving(null);}} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" onConfirm={async () => { if (archiving) await mutate(async () => {await workflowsApi.archive(archiving.id);setSelected(new Set());setArchiving(null);},'Workflow archived.', true); }} />
   </div>;

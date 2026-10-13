@@ -88,7 +88,7 @@ export const CreateTaskSchema = taskFields
   });
 export const UpdateTaskSchema = taskFields
   .partial()
-  .extend({ reassignReason: z.string().trim().max(1000).optional() })
+  .extend({ reassignReason: z.string().trim().max(1000).optional(), expectedUpdatedAt: instant.optional() })
   .strict()
   .superRefine((data, ctx) => {
     validateDealWrites(data, ctx);

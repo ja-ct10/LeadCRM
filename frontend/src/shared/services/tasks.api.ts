@@ -44,8 +44,8 @@ export const tasksApi = {
         signal,
       },
     ),
-  get: (id: string) =>
-    apiClient.get<TaskResponse>(`/operations/tasks/${encodeURIComponent(id)}`),
+  get: (id: string, signal?: AbortSignal) =>
+    apiClient.get<TaskResponse>(`/operations/tasks/${encodeURIComponent(id)}`, { signal }),
   create: (data: CreateTaskInput) =>
     apiClient.post<TaskResponse>("/operations/tasks", data),
   update: (id: string, data: UpdateTaskDto) =>

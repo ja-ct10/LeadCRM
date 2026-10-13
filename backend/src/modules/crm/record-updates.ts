@@ -24,7 +24,7 @@ export async function customFieldChangeTracker(tenantId: string, module: CustomF
 // Changes to save metadata or loaded relation projections are not record edits.
 const metadata = new Set([
   'creationKey', 'engagementEvaluatedAt', 'lastCustomerReplyAt', 'firstUnansweredOutboundAt', 'id', 'tenantId', 'createdAt', 'updatedAt', 'createdById', 'updatedById',
-  'lastStatusChangedAt', 'stageChangedAt', 'assignedUser', 'createdBy', 'updatedBy',
+  'lastStatusChangedAt', 'stageChangedAt', 'currentStageHistoryId', 'assignedUser', 'createdBy', 'updatedBy',
   'account', 'organization', 'owner', 'pipeline', 'stage', 'stageHistories',
   'lead', 'contact', 'productInterestRecord', 'recordFiles', 'activities', 'tasks',
   'actions', 'taskLinks', 'order', 'productsNormalized', 'productLinks',

@@ -69,6 +69,13 @@ Stop old backend processes, then apply the existing migration history and these 
 8. `20261123000000_campaign_schedule`: Scheduled status, approved schedule configuration/actor, and audience match mode (AND by default).
 9. `20261124000000_crm_content_revisions`: committed CRM-content revision counter/triggers and stable Activity cursor index.
 
+The Task/Workflow integrity release also requires
+`20261204000000_workflow_stage_entry_identity` after the complete existing
+migration history. It adds the exact current Deal stage-history identity,
+backfills only uniquely proven entries, and preserves historical rows. Stop old
+writers before this migration and deploy matching backend/frontend builds.
+See [verification and rollout](docs/workflows/task-workflow-integrity-report.md).
+
 Follow `npm --prefix backend run db:deploy` and the existing [normalization rollout](docs/csv-import-normalization.md) and [relationship retirement](docs/database/normalization-report.md) prerequisites. Regenerate Prisma/build, then start the updated backend and verify authentication, membership visibility, assignment options, reporting, and recovery. Do not run old backend binaries after the Department column is removed.
 
 An interrupted Campaign preserves uncertain provider outcomes for review and does not automatically resend them. Scheduled Inbox cancellation competes atomically with the worker; delivery already in progress cannot be cancelled as though it were unsent.

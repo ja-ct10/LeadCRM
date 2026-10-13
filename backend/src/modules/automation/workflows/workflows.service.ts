@@ -21,6 +21,8 @@ import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content
 import { z } from 'zod';
 import { workflowNameKey, suggestWorkflowCopyName } from './workflow-names';
 import { workflowDefinitionChanged } from './workflow-version';
+import { workflowStageEvent, assertCurrentStageEntry, isStageEvent, isSupersededStageEntry } from './workflow-stage-entry';
+import { prepareWorkflowTaskInput } from '../actions/action-task-input';
 
 function sanitizeDraft(draft: WorkflowDraft, previousConditions?: unknown): WorkflowDraft {
   const previous = WorkflowConditionSchema.safeParse(previousConditions);
@@ -137,7 +139,7 @@ export async function getWorkflowExecutionPage(id: string, tenantId: string, pag
   const [data, total] = await Promise.all([repo.listExecutions(id, tenantId, page, limit), repo.countExecutions(id, tenantId)]);
   return paginate(data, total, { page, limit });
 }
-export async function testWorkflow(id: string, tenantId: string, entityId: string, userId?: string): Promise<WorkflowTestResult> {
+export async function testWorkflow(id: string, tenantId: string, entityId: string, userId?: string, stageHistoryId?: string): Promise<WorkflowTestResult> {
   requireScope(tenantId);
   const existing = await getWorkflowById(id, tenantId);
   const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
@@ -147,14 +149,29 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
   if (userId) await assertWorkflowPermissions(draft, tenantId, userId);
   const context = await repo.entityContext(trigger.entity, entityId, tenantId);
   if (!context) throw new NotFoundError('Sample record');
+  let triggerReason: string | undefined;
+  let eventId: string | undefined;
+  if (stageHistoryId) {
+    const event = await workflowStageEvent(tenantId, entityId, draft.trigger, stageHistoryId);
+    Object.assign(context, event.context); eventId = event.eventId;
+    try { await assertCurrentStageEntry(tenantId, entityId, stageHistoryId); }
+    catch (error) { if (!isSupersededStageEntry(error)) throw error; triggerReason = error.message; }
+  } else if (isStageEvent(draft.trigger)) triggerReason = 'Choose a recorded stage transition to evaluate this event. No actions were executed.';
+  if (!triggerReason && draft.trigger === 'deal.stage_changed' && context['deal.isQualified'] === true &&
+    (context['deal.hasEverBeenWon'] !== false || context['deal.wonHistoryVerified'] !== true)) {
+    triggerReason = context['deal.hasEverBeenWon'] ? 'This deal previously reached Won.' : 'This deal’s earlier stage history needs verification.';
+  }
   const conditionContext = { ...context };
+  const conditionsMatch = !draft.conditions || evaluateCondition(draft.conditions, conditionContext);
   const actions: WorkflowTestResult['actions'] = [];
   const previewLoads = new Map<string, number>();
+  let stoppedReason = triggerReason ?? (!conditionsMatch ? 'Workflow conditions did not match. Actions would be skipped.' : undefined);
   for (const [actionIndex, action] of draft.actions.entries()) {
     if (action.enabled === false) {
-      actions.push({ type: action.type, valid: true, message: 'Disabled. This action will be skipped.' });
+      actions.push({ type: action.type, valid: true, status: 'skipped', message: 'Disabled. This action will be skipped.' });
       continue;
     }
+    if (stoppedReason) { actions.push({ type: action.type, valid: true, status: 'skipped', message: stoppedReason }); continue; }
     try { await validateAction(action, trigger.entity, tenantId, context);
       const resolvedAssignment = ['create_task', 'assign_owner'].includes(action.type) ? await resolveWorkflowAssignee({
         tenantId, workflowId: id, actionIndex, target: parseAssignment(action), purpose: assignmentPurpose(action),
@@ -162,7 +179,10 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
       }) : undefined;
       const assignment = resolvedAssignment ? assignmentOutput(resolvedAssignment) : undefined;
       const targets = action.type === 'move_deal_stage' ? await resolveDealTargets(action, trigger.entity, tenantId, context) : undefined;
-      actions.push({ type: action.type, valid: true, ...(assignment ? { assignment } : {}),
+      const taskInput = action.type === 'create_task' ? await prepareWorkflowTaskInput({ action, entity: trigger.entity, tenantId, context, assignedUserId: assignment!.resolvedUserId }) : undefined;
+      const taskPreview = taskInput ? { title: taskInput.title, description: taskInput.description, priority: taskInput.priority,
+        status: 'pending' as const, dueDate: taskInput.dueDate, assignedUserId: taskInput.assignedUserId, dealIds: taskInput.dealIds ?? [] } : undefined;
+      actions.push({ type: action.type, valid: true, status: 'ready', ...(assignment ? { assignment } : {}), ...(taskPreview ? { taskPreview } : {}),
         message: assignment ? `Would assign ${assignment.resolvedUserName} (${assignment.candidateCount} eligible). ${assignment.reason}.${assignment.workload !== undefined ? ` Active workload: ${assignment.workload}${assignment.capacityLimit !== undefined ? ` / ${assignment.capacityLimit}` : ''}.` : ''} No records or assignment state changed.` : targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
           : action.type === 'send_email' ? 'Recipient, sender permissions, mailbox ownership and projected assignment are valid. No email sent.' : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
@@ -179,13 +199,14 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
         }
       }
     }
-    catch (error) { actions.push({ type: action.type, valid: false, message: safeWorkflowError(error) }); }
+    catch (error) { actions.push({ type: action.type, valid: false, status: 'failed', message: safeWorkflowError(error) }); stoppedReason = 'An earlier action needs attention. Later actions would be skipped.'; }
   }
   await validateConditionReferences(draft, tenantId);
   const rules = draft.conditions?.conditions ?? [];
-  return { trigger: { type: draft.trigger, matched: true, requiresEvent: !draft.trigger.endsWith('.created') }, conditions: { total: rules.length,
-    passed: rules.filter(rule => evaluateRule(rule, conditionContext)).length, matched: !draft.conditions || evaluateCondition(draft.conditions, conditionContext) },
-    actions, valid: draft.actions.some(action => action.enabled !== false) && actions.every(action => action.valid) };
+  return { trigger: { type: draft.trigger, matched: !triggerReason, requiresEvent: !draft.trigger.endsWith('.created'),
+    ...(stageHistoryId ? { stageHistoryId, eventId } : {}), ...(triggerReason ? { reason: triggerReason } : {}) }, conditions: { total: rules.length,
+    passed: rules.filter(rule => evaluateRule(rule, conditionContext)).length, matched: conditionsMatch },
+    actions, valid: !triggerReason && draft.actions.some(action => action.enabled !== false) && actions.every(action => action.valid) };
 }
 
 export async function validateDraft(tenantId: string, userId: string, input: unknown) {

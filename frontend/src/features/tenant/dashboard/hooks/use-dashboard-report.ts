@@ -38,7 +38,7 @@ export function useDashboard(query: DashboardQuery) {
     generation.current++;
     controller.current?.abort();
     setLoading(false);
-    setState({ key: activeKey.current, report: null, error: 'Reporting access changed. Checking your permissions…' });
+    setState({ key: activeKey.current, report: null, error: 'Your reporting access changed. Try refreshing or contact your administrator.' });
     clearPageCache();
     void Promise.allSettled([authActions.current.refreshPermissions(), authActions.current.refreshUser()]);
   }, []);

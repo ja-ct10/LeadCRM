@@ -130,3 +130,44 @@ it('locks repeated handoffs, displays a failure once, and allows retry', async (
   fireEvent.click(scratch);
   await waitFor(() => expect(onChoose).toHaveBeenCalledTimes(2));
 });
+
+it('loads every configured stage, previews named bindings and opens a stable stage identity as a draft', async () => {
+  const choices = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'p1', name: 'Sales', stages: [
+    { id: 'lead', name: 'Lead', isDefault: true }, { id: 'contacted', name: 'Contacted' },
+    { id: 'qualified', name: 'Qualified', requiredFields: ['accountId'] }, { id: 'won', name: 'Approved', isWon: true }, { id: 'lost', name: 'Declined', isLost: true },
+  ] }] };
+  const { onChoose } = setup({ loadOptions: async () => choices });
+  expect(screen.getByText('Loading pipeline templates…')).toBeTruthy();
+  const preview = await screen.findByRole('button', { name: 'Preview Sales / Contacted: Stage entry follow-up' });
+  expect(preview.getAttribute('data-template-id')).toBe('stage:entry:p1:contacted');
+  for (const stage of choices.pipelines[0].stages) expect(document.querySelector(`[data-template-id="stage:${stage.isWon ? 'won' : stage.isLost ? 'lost' : 'entry'}:p1:${stage.id}"]`)).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Unsupported workflow scenarios' }).textContent).toContain('overdue Task timers are unavailable');
+  fireEvent.click(preview);
+  expect(screen.getByRole('list', { name: 'Template steps' }).textContent).toContain('Sales / Contacted');
+  expect(screen.getByRole('region', { name: 'Template behavior' }).textContent).toContain('Superseded queued entries are skipped');
+  expect(screen.getByRole('region', { name: 'Template behavior' }).textContent).toContain('elapsed 24-hour days');
+  expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('no fallback');
+  fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
+  await waitFor(() => expect(onChoose).toHaveBeenCalledExactlyOnceWith('stage:entry:p1:contacted'));
+});
+
+it('recovers a failed options read without inventing configured stages', async () => {
+  const loadOptions = vi.fn().mockRejectedValueOnce(new Error('Pipeline choices unavailable')).mockResolvedValue({ users: [], pipelines: [{ id: 'p1', name: 'Current', stages: [{ id: 'custom', name: 'Custom review' }] }], templates: [], campaigns: [] });
+  setup({ loadOptions });
+  expect((await screen.findByRole('alert')).textContent).toContain('Pipeline choices unavailable');
+  expect(document.querySelector('[data-template-id^="stage:"]')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry pipeline templates' }));
+  await screen.findByRole('button', { name: 'Preview Current / Custom review: Stage entry follow-up' });
+  expect(screen.queryByText('Pipeline choices unavailable')).toBeNull();
+});
+
+it('blocks a selected configured template removed by a later option refresh', async () => {
+  const initialOptions = { users: [], pipelines: [{ id: 'p1', name: 'Current', stages: [{ id: 'custom', name: 'Custom review' }] }], templates: [], campaigns: [] };
+  const onChoose = vi.fn();
+  const view = render(<WorkflowCreateDialog triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} options={initialOptions} onClose={vi.fn()} onChoose={onChoose} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Current / Custom review: Stage entry follow-up' }));
+  view.rerender(<WorkflowCreateDialog triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} options={{ ...initialOptions, pipelines: [] }} onClose={vi.fn()} onChoose={onChoose} />);
+  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('no longer available'));
+  expect(screen.queryByRole('button', { name: 'Use this template' })).toBeNull();
+  expect(onChoose).not.toHaveBeenCalled();
+});

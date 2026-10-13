@@ -20,7 +20,7 @@ import {
 import { subscribePageCacheInvalidation } from '@/shared/cache/page-cache';
 import { Button } from '@/shared/components/ui/button';
 import WorkflowBuilder from './visual-workflow-builder';
-import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../services/workflow-recipes';
+import { resolveWorkflowTemplate } from '../services/workflow-stage-templates';
 const workflowOptionModules = new Set(['settings', 'field-layout', 'leads', 'contacts', 'accounts', 'deals', 'pipeline', 'pipelines', 'products', 'users', 'groups', 'roles', 'templates']);
 function conditionTriggers(triggers: TriggerDefinition[], options: WorkflowOptions) {
   return triggers.map(trigger => ({ ...trigger, fields: getWorkflowConditionFields(trigger.entity, trigger.type, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[trigger.entity]]) }));
@@ -124,11 +124,10 @@ export default function WorkflowBuilderPage() {
         if (cancelled || currentScope.current !== scope) return;
         triggerCatalog.current = metadata.triggers;
         const saved = response?.data;
-        if (!saved && recipe !== null && (!/^(0|[1-9]\d*)$/.test(recipe) || !WORKFLOW_RECIPES[Number(recipe)])) {
+        const selected = recipe === null ? undefined : resolveWorkflowTemplate(recipe, options.data);
+        if (!saved && recipe !== null && !selected) {
           throw new Error('This workflow template is unavailable. Return to workflows and choose another template.');
         }
-        const selected =
-          recipe === null ? undefined : WORKFLOW_RECIPES[Number(recipe)];
         const initial: WorkflowDraft = saved
           ? {
               name: saved.name,
@@ -139,7 +138,7 @@ export default function WorkflowBuilderPage() {
               isActive: saved.isActive,
             }
           : selected
-            ? prepareWorkflowRecipe(selected, options.data)
+            ? selected.recipe
             : {
                 name: '',
                 description: '',
@@ -202,7 +201,8 @@ export default function WorkflowBuilderPage() {
     <WorkflowBuilder
       key={`${scope}:${id ?? 'new'}:${retry}`}
       {...loaded}
-      templateIndex={!id && recipe !== null ? Number(recipe) : undefined}
+      templateIndex={!id && recipe !== null && /^(0|[1-9]\d*)$/.test(recipe) ? Number(recipe) : undefined}
+      templateIdentity={!id && recipe !== null ? recipe : undefined}
       workflowId={id}
       onCheckName={async (name, excludeId) => (await workflowsApi.nameAvailability(name, excludeId)).data.available}
       canActivate={userCan('workflows', 'canActivate')}

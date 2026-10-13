@@ -13,6 +13,7 @@ import { WorkflowRuns } from './workflow-execution-log-modal';
 import { workflowsApi } from '@/shared/services/workflows.api';
 import { contactsApi } from '@/shared/services/contacts.api';
 import { dealsApi } from '@/shared/services/deals.api';
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'viewer', tenantId: 'workspace' }, userCan: () => true }) }));
 vi.mock('@/shared/services/workflows.api', () => ({
   workflowsApi: { test: vi.fn(), getExecutions: vi.fn() },
   withWorkflowTimeout: <T,>(request: Promise<T>) => request,
@@ -66,6 +67,7 @@ describe('workflow test and activity', () => {
       expect(workflowsApi.test).toHaveBeenCalledWith(
         'saved-workflow',
         'record',
+        undefined,
       ),
     );
     expect(await screen.findByText(/Conditions do not match/)).toBeTruthy();

@@ -1,0 +1,210 @@
+// Real local API, worker, native PostgreSQL and browser; no application database or providers.
+import { isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { createRequire } from 'node:module';
+import { spawn } from 'node:child_process';
+import { randomUUID, randomBytes } from 'node:crypto';
+import { mkdirSync, createWriteStream, writeFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import assert from 'node:assert/strict';
+
+const root = resolve(import.meta.dirname, '../..');
+const output = process.env.LEADCRM_BROWSER_OUTPUT;
+assert.ok(output, 'Run through the isolated browser QA coordinator.');
+mkdirSync(output, { recursive: true });
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1');
+assert.equal(database.pathname, '/leadcrm_forms_test_2');
+const base = 'http://localhost:3027';
+Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, ALLOWED_ORIGINS: base, DIRECT_URL: process.env.DATABASE_URL });
+const require = createRequire(import.meta.url);
+const Module = require('node:module'), originalResolve = Module._resolveFilename;
+Module._resolveFilename = function(request, parent, isMain, options) {
+  return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options);
+};
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const prisma = require('../dist/backend/src/config/database.config.js').default;
+const app = require('../dist/backend/src/app.js').default;
+const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
+const { dispatchQueuedWorkflows } = require('../dist/backend/src/modules/automation/workflows/workflow-queue.js');
+const checks = [], errors = [];
+let api, frontend, browser, page, closing = false;
+try {
+  const tenantId = (await prisma.tenant.create({ data: { name: 'Integrity QA', slug: randomUUID(), status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
+  const user = (firstName, role = 'Client Admin') => prisma.user.create({ data: { tenantId, firstName, lastName: 'Integrity', email: `${randomUUID()}@camxian.com`, role, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+  const admin = await user('Admin');
+  const staffRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Integrity Staff' } });
+  await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'workflows'].map(module => ({ tenantId, roleId: staffRole.id, module, canView: true, canCreate: true, canEdit: true, ...(module === 'tasks' ? { canAssign: true, canComplete: true, canArchive: true } : {}) })) });
+  const agent = await user('Ana', staffRole.name), replacement = await user('Ben', staffRole.name);
+  for (const member of [agent, replacement]) await prisma.userRole.create({ data: { tenantId, userId: member.id, roleId: staffRole.id } });
+  const deniedRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Integrity restricted' } });
+  const denied = await user('Restricted', deniedRole.name);
+  await prisma.userRole.create({ data: { tenantId, userId: denied.id, roleId: deniedRole.id } });
+  const adminToken = (await issueAuthSession(admin)).token, staffToken = (await issueAuthSession(agent)).token, deniedToken = (await issueAuthSession(denied)).token;
+  let browserToken = adminToken, slowPermissions = false;
+  const account = await prisma.account.create({ data: { tenantId, name: 'Integrity Account', assignedUserId: agent.id } });
+  const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Integrity', lastName: 'Lead', assignedUserId: agent.id, status: 'Warm' } });
+  const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Integrity', lastName: 'Contact', assignedUserId: agent.id } });
+  const product = await prisma.productInterest.create({ data: { tenantId, name: 'Integrity Product', dealValue: 15000 } });
+  const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Integrity Pipeline' } });
+  const stages = {};
+  for (const [order, name] of ['Lead', 'Contacted', 'Qualified', 'Won', 'Lost', 'Discovery'].entries()) stages[name] = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name, order, isDefault: name === 'Lead', isWon: name === 'Won', isLost: name === 'Lost', requiredFields: [] } });
+  api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
+  const apiBase = `http://127.0.0.1:${api.address().port}/api/v1`;
+  async function call(path, method = 'GET', body, expected = 200) {
+    const response = await fetch(apiBase + path, { method, headers: { authorization: `Bearer ${adminToken}`, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+    assert.equal(response.status, expected, `${method} ${path}: ${await response.clone().text()}`);
+    return response.json();
+  }
+  const deal = (await call('/crm/deals', 'POST', { title: 'Integrity Deal', pipelineId: pipeline.id, stageId: stages.Lead.id, productInterestId: product.id, assignedUserId: agent.id, accountId: account.id, leadIds: [lead.id], contactIds: [contact.id] }, 201)).data;
+  const log = createWriteStream(resolve(output, 'frontend.log'));
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3027', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend.stdout.pipe(log); frontend.stderr.pipe(log);
+  let ready = false;
+  for (let attempt = 0; attempt < 100; attempt++) { try { if ((await fetch(base + '/login')).ok) { ready = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }
+  assert.ok(ready, 'Local frontend did not start.');
+  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  const context = await browser.newContext({ timezoneId: 'America/New_York', viewport: { width: 1440, height: 900 } });
+  await isolateBrowserContext(context);
+  await context.addCookies([{ name: 'leadcrm_token', value: adminToken, url: base, httpOnly: true, sameSite: 'Lax' }]);
+  page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
+  page.on('pageerror', error => errors.push(error.message));
+  await page.route('**/api/proxy/**', async route => {
+    const request = route.request(), url = new URL(request.url());
+    const local = `${apiBase}${url.pathname.replace('/api/proxy', '')}${url.search}`;
+    const headers = { ...request.headers(), authorization: `Bearer ${browserToken}` };
+    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: local, headers });
+    if (slowPermissions && /\/users\/[^/]+\/permissions$/.test(url.pathname)) await new Promise(done => setTimeout(done, 1500));
+    try { await route.fulfill({ response: await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 }) }); }
+    catch (error) { if (!closing && !page.isClosed() && request.failure()?.errorText !== 'net::ERR_ABORTED') errors.push(`${request.method()} ${url.pathname}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); }
+  });
+  const passed = label => { checks.push({ label }); console.log('PASS', label); };
+  async function flush() { for (let tick = 0; tick < 20; tick++) { await dispatchQueuedWorkflows(); if (!await prisma.workflowExecutionRun.count({ where: { tenantId, status: 'queued' } })) return; } throw Error('Workflow queue did not drain.'); }
+  async function move(name) { return call(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[name].id }); }
+
+  await page.goto(base + '/automation/workflows');
+  await page.getByRole('button', { name: 'Create Workflow', exact: true }).click();
+  const identity = `stage:entry:${pipeline.id}:${stages.Contacted.id}`;
+  // The preview button names identify current metadata; stable identities select the card.
+  const preview = page.locator(`[data-template-id="${identity}"]`);
+  await preview.click();
+  await page.getByRole('region', { name: 'Template setup requirements' }).waitFor();
+  await page.getByRole('button', { name: 'Use this template', exact: true }).click();
+  await page.getByRole('button', { name: 'Workflow details', exact: true }).click();
+  await page.getByLabel('Workflow name', { exact: true }).fill('Integrity stage follow-up');
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
+  const saved = page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/automation/workflows'));
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  const savedResponse = await saved; assert.equal(savedResponse.status(), 201);
+  const workflow = (await savedResponse.json()).data;
+  assert.equal(workflow.isActive, false); assert.equal(workflow.status, 'DRAFT');
+  assert.ok(workflow.conditions.conditions.some(rule => rule.field === 'deal.pipelineId' && rule.value === pipeline.id));
+  assert.ok(workflow.conditions.conditions.some(rule => rule.field === 'event.newStageId' && rule.value === stages.Contacted.id));
+  passed('Configured stage chooser → builder → persisted inactive draft keeps actual binding IDs');
+  const entered = await move('Contacted');
+  const historyId = entered.data.stageHistory.id;
+  await page.goto(base + `/automation/workflows/${workflow.id}/edit`);
+  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByLabel('Sample record').selectOption(deal.id);
+  await page.getByLabel('Recorded stage transition').selectOption(historyId);
+  await page.getByRole('button', { name: 'Run check', exact: true }).click();
+  await page.getByText('Recorded transition checked against current state. No execution or Task was created.').waitFor();
+  assert.equal(await prisma.task.count({ where: { tenantId } }), 0);
+  assert.equal(await prisma.workflowExecutionRun.count({ where: { tenantId } }), 0);
+  assert.ok(await page.getByText('Deal IDs:', { exact: true }).count());
+  passed('Historical stage preview resolves Task fields without Task, run or assignment writes');
+  await page.goto(base + '/automation/workflows');
+  const activated = page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith(`/workflows/${workflow.id}/toggle`));
+  await page.getByRole('button', { name: 'Activate workflow', exact: true }).click();
+  assert.equal((await activated).status(), 200);
+  await move('Lead'); await move('Contacted'); await flush();
+  const tasks = await prisma.task.findMany({ where: { tenantId }, include: { dealLinks: true } });
+  assert.equal(tasks.length, 1);
+  const task = tasks[0];
+  assert.equal(task.createdById, admin.id); assert.equal(task.assignedUserId, agent.id); assert.equal(task.status, 'pending'); assert.equal(task.priority, 'Medium');
+  assert.deepEqual(task.dealLinks.map(link => link.dealId), [deal.id]);
+  assert.ok(await prisma.auditLog.count({ where: { tenantId, entityType: 'Task', entityId: task.id } }));
+  assert.ok(await prisma.activity.count({ where: { tenantId, taskId: task.id } }));
+  passed('Existing activation → source stage API → real worker persists Task, creator, assignee, associations and history');
+  const beforeRuns = await prisma.workflowExecutionRun.count({ where: { tenantId } });
+  await move('Contacted'); await flush();
+  assert.equal(await prisma.task.count({ where: { tenantId } }), 1); assert.equal(await prisma.workflowExecutionRun.count({ where: { tenantId } }), beforeRuns);
+  await move('Lead'); await move('Contacted'); await flush();
+  assert.equal(await prisma.task.count({ where: { tenantId } }), 2);
+  passed('Repeated stage click produces no event; genuine later re-entry creates another Task');
+  await page.goto(base + '/automation/workflows');
+  await page.getByText('Integrity stage follow-up', { exact: true }).first().click();
+  const completedRun = page.getByRole('dialog').locator('details').filter({ has: page.locator('a[href^="/operations/taskboard?taskId="]') }).first();
+  await completedRun.locator('summary').first().click();
+  await page.getByRole('link', { name: 'Open Task' }).first().waitFor();
+  const taskHref = await page.getByRole('link', { name: 'Open Task' }).first().getAttribute('href');
+  assert.ok(taskHref.startsWith('/operations/taskboard?taskId='));
+  assert.equal(await page.getByRole('link', { name: 'Open deal', exact: true }).first().getAttribute('href'), `/crm/deals/${deal.id}`);
+  await page.goto(base + `/operations/taskboard?taskId=${task.id}`);
+  let details = page.getByRole('dialog', { name: 'Task details', exact: true });
+  await details.getByRole('link', { name: 'Integrity Deal', exact: true }).waitFor();
+  assert.equal(await details.getByRole('link', { name: 'Integrity Deal', exact: true }).getAttribute('href'), `/crm/deals/${deal.id}`);
+  passed('Workflow result Task/source links open persisted IDs; Task details link back to the Deal');
+  await call(`/operations/tasks/${task.id}`, 'PUT', { title: 'Clean server refresh', expectedUpdatedAt: task.updatedAt.toISOString() });
+  await details.getByRole('textbox', { name: /^Title/ }).waitFor();
+  await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'Clean server refresh'));
+  passed('A clean read-only Task destination refreshes after a real committed update');
+  await details.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(base + `/crm/deals/${deal.id}`);
+  await page.getByRole('tab', { name: /^Activity/ }).click();
+  await page.getByRole('button', { name: /Clean server refresh/ }).click();
+  details = page.getByRole('dialog', { name: 'Task details', exact: true });
+  await details.getByRole('textbox', { name: /^Title/ }).fill('Unsaved local title');
+  const fresh = (await call(`/operations/tasks/${task.id}`)).data;
+  await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'completed', assignedUserId: replacement.id, expectedUpdatedAt: fresh.updatedAt });
+  await details.getByText('This Task changed. Your unsaved changes are preserved. Reload the saved Task before saving.', { exact: true }).waitFor();
+  assert.equal(await details.getByRole('textbox', { name: /^Title/ }).inputValue(), 'Unsaved local title');
+  assert.equal(await details.getByRole('button', { name: 'Save changes', exact: true }).isDisabled(), true);
+  await details.getByRole('button', { name: 'Reload saved task', exact: true }).click();
+  assert.equal(await details.getByRole('textbox', { name: /^Title/ }).inputValue(), 'Clean server refresh');
+  assert.equal(await details.getByRole('combobox', { name: 'Status', exact: true }).inputValue(), 'completed');
+  passed('Real cross-view revision refresh updates clean details and preserves dirty drafts until explicit reload');
+  const current = (await call(`/operations/tasks/${task.id}`)).data;
+  await call(`/operations/tasks/${task.id}`, 'PUT', { dueDate: '2030-01-01T00:30:00.000Z', expectedUpdatedAt: current.updatedAt });
+  await page.waitForFunction(() => [...document.querySelectorAll('button')].some(button => button.textContent.trim() === '2030-01-01 08:30'));
+  passed('Task calendar stays in Asia/Manila with America/New_York browser timezone');
+  for (const theme of ['Light', 'Dark']) for (const width of [320, 390, 768, 1440]) {
+    await setAcceptanceTheme(page, theme); await page.setViewportSize({ width, height: 900 });
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+    await page.screenshot({ path: resolve(output, `task-${theme}-${width}.png`) });
+    passed(`Task details, related links and history fit ${theme} ${width}px`);
+  }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  // Observe every DOM mutation from hard navigation until permission resolution.
+  await context.addInitScript(() => {
+    window.__integrityPermissionFrames = [];
+    new MutationObserver(() => { const body = document.body?.innerText ?? ''; window.__integrityPermissionFrames.push({ protected: body.includes('Create Task'), technical: body.includes('Loading permissions') }); }).observe(document, { childList: true, subtree: true, characterData: true });
+  });
+  browserToken = staffToken; slowPermissions = true;
+  await context.addCookies([{ name: 'leadcrm_token', value: staffToken, url: base, httpOnly: true, sameSite: 'Lax' }]);
+  await page.goto(base + '/operations/taskboard');
+  await page.getByRole('status', { name: 'Loading', exact: true }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Create Task', exact: true }).count(), 0);
+  assert.equal(await page.getByText('Loading permissions…', { exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Create Task', exact: true }).waitFor();
+  assert.ok((await page.evaluate(() => window.__integrityPermissionFrames)).every(frame => !frame.technical));
+  await page.reload(); await page.getByRole('button', { name: 'Create Task', exact: true }).waitFor();
+  passed('Direct URL, hard refresh and slow staff permissions use one silent loader before protected content');
+  browserToken = deniedToken;
+  await context.addCookies([{ name: 'leadcrm_token', value: deniedToken, url: base, httpOnly: true, sameSite: 'Lax' }]);
+  await page.goto(base + '/operations/taskboard');
+  await page.getByText('You do not have permission to access this module.', { exact: true }).waitFor();
+  assert.ok((await page.evaluate(() => window.__integrityPermissionFrames)).every(frame => !frame.protected && !frame.technical));
+  passed('Restricted role never renders protected content and retains the genuine access-denied message');
+  assert.deepEqual(errors, []);
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors, database: 'Disposable native PostgreSQL', timezone: 'America/New_York' }, null, 2));
+  console.log(`Task/Workflow integrity browser: ${checks.length} checks passed; ${output}`);
+} catch (error) {
+  await page?.screenshot({ path: resolve(output, 'failure.png'), fullPage: true }).catch(() => {});
+  if (page) writeFileSync(resolve(output, 'failure-dom.txt'), await page.locator('body').innerText().catch(() => 'Page unavailable'));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors, failure: error.stack }, null, 2));
+  throw error;
+} finally {
+  closing = true; await browser?.close(); frontend?.kill();
+  if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
+  await prisma.$disconnect();
+}

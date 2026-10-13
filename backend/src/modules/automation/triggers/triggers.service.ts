@@ -38,7 +38,8 @@ export const fireDealUpdated = (params: UpdatedEvent) => updated(params, 'deal')
 export const fireAccountUpdated = (params: UpdatedEvent) => updated(params, 'account');
 export async function fireDealStageChanged(params: DealEvent & { newStageId: string; newStageName: string; isWon: boolean; isLost: boolean; prevStageId?: string }) {
   if (!params.prevStageId || params.newStageId === params.prevStageId) return;
-  const context = { 'event.previousStageId': params.prevStageId, 'event.newStageId': params.newStageId };
+  const context = { 'event.previousStageId': params.prevStageId, 'event.newStageId': params.newStageId,
+    ...(params.eventId ? { 'event.stageHistoryId': params.eventId } : {}) };
   await fire(params, 'deal.stage_changed', 'deal', params.deal.id, context);
   if (params.isWon) await fire(params, 'deal.closed_won', 'deal', params.deal.id, context);
   else if (params.isLost) await fire(params, 'deal.closed_lost', 'deal', params.deal.id, context);

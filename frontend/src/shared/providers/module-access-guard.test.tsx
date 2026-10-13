@@ -45,8 +45,28 @@ it('requires View on direct import/create routes and fails closed until grants l
   state.permissions.leads.canView = true;
   state.loaded = false;
   view.rerender(<ModuleAccessGuard><p>Import Leads</p></ModuleAccessGuard>);
-  expect(screen.getByRole('status')).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Loading' })).toBeTruthy();
+  expect(screen.getByRole('status').textContent).toBe('');
+  expect(screen.queryByText('Import Leads')).toBeNull();
   state.loaded = true;
   view.rerender(<ModuleAccessGuard><p>Import Leads</p></ModuleAccessGuard>);
   expect(screen.getByText('Import Leads')).toBeTruthy();
+});
+it.each(['/operations/taskboard', '/automation/workflows', '/crm/deals/record'])('blocks protected content during slow grant restoration at %s', path => {
+  state.path = path;
+  state.loaded = false;
+  const view = render(<ModuleAccessGuard><p>Protected content</p></ModuleAccessGuard>);
+  expect(screen.queryByText('Protected content')).toBeNull();
+  expect(screen.getAllByRole('status')).toHaveLength(1);
+  expect(screen.queryByText(/Loading permissions/)).toBeNull();
+  state.loaded = true;
+  view.rerender(<ModuleAccessGuard><p>Protected content</p></ModuleAccessGuard>);
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(screen.getByRole('alert')).toBeTruthy();
+});
+it('retains the authenticated Client Admin policy while role grants load', () => {
+  state.role = 'Client Admin'; state.loaded = false;
+  render(<ModuleAccessGuard><p>Protected content</p></ModuleAccessGuard>);
+  expect(screen.getByText('Protected content')).toBeTruthy();
+  expect(screen.queryByRole('status')).toBeNull();
 });

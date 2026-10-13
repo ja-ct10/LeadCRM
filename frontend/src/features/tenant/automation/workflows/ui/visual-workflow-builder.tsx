@@ -67,6 +67,7 @@ interface Props {
   initial: WorkflowDraft;
   workflowId?: string;
   templateIndex?: number;
+  templateIdentity?: number | string;
   initialStatus?: Workflow['status'];
   initialVersion?: number;
   triggers: TriggerDefinition[];
@@ -89,6 +90,7 @@ export default function WorkflowBuilder({
   initial,
   workflowId,
   templateIndex,
+  templateIdentity,
   initialStatus,
   initialVersion,
   triggers,
@@ -145,7 +147,7 @@ export default function WorkflowBuilder({
   const { present: document } = history,
     { draft } = document;
   const trigger = triggers.find((entry) => entry.type === draft.trigger);
-  const template = !templateDetached ? workflowTemplateDescriptor(templateIndex) : undefined;
+  const template = !templateDetached ? workflowTemplateDescriptor(templateIdentity ?? templateIndex) : undefined;
   const linkedTemplate = template?.trigger === draft.trigger && template.setup !== 'none' ? template : undefined;
   const dirty = JSON.stringify(toDraft(draft)) !== JSON.stringify(saved);
   const locked = !!readOnly || busy;
@@ -153,7 +155,7 @@ export default function WorkflowBuilder({
     (nameCheck?.name === draft.name && nameCheck.available === false ? 'A workflow with this name already exists. Choose another name.' : '');
   const issues = [
     ...editorIssues(document, triggers, definitions, options, false, savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined),
-    ...workflowTemplateSetupIssues(draft, linkedTemplate?.index, options).map(message => ({ step: 'conditions' as const, message })),
+    ...workflowTemplateSetupIssues(draft, linkedTemplate?.id, options).map(message => ({ step: 'conditions' as const, message })),
     ...(nameIssue && draft.name.trim() ? [{ step: 'details' as const, message: nameIssue }] : []),
   ];
   const actionIndex = selected?.startsWith('action:')
@@ -436,7 +438,7 @@ export default function WorkflowBuilder({
       options,
       !activate && !validateOnly,
       savedId && savedStatus !== 'DRAFT' ? saved.conditions : undefined,
-    ), ...workflowTemplateSetupIssues(draft, linkedTemplate?.index, options).map(message => ({ step: 'conditions' as const, message }))];
+    ), ...workflowTemplateSetupIssues(draft, linkedTemplate?.id, options).map(message => ({ step: 'conditions' as const, message }))];
     if (local.length) {
       select(local[0].step);
       reportError(local[0].message);
@@ -623,7 +625,7 @@ export default function WorkflowBuilder({
         )}
         {selected === 'conditions' && (
           <>
-            {linkedTemplate && <WorkflowTemplateFields draft={draft} templateIndex={linkedTemplate.index} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.index, options, patch))} onDetach={() => setTemplateDetached(true)} />}
+            {linkedTemplate && <WorkflowTemplateFields draft={draft} templateIdentity={linkedTemplate.id} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.id, options, patch))} onDetach={() => setTemplateDetached(true)} />}
             <p className="text-sm text-[var(--muted-foreground)]">
               Check these rules before any action runs. Records that do not
               match exit the workflow.
@@ -664,7 +666,7 @@ export default function WorkflowBuilder({
               )}
               entity={trigger?.entity}
               options={options}
-              stageSetup={linkedTemplate && ['pipeline-routing', 'related-deal-routing'].includes(linkedTemplate.setup) ? <WorkflowTemplateFields draft={draft} templateIndex={linkedTemplate.index} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.index, options, patch))} onDetach={() => setTemplateDetached(true)} /> : undefined}
+              stageSetup={linkedTemplate && ['pipeline-routing', 'related-deal-routing'].includes(linkedTemplate.setup) ? <WorkflowTemplateFields draft={draft} templateIdentity={linkedTemplate.id} options={options} onChange={patch => updateDraft(bindWorkflowTemplate(draft, linkedTemplate.id, options, patch))} onDetach={() => setTemplateDetached(true)} /> : undefined}
               onChange={(config) =>
                 updateDraft({
                   ...draft,

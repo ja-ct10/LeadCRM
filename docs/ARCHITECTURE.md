@@ -42,6 +42,15 @@ Committed tenant revisions drive Dashboard SSE and the independent authorization
 
 CRM record/Activity/Task/field/relationship writes also increment `DashboardRevision.content` transactionally. One `/crm/record-events` listener emits counters and coalesces the existing identity-scoped cache reads. Loaded views preserve drafts/tabs/scroll during revalidation; access loss and authoritative missing records evict cached data. See [CRM record views](crm-record-detail-ui.md).
 
+Open Task details use the same identity-scoped cache and revision invalidation.
+Clean forms refresh automatically; dirty drafts retain their input and require
+reload when their saved version changes. Task updates can send `expectedUpdatedAt`
+for a transactionally checked conflict response. Workflow stage events additionally
+verify `Deal.currentStageHistoryId` before dispatch and in Task creation, preventing
+an older queued entry from acting after leave/re-entry. Historical-event previews
+and execution share canonical Task preparation and validation. See
+[Task/Workflow integrity](workflows/task-workflow-integrity-report.md).
+
 Workflows and notification delivery use their existing background services. Notification outbox defaults and raw SQL due/lease comparisons use explicit UTC so a non-UTC database session cannot claim reminders early. Historical timestamps remain preserved. Campaign submission recovery discovers bounded expired work, finalizes known unsent recipients, and flags uncertain outcomes `INTERRUPTED` for review. Schedule Once polls bounded persisted due Campaigns every 30 seconds, validates the scheduling actor and current recipient eligibility, and calls the existing sender with approved content/source/rules. Conditional claims prevent multiple workers or concurrent cancellation/rescheduling from dispatching twice. Definite preflight failures return unclaimed schedules to Draft with a visible reason. Inbox scheduling remains a separate Gmail-backed service; read/cancel operations are owner-scoped, and cancellation competes atomically with the transition to sending. Confirmed delivery is never requeued because later history cleanup fails.
 
 ## Shared package

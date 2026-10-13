@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
+exports.WorkflowTestInputSchema = exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
 exports.missingWorkflowConditionValues = missingWorkflowConditionValues;
 exports.workflowAssignmentTarget = workflowAssignmentTarget;
 exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
@@ -112,3 +112,4 @@ function workflowOperators(type) {
     const keys = { gt: 'greater_than', gte: 'greater_than_or_equal', lt: 'less_than', lte: 'less_than_or_equal' };
     return (0, condition_operators_1.conditionOperators)('workflow', (0, condition_operators_1.conditionFieldKind)(type)).map(key => keys[key] ?? key);
 }
+exports.WorkflowTestInputSchema = zod_1.z.object({ entityId: zod_1.z.string().uuid(), stageHistoryId: zod_1.z.string().uuid().optional() }).strict();

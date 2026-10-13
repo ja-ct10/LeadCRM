@@ -8,6 +8,7 @@ import { RefreshButton } from "@/shared/components/crm/refresh-button";
 import { DataLoadingSkeleton, DataLoadingSpinner } from "@/shared/components/crm/data-view-states";
 import { useTasks } from "../use-tasks";
 import { TaskEditor, type TaskLinks } from "./task-editor";
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 
 export function RelatedTasks({ links, onCountChange, allowCreate = false, readOnly = true }: {
   links: TaskLinks; onCountChange?: (count: number | undefined) => void; allowCreate?: boolean; readOnly?: boolean;
@@ -80,7 +81,7 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
             <span className={onCountChange ? "block text-[13px] font-medium [overflow-wrap:anywhere] sm:text-sm" : "block text-sm font-medium"}>{task.title}</span>
             <span className={onCountChange ? "block text-[11px] text-muted-foreground sm:text-xs" : "block text-xs text-muted-foreground"}>
               {TASK_STATUS_LABELS[task.status]} ·{" "}
-              {new Date(task.dueDate).toLocaleString()}
+              {formatDateTime(task.dueDate)}
             </span>
             {isTaskOverdue(task) && (
               <span className="text-xs text-destructive">Overdue</span>

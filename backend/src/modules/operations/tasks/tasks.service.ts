@@ -26,6 +26,7 @@ import { tenantContext } from "../../../core/tenant/tenant-context";
 import {
   NotFoundError,
   ValidationError,
+  ConflictError,
 } from "../../../shared/errors/http-error";
 import { AppError } from "../../../shared/errors/app-error";
 import { paginate } from "../../../shared/helpers/pagination";
@@ -250,11 +251,13 @@ export async function updateTask(
   input: unknown,
 ) {
   requireScope(tenantId);
-  const { reassignReason, ...dto } = parseInput(UpdateTaskSchema, input);
+  const { reassignReason, expectedUpdatedAt, ...dto } = parseInput(UpdateTaskSchema, input);
   const result = await repo.withTaskTransaction(async (client) => {
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before || before.isArchived) throw new NotFoundError("Active task");
     await authorizeTask(client, tenantId, userId, "canEdit", dto, before);
+    if (expectedUpdatedAt && Date.parse(expectedUpdatedAt) !== before.updatedAt.getTime())
+      throw new ConflictError('This Task changed since you opened it. Reload the saved Task before saving your changes.');
     await validateReferences(tenantId, userId, dto, client, before.assignedUserId);
     if (dto.reminderAt && dto.reminderAt !== before.reminderAt?.toISOString())
       throw new ValidationError("Task reminder delivery is not available.");

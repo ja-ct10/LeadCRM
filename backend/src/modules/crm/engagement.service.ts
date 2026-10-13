@@ -70,6 +70,7 @@ export async function cancelOpenDeals(tx: Tx, tenantId: string, actorId: string,
     if (lost.length !== 1) continue;
     const updated = await tx.deal.update({ where: { tenantId, id: deal.id }, data: { stageId: lost[0].id, closedAt: occurredAt, lostReason: reason, stageChangedAt: occurredAt } });
     const history = await tx.dealStageHistory.create({ data: { tenantId, dealId: deal.id, previousStageId: deal.stageId, newStageId: lost[0].id, movedById: actorId, note: reason, movedAt: occurredAt } });
+    await tx.deal.update({ where: { tenantId, id: deal.id }, data: { currentStageHistoryId: history.id } });
     await tx.activity.create({ data: { tenantId, dealId: deal.id, createdById: actorId, type: 'stage_change', title: `Deal moved from ${deal.stage.name} to ${lost[0].name}`, description: reason } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.stage_changed', entityType: 'Deal', entityId: deal.id, metadata: { source: 'customer_cancellation', previousStageId: deal.stageId, newStageId: lost[0].id } } });
     await fireDealStageChanged({ tenantId, actorId, eventId: history.id, deal: updated, prevStageId: deal.stageId, newStageId: lost[0].id, newStageName: lost[0].name, isWon: false, isLost: true });

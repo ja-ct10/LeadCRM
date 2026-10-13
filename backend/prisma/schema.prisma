@@ -654,6 +654,7 @@ model Deal {
   closingValues Json @default("{}")
   closingSnapshot Json?
   stageChangedAt DateTime?
+  currentStageHistoryId String? // internal identity of the current persisted stage entry
   lostReason        String?
   leadSource        String?
   industry          String?

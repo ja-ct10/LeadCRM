@@ -9,7 +9,7 @@ import { ValidationError } from '../../../shared/errors/http-error';
 import { entityContext } from './workflows.repository';
 import { interruptWorkflowRun } from './workflow-interruption';
 
-const metadata = ['event.previousStageId', 'event.newStageId', 'event.previousStatus', 'event.newStatus', 'event.changedFields'];
+const metadata = ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields'];
 
 /** Snapshot the recipients in the source transaction. A replay never discovers new workflows. */
 export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, params: WorkflowFireParams) {

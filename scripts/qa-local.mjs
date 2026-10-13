@@ -20,7 +20,7 @@ const filter = process.argv.find(arg => arg.startsWith('--filter='))?.slice(9);
 const exclude = process.argv.find(arg => arg.startsWith('--exclude='))?.slice(10).split(',').filter(Boolean) ?? [];
 const testNamePattern = process.argv.find(arg => arg.startsWith('--testNamePattern='))?.slice(18);
 const selectedNames = testNamePattern ? new RegExp(testNamePattern) : undefined;
-const nativeBrowserScripts = ['verify-crm-rbac-browser.mjs', 'verify-tasks-browser.mjs', 'verify-custom-fields-browser.mjs', 'verify-custom-fields-inline-browser.mjs', 'verify-ui-fixes-browser.mjs', 'verify-ui-polish-browser.mjs'];
+const nativeBrowserScripts = ['verify-crm-rbac-browser.mjs', 'verify-tasks-browser.mjs', 'verify-task-workflow-integrity-browser.mjs', 'verify-custom-fields-browser.mjs', 'verify-custom-fields-inline-browser.mjs', 'verify-ui-fixes-browser.mjs', 'verify-ui-polish-browser.mjs'];
 const records = [];
 const commands = [];
 let sequence = 0;

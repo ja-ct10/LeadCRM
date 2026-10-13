@@ -261,6 +261,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
   // Destructure to exclude fields that shouldn't be copied
   const {
     id: _id, createdAt: _c, updatedAt: _u, closedAt: _cl, lostReason: _lr,
+    currentStageHistoryId: _entry,
     isArchived: _a, deletedAt: _d,
     // Exclude relation fields that Prisma won't accept in create
     stage: _stage, pipeline: _pipeline, organization: _org, assignedUser: _au,

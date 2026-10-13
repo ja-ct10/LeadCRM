@@ -81,7 +81,7 @@ exports.CreateTaskSchema = taskFields
 });
 exports.UpdateTaskSchema = taskFields
     .partial()
-    .extend({ reassignReason: zod_1.z.string().trim().max(1000).optional() })
+    .extend({ reassignReason: zod_1.z.string().trim().max(1000).optional(), expectedUpdatedAt: instant.optional() })
     .strict()
     .superRefine((data, ctx) => {
     validateDealWrites(data, ctx);

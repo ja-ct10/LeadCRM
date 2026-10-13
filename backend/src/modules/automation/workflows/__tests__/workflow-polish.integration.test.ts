@@ -169,7 +169,9 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     const workflow = await create({ trigger: 'deal.stage_changed' });
     for (const flags of [{ hasEverBeenWon: true }, { wonHistoryVerified: false }]) {
       const deal = await newDeal({ stageId: qualified.id, ...flags });
-      await scope(() => fireDealStageChanged({ tenantId, actorId: actor.id, eventId: randomUUID(), deal, newStageId: qualified.id, newStageName: 'Qualified', prevStageId: lost.id, isWon: false, isLost: false }));
+      const history = await prisma.dealStageHistory.create({ data: { tenantId, dealId: deal.id, previousStageId: lost.id, newStageId: qualified.id, movedById: actor.id } });
+      await prisma.deal.update({ where: { tenantId, id: deal.id }, data: { currentStageHistoryId: history.id } });
+      await scope(() => fireDealStageChanged({ tenantId, actorId: actor.id, eventId: history.id, deal, newStageId: qualified.id, newStageName: 'Qualified', prevStageId: lost.id, isWon: false, isLost: false }));
     }
     expect((await runs(workflow.id)).every(r => r.status === 'skipped')).toBe(true);
     expect(await runs(workflow.id)).toHaveLength(2);

@@ -32,7 +32,7 @@ export const workflowsApi = {
   toggle: (id: string, isActive: boolean) => apiClient.patch<WorkflowResponse>(`/automation/workflows/${id}/toggle`, { isActive }),
   archive: (id: string) => apiClient.patch<{success:boolean}>(`/automation/workflows/${id}/archive`),
   getExecutions: (id: string, page = 1, limit = 25) => apiClient.get<WorkflowExecutionsResponse>(`/automation/workflows/${id}/executions?page=${page}&limit=${limit}`),
-  test: (id: string, entityId: string) => withWorkflowTimeout(apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId })),
+  test: (id: string, entityId: string, stageHistoryId?: string) => withWorkflowTimeout(apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId, ...(stageHistoryId ? { stageHistoryId } : {}) })),
   getActions: () => apiClient.get<{success:boolean;data:ActionDefinition[]}>('/automation/actions'),
   getTriggers: () => apiClient.get<{success:boolean;data:TriggerDefinition[]}>('/automation/triggers'),
 };

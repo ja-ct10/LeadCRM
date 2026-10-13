@@ -17,7 +17,9 @@ import {
 import { Eye, Edit, Archive } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
-import { taskRecordOptions } from '../task-relations';
+import { taskRecordHref, taskRecordOptions } from '../task-relations';
+import Link from 'next/link';
+import { useHasPermission } from '@/shared/hooks/use-permissions';
 interface Props {
   tasks: TaskRecord[];
   columns: ColumnConfigItem[];
@@ -57,26 +59,32 @@ export function TaskTable({
   onColumnWidthChange,
 }: Props) {
   const selectable = canEdit || canArchive || canComplete || canAssign;
-  const relation = (text?: string | null, context?: string) =>
+  const readableRecords = { lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'),
+    deal: useHasPermission('deals.view'), account: useHasPermission('accounts.view') };
+  const relation = (text?: string | null, context?: string, href?: string) =>
     text ? (
-      <span
+      <Link
+        href={href!}
+        onClick={event => event.stopPropagation()}
         className="inline-flex max-w-48 truncate rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary"
         title={context ?? text}
       >
         {text}
-      </span>
+      </Link>
     ) : (
       <span className="text-muted-foreground">—</span>
     );
   const person = (value?: { firstName: string; lastName: string } | null) =>
     value ? value.firstName + " " + value.lastName : undefined;
   const relations = (task: TaskRecord, kind: 'lead' | 'contact' | 'deal' | 'account') => {
+    if (!readableRecords[kind]) return <span className="text-muted-foreground">—</span>;
     const direct = taskRecordOptions(task, kind);
     const context = (task.relatedRecords ?? []).filter(row => row.kind === kind && !direct.some(option => option.id === row.id));
     const labels = [...direct.map(row => row.label), ...context.map(row => row.label)];
     return (
       <span className="inline-flex min-w-0 items-center gap-1" title={context.length ? context.map(row => `${row.label} — via ${row.via}`).join('\n') : undefined}>
-        {relation(labels[0], !direct.length && context[0] ? `${context[0].label} — via ${context[0].via}` : undefined)}
+        {relation(labels[0], !direct.length && context[0] ? `${context[0].label} — via ${context[0].via}` : undefined,
+          labels.length ? taskRecordHref(kind, direct[0]?.id ?? context[0].id) : undefined)}
         {labels.length > 1 && (
           <button
             type="button"

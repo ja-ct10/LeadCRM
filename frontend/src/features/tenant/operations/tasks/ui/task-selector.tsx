@@ -161,10 +161,10 @@ export function TaskSelector(props: TaskSelectorProps) {
     organizations,
   ]);
   const labelFor = (id: string) =>
+    selectedLabels.find((option) => option.id === id)?.label ||
+    (!props.multiple && selectedIds[0] === id ? selectedLabel : undefined) ||
     options.find((option) => option.id === id)?.label ||
     selected[id] ||
-    selectedLabels.find((option) => option.id === id)?.label ||
-    (!props.multiple ? selectedLabel : undefined) ||
     "Selected record";
   const caption = selectedIds.length
     ? labelFor(selectedIds[0]) +

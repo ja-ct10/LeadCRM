@@ -9,6 +9,8 @@ import { actionEntity, validateAction } from './action-validation';
 import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, completeWorkflowAssignment, assignmentOutput } from '../assignment/workflow-assignment.service';
 import { createTask } from '../../operations/tasks/tasks.service';
 import { resolveTaskDealIds } from './action-task-deals';
+import { prepareWorkflowTaskInput } from './action-task-input';
+import { assertCurrentStageEntry, isSupersededStageEntry } from '../workflows/workflow-stage-entry';
 import { sendSms, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { fenceWorkflowLease, isWorkflowLeaseLost, workflowLeaseWrite } from '../workflows/workflow-lease';
 import { smsRecipient } from './action-sms';
@@ -22,15 +24,17 @@ import { updateContact as updateClientProfile } from '../../crm/contacts-v2/cont
 import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
 import prisma from '../../../config/database.config';
 
-type ActionResult = { success: boolean; output?: Record<string, unknown>; error?: string };
+export type ActionResult = { success: boolean; skipped?: true; output?: Record<string, unknown>; error?: string };
 export function safeWorkflowError(error: unknown): string {
   return error instanceof AppError ? error.message : 'The action could not complete. Check the record and integration, then try again.';
 }
-export async function dispatchAction(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, actorId: string, execution?: { workflowId: string; actionIndex: number; stepId?: string }): Promise<ActionResult> {
+export async function dispatchAction(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, actorId: string, execution?: { workflowId: string; actionIndex: number; stepId?: string; stageHistoryId?: string }): Promise<ActionResult> {
   let assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>> | undefined;
+  let knownResult: ActionResult | undefined;
   let smsAttempted = false;
   try {
     const entity = actionEntity(context);
+    if (execution?.stageHistoryId) await assertCurrentStageEntry(tenantId, String(context['deal.id']), execution.stageHistoryId);
     await validateAction(action, entity, tenantId, context);
     const config = action.config;
     const entityId = String(context[`${entity}.id`]);
@@ -39,16 +43,15 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
       recordOwnerId: context[`${entity}.assignedUserId`] as string | undefined, entity, entityId, ...execution,
     }) : undefined;
     if (action.type === 'create_task') {
-      const values = await resolveMessageValues(`${config.title} ${config.description ?? ''}`, tenantId, entity, context);
-      const taskInput = { requestId: execution?.stepId, title: render(String(config.title).trim(), values, false), description: config.description ? render(String(config.description).trim(), values, false) : undefined,
-        priority: (config.priority || 'Medium') as 'Low' | 'Medium' | 'High', status: 'pending',
-        dueDate: new Date(Date.now() + (typeof config.dueDaysFromNow === 'number' ? config.dueDaysFromNow : 3) * 86400000).toISOString(),
-        assignedUserId: assignment!.resolvedUserId,
-        dealIds: await resolveTaskDealIds(action, entity, tenantId, context) };
+      const taskInput = await prepareWorkflowTaskInput({ action, entity, tenantId, context, assignedUserId: assignment!.resolvedUserId, requestId: execution?.stepId });
       if (execution?.stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify(taskInput)) } }));
       const task = await createTask(tenantId, actorId, taskInput,
-        client => resolveTaskDealIds(action, entity, tenantId, context, client));
-      return { success: true, output: { taskId: task.id, ...assignmentOutput(assignment!) } };
+        async client => {
+          if (execution?.stageHistoryId) await assertCurrentStageEntry(tenantId, String(context['deal.id']), execution.stageHistoryId, client);
+          return resolveTaskDealIds(action, entity, tenantId, context, client);
+        });
+      knownResult = { success: true, output: { taskId: task.id, ...assignmentOutput(assignment!) } };
+      return knownResult;
     }
     if (action.type === 'send_sms') {
       const recipient = await smsRecipient(action, entity, tenantId, context);
@@ -88,9 +91,15 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     }
     await createActivity(tenantId, actorId, { type: 'workflow', title: action.type === 'assign_owner' ? 'Workflow assigned agent' : 'Workflow updated record fields',
       ...(entity === 'lead' ? { leadId: entityId } : entity === 'contact' ? { contactId: entityId } : entity === 'account' ? { accountId: entityId } : { dealId: entityId }) });
-    return { success: true, output: { entityId, updatedFields: Object.keys(update), ...(assignment ? assignmentOutput(assignment) : {}) } };
-  } catch (error) { if (isWorkflowLeaseLost(error)) throw error; return { success: false, error: safeWorkflowError(error), ...(error instanceof AppError && error.code === 'GMAIL_OUTCOME_UNKNOWN' || error instanceof SmsSubmissionError && error.outcome === 'unconfirmed' || smsAttempted && (!(error instanceof AppError) || error.statusCode >= 500) ? { output: { outcomeUnknown: true } } : assignment ? { output: assignmentOutput(assignment) } : {}) }; }
-  finally { if (assignment) await completeWorkflowAssignment(tenantId, assignment); }
+    knownResult = { success: true, output: { entityId, updatedFields: Object.keys(update), ...(assignment ? assignmentOutput(assignment) : {}) } };
+    return knownResult;
+  } catch (error) { if (isWorkflowLeaseLost(error)) throw error;
+    if (isSupersededStageEntry(error)) return { success: false, skipped: true, output: { reason: error.message } };
+    return { success: false, error: safeWorkflowError(error), ...(error instanceof AppError && error.code === 'GMAIL_OUTCOME_UNKNOWN' || error instanceof SmsSubmissionError && error.outcome === 'unconfirmed' || smsAttempted && (!(error instanceof AppError) || error.statusCode >= 500) ? { output: { outcomeUnknown: true } } : assignment ? { output: assignmentOutput(assignment) } : {}) }; }
+  finally { if (assignment) try { await completeWorkflowAssignment(tenantId, assignment); }
+    catch { if (knownResult) knownResult.output = { ...knownResult.output, assignmentCleanupPending: true,
+      cleanupWarning: 'The action was saved. Assignment capacity cleanup is pending; its temporary reservation will expire.' }; }
+  }
 }
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, stepId?: string): Promise<Record<string, unknown>> {
   const entity = actionEntity(context);

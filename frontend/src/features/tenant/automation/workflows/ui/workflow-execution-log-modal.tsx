@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { toast } from 'sonner';
 import type { Workflow, WorkflowExecutionRun } from '@leadcrm/shared';
 import { WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared';
@@ -118,6 +119,7 @@ function runStatusClass(status: string) {
 }
 
 export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0, onLoadingChange }: { workflowId: string; layout?: 'inline' | 'panel'; refreshVersion?: number; onLoadingChange?: (loading: boolean) => void }) {
+  const { userCan } = useAuth();
   const [runs, setRuns] = useState<WorkflowExecutionRun[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -191,6 +193,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                     ? formatDateTime(run.completedAt, { seconds: true })
                     : 'In progress or interrupted — review before replay'}
                 </p>
+                {run.entityId && ['lead', 'contact', 'account', 'deal'].includes(run.entityType) && userCan(`${run.entityType}s`, 'canView') && <Link className="inline-flex rounded text-sm text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" href={`/crm/${run.entityType}s/${encodeURIComponent(run.entityId)}`}>Open {run.entityType}</Link>}
                 {run.errorMessage && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{run.errorMessage}</p>}
                 {run.definitionSnapshot ? <details className="min-w-0 text-sm">
                   <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">Definition used in this run{run.workflowVersion != null ? ` · v${run.workflowVersion}` : ''}</summary>
@@ -202,16 +205,13 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                       {step.stepIndex + 1}. {workflowActionLabel(step.actionType)} —{' '}
                       {step.status}
                       {typeof step.output?.resolvedUserId === 'string' && <p className="mt-1 text-xs text-muted-foreground">
-                        {step.status === 'failed' ? 'Selected assignee:' : 'Assigned to'} {typeof step.output.resolvedUserName === 'string' ? step.output.resolvedUserName : step.output.resolvedUserId}
+                        {['success', 'completed'].includes(step.status) ? 'Assigned to' : 'Selected assignee:'} {typeof step.output.resolvedUserName === 'string' ? step.output.resolvedUserName : step.output.resolvedUserId}
                         {typeof step.output.strategy === 'string' && executionAssignmentMethods.has(step.output.strategy) && ` · ${String(step.output.assignmentTargetName ?? step.output.assignmentTargetType)} · ${executionAssignmentMethods.get(step.output.strategy)}`}
                       </p>}
-                      {typeof step.output?.resolvedUserId === 'string' && typeof step.output.reason === 'string' && <p className="mt-1 text-xs text-muted-foreground">{step.output.reason}</p>}
+                      {typeof step.output?.reason === 'string' && <p className="mt-1 text-xs text-muted-foreground">{step.output.reason}</p>}
                       {typeof step.output?.workload === 'number' && <p className="mt-1 text-xs text-muted-foreground">Workload before assignment: {step.output.workload}{typeof step.output.capacityLimit === 'number' ? ` / ${step.output.capacityLimit}` : ''}</p>}
-                      {step.output?.reason === 'Action disabled' && (
-                        <p className="text-sm text-[var(--muted-foreground)]">
-                          Action disabled
-                        </p>
-                      )}
+                      {typeof step.output?.taskId === 'string' && userCan('tasks', 'canView') && <Link className="mt-2 inline-flex rounded text-sm text-primary underline underline-offset-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary" href={`/operations/taskboard?taskId=${encodeURIComponent(step.output.taskId)}`}>Open Task</Link>}
+                      {typeof step.output?.cleanupWarning === 'string' && <p className="mt-1 text-xs text-muted-foreground">{step.output.cleanupWarning}</p>}
                       {step.error && (
                         <p className="text-red-600 dark:text-red-400">
                           {step.error}

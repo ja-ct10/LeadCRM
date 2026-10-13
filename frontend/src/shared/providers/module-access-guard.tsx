@@ -2,6 +2,7 @@
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
 import type { PermissionAction } from '@leadcrm/shared';
+import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 
 export function requiredRoutePermission(path: string): [string, PermissionAction] | null {
   if (path.startsWith('/settings') || path.startsWith('/help') || path === '/inbox' || path === '/notifications') return null;
@@ -23,7 +24,7 @@ export function ModuleAccessGuard({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const { userCan, isPermissionsLoaded, user } = useAuth();
   const required = requiredRoutePermission(path);
-  if (required && !isPermissionsLoaded && user?.role !== 'Client Admin') return <p role="status">Loading permissions…</p>;
+  if (required && !isPermissionsLoaded && user?.role !== 'Client Admin') return <DataLoadingSpinner label="Loading" hideLabel />;
   if (required && !userCan(...required)) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
   return <>{children}</>;
 }

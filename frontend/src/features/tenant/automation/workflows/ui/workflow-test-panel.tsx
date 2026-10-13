@@ -1,24 +1,37 @@
 'use client';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { TriggerDefinition, WorkflowTestResult } from '@leadcrm/shared';
 import { contactsApi } from '@/shared/services/contacts.api';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
-import { dealsApi } from '@/shared/services/deals.api';
+import { dealsApi, type DealResponse } from '@/shared/services/deals.api';
 import { companiesApi } from '@/shared/services/companies.api';
 import { workflowsApi, withWorkflowTimeout } from '@/shared/services/workflows.api';
 import { Button } from '@/shared/components/ui/button';
 import { Input } from '@/shared/components/ui/input';
 import { workflowControl } from './workflow-fields';
 import { workflowActionLabel } from '../services/workflow-editor';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
+import { useAuth } from '@/store/AuthContext';
+
+type StageHistory = NonNullable<DealResponse['data']['stageHistories']>[number];
+interface WorkflowTestPanelProps {
+  workflowId: string;
+  trigger: TriggerDefinition;
+}
 
 export function WorkflowTestPanel({
   workflowId,
   trigger,
-}: {
-  workflowId: string;
-  trigger: TriggerDefinition;
-}) {
+}: WorkflowTestPanelProps) {
+  const { user } = useAuth();
+  const identity = `${user?.tenantId ?? ''}:${user?.id ?? ''}:${workflowId}:${trigger.type}`;
+  const generation = useRef(0);
+  const stageEvent = ['deal.stage_changed', 'deal.closed_won', 'deal.closed_lost'].includes(trigger.type);
+  const [histories, setHistories] = useState<StageHistory[]>([]);
+  const [stageHistoryId, setStageHistoryId] = useState('');
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState('');
   const [records, setRecords] = useState<Array<{ id: string; name: string }>>(
     [],
   );
@@ -35,8 +48,11 @@ export function WorkflowTestPanel({
     let cancelled = false;
     setLoading(true);
     setSelected('');
+    setRecords([]);
     setError('');
     setResult(null);
+    setTesting(false);
+    generation.current++;
     const timer = setTimeout(async () => {
       try {
         const query = { page, limit: 25, search, archived: false };
@@ -73,21 +89,37 @@ export function WorkflowTestPanel({
     }, 250);
     return () => {
       cancelled = true;
+      generation.current++;
       clearTimeout(timer);
     };
-  }, [trigger.entity, search, page, retry]);
+  }, [identity, trigger.entity, search, page, retry]);
+  useEffect(() => {
+    let cancelled = false;
+    setHistories([]); setStageHistoryId(''); setHistoryError(''); setHistoryLoading(false);
+    if (!stageEvent || !selected) return;
+    setHistoryLoading(true);
+    withWorkflowTimeout(dealsApi.get(selected)).then(response => {
+      if (!cancelled) setHistories((response.data.stageHistories ?? []).filter(history => history.previousStage && history.previousStage.id !== history.newStage.id));
+    }).catch(failure => {
+      if (!cancelled) setHistoryError(failure instanceof Error ? failure.message : 'Unable to load recorded stage transitions.');
+    }).finally(() => { if (!cancelled) setHistoryLoading(false); });
+    return () => { cancelled = true; };
+  }, [identity, selected, stageEvent, retry]);
   async function test() {
+    if (testing) return;
+    const current = ++generation.current;
     setTesting(true);
     setError('');
     setResult(null);
     try {
-      setResult((await workflowsApi.test(workflowId, selected)).data);
+      const response = await workflowsApi.test(workflowId, selected, stageHistoryId || undefined);
+      if (generation.current === current) setResult(response.data);
     } catch (failure) {
-      setError(
+      if (generation.current === current) setError(
         failure instanceof Error ? failure.message : 'Unable to test workflow.',
       );
     } finally {
-      setTesting(false);
+      if (generation.current === current) setTesting(false);
     }
   }
   return (
@@ -95,8 +127,8 @@ export function WorkflowTestPanel({
       <p className="text-sm text-[var(--muted-foreground)]">
         Check the saved workflow against a real{' '}
         {trigger.entity}. No
-        actions are executed and no messages are sent. This does not simulate a
-        new CRM event.
+        actions are executed and no messages are sent. Recorded transitions are
+        checked against current record values; this does not perform a future transition.
       </p>
       <Input
         aria-label="Search test records"
@@ -136,6 +168,18 @@ export function WorkflowTestPanel({
           )}
         </label>
       )}
+      {stageEvent && selected && <div className="space-y-2">
+        <label className="block text-sm">Recorded stage transition
+          <select className={workflowControl} value={stageHistoryId} disabled={testing || historyLoading || !!historyError} onChange={event => { setStageHistoryId(event.target.value); setResult(null); }}>
+            <option value="">Current record check only</option>
+            {histories.map(history => <option key={history.id} value={history.id}>{history.previousStage!.name} → {history.newStage.name} · {formatDateTime(history.movedAt, { seconds: true })}</option>)}
+          </select>
+        </label>
+        {historyLoading && <TableLoadingState label="Loading recorded transitions…" />}
+        {historyError && <p role="alert" className="text-sm text-destructive">{historyError}</p>}
+        {!historyLoading && !historyError && !histories.length && <p className="text-sm text-muted-foreground">No recorded stage transitions are available. A current record check cannot match stage-event conditions.</p>}
+        <p className="text-sm text-muted-foreground">Choose a recorded transition to evaluate its event conditions. A superseded entry is skipped.</p>
+      </div>}
       <div className="flex items-center gap-2">
         <Button
           variant="outline"
@@ -164,7 +208,7 @@ export function WorkflowTestPanel({
         </div>
       )}
       <Button
-        disabled={!selected || testing || loading}
+        disabled={!selected || testing || loading || historyLoading}
         onClick={() => void test()}
       >
         {testing ? 'Checking…' : 'Run check'}
@@ -180,9 +224,9 @@ export function WorkflowTestPanel({
               : 'Configuration needs attention'}
           </h3>
           <p className="text-sm">
-            {result.trigger.matched
+            {result.trigger.reason ?? (result.trigger.matched
               ? 'Sample record matches the trigger’s record type.'
-              : 'Sample record does not match the trigger’s record type.'}
+              : 'Sample record does not match the trigger’s record type.')}
           </p>
           <p className="text-sm">
             {result.conditions.matched
@@ -190,12 +234,21 @@ export function WorkflowTestPanel({
               : 'Conditions do not match — actions would be skipped.'}{' '}
             ({result.conditions.passed}/{result.conditions.total} rules match)
           </p>
-          {result.trigger.requiresEvent && <p className="text-sm">This check uses current record values. The workflow runs only after a matching update or stage transition.</p>}
+          {result.trigger.stageHistoryId && <p className="text-sm">Recorded transition checked against current state. No execution or Task was created.</p>}
+          {result.trigger.requiresEvent && !result.trigger.stageHistoryId && <p className="text-sm">This check uses current record values. The workflow runs only after a matching update or stage transition.</p>}
           <ol className="space-y-2 text-sm">
             {result.actions.map((action, index) => (
               <li key={index}>
                 {index + 1}. {workflowActionLabel(action.type)}:{' '}
                 {action.message}
+                {action.taskPreview && <dl className="mt-2 space-y-1 rounded-lg bg-muted/40 p-3 [overflow-wrap:anywhere]">
+                  <div><dt className="inline font-medium">Title: </dt><dd className="inline">{action.taskPreview.title}</dd></div>
+                  {action.taskPreview.description && <div><dt className="inline font-medium">Description: </dt><dd className="inline whitespace-pre-wrap">{action.taskPreview.description}</dd></div>}
+                  <div><dt className="inline font-medium">Priority / status: </dt><dd className="inline">{action.taskPreview.priority} / {action.taskPreview.status}</dd></div>
+                  <div><dt className="inline font-medium">Due (Asia/Manila): </dt><dd className="inline">{formatDateTime(action.taskPreview.dueDate)}. Calculated from this check; execution uses its own start time.</dd></div>
+                  <div><dt className="inline font-medium">Assigned Agent: </dt><dd className="inline">{action.assignment?.resolvedUserName ?? action.taskPreview.assignedUserId}</dd></div>
+                  <div><dt className="inline font-medium">Deal IDs: </dt><dd className="inline">{action.taskPreview.dealIds.join(', ')}</dd></div>
+                </dl>}
               </li>
             ))}
           </ol>

@@ -9,7 +9,11 @@ async function visibleTaskContext(req: Request, tasks: TaskRecord[]): Promise<Ta
   return tasks.map(task => ({
     ...task,
     relatedRecords: task.relatedRecords?.filter(record =>
-      hasModulePermission(permissions, `${record.kind}s`, "canView")),
+      hasModulePermission(permissions, `${record.kind}s`, "canView")).map(record => {
+        const source = /^(Lead|Contact|Deal|Account):/.exec(record.via)?.[1];
+        return source && !hasModulePermission(permissions, `${source.toLowerCase()}s`, 'canView')
+          ? { ...record, via: `Related ${source}` } : record;
+      }),
     ...(!hasModulePermission(permissions, 'deals', 'canView') ? { deals: [], deal: null } : {}),
     ...(!hasModulePermission(permissions, 'leads', 'canView') ? { leads: [], lead: null } : {}),
     ...(!hasModulePermission(permissions, 'contacts', 'canView') ? { contacts: [], contact: null } : {}),

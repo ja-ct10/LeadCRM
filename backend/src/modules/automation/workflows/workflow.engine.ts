@@ -11,7 +11,8 @@ import { ValidationError, NotFoundError } from '../../../shared/errors/http-erro
 import * as repo from './workflows.repository';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { evaluateCondition } from './workflow-conditions';
-import { dispatchAction, safeWorkflowError } from '../actions/action-dispatcher';
+import { dispatchAction, safeWorkflowError, type ActionResult } from '../actions/action-dispatcher';
+import { isStageEvent, workflowStageEvent, assertCurrentStageEntry, isSupersededStageEntry } from './workflow-stage-entry';
 import { assertWorkflowPermissions } from '../actions/action-permissions';
 import { validateConditionReferences, validateWorkflow } from './workflow-validation';
 export { evaluateCondition } from './workflow-conditions';
@@ -39,14 +40,13 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
   if (['deal.stage_changed', 'deal.closed_won', 'deal.closed_lost'].includes(params.triggerType) &&
     (typeof params.context['event.previousStageId'] !== 'string' || typeof params.context['event.newStageId'] !== 'string' || params.context['event.previousStageId'] === params.context['event.newStageId'])) return;
   const currentContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
-  if (!currentContext) throw new NotFoundError('Triggering record');
-  const context = prepared?.eventContext ? { ...prepared.eventContext } : currentContext;
+  if (!currentContext && !prepared) throw new NotFoundError('Triggering record');
+  const context = prepared?.eventContext ? { ...prepared.eventContext } : currentContext ?? { [`${trigger.entity}.id`]: params.entityId };
   // Only event metadata is accepted from emitters; saved record values remain authoritative.
-  for (const key of ['event.previousStageId', 'event.newStageId', 'event.previousStatus', 'event.newStatus', 'event.changedFields']) if (key in params.context) context[key] = params.context[key];
-  if (context['event.newStageId'] && context['event.newStageId'] !== currentContext['deal.stageId']) return;
+  for (const key of ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields']) if (key in params.context) context[key] = params.context[key];
   if (params.triggerType.endsWith('.status_changed')) {
     const previous = params.context['event.previousStatus'], next = params.context['event.newStatus'];
-    if (!CRM_STATUSES.includes(previous as never) || !CRM_STATUSES.includes(next as never) || previous === next || next !== currentContext[trigger.entity + '.status']) return;
+    if (!CRM_STATUSES.includes(previous as never) || !CRM_STATUSES.includes(next as never) || previous === next || next !== currentContext?.[trigger.entity + '.status']) return;
   }
   const eventId = params.eventId ?? (params.triggerType.endsWith('.created') ? `${params.triggerType}:${params.entityId}` : undefined);
   if (!eventId || eventId.length > 500) throw new ValidationError('A stable event identifier is required for automation.');
@@ -71,11 +71,20 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
       let errorMessage: string | undefined;
       let recordedSteps = 0;
       let pendingStepId: string | undefined;
+      const stageHistoryId = isStageEvent(params.triggerType)
+        ? String(context['event.stageHistoryId'] ?? (eventId.startsWith(`${params.triggerType}:`) ? eventId.slice(params.triggerType.length + 1) : '')) : undefined;
       try {
         const parsed = WorkflowDraftSchema.safeParse(await compatibleWorkflow({ name: workflow.name, description: workflow.description, trigger: workflow.trigger,
           conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive }, params.tenantId));
         if (!parsed.success) throw new ValidationError('This workflow uses an invalid configuration. Edit and save it before activating.');
         const draft: WorkflowDraft = parsed.data;
+        if (stageHistoryId !== undefined) {
+          const recorded = await workflowStageEvent(params.tenantId, params.entityId, params.triggerType, stageHistoryId);
+          if (recorded.eventId !== eventId) throw new ValidationError('The workflow event identifier does not match its recorded stage transition.');
+          Object.assign(context, recorded.context);
+          try { await assertCurrentStageEntry(params.tenantId, params.entityId, stageHistoryId); }
+          catch (error) { if (!isSupersededStageEntry(error)) throw error; status = 'skipped'; errorMessage = error.message; }
+        }
         await validateConditionReferences(draft, params.tenantId);
         if (draft.conditions && !evaluateCondition(draft.conditions, context)) status = 'skipped';
         if (params.triggerType === 'deal.stage_changed' && context['deal.isQualified'] === true &&
@@ -99,15 +108,16 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
             continue;
           }
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
-          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime())) status = 'skipped';
+          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime())) { status = 'skipped'; errorMessage = 'Workflow authorization or definition changed before the action.'; }
           const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
           // A stage follow-up belongs to this entry into the stage. Do not continue after moving away.
-          if (status === 'completed' && params.triggerType === 'deal.stage_changed' && (!freshContext || freshContext['deal.stageId'] !== context['event.newStageId'])) status = 'skipped';
+          if (status === 'completed' && stageHistoryId) try { await assertCurrentStageEntry(params.tenantId, params.entityId, stageHistoryId); }
+          catch (error) { if (!isSupersededStageEntry(error)) throw error; status = 'skipped'; errorMessage = error.message; }
           if (status === 'completed' && freshContext && draft.conditions?.conditions.some(rule => rule.field === 'deal.hasEverBeenWon' && rule.value === false) &&
             (freshContext['deal.hasEverBeenWon'] !== false || freshContext['deal.wonHistoryVerified'] !== true)) status = 'skipped';
           if (status !== 'completed') {
             await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'skipped',
-              output: { reason: 'Workflow or triggering record changed before the action.' } });
+              output: { reason: errorMessage ?? 'Workflow or triggering record changed before the action.' } });
             recordedSteps++;
             continue;
           }
@@ -115,12 +125,12 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
           const step = await repo.createExecutionStep({ tenantId: params.tenantId, executionId: run.id, stepIndex: index, actionType: action.type, status: 'running' });
           pendingStepId = step.id;
           await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: step.id, tenantId: params.tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify({ version: 1, action, context: freshContext })) } }));
-          const result = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index, stepId: step.id }))
+          const result: ActionResult = freshContext ? await runAuthorizedWorkflow(params.tenantId, run.id, () => dispatchAction(action, freshContext, params.tenantId, workflow.activatedById!, { workflowId: workflow.id, actionIndex: index, stepId: step.id, stageHistoryId }))
             : { success: false, error: 'The triggering record is no longer available.' };
-          await repo.finishExecutionStep(step.id, params.tenantId, { status: result.success ? 'success' : 'failed', output: result.output, error: result.error });
+          await repo.finishExecutionStep(step.id, params.tenantId, { status: result.success ? 'success' : result.skipped ? 'skipped' : 'failed', output: result.output, error: result.error });
           pendingStepId = undefined;
           recordedSteps++;
-          if (!result.success) { status = result.output?.outcomeUnknown ? 'interrupted' : 'failed'; errorMessage = result.error; }
+          if (!result.success) { status = result.skipped ? 'skipped' : result.output?.outcomeUnknown ? 'interrupted' : 'failed'; errorMessage = result.error ?? (typeof result.output?.reason === 'string' ? result.output.reason : undefined); }
         }
       } catch (error) {
         if (isWorkflowLeaseLost(error)) return; // The recovery worker owns the interrupted outcome.

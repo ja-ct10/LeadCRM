@@ -13,11 +13,13 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant'
 vi.mock('./workflow-execution-log-modal', () => ({ WorkflowExecutionLogModal: () => <div>Run history</div> }));
 vi.mock('@/shared/services/workflows.api', () => ({
   getWorkflowMetadata: async () => ({ triggers: WORKFLOW_TRIGGERS, actions: getAvailableActions() }),
-  workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), duplicate: vi.fn(), toggle: vi.fn(), archive: vi.fn(), nameAvailability: vi.fn() },
+  withWorkflowTimeout: <T,>(request: Promise<T>) => request,
+  workflowsApi: { get: vi.fn(), list: vi.fn(), create: vi.fn(), duplicate: vi.fn(), toggle: vi.fn(), archive: vi.fn(), nameAvailability: vi.fn(), options: vi.fn() },
 }));
 const workflow = { id: 'wf', name: 'Follow up', trigger: 'lead.created', status: 'ACTIVE', isActive: true, conditions: null, actions: [] };
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks();
+  vi.mocked(workflowsApi.options).mockResolvedValue({ success: true, data: { users: [], pipelines: [], templates: [], campaigns: [] } });
   vi.mocked(workflowsApi.nameAvailability).mockResolvedValue({ success: true, data: { available: false, suggestedName: 'Follow up (Copy)' } });
   vi.mocked(workflowsApi.get).mockResolvedValue({ data: workflow } as never);
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });

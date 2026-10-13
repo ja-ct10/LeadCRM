@@ -39,7 +39,7 @@ router.patch( '/tasks/:id/archive',     authorize('tasks.archive'), taskControll
 
 async function authorizeTaskUpdate(req: import('express').Request, _res: import('express').Response, next: import('express').NextFunction) {
   try {
-    const fields = Object.keys(req.body);
+    const fields = Object.keys(req.body).filter(field => field !== 'expectedUpdatedAt');
     const actionOnly = fields.length > 0 && fields.every(field => field === 'assignedUserId' || (field === 'status' && req.body.status === 'completed'));
     if (!actionOnly) await assertPermissions(req.user!, ['tasks.edit']);
     else {

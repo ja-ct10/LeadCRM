@@ -195,6 +195,23 @@ describe.skipIf(!disposable)(
       expect((await call(path, 'PATCH')).status).toBe(404);
       expect((await call('/administration/archived-data/Task/invalid/restore', 'PATCH')).status).toBe(400);
     });
+    it('rejects stale edits atomically and allows completion-only versioned updates', async () => {
+      const first = (await call('/operations/tasks', 'POST', draft('Versioned Task'))).body.data;
+      const updated = (await call(`/operations/tasks/${first.id}`, 'PUT', { title: 'Saved title' })).body.data;
+      const before = await prisma.auditLog.count({ where: { tenantId, entityType: 'Task', entityId: first.id } });
+      const stale = await call(`/operations/tasks/${first.id}`, 'PUT', { title: 'Stale title', expectedUpdatedAt: first.updatedAt });
+      expect(stale.status).toBe(409);
+      expect((await call(`/operations/tasks/${first.id}`)).body.data).toMatchObject({ title: 'Saved title', status: 'pending' });
+      expect(await prisma.auditLog.count({ where: { tenantId, entityType: 'Task', entityId: first.id } })).toBe(before);
+      const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Versioned completer', permissions: { create: { module: 'tasks', canView: true, canComplete: true } } } });
+      const completer = await prisma.user.create({ data: { tenantId, role: role.name, email: `completer-${Date.now()}@camxian.com`, firstName: 'Task', lastName: 'Completer',
+        mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date(), userRoles: { create: { roleId: role.id } } } });
+      const auth = (await issueAuthSession(completer)).token;
+      const completed = await call(`/operations/tasks/${first.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: updated.updatedAt }, auth);
+      expect(completed.status).toBe(200);
+      expect(completed.body.data).toMatchObject({ status: 'completed', completedById: completer.id });
+      expect((await call(`/operations/tasks/${first.id}`, 'PUT', { title: 'Denied edit', expectedUpdatedAt: completed.body.data.updatedAt }, auth)).status).toBe(403);
+    });
     it("persists Task columns per user and protects required columns and permissions", async () => {
       const path = "/preferences/columns/tasks";
       const defaults = await call(path);

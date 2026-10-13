@@ -28,26 +28,33 @@ export const emptyOptions: WorkflowOptions = {
 };
 export const referenceOptions = references;
 
-export function WorkflowTemplateFields({ draft, templateIndex, options, onChange, onDetach }: {
-  draft: WorkflowDraft; templateIndex: number; options: WorkflowOptions;
+export function WorkflowTemplateFields({ draft, templateIndex, templateIdentity, options, onChange, onDetach }: {
+  draft: WorkflowDraft; templateIndex?: number; templateIdentity?: number | string; options: WorkflowOptions;
   onChange: (patch: WorkflowTemplateBindingPatch) => void; onDetach: () => void;
 }) {
   const [localPipelineId, setLocalPipelineId] = useState(() => options.pipelines.length === 1 ? options.pipelines[0].id : '');
-  const descriptor = workflowTemplateDescriptor(templateIndex);
-  const binding = workflowTemplateBinding(draft, templateIndex, options, localPipelineId);
+  const identity = templateIdentity ?? templateIndex;
+  const descriptor = workflowTemplateDescriptor(identity);
+  const binding = workflowTemplateBinding(draft, identity, options, localPipelineId);
   const routing = descriptor?.setup === 'pipeline-routing' || descriptor?.setup === 'related-deal-routing';
-  const stages = workflowTemplateStageChoices(options, binding.pipelineId, routing || descriptor?.setup === 'qualified-entry');
-  const stageSelect = (role: 'sourceStageId' | 'targetStageId', label: string) => <label className="block space-y-1">
+  const stages = workflowTemplateStageChoices(options, binding.pipelineId, routing || ['qualified-entry', 'open-entry', 'initial-entry'].includes(descriptor?.setup ?? ''));
+  const stageSelect = (role: 'sourceStageId' | 'targetStageId', label: string) => {
+    const choices = stages.filter(stage => descriptor?.setup === 'won-entry' ? stage.isWon && !stage.isLost
+      : descriptor?.setup === 'lost-entry' ? stage.isLost && !stage.isWon
+      : descriptor?.setup === 'initial-entry' ? stage.name.trim().toLowerCase() === 'lead'
+      : descriptor?.setup === 'reopen-entry' ? role === 'sourceStageId' ? stage.isLost && !stage.isWon : !stage.isWon && !stage.isLost && stage.name.trim().toLowerCase() === 'qualified' : true);
+    return <label className="block space-y-1">
     {label}
     <select aria-label={label} aria-required="true" className={workflowControl} value={binding[role]} disabled={!binding.pipelineId} onChange={event => onChange({ pipelineId: binding.pipelineId, [role]: event.target.value })}>
       <option value="">Choose a stage</option>
-      {binding[role] && !stages.some(stage => stage.id === binding[role]) && <option value={binding[role]}>Unavailable selection — repair required</option>}
-      {stages.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
+      {binding[role] && !choices.some(stage => stage.id === binding[role]) && <option value={binding[role]}>Unavailable selection — repair required</option>}
+      {choices.map(stage => <option key={stage.id} value={stage.id}>{stage.name}</option>)}
     </select>
   </label>;
+  };
   return <fieldset className="space-y-3 rounded-xl border border-[var(--border)] p-3 text-sm">
     <legend className="px-1 font-semibold">Template stage setup</legend>
-    <p className="text-xs text-[var(--muted-foreground)]">{routing ? 'Choose different open source and target stages in the same pipeline. These selections update the workflow rules and stage action together.' : 'Select the pipeline and entry stage. A new task is created for each matching stage-entry event.'}</p>
+    <p className="text-xs text-[var(--muted-foreground)]">{routing ? 'Choose different open source and target stages in the same pipeline. These selections update the workflow rules and stage action together.' : descriptor?.setup === 'initial-entry' ? 'Create the first follow-up when a new Deal is created in this pipeline’s open Lead stage.' : descriptor?.setup === 'reopen-entry' ? 'Only a never-Won Deal with verified history can reopen from Lost to an open Qualified stage.' : descriptor?.setup === 'won-entry' || descriptor?.setup === 'lost-entry' ? 'Create an outcome Task after governed closure into the selected terminal stage.' : 'Select the pipeline and entry stage. A new task is created for each matching current stage-entry event; superseded queued entries skip.'}</p>
     <label className="block space-y-1">Template pipeline
       <select aria-label="Template pipeline" aria-required="true" className={workflowControl} value={binding.pipelineId} onChange={event => { setLocalPipelineId(event.target.value); onChange({ pipelineId: event.target.value }); }}>
         <option value="">Choose a pipeline</option>
@@ -55,9 +62,10 @@ export function WorkflowTemplateFields({ draft, templateIndex, options, onChange
         {options.pipelines.map(pipeline => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}
       </select>
     </label>
-    {routing && stageSelect('sourceStageId', 'Template source stage')}
+    {(routing || descriptor?.setup === 'reopen-entry') && stageSelect('sourceStageId', 'Template source stage')}
     {stageSelect('targetStageId', routing ? 'Template target stage' : 'Template entry stage')}
     {descriptor?.setup === 'related-deal-routing' && <p className="text-xs text-[var(--muted-foreground)]">The default moves one matching related open Deal. Multiple matches need more filters or an explicit All matching selection.</p>}
+    {!!stages.find(stage => stage.id === binding.targetStageId)?.requiredFields?.length && <p className="text-xs text-[var(--muted-foreground)]">Required stage evidence: {stages.find(stage => stage.id === binding.targetStageId)!.requiredFields!.join(', ')}. The normal transition must satisfy these requirements.</p>}
     <Button type="button" variant="link" className="h-auto px-0 text-xs" onClick={onDetach}>Customize without linked template setup</Button>
   </fieldset>;
 }
@@ -393,7 +401,7 @@ export function ActionFields({
             )}
             {key === 'dueDaysFromNow' && (
               <p className="text-xs text-[var(--muted-foreground)]">
-                Leave empty for 3 days. Use 0 for today or 1 for tomorrow.
+                Leave empty for 3 elapsed days. Use 0 for the execution time or 1 for 24 hours later. Task dates display in Asia/Manila.
               </p>
             )}
             {variable && (

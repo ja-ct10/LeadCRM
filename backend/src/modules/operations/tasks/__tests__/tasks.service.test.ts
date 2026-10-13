@@ -88,6 +88,34 @@ beforeEach(() => {
 });
 
 describe("Task service authority", () => {
+  it('rejects a stale edit before Task, association, or history writes', async () => {
+    await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, {
+      title: 'Stale title', expectedUpdatedAt: new Date(original.updatedAt.getTime() - 1).toISOString(),
+    }))).rejects.toMatchObject({ statusCode: 409 });
+    expect(db.task.update).not.toHaveBeenCalled();
+    expect(db.taskDeal.deleteMany).not.toHaveBeenCalled();
+    expect(recordTaskHistory).not.toHaveBeenCalled();
+  });
+
+  it('accepts the saved version without persisting precondition metadata', async () => {
+    await scoped(() => service.updateTask(original.id, tenantId, actorId, {
+      title: 'Current edit', expectedUpdatedAt: original.updatedAt.toISOString(),
+    }));
+    expect(db.task.update).toHaveBeenCalledWith(expect.objectContaining({ data: { title: 'Current edit' } }));
+  });
+
+  it('keeps completion-only permission independent when a precondition is supplied', async () => {
+    db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, status: 'ACTIVE', role: 'Task completer',
+      tenant: { status: 'ACTIVE' }, userRoles: [{ tenantId, role: { tenantId, name: 'Task completer', isArchived: false,
+        permissions: [{ tenantId, module: 'tasks', canView: true, canComplete: true }] } }] }));
+    await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, {
+      status: 'completed', expectedUpdatedAt: original.updatedAt.toISOString(),
+    }))).resolves.toMatchObject({ status: 'completed', completedById: actorId });
+    await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, {
+      title: 'Not permitted', expectedUpdatedAt: original.updatedAt.toISOString(),
+    }))).rejects.toMatchObject({ statusCode: 403 });
+  });
+
   it('allows a Client Admin actor to assign staff but rejects Client Admin as the assignee', async () => {
     await expect(scoped(() => service.createTask(tenantId, actorId, { ...input, assignedUserId: actorId }))).rejects.toMatchObject({ statusCode: 404 });
     expect(db.task.create).not.toHaveBeenCalled();

@@ -117,7 +117,7 @@ export interface WorkflowOptions {
   roles?: WorkflowAssignmentPoolOption[];
   groups?: WorkflowAssignmentPoolOption[];
   senders?: Array<{id:string;name:string}>;
-  pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string;isWon?:boolean;isLost?:boolean;requiredFields?:string[]}>}>;
+  pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string;order?:number;isDefault?:boolean;isWon?:boolean;isLost?:boolean;requiredFields?:string[]}>}>;
   templates: Array<{id:string;name:string}>;
   campaigns: Array<{id:string;name:string}>;
   productInterests?: Array<{id:string;name:string}>;
@@ -165,10 +165,16 @@ export interface WorkflowExecutionRun {
   definitionSnapshot?: WorkflowDraft | null;
   trigger: { triggerType: string; entityType: string; triggeredAt: string; payload?: { recordName?: string } | null };
 }
+export const WorkflowTestInputSchema = z.object({ entityId: z.string().uuid(), stageHistoryId: z.string().uuid().optional() }).strict();
+export type WorkflowTestInput = z.infer<typeof WorkflowTestInputSchema>;
+export interface WorkflowTaskPreview {
+  title: string; description?: string | null; priority: 'Low' | 'Medium' | 'High'; status: 'pending';
+  dueDate: string; assignedUserId: string; dealIds: string[];
+}
 export interface WorkflowTestResult {
-  trigger: { matched: boolean; type: string; requiresEvent?: boolean };
+  trigger: { matched: boolean; type: string; requiresEvent?: boolean; stageHistoryId?: string; eventId?: string; reason?: string };
   conditions: { passed: number; total: number; matched: boolean };
-  actions: Array<{ type: string; valid: boolean; message: string; assignment?: { resolvedUserId: string; resolvedUserName: string; candidateCount: number; strategy?: string; reason?: string; workload?: number; capacityLimit?: number } }>;
+  actions: Array<{ type: string; valid: boolean; message: string; status?: 'ready' | 'skipped' | 'failed'; taskPreview?: WorkflowTaskPreview; assignment?: { resolvedUserId: string; resolvedUserName: string; candidateCount: number; strategy?: string; reason?: string; workload?: number; capacityLimit?: number } }>;
   valid: boolean;
 }
 export interface WorkflowNameAvailability { available: boolean; suggestedName?: string }

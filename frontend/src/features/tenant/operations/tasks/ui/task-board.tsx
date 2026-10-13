@@ -197,6 +197,7 @@ export default function TaskBoard() {
     try {
       await updateTask(task.id, {
         status: task.status === "completed" ? "pending" : "completed",
+        ...(task.updatedAt ? { expectedUpdatedAt: task.updatedAt } : {}),
       });
       if (started === identity.current) setNotice("Task updated.");
     } catch (reason) {

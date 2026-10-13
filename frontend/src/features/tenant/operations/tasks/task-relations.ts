@@ -1,5 +1,9 @@
 import type { TaskLinkKind, TaskOption, TaskRecord } from '@leadcrm/shared';
 
+export function taskRecordHref(kind: TaskLinkKind, id: string): string {
+  return `/crm/${kind}s/${encodeURIComponent(id)}`;
+}
+
 /** Response hydration can be partial; merge legacy and plural display records by ID. */
 export function taskRecordOptions(task: TaskRecord | undefined, kind: TaskLinkKind): TaskOption[] {
   if (!task) return [];

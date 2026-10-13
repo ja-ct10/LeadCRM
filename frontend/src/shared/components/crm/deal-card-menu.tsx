@@ -107,7 +107,7 @@ export function DealCardMenu({ dealId, dealTitle, deal: cardDeal, onArchive, onM
       <DropdownMenuTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 shrink-0 sm:h-8 sm:w-8" aria-label={'Actions for ' + dealTitle}><MoreHorizontal className="h-4 w-4" /></Button></DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         {canEdit && item('Edit deal', Pencil, () => show('edit'), unavailable)}
-        {canTask && item('Add a task', ListPlus, () => show('task'), unavailable)}
+        {canTask && recordAccess.canMutate(deal) && item('Add a task', ListPlus, () => show('task'), unavailable)}
         {canEdit && item('Add a note', StickyNote, () => show('note'), unavailable)}
         {(canEmailLead || canEmailContact) && item('Send an email', Mail, () => recipients.length === 1 ? send(recipients[0]) : show('recipient'), emailReason)}
         {canEdit && <><DropdownMenuSeparator />{item('Mark as won', CheckCircle2, () => void markWon(), wonReason)}{item('Mark as lost', XCircle, () => show('lost'), lostReason)}{item('Change stage', ArrowLeftRight, () => show('stage'), stageReason, pipeline ? 'Current pipeline: ' + pipeline.name : '')}</>}
