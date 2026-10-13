@@ -114,6 +114,37 @@ It verifies exact preservation and the absence of baseline notification replay.
 The PostgreSQL integration command uses a disposable local cluster. Neither
 command connects to production.
 
+## System repair release rehearsal
+
+The incident observations above are historical evidence, not a current production
+ledger. For the later coordinated repair, capture the serving SHA, applied
+migration names/checksums, record/junction counts and private-storage inventory
+before recommending a rollout. Back up PostgreSQL and private files together;
+preserve the encryption key separately through the existing secret controls.
+Restore to disposable services and verify representative original IDs, historical
+imports, Product snapshots, Won dates, activities and mailbox identities.
+
+Run the guarded deployment plan against the restored ledger, apply only the
+reviewed forward migrations, then repeat preservation comparisons. Exercise
+Contact receipt replay, durable Workflow recovery, uncertain draft/send recovery
+and cancellation against simulated providers. Zero or ambiguous provider matches
+remain unconfirmed and must never trigger automatic resending. Do not invent
+historical request IDs, delivery evidence or customer dates to make a check pass.
+
+Rehearse backend-first deployment with writers paused, one scheduler owner and
+matching frontend/backend revisions. Verify storage permissions, authenticated
+health/routes, OAuth redirect ownership and SSE buffering/reconnect through the
+same ingress configuration intended for Coolify. Record command, SHA, counts and
+PASS / FAIL / BLOCKED / NOT TESTED for each check.
+
+Before an application rollback, run the candidate against the migrated disposable
+schema and verify the new privacy and operation contracts. Keep additive data and
+delivery ledgers. An older image that ignores participant vetoes, receipts, target
+claims or queued Workflows is not an acceptable automatic rollback. If backup
+restoration is required, obtain separate recovery authorization and account for
+post-backup writes. No production backup, migration or deployment is established
+by local rehearsal results.
+
 ## Additional observed issues
 
 - Saved backend pending change: `GMAIL_SYNC_INTERVAL_SECONDS=60`. The active

@@ -47,6 +47,8 @@ Mock auth and data are separate development-only switches, `NEXT_PUBLIC_USE_MOCK
 
 - `npm run lint`: shared/backend/frontend TypeScript checks.
 - `npm run build`: workspace production builds and generated shared JavaScript synchronization.
+- `npm run qa:local -- --native`: counted isolated acceptance, builds and browser fixtures with a fresh native PostgreSQL cluster; see [QA prerequisites and gates](docs/verification/system-qa.md).
+- `npm run test:integration`: discover backend integration suites, replay migrations into fresh PGlite fixtures and reject missing/skipped required results. Native concurrency remains a separate required gate.
 - `npm --prefix backend run test`: backend Vitest suite.
 - `npm --prefix frontend run test`: frontend Vitest suite.
 - `npm --prefix backend run test:rollout`: guarded migration deployment planning checks.

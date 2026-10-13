@@ -5,7 +5,7 @@
 >
 > | Use instead | For |
 > |---|---|
-> | [`crm-audit-report.md`](./crm-audit-report.md) | What is wrong today |
+> | ``crm-audit-report.md`` (historical path: `./crm-audit-report.md`) | What is wrong today |
 > | [`crm-architecture-blueprint.md`](./crm-architecture-blueprint.md) | What the CRM should become |
 > | [`crm-engineering-roadmap.md`](./crm-engineering-roadmap.md) | What to build next |
 >

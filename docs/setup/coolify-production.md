@@ -3,10 +3,24 @@
 Both applications build from the repository root and deploy the same reviewed
 full Git SHA. Keep the root workspace lockfile and npm 11.19.1.
 
+Docker alternatives are `infrastructure/docker/Dockerfile.frontend` and
+`infrastructure/docker/Dockerfile.backend`, both with repository-root context.
+Supply frontend API_URL as build argument and runtime variable. Standalone
+frontend output starts `frontend/server.js`; backend starts `backend/dist/start.js`
+after the guarded migration runner. The backend image retains Prisma CLI and the
+deployment helpers. Mount `/var/lib/leadcrm/files` persistently and make it writable
+by the image's `node` user. Root `.dockerignore` excludes private environment files
+and local QA artifacts. Compose is an ingress-based deployment rehearsal requiring
+secret and HTTPS URL inputs; it exposes only container-network ports.
+
+See [local acceptance and release gate](../verification/system-qa.md) for counted
+disposable checks and clean-checkout/container validation. A source check does not
+establish successful container startup or production deployment.
+
 | Setting | Frontend | Backend |
 | --- | --- | --- |
 | Install | `npx --yes npm@11.19.1 ci --include=dev` | `npx --yes npm@11.19.1 ci --include=dev` |
-| Build | `npm --prefix frontend run build` | `npm --prefix backend run build` |
+| Build | `npm --prefix shared run build && npm --prefix frontend run build` | `npm --prefix shared run build && npm --prefix backend run build` |
 | Start | `npm --prefix frontend start` | `npm --prefix backend run db:deploy && npm --prefix backend start` |
 | Internal port | 3000 | 4000 |
 | Health path | `/login` | `/health` |
@@ -146,6 +160,30 @@ not application runtime configuration. Keep the configured Node version compatib
 with the root package.json engines and pinned package manager.
 
 ## Release verification and rollback
+
+For the coordinated system repair, complete the [local acceptance gate](../verification/system-qa.md)
+and the [recovery rehearsal](coolify-production-recovery.md#system-repair-release-rehearsal)
+before a separately authorized rollout. Record both application SHAs, the actual
+migration ledger, database backup and private-file snapshot. Restore them into a
+disposable environment and compare historical records, junctions, snapshots,
+receipts and encrypted mailbox ownership before applying the additive migrations.
+
+Hold Contact creation, Inbox sends/draft saves and scheduling during the revision
+change. These writers require request UUIDs; old frontend writers are incompatible.
+Stop the previous scheduler owners, run the guarded additive migration plan, and
+start the matching backend revision first. Verify its health, authenticated routes
+and worker ownership, then release the same frontend SHA and resume writers.
+Never overlap old and new Workflow, mailbox, schedule or notification workers.
+Keep the existing OAuth redirect URI and encryption identity. Verify authenticated
+SSE through the actual proxy, including two sessions, revocation and reconnect.
+
+Rollback requires a reviewed application/schema compatibility rehearsal. Nullable
+columns alone do not prove that an older image preserves the new authorization,
+receipt and uncertain-delivery rules. Stop current workers before any compatible
+replacement starts, retain all additive tables and recovery evidence, and keep
+writers paused until the replacement is verified. Prefer a reviewed forward repair
+when an older image cannot honor those contracts. Restoring a backup is a separate
+recovery action with explicit treatment of writes made since the backup.
 
 1. Compare active production secrets privately with Render. Preserve JWT,
    encryption, database, provider and storage identities. Record status only.

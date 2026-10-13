@@ -1,125 +1,37 @@
-# Local Development Setup
+# Local development setup
 
-## Prerequisites
-- Node.js 20+
-- PostgreSQL 16+
-- npm 9+
-- Git
+Use a Node version supported by root package.json (20.19+, 22.13+ or later), the
+pinned npm11.19.1, Git and PostgreSQL16+. Install all workspaces from the root:
 
-## Step 0 — Clone the repository
-
-```bash
-git clone https://github.com/reymarkjpanes/OWN-CRM-1.git
-cd OWN-CRM-1
+```sh
+npx --yes npm@11.19.1 ci --include=dev
 ```
 
-## Step 1 — Install dependencies
+Copy backend/.env.example to backend/.env and frontend/.env.example to
+frontend/.env.local. Preserve existing configured files. Set DATABASE_URL and
+DIRECT_URL to the intended development database, JWT_SECRET to a strong local
+secret, APP_URL/ALLOWED_ORIGINS to http://localhost:3000 and frontend
+API_URL=http://localhost:4000/api/v1. Provider credentials are needed only for
+explicitly authorized development integration; isolated QA never reads these
+files. NEXT_PUBLIC_API_URL is retired. Mock auth/data switches are development
+only and do not verify RBAC or database behavior.
 
-```bash
-# From monorepo root — installs all workspaces
-npm install
+Create a dedicated local database/role, generate Prisma with
+`npm --prefix backend run db:generate`, and apply committed forward migrations
+using the [deployment instructions](deployment.md). Do not generate a new init
+migration, reset a database or run seeds as a routine setup step. Review the
+existing phased migration prerequisites; compatibility retirement is separate.
+See [database seeders](../../backend/src/database/seeders/README.md) before any
+optional fixture provisioning.
 
-# Or per-package
-cd frontend && npm install
-cd backend && npm install
-cd shared && npm install
-```
+Start `npm run dev` or the frontend/backend workspace dev commands. Frontend
+uses port3000, API port4000 and /health. `npm run dev:local` is a connected
+API-only preview against the configured development database with schedulers
+stopped; it is not an isolated acceptance harness. Stop conflicting previews
+first. See [README](../../README.md) and [local QA](../verification/system-qa.md)
+for the safe disposable checks.
 
-## Step 2 — Configure environment variables
-
-```bash
-# Backend
-cp backend/.env.example backend/.env
-# Edit backend/.env with your actual values:
-# - DATABASE_URL: your PostgreSQL connection string
-# - JWT_SECRET: any strong random string (min 32 chars)
-
-# Frontend
-cp frontend/.env.local.example frontend/.env.local
-# NEXT_PUBLIC_API_URL defaults to http://localhost:4000/api/v1
-```
-
-## Step 3 — Set up PostgreSQL database
-
-Open pgAdmin or a PostgreSQL shell as the `postgres` superuser and run:
-
-```sql
--- Create the database user
-CREATE ROLE leadcrm LOGIN PASSWORD 'your-password-from-env';
-
--- Create the database
-CREATE DATABASE leadcrm_dev OWNER leadcrm;
-
--- Grant privileges
-GRANT ALL PRIVILEGES ON DATABASE leadcrm_dev TO leadcrm;
-```
-
-Or run the provided script (fill in the password first):
-
-```bash
-# Edit infrastructure/scripts/setup-db.sql — replace YOUR_PASSWORD_HERE
-# Then run:
-psql -U postgres -f infrastructure/scripts/setup-db.sql
-psql -U postgres -c "CREATE DATABASE leadcrm_dev OWNER leadcrm;"
-```
-
-## Step 4 — Run Prisma migrations
-
-```bash
-cd backend
-npx prisma migrate dev --name init
-```
-
-This creates all tables defined in `backend/prisma/schema.prisma`.
-
-## Step 5 — Seed the database
-
-```bash
-cd backend
-npx ts-node prisma/seed.ts
-```
-
-Runs role repairs, the optional configured Gmail sender setup, and sample tenant generation in development. Set `SKIP_DEMO_TENANTS=true` to skip sample data. See [database seeders](../../backend/src/database/seeders/README.md).
-
-## Step 6 — Start development servers
-
-```bash
-# Option A: Start everything with Turborepo (from monorepo root)
-npm run dev
-
-# Option B: Start individually
-# Terminal 1 — Backend API
-cd backend && npm run dev
-
-# Terminal 2 — Frontend
-cd frontend && npm run dev
-```
-
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:4000
-- Health check: http://localhost:4000/health
-
-## Verify it works
-
-```bash
-# Check backend health
-curl http://localhost:4000/health
-
-# Should return: {"status":"ok","timestamp":"..."}
-```
-
-## Common Issues
-
-### `P1000: Authentication failed`
-The PostgreSQL user or password in `DATABASE_URL` doesn't match. Check:
-1. The user `leadcrm` exists in PostgreSQL
-2. The password matches what's in `backend/.env`
-
-### `P1003: Database does not exist`
-The database `leadcrm_dev` hasn't been created yet. Run Step 3.
-
-### `Cannot find module '@prisma/client'`
-Run `npx prisma generate` from the `backend/` directory after `npm install`.
-
-### Port already in use
-Frontend uses port 3000, backend uses port 4000. Change `PORT` in `backend/.env` or `--port` in `frontend/package.json` if needed.
+Production build/start requires an explicit verified HTTPS API_URL ending
+/api/v1. Use `npm run qa:build` for compilation with isolated dummy settings.
+The shared package must build first; root Turbo knows its workspace dependency
+edges. Plain Node consumers require the generated shared JavaScript companions.

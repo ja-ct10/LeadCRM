@@ -1,5 +1,7 @@
 # LeadCRM scoped cleanup report
 
+Historical verification from 2026-10-02; it is not evidence for the current release. Current configuration is documented in [Coolify production configuration](setup/coolify-production.md).
+
 Implemented locally on 2026-10-02. No deployment or database migration was performed during implementation.
 
 ## Authentication findings and limits
@@ -49,53 +51,53 @@ Product IDs, pricing, deal-value calculation, automatic Deal creation, Forms opt
 - `npm run build`: passed frontend production compilation/static generation (188 pages) and backend Prisma generation/TypeScript build. The initial sandbox run failed with a Windows EPERM; the approved rerun passed. Build warnings included existing multiple-lockfile/root detection and a local backend URL warning.
 - Backend: `npm --prefix backend test -- src/modules/crm/__tests__/required-record-names.test.ts src/api/middleware/__tests__/auth-state.test.ts src/modules/crm/companies/companies-validation.test.ts` — 21 tests passed across 3 files. These include missing/forged credentials, session/tenant constraints, Contact names/email, and Account names.
 - Frontend: 119 distinct targeted tests have passing final results across 12 suites. The combined run passed 117/119; two test assumptions were corrected (read-only status markup and asynchronous catalog refresh), then both affected suites passed all 40/40. The other ten suites passed 79/79. Early panel tests also exposed animation timing; the unit suite now applies final div visibility immediately, while browser checks exercise the real animation components. Existing non-failing jsdom/React act warnings remain.
-- Browser: `node data/outputs/scoped-cleanup/browser-checks.cjs` uses headless Chrome, the actual Next frontend/proxy on port 3107, and a fixture backend on port 4107. It navigates Leads, Contacts, Accounts, Deals, Team Management, and Workflows; checks inline blank-name rejection, Custom Fields card removal, Workflow local loading, dropdown selection state, and the four full-page back labels.
+- Browser: `node scripts/verify-scoped-cleanup.cjs` uses headless Chrome, the actual Next frontend/proxy on port 3107, and a fixture backend on port 4107. It navigates Leads, Contacts, Accounts, Deals, Team Management, and Workflows; checks inline blank-name rejection, Custom Fields card removal, Workflow local loading, dropdown selection state, and the four full-page back labels.
 - Responsive: 45 scenarios cover Workflow Runs, four inline Product Interest selectors, and four creation-panel selectors at 320, 375, 390, 768, and 1440px. Checks assert viewport bounds, no page overflow, mobile panel width/right alignment, and retained selections. Screenshots were inspected. All signed-in requests carried the fixture session; clearing it returned 401. The fixture cookie is test-only and was never used against production.
 - `git diff --check`: passed. Existing LF/CRLF notices are informational.
 
-Detailed evidence is in [browser-checks.json](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/data/outputs/scoped-cleanup/browser-checks.json>), [frontend combined test results](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/data/outputs/scoped-cleanup-tests.json>), and [final 40-test rerun](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/data/outputs/scoped-cleanup-final-retests.json>). The browser script and screenshots are in [the QA directory](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/data/outputs/scoped-cleanup>).
+Reproducible screenshot/result files were removed during the system-wide cleanup. The executed counts and limitations above are retained as historical evidence. The [portable regression harness](../scripts/verify-scoped-cleanup.cjs) regenerates local evidence; start a matching local Next frontend/proxy on port 3107 first.
 
 ## Files changed
 
 **Authentication and request diagnostics**
 
-- [frontend/src/lib/api/client.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/lib/api/client.ts>)
-- [frontend/src/store/AuthContext.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/store/AuthContext.tsx>)
-- [frontend/src/store/DataContext.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/store/DataContext.tsx>)
-- [frontend/src/shared/hooks/use-cached-page.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/hooks/use-cached-page.ts>)
-- [frontend/src/shared/hooks/use-product-interests.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/hooks/use-product-interests.ts>)
-- [backend/src/api/middleware/logger.middleware.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/backend/src/api/middleware/logger.middleware.ts>)
+- [frontend/src/lib/api/client.ts](<../frontend/src/lib/api/client.ts>)
+- [frontend/src/store/AuthContext.tsx](<../frontend/src/store/AuthContext.tsx>)
+- [frontend/src/store/DataContext.tsx](<../frontend/src/store/DataContext.tsx>)
+- [frontend/src/shared/hooks/use-cached-page.ts](<../frontend/src/shared/hooks/use-cached-page.ts>)
+- [frontend/src/shared/hooks/use-product-interests.ts](<../frontend/src/shared/hooks/use-product-interests.ts>)
+- [backend/src/api/middleware/logger.middleware.ts](<../backend/src/api/middleware/logger.middleware.ts>)
 
 **CRM display and required fields**
 
-- [frontend/src/shared/components/crm/product-interest-select.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/components/crm/product-interest-select.tsx>)
-- [frontend/src/shared/components/crm/crm-record-view.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/components/crm/crm-record-view.tsx>)
-- [frontend/src/shared/components/crm/record-back-button.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/components/crm/record-back-button.tsx>)
-- [frontend/src/features/tenant/crm/shared/import/ui/import-page.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/crm/shared/import/ui/import-page.tsx>)
-- [frontend/src/features/tenant/crm/contacts/schemas/contact-form.schema.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/crm/contacts/schemas/contact-form.schema.ts>)
-- [frontend/src/features/tenant/crm/contacts/ui/contact-form.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/crm/contacts/ui/contact-form.tsx>)
-- [frontend/src/features/tenant/crm/accounts/schemas/account.schema.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/crm/accounts/schemas/account.schema.ts>)
+- [frontend/src/shared/components/crm/product-interest-select.tsx](<../frontend/src/shared/components/crm/product-interest-select.tsx>)
+- [frontend/src/shared/components/crm/crm-record-view.tsx](<../frontend/src/shared/components/crm/crm-record-view.tsx>)
+- [frontend/src/shared/components/crm/record-back-button.tsx](<../frontend/src/shared/components/crm/record-back-button.tsx>)
+- [frontend/src/features/tenant/crm/shared/import/ui/import-page.tsx](<../frontend/src/features/tenant/crm/shared/import/ui/import-page.tsx>)
+- [frontend/src/features/tenant/crm/contacts/schemas/contact-form.schema.ts](<../frontend/src/features/tenant/crm/contacts/schemas/contact-form.schema.ts>)
+- [frontend/src/features/tenant/crm/contacts/ui/contact-form.tsx](<../frontend/src/features/tenant/crm/contacts/ui/contact-form.tsx>)
+- [frontend/src/features/tenant/crm/accounts/schemas/account.schema.ts](<../frontend/src/features/tenant/crm/accounts/schemas/account.schema.ts>)
 
 **Settings and Workflow presentation**
 
-- [frontend/src/features/tenant/settings/ui/product-interests-settings.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/settings/ui/product-interests-settings.tsx>)
-- [frontend/src/features/tenant/settings/ui/closing-fields-settings.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/settings/ui/closing-fields-settings.tsx>)
-- [frontend/src/features/tenant/settings/ui/products-page.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/settings/ui/products-page.tsx>)
-- [frontend/src/features/tenant/marketing/forms/ui/form-canvas.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/marketing/forms/ui/form-canvas.tsx>)
-- [frontend/src/features/tenant/automation/workflows/ui/workflows-page.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/automation/workflows/ui/workflows-page.tsx>)
-- [frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.tsx>)
+- [frontend/src/features/tenant/settings/ui/product-interests-settings.tsx](<../frontend/src/features/tenant/settings/ui/product-interests-settings.tsx>)
+- [frontend/src/features/tenant/settings/ui/closing-fields-settings.tsx](<../frontend/src/features/tenant/settings/ui/closing-fields-settings.tsx>)
+- [frontend/src/features/tenant/settings/ui/products-page.tsx](<../frontend/src/features/tenant/settings/ui/products-page.tsx>)
+- [frontend/src/features/tenant/marketing/forms/ui/form-canvas.tsx](<../frontend/src/features/tenant/marketing/forms/ui/form-canvas.tsx>)
+- [frontend/src/features/tenant/automation/workflows/ui/workflows-page.tsx](<../frontend/src/features/tenant/automation/workflows/ui/workflows-page.tsx>)
+- [frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.tsx](<../frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.tsx>)
 
 **Tests added or updated**
 
-- [frontend/src/lib/api/client-auth.test.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/lib/api/client-auth.test.ts>)
-- [frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts>)
-- [frontend/src/shared/hooks/__tests__/cached-page.integration.test.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/hooks/__tests__/cached-page.integration.test.tsx>)
-- [frontend/src/shared/components/crm/__tests__/product-interest-select.test.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/components/crm/__tests__/product-interest-select.test.tsx>)
-- [frontend/src/shared/components/crm/__tests__/form-errors.test.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/components/crm/__tests__/form-errors.test.tsx>)
-- [frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx>)
-- [frontend/src/features/tenant/settings/ui/product-interests-settings.test.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/settings/ui/product-interests-settings.test.tsx>)
-- [frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.test.tsx](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.test.tsx>)
-- [backend/src/api/middleware/__tests__/auth-state.test.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/backend/src/api/middleware/__tests__/auth-state.test.ts>)
-- [backend/src/modules/crm/__tests__/required-record-names.test.ts](<C:/Users/Julie Ann Tiron/Desktop/LeadCRM/backend/src/modules/crm/__tests__/required-record-names.test.ts>)
+- [frontend/src/lib/api/client-auth.test.ts](<../frontend/src/lib/api/client-auth.test.ts>)
+- [frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts](<../frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts>)
+- [frontend/src/shared/hooks/__tests__/cached-page.integration.test.tsx](<../frontend/src/shared/hooks/__tests__/cached-page.integration.test.tsx>)
+- [frontend/src/shared/components/crm/__tests__/product-interest-select.test.tsx](<../frontend/src/shared/components/crm/__tests__/product-interest-select.test.tsx>)
+- [frontend/src/shared/components/crm/__tests__/form-errors.test.tsx](<../frontend/src/shared/components/crm/__tests__/form-errors.test.tsx>)
+- [frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx](<../frontend/src/shared/components/crm/__tests__/panel-migrations.test.tsx>)
+- [frontend/src/features/tenant/settings/ui/product-interests-settings.test.tsx](<../frontend/src/features/tenant/settings/ui/product-interests-settings.test.tsx>)
+- [frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.test.tsx](<../frontend/src/features/tenant/automation/workflows/ui/workflow-execution-log-modal.test.tsx>)
+- [backend/src/api/middleware/__tests__/auth-state.test.ts](<../backend/src/api/middleware/__tests__/auth-state.test.ts>)
+- [backend/src/modules/crm/__tests__/required-record-names.test.ts](<../backend/src/modules/crm/__tests__/required-record-names.test.ts>)
 
 This report and the scoped-cleanup QA artifacts were also added. Pre-existing changes to `docs/messages-work-email.md` and `data/outputs/live-sales-flow/` were left untouched.

@@ -8,17 +8,17 @@ This repository is a TypeScript monorepo with a Next.js frontend, an Express bac
 - Keep frontend changes aligned with the shared UI primitives and existing app providers.
 
 ## Key entry points
-- Frontend shell and app router: [frontend/app](frontend/app)
-- Shared frontend UI/state: [frontend/src](frontend/src)
-- Backend API routes and middleware: [backend/src/api](backend/src/api)
-- Backend domain modules: [backend/src/modules](backend/src/modules)
-- Shared contracts and validation: [shared/src](shared/src)
+- Frontend shell and app router: [frontend/app](../frontend/app)
+- Shared frontend UI/state: [frontend/src](../frontend/src)
+- Backend API routes and middleware: [backend/src/api](../backend/src/api)
+- Backend domain modules: [backend/src/modules](../backend/src/modules)
+- Shared contracts and validation: [shared/src](../shared/src)
 
 ## Useful references
-- Project overview: [README.md](README.md)
-- Architecture guide: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- Structure guide: [docs/STRUCTURE.md](docs/STRUCTURE.md)
-- API reference: [docs/API.md](docs/API.md)
+- Project overview: [README.md](../README.md)
+- Architecture guide: [docs/ARCHITECTURE.md](../docs/ARCHITECTURE.md)
+- Structure guide: [docs/STRUCTURE.md](../docs/STRUCTURE.md)
+- API reference: [docs/API.md](../docs/API.md)
 
 ## Common commands
 - `npm run lint`

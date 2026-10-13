@@ -1,5 +1,7 @@
 # Authentication and Account cleanup verification
 
+Historical verification: retired or relocated source paths below are retained as text. Use [current architecture](ARCHITECTURE.md) for active entry points.
+
 Implemented September 30, 2026. Changes are local; no production migration or deployment was performed.
 
 ## Scope and preserved behavior
@@ -91,9 +93,9 @@ Production schema, deployment, live email delivery, remote environment variables
 - [backend/src/core/auth/auth.controller.ts](../backend/src/core/auth/auth.controller.ts)
 - [backend/src/core/auth/auth.service.ts](../backend/src/core/auth/auth.service.ts)
 - [backend/src/core/auth/change-password.service.ts](../backend/src/core/auth/change-password.service.ts)
-- [backend/src/core/auth/mfa-crypto.ts](../backend/src/core/auth/mfa-crypto.ts)
-- [backend/src/core/auth/mfa.controller.ts](../backend/src/core/auth/mfa.controller.ts)
-- [backend/src/core/auth/mfa.service.ts](../backend/src/core/auth/mfa.service.ts)
+- `backend/src/core/auth/mfa-crypto.ts` (historical path: `../backend/src/core/auth/mfa-crypto.ts`)
+- `backend/src/core/auth/mfa.controller.ts` (historical path: `../backend/src/core/auth/mfa.controller.ts`)
+- `backend/src/core/auth/mfa.service.ts` (historical path: `../backend/src/core/auth/mfa.service.ts`)
 - [backend/src/core/auth/password-reset.service.ts](../backend/src/core/auth/password-reset.service.ts)
 - [backend/src/database/seeders/demo-full.seed.ts](../backend/src/database/seeders/demo-full.seed.ts)
 - [backend/src/database/seeders/demo-rich.seed.ts](../backend/src/database/seeders/demo-rich.seed.ts)
@@ -117,9 +119,9 @@ Production schema, deployment, live email delivery, remote environment variables
 - [docs/tasks-audit-and-plan.md](../docs/tasks-audit-and-plan.md)
 - [frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts](../frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts)
 - [frontend/app/api/proxy/[...path]/route.ts](../frontend/app/api/proxy/[...path]/route.ts)
-- [frontend/src/features/tenant/administration/users/ui/users-page.tsx](../frontend/src/features/tenant/administration/users/ui/users-page.tsx)
-- [frontend/src/features/tenant/auth/__tests__/mfa-login.test.tsx](../frontend/src/features/tenant/auth/__tests__/mfa-login.test.tsx)
-- [frontend/src/features/tenant/auth/ui/mfa-login.tsx](../frontend/src/features/tenant/auth/ui/mfa-login.tsx)
+- `frontend/src/features/tenant/administration/users/ui/users-page.tsx` (historical path: `../frontend/src/features/tenant/administration/users/ui/users-page.tsx`)
+- `frontend/src/features/tenant/auth/__tests__/mfa-login.test.tsx` (historical path: `../frontend/src/features/tenant/auth/__tests__/mfa-login.test.tsx`)
+- `frontend/src/features/tenant/auth/ui/mfa-login.tsx` (historical path: `../frontend/src/features/tenant/auth/ui/mfa-login.tsx`)
 - [frontend/src/features/tenant/crm/leads/ui/lead-detail-view.tsx](../frontend/src/features/tenant/crm/leads/ui/lead-detail-view.tsx)
 - [frontend/src/features/tenant/help/content/index.ts](../frontend/src/features/tenant/help/content/index.ts)
 - [frontend/src/features/tenant/help/content/settings.ts](../frontend/src/features/tenant/help/content/settings.ts)
@@ -137,8 +139,8 @@ Production schema, deployment, live email delivery, remote environment variables
 - [frontend/src/store/types/user.types.ts](../frontend/src/store/types/user.types.ts)
 - [package-lock.json](../package-lock.json)
 - [shared/src/contracts/auth.contract.ts](../shared/src/contracts/auth.contract.ts)
-- [shared/src/validation/account.schema.js](../shared/src/validation/account.schema.js)
-- [shared/src/validation/account.schema.ts](../shared/src/validation/account.schema.ts)
+- `shared/src/validation/account.schema.js` (historical path: `../shared/src/validation/account.schema.js`)
+- `shared/src/validation/account.schema.ts` (historical path: `../shared/src/validation/account.schema.ts`)
 - [shared/src/validation/index.js](../shared/src/validation/index.js)
 - [shared/src/validation/index.ts](../shared/src/validation/index.ts)
 - [shared/src/validation/security.schema.js](../shared/src/validation/security.schema.js)

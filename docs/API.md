@@ -44,6 +44,48 @@ Most domain APIs use the envelopes below; auth and mailbox operations retain the
 { success: true, data: T[], meta: { total, page, limit, hasMore } }
 ```
 
+## Required operation identities
+
+Contact creation (`POST /crm/contacts`), Inbox sending (`POST /integrations/gmail/send`)
+and draft saving (`POST /integrations/gmail/drafts`) require a UUID `requestId`.
+Scheduling retains its required UUID. Generate one identity for a submission and
+reuse it for retries with identical content; changed content needs a new identity.
+Missing or invalid identities return 400 before a write or provider call.
+
+Contact creation accepts canonical `productInterestIds`, or compatible legacy
+`productInterests` names, but rejects both together. Unique eligible Products
+create separate Lead-stage Deals with current PHP prices, including zero. No
+Products creates no automatic Deal. The transaction includes relationships,
+custom fields, audit/activity, the actor-bound receipt and Workflow queue. The
+first successful request returns 201; an authorized identical replay returns 200
+with the same Contact. A different actor or normalized intent returns 409.
+Contact update rejects `requestId` and never repeats creation automation.
+
+Inbox receipts preserve existing success envelopes and `GMAIL_OUTCOME_UNKNOWN`.
+A lost provider response keeps an operation unconfirmed until exactly one
+metadata result matches its immutable RFC identity. Retrying that operation
+performs verification, not another send. Draft edit/send/schedule/delete claims
+serialize against the same draft. Receipt replays recheck current recipients,
+source messages and permissions. Schedule replays remain valid after the due
+time; future-time validation applies when reserving a new schedule.
+
+Mailbox reads remain `no-store`. Every provider-visible participant can veto
+access, including To/Cc/Reply-To/Bcc and independent duplicate CRM identities;
+the verified connected mailbox self-address is excluded. Client Admin has no
+assignment bypass. Hidden Bcc that Gmail does not expose cannot be verified.
+Historical email activities are exposed only through the same current mailbox
+policy. Activity and relationship reads containing that history also use
+`no-store`. An Activity list whose mailbox authorization revision changes while
+loading returns 409 `MAILBOX_SCOPE_CHANGED`; retry under the current scope instead
+of reusing its previous count or cursor.
+Exact compose/reply/reply-all/forward draft context is server-owned;
+legacy drafts with unverified source evidence require explicit source selection.
+
+This is an intentional writer compatibility change. Deploy matching frontend and
+backend revisions together. Old writers must supply stable UUIDs before upgrading;
+they must not silently generate a fresh UUID on each retry. See
+[local acceptance and release gates](verification/system-qa.md).
+
 ---
 
 ## Auth Endpoints

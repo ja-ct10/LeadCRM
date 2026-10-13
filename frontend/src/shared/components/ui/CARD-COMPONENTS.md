@@ -607,9 +607,9 @@ Visit `/card-showcase` in your development environment to see all components in 
 
 For questions or issues:
 
-- Check design system: `.kiro/skills/leadcrm-design-system.md`
+- Check design system: [design resources](../../../../../design-system/README.md)
 - View showcase: `http://localhost:3000/card-showcase`
-- Frontend patterns: `.kiro/skills/frontend-patterns`
+- Frontend patterns: [frontend architecture](../../../../../docs/ARCHITECTURE.md)
 
 ---
 

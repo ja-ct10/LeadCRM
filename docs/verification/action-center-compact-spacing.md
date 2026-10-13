@@ -89,24 +89,24 @@ The root scroll width equals the viewport width at all eight sizes. Titles wrap 
 
 Matched five-Task comparison:
 
-- [Before: five fixed-height cards](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-before/dashboard-actions-5.png>)
-- [After: five natural-height cards](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-actions-5.png>)
+- `Before: five fixed-height cards` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-before/dashboard-actions-5.png`)
+- `After: five natural-height cards` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-actions-5.png`)
 
 Mixed cards:
 
-- [Desktop light](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-light-1440.png>)
-- [Desktop dark](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-dark-1440.png>)
-- [320px light](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-light-320.png>)
-- [390px dark](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-dark-390.png>)
+- `Desktop light` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-light-1440.png`)
+- `Desktop dark` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-dark-1440.png`)
+- `320px light` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-light-320.png`)
+- `390px dark` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/dashboard-compact-dark-390.png`)
 
-Every requested width has light/dark screenshots in [the final evidence directory](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final>).
+Every requested width has light/dark screenshots in `the final evidence directory` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final`).
 
 Acceptance records:
 
-- [97-check final results](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/results.json>)
-- [Final browser log](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final-run.log>)
-- [44-check Dashboard regression results](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-regression/results.json>)
-- [Dashboard regression log](<C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-regression-run.log>)
+- `97-check final results` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final/results.json`)
+- `Final browser log` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-final-run.log`)
+- `44-check Dashboard regression results` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-regression/results.json`)
+- `Dashboard regression log` (historical evidence path: `C:/Users/Julie Ann Tiron/.codex/visualizations/2026/10/12/01a12e2e-43b5-7f22-b3a1-73abf7980900/action-center-regression-run.log`)
 
 Earlier runs stopped on fixture/setup issues that were corrected before final acceptance. The pre-change baseline later stopped on an unrelated Leads-column assertion (Source versus Assigned Agent); its screenshots are visual baseline evidence. The final focused run uses `--ui-polish --dashboard-only`; the separate Leads suite and full repository test suite are not claimed as passing.
 
@@ -116,3 +116,5 @@ To reproduce after workspace builds, set `UI_POLISH_OUTPUT` to an evidence direc
 
 No commit, push or Coolify deployment was performed for this request. Production Dashboard behavior has not been verified. These results establish the local UI fix, not a deployed production fix. No production database was contacted by the acceptance harness.
 
+
+Historical link maintenance: 11 reference(s) pointed to absent local evidence or retired source. Their original labels and paths remain above as provenance; the referenced files are unavailable in this checkout. No current-release verification is inferred from those references.
