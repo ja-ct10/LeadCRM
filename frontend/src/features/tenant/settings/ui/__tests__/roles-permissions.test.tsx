@@ -4,9 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS } from '@leadcrm/shared';
 import { DataProvider } from '@/store/DataContext';
 import { RolesPermissions } from '../roles-permissions';
-const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), }));
+const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), denied: [] as string[] }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
-  tenant: { id: 'tenant-a' }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01' }, userCan: () => true,
+  tenant: { id: 'tenant-a' }, user: { id: 'admin', role: 'Client Admin', status: 'ACTIVE', onboardingCompletedAt: '2026-01-01' }, userCan: (module: string, action: string) => !mocks.denied.includes(`${module}.${action}`),
 }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: mocks }));
@@ -33,11 +33,39 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   }
   return { ok: true, json: async () => ({ data: [], meta: { total: 0, totalPages: 0 } }) };
 });
-beforeEach(() => { localStorage.clear(); savedRoles.length = 0; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
+beforeEach(() => { localStorage.clear(); mocks.denied = []; savedRoles.length = 0; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
 async function open() { const view = mount(); const button = await screen.findByRole('button', { name: 'Create Custom Role' }); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button); return view; }
 const posts = () => fetcher.mock.calls.filter(([url, options]) => url.endsWith('/administration/roles') && options?.method === 'POST');
+it.each(['canCreate', 'canEdit'])('closes an open editor when %s is revoked without sending a mutation', async action => {
+  savedRoles.push({ id: 'staff-role', name: 'Staff', tenantId: 'tenant-a', isSystemRole: false, isArchived: false, permissions: [] });
+  const view = mount();
+  await screen.findByText('Staff');
+  if (action === 'canCreate') fireEvent.click(screen.getByRole('button', { name: 'Create Custom Role' }));
+  else {
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Staff' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Permissions' }));
+  }
+  const oldForm = screen.getByLabelText('Role Name *').closest('form')!;
+  mocks.denied = [`roles.${action}`];
+  view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
+  expect(screen.queryByLabelText('Role Name *')).toBeNull();
+  fireEvent.submit(oldForm);
+  expect(fetcher.mock.calls.filter(([, options]) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options?.method ?? ''))).toHaveLength(0);
+});
+it('dismisses an archive confirmation when Archive is revoked and denies the section without View', async () => {
+  savedRoles.push({ id: 'staff-role', name: 'Staff', tenantId: 'tenant-a', isSystemRole: false, isArchived: false, permissions: [] });
+  const view = mount(); await screen.findByText('Staff');
+  fireEvent.click(screen.getByRole('button', { name: 'Actions for Staff' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Archive Role' }));
+  expect(screen.getByText('Archive Role?')).toBeTruthy();
+  mocks.denied = ['roles.canArchive']; view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
+  expect(screen.queryByText('Archive Role?')).toBeNull();
+  mocks.denied = ['roles.canView']; view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
+  expect(screen.getByRole('alert').textContent).toContain('permission');
+  expect(screen.queryByText('Staff')).toBeNull();
+});
 it('blocks whitespace names with one inline error and no POST', async () => {
   await open(); fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: '   ' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));

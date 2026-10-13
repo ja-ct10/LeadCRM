@@ -4,7 +4,7 @@ import type { ImportModuleConfig } from '../types/import.types';
  * Import configuration for the Accounts module.
  *
  * Required fields: name
- * Optional fields: industry, website, address, city, province, country, size
+ * Optional fields: productInterest, industry, website, address, size
  */
 export const accountImportConfig: ImportModuleConfig = {
   moduleKey: 'accounts',
@@ -52,27 +52,6 @@ export const accountImportConfig: ImportModuleConfig = {
       required: false,
       type: 'text',
       autoMapPatterns: ['address', 'street', 'street address', 'street_address', 'full address', 'full_address'],
-    },
-    {
-      key: 'city',
-      label: 'City',
-      required: false,
-      type: 'text',
-      autoMapPatterns: ['city', 'town', 'municipality'],
-    },
-    {
-      key: 'province',
-      label: 'Province / State',
-      required: false,
-      type: 'text',
-      autoMapPatterns: ['province', 'state', 'region', 'province/state', 'state/province'],
-    },
-    {
-      key: 'country',
-      label: 'Country',
-      required: false,
-      type: 'text',
-      autoMapPatterns: ['country', 'nation', 'country_name'],
     },
     {
       key: 'size',

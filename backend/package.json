@@ -39,7 +39,12 @@
     "test:migration-scripts": "node --test scripts/verify-lead-retirement.test.mjs scripts/verify-campaign-status-migration.test.mjs",
     "db:contacts:verify": "node scripts/deploy-contact-retirement.cjs --verify",
     "db:contacts:retire": "node scripts/deploy-contact-retirement.cjs --retire",
-    "test:contacts:migration": "node scripts/test-contact-retirement.mjs"
+    "test:contacts:migration": "node scripts/test-contact-retirement.mjs",
+    "db:accounts:status": "node scripts/deploy-account-address-retirement.cjs --status",
+    "db:accounts:verify": "node scripts/deploy-account-address-retirement.cjs --verify",
+    "db:accounts:retire": "node scripts/deploy-account-address-retirement.cjs --retire",
+    "test:accounts:migration": "node scripts/test-accounts-full-address.mjs",
+    "test:accounts:rollout": "node --test scripts/deploy-account-address-retirement.test.cjs"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

@@ -118,6 +118,29 @@ it('preserves an allowed editor during Group revision refresh and removes it whe
   expect(screen.queryByLabelText('Workflow draft')).toBeNull();
 });
 
+it('refreshes Roles and Organization access for an unchanged Sales identity after an authorization revision', async () => {
+  class AccessEvents {
+    static current: AccessEvents;
+    listeners = new Map<string, ((event: MessageEvent) => void)[]>();
+    constructor() { AccessEvents.current = this; }
+    addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, [...(this.listeners.get(type) ?? []), listener]); }
+    close() {}
+    emit() { for (const listener of this.listeners.get('authorization-change') ?? []) listener(new MessageEvent('authorization-change', { data: 'role-revision' })); }
+  }
+  vi.stubGlobal('EventSource', AccessEvents);
+  mocks.me.mockResolvedValue({ data: { user } });
+  mocks.permissions.mockResolvedValue({ data: { roles: { canView: true, canEdit: true }, settings: { canView: true, canEdit: true }, leads: { canView: true } } });
+  show(); await waitFor(() => expect(auth.userCan('settings', 'canEdit')).toBe(true));
+  setPageCache('settings', 'tenant', {}, { private: 'Restricted organization' });
+  mocks.permissions.mockResolvedValue({ data: { roles: { canView: false, canEdit: false }, settings: { canView: false, canEdit: false }, leads: { canView: true } } });
+  await act(async () => AccessEvents.current.emit());
+  expect(auth.user?.role).toBe('Sales');
+  expect(auth.userCan('roles', 'canView')).toBe(false); expect(auth.userCan('roles', 'canEdit')).toBe(false);
+  expect(auth.userCan('settings', 'canView')).toBe(false); expect(auth.userCan('settings', 'canEdit')).toBe(false);
+  expect(auth.userCan('leads', 'canView')).toBe(true);
+  expect(getPageCacheSize()).toBe(0); expect(mocks.logout).not.toHaveBeenCalled();
+});
+
 it('keeps loaded data and drafts through authorization reconnects and membership-only revisions, evicting on grant changes', async () => {
   class AccessEvents {
     static current: AccessEvents;

@@ -31,24 +31,34 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
     const header = trigger.closest('header') ?? trigger;
     const align = () => {
       const viewport = window.visualViewport;
-      const width = Math.min(448, (viewport?.width ?? window.innerWidth) - 16);
+      const compact = window.innerWidth < 640;
+      const gutter = compact ? 16 : 8;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const width = Math.max(0, Math.min(compact ? 320 : 448, viewportWidth - gutter * 2));
       const leftEdge = viewport?.offsetLeft ?? 0;
-      const rightEdge = leftEdge + (viewport?.width ?? window.innerWidth);
-      const top = header.getBoundingClientRect().bottom;
-      setPosition({ top, width, left: Math.max(leftEdge + 8, Math.min(trigger.getBoundingClientRect().right - width, rightEdge - width - 8)),
-        maxHeight: Math.max(0, (viewport?.height ?? window.innerHeight) + (viewport?.offsetTop ?? 0) - top - 8) });
+      const rightEdge = leftEdge + viewportWidth;
+      const top = Math.max((viewport?.offsetTop ?? 0) + 8, header.getBoundingClientRect().bottom);
+      const availableHeight = Math.max(0, viewportHeight + (viewport?.offsetTop ?? 0) - top - 8);
+      setPosition({ top, width, left: Math.max(leftEdge + gutter, Math.min(trigger.getBoundingClientRect().right - width, rightEdge - width - gutter)),
+        maxHeight: compact ? Math.min(420, viewportHeight * 0.6, availableHeight) : availableHeight });
     };
     align();
     const observer = new ResizeObserver(align);
     observer.observe(header);
+    const bannerObserver = new MutationObserver(align);
+    bannerObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
     window.addEventListener('resize', align);
     window.addEventListener('scroll', align, true);
     window.visualViewport?.addEventListener('resize', align);
+    window.visualViewport?.addEventListener('scroll', align);
     return () => {
       observer.disconnect();
+      bannerObserver.disconnect();
       window.removeEventListener('resize', align);
       window.removeEventListener('scroll', align, true);
       window.visualViewport?.removeEventListener('resize', align);
+      window.visualViewport?.removeEventListener('scroll', align);
     };
   }, [isOpen, triggerRef]);
 

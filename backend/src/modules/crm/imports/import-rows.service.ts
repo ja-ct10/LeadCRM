@@ -1,7 +1,6 @@
 import { productRelationData } from '../leads/product-relations';
-import { consolidateAccountAddress } from '../companies/account-address';
 import type { Prisma } from '@prisma/client';
-import { importIdentity, importRowSchemas, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
+import { importIdentity, importRowSchemas, normalizeAccountImportRow, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { createAssignedLead, validateSalesOwner } from '../leads/lead-automation.service';
 import { CreateDealSchema, type CreateDealDto } from '../deals/deals.dto';
@@ -107,7 +106,7 @@ async function resolveDeal(tx: Tx, tenantId: string, data: Record<string, string
 
 export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantId: string, raw: MappedRow, duplicate?: string): Promise<ResolvedRow> {
   const parsed = parseRow(module, raw.data);
-  const result: ResolvedRow = { ...raw, data: parsed.success ? parsed.data : raw.data, products: [], isValid: false, status: 'invalid', errors: [] };
+  const result: ResolvedRow = { ...raw, data: parsed.success ? (module === 'accounts' ? normalizeAccountImportRow(parsed.data) : parsed.data) : raw.data, products: [], isValid: false, status: 'invalid', errors: [] };
   if (!parsed.success) result.errors = importValidationErrors(parsed.error)!;
   if (!parsed.success) return result;
   if (duplicate) { result.status = 'duplicate'; result.errors.push(duplicate); return result; }
@@ -182,7 +181,7 @@ async function createContact(tx: Tx, tenantId: string, actorId: string, jobId: s
 async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId: string, row: ResolvedRow) {
   const d = row.data;
   return (await tx.account.create({ data: { tenantId, name: d.name, industry: d.industry, website: d.website,
-    address: consolidateAccountAddress(d), size: d.size || null,
+    address: normalizeAccountImportRow(d).address, size: d.size || null,
     ...await productRelationData(tx, 'account', tenantId, { ids: row.products.map(p => p.id) }), tags: [],
   } })).id;
 }

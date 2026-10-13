@@ -13,6 +13,8 @@ const retirement = '20261202000000_retire_account_address_columns';
 const migrations = join(root, 'backend/prisma/migrations');
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('../../scripts/qa-environment.cjs');
+const { runAccountsCutover, accountErrorCode } = require('./deploy-account-address-retirement.cjs');
+const { migrate } = require('./deploy-crm-imports.cjs');
 if (process.platform === 'win32' && !process.env.POSTGRES_TEST_BIN) process.env.POSTGRES_TEST_BIN = 'C:/Program Files/PostgreSQL/17/bin';
 const cluster = await notificationTestPostgres();
 let client;
@@ -80,14 +82,74 @@ try {
   ) AS state`);
   const before = await snapshot();
   const retireSql = readFileSync(join(migrations, retirement, 'migration.sql'), 'utf8');
+  assert.equal((await runAccountsCutover(client,'--status')).blocked,'ACCOUNT_ADDRESS_EXPANSION_REQUIRED'); checks++;
+  cpSync(join(migrations,migration),join(previous,'migrations',migration),{recursive:true});
+  assert.ok(prisma(['migrate','deploy','--schema',join(previous,'schema.prisma')]).includes(migration)); checks++;
+  for (let index=0;index<cases.length;index++) {
+    const [row]=await client.$queryRawUnsafe('SELECT address FROM "Account" WHERE id=$1',`case-${index}`);
+    assert.equal(row.address,cases[index][4],`Expansion case ${index}`); checks++;
+  }
+  assert.deepEqual(await columns(),beforeColumns); checks++;
+  assert.deepEqual(await snapshot(),before); checks++;
+  // Simulate one last old-writer update after expansion; retirement must re-consolidate.
+  cluster.executeSql(name,`UPDATE "Account" SET address=NULL WHERE id='case-0';`);
+  const commit='a'.repeat(40);
+  const releaseEnv={CRM_ACCOUNTS_EXPECT_DATABASE:name,CRM_ACCOUNTS_VERIFY_API:'https://isolated.example/api/v1',
+    CRM_ACCOUNTS_VERIFY_COMMIT:commit,CRM_ACCOUNTS_VERIFY_TOKEN:'simulated-admin-token',SOURCE_COMMIT:commit};
+  const request=async url=>({ok:true,json:async()=>{
+    if(url.endsWith('/health'))return{commit,capabilities:['accounts-full-address-contract-v1']};
+    if(url.endsWith('/auth/me'))return{data:{id:'address-user',tenantId:'address',role:'Client Admin'}};
+    if(url.includes('?')) {
+      const archived=new URL(url).searchParams.get('archived')==='true';
+      const data=await client.$queryRawUnsafe('SELECT id,"tenantId",address,"productInterests" FROM "Account" WHERE "tenantId"=\'address\' AND "isArchived"=$1 ORDER BY id',archived);
+      return{data,meta:{total:data.length,hasMore:false}};
+    }
+    const id=decodeURIComponent(url.split('/').at(-1));
+    const [data]=await client.$queryRawUnsafe('SELECT id,"tenantId",address,"productInterests" FROM "Account" WHERE id=$1',id);
+    return{data};
+  }});
+  const assertBlocked=async code=>{
+    const addresses=await client.$queryRawUnsafe('SELECT id,address FROM "Account" ORDER BY id');
+    assert.throws(()=>cluster.executeSql(name,retireSql),new RegExp(code)); checks++;
+    await assert.rejects(runAccountsCutover(client,'--verify',releaseEnv,request),error=>accountErrorCode(error)===code); checks++;
+    assert.deepEqual(await columns(),beforeColumns); checks++;
+    assert.deepEqual(await snapshot(),before); checks++;
+    assert.deepEqual(await client.$queryRawUnsafe('SELECT id,address FROM "Account" ORDER BY id'),addresses); checks++;
+  };
   cluster.executeSql(name, `INSERT INTO "Workflow" (id,"tenantId",name,trigger,actions,conditions,"isActive",status,"updatedAt") VALUES ('address-workflow','address','Address dependency','account.updated','[]','{"operator":"AND","conditions":[{"field":"account.city","operator":"equals","value":"Makati City"}]}',true,'ACTIVE',now());`);
-  assert.throws(() => cluster.executeSql(name, retireSql), /ACCOUNT_ADDRESS_ACTIVE_WORKFLOW_REQUIRES_REPAIR/); checks++;
-  assert.deepEqual(await columns(), beforeColumns); checks++;
-  assert.deepEqual(await snapshot(), before); checks++;
+  await assertBlocked('ACCOUNT_ADDRESS_ACTIVE_WORKFLOW_REQUIRES_REPAIR');
+  cluster.executeSql(name,`UPDATE "Workflow" SET conditions='{"field":"event.changedFields","value":"province"}' WHERE id='address-workflow';`);
+  await assertBlocked('ACCOUNT_ADDRESS_ACTIVE_WORKFLOW_REQUIRES_REPAIR');
+  cluster.executeSql(name,`INSERT INTO "Template" (id,"tenantId",name,type,content,"updatedAt") VALUES ('address-template','address','Address template','Email','{{account.country}}',now());
+    UPDATE "Workflow" SET conditions=NULL,actions='[{"templateId":"address-template"}]' WHERE id='address-workflow';`);
+  await assertBlocked('ACCOUNT_ADDRESS_ACTIVE_WORKFLOW_REQUIRES_REPAIR');
+  cluster.executeSql(name,`UPDATE "Workflow" SET actions='[]',conditions='{"operator":"AND","conditions":[{"field":"account.city","operator":"equals","value":"Makati City"}]}' WHERE id='address-workflow';`);
   cluster.executeSql(name, `UPDATE "Workflow" SET "isActive"=false, status='DRAFT' WHERE id='address-workflow';`);
-  const output = prisma(['migrate', 'deploy', '--schema', schema]);
-  assert.ok(output.includes(migration));
-  assert.ok(output.includes(retirement));
+  cluster.executeSql(name,`INSERT INTO "TargetAudience" (id,"tenantId",name,"updatedAt") VALUES ('address-audience','address','Address audience',now());
+    INSERT INTO "TargetAudienceCondition" (id,"targetAudienceId",field,operator,value) VALUES ('address-condition','address-audience','account.province','equals','Metro Manila');`);
+  await assertBlocked('ACCOUNT_ADDRESS_ACTIVE_AUDIENCE_REQUIRES_REPAIR');
+  cluster.executeSql(name,`UPDATE "TargetAudience" SET "isActive"=false WHERE id='address-audience';
+    INSERT INTO "Campaign" (id,"tenantId",name,type,status,body,"updatedAt") VALUES ('address-campaign','address','Address campaign','EMAIL','SCHEDULED','{{account.country}}',now());`);
+  await assertBlocked('ACCOUNT_ADDRESS_SCHEDULED_CAMPAIGN_REQUIRES_REPAIR');
+  cluster.executeSql(name,`UPDATE "Campaign" SET body=NULL,"emailTemplateId"='address-template' WHERE id='address-campaign';`);
+  await assertBlocked('ACCOUNT_ADDRESS_SCHEDULED_CAMPAIGN_REQUIRES_REPAIR');
+  cluster.executeSql(name,`UPDATE "Campaign" SET "emailTemplateId"=NULL,"scheduleConfig"='{"field":"city"}',status='SENDING' WHERE id='address-campaign';`);
+  await assertBlocked('ACCOUNT_ADDRESS_SCHEDULED_CAMPAIGN_REQUIRES_REPAIR');
+  cluster.executeSql(name,`UPDATE "Campaign" SET status='DRAFT' WHERE id='address-campaign';`);
+  assert.equal((await runAccountsCutover(client,'--verify',releaseEnv,request)).dependenciesVerified,true); checks++;
+  let applied=0;
+  const apply=(through,exclude)=>{
+    applied++;
+    const original={DATABASE_URL:process.env.DATABASE_URL,DIRECT_URL:process.env.DIRECT_URL};
+    try {process.env.DATABASE_URL=url;process.env.DIRECT_URL=url;migrate(through,exclude);}
+    finally {for(const key of Object.keys(original)){if(original[key]===undefined)delete process.env[key];else process.env[key]=original[key];}}
+  };
+  await assert.rejects(runAccountsCutover(client,'--retire',releaseEnv,request,apply),/EXPLICIT_PRODUCTION_APPROVAL/); checks++;
+  await assert.rejects(runAccountsCutover(client,'--retire',{...releaseEnv,CRM_ACCOUNTS_PRODUCTION_APPROVAL:commit},request,apply),/BACKUP_AND_WRITER/); checks++;
+  assert.equal(applied,0); checks++;
+  const report=await runAccountsCutover(client,'--retire',{...releaseEnv,CRM_ACCOUNTS_PRODUCTION_APPROVAL:commit,CRM_ACCOUNTS_CUTOVER_READY:commit},request,apply);
+  assert.equal(report.preservationVerified,true); assert.equal(applied,1); checks++;
+  assert.equal((await runAccountsCutover(client,'--retire',releaseEnv,request,apply)).applied,true); assert.equal(applied,1); checks++;
   for (let index = 0; index < cases.length; index++) {
     const [row] = await client.$queryRawUnsafe('SELECT address FROM "Account" WHERE id=$1', `case-${index}`);
     assert.equal(row.address, cases[index][4], `Migration address case ${index}`); checks++;
@@ -105,6 +167,15 @@ try {
   assert.equal(historical[0].conditions.conditions[0].field, 'account.city'); checks++;
   const retiredLedger = await client.$queryRawUnsafe('SELECT finished_at,rolled_back_at FROM "_prisma_migrations" WHERE migration_name=$1', retirement);
   assert.equal(retiredLedger.length, 1); assert.ok(retiredLedger[0].finished_at); assert.equal(retiredLedger[0].rolled_back_at, null); checks++;
+  // Physical drift after an applied migration must refuse automatic repair.
+  cluster.executeSql(name,`ALTER TABLE "Account" ADD COLUMN city TEXT;`);
+  await assert.rejects(runAccountsCutover(client,'--verify',releaseEnv,request),/ACCOUNT_RETIREMENT_SCHEMA_DRIFT/); checks++;
+  cluster.executeSql(name,`ALTER TABLE "Account" DROP COLUMN city;`);
+  const historicalDefinitions=await client.$queryRawUnsafe(`SELECT
+    (SELECT field FROM "TargetAudienceCondition" WHERE id='address-condition') AS field,
+    (SELECT "scheduleConfig" FROM "Campaign" WHERE id='address-campaign') AS config`);
+  assert.equal(historicalDefinitions[0].field,'account.province');
+  assert.equal(historicalDefinitions[0].config.field,'city'); checks++;
   console.log(`${cluster.version}: ${checks} migration checks passed; exactly city/province/country dropped from Account; other columns and relationships preserved; migrations deployed only to the disposable database.`);
   const code = await runNotificationTestFile('src/modules/crm/companies/accounts-full-address.integration.test.ts', url);
   assert.equal(code, 0, 'Account persistence, import, sorting and filtering tests must pass');

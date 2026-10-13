@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent, type CollisionDetection } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { Pencil, Settings } from 'lucide-react';
+import { Pencil, Settings, Trash2 } from 'lucide-react';
 import { customFieldTechnicalKey, CLOSING_FIELD_TYPES, ClosingFieldInputSchema, CUSTOM_FIELD_MODULES, CUSTOM_FIELD_MODULE_LABELS, CLOSED_WON_GROUP_ID, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, normalizeCustomField, type CustomFieldModule, type ClosingField, type ClosingFieldInput, type FieldLayout, type CrmFieldCatalogEntry, type FieldLayoutAction } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -132,10 +132,10 @@ export function ClosingFieldsSettings() {
           {filtered.filter(field => field.groupId === group.id).map(field => <SortableFieldLayoutItem row key={field.canonicalTechnicalKey ?? field.technicalKey} id={field.canonicalTechnicalKey ?? field.technicalKey} groupId={field.groupId} label={field.label} disabled={!canEdit || pending || !ready || !!term}>
             <td className="p-3 font-medium">{field.label}{!field.active && <span className="block text-muted-foreground">Disabled</span>}</td><td className="p-3">{field.kind}</td><td className="p-3">{field.type}</td><td className="max-w-64 break-all p-3 font-mono">{field.technicalKey}</td><td className="p-3">{field.group}</td><td className="p-3">{field.required ? 'Yes' : 'No'}</td>
             {(['visibleInForm', 'visibleInDetails'] as const).map(key => <td key={key} className="p-3"><input aria-label={`${key === 'visibleInForm' ? 'Show in Forms' : 'Show in Details'}: ${field.label}`} type="checkbox" checked={field[key]} disabled={!canEdit || pending || (key === 'visibleInForm' && field.mandatory)} onChange={event => void mutateLayout({ action: 'field', technicalKey: field.technicalKey, [key]: event.target.checked })} /></td>)}
-            <td className="p-2"><div className="flex gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDelete && field.kind === 'Custom' && <Button variant="ghost" size="sm" className="text-destructive" disabled={pending} onClick={async () => {
+            <td className="p-2"><div className="flex items-center gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDelete && field.kind === 'Custom' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label="Delete field" title="Delete field" disabled={pending} onClick={async () => {
               if (saving.current || !window.confirm(`Delete “${field.label}” from current configuration? Historical values and evidence will be retained.`)) return;
               saving.current = true; setPending(true); try { await apiClient.delete(`${endpoint}/${field.customFieldId}`); setOptimistic(null); await query.refetch(); toast.success('Field deleted'); } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to delete field'); } finally { saving.current = false; setPending(false); }
-            }}>Delete</Button>}</div></td>
+            }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Delete field</TooltipContent></Tooltip></TooltipProvider>}</div></td>
           </SortableFieldLayoutItem>)}
         </SortableContext>)}
       </tbody></table>{!filtered.length && <p className="p-5 text-sm text-muted-foreground">No fields match your search.</p>}</div>

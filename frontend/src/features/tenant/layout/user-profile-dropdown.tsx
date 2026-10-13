@@ -1,7 +1,8 @@
 'use client';
 
 import { UserAvatar } from '@/shared/components/user-avatar';
-import React, { useState, useEffect, useRef } from 'react';
+import { ThemedPortal } from '@/shared/components/theme-scope';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   User,
   Settings,
@@ -26,10 +27,53 @@ export function UserProfileDropdown(): React.ReactElement {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
+  const [position, setPosition] = useState<{ top: number; left: number; width: number; maxHeight: number }>();
+
+  useLayoutEffect(() => {
+    if (!isOpen) return;
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+    const header = trigger.closest('header') ?? trigger;
+    const align = () => {
+      const viewport = window.visualViewport;
+      const compact = window.innerWidth < 640;
+      const gutter = compact ? 16 : 8;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const leftEdge = viewport?.offsetLeft ?? 0;
+      const width = Math.max(0, Math.min(compact ? 280 : 310, viewportWidth - gutter * 2));
+      const rect = trigger.getBoundingClientRect();
+      const top = Math.max((viewport?.offsetTop ?? 0) + 8, rect.bottom + 8);
+      const availableHeight = Math.max(0, viewportHeight + (viewport?.offsetTop ?? 0) - top - 8);
+      setPosition({ top, width, left: Math.max(leftEdge + gutter, Math.min(rect.right - width, leftEdge + viewportWidth - width - gutter)),
+        maxHeight: compact ? Math.min(viewportHeight * 0.7, availableHeight) : availableHeight });
+    };
+    align();
+    const observer = new ResizeObserver(align);
+    observer.observe(header);
+    const bannerObserver = new MutationObserver(align);
+    bannerObserver.observe(document.documentElement, { attributes: true, attributeFilter: ['style'] });
+    window.addEventListener('resize', align);
+    window.addEventListener('scroll', align, true);
+    window.visualViewport?.addEventListener('resize', align);
+    window.visualViewport?.addEventListener('scroll', align);
+    return () => {
+      observer.disconnect();
+      bannerObserver.disconnect();
+      window.removeEventListener('resize', align);
+      window.removeEventListener('scroll', align, true);
+      window.visualViewport?.removeEventListener('resize', align);
+      window.visualViewport?.removeEventListener('scroll', align);
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (isOpen && position) dropdownRef.current?.querySelector<HTMLElement>('[role="menuitem"]')?.focus({ preventScroll: true });
+  }, [isOpen, !!position]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(e.target as Node) &&
@@ -41,9 +85,9 @@ export function UserProfileDropdown(): React.ReactElement {
     };
 
     if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
+      document.addEventListener('pointerdown', handleClickOutside);
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, [isOpen]);
 
   // Keyboard navigation & accessibility (Escape)
@@ -87,7 +131,7 @@ export function UserProfileDropdown(): React.ReactElement {
   }`.toUpperCase();
 
   return (
-    <div className="relative inline-block text-left" ref={dropdownRef}>
+    <div className="relative inline-block text-left">
       {/* ── 1. The Trigger (Avatar) ────────────────────────────────────────── */}
       <button
         ref={triggerRef}
@@ -109,19 +153,21 @@ export function UserProfileDropdown(): React.ReactElement {
       </button>
 
       {/* ── 2. The Dropdown Popover ───────────────────────────────────────── */}
-      <AnimatePresence>
-        {isOpen && (
+      <ThemedPortal><AnimatePresence>
+        {isOpen && position && (
           <motion.div
+            ref={dropdownRef}
+            style={position}
             initial={{ opacity: 0, scale: 0.96, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: -6 }}
             transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
             role="menu"
             aria-orientation="vertical"
-            className="absolute right-0 top-full mt-2 w-[310px] max-w-[calc(100vw-1rem)] max-h-[calc(var(--app-viewport-height)-4rem)] overflow-y-auto overscroll-contain bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-slate-700/80 rounded-2xl shadow-xl shadow-slate-900/10 dark:shadow-black/40 py-1.5 z-50 backdrop-blur-md focus:outline-none"
+            className="fixed overflow-y-auto overscroll-contain bg-white dark:bg-[#1E293B] border border-slate-200/90 dark:border-slate-700/80 rounded-2xl shadow-xl shadow-slate-900/10 dark:shadow-black/40 py-1.5 z-50 backdrop-blur-md focus:outline-none"
           >
             {/* Section 1: User Identity */}
-            <div className="px-3.5 py-3 border-b border-slate-100 dark:border-slate-700/70">
+            <div className="px-3 py-2 sm:px-3.5 sm:py-3 border-b border-slate-100 dark:border-slate-700/70">
               <div className="flex items-start gap-2.5">
                 <div className="w-9 h-9 rounded-full bg-gradient-to-br from-[#2563EB] to-[#1D4ED8] flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-2xs">
                   <UserAvatar user={user} />
@@ -137,7 +183,7 @@ export function UserProfileDropdown(): React.ReactElement {
               </div>
 
               {/* Active Workspace Pill */}
-              <div className="mt-2.5 flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
+              <div className="mt-2.5 flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/80 border border-slate-200/60 dark:border-slate-700/60">
                 <div className="flex items-center gap-1.5 min-w-0">
                   <Building size={12} className="text-slate-400 dark:text-slate-500 shrink-0" />
                   <span className="text-[11px] font-medium text-slate-700 dark:text-slate-300 truncate">
@@ -216,7 +262,7 @@ export function UserProfileDropdown(): React.ReactElement {
             </div>
           </motion.div>
         )}
-      </AnimatePresence>
+      </AnimatePresence></ThemedPortal>
     </div>
   );
 }

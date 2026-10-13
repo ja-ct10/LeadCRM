@@ -173,18 +173,35 @@ export async function countActiveUserRoles(roleId: string, tenantId: string): Pr
 // ── Permissions ───────────────────────────────────────────────────────────
 
 /**
- * Resolve a user's effective permissions by joining UserRole → RolePermission,
- * ORing all boolean flags across all of the user's assigned roles.
+ * Resolve the current database identity, then combine its valid custom roles.
+ * A protected system-role junction cannot elevate a custom user's identity.
  */
 export async function findUserEffectivePermissions(
   userId: string,
   tenantId: string,
   db: Prisma.TransactionClient = prisma,
 ): Promise<ResolvedPermissions> {
-  const userRoles = await db.userRole.findMany({
-    where: { userId, tenantId, user: { tenantId }, role: { tenantId, isArchived: false, NOT: { name: { equals: 'Guest', mode: 'insensitive' } } } },
-    include: { role: { include: { permissions: { where: { tenantId } } } } },
+  const user = await db.user.findFirst({
+    where: { id: userId, tenantId },
+    select: {
+      role: true, status: true,
+      userRoles: {
+        where: { tenantId, role: { tenantId, isArchived: false } },
+        include: { role: { include: { permissions: { where: { tenantId } } } } },
+      },
+    },
   });
+  if (!user) throw new NotFoundError('User');
+  if (user.status !== 'ACTIVE') return {};
+  if (user.role === 'Client Admin') {
+    return Object.fromEntries(PERMISSION_MODULES.map(module => [module.key, {
+      ...EMPTY_PERMISSION_FLAGS, ...Object.fromEntries(module.actions.map(action => [action, true])),
+    }]));
+  }
+  const userRoles = user.userRoles.filter(({ role }) => !role.isSystemRole &&
+    !['guest', 'clientadmin', 'systemadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, '')));
+  // Never invent a primary assignment from the label or inherit an unrelated role.
+  if (!userRoles.some(({ role }) => role.name === user.role)) return {};
 
   const resolved: ResolvedPermissions = {};
   for (const ur of userRoles) {
@@ -217,8 +234,11 @@ export async function replaceUserRole(
   }
   requireEmployeeAccount({ role: role.name, email: user.email });
   await tx.user.update({ where: { id: user.id }, data: { role: role.name } });
-  await tx.userRole.deleteMany({ where: { userId, tenantId } });
-  await tx.userRole.create({ data: { userId, tenantId, roleId: role.id } });
+  await tx.userRole.deleteMany({ where: { userId, tenantId, roleId: { not: role.id }, role: { tenantId, name: user.role } } });
+  await tx.userRole.upsert({
+    where: { userId_roleId_tenantId: { userId, roleId: role.id, tenantId } },
+    create: { userId, tenantId, roleId: role.id }, update: {},
+  });
 }
 
 async function roleNameTransaction<T>(work: (tx: Prisma.TransactionClient) => Promise<T>): Promise<T> {

@@ -131,7 +131,7 @@ it('uses distinct create, edit and delete permissions for native and custom acti
   expect(screen.queryByRole('button', { name: 'Add Field' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Manage Field Groups' })).toBeTruthy();
   expect(within(customRow()).getByRole('button', { name: 'Edit Project Budget' })).toBeTruthy();
-  expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Delete field' })).toBeNull();
   mocks.permissions.delete('custom_fields.edit'); view.rerender(<ClosingFieldsSettings />);
   expect(screen.queryByRole('button', { name: 'Manage Field Groups' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Edit Project Budget' })).toBeNull();
@@ -141,23 +141,44 @@ it('uses distinct create, edit and delete permissions for native and custom acti
 it('offers deletion only for Custom definitions and submits the immutable ID after confirmation', async () => {
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
   render(<ClosingFieldsSettings />);
-  expect(within(screen.getByText('First Name').closest('tr')!).queryByRole('button', { name: 'Delete' })).toBeNull();
-  fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete' }));
+  expect(within(screen.getByText('First Name').closest('tr')!).queryByRole('button', { name: 'Delete field' })).toBeNull();
+  fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete field' }));
   await waitFor(() => expect(mocks.delete).toHaveBeenCalledWith(`/administration/closing-requirements/${budget.id}`));
   expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Historical values and evidence will be retained'));
   await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Field deleted'));
   fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'deals' } });
-  for (const field of DEFAULT_CLOSING_FIELDS) expect(within(screen.getByText(field.name).closest('tr')!).queryByRole('button', { name: 'Delete' })).toBeNull();
+  for (const field of DEFAULT_CLOSING_FIELDS) expect(within(screen.getByText(field.name).closest('tr')!).queryByRole('button', { name: 'Delete field' })).toBeNull();
 });
 
 it('reports actionable dependency errors without treating a failed deletion as success', async () => {
   vi.spyOn(window, 'confirm').mockReturnValue(true);
   mocks.delete.mockRejectedValueOnce(new Error('Referenced by Workflow: Budget routing'));
   render(<ClosingFieldsSettings />);
-  fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete' }));
+  fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete field' }));
   await waitFor(() => expect(mocks.error).toHaveBeenCalledWith('Referenced by Workflow: Budget routing'));
   expect(mocks.success).not.toHaveBeenCalled(); expect(mocks.refetch).not.toHaveBeenCalled();
   expect(screen.getByText(budget.name)).toBeTruthy();
+});
+
+it('cancels deletion and disables both row actions while a confirmed deletion is pending', async () => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+  let resolve!: (value: unknown) => void;
+  mocks.delete.mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  render(<ClosingFieldsSettings />);
+  const remove = within(customRow()).getByRole('button', { name: 'Delete field' }) as HTMLButtonElement;
+  expect(remove.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  expect(remove.textContent).toBe('');
+  fireEvent.click(remove);
+  expect(mocks.delete).not.toHaveBeenCalled();
+  confirm.mockReturnValue(true);
+  fireEvent.click(remove);
+  expect(remove.disabled).toBe(true);
+  expect((within(customRow()).getByRole('button', { name: 'Edit Project Budget' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.click(remove);
+  expect(mocks.delete).toHaveBeenCalledTimes(1);
+  resolve({});
+  await waitFor(() => expect(remove.disabled).toBe(false));
+  expect(mocks.success).toHaveBeenCalledWith('Field deleted');
 });
 
 it('shows compact group cards and requests a destination only when deleting a populated group', async () => {
