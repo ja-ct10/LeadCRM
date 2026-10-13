@@ -1,5 +1,5 @@
 import React from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from '@testing-library/react';
 import { UserProfileDropdown } from '../../layout/user-profile-dropdown';
 import { useLayout } from '../../layout/use-layout';
@@ -10,7 +10,10 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { firstName: 'Pr
 vi.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: () => ['contacts.view'], PERMISSION_BRIDGE: {} }));
 vi.mock('@/shared/components/user-avatar', () => ({ UserAvatar: () => <span>PU</span> }));
 vi.mock('sonner', () => ({ toast: { info: mocks.toast } }));
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+});
+afterEach(() => { cleanup(); vi.clearAllMocks(); vi.unstubAllGlobals(); });
 
 it('opens an internal Help Center link and closes the dropdown without a placeholder toast', async () => {
   render(<UserProfileDropdown />);

@@ -1,7 +1,7 @@
 'use strict';
 
 const { randomBytes } = require('node:crypto');
-const { mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
+const { existsSync, mkdirSync, mkdtempSync, writeFileSync } = require('node:fs');
 const { join, resolve } = require('node:path');
 
 /** Keep account credentials and application .env files out of local acceptance. */
@@ -10,11 +10,13 @@ function qaEnvironment(root, overrides = {}) {
   mkdirSync(directory, { recursive: true });
   const empty = resolve(directory, 'empty.env');
   writeFileSync(empty, '# Disposable QA only.\n');
-  const temporary = mkdtempSync(join(directory, 'qa-temp-'));
+  // Chromium's singleton socket has a 108-byte Unix path limit. Never inherit
+  // TMPDIR here: nested fixture launches must have equally short private paths.
+  const temporary = mkdtempSync(process.platform === 'linux' ? '/tmp/leadcrm-qa-' : join(directory, 'qa-temp-'));
   const storage = resolve(temporary, 'private-files');
   mkdirSync(storage);
   const env = {};
-  for (const name of ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'CI']) {
+  for (const name of ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'CI', 'npm_execpath']) {
     if (process.env[name] !== undefined) env[name] = process.env[name];
   }
   Object.assign(env, {
@@ -40,7 +42,13 @@ function qaEnvironment(root, overrides = {}) {
     LEADCRM_PRODUCTION_EMAIL_ALLOWLIST: '', LEADCRM_TEST_AUTH_ENABLED: 'false',
     LEADCRM_TEST_EMAIL_ALLOWLIST: '', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false',
   });
-  for (const name of ['PLAYWRIGHT_MODULE', 'PLAYWRIGHT_NODE_PATH', 'PLAYWRIGHT_BROWSERS_PATH', 'POSTGRES_TEST_BIN', 'LEADCRM_TEST_POSTGRES_BIN']) {
+  const inheritedPlaywright = process.env.PLAYWRIGHT_MODULE;
+  if (inheritedPlaywright && existsSync(inheritedPlaywright)) env.PLAYWRIGHT_MODULE = inheritedPlaywright;
+  else {
+    const installedPlaywright = resolve(root, 'node_modules/playwright');
+    if (existsSync(installedPlaywright)) env.PLAYWRIGHT_MODULE = installedPlaywright;
+  }
+  for (const name of ['PLAYWRIGHT_NODE_PATH', 'PLAYWRIGHT_BROWSERS_PATH', 'POSTGRES_TEST_BIN', 'LEADCRM_TEST_POSTGRES_BIN']) {
     if (process.env[name]) env[name] = process.env[name];
   }
   Object.assign(env, overrides);

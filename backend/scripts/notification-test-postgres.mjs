@@ -1,16 +1,22 @@
 import { spawn, execFileSync } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { mkdirSync, mkdtempSync, readdirSync, readFileSync, writeFileSync, existsSync, copyFileSync, rmSync, realpathSync, appendFileSync } from 'node:fs';
+import { resolve, join, sep } from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 import { createRequire } from 'node:module';
+const ledger = 'CREATE TABLE IF NOT EXISTS "_prisma_migrations" (id varchar(36) PRIMARY KEY, checksum varchar(64) NOT NULL, finished_at timestamptz, migration_name varchar(255) NOT NULL, logs text, rolled_back_at timestamptz, started_at timestamptz NOT NULL DEFAULT now(), applied_steps_count integer NOT NULL DEFAULT 0);';
+const migrationReceipt = (name, source) => `INSERT INTO "_prisma_migrations" (id,checksum,migration_name,finished_at,applied_steps_count) VALUES ('${randomUUID()}','${createHash('sha256').update(source).digest('hex')}','${name}',now(),1);`;
 export async function notificationTestPostgres() {
  const root = resolve(import.meta.dirname, '../..');
  const require = createRequire(import.meta.url);
  const { qaEnvironment } = require('../../scripts/qa-environment.cjs');
  const toolEnvironment = qaEnvironment(root);
- const output = resolve(root, 'data/outputs/notification-verification');
+ const output = resolve(root, 'data/outputs/system-audit/postgres');
  mkdirSync(output, { recursive: true });
- const directory = mkdtempSync(join(output, 'postgres-'));
+ const parent = realpathSync(process.platform === 'linux' ? '/tmp' : output);
+ const directory = mkdtempSync(join(parent, 'leadcrm-pg-'));
+ const log = join(directory, 'server.log');
+ const evidence = join(output, `server-${randomUUID()}.log`);
  let bin = process.env.POSTGRES_TEST_BIN;
  if (!bin) {
   try { bin = execFileSync('pg_config', ['--bindir'], { encoding: 'utf8', windowsHide: true, env: toolEnvironment }).trim(); }
@@ -22,39 +28,60 @@ export async function notificationTestPostgres() {
  const port = probe.address().port; await new Promise(done => probe.close(done));
  // Windows postgres inherits pg_ctl's output handles; pipes keep spawnSync waiting
  // after pg_ctl has exited even when the server is already ready.
- const run = (name,args) => execFileSync(exe(name),args,{ windowsHide:true, env:toolEnvironment, stdio:name==='pg_ctl'?'ignore':'pipe', timeout:120000 })?.toString() ?? '';
+ const run = (name,args) => execFileSync(exe(name),args,{ windowsHide:true, env:toolEnvironment, stdio:name==='pg_ctl' && process.platform === 'win32'?'ignore':'pipe', timeout:120000 })?.toString() ?? '';
+ const preserveLog = () => { if (existsSync(log)) copyFileSync(log, evidence); };
+ let started = false, stopped = false;
+ const stop = () => {
+  if (stopped) return;
+  // pg_ctl targets this private data directory; never kill by name or port.
+  if (started || existsSync(join(directory, 'postmaster.pid'))) run('pg_ctl',['-D',directory,'-m','fast','-w','stop']);
+  stopped = true;
+  preserveLog();
+  const target = realpathSync(directory);
+  if (!target.startsWith(parent + sep) || !target.slice(parent.length + 1).startsWith('leadcrm-pg-')) throw Error('Unsafe fixture cleanup path');
+  rmSync(target, { recursive: true });
+ };
  // Bootstrap only: this newly created disposable cluster is discarded after QA.
  // Runtime WAL/data synchronization remains enabled and is verified below.
+ try {
  run('initdb',['-D',directory,'-U','postgres','--auth=trust','--encoding=UTF8','--locale=C','--no-sync']);
- run('pg_ctl',['-D',directory,'-l',join(directory,'server.log'),'-o',`-h 127.0.0.1 -p ${port} -c timezone=UTC -c max_connections=30`,'-w','start']);
+ // A config file avoids pg_ctl's platform-dependent shell quoting of an empty
+ // string. All clients use TCP; runners need no access to /var/run/postgresql.
+ appendFileSync(join(directory, 'postgresql.conf'), "\nunix_socket_directories = ''\n");
+ run('pg_ctl',['-D',directory,'-l',log,'-o',`-h 127.0.0.1 -p ${port} -c timezone=UTC -c max_connections=30`,'-w','start']);
+ started = true;
  const psql = (database,args) => run('psql',['-X','-h','127.0.0.1','-p',String(port),'-U','postgres','-d',database,'-v','ON_ERROR_STOP=1',...args]);
  let durability;
- try {
   const values = psql('postgres',['-At','-c',"SELECT current_setting('fsync'), current_setting('synchronous_commit'), current_setting('full_page_writes')"]).trim().split('|');
   durability = { fsync: values[0], synchronous_commit: values[1], full_page_writes: values[2] };
   if (values.length !== 3 || values.some(value => value !== 'on')) throw Error('Disposable PostgreSQL runtime durability must remain enabled');
- } catch (error) {
-  run('pg_ctl',['-D',directory,'-m','fast','-w','stop']);
-  throw error;
- }
  const migrations = resolve(root,'backend/prisma/migrations');
- const sql = ['CREATE TABLE "_prisma_migrations" (migration_name text, finished_at timestamptz, rolled_back_at timestamptz);'];
+ const schemaSource = ({ before = '\uffff', exclude = [] } = {}) => {
+ const sql = [ledger];
  for (const name of readdirSync(migrations).sort()) {
    const file=join(migrations,name,'migration.sql'); if(!existsSync(file))continue;
-   sql.push(readFileSync(file,'utf8'),`INSERT INTO "_prisma_migrations" VALUES ('${name}',now(),NULL);`);
+   if (name >= before || exclude.includes(name)) continue;
+   const source = readFileSync(file,'utf8');
+   sql.push(source, migrationReceipt(name, source));
  }
- const schema = join(directory,'schema.sql'); writeFileSync(schema,sql.join('\n'));
+ return sql.join('\n');
+ };
+ const schema = join(directory,'schema.sql'); writeFileSync(schema,schemaSource());
  const disposableName = name => /^leadcrm_[a-z_]+_\d+$/.test(name) || ['leadcrm_custom_fields_test', 'leadcrm_polish_test'].includes(name);
  let statement = 0;
  return {
   directory,
+  evidence,
   version: run('postgres', ['--version']).trim(),
   durability,
-  async database(name, { migrate = true } = {}) {
+  async database(name, { migrate = true, before, exclude } = {}) {
    if(!disposableName(name))throw Error('Disposable database name required');
    psql('postgres',['-c',`DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`]);
    psql('postgres',['-c',`CREATE DATABASE "${name}"`]);
-   if (migrate) psql(name,['-f',schema]);
+   if (migrate) {
+    if (before || exclude) { const selected = join(directory, `selected-${++statement}.sql`); writeFileSync(selected, schemaSource({ before, exclude })); psql(name, ['-f', selected]); }
+    else psql(name,['-f',schema]);
+   }
    return `postgresql://postgres@127.0.0.1:${port}/${name}?connection_limit=4&statement_cache_size=0`;
   },
   executeSql(name, source) {
@@ -62,8 +89,14 @@ export async function notificationTestPostgres() {
    const file = join(directory, `statement-${++statement}.sql`); writeFileSync(file, source);
    return psql(name, ['-f', file]);
   },
-  stop() { run('pg_ctl',['-D',directory,'-m','fast','-w','stop']); },
+  stop,
  };
+ } catch (error) {
+  preserveLog();
+  const diagnostics = existsSync(log) ? readFileSync(log, 'utf8').slice(-16000) : [error.stdout, error.stderr].filter(Boolean).map(String).join('\n');
+  try { stop(); } catch (cleanup) { throw new Error(`Native PostgreSQL failed; owned-cluster cleanup failed (${cleanup.code || cleanup.name}). Evidence: ${evidence}\n${diagnostics}`, { cause: error }); }
+  throw new Error(`${error.message}\nNative PostgreSQL evidence: ${evidence}\n${diagnostics}`, { cause: error });
+ }
 }
 export async function runNotificationTestFile(file,url) {
  const root=resolve(import.meta.dirname,'..');

@@ -30,7 +30,8 @@ try {
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Field', lastName: 'Tester', email: 'fields-preview@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const { token } = await issueAuthSession(admin);
   const { DEFAULT_CLOSING_FIELDS } = require('@leadcrm/shared');
-  await prisma.closingFieldDefinition.createMany({ data: DEFAULT_CLOSING_FIELDS.map(field => ({ tenantId: tenant.id, id: field.id, definition: field })) });
+  await prisma.closingFieldDefinition.createMany({ data: DEFAULT_CLOSING_FIELDS.map(field => ({ tenantId: tenant.id, id: field.id,
+    definition: { ...field, required: ['confirmation-type', 'confirmation-date'].includes(field.id) } })) });
   const ageId = '2857e8ec-456d-4503-b955-46db45560974';
   await prisma.closingFieldDefinition.create({ data: { tenantId: tenant.id, id: ageId, definition: { id: ageId, name: 'Age', type: 'Number', module: 'leads', group: 'Basic Information', groupId: 'leads:section:0', active: true, required: false, visibleInForm: true, visibleInDetails: true, order: 100, description: '', options: [], version: 1 } } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Alias', lastName: 'Acceptance', email: 'alias@example.test' } });
@@ -231,7 +232,7 @@ try {
   assert.equal((await call(`/crm/leads/${lead.id}/custom-fields`)).values[required.id], 'Supplied'); checks.push('Newly required blank remains viewable; invalid empty draft stays inline; valid save persists');
   // Specialized evidence editor still works after ordinary Deal changes.
   const qualified = await prisma.stage.findFirstOrThrow({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id, name: 'Qualified' } });
-  await prisma.deal.update({ where: { id: records.deals }, data: { stageId: qualified.id } });
+  await call(`/crm/deals/${records.deals}/stage`, 'PATCH', { stageId: qualified.id });
   await details('deals'); const closing = page.locator(`#closing-requirements-${records.deals}`);
   assert.equal(await closing.getByRole('progressbar', { name: 'Required fields completed' }).getAttribute('aria-valuenow'), '0');
   await closing.getByRole('button', { name: 'Edit Confirmation Type', exact: true }).click();

@@ -115,6 +115,7 @@ async function integration() {
   if (!files.length) throw new Error('No integration suites match the requested filter');
   let pg;
   if (native) {
+    await check('Populated guarded db:deploy and backend startup rehearsal', ['backend/scripts/test-guarded-startup.mjs']);
     const { notificationTestPostgres } = await import('../backend/scripts/notification-test-postgres.mjs');
     pg = await notificationTestPostgres();
     records.push({ label: 'Disposable native PostgreSQL fixture', status: 'PASS', version: pg.version, durability: pg.durability, directory: relative(root, pg.directory).replaceAll('\\', '/') });
@@ -163,6 +164,7 @@ async function execute(section) {
     await importHistory();
   } else if (section === 'unit') {
     await check('QA isolation regression tests', ['--test', 'scripts/qa-safety.test.cjs']);
+    await check('Coolify release orchestration regressions', ['--test', 'scripts/deploy-coolify.test.mjs']);
     try { await vitest('backend unit tests', 'backend', ['--exclude=**/*.integration.test.ts']); }
     catch (error) { recordFailure('backend unit tests', error); }
     await vitest('frontend tests', 'frontend', ['--testTimeout=20000']);
@@ -222,5 +224,15 @@ const report = { mode, native, runId, filter, exclude, testNamePattern, captured
   status: records.some(result => result.status === 'FAIL') ? 'FAIL' : sourceChanged ? 'REVALIDATION REQUIRED' : records.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED',
   tools: { node: process.version, platform: process.platform, npm: process.env.npm_execpath ? execFileSync(process.execPath, [process.env.npm_execpath, '--version'], { encoding: 'utf8', windowsHide: true }).trim() : null, vitest: toolVersion('vitest', 'node_modules/vitest'), prisma: toolVersion('prisma', 'node_modules/prisma'), next: toolVersion('next', 'node_modules/next'), typescript: toolVersion('typescript', 'node_modules/typescript') }, invocation: process.argv.slice(2), commands, results: records };
 writeFileSync(resolve(output, `qa-${mode}${native ? '-native' : ''}.json`), JSON.stringify(report, null, 2) + '\n');
+if (process.env.GITHUB_STEP_SUMMARY) {
+  const cell = value => String(value ?? '—').replaceAll('|', '\\|').replace(/[\r\n]/g, ' ');
+  const rows = records.map(result => `| ${[result.label, result.status, result.passed, result.failed, result.skipped].map(cell).join(' | ')} |`);
+  appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
+    `\n### LeadCRM acceptance: ${report.status}`, '',
+    `Mode: ${mode}. Native PostgreSQL: ${native ? 'requested' : 'not requested'}. Source unchanged: ${!sourceChanged}.`, '',
+    '| Check | Result | Passed | Failed | Skipped |', '| --- | --- | ---: | ---: | ---: |', ...rows, '',
+    'A dash means this command reports an exit status rather than individual test counts. Full reports, command logs and browser failure captures are retained in the disposable QA evidence artifact.', '',
+  ].join('\n'));
+}
 console.log(JSON.stringify(report, null, 2));
 if (sourceChanged || records.some(result => result.status !== 'PASS')) process.exitCode = 1;
