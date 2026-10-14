@@ -79,7 +79,7 @@ try {
     const response = await page.request.fetch(apiBase + path + url.search, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined });
     await route.fulfill({ response });
   });
-  await page.goto(base + '/settings?tab=users');
+  await page.goto(base + '/settings?tab=users', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'View Nicolette Cuison' }).click();
   const panel = page.getByRole('dialog', { name: 'User Details' }); await panel.waitFor();
   assert.equal(await panel.getByRole('tablist').count(), 0);
@@ -200,6 +200,8 @@ try {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'FAIL', checks, pageErrors, error: String(error) }, null, 2));
   throw error;
 } finally {
+  // Finish intercepted refresh requests before disposing their API request context.
+  await page?.unrouteAll({ behavior: 'wait' });
   await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
   await prisma?.$disconnect(); await socket?.stop(); await pg?.close();
