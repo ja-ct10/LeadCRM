@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('./qa-environment.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
-const { browserEvidence } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
 const ci = require('./qa-ci.cjs');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceStart = sourceIdentity(root);
@@ -31,7 +31,7 @@ const records = [];
 const commands = [];
 let sequence = 0;
 const unavailableRuntime = error => error?.code === 'ENOENT' || /Set POSTGRES_TEST_BIN|Executable doesn't exist at|Chromium distribution 'chrome' is not found|spawn(?:Sync)? .*?(?:initdb|pg_config|chrome).*?(?:EACCES|EPERM|ENOENT)|Failed to launch the browser process.*?(?:EACCES|EPERM|ENOENT)/s.test(error?.message ?? String(error));
-function recordFailure(label, error) { if (!error.qaRecorded) records.push({ label, status: unavailableRuntime(error) ? 'BLOCKED' : 'FAIL', reason: error.message }); }
+function recordFailure(label, error, details = {}) { if (!error.qaRecorded) records.push({ label, status: unavailableRuntime(error) ? 'BLOCKED' : 'FAIL', reason: error.message, ...details }); }
 function run(label, args, cwd = root, overrides = {}) {
   console.log(`\n[qa] ${label}`);
   const env = qaEnvironment(root, overrides);
@@ -61,8 +61,9 @@ async function check(label, args, cwd = root, env = {}) {
 }
 async function browserCheck(label, script, directory, env) {
   const code = await run(label, [script], root, env);
-  const reportPath = ['results.json', 'report.json'].map(name => resolve(directory, name)).find(path => existsSync(path));
-  const result = reportPath ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+  const existingReport = ['results.json', 'report.json'].map(name => resolve(directory, name)).find(path => existsSync(path));
+  const reportPath = existingReport || ensureBrowserFailureReport(directory, new Error(`${label} exited ${code} before writing its required browser report; see the saved command log.`));
+  const result = JSON.parse(readFileSync(reportPath, 'utf8'));
   const { complete, ...counts } = browserEvidence(result, code);
   const log = resolve(root, commands.at(-1).log);
   const blocked = code && existsSync(log) && unavailableRuntime(readFileSync(log, 'utf8'));
@@ -70,7 +71,7 @@ async function browserCheck(label, script, directory, env) {
   records.push({ label, suiteId: relative(root, script).replaceAll('\\', '/'), status, exitCode: code, ...counts,
     database: env.DATABASE_URL || script.endsWith('verify-notifications-browser.mjs') ? 'Fresh native PostgreSQL' : 'Fresh PGlite fixture',
     report: reportPath ? relative(root, reportPath).replaceAll('\\', '/') : null,
-    ...(!reportPath || !counts.executed ? { reason: 'Required browser assertions/report missing; exit zero alone cannot pass.' } : {}) });
+    ...(!existingReport || !counts.executed ? { reason: 'Required browser assertions/report missing; exit zero alone cannot pass.' } : {}) });
   if (status !== 'PASS') { const error = new Error(`${label}: failed, missing or empty browser evidence`); error.qaRecorded = true; throw error; }
 }
 function walk(folder) {
@@ -219,7 +220,10 @@ async function execute(section) {
         }
         await browserCheck(relative(root, script), script, browserOutput, browserEnv);
       }
-      catch (error) { recordFailure(relative(root, script), error); }
+      catch (error) {
+        const report = ensureBrowserFailureReport(browserOutput, error);
+        recordFailure(relative(root, script), error, { report: relative(root, report).replaceAll('\\', '/') });
+      }
       finally { pg?.stop(); }
     }
     if (!ciPlan.shard) await check('Mailbox worker restart', ['backend/scripts/verify-mailbox-restart.mjs']);

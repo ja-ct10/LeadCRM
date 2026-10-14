@@ -362,11 +362,11 @@ try {
 
   assert.equal((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).createdAt.toISOString(), '2026-10-08T23:35:37.695Z');
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []);
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors }, null, 2));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'PASS', checks, pageErrors, transportErrors }, null, 2));
   console.log(`Browser acceptance passed: ${checks.length} checks. Output: ${output}`);
 } catch (error) {
   if (page) { await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {}); writeFileSync(resolve(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')); }
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, error: String(error) }, null, 2)); throw error;
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'FAIL', checks, pageErrors, transportErrors, error: String(error) }, null, 2)); throw error;
 } finally {
   closing = true; contactsGate?.resolve(); optionsGate?.resolve();
   await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
