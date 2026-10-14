@@ -259,7 +259,7 @@ export async function getConnectionStatus(
   });
 
   if (!account || !account.isActive) {
-    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null, syncError: account?.syncError ?? null };
+    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null, ...(account?.syncError ? { syncError: account.syncError } : {}) };
   }
 
   const user = await readAuthUser(userId, tenantId);
