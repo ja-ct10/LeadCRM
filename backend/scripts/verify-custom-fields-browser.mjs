@@ -120,7 +120,9 @@ try {
   const records = {};
   for (const [module, create] of [['leads', 'Create Lead'], ['contacts', 'Create Contact'], ['accounts', 'Add Account'], ['deals', 'New Deal']]) {
     await navigate(`/crm/${module}`);
-    await page.getByRole('button', { name: new RegExp(`^${create}$`) }).click();
+    if (module === 'accounts') await page.getByText('No accounts yet', { exact: true }).waitFor();
+    // Empty-state actions can share the label; use the titled workspace control.
+    await page.getByRole('button', { name: new RegExp(`^${create}$`) }).and(page.getByTitle(create, { exact: true })).click();
     if (await page.getByText('Create New', { exact: true }).isVisible()) await page.getByText('Create New', { exact: true }).click();
     await page.getByLabel('Project Budget', { exact: false }).waitFor();
     await page.getByLabel('Installation Notes', { exact: false }).fill('Keep the configured custom group and record values.');
