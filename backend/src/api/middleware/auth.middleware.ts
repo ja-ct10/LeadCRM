@@ -59,7 +59,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
       throw new AppError('Workspace access is unavailable.', 403);
     }
     if (user.mustChangePassword && !recovery) {
-      throw new AppError('Change your temporary password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
+      throw new AppError('Change your password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
     }
     if (!isOnboardingComplete(user) && !recovery &&
         !['/onboarding/status', '/onboarding/complete'].includes(authPath)) {

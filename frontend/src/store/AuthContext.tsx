@@ -15,6 +15,7 @@ import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearPageCache }         from '@/shared/cache/page-cache';
 import { clearNotificationTracking } from '@/features/tenant/notifications/hooks/notification-requests';
+import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -115,6 +116,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const activeUserId = useRef<string | null>(null);
   const authenticatedIdentity = useRef<string | null>(null);
   const appliedPermissions = useRef<string | null>(null);
+  const passwordRecoveryRefresh = useRef<Promise<void> | null>(null);
   activeUserId.current = user?.id ?? null;
 
   const applyOrganizationSettings = useCallback((settings: import('@leadcrm/shared').OrganizationSettings) => {
@@ -194,6 +196,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshPermissions = useCallback(async (): Promise<void> => {
     if (isLoading || authError || !user?.id) return;
+    if (user.mustChangePassword) {
+      setPermissions({});
+      setIsPermissionsLoaded(true);
+      return;
+    }
     if (USE_MOCK_AUTH) {
       setPermissions(resolveMockPermissions(user, MOCK_ROLES));
       setIsPermissionsLoaded(true);
@@ -220,7 +227,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsPermissionsLoaded(true);
       }
     }
-  }, [user?.id, user?.role, user?.tenantId, user?.status, tenant?.status, isLoading, authError]);
+  }, [user?.id, user?.role, user?.tenantId, user?.status, user?.mustChangePassword, tenant?.status, isLoading, authError]);
 
   useEffect(() => {
     setPermissions({});
@@ -280,7 +287,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const accessRefresh = useRef({ refreshUser, refreshPermissions });
   accessRefresh.current = { refreshUser, refreshPermissions };
   useEffect(() => {
-    if (USE_MOCK_AUTH || !user?.id || typeof EventSource === 'undefined') return;
+    if (USE_MOCK_AUTH || !user?.id) return;
+    const changed = () => {
+      if (passwordRecoveryRefresh.current) return;
+      const pending = accessRefresh.current.refreshUser().catch(() => {}).finally(() => {
+        if (passwordRecoveryRefresh.current === pending) passwordRecoveryRefresh.current = null;
+      });
+      passwordRecoveryRefresh.current = pending;
+    };
+    window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed);
+    return () => {
+      window.removeEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed);
+      passwordRecoveryRefresh.current = null;
+    };
+  }, [user?.id, user?.tenantId]);
+
+  useEffect(() => {
+    if (USE_MOCK_AUTH || !user?.id || user.mustChangePassword || typeof EventSource === 'undefined') return;
     // Keep observing access when a module guard unmounts the Dashboard. This
     // allows a later permission grant to restore the module without a reload.
     const source = new EventSource('/api/proxy/auth/events');
@@ -298,7 +321,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       window.dispatchEvent(new CustomEvent('leadcrm:groups-changed', { detail: { source: 'authorization' } }));
     });
     source.addEventListener('open', refresh);
-    source.addEventListener('authorization-access-changed', () => {
+    source.addEventListener('authorization-access-changed', event => {
+      try {
+        const data: unknown = JSON.parse((event as MessageEvent<string>).data);
+        if (typeof data === 'object' && data !== null && 'code' in data && data.code === 'PASSWORD_CHANGE_REQUIRED') {
+          source.close();
+          window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+          return;
+        }
+      } catch { /* Preserve the existing access-loss handling for older or malformed events. */ }
       requestGeneration.current += 1;
       permissionGeneration.current += 1;
       activeUserId.current = null;
@@ -308,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       clearPageCache(); source.close();
     });
     return () => source.close();
-  }, [user?.id, user?.tenantId]);
+  }, [user?.id, user?.tenantId, user?.mustChangePassword]);
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     if (USE_MOCK_AUTH) return mockLogin(email);

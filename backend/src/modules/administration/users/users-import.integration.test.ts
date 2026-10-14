@@ -13,10 +13,9 @@ import app from '../../../app';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|account_test_\d+)$/.test(url.pathname);
-describe.skipIf(!disposable)('user administration and deal imports over authenticated HTTP', () => {
+describe.skipIf(!disposable)('user administration over authenticated HTTP', () => {
   let server: Server, base: string, tenantId: string, otherTenant: string, token: string, readerToken: string, readerId: string;
-  let userId: string, otherUserId: string, pipelineId: string, stageId: string, otherStageId: string;
-  let accountId: string, productId: string, otherAccountId: string, otherContactId: string;
+  let userId: string, otherUserId: string;
   async function call(path: string, method = 'GET', body?: unknown, bearer = token) {
     const response = await fetch(base + path, { method, headers: {
       'Content-Type': 'application/json', ...(bearer ? { Authorization: `Bearer ${bearer}` } : {}),
@@ -35,14 +34,6 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales manager' } });
     await prisma.roleDefinition.create({ data: { tenantId: otherTenant, name: 'Other role' } });
     otherUserId = (await prisma.user.create({ data: { tenantId: otherTenant, email: 'juan@camxian.com', firstName: 'Other', lastName: 'Juan', role: 'Client Admin' } })).id;
-    otherAccountId = (await prisma.account.create({ data: { tenantId: otherTenant, name: 'Other account', } })).id;
-    otherContactId = (await prisma.contact.create({ data: { tenantId: otherTenant, firstName: 'Other', lastName: 'Contact', email: 'contact@camxian.com', } })).id;
-    accountId = (await prisma.account.create({ data: { tenantId, name: 'Import customer' } })).id;
-    productId = (await prisma.productInterest.create({ data: { tenantId, name: 'Import Product', dealValue: 100.25 } })).id;
-    pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Sales', } })).id;
-    stageId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Lead', order: 0, } })).id;
-    const productionPipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Production', } });
-    otherStageId = (await prisma.stage.create({ data: { tenantId, pipelineId: productionPipeline.id, name: 'Production', order: 1, } })).id;
     server = app.listen(0, '127.0.0.1');
     await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/v1`;
@@ -115,35 +106,4 @@ describe.skipIf(!disposable)('user administration and deal imports over authenti
     expect(JSON.stringify(failure.body)).not.toContain('provider secret');
   });
 
-  it('imports two Product-priced deals and records Product, stage and invalid-reference failures', async () => {
-    const rows = [
-      { title: ' Deal one ', pipeline: pipelineId, stage: stageId },
-      { title: '=Plain text', priority: 'high', expectedCloseDate: '2026-10-01' },
-      { title: 'Invalid Product', productInterest: 'Missing Product' },
-      { title: 'Invalid stage', stage: 'missing' },
-      { title: 'Wrong pipeline', stage: otherStageId },
-      { title: 'Invalid date', expectedCloseDate: '2026-02-30' },
-      { title: 'Wrong account', account: otherAccountId },
-      { title: 'Wrong contact', contact: otherContactId },
-      { title: 'Wrong assignee', assignedUser: otherUserId },
-    ].map(patch => ({ pipeline: 'Sales', stage: 'Lead', productInterest: productId, account: accountId, ...patch }));
-    const fields = ['title', 'pipeline', 'stage', 'productInterest', 'account', 'contact', 'assignedUser', 'priority', 'expectedCloseDate'];
-    const quote = (value: string) => '"' + value.replace(/"/g, '""') + '"';
-    const payload = { fileName: 'deals.csv', idempotencyKey: randomUUID(),
-      mappings: Object.fromEntries(fields.map((field, index) => [field, index])),
-      csvText: [fields.join(','), ...rows.map(row => fields.map(field => quote((row as Record<string, string>)[field] ?? '')).join(','))].join('\n'),
-    };
-    const result = await call('/crm/deals/imports', 'POST', payload);
-    expect(result.status).toBe(201);
-    expect(result.body.data).toMatchObject({ totalRecords: 9, successfulRecords: 2, failedRecords: 7, status: 'completed_with_errors', });
-    const deals = await prisma.deal.findMany({ where: { tenantId } });
-    expect(deals).toHaveLength(2);
-    expect(deals.every(deal => deal.pipelineId === pipelineId && deal.stageId === stageId)).toBe(true);
-    expect(deals.every(deal => deal.productInterestId === productId && deal.value === 100.25)).toBe(true);
-    expect(deals.map(deal => deal.title)).toContain('=Plain text');
-    const id = result.body.data.id;
-    expect((await call(`/crm/deals/imports/${id}/results`)).body.data).toHaveLength(9);
-    expect((await call('/crm/deals/imports', 'POST', payload, readerToken)).status).toBe(403);
-    expect((await call('/crm/deals/imports', 'POST', { ...payload, tenantId: otherTenant })).status).toBe(400);
-  });
 });

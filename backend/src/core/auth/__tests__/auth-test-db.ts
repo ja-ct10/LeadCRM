@@ -9,6 +9,7 @@ export const user = {
   id: 'user-1', tenantId: tenant.id, email: 'alice@gmail.com', firstName: 'Alice',
   lastName: 'Owner', role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01'),
   mustChangePassword: false,
+  passwordChangedAt: null as Date | null,
   onboardingCompletedAt: null as Date | null,
   passwordHash: 'hash', avatarUrl: null, tenant,
 };
@@ -29,7 +30,7 @@ export function resetDb() {
     ownerUserId: user.id, onboardingStep: 0, onboardingCompletedAt: null,
     name: 'Workspace', industry: null, companySize: null, website: null,
   });
-  Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, onboardingCompletedAt: null, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
+  Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, passwordChangedAt: null, passwordHash: 'hash', onboardingCompletedAt: null, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
   db.$transaction.mockImplementation(work => work(db));
   db.$queryRaw.mockImplementation((strings: TemplateStringsArray) => strings.join('').includes('LoginAttemptState')
     ? [{ identityKey: 'unit-test-identity', failedAttempts: 0, lastFailedAt: null, lockedUntil: null, lockedRejectionLoggedAt: null, updatedAt: new Date() }]

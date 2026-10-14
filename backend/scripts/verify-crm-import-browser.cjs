@@ -1,11 +1,10 @@
 const assert = require('node:assert/strict');
 const { verifyWorkspaceCoverage } = require('./verify-crm-import-rollout.cjs');
-const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts', DEAL: 'deals' };
+const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts' };
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone Number', companyName: 'Company Name', address: 'Full Address', productInterest: 'Product Interest' };
 const fields = {
   LEAD: Object.entries(labels), CONTACT: Object.entries(labels),
   ACCOUNT: [['name','Company Name'],['productInterest','Product Interest'],['industry','Industry'],['website','Website'],['address','Address'],['city','City']],
-  DEAL: [['title','Deal Title'],['productInterest','Product Interest'],['pipeline','Pipeline'],['stage','Stage'],['customer','Customer Email'],['priority','Priority']],
 };
 const normalize = value => String(value).replace(/\s+/g, ' ').trim();
 const badges = { completed:'Success', completed_with_errors:'Partial', failed:'Failed', pending:'In Progress', importing:'In Progress' };
@@ -27,7 +26,7 @@ function validatePages(evidence, origin, now = Date.now()) {
     for (const page of workspace.pages) {
       const url = new URL(page.url), age = now - Date.parse(page.capturedAt);
       assert.equal(url.origin, origin);
-      assert(/^\/crm\/(leads|contacts|accounts|deals)\/imports?(?:\/[^/]+)?$/.test(url.pathname));
+      assert(/^\/crm\/(leads|contacts|accounts)\/imports?(?:\/[^/]+)?$/.test(url.pathname));
       assert(!url.search && !url.hash);
       assert(Number.isFinite(age) && age >= 0 && age <= 30 * 60 * 1000, 'Browser evidence is stale');
       assert(!urls.has(page.url), 'Duplicate page evidence'); urls.add(page.url);
@@ -71,7 +70,7 @@ async function verifyBrowserImportRollout(db, origin, evidence) {
         const expected = rows.map(row => {
           const data = row.data || {};
           const status = row.status === 'imported' ? 'Imported' : row.status === 'duplicate' ? 'Duplicate' : 'Failed';
-          const remarks = row.status === 'imported' ? 'Successfully imported' + (data.resolvedValue === undefined ? '' : ' · Product value: ₱' + Number(data.resolvedValue).toLocaleString('en-PH')) : row.remarks || '—';
+          const remarks = row.status === 'imported' ? 'Successfully imported' : row.remarks || '—';
           return [row.rowNumber,...fields[module].map(([key]) => data[key] || '—'),status,remarks].map(normalize);
         });
         assert.deepEqual(actual.slice(1), expected, 'Visible row results mismatch');

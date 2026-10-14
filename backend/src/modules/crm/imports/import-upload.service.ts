@@ -3,9 +3,9 @@ import { CsvUploadChunkSchema, CSV_MAX_BYTES, type CreateCrmImportInput, type Cr
 import prisma from '../../../config/database.config';
 import { ConflictError, ValidationError } from '../../../shared/errors/http-error';
 import { salesTransaction } from '../leads/lead-automation.service';
-import { importModules } from './import-modules';
+import { databaseImportModule } from './import-modules';
 
-const uploadScope = (tenantId: string, actorId: string, module: CrmImportModule) => ({ tenantId, actorId, module: importModules[module] });
+const uploadScope = (tenantId: string, actorId: string, module: CrmImportModule) => ({ tenantId, actorId, module: databaseImportModule(module) });
 export const csvDigest = (source: string) => createHash('sha256').update(source).digest('hex');
 
 export async function saveCsvChunk(tenantId: string, actorId: string, module: CrmImportModule, input: unknown) {

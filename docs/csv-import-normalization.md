@@ -1,5 +1,7 @@
 # CRM import infrastructure normalization
 
+> Product update (2026-10-14): Deal CSV import is retired. Active import functionality supports only Leads, Contacts and Accounts. Deal import descriptions, routes, tables and test results below are historical evidence, not supported product functionality. Historical database records and migrations remain preserved. See [Deal import retirement](deal-import-retirement.md).
+
 Implemented and verified locally on 2026-10-04. Production retirement completed
 on the same date at 15:35:37 Asia/Manila; all eight obsolete tables are removed.
 See [the production retirement report](crm-import-production-retirement.md) for
@@ -111,7 +113,7 @@ other databases: **I cannot confirm this.** Check those before using the revised
    A historical workspace marked `SANDBOX` with **zero active users** cannot
    complete authenticated checks. Its full historical payloads must still pass
    SQL comparison before and inside retirement. This narrow exception is reported
-   separately; active workspaces and sandboxes with active users require all four
+   separately; active workspaces and sandboxes with active users require all three active
    successful imports and authenticated History checks. No users are reactivated.
 
 5. `20261028000000_retire_legacy_crm_imports` locks the source tables and verifies
@@ -163,7 +165,7 @@ the current production import tables; it describes the verified post-rollout sta
 ## 11–13. Module identity, idempotency and History
 
 `CrmImportModule` is a PostgreSQL/Prisma enum: `LEAD`, `CONTACT`, `ACCOUNT`, `DEAL`.
-One route-to-enum map connects the existing plural URLs to this controlled value.
+The active route-to-enum map contains only LEAD, CONTACT and ACCOUNT. DEAL remains a persisted historical discriminator; it has no import UI or API.
 Every repository query includes tenant and module; result queries also constrain
 the parent job. Cross-module and cross-tenant IDs return 404.
 
@@ -178,9 +180,9 @@ serializable transaction/retry mechanism commits the domain record, automatic
 Deals, row result and progress together. Processing remains bounded to 25 rows per
 request. Import idempotency does not constrain legitimate future opportunities.
 
-All History routes query the shared job/result tables. Ordering is deterministic
+History routes for Leads, Contacts and Accounts query the shared job/result tables. Ordering is deterministic
 by creation time and ID; status filtering and pagination stay on the server.
-The same frontend history/detail components serve all modules.
+The same frontend history/detail components serve the three active import modules.
 
 ## 14–15. Chunk staging and cleanup
 
@@ -206,7 +208,7 @@ be changed once set. Raw uploaded content is not included in History or logs.
 
 `backend/src/modules/crm/imports/` contains the shared controller factory,
 repository, orchestration service, upload service and cleanup scheduler. The
-`importHandlers` registry dispatches identity checks, business duplicate rules,
+`importHandlers` registry for Leads, Contacts and Accounts dispatches identity checks, business duplicate rules,
 relationship resolution and creation to module-specific functions. The sixteen
 duplicated controller/service/repository/DTO files were removed. Unused frontend
 API wrappers, the redundant Lead detail page and obsolete shared Deal aliases

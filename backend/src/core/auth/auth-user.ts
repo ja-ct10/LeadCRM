@@ -2,6 +2,7 @@ import type { AuthUser } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
+import { isPasswordExpired } from './password-expiration';
 
 export const authTenantSelect = {
   name: true, status: true,
@@ -73,7 +74,7 @@ export function buildAuthUserResponse(user: AuthUserSource): AuthUser {
     isTenantOwner: tenant?.ownerUserId === user.id,
     hasPassword: Boolean(user.passwordHash),
     passwordChangedAt: user.passwordChangedAt?.toISOString() ?? null,
-    mustChangePassword: user.mustChangePassword ?? false,
+    mustChangePassword: (user.mustChangePassword ?? false) || isPasswordExpired(user.passwordChangedAt),
   };
 }
 

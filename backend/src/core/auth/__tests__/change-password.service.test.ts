@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../../../config/database.config', async () => ({ default: (await import('./auth-test-db')).db }));
 vi.mock('../../../shared/helpers/crypto', () => ({ comparePassword: vi.fn(), hashPassword: vi.fn() }));
 import { db, user, resetDb } from './auth-test-db';
@@ -7,6 +7,20 @@ import { changePassword, ChangePasswordSchema } from '../change-password.service
 const actor = { userId: 'user-1', tenantId: 'tenant-1' };
 const input = { password: 'Personal2!' };
 beforeEach(() => { resetDb(); user.mustChangePassword = true; vi.mocked(hashPassword).mockResolvedValue('new-hash'); });
+afterEach(() => vi.useRealTimers());
+it('renews an expired password at server time while preserving onboarding and the current session', async () => {
+  const now = new Date('2030-04-01T12:00:00.000Z');
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(now);
+  user.mustChangePassword = false;
+  user.passwordChangedAt = new Date('2030-01-01');
+  user.onboardingCompletedAt = new Date('2029-12-01');
+  db.user.update.mockImplementation(({ data }) => Object.assign(user, data));
+  vi.mocked(comparePassword).mockResolvedValue(false);
+  const response = await changePassword(actor, input, 'current-token');
+  expect(user.passwordChangedAt).toEqual(now);
+  expect(response).toMatchObject({ mustChangePassword: false, passwordChangedAt: now.toISOString(), onboardingCompletedAt: '2029-12-01T00:00:00.000Z' });
+  expect(db.session.deleteMany).toHaveBeenCalledWith({ where: { userId: user.id, tokenHash: { not: expect.any(String) } } });
+});
 it('atomically stores the new hash, clears the requirement, revokes sessions and reset tokens', async () => {
   vi.mocked(comparePassword).mockResolvedValue(false);
   await changePassword(actor, input);

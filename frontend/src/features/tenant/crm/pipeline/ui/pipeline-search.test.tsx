@@ -34,12 +34,16 @@ it('selects the exact pipeline and highlights its card without automatically ope
   expect(screen.getByRole('dialog')).toBeTruthy();
 });
 
-it('bypasses local filters only for the authorized target and allows a deliberate pipeline change', async () => {
+it('bypasses local filters only for the authorized target and displays its pipeline read-only', async () => {
   render(<PipelinePage />);
   fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: 'No match' } });
   expect(await screen.findByRole('button', { name: 'Search-selected Deal' })).toBeTruthy();
-  fireEvent.change(screen.getByLabelText('Pipeline'), { target: { value: 'sales' } });
-  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?pipelineId=sales', { scroll: false });
+  const field = screen.getByRole('textbox', { name: 'Pipeline' }) as HTMLInputElement;
+  expect(field.value).toBe('Other Pipeline');
+  expect(field.readOnly).toBe(true);
+  expect(screen.queryByRole('combobox', { name: 'Pipeline' })).toBeNull();
+  fireEvent.click(field);
+  expect(state.replace).toHaveBeenCalledExactlyOnceWith('/crm/deals?highlight=selected&pipelineId=other', { scroll: false });
 });
 it('preserves explicit Deal-detail navigation', async () => {
   state.params = 'dealId=selected'; render(<PipelinePage />);

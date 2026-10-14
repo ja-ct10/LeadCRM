@@ -11,15 +11,17 @@ mkdirSync(output, { recursive: true });
 const widths = [320, 375, 390, 430, 768, 1024, 1440, 1920];
 const scenarios = [[10, 0, 0], [7, 3, 0], [8, 0, 2], [6, 2, 2], [0, 10, 0], [0, 0, 10], [0, 6, 4]];
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone Number', companyName: 'Company Name',
-  address: 'Full Address', name: 'Company Name', productInterest: 'Product Interest', title: 'Deal Title', customer: 'Customer Email', pipeline: 'Pipeline', stage: 'Stage' };
+  address: 'Full Address', name: 'Company Name', productInterest: 'Product Interest' };
 const encode = rows => {
   const keys = Object.keys(rows[0]), quote = value => '"' + String(value ?? '').replace(/"/g, '""') + '"';
   return { fileName: 'test.csv', csvText: [keys.map(k => labels[k] ?? k).join(','), ...rows.map(row => keys.map(k => quote(row[k])).join(','))].join('\n'),
     mappings: Object.fromEntries(keys.map((k, i) => [k, i])), idempotencyKey: randomUUID() };
 };
 (async () => {
+  const { isolateBrowserContext, setAcceptanceTheme } = await import('../backend/scripts/verify-browser-matrix.mjs');
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
   const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
+  await isolateBrowserContext(page.context());
   page.setDefaultTimeout(60000);
   const report = [], errors = [];
   const saveReport = () => writeFileSync(resolve(output, 'browser-results.json'), JSON.stringify({ report, errors, environment: 'disposable local API' }, null, 2));
@@ -30,13 +32,17 @@ const encode = rows => {
     return response.json();
   }
   async function capture(module, step) {
+    for (const theme of ['Light', 'Dark']) {
+      await setAcceptanceTheme(page, theme);
     for (const width of widths) {
       await page.setViewportSize({ width, height: 1000 });
-      await page.screenshot({ path: resolve(output, `${module}-${step}-${width}.png`), fullPage: true });
+      await page.screenshot({ path: resolve(output, `${module}-${step}-${theme.toLowerCase()}-${width}.png`), fullPage: true });
       const size = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth }));
       assert(size.scroll <= size.width + 1, `${module}/${step} overflows at ${width}: ${size.scroll}`);
-      report.push(`${module}/${step}/${width}: no document overflow`);
+      report.push(`${module}/${step}/${theme}/${width}: no document overflow`);
     }
+    }
+    await setAcceptanceTheme(page, 'Light');
     await page.setViewportSize({ width: 1440, height: 1000 });
   }
   async function upload(module, payload) {
@@ -69,14 +75,11 @@ const encode = rows => {
       assert.equal(completed.status(), 200);
       await page.goto(base + '/dashboard');
     }
-    for (const module of ['leads', 'contacts', 'accounts', 'deals']) {
+    for (const module of ['leads', 'contacts', 'accounts']) {
       for (const [valid, duplicate, invalid] of scenarios) {
-        // Deals do not have a global identity. Zero-valid duplicate scenarios are UI-contract tested.
-        if (module === 'deals' && !valid && duplicate) continue;
         const seed = randomUUID();
         const make = i => module === 'accounts' ? { name: `Browser ${seed} ${i}`, productInterest: 'Biometrics' }
-          : module === 'deals' ? { title: `Browser ${seed} ${i}`, customer: 'juan@example.test', productInterest: 'Biometrics', pipeline: 'Sales Pipeline', stage: 'Lead' }
-            : { firstName: 'Browser', lastName: 'Tester', email: `browser-${seed}-${i}@example.com`, phone: '9123456789', companyName: 'Browser Company', address: 'Manila', productInterest: 'Biometrics' };
+          : { firstName: 'Browser', lastName: 'Tester', email: `browser-${seed}-${i}@example.com`, phone: '9123456789', companyName: 'Browser Company', address: 'Manila', productInterest: 'Biometrics' };
         const rows = Array.from({ length: valid }, (_, i) => make(i));
         if (!valid && duplicate) await api(module, 'POST', encode([make(0)]));
         rows.push(...Array.from({ length: duplicate }, () => make(0)));
@@ -140,8 +143,7 @@ const encode = rows => {
         console.log(report.at(-1));
       }
       const failure = encode([module === 'accounts' ? { name: `Failed ${randomUUID()}`, productInterest: 'Missing Browser Product' }
-        : module === 'deals' ? { title: 'Failed Deal', productInterest: 'Missing Browser Product', pipeline: 'Sales Pipeline', stage: 'Lead', customer: 'juan@example.test' }
-          : { firstName: 'Failed', lastName: 'Tester', email: `failed-${randomUUID()}@example.com`, phone: '9123456789', companyName: 'Company', address: 'Manila', productInterest: 'Missing Browser Product' }]);
+        : { firstName: 'Failed', lastName: 'Tester', email: `failed-${randomUUID()}@example.com`, phone: '9123456789', companyName: 'Company', address: 'Manila', productInterest: 'Missing Browser Product' }]);
       const failed = (await api(module, 'POST', failure)).data;
       assert.equal(failed.status, 'failed');
       await page.goto(`${base}/crm/${module}/import?status=failed`);

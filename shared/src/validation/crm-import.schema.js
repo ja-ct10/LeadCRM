@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ImportResultsQuerySchema = exports.ImportListQuerySchema = exports.CsvUploadChunkSchema = exports.CreateCrmImportSchema = exports.importRequiredFields = exports.importRowSchemas = exports.ImportDealRowSchema = exports.ImportAccountRowSchema = exports.ImportContactRowSchema = exports.ImportLeadRowSchema = exports.splitProductInterests = exports.importIdentity = exports.CSV_MAX_COLUMNS = exports.CSV_MAX_ROWS = exports.CSV_MAX_BYTES = void 0;
+exports.ImportResultsQuerySchema = exports.ImportListQuerySchema = exports.CsvUploadChunkSchema = exports.CreateCrmImportSchema = exports.importRequiredFields = exports.importRowSchemas = exports.ImportAccountRowSchema = exports.ImportContactRowSchema = exports.ImportLeadRowSchema = exports.splitProductInterests = exports.importIdentity = exports.CSV_MAX_COLUMNS = exports.CSV_MAX_ROWS = exports.CSV_MAX_BYTES = void 0;
 exports.normalizeAccountImportRow = normalizeAccountImportRow;
 exports.resolveAccountImportMappings = resolveAccountImportMappings;
 exports.parseImportCsv = parseImportCsv;
@@ -80,23 +80,11 @@ function resolveAccountImportMappings(headers, mappings) {
     }
     return resolved;
 }
-exports.ImportDealRowSchema = zod_1.z.object({
-    title: required('Deal Title'), pipeline: required('Pipeline'), stage: required('Stage'),
-    productInterest: required('Product Interest', 200).refine(v => (0, exports.splitProductInterests)(v).length === 1, 'Each Deal must have exactly one Product Interest.'),
-    customer: optional(254), contact: optional(254), lead: optional(254), account: optional(255), assignedUser: optional(254),
-    priority: optional(10).transform(v => v.toUpperCase() || 'MEDIUM').pipe(zod_1.z.enum(['LOW', 'MEDIUM', 'HIGH'])),
-    expectedCloseDate: optional(10).refine(v => {
-        if (!v)
-            return true;
-        const date = new Date(`${v}T00:00:00.000Z`);
-        return /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === v;
-    }, 'Expected close date must be a real date in YYYY-MM-DD format.'),
-}).strict();
-exports.importRowSchemas = { leads: exports.ImportLeadRowSchema, contacts: exports.ImportContactRowSchema, accounts: exports.ImportAccountRowSchema, deals: exports.ImportDealRowSchema };
+exports.importRowSchemas = { leads: exports.ImportLeadRowSchema, contacts: exports.ImportContactRowSchema, accounts: exports.ImportAccountRowSchema };
 exports.importRequiredFields = {
     leads: ['firstName', 'lastName', 'email'],
     contacts: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address'],
-    accounts: ['name'], deals: ['title', 'productInterest', 'pipeline', 'stage'],
+    accounts: ['name'],
 };
 // Source CSV is validated on the server; callers cannot bypass parsing with mapped rows.
 exports.CreateCrmImportSchema = zod_1.z.object({
@@ -184,7 +172,10 @@ function mapImportCsv(module, input) {
     const parsed = parseImportCsv(input.csvText);
     if (!parsed.rows.length)
         throw new Error('The CSV must contain headers and at least one data row.');
-    const fields = Object.keys(exports.importRowSchemas[module].shape);
+    if (!Object.prototype.hasOwnProperty.call(exports.importRowSchemas, module))
+        throw new Error('Unsupported CRM import module.');
+    const schema = exports.importRowSchemas[module];
+    const fields = Object.keys(schema.shape);
     const indices = Object.values(input.mappings);
     if (new Set(indices).size !== indices.length)
         throw new Error('Each CSV column may only be mapped once.');

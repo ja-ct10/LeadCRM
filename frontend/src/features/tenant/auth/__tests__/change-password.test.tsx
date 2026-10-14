@@ -1,11 +1,22 @@
 import React from 'react';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const { changePassword, applyAuthUser } = vi.hoisted(() => ({ changePassword: vi.fn(), applyAuthUser: vi.fn() }));
+const { changePassword, applyAuthUser, user } = vi.hoisted(() => ({ changePassword: vi.fn(), applyAuthUser: vi.fn(), user: { id: 'employee', email: 'employee@camxian.com', mustChangePassword: true, onboardingCompletedAt: null as string | null } }));
 vi.mock('@/shared/services/auth.api', () => ({ authApi: { changePassword } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'employee', email: 'employee@camxian.com', mustChangePassword: true }, applyAuthUser, logout: vi.fn() }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user, applyAuthUser, logout: vi.fn() }) }));
 import ChangePasswordPage from '../ui/change-password-page';
-beforeEach(() => { cleanup(); vi.resetAllMocks(); });
+beforeEach(() => { cleanup(); vi.resetAllMocks(); user.onboardingCompletedAt = null; });
+it('keeps the first-login password and tour copy', () => {
+  render(<ChangePasswordPage />);
+  expect(screen.getByRole('heading', { name: 'Change your temporary password' })).toBeTruthy();
+  expect(screen.getByText(/short tour of LeadCRM/)).toBeTruthy();
+});
+it('uses returning-user copy without promising another onboarding tour', () => {
+  user.onboardingCompletedAt = '2026-01-01';
+  render(<ChangePasswordPage />);
+  expect(screen.getByRole('heading', { name: 'Change your password' })).toBeTruthy();
+  expect(screen.queryByText(/short tour|permanent password/)).toBeNull();
+});
 function fill(confirm = 'Personal2!') {
   fireEvent.change(screen.getByLabelText('New password *'), { target: { value: 'Personal2!' } });
   fireEvent.change(screen.getByLabelText('Confirm new password *'), { target: { value: confirm } });

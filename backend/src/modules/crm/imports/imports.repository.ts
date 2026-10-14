@@ -1,6 +1,6 @@
 import type { Prisma } from '@prisma/client';
 import type { CrmImportModule } from '@leadcrm/shared';
-import { importModules } from './import-modules';
+import { databaseImportModule } from './import-modules';
 
 type JobCreate = { createdById: string; fileName: string; totalRecords: number; idempotencyKey: string; requestHash: string; status: string; uploadId?: string; sourceDigest?: string; sourceReference?: string };
 type JobUpdate = { successfulRecords: number; failedRecords: number; duplicateRecords: number; status: string; completedAt: Date | null };
@@ -10,7 +10,7 @@ const createdBy = { select: { id: true, firstName: true, lastName: true } } as c
 
 /** Every query carries explicit module/scope, even outside request middleware. */
 export function importStore(db: Prisma.TransactionClient, routeModule: CrmImportModule, tenantId: string) {
-  const scope = { tenantId, module: importModules[routeModule] };
+  const scope = { tenantId, module: databaseImportModule(routeModule) };
   const rowsWhere = (importJobId: string, status?: string) => ({ importJobId, status, job: scope });
   return {
     find: (id: string) => db.crmImportJob.findFirst({ where: { ...scope, id }, include: { createdBy } }),

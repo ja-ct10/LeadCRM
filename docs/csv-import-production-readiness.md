@@ -1,5 +1,7 @@
 # CSV import audit and implementation report
 
+> Product update (2026-10-14): Deal CSV import is retired. Active import functionality supports only Leads, Contacts and Accounts. Deal import descriptions, routes, tables and test results below are historical evidence, not supported product functionality. Historical database records and migrations remain preserved. See [Deal import retirement](deal-import-retirement.md).
+
 Date: 2026-10-11. Scope: Leads, Contacts, Accounts, and Deals in the existing shared import system.
 
 **Local import acceptance passed for the applicable scenarios. The production readiness gate remains open.** The focused import tests and local browser checks passed; the complete repository suites have failures, independent multi-connection PostgreSQL concurrency testing was unavailable, and no Coolify deployment or authenticated production acceptance was performed. I cannot confirm production readiness.

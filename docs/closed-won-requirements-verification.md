@@ -1,5 +1,7 @@
 # Engagement and Closed Won requirements — implementation report
 
+> Product update (2026-10-14): Deal CSV import is retired. Active import functionality supports only Leads, Contacts and Accounts. Deal import descriptions, routes, tables and test results below are historical evidence, not supported product functionality. Historical database records and migrations remain preserved. See [Deal import retirement](deal-import-retirement.md).
+
 Verified locally on October 1, 2026. Changes are in the working tree; no production deployment or production migration was performed. Existing unrelated work was retained.
 
 ## Root cause and engagement rules

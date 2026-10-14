@@ -1,4 +1,4 @@
-import { beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../../../config/database.config', async () => ({
   default: (await import('./auth-test-db')).db,
 }));
@@ -29,6 +29,18 @@ beforeEach(() => {
   vi.stubEnv('JWT_SECRET', 'disposable-login-unit-key');
   vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
   vi.mocked(comparePassword).mockResolvedValue(true);
+});
+afterEach(() => vi.useRealTimers());
+it('authenticates correct expired credentials and returns the existing password-change gate', async () => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2030-04-01T00:00:00.000Z'));
+  user.passwordChangedAt = new Date('2030-01-01T00:00:00.000Z');
+  user.onboardingCompletedAt = new Date('2029-12-01');
+  const result = await loginUser({ email: user.email, password: 'secret' });
+  expect(result.user).toMatchObject({ mustChangePassword: true, onboardingCompletedAt: '2029-12-01T00:00:00.000Z' });
+  expect(result.user).not.toHaveProperty('passwordHash');
+  expect(user.mustChangePassword).toBe(false);
+  expect(createSession).toHaveBeenCalledOnce();
 });
 it('login and session restore return the same Sales onboarding state', async () => {
   const result = await loginUser({ email: user.email, password: 'secret' });

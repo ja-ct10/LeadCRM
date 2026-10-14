@@ -35,7 +35,7 @@ export function moduleImportService(module: CrmImportModule) {
       const { rows } = await prepare(module, tenantId, actorId, input), validate = csvRowValidator(module, tenantId, rows);
       const result: ImportReviewRow[] = [];
       for (const raw of rows.slice(offset, offset + 25)) {
-        const { products, deal, ...review } = await validate(prisma, raw);
+        const { products, ...review } = await validate(prisma, raw);
         result.push(review);
       }
       return result;
@@ -66,11 +66,11 @@ export function moduleImportService(module: CrmImportModule) {
       const validate = csvRowValidator(module, tenantId, rows, async (tx, rowNumber) =>
         (await importStore(tx, module, tenantId).row(job.id, rowNumber))?.status === 'failed');
       const committed = new Set((await storeFor(tenantId).rows(job.id)).map(r => r.rowNumber));
-      const saveOutcome = async (tx: Prisma.TransactionClient, raw: MappedRow, status: string, errors: string[], entityId?: string, resolvedValue?: number) => {
+      const saveOutcome = async (tx: Prisma.TransactionClient, raw: MappedRow, status: string, errors: string[], entityId?: string) => {
         const db = importStore(tx, module, tenantId);
         await db.save({ importId: job.id, rowNumber: raw.rowNumber, entityId, status,
           remarks: errors.length ? `Row ${raw.rowNumber}: ${errors.join('; ')}` : undefined,
-          data: { ...raw.data, ...(resolvedValue === undefined ? {} : { resolvedValue: String(resolvedValue) }) },
+          data: raw.data,
         });
         // The record, its required side effects, result, and progress share one commit.
         const outcomes = await db.rows(job.id);
@@ -90,7 +90,7 @@ export function moduleImportService(module: CrmImportModule) {
             if (await importStore(tx, module, tenantId).row(job.id, raw.rowNumber)) return;
             const review = await validate(tx, raw);
             const entityId = review.isValid ? await createImportRow(tx, module, tenantId, actorId, job.id, review) : undefined;
-            await saveOutcome(tx, raw, review.isValid ? 'imported' : review.status === 'duplicate' ? 'duplicate' : 'failed', review.errors, entityId, review.resolvedValue);
+            await saveOutcome(tx, raw, review.isValid ? 'imported' : review.status === 'duplicate' ? 'duplicate' : 'failed', review.errors, entityId);
           });
         } catch (error) {
           const errors = importValidationErrors(error);
@@ -118,7 +118,7 @@ export function moduleImportService(module: CrmImportModule) {
     async listImportResults(id: string, tenantId: string, query: ImportQuery) {
       if (!await storeFor(tenantId).find(id)) throw new NotFoundError('Import');
       const [rows, total] = await Promise.all([storeFor(tenantId).results(id, query), storeFor(tenantId).countResults(id, query.status)]);
-      const recordKey = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' }[module];
+      const recordKey = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId' }[module];
       // Preserve module API aliases while keeping one relational result contract.
       const data = rows.map(row => ({ ...(row.data as Record<string, unknown>), ...row,
         importId: row.importJobId, [recordKey]: row.recordId,

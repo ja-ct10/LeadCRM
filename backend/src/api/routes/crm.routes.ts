@@ -46,7 +46,6 @@ const router = Router();
 const leadImportController = importController('leads');
 const contactImportController = importController('contacts');
 const accountImportController = importController('accounts');
-const dealImportController = importController('deals');
 
 // All CRM routes require authentication + tenant context
 router.use(authMiddleware);
@@ -132,12 +131,6 @@ router.get(   '/deals/forecast',     authorize('deals.view'),   dealController.g
 router.post(  '/deals/bulk/archive',  authorize('deals.archive'), bulkDealsController.bulkArchive);
 router.post(  '/deals/bulk/reassign', authorize('deals.edit'),   bulkDealsController.bulkReassign);
 router.post(  '/deals/bulk/stage',    authorize('deals.edit'),   bulkDealsController.bulkStageChange);
-router.get('/deals/imports', authorize('deals.view'), dealImportController.listImports);
-router.get('/deals/imports/:importId', authorize('deals.view'), dealImportController.getImport);
-router.get('/deals/imports/:importId/results', authorize('deals.view'), dealImportController.getImportResults);
-router.post('/deals/imports/upload', authorize('deals.create'), validate(CsvUploadChunkSchema), dealImportController.uploadCsv);
-router.post('/deals/imports/preview', authorize('deals.create'), validate(CreateCrmImportSchema), dealImportController.previewImport);
-router.post('/deals/imports', authorize('deals.create'), validate(CreateCrmImportSchema), dealImportController.createImport);
 router.post('/deals/batch', authorize('deals.create'), validate(CreateDealBatchSchema), dealController.createBatch);
 router.get(   '/deals/:id',          authorize('deals.view'),   dealController.getDealById);
 router.get('/deals/:id/closing-requirements', authorize('deals.view'), closingRequirements.readValues);

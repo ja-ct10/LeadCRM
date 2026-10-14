@@ -10,14 +10,31 @@ const evidence = pages => ({ version: 1, origin:base, workspaces: [{ tenantId:'a
 test('browser evidence requires fresh import pages on the exact origin', () => {
   const page = entry('/crm/leads/import');
   validatePages(evidence([page]),base,now);
-  for(const patch of [{capturedAt:new Date(now-1800001).toISOString()}, {url:'https://other.example/crm/leads/import'}, {text:'Import Not Found'}, {tables:[]}, {url:base+'/login'}]) {
+  for(const patch of [{capturedAt:new Date(now-1800001).toISOString()}, {url:'https://other.example/crm/leads/import'}, {text:'Import Not Found'}, {tables:[]}, {url:base+'/login'}, {url:base+'/crm/deals/import'}]) {
     assert.throws(()=>validatePages(evidence([{...page,...patch}]),base,now));
   }
   assert.throws(()=>validatePages(evidence([page,page]),base,now));
 });
 
+test('retired Deal history stays in SQL verification and requires no retired API', async () => {
+  const { db, request } = fixture('SANDBOX', 0);
+  let preservedChecks = 0;
+  db.$queryRawUnsafe = async sql => {
+    if (sql.includes('DISTINCT')) return [{ id: 'active' }, { id: 'dormant' }];
+    preservedChecks++;
+    return [{ module: 'DEAL', jobs: 1, results: 2 }];
+  };
+  const report = await verifyRequests(db, [async path => {
+    assert.ok(!path.startsWith('/crm/deals/'));
+    return request(path);
+  }]);
+  assert.equal(preservedChecks, 2);
+  assert.deepEqual(report.historical, [{ module: 'DEAL', jobs: 1, results: 2 }]);
+  assert.deepEqual(report.moduleChecks.map(item => item.module), ['LEAD', 'CONTACT', 'ACCOUNT']);
+});
+
 function fixture(status, activeUsers) {
-  const modules = { leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT', deals: 'DEAL' };
+  const modules = { leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT' };
   const jobs = Object.values(modules).map(module => ({ id: module, module, tenantId: 'active', fileName: 'qa.csv', totalRecords: 1, successfulRecords: 1, failedRecords: 0, duplicateRecords: 0, status: 'completed', idempotencyKey: module, createdAt: '2026-10-04', completedAt: '2026-10-04' }));
   const db = {
     $queryRawUnsafe: async sql => sql.includes('DISTINCT') ? [{ id: 'active' }, { id: 'dormant' }] : [{ module: 'LEAD', jobs: 2, results: 8 }],
@@ -66,12 +83,11 @@ test('UI verification compares every module history and every visible result cel
     LEAD:['First Name','Last Name','Email','Phone Number','Company Name','Full Address','Product Interest'],
     CONTACT:['First Name','Last Name','Email','Phone Number','Company Name','Full Address','Product Interest'],
     ACCOUNT:['Company Name','Product Interest','Industry','Website','Address','City'],
-    DEAL:['Deal Title','Product Interest','Pipeline','Stage','Customer Email','Priority'],
   };
   const pages=[];
   for(const job of jobs) {
     job.createdBy={firstName:'Test',lastName:'Admin'};
-    const route={LEAD:'leads',CONTACT:'contacts',ACCOUNT:'accounts',DEAL:'deals'}[job.module];
+    const route={LEAD:'leads',CONTACT:'contacts',ACCOUNT:'accounts'}[job.module];
     pages.push({...entry(`/crm/${route}/import`),tables:[[
       ['Date','File Name','Status','Records','Failed / Duplicates','Imported By'],
       ['Oct 4, 2026, 08:00 AM','qa.csv','Success','1 / 1','0 / 0','Test Admin'],
@@ -83,7 +99,7 @@ test('UI verification compares every module history and every visible result cel
   }
   db.crmImportRowResult.findMany=async()=>[{rowNumber:2,status:'imported',data:{}}];
   const data=evidence(pages);
-  assert.equal((await verifyBrowserImportRollout(db,base,data)).moduleChecks.length,4);
+  assert.equal((await verifyBrowserImportRollout(db,base,data)).moduleChecks.length,3);
   const missing=structuredClone(data); missing.workspaces[0].pages.pop();
   await assert.rejects(verifyBrowserImportRollout(db,base,missing));
   const wrongRow=structuredClone(data); wrongRow.workspaces[0].pages[1].tables[0][1][1]='Wrong';

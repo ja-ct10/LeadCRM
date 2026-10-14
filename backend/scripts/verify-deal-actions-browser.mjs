@@ -1,4 +1,4 @@
-import { isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { isolateBrowserContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real production UI + authenticated Express API against a fresh, migration-replayed
 // in-memory database. No existing tenant, provider, or deployment is contacted.
 // Build first; set PLAYWRIGHT_MODULE to an installed Playwright package.
@@ -124,6 +124,83 @@ try {
   assert.equal((await stored('Action Deal')).pipelineId,pipeline.id);record('Transfer endpoint enforces deals.edit before any mutation');
   await page.goto(base+'/crm/deals');
   await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
+  assert.equal(await page.getByRole('combobox',{name:'Pipeline',exact:true}).count(),0);
+  const pipelineField=page.getByRole('textbox',{name:'Pipeline',exact:true});
+  assert.equal(await pipelineField.inputValue(),pipeline.name);
+  assert.equal(await pipelineField.evaluate(el=>el.readOnly),true);
+  assert.equal(await page.getByRole('button',{name:'New Deal',exact:true}).getAttribute('aria-haspopup'),null);
+  await page.getByRole('button',{name:'Manage pipeline stages',exact:true}).click();
+  await page.getByRole('dialog').waitFor();
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog').waitFor({state:'hidden'});
+  record('Deals header exposes a direct New Deal button, read-only persisted Pipeline, and permitted stage management');
+  await page.getByRole('button',{name:'New Deal',exact:true}).click();
+  const newDeal=page.getByRole('dialog');
+  await newDeal.getByRole('heading',{name:'New Deal',exact:true}).waitFor();
+  assert.equal(await page.getByRole('menuitem',{name:'Create New',exact:true}).count(),0);
+  assert.equal(await page.getByRole('menuitem',{name:'Import File',exact:true}).count(),0);
+  await newDeal.getByText(pipeline.name,{exact:true}).waitFor();
+  await newDeal.getByLabel('Title',{exact:false}).fill('Direct Sales Deal');
+  await newDeal.getByRole('button',{name:'Product Interest',exact:true}).click();
+  await page.getByRole('checkbox',{name:product.name,exact:true}).check();
+  await page.keyboard.press('Escape');
+  for(const [entity,name] of [['contacts','Acceptance Contact'],['leads','Acceptance Lead']]) {
+    await newDeal.getByRole('combobox',{name:`Search ${entity}...`,exact:true}).click();
+    await page.getByRole('combobox',{name:`Search ${entity}`,exact:true}).fill('Acceptance');
+    await page.getByRole('listbox',{name:`${entity} options`,exact:true}).getByRole('option',{name:new RegExp(name)}).click();
+    await page.keyboard.press('Escape');
+  }
+  await newDeal.getByRole('combobox',{name:'Search users...',exact:true}).click();
+  await page.getByRole('combobox',{name:'Search users',exact:true}).fill('agent0@');
+  await page.getByRole('listbox',{name:'users options',exact:true}).getByRole('option',{name:/agent0@camxian\.com/}).click();
+  await newDeal.getByRole('button',{name:'Create Deal',exact:true}).click();
+  await page.getByRole('button',{name:'Actions for Direct Sales Deal',exact:true}).waitFor();
+  const direct=await prisma.deal.findFirstOrThrow({where:{tenantId:tenant.id,title:'Direct Sales Deal'}});
+  assert.equal(direct.pipelineId,pipeline.id);assert.equal(direct.stageId,initial.id);assert.equal(direct.assignedUserId,agents[0].id);
+  assert.equal(direct.productInterestId,product.id);assert.equal(Number(direct.value),25000);
+  assert.equal(await prisma.leadDeal.count({where:{dealId:direct.id,leadId:lead.id}}),1);
+  assert.equal(await prisma.contactDeal.count({where:{dealId:direct.id,contactId:contact.id}}),1);
+  record('Direct New Deal saves the current pipeline, Lead stage, Product, Assigned Agent and both customer relationships and appears on the board');
+  await until(async()=>await page.getByText('Active Open Deals',{exact:true}).locator('..').innerText().then(text=>/\b6\b/.test(text)),'Created Deal did not refresh metrics');
+  for await(const {theme,width} of responsiveMatrix(page)) {
+    const control=page.getByRole('textbox',{name:'Pipeline',exact:true});
+    assert.equal(await control.inputValue(),pipeline.name);assert.equal(await control.evaluate(el=>el.readOnly&&!el.disabled),true);
+    await control.click();await page.keyboard.type('Another pipeline');
+    assert.equal(await control.inputValue(),pipeline.name);
+    assert.equal(await page.getByRole('combobox',{name:'Pipeline',exact:true}).count(),0);
+    const button=page.getByRole('button',{name:'New Deal',exact:true});
+    assert.equal(await button.getAttribute('aria-haspopup'),null);assert.equal(await button.locator('.lucide-chevron-down,.lucide-chevron-up').count(),0);
+    assert.equal(await page.getByText('Import File',{exact:true}).count(),0);
+    const bounds=await control.boundingBox();assert.ok(bounds.x>=0&&bounds.x+bounds.width<=width+1);
+    assert.ok(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1));
+    await page.screenshot({path:resolve(output,`deals-toolbar-${theme.toLowerCase()}-${width}.png`)});
+    record(`${theme}/${width}px: readable Pipeline cannot be edited; direct create button, no import menu or page overflow`);
+  }
+  for(const [parameter,id] of [['leadId',lead.id],['contactId',contact.id],['accountId',account.id],['organizationId',account.id]]) {
+    await page.goto(base+'/crm/deals?'+parameter+'='+id);
+    await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
+    await page.reload();await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
+    assert.equal(await page.getByRole('textbox',{name:'Pipeline',exact:true}).inputValue(),pipeline.name);
+    record(`${parameter} relationship navigation and refresh retain the authorized Deal board`);
+  }
+  await page.goto(base+'/crm/deals?highlight='+direct.id);
+  await page.locator('[data-search-highlight="true"]').waitFor();await page.reload();await page.locator('[data-search-highlight="true"]').waitFor();
+  record('Search highlight deep link resolves the persisted pipeline and survives reload');
+  await page.goto(base+'/crm/deals?dealId='+direct.id);
+  await page.getByRole('dialog').waitFor();await page.reload();await page.getByRole('dialog').waitFor();
+  await page.keyboard.press('Escape');await page.getByRole('dialog').waitFor({state:'hidden'});
+  record('Explicit Deal detail deep link opens after refresh');
+  const historicalImport=await prisma.crmImportJob.create({data:{tenantId:tenant.id,createdById:admin.id,module:'DEAL',fileName:'historical.csv',status:'completed'}});
+  for(const path of ['/crm/deals/import','/crm/deals/imports','/crm/deals/imports/'+historicalImport.id]) {
+    await page.goto(base+path);await page.waitForLoadState('networkidle');
+    for(const name of ['Upload CSV file','Browse files','Download CSV template']) assert.equal(await page.getByRole('button',{name,exact:true}).count(),0);
+    assert.equal(await page.getByRole('heading',{name:/^Import (Deals|Details|Results)$/}).count(),0);
+    record(`${path}: no Deal import functionality`);
+  }
+  const rejected=await page.request.post(apiBase+'/crm/deals/imports',{headers:{authorization:'Bearer '+token},data:{fileName:'deals.csv'}});
+  assert.equal(rejected.status(),404);assert.equal(await prisma.crmImportJob.count({where:{tenantId:tenant.id,module:'DEAL'}}),1);
+  record('Authenticated retired Deal import POST returns 404 and historical job remains preserved');
+  await page.goto(base+'/crm/deals');await page.getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor();
   await menu('Action Deal');
   const labels = await page.getByRole('menuitem').allTextContents();
   assert.deepEqual(labels.map(text=>['Edit deal','Add a task','Add a note','Send an email','Mark as won','Mark as lost','Change stage','Archive'].find(name=>text.startsWith(name))),['Edit deal','Add a task','Add a note','Send an email','Mark as won','Mark as lost','Change stage','Archive']);
@@ -256,7 +333,7 @@ try {
   await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({state:'hidden'});
   const moved=await stored('Action Deal');assert.equal(moved.pipelineId,destination.id);assert.equal(moved.stageId,target.id);assert.equal(Number(moved.value),25000);assert.equal(moved.assignedUserId,agents[60].id);
   assert.equal(await prisma.leadDeal.count({where:{dealId:moved.id}}),1);assert.equal(await prisma.contactDeal.count({where:{dealId:moved.id}}),1);assert.equal(await prisma.taskDeal.count({where:{dealId:moved.id}}),1);
-  await page.getByLabel('Pipeline',{exact:true}).selectOption(destination.id);
+  await page.goto(base+'/crm/deals?highlight='+moved.id+'&pipelineId='+destination.id);
   await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor();
   await action('Action Deal Updated','Change stage');
   const movedLocation=page.getByRole('dialog',{name:'Change Deal stage'});
@@ -267,7 +344,6 @@ try {
   await movedLocation.getByRole('button',{name:'Cancel',exact:true}).click();
   record('Transfer dialog reads the moved Deal current pipeline by ID and offers Sales Pipeline as a valid different destination');
   await page.getByRole('button',{name:'New Deal',exact:true}).click();
-  await page.getByRole('menuitem',{name:'Create New',exact:true}).click();
   await page.getByRole('heading',{name:'New Deal',exact:true}).waitFor();await page.getByRole('dialog').getByText('Renewals',{exact:true}).waitFor();
   const createEditor=page.getByRole('dialog');
   await createEditor.getByLabel('Title',{exact:false}).fill('New Renewal Deal');
@@ -278,7 +354,7 @@ try {
   await page.getByRole('button',{name:'Actions for New Renewal Deal',exact:true}).waitFor();
   const created=await prisma.deal.findFirstOrThrow({where:{tenantId:tenant.id,title:'New Renewal Deal'}});
   assert.equal(created.pipelineId,destination.id);assert.equal(created.stageId,target.id);assert.equal(created.productInterestId,product.id);assert.equal(Number(created.value),25000);
-  record('Transfer validation retains choices, atomic links/value persist, destination selector and product-backed creation work');
+  record('Transfer validation retains choices, atomic links/value persist, destination deep link and product-backed creation work');
 
   await action('Action Deal Updated','Archive');
   await page.getByRole('alertdialog').getByRole('button',{name:'Archive',exact:true}).click();
@@ -287,7 +363,7 @@ try {
   const restore=await page.request.patch(apiBase+'/crm/deals/'+moved.id+'/restore',{headers:{authorization:'Bearer '+token}});assert.equal(restore.status(),200,await restore.text());
   await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({timeout:12000});record('Archive hides active card, preserves children and restores via existing path with realtime refresh');
 
-  await page.getByLabel('Pipeline',{exact:true}).selectOption(pipeline.id);
+  await page.goto(base+'/crm/deals?pipelineId='+pipeline.id);
   const beforeLoss=(await stored('Lost Action')).stageId;
   const beforeLossHistory=await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}});
   await action('Lost Action','Mark as lost');

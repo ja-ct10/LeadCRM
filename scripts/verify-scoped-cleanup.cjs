@@ -92,7 +92,7 @@ const checks=[];let browser;
  for(const [module,create] of [['leads','Create Lead'],['contacts','Create Contact'],['accounts','Add Account'],['deals','New Deal']]){
   await page.setViewportSize({width:1440,height:900});await navigate(`/crm/${module}`);
   await page.getByRole('button',{name:new RegExp(create)}).click();
-  await page.getByRole('menuitem',{name:'Create New',exact:true}).click();
+  if (module !== 'deals') await page.getByRole('menuitem',{name:'Create New',exact:true}).click();
   const select=page.getByRole('button',{name:'Product Interest',exact:true});await select.waitFor();await select.click();
   const options=page.getByRole('group',{name:'Product interests',exact:true});
   await options.getByRole('checkbox',{name:products[0].name,exact:true}).check();

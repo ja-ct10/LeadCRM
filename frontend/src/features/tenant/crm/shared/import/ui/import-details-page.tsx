@@ -340,7 +340,7 @@ export default function ImportDetailsPage({ moduleKey, importId }: ImportDetails
                           )}
                         </td>
                         <td className="px-3 py-2 text-[10px] text-slate-500 dark:text-slate-400">
-                          {row.status === 'imported' ? ('Successfully imported' + (row.resolvedValue === undefined ? '' : ' · Product value: ₱' + Number(row.resolvedValue).toLocaleString('en-PH')))  : (row.remarks || '—')}
+                          {row.status === 'imported' ? 'Successfully imported'  : (row.remarks || '—')}
                           {row.status === 'imported' && row.recordId && <a className="ml-2 text-primary underline" href={`/crm/${moduleKey}/${encodeURIComponent(row.recordId)}`}>View {config.moduleSingular}</a>}
                         </td>
                       </tr>

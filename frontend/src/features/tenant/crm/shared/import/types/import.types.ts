@@ -1,5 +1,6 @@
 // ── Shared Import System Types ────────────────────────────────────────────────
 // Defines the contract for module-specific import configurations.
+import type { CrmImportModule } from '@leadcrm/shared';
 
 /**
  * Supported field types for import validation.
@@ -25,11 +26,11 @@ export interface FieldDefinition {
 }
 
 /**
- * Module-level import configuration. One config per CRM module (leads, accounts).
+ * Module-level configuration for active Lead, Contact and Account imports.
  */
 export interface ImportModuleConfig {
   /** Unique module identifier */
-  moduleKey: string;
+  moduleKey: CrmImportModule;
   /** Plural display name: "Leads", "Accounts" */
   moduleLabel: string;
   /** Singular display name: "Lead", "Account" */
@@ -96,6 +97,7 @@ export interface ValidatedRow {
  * Summary returned after submitting an import to the backend.
  */
 export interface ImportSummary {
+  /** Persisted discriminator includes retired historical Deal jobs. */
   module: 'LEAD' | 'CONTACT' | 'ACCOUNT' | 'DEAL';
   idempotencyKey?: string | null;
   id: string;
