@@ -13,6 +13,16 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 const note = { id: 'saved', type: 'note', title: 'Follow-up note', createdAt: '2026-10-01T10:00:00Z', createdBy: { id: 'actor', firstName: 'Author', lastName: 'Test', email: 'author@example.test' } };
 beforeEach(() => { vi.resetAllMocks(); mocks.canEdit = true; mocks.actor = 'actor'; });
 afterEach(cleanup);
+it('shows the complete assignment message and preserves the actual event-time actor', () => {
+  render(<RecordTimelineTab activities={[{ ...note, type: 'assignment', title: 'Assigned Agent changed to Next Agent',
+    description: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.',
+    metadata: { actorName: 'Actual Admin' } }]} module="leads" recordId="lead" />);
+  const timeline = within(screen.getByRole('region', { name: 'Activity Timeline' }));
+  expect(timeline.getByText('Assigned Agent changed to Next Agent')).toBeTruthy();
+  expect(timeline.getByText('Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.')).toBeTruthy();
+  expect(timeline.getByText('Actual Admin')).toBeTruthy();
+  expect(timeline.queryByText('Author Test')).toBeNull();
+});
 it('preserves the event-time Task actor after their profile name changes', () => {
   render(<RecordTimelineTab activities={[{ ...note, type: 'task', title: 'Task Completed',
     createdBy: { ...note.createdBy, firstName: 'Renamed', lastName: 'User' },

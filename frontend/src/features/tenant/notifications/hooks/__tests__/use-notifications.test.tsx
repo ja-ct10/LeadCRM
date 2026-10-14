@@ -13,6 +13,18 @@ vi.mock('@/shared/services/notifications.api', () => ({ notificationsApi: mocks 
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 
 const read = new Set<string>();
+it('replaces content for an existing notification in mounted consumers without a browser refresh', async () => {
+  let title = 'Assigned Agent changed';
+  mocks.list.mockImplementation(async () => ({ ...response(1), data: [{ id: 'assignment', type: 'lead_assigned', title, body: 'Saved assignment description', isRead: false }] }));
+  const hook = renderHook(useNotifications);
+  await waitFor(() => expect(hook.result.current.notifications[0]?.title).toBe(title));
+  title = 'Assigned Agent changed to Next Agent';
+  await act(async () => { await hook.result.current.refresh(); });
+  await waitFor(() => expect(hook.result.current.notifications[0]?.title).toBe(title));
+  expect(hook.result.current.notifications).toHaveLength(1);
+  expect(hook.result.current.notifications[0].isRead).toBe(false);
+});
+
 const response = (page: number) => ({ data: [{ id: `n${page}`, isRead: read.has(`n${page}`) }], unreadCount: 30 - read.size, totalCount: 30, meta: { hasMore: page < 3 } });
 beforeEach(() => {
   read.clear();

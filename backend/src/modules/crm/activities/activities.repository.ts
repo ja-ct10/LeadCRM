@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { crmActor, resolveCrmActor } from '../access/crm-record-access.service';
 import { hasModulePermission } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
+import { presentAssignmentActivities } from '../../notifications/assignment-presentation';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { CreateActivityDto, UpdateActivityDto } from './activities.dto';
 import { AppError } from '../../../shared/errors/app-error';
@@ -147,10 +148,14 @@ export async function findAllActivities(
   const data = rows.slice(0, limit);
   const last = data.at(-1);
   const nextCursor = rows.length > limit && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id })).toString('base64url') : null;
-  const hydrated = await withEmailContent(tenantId, data);
+  const hydrated = await presentActivities(tenantId, data);
   // Dropping revoked rows alone would still expose their old total or cursor.
   await recheckEmailActivityAccess(tenantId, emailAccess.revision);
   return { data: hydrated, total, page, limit, nextCursor };
+}
+
+export async function presentActivities<T extends Parameters<typeof withEmailContent>[1][number]>(tenantId: string, activities: T[]): Promise<T[]> {
+  return presentAssignmentActivities(tenantId, await withEmailContent(tenantId, activities));
 }
 
 /** Resolve provider content on read, including older email activities, without copying bodies into history. */

@@ -8,6 +8,8 @@ import { deliverNotification, type CreateNotificationParams } from './notificati
 import { adminNotifications, assignmentNotifications, staffNotifications } from './notification-policy';
 import { requireEmployeeAccount } from '../../core/auth/account-access';
 import { AppError } from '../../shared/errors/app-error';
+import { formatAssignmentChange } from '@leadcrm/shared';
+import { assignmentEventFacts, resolveAssignmentNames } from './assignment-presentation';
 
 type Event = Omit<CreateNotificationParams, 'userId'> & { ownerId?: string | null; actorId?: string | null; admins?: boolean };
 export async function deliverEvent({ ownerId, actorId, admins, ...event }: Event) {
@@ -75,7 +77,14 @@ async function presentation(event: NotificationEvent, facts: Facts) {
     else if (type === 'sms_campaign_partial') body = `SMS campaign partially completed. Some messages failed. ${c.sent + c.delivered} of ${c.total} sent; ${c.failed} failed.`;
     else if (type === 'sms_campaign_progress') body = `SMS campaign update: ${c.failed} of ${c.total} messages failed; ${c.total - c.failed - c.sent - c.delivered} awaiting confirmation.`;
     else body = `SMS campaign status is pending verification. ${c.unconfirmed} of ${c.total} messages require review. Verified Sent messages are retained; uncertain messages are not resent.`;
-  } else if (assignmentNotifications.has(type)) body = `${name} has been assigned to you.`;
+  } else if (assignmentNotifications.has(type)) {
+    const assignment = assignmentEventFacts(event);
+    if (assignment) {
+      const [resolved] = await resolveAssignmentNames(event.tenantId, [assignment]);
+      const content = formatAssignmentChange(resolved);
+      title = content.title; body = content.description;
+    } else body = `${name} has been assigned to you.`;
+  }
   else if (type === 'website_lead') body = `${name} submitted a new inquiry.${facts.assignedName ? ` Assigned to ${safeName(facts.assignedName, 'an agent')}.` : ''}`;
   else if (['customer_hot', 'customer_cold', 'customer_cancelled'].includes(type)) {
     const status = type.slice('customer_'.length); const label = status[0].toUpperCase() + status.slice(1);

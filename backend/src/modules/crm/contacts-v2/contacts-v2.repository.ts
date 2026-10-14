@@ -1,4 +1,6 @@
 import { salesContext } from '../leads/sales-context';
+import { assignmentSnapshot } from '../../notifications/assignment-presentation';
+import { formatAssignmentChange } from '@leadcrm/shared';
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { validateProductSnapshots, normalizeProductOther } from '../leads/product-snapshots';
@@ -160,10 +162,13 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
       await tx.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: 'Staff changed the CRM status.' } });
       if (status === 'Cancelled') await cancelOpenDeals(tx, tenantId, actorId, { contactId: id }, 'Staff explicitly cancelled the opportunity.');
     }
-    if (actorId && contact.assignedUserId && contact.assignedUserId !== current.assignedUserId) await tx.activity.create({ data: {
-      tenantId, createdById: actorId, contactId: id, type: 'assignment', title: 'Contact reassigned',
-      metadata: { assignedUserId: contact.assignedUserId, previousUserId: current.assignedUserId },
-    } });
+    if (actorId && contact.assignedUserId && contact.assignedUserId !== current.assignedUserId) {
+      const assignment = await assignmentSnapshot(tx, tenantId, current.assignedUserId, contact.assignedUserId, actorId);
+      await tx.activity.create({ data: {
+        tenantId, createdById: actorId, contactId: id, type: 'assignment', ...formatAssignmentChange(assignment),
+        metadata: { assignedUserId: contact.assignedUserId, previousUserId: current.assignedUserId, ...assignment },
+      } });
+    }
     return contact;
   });
 }

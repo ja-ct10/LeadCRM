@@ -1,7 +1,8 @@
 import { taskInclude } from '../../operations/tasks/tasks.repository';
 import { recordTaskHistory } from '../../operations/tasks/tasks.history';
 import type { Prisma } from '@prisma/client';
-import type { DeactivationImpact } from '@leadcrm/shared';
+import { assignmentUserName, formatAssignmentChange, type AssignmentChangeFacts, type DeactivationImpact } from '@leadcrm/shared';
+import { setNotificationActor, withAssignmentReason } from '../../notifications/notification-actor';
 import prisma from '../../../config/database.config';
 import { salesTransaction } from '../../crm/leads/lead-automation.service';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
@@ -45,18 +46,24 @@ export async function assertNoOwnership(tx: Tx, tenantId: string, id: string) {
  */
 export async function deactivateUser(id: string, tenantId: string, actorId: string, replacementAgentId?: string | null) {
   const result = await salesTransaction(async tx => {
-    const actor = await tx.user.findFirst({ where: { tenantId, id: actorId, status: 'ACTIVE', role: 'Client Admin' }, select: { id: true } });
+    const actor = await tx.user.findFirst({ where: { tenantId, id: actorId, status: 'ACTIVE', role: 'Client Admin' }, select: { id: true, firstName: true, lastName: true } });
     if (!actor) throw new ForbiddenError('Only Client Admin can transfer CRM ownership during deactivation.');
     const target = await requireTarget(tx, tenantId, id, actorId);
     const impact = await ownershipImpact(tx, tenantId, id);
     if (replacementAgentId === id) throw new ConflictError('Choose another active Assigned Agent.');
     if (impact.total && !replacementAgentId) throw new ConflictError('Choose an Assigned Agent before deactivating this user.');
+    let replacement: Awaited<ReturnType<typeof assertEligibleAssignedAgent>> | undefined;
     if (replacementAgentId) {
       const modules = (['leads', 'contacts', 'accounts', 'deals'] as const).filter(module => impact.counts[module] > 0);
       const requirements = [...modules.flatMap(crmAssignmentRequirements), ...(impact.counts.tasks ? TASK_ASSIGNEE_REQUIREMENTS : [])];
-      await assertEligibleAssignedAgent(tx, tenantId, replacementAgentId, requirements)
+      replacement = await assertEligibleAssignedAgent(tx, tenantId, replacementAgentId, requirements)
         .catch(() => { throw new ConflictError('Choose an active eligible agent with access to every transferred CRM module and unfinished Tasks.'); });
     }
+    await setNotificationActor(tx, actorId);
+    const assignment: AssignmentChangeFacts = { assignmentChanged: true, previousAssignedUserId: id,
+      newAssignedUserId: replacementAgentId, previousAssignedName: assignmentUserName(target) ?? null,
+      assignedName: assignmentUserName(replacement) ?? null, actorName: assignmentUserName(actor) ?? null, reason: 'user_deactivation' };
+    const content = formatAssignmentChange(assignment);
     const where = ownershipWhere(tenantId, id);
     const transfer = async (kind: 'lead' | 'contact' | 'account' | 'deal', filter: typeof where.contacts) => {
       if (!replacementAgentId) return;
@@ -71,29 +78,30 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
         // Deal ownerId remains a live compatibility alias. Preserve other historical actors.
         if (kind === 'deal') await tx.deal.updateMany({ where: { tenantId, id: { in: ids } }, data: { ownerId: replacementAgentId } });
         await tx.activity.createMany({ data: ids.map(recordId => ({ tenantId, createdById: actorId,
-          [`${kind}Id`]: recordId, type: 'assignment', title: 'Assigned Agent changed',
-          description: `Ownership transferred because ${target.firstName} ${target.lastName} was deactivated.`,
-          metadata: { previousAssignedUserId: id, newAssignedUserId: replacementAgentId, reason: 'user_deactivation' },
+          [`${kind}Id`]: recordId, type: 'assignment', ...content,
+          metadata: { ...assignment },
         })) });
         cursor = ids[ids.length - 1];
       }
     };
-    await transfer('lead', where.leads);
-    await transfer('contact', where.contacts);
-    await transfer('account', where.accounts);
-    await transfer('deal', where.deals);
-    if (replacementAgentId) {
-      let cursor: string | undefined;
-      for (;;) {
-        const rows = await tx.task.findMany({ where: { ...where.tasks, ...(cursor ? { id: { gt: cursor } } : {}) }, include: taskInclude, orderBy: { id: 'asc' }, take: 500 });
-        if (!rows.length) break;
-        const ids = rows.map(row => row.id);
-        await tx.task.updateMany({ where: { ...where.tasks, id: { in: ids } }, data: { assignedUserId: replacementAgentId, assignedById: actorId } });
-        const updated = await tx.task.findMany({ where: { tenantId, id: { in: ids } }, include: taskInclude });
-        for (const task of updated) await recordTaskHistory(tx, actorId, task, rows.find(row => row.id === task.id), { reason: 'user_deactivation' });
-        cursor = ids[ids.length - 1];
+    await withAssignmentReason(tx, 'user_deactivation', async () => {
+      await transfer('lead', where.leads);
+      await transfer('contact', where.contacts);
+      await transfer('account', where.accounts);
+      await transfer('deal', where.deals);
+      if (replacementAgentId) {
+        let cursor: string | undefined;
+        for (;;) {
+          const rows = await tx.task.findMany({ where: { ...where.tasks, ...(cursor ? { id: { gt: cursor } } : {}) }, include: taskInclude, orderBy: { id: 'asc' }, take: 500 });
+          if (!rows.length) break;
+          const ids = rows.map(row => row.id);
+          await tx.task.updateMany({ where: { ...where.tasks, id: { in: ids } }, data: { assignedUserId: replacementAgentId, assignedById: actorId } });
+          const updated = await tx.task.findMany({ where: { tenantId, id: { in: ids } }, include: taskInclude });
+          for (const task of updated) await recordTaskHistory(tx, actorId, task, rows.find(row => row.id === task.id), { reason: 'user_deactivation' });
+          cursor = ids[ids.length - 1];
+        }
       }
-    }
+    });
     await assertNoOwnership(tx, tenantId, id);
     await tx.user.update({ where: { tenantId, id }, data: { status: 'INACTIVE' } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.deactivated_with_reassignment', entityType: 'User', entityId: id,

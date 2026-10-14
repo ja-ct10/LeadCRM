@@ -33,6 +33,15 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); clearPageCache(); });
 
+it('renders the complete server assignment message in the Notifications feed', async () => {
+  records[0] = { ...records[0], type: 'contact_assigned', title: 'Assigned Agent changed to Next Agent',
+    body: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.' };
+  render(<NotificationsPage />);
+  expect(await screen.findByText(records[0].title)).toBeTruthy();
+  expect(screen.getByText(records[0].body)).toBeTruthy();
+  expect(mocks.markRead).not.toHaveBeenCalled();
+});
+
 it('selects rows without reading/deleting, cancels confirmation, and deletes the selected set only after success', async () => {
   render(<NotificationsPage />);
   await screen.findByText('Notice 0');

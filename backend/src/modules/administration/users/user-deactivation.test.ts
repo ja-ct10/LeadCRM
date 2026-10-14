@@ -18,6 +18,7 @@ vi.mock('../../crm/access/assigned-agent-eligibility', async importOriginal => (
 }));
 
 vi.mock('../../operations/tasks/tasks.history', () => ({ recordTaskHistory: state.history }));
+vi.mock('../../notifications/notification-actor', () => ({ setNotificationActor: vi.fn(), withAssignmentReason: (_tx: unknown, _reason: string, work: () => unknown) => work() }));
 
 import { assertNoOwnership, deactivateUser, deactivationImpact } from './user-deactivation.service';
 const target = { id: 'departing', firstName: 'Leaving', lastName: 'Agent', role: 'Sales', status: 'ACTIVE' };

@@ -1,5 +1,38 @@
 import { z } from 'zod';
 
+/** Assignment facts are frozen in existing Activity metadata and outbox payloads. */
+export interface AssignmentChangeFacts {
+  assignmentChanged?: boolean;
+  previousAssignedUserId?: string | null;
+  newAssignedUserId?: string | null;
+  previousAssignedName?: string | null;
+  assignedName?: string | null;
+  actorName?: string | null;
+  reason?: string | null;
+}
+
+export function assignmentName(value: unknown): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  const name = value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+  return name && !['undefined', 'null'].includes(name.toLowerCase()) ? name : undefined;
+}
+
+export function assignmentUserName(user?: { firstName?: string | null; lastName?: string | null } | null): string | undefined {
+  return assignmentName([user?.firstName, user?.lastName].filter(Boolean).join(' '));
+}
+
+export function formatAssignmentChange(facts: AssignmentChangeFacts): { title: string; description: string } {
+  const previous = assignmentName(facts.previousAssignedName);
+  const next = assignmentName(facts.assignedName);
+  const title = next ? `Assigned Agent changed to ${next}` : 'Assigned Agent changed';
+  if (facts.reason === 'user_deactivation') {
+    return { title, description: `Ownership transferred because ${previous ?? 'the previous agent'} was deactivated. ${next ? `The record is now assigned to ${next}.` : 'The record was reassigned.'}` };
+  }
+  if (next && previous) return { title, description: `Assigned Agent changed from ${previous} to ${next}.` };
+  if (next) return { title, description: `${facts.previousAssignedUserId === null ? 'The record was previously unassigned. ' : ''}The record is now assigned to ${next}.` };
+  return { title, description: 'The record\'s Assigned Agent was updated.' };
+}
+
 export interface NotificationRecord {
   id: string; tenantId: string; userId: string;
   type: string; title: string; body?: string | null;

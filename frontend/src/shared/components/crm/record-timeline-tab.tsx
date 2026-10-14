@@ -151,6 +151,7 @@ interface TimelineEntryProps {
 }
 
 function activityActorName(activity: TimelineActivity): string {
+  if (activity.type === 'assignment' && typeof activity.metadata?.actorName === 'string' && activity.metadata.actorName.trim()) return activity.metadata.actorName;
   const event = activity.metadata?.taskEvent as { actorName?: unknown } | undefined;
   if (activity.type === 'task' && typeof event?.actorName === 'string') return event.actorName;
   return [activity.createdBy?.firstName, activity.createdBy?.lastName].filter(Boolean).join(' ');
