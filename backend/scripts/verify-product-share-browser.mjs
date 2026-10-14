@@ -172,16 +172,29 @@ try {
     assert.equal(await prisma.activity.count({ where: { tenantId: tenant.id } }), activities);
     await page.screenshot({ path: resolve(output, `compose-${index + 1}.png`) });
     await page.getByRole('button', { name: 'Close', exact: true }).click();
-    // Inbox renders its heading before the mailbox read finishes. Prove that
-    // read succeeded before closing the fixture's database after the last case.
-    const [mailboxStatus] = await Promise.all([
-      page.waitForResponse(response => response.request().method() === 'GET' && new URL(response.url()).pathname === '/api/proxy/integrations/gmail/status'),
-      page.reload(),
-    ]);
-    assert.equal(mailboxStatus.status(), 200);
-    assert.deepEqual(await mailboxStatus.json(), { isConnected: false, email: null, connectedAt: null, lastSyncAt: null });
+    // Topbar and Inbox independently read status after reload. Neither request
+    // may fail or outlive this disposable database, even if the heading is ready.
+    const mailboxRequests = new Set(), mailboxStatuses = [];
+    const collectMailboxRequest = request => {
+      if (request.method() === 'GET' && new URL(request.url()).pathname === '/api/proxy/integrations/gmail/status') mailboxRequests.add(request);
+    };
+    page.on('request', collectMailboxRequest);
+    try {
+      await Promise.all([
+        page.waitForResponse(response => {
+          if (!mailboxRequests.has(response.request())) return false;
+          mailboxStatuses.push(response); return mailboxStatuses.length === 2;
+        }),
+        page.reload(),
+      ]);
+    } finally { page.off('request', collectMailboxRequest); }
+    for (const mailboxStatus of mailboxStatuses) {
+      assert.equal(mailboxStatus.status(), 200);
+      assert.deepEqual(await mailboxStatus.json(), { isConnected: false, email: null, connectedAt: null, lastSyncAt: null });
+    }
     await page.getByRole('heading', { name: 'Inbox', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Connect work email', exact: true }).waitFor();
+    assert.equal(await page.getByRole('alert').count(), 0);
     assert.equal(await page.getByLabel('To', { exact: true }).count(), 0);
     record(`${product.name}: ${index === 0 ? 'Contact precedence' : 'Lead fallback'}, editable Inbox prefill, no send/activity, query consumed`);
   }
