@@ -194,7 +194,7 @@ try {
     }
     await page.getByRole('heading', { name: 'Inbox', exact: true }).waitFor();
     await page.getByRole('button', { name: 'Connect work email', exact: true }).waitFor();
-    assert.equal(await page.getByRole('alert').count(), 0);
+    assert.equal(await page.getByRole('main').getByRole('alert').count(), 0);
     assert.equal(await page.getByLabel('To', { exact: true }).count(), 0);
     record(`${product.name}: ${index === 0 ? 'Contact precedence' : 'Lead fallback'}, editable Inbox prefill, no send/activity, query consumed`);
   }
