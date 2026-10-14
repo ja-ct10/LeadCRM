@@ -2,7 +2,7 @@ import { normalizeCrmStatus } from '@leadcrm/shared';
 import {taskContextWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
-import { withEmailContent, activityRecordContext, emailActivityVisibility } from '../activities/activities.repository';
+import { presentActivities, activityRecordContext, emailActivityVisibility } from '../activities/activities.repository';
 
 const DEFAULT_LIMIT = 10;
 
@@ -64,7 +64,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
     account,
     deals: leadDeals.slice(0, limit).map((ld) => ld.deal),
     hasMoreDeals: leadDeals.length > limit,
-    activities: await withEmailContent(tenantId, activities),
+    activities: await presentActivities(tenantId, activities),
     tasks,
   };
 }
@@ -126,7 +126,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     account,
     deals: contactDeals.slice(0, limit),
     hasMoreDeals: contactDeals.length > limit,
-    activities: (await withEmailContent(tenantId, activities)).map(activity => {
+    activities: (await presentActivities(tenantId, activities)).map(activity => {
       // Normalize historical enum labels only in system-generated status events.
       const match = activity.type === 'stage_change' && /^Status changed from (HOT|WARM|COLD|CLOSED|CANCELLED) to (HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
       return match ? { ...activity, title: `Status changed from ${normalizeCrmStatus(match[1])} to ${normalizeCrmStatus(match[2])}` } : activity;
@@ -173,7 +173,7 @@ export async function getAccountRelationships(id: string, tenantId: string, limi
     }),
   ]);
 
-  return { leads, contacts, deals: deals.slice(0, limit), hasMoreDeals: deals.length > limit, activities: await withEmailContent(tenantId, activities) };
+  return { leads, contacts, deals: deals.slice(0, limit), hasMoreDeals: deals.length > limit, activities: await presentActivities(tenantId, activities) };
 }
 
 /**
@@ -234,7 +234,7 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     account,
     leads: leadDeals.map((ld) => ld.lead),
     contacts: contactDeals.map((cd) => cd.contact),
-    activities: await withEmailContent(tenantId, activities),
+    activities: await presentActivities(tenantId, activities),
     tasks,
   };
 }

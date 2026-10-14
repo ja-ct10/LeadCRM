@@ -1,7 +1,32 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_NOTIFICATION_PREFERENCES = exports.NotificationPreferencesSchema = exports.NotificationQuerySchema = exports.NotificationTypes = exports.SmsCampaignNotificationTypes = exports.DeleteNotificationsSchema = void 0;
+exports.assignmentName = assignmentName;
+exports.assignmentUserName = assignmentUserName;
+exports.formatAssignmentChange = formatAssignmentChange;
 const zod_1 = require("zod");
+function assignmentName(value) {
+    if (typeof value !== 'string')
+        return undefined;
+    const name = value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160);
+    return name && !['undefined', 'null'].includes(name.toLowerCase()) ? name : undefined;
+}
+function assignmentUserName(user) {
+    return assignmentName([user?.firstName, user?.lastName].filter(Boolean).join(' '));
+}
+function formatAssignmentChange(facts) {
+    const previous = assignmentName(facts.previousAssignedName);
+    const next = assignmentName(facts.assignedName);
+    const title = next ? `Assigned Agent changed to ${next}` : 'Assigned Agent changed';
+    if (facts.reason === 'user_deactivation') {
+        return { title, description: `Ownership transferred because ${previous ?? 'the previous agent'} was deactivated. ${next ? `The record is now assigned to ${next}.` : 'The record was reassigned.'}` };
+    }
+    if (next && previous)
+        return { title, description: `Assigned Agent changed from ${previous} to ${next}.` };
+    if (next)
+        return { title, description: `${facts.previousAssignedUserId === null ? 'The record was previously unassigned. ' : ''}The record is now assigned to ${next}.` };
+    return { title, description: 'The record\'s Assigned Agent was updated.' };
+}
 exports.DeleteNotificationsSchema = zod_1.z.object({
     ids: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(500).transform(ids => [...new Set(ids)]),
 }).strict();

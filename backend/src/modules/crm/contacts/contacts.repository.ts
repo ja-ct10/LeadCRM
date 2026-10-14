@@ -1,4 +1,6 @@
 import type { Lead as LeadRecord } from '@prisma/client';
+import { assignmentSnapshot } from '../../notifications/assignment-presentation';
+import { formatAssignmentChange } from '@leadcrm/shared';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
@@ -210,10 +212,14 @@ export async function updateContact(
       if (updatedById && dto.status && dto.status !== current.status) await tx.activity.create({ data: {
         tenantId, createdById: updatedById, leadId: id, type: 'stage_change', title: `Status changed from ${current.status} to ${dto.status}`, description: 'Staff changed the CRM status.',
       } });
-      if (updatedById && dto.assignedUserId !== undefined && dto.assignedUserId !== current.assignedUserId) await tx.activity.create({ data: {
-        tenantId, createdById: updatedById, leadId: id, type: 'assignment', title: 'Lead reassigned',
-        metadata: { assignedUserId: dto.assignedUserId, previousUserId: current.assignedUserId },
-      } });
+      if (updatedById && dto.assignedUserId !== undefined && dto.assignedUserId !== current.assignedUserId) {
+        const assignment = dto.assignedUserId ? await assignmentSnapshot(tx, tenantId, current.assignedUserId, dto.assignedUserId, updatedById) : undefined;
+        await tx.activity.create({ data: {
+          tenantId, createdById: updatedById, leadId: id, type: 'assignment',
+          ...(assignment ? formatAssignmentChange(assignment) : { title: 'Lead reassigned' }),
+          metadata: { assignedUserId: dto.assignedUserId, previousUserId: current.assignedUserId, ...assignment },
+        } });
+      }
       if (updated.status !== 'Closed' && (dto.assignedUserId || dto.productInterest)) await createProductDeals(tx, tenantId, id, updatedById);
       if (updatedById && updated.status === 'Cancelled') await cancelOpenDeals(tx, tenantId, updatedById, { leadId: id }, 'Staff explicitly cancelled the opportunity.');
       if (updated.status === 'Closed' && updatedById) {

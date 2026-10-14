@@ -1,12 +1,14 @@
 import type { Notification, Prisma } from '@prisma/client';
 import { DEFAULT_CLOSING_FIELDS, isClosedWonField, type ClosingValues, type NotificationType } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
+import { formatAssignmentChange } from '@leadcrm/shared';
+import { assignmentEventFacts, resolveAssignmentNames } from './assignment-presentation';
 import { findUserEffectivePermissions } from '../administration/roles/roles.repository';
 import { mailboxPermissions } from '../../integrations/gmail/mailbox-sync.service';
 import { resolveMailboxScope, scopedMessagesWhere } from '../../integrations/gmail/mailbox-scope';
 import { AppError } from '../../shared/errors/app-error';
 import { requireEmployeeAccount } from '../../core/auth/account-access';
-import { adminNotifications, staffNotifications, notificationEntities } from './notification-policy';
+import { adminNotifications, staffNotifications, notificationEntities, assignmentNotifications } from './notification-policy';
 import { readConfiguredFields, validateValues } from '../crm/closing-requirements/closing-requirements.repository';
 
 export const activeAdminWhere = (tenantId: string) => ({
@@ -109,11 +111,22 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
 
 export async function presentNotifications(tenantId: string, userId: string, rows: Notification[]) {
   const access = await notificationAccess(tenantId, userId);
-  return Promise.all(rows.map(async row => {
-    const target = await access.resolve(row.entityType, row.entityId);
+  const targets = await Promise.all(rows.map(row => access.resolve(row.entityType, row.entityId)));
+  const keys = rows.filter((row, i) => targets[i] && assignmentNotifications.has(row.type as NotificationType) && row.eventKey).map(row => row.eventKey!);
+  const events = keys.length ? await prisma.notificationEvent.findMany({ where: { tenantId, eventKey: { in: keys }, type: { in: [...assignmentNotifications] } },
+    select: { eventKey: true, ownerId: true, payload: true, entityType: true, entityId: true } }) : [];
+  const candidates = rows.map((row, i) => {
+    const event = targets[i] && events.find(event => event.eventKey === row.eventKey && event.entityType === row.entityType && event.entityId === row.entityId);
+    return event ? assignmentEventFacts(event) : undefined;
+  });
+  const facts = await resolveAssignmentNames(tenantId, candidates.filter((row): row is NonNullable<typeof row> => !!row));
+  let index = 0;
+  return rows.map((row, i) => {
+    const target = targets[i];
+    const content = candidates[i] ? formatAssignmentChange(facts[index++]) : undefined;
     // Preserve management of historical notifications without exposing a former owner's data.
-    return target ? { ...row, entityType: target.entityType, entityId: target.entityId, available: true }
+    return target ? { ...row, ...(content ? { title: content.title, body: content.description } : {}), entityType: target.entityType, entityId: target.entityId, available: true }
       : { ...row, title: 'Notification no longer available', body: 'The related record is unavailable or your access has changed.',
         entityType: null, entityId: null, eventKey: undefined, available: false };
-  }));
+  });
 }

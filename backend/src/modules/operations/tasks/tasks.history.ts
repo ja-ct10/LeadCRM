@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { assignmentUserName, formatAssignmentChange } from '@leadcrm/shared';
 import { findTaskRecordContext, type TaskClient, type TaskRow } from './tasks.repository';
 
 export function taskState(task: TaskRow) {
@@ -50,19 +51,25 @@ export async function recordTaskHistory(client: TaskClient, actorId: string, tas
   const actor = await client.user.findFirst({ where: { id: actorId, tenantId: task.tenantId }, select: { firstName: true, lastName: true } });
   const person = (row: { firstName: string; lastName: string } | null) => row ? `${row.firstName} ${row.lastName}`.trim() : 'Unknown actor';
   const createdAt = new Date();
+  const assignment = { previousAssignedUserId: before?.assignedUserId, newAssignedUserId: task.assignedUserId,
+    previousAssignedName: before?.assignedUser?.tenantId === task.tenantId ? assignmentUserName(before.assignedUser) ?? null : null,
+    assignedName: task.assignedUser?.tenantId === task.tenantId ? assignmentUserName(task.assignedUser) ?? null : null,
+    reason: typeof metadata.reason === 'string' ? metadata.reason : undefined };
   for (const [event, label] of events) {
     const id = randomUUID();
     const eventMetadata = JSON.parse(JSON.stringify({ ...metadata, taskEvent: {
       version: 1, id, event, taskId: task.id, actorId, actorName: person(actor), taskTitle: task.title,
-      assignedUserId: task.assignedUserId, assignedAgentName: person(task.assignedUser),
+      assignedUserId: task.assignedUserId, assignedAgentName: event === 'reassigned' ? assignment.assignedName : person(task.assignedUser),
+      ...(event === 'reassigned' ? { previousAssignedName: assignment.previousAssignedName } : {}),
       before: previous, after,
       context: { leadIds: [...leads], contactIds: [...contacts], accountIds: [...accounts], dealIds },
     } })) as Prisma.InputJsonObject;
     await client.auditLog.create({ data: { id, tenantId: task.tenantId, userId: actorId, action: `task.${event}`,
       entityType: 'Task', entityId: task.id, createdAt, changeset: { before: previous, after } as Prisma.InputJsonObject, metadata: eventMetadata } });
     await client.activity.create({ data: { id, tenantId: task.tenantId, taskId: task.id, createdById: actorId,
-      type: 'task', title: `Task ${label}`, createdAt,
-      description: `${task.title} — ${label.toLowerCase()} by ${person(actor)}.${['assigned', 'reassigned'].includes(event) ? ` Assigned Agent: ${person(task.assignedUser)}.` : ''}`,
+      type: 'task', createdAt,
+      ...(event === 'reassigned' ? formatAssignmentChange(assignment) : { title: `Task ${label}`,
+        description: `${task.title} — ${label.toLowerCase()} by ${person(actor)}.${event === 'assigned' ? ` Assigned Agent: ${person(task.assignedUser)}.` : ''}` }),
       metadata: eventMetadata } });
   }
 }

@@ -5,10 +5,11 @@ import NotificationsDropdown from './notifications-dropdown';
 
 const mocks = vi.hoisted(() => ({
   markAsRead: vi.fn(), markAllAsRead: vi.fn(), destination: vi.fn(), push: vi.fn(), refresh: vi.fn(),
-  mutating: false,
+  mutating: false, assignment: false,
 }));
 vi.mock('../hooks/use-notifications', () => ({ useNotifications: () => ({
-  notifications: Array.from({ length: 6 }, (_, index) => ({ id: String(index), title: `Workflow Failed ${index}`, type: 'workflow_failed', body: 'Follow-up encountered an execution failure.', isRead: index === 1, createdAt: '2026-10-13T10:00:00Z' })),
+  notifications: Array.from({ length: 6 }, (_, index) => ({ id: String(index), title: `Workflow Failed ${index}`, type: 'workflow_failed', body: 'Follow-up encountered an execution failure.', isRead: index === 1, createdAt: '2026-10-13T10:00:00Z',
+    ...(mocks.assignment && index === 0 ? { title: 'Assigned Agent changed to Next Agent', type: 'lead_assigned', body: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.' } : {}) })),
   unreadCount: 5, isLoading: false, hasError: false, isMutating: mocks.mutating, ...mocks,
 }) }));
 vi.mock('../notification-destination', () => ({ resolveNotificationDestination: mocks.destination }));
@@ -28,7 +29,7 @@ function App() {
 }
 const open = () => fireEvent.click(screen.getByRole('button', { name: 'Notifications trigger' }));
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.mutating = false; headerBottom = 104;
+  vi.clearAllMocks(); mocks.mutating = false; mocks.assignment = false; headerBottom = 104;
   mocks.markAsRead.mockResolvedValue(true); mocks.destination.mockResolvedValue('/workflows');
   vi.stubGlobal('innerWidth', 320); vi.stubGlobal('innerHeight', 642);
   viewport = Object.assign(new EventTarget(), { width: 320, height: 642, offsetTop: 0, offsetLeft: 0 });
@@ -39,6 +40,12 @@ beforeEach(() => {
   });
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); document.documentElement.style.removeProperty('--pwa-banner-height'); });
+
+it('renders the persisted new agent and reason in the topbar preview', () => {
+  mocks.assignment = true; render(<App />); open();
+  expect(screen.getByText('Assigned Agent changed to Next Agent')).toBeTruthy();
+  expect(screen.getByText('Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.')).toBeTruthy();
+});
 
 it.each([320, 375, 390, 768, 1024, 1440])('bounds the preview at %ipx and preserves its five-item limit', width => {
   vi.stubGlobal('innerWidth', width); viewport.width = width;

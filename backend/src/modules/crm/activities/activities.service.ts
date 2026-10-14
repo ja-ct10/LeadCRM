@@ -14,7 +14,7 @@ export async function getActivity(id: string, tenantId: string) {
   if (!activity) {
     throw new AppError('Activity not found', 404);
   }
-  const [visible] = await activitiesRepository.withEmailContent(tenantId, [activity]);
+  const [visible] = await activitiesRepository.presentActivities(tenantId, [activity]);
   if (!visible) throw new AppError('Activity not found', 404);
   return visible;
 }

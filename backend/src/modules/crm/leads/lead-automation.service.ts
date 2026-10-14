@@ -1,4 +1,4 @@
-import { setNotificationActor } from '../../notifications/notification-actor';
+import { setNotificationActor, withAssignmentReason } from '../../notifications/notification-actor';
 import { assertCrmCreateAssignment, isCrmTransactionConflict, runCrmAutomaticCreation } from '../access/crm-record-access.service';
 import { cancelOpenDeals } from '../engagement.service';
 import { Prisma } from '@prisma/client';
@@ -155,7 +155,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     ? await resolveFormSalesAgent(tx, scope.tenantId)
     : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
   if (agent) {
-    await tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } });
+    await withAssignmentReason(tx, 'record_creation', () => tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } }));
     await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId ?? agent.id, type: 'assignment',
       title: `Lead assigned to ${agent.firstName} ${agent.lastName}`, description: assignment === 'public-form' ? 'Default Sales group round-robin assignment.' : `${input.assignedUserId ? 'Explicit' : 'System round-robin'} assignment.` } });
   } else if (assignment === 'public-form' && actorId) {
