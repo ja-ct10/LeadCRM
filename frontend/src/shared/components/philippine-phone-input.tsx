@@ -12,6 +12,8 @@ interface PhilippinePhoneInputProps {
   value: string;
   onChange: (localNumber: string) => void;
   error?: string | null;
+  /** Inline editors can render the visible error alongside their Save/Cancel controls. */
+  showError?: boolean;
   className?: string;
 }
 
@@ -20,6 +22,7 @@ export function PhilippinePhoneInput({
   value,
   onChange,
   error,
+  showError = true,
   className,
 }: PhilippinePhoneInputProps): React.ReactElement {
   const generatedId = useId();
@@ -95,7 +98,7 @@ export function PhilippinePhoneInput({
         />
       </div>
 
-      {error && (
+      {error && showError && (
         <p id={`${inputId}-error`} role="alert" className="text-xs text-red-500 mt-1">{error}</p>
       )}
     </div>

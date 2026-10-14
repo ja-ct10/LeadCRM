@@ -16,6 +16,7 @@ interface SlidingDrawerProps {
   children: ReactNode;
   width?: string;
   headerActions?: ReactNode;
+  headerContent?: ReactNode;
 }
 
 export function SlidingDrawer({
@@ -27,6 +28,7 @@ export function SlidingDrawer({
   children,
   width = 'w-full max-w-lg md:max-w-xl',
   headerActions,
+  headerContent,
 }: SlidingDrawerProps) {
   const owner = useId();
   const panelRef = useRef<HTMLDivElement>(null);
@@ -63,23 +65,25 @@ export function SlidingDrawer({
           >
             {/* Drawer Header */}
             <div className={panelHeaderClass + " flex items-center justify-between gap-3"}>
-              <div className="min-w-0">
-                {eyebrow && <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>}
-                {title ? (
-                  <h2 className={panelTitleClass}>
-                    {title}
-                  </h2>
-                ) : (
-                  <div className="h-6" />
-                )}
-                {subtitle && (
-                  <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-medium">
-                    {subtitle}
-                  </p>
-                )}
+              <div className="min-w-0 flex-1">
+                {headerContent ?? <>
+                  {eyebrow && <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">{eyebrow}</p>}
+                  {title ? (
+                    <h2 className={panelTitleClass}>
+                      {title}
+                    </h2>
+                  ) : (
+                    <div className="h-6" />
+                  )}
+                  {subtitle && (
+                    <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-medium">
+                      {subtitle}
+                    </p>
+                  )}
+                </>}
               </div>
 
-              <div className="flex items-center gap-2">
+              <div className="flex shrink-0 items-center gap-2">
                 {headerActions}
                 <ModalCloseButton onClose={onClose} ariaLabel="Close drawer" size={20} className={panelCloseClass + " grid place-items-center"} />
               </div>

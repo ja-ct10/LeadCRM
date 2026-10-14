@@ -12,22 +12,26 @@ import { normalizePhInput } from '@/shared/utils/ph-phone';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import type { User } from '@/store/types';
 import { groupsApi, type TenantGroup } from '@/shared/services/groups.api';
+import { InlineEditRows, type InlineRowDef } from '@/shared/components/crm/inline-edit-rows';
+import { RecordSection } from '@/shared/components/crm/record-section';
+import { RowActionsMenu, type RowActionItem } from '@/shared/components/data-grid/row-actions-menu';
+import { UserAvatar, administrationAvatarUrl } from '@/shared/components/user-avatar';
 
-type Draft = { firstName: string; lastName: string; email: string; phone: string; role: string; jobTitle: string; status: string };
+type Draft = { firstName: string; lastName: string; email: string; phone: string; role: string; jobTitle: string };
 type DraftErrors = Partial<Record<keyof Draft | 'groupIds', string>>;
-const makeDraft = (user?: User): Draft => ({ firstName: user?.firstName ?? '', lastName: user?.lastName ?? '', email: user?.email ?? '', phone: normalizePhInput(user?.phone ?? ''), role: user?.role ?? '', jobTitle: user?.jobTitle ?? '', status: user?.status ?? 'active' });
+const makeDraft = (): Draft => ({ firstName: '', lastName: '', email: '', phone: '', role: '', jobTitle: '' });
 const placeholders: Partial<Record<keyof Draft | 'groupIds', string>> = { firstName: 'e.g. Juan', lastName: 'e.g. Dela Cruz', email: 'e.g. juan@camxian.com', jobTitle: 'e.g. Sales Representative' };
-const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone', role: 'Role', jobTitle: 'Job Title', status: 'Status' };
+const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone', role: 'Role', jobTitle: 'Job Title' };
 
-export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEditing = false }: {
-  initiallyEditing?: boolean;
+export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = [] }: {
+  actions?: RowActionItem[];
   user?: User; roles: { id: string; name: string }[]; canEdit: boolean;
   onSaved: (user: User) => void; onClose: () => void;
 }) {
   const { userCan, user: actor } = useAuth();
-  const canManageGroups = actor?.role === 'Client Admin' && userCan('groups', 'canEdit');
+  const canManageGroups = canEdit && actor?.role === 'Client Admin' && userCan('groups', 'canEdit');
   const [groupOptions, setGroupOptions] = useState<TenantGroup[]>([]);
-  const [groupIds, setGroupIds] = useState<string[]>(() => user?.groups?.map(group => group.id) ?? []);
+  const [groupIds, setGroupIds] = useState<string[]>([]);
   const [groupError, setGroupError] = useState('');
   const [groupsLoading, setGroupsLoading] = useState(false);
   useEffect(() => {
@@ -47,32 +51,21 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
     window.addEventListener('leadcrm:groups-changed', load);
     return () => { active = false; window.removeEventListener('leadcrm:groups-changed', load); };
   }, [canManageGroups, actor?.tenantId]);
-  const canAssign = userCan('roles', 'canAssign'), canActivate = userCan('users', 'canActivate');
-  const canChange = canEdit || (!!user && (canAssign || canActivate));
+  const canAssign = userCan('roles', 'canAssign');
   const [saved, setSaved] = useState(user);
-  const [editing, setEditing] = useState(!user || (canChange && initiallyEditing));
-  const [draft, setDraft] = useState(() => makeDraft(user));
+  const [draft, setDraft] = useState(makeDraft);
   const [errors, setErrors] = useState<DraftErrors>({});
   const [touched, setTouched] = useState<Partial<Record<keyof Draft, boolean>>>({});
   const [busy, setBusy] = useState(false);
+  const [resetting, setResetting] = useState(false);
   const locked = useRef(false);
   const form = useRef<HTMLFormElement>(null);
-  const creating = !saved;
-  const observedUser = useRef(user);
+  const creating = !user;
   useEffect(() => {
-    if (editing || !user || observedUser.current === user) return;
-    observedUser.current = user;
-    setSaved(user); setDraft(makeDraft(user)); setGroupIds(user.groups?.map(group => group.id) ?? []);
-  }, [user, editing]);
+    if (user) setSaved(user);
+  }, [user]);
 
-  const parse = (value: Draft) => creating
-    ? CreateAdministrationUserSchema.safeParse({ firstName: value.firstName, lastName: value.lastName, email: value.email, phone: value.phone, role: value.role, jobTitle: value.jobTitle, ...(canManageGroups && groupIds.length ? { groupIds } : {}) })
-    : UpdateAdministrationUserSchema.safeParse({ ...(canEdit ? { firstName: value.firstName, lastName: value.lastName, jobTitle: value.jobTitle } : {}),
-      ...(canEdit && value.phone !== normalizePhInput(saved?.phone ?? '') ? { phone: value.phone } : {}),
-      ...(canManageGroups && value.status === 'active' && [...groupIds].sort().join(',') !== (saved?.groups ?? []).map(group => group.id).sort().join(',') ? { groupIds } : {}),
-      ...(value.role !== saved?.role ? { role: value.role } : {}),
-      ...(value.status !== saved?.status ? { status: value.status.toUpperCase() } : {}),
-    });
+  const parse = (value: Draft) => CreateAdministrationUserSchema.safeParse({ ...value, ...(canManageGroups && groupIds.length ? { groupIds } : {}) });
   const validation = (value: Draft) => {
     const result = parse(value);
     const next: DraftErrors = {};
@@ -81,15 +74,11 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
       if (!next[field]) next[field] = issue.message;
     }
     if (creating && result.success && actor?.role !== 'Client Admin' && !EmployeeEmailSchema.safeParse(value.email).success) next.email = 'Only Client Admin users can approve an external staff email.';
-    if ((creating || value.role !== saved?.role) && value.role && !roles.some(role => role.name === value.role)) next.role = 'Select an active custom role.';
+    if (value.role && !roles.some(role => role.name === value.role)) next.role = 'Select an active custom role.';
     return next;
   };
   const change = (key: keyof Draft, value: string, interact = false) => {
     const next = { ...draft, [key]: value };
-    if (key === 'status' && value !== 'active') {
-      setGroupIds(saved?.groups?.map(group => group.id) ?? []);
-      setErrors(prev => ({ ...prev, groupIds: undefined }));
-    }
     setDraft(next);
     if (touched[key] || errors[key] || interact) {
       setTouched(prev => ({ ...prev, [key]: true }));
@@ -98,7 +87,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
   };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
-    if (!canChange || locked.current) return;
+    if (!creating || !canEdit || !canAssign || locked.current) return;
     const invalid = validation(draft);
     setErrors(invalid);
     if (Object.keys(invalid).length) {
@@ -109,13 +98,11 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
     if (!result.success) return;
     locked.current = true; setBusy(true);
     try {
-      const response = creating ? await usersService.create(result.data as Partial<User>)
-        : await usersService.update(saved!.id, result.data as Partial<User>);
+      const response = await usersService.create(result.data as Partial<User>);
       const persisted = response.data!;
       onSaved(persisted);
-      toast.success(creating ? 'User created successfully.' : 'User updated');
-      if (creating) onClose();
-      else { setSaved(persisted); setGroupIds(persisted.groups?.map(group => group.id) ?? []); setDraft(makeDraft(persisted)); setEditing(false); }
+      toast.success('User created successfully.');
+      onClose();
     } catch (reason) {
       const error = reason as Error & { fieldErrors?: Record<string, string[]>; status?: number; code?: string };
       if (error.fieldErrors) setErrors(Object.fromEntries(Object.entries(error.fieldErrors).map(([key, messages]) => [key, messages[0]])));
@@ -125,19 +112,75 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
     } finally { locked.current = false; setBusy(false); }
   };
   const resetPassword = async () => {
-    if (!saved || locked.current) return;
-    locked.current = true; setBusy(true);
+    if (!saved || !canEdit || saved.status !== 'active' || locked.current) return;
+    locked.current = true; setBusy(true); setResetting(true);
     try { await usersService.sendPasswordReset(saved.id); toast.success('Password reset email requested.'); }
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to send recovery email.'); }
-    finally { locked.current = false; setBusy(false); }
+    finally { locked.current = false; setBusy(false); setResetting(false); }
   };
-  const approveEmail = async () => {
-    if (!saved || locked.current || actor?.role !== 'Client Admin' || !canEdit) return;
+  const canChangeRole = canAssign && !!saved && roles.some(role => role.name === saved.role);
+  const canChangeGroups = canManageGroups && saved?.status === 'active';
+  const saveField = async (field: string, value: string | string[]) => {
+    const permitted = field === 'role' ? canChangeRole : field === 'groupIds' ? canChangeGroups
+      : ['firstName', 'lastName', 'phone', 'jobTitle'].includes(field) && canEdit;
+    if (!saved || !permitted) throw new Error('You do not have permission to edit this field.');
+    if (locked.current) throw new Error('Another request is in progress. Please try again.');
+    if (field === 'role' && !roles.some(role => role.name === value)) throw new Error('Select an active custom role.');
+    if (field === 'groupIds' && (groupsLoading || groupError)) throw new Error(groupError || 'Wait for available groups to load.');
+    const result = UpdateAdministrationUserSchema.safeParse({ [field]: field === 'groupIds' && typeof value === 'string' ? JSON.parse(value) : value });
+    if (!result.success) throw new Error(result.error.issues[0].message);
     locked.current = true; setBusy(true);
-    try { await usersService.approveStaffEmail(saved.id); toast.success('Registered staff email approved. This user can sign in with their existing credentials.'); }
-    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to approve staff email.'); }
-    finally { locked.current = false; setBusy(false); }
+    try {
+      const response = await usersService.update(saved.id, result.data as Partial<User>);
+      if (!response.data) throw new Error('Unable to save user.');
+      setSaved(response.data);
+      onSaved(response.data);
+      toast.success('User updated');
+    } catch (reason) {
+      const error = reason as Error & { fieldErrors?: Record<string, string[]> };
+      throw new Error(error.fieldErrors?.[field]?.[0] || error.message || 'Unable to save field.');
+    } finally { locked.current = false; setBusy(false); }
   };
+  const profileRow = (field: 'firstName' | 'lastName' | 'phone' | 'jobTitle'): InlineRowDef => ({
+    label: labels[field], value: field === 'phone' ? normalizePhInput(saved?.phone ?? '') : saved?.[field],
+    displayValue: field === 'phone' ? saved?.phone : undefined, apiField: canEdit ? field : undefined,
+    required: field === 'firstName' || field === 'lastName', alwaysVisible: true, preserveWhitespace: true,
+  });
+  const basicRows: InlineRowDef[] = [profileRow('firstName'), profileRow('lastName'),
+    { label: 'Email', value: saved?.email, alwaysVisible: true },
+    { ...profileRow('phone'), renderEditor: ({ value, onChange, disabled, error, onSave, onCancel }) => <div onKeyDownCapture={event => {
+      if (!disabled && (event.key === 'Enter' || event.key === 'Escape')) {
+        event.preventDefault(); event.stopPropagation();
+        if (event.key === 'Enter') onSave(); else onCancel();
+      }
+    }}>
+      <label className="sr-only" htmlFor="user-inline-phone">Phone</label>
+      <PhilippinePhoneInput id="user-inline-phone" value={value} onChange={onChange} disabled={disabled} error={error} showError={false}
+        className="min-w-0 [&>div]:flex-wrap [&_input]:w-full [&_input]:basis-full sm:[&_input]:w-auto sm:[&_input]:basis-0" />
+      {error && <span id="user-inline-phone-error" className="sr-only">{error}</span>}
+    </div> },
+  ];
+  const organizationRows: InlineRowDef[] = [
+    { label: 'Role', value: saved?.role, apiField: canChangeRole ? 'role' : undefined, type: 'select', options: roles.map(role => role.name), alwaysVisible: true },
+    profileRow('jobTitle'),
+    { label: 'Status', value: saved?.status, displayValue: saved?.status ? saved.status[0].toUpperCase() + saved.status.slice(1) : '—', alwaysVisible: true },
+    { label: 'Groups', value: JSON.stringify(saved?.groups?.map(group => group.id) ?? []),
+      displayValue: saved?.groups?.map(group => group.name).join(', ') || 'No groups assigned',
+      apiField: canChangeGroups ? 'groupIds' : undefined, alwaysVisible: true,
+      editorDisabled: groupsLoading || !!groupError, editorError: groupError,
+      renderEditor: ({ value, onChange, disabled, error, onCancel }) => <fieldset aria-label="Groups" aria-invalid={!!error} disabled={disabled || groupsLoading || !!groupError}
+        className="min-w-0 space-y-2 text-left" onKeyDown={event => { if (!disabled && event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); onCancel(); } }}>
+        {groupOptions.map(group => <label key={group.id} className="flex min-w-0 items-start gap-2 [overflow-wrap:anywhere]">
+          <input type="checkbox" className="mt-0.5 shrink-0" checked={(JSON.parse(value) as string[]).includes(group.id)} onChange={event => {
+            const ids = JSON.parse(value) as string[];
+            onChange(JSON.stringify(event.target.checked ? [...ids, group.id] : ids.filter(id => id !== group.id)));
+          }} /><span className="min-w-0">{group.name}</span>
+        </label>)}
+        {groupsLoading && <p role="status">Loading available groups…</p>}
+        {!groupsLoading && !groupError && !groupOptions.length && <p>No groups have been created.</p>}
+        <p className="text-muted-foreground">The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.</p>
+      </fieldset> },
+  ];
   const input = (key: keyof Draft, required = false) => {
     const id = `user-${key}`;
     const error = errors[key];
@@ -149,20 +192,30 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
     return <div key={key} className="min-w-0 space-y-1.5">
       <label htmlFor={id} className="block text-xs font-semibold text-slate-700 dark:text-slate-300">{labels[key]}{required && <span className="text-red-500 ml-1" aria-hidden="true">*</span>}</label>
       {key === 'phone' ? <PhilippinePhoneInput id={id} required={required} disabled={busy || !canEdit} value={draft.phone} onChange={value => change(key, value, true)} onBlur={props.onBlur} error={error} />
-        : key === 'role' || key === 'status' ? <select {...props} disabled={busy || (key === 'role' && !canAssign) || (key === 'status' && !canActivate) || (key === 'role' && !!saved && !roles.some(role => role.name === saved.role))} onChange={event => change(key, event.target.value, true)}>
-          {key === 'role' ? <><option value="">Select role</option>{saved && !roles.some(role => role.name === saved.role) && <option value={saved.role}>{saved.role}</option>}{roles.map(role => <option key={role.id} value={role.name}>{role.name}</option>)}</>
-            : <><option value="active">Active</option><option value="inactive">Inactive</option>{draft.status === 'pending' && <option value="pending">Pending</option>}</>}
+        : key === 'role' ? <select {...props} disabled={busy || !canAssign} onChange={event => change(key, event.target.value, true)}>
+          <option value="">Select role</option>{roles.map(role => <option key={role.id} value={role.name}>{role.name}</option>)}
         </select> : <input {...props} type={key === 'email' ? 'email' : 'text'} autoCapitalize={key === 'email' ? 'none' : undefined} autoCorrect={key === 'email' ? 'off' : undefined} maxLength={key === 'email' ? 254 : 100} onChange={event => change(key, event.target.value)} />}
       {key !== 'phone' && error && <p id={`${id}-error`} className="text-xs text-red-500" role="alert">{error}</p>}
     </div>;
   };
 
-  return <SlidingDrawer isOpen onClose={() => { if (!busy) onClose(); }} title={creating ? 'New User' : 'User Details'} subtitle={creating ? 'Complete the user details below.' : undefined}>
-    {editing ? <form ref={form} onSubmit={save} noValidate className="flex h-full min-h-0 flex-col text-slate-900 dark:text-white">
+  return <SlidingDrawer isOpen onClose={() => { if (!busy) onClose(); }} title={creating ? 'New User' : 'User Details'} subtitle={creating ? 'Complete the user details below.' : undefined}
+    headerContent={saved && <div className="flex min-w-0 items-start gap-3">
+      <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary text-sm font-semibold text-primary-foreground">
+        <UserAvatar user={{ ...saved, avatarUrl: administrationAvatarUrl(saved) }} />
+      </div>
+      <div className="min-w-0">
+        <span className="rounded bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-primary">USER</span>
+        <h2 className="mt-1 text-xl font-bold tracking-tight [overflow-wrap:anywhere]">{saved.firstName} {saved.lastName}</h2>
+        <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{saved.role}</p>
+      </div>
+    </div>}
+    headerActions={!creating && actions.length > 0 && <RowActionsMenu label="User actions" position="right" actions={actions.map(action => ({ ...action, disabled: action.disabled || busy, disabledReason: action.disabledReason || (busy ? 'Wait for the current request to finish.' : undefined) }))} />}>
+    {creating ? <form ref={form} onSubmit={save} noValidate className="flex h-full min-h-0 flex-col text-slate-900 dark:text-white">
       <div className={panelBodyClass + " space-y-6"}>
         <section className="space-y-4"><PanelSectionHeading number={1}>Basic Information</PanelSectionHeading><div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('firstName', true)}{input('lastName', true)}{input('email', true)}{input('phone', creating)}</div></section>
-        <section className="space-y-4"><PanelSectionHeading number={2}>Organization</PanelSectionHeading>{input('role', true)}<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('jobTitle')}{!creating && input('status')}</div>
-          <fieldset disabled={busy || groupsLoading || !canManageGroups || !!groupError || draft.status !== 'active'} className="space-y-2">
+        <section className="space-y-4"><PanelSectionHeading number={2}>Organization</PanelSectionHeading>{input('role', true)}<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('jobTitle')}</div>
+          <fieldset disabled={busy || groupsLoading || !canManageGroups || !!groupError} className="space-y-2">
             <legend className="text-xs font-semibold">Groups</legend>
             {canManageGroups && !groupError ? groupOptions.map(group => <label key={group.id} className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={groupIds.includes(group.id)} onChange={event => { setGroupIds(ids => event.target.checked ? [...ids, group.id] : ids.filter(id => id !== group.id)); setErrors(prev => ({ ...prev, groupIds: undefined })); }} />{group.name}
@@ -171,22 +224,22 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
             {canManageGroups && groupsLoading && <p className="text-xs text-slate-500" role="status">Loading available groups…</p>}
             {canManageGroups && !groupsLoading && !groupError && !groupOptions.length && <p className="text-sm">No groups have been created.</p>}
             {errors.groupIds && <p role="alert" className="text-xs text-red-500">{errors.groupIds}</p>}
-            {draft.status !== 'active' && <p className="text-xs text-slate-500">Activate this user to change memberships. Existing groups are retained while inactive.</p>}
             <p className="text-xs text-slate-500">The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.</p>
           </fieldset>
         </section>
       </div>
       <div className={panelFooterClass + " justify-end"}>
-        <button type="button" disabled={busy} onClick={() => { if (creating) onClose(); else { setDraft(makeDraft(saved)); setGroupIds(saved?.groups?.map(group => group.id) ?? []); setErrors({}); setTouched({}); setEditing(false); } }} className={panelSecondaryActionClass}>Cancel</button>
-        <button disabled={busy} type="submit" className={panelPrimaryActionClass}>{busy && <Loader2 className="animate-spin" size={16} />}{creating ? 'Create User' : 'Save Changes'}</button>
+        <button type="button" disabled={busy} onClick={onClose} className={panelSecondaryActionClass}>Cancel</button>
+        <button disabled={busy} type="submit" className={panelPrimaryActionClass}>{busy && <Loader2 className="animate-spin" size={16} />}Create User</button>
       </div>
     </form> : <div className="flex h-full min-h-0 flex-col text-slate-900 dark:text-white">
-      <div className={panelBodyClass}><h3 className="font-semibold mb-5">Personal Information</h3><dl className="grid grid-cols-1 sm:grid-cols-2 gap-5">{(Object.keys(labels) as (keyof Draft)[]).map(key => <div key={key} className="min-w-0"><dt className="text-xs text-slate-500">{labels[key]}</dt><dd className="text-sm mt-1 break-words">{saved?.[key] || '—'}</dd></div>)}</dl><div className="mt-5"><p className="text-xs text-slate-500">Groups</p><p className="mt-1 text-sm">{saved?.groups?.map(group => group.name).join(', ') || 'No groups assigned'}</p></div></div>
-      {canChange && <div className={panelFooterClass}>
-        <button disabled={busy} onClick={() => setEditing(true)} className={panelPrimaryActionClass}>Edit User</button>
-        <button disabled={busy || !canEdit || saved?.status !== 'active'} onClick={resetPassword} className={panelSecondaryActionClass}>{busy ? 'Sending…' : 'Send Password Reset'}</button>
-        {saved && actor?.role === 'Client Admin' && canEdit && !EmployeeEmailSchema.safeParse(saved.email).success && <button disabled={busy || saved.status !== 'active'} onClick={approveEmail} className={panelSecondaryActionClass}>Approve registered email</button>}
-      </div>}
+      <div className={panelBodyClass + ' space-y-3'}>
+        <RecordSection title="Basic Information">{basicRows.map(row => <InlineEditRows key={row.label} rows={[row]} canEdit={!!row.apiField} onSave={saveField} />)}</RecordSection>
+        <RecordSection title="Organization">{organizationRows.map(row => <InlineEditRows key={row.label} rows={[row]} canEdit={!!row.apiField} onSave={saveField} />)}</RecordSection>
+      </div>
+      <div className={panelFooterClass}>
+        <button type="button" disabled={busy || !canEdit || saved?.status !== 'active'} onClick={resetPassword} className={panelSecondaryActionClass}>{resetting ? 'Sending…' : 'Send Password Reset'}</button>
+      </div>
     </div>}
   </SlidingDrawer>;
 }
