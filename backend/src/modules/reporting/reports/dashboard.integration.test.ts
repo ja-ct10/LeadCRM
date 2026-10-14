@@ -291,6 +291,7 @@ describe('authoritative dashboard', () => {
     await db.deal.update({ where: { id: 'winner' }, data: { assignedUserId: 'other-agent', ownerId: 'other-agent', revenueOwnerId: 'other-agent', revenueOwnerEligible: false } });
     expect((await report()).leaderboard.find(row => row.id === 'agent')?.revenue).toBe(45250);
     expect((await db.deal.findUniqueOrThrow({ where: { id: 'winner' } })).revenueOwnerId).toBe('agent');
+    await db.deal.update({ where: { id: 'open-lead' }, data: { currentStageHistoryId: null } });
     await db.dealStageHistory.deleteMany({ where: { dealId: 'open-lead' } });
     const conversion = (await report()).conversion!;
     expect(conversion.missingHistory).toBeGreaterThan(0);

@@ -91,6 +91,7 @@ function databaseFor(file) {
   if (file.includes('/campaigns/') || file.includes('contact-relations') || file.includes('/groups/')) return 'leadcrm_campaign_test_1';
   if (file.includes('/permissions/') || file.includes('/roles/')) return 'leadcrm_environment_test_1';
   if (file.includes('crm-completion')) return 'leadcrm_completion_test_1';
+  if (file.includes('accounts-full-address')) return 'leadcrm_accounts_full_address_1';
   if (file.includes('custom-fields.integration')) return 'leadcrm_custom_fields_test';
   if (file.includes('single-workspace')) return 'leadcrm_smoke_test_1';
   if (file.includes('archive-date-page') || file.includes('user-groups')) return 'leadcrm_polish_test';

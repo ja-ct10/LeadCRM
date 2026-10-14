@@ -49,7 +49,7 @@ beforeAll(async () => {
 afterAll(async () => { await db?.$disconnect(); await socket?.stop(); await pg?.close(); });
 beforeEach(async () => {
   vi.clearAllMocks();
-  await db.deal.update({ where: { id: 'deal' }, data: { pipelineId: 'source', stageId: 'lead', isArchived: false, deletedAt: null, closedAt: null } });
+  await db.deal.update({ where: { id: 'deal' }, data: { pipelineId: 'source', stageId: 'lead', currentStageHistoryId: null, isArchived: false, deletedAt: null, closedAt: null } });
   await db.dealStageHistory.deleteMany(); await db.activity.deleteMany({ where: { type: 'stage_change' } }); await db.auditLog.deleteMany();
 });
 

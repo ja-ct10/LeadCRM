@@ -66,7 +66,7 @@ try {
   await page.getByRole('button', { name: 'Create Campaign', exact: true }).and(page.getByTitle('Create Campaign', { exact: true })).click();
   await page.getByLabel('Target Audience', { exact: false }).selectOption('LEADS');
   const body = page.getByLabel('Body', { exact: false }), subject = page.getByLabel('Subject Line', { exact: false });
-  await body.fill('Hi {{firstName}}, your age is {{customFieldValues.age}}. {{sender_name}} {{sender_email}}');
+  await body.fill('Hi {{firstName}}, your age is {{customFieldValues.age}}. {{sender_name}} {{sender_email}} Existing deal value: {{value}}');
   await subject.fill('Welcome '); await subject.focus();
   await page.getByRole('button', { name: '{{firstName}}', exact: true }).click();
   assert.equal(await subject.inputValue(), 'Welcome {{firstName}}'); record('Quick fields insert current keys into the active subject');
@@ -75,7 +75,10 @@ try {
     await page.getByRole('button', { name: 'Insert Variable', exact: true }).click();
     const picker = page.locator('div').filter({ has: page.getByRole('textbox', { name: 'Search variables', exact: true }), hasText: 'Standard Fields' }).last();
     assert.deepEqual(await picker.locator('p').allTextContents(), ['Standard Fields', 'Custom Fields', 'Sender']);
-    assert.equal(await picker.getByRole('button', { name: /Deal Value.*value/ }).isDisabled(), false);
+    assert.equal(await picker.getByRole('button', { name: /Deal Value.*value/ }).count(), 0);
+    assert.equal(await picker.getByRole('button', { name: /Age.*customFieldValues.age.*(?:Accounts|Deals)/ }).count(), 0);
+    assert.equal(await picker.getByRole('button', { name: /First Name.*firstName/ }).isDisabled(), false);
+    assert.ok((await body.inputValue()).includes('{{value}}'), 'Existing relationship variables must remain unchanged');
     assert.equal(await picker.getByRole('button', { name: /Age.*customFieldValues.age.*Leads/ }).isDisabled(), false);
     assert.equal(await picker.getByRole('button', { name: /Age.*customFieldValues.age.*Contacts/ }).isDisabled(), true);
     const bounds = await picker.boundingBox(); assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1, `Picker bounds at ${width}`);
