@@ -26,6 +26,7 @@ process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || process.argv[2] || 'playwright');
+const { dashboardToday } = require('../dist/shared/src/index.js');
 const prisma = require('../dist/backend/src/config/database.config.js').default;
 const app = require('../dist/backend/src/app.js').default;
 const { tenantContext } = require('../dist/backend/src/core/tenant/tenant-context.js');
@@ -222,13 +223,23 @@ try {
     await page.getByRole('heading',{name:'Revenue Trend by Month',exact:true}).waitFor();
     await until(async () => !await page.getByRole('button',{name:'Syncing…',exact:true}).count(),'Date query complete');
   }
-  await page.getByRole('button',{name:'Dashboard date range',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Date Range',exact:true}).click();
-  const today = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date());
-  await page.getByLabel('Start date',{exact:true}).fill(today); await page.getByLabel('End date',{exact:true}).fill(today); await page.getByRole('button',{name:'Apply dates',exact:true}).click();
+  // A live-clock suite may cross Manila midnight after creating/closing its records.
+  // Select their actual calendar dates instead of assuming they all belong to today.
+  const fixtureStart = dashboardToday(new Date(deal.createdAt));
+  let fixtureEnd = dashboardToday();
+  async function applyFixtureDates() {
+    await page.getByRole('button',{name:'Dashboard date range',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Date Range',exact:true}).click();
+    await page.getByLabel('Start date',{exact:true}).fill(fixtureStart); await page.getByLabel('End date',{exact:true}).fill(fixtureEnd); await page.getByRole('button',{name:'Apply dates',exact:true}).click();
+  }
+  await applyFixtureDates();
   await until(async () => await value(page,'Total Revenue') === '₱1,000.00','Custom revenue'); record('All nine date filters and current-state distinction');
   const secondWin = await http('/crm/deals','POST',{pipelineId:pipeline.id,stageId:stages[0].id,title:'Second Agent Win',productInterestIds:[products[1].id],assignedUserId:replacement.id},replacementToken);
   for (const stage of stages.slice(1,3)) await http(`/crm/deals/${secondWin.id}/stage`,'PATCH',{stageId:stage.id},replacementToken);
-  await mutation('Second agent revenue is included in both organization dashboards',()=>http(`/crm/deals/${secondWin.id}/stage`,'PATCH',{stageId:stages[3].id},replacementToken),()=>expectValue('Total Revenue','₱2,800.00'));
+  await mutation('Second agent revenue is included in both organization dashboards',()=>http(`/crm/deals/${secondWin.id}/stage`,'PATCH',{stageId:stages[3].id},replacementToken),async () => {
+    const currentEnd = dashboardToday();
+    if (currentEnd !== fixtureEnd) { fixtureEnd = currentEnd; await applyFixtureDates(); }
+    await expectValue('Total Revenue','₱2,800.00');
+  });
   await page.getByText('Second Agent',{exact:true}).waitFor(); await staffSession.tab.getByText('Second Agent',{exact:true}).waitFor();
   for (const interval of ['Week','Month','Year']) {
     await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click();
@@ -242,21 +253,22 @@ try {
     await page.getByText(`Deals created during the current ${period.toLowerCase()} · Recorded milestones through today`,{exact:true}).waitFor();
   }
   await page.getByRole('button',{name:'Filter Deal Pipeline Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Range',exact:true}).click();
-  await page.getByLabel('Funnel From Date').fill(today); await page.getByLabel('Funnel To Date').fill(today);
+  const today = dashboardToday();
+  await page.getByLabel('Funnel From Date').fill(fixtureStart); await page.getByLabel('Funnel To Date').fill(today);
   assert.equal(await page.getByLabel('Funnel To Date').getAttribute('max'),today);
   const tomorrow = new Intl.DateTimeFormat('en-CA',{timeZone:'Asia/Manila',year:'numeric',month:'2-digit',day:'2-digit'}).format(new Date(Date.now()+86400000));
   await page.getByLabel('Funnel To Date').fill(tomorrow); await page.getByRole('button',{name:'Apply funnel dates',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'Choose valid historical dates'}).waitFor();
   await page.getByLabel('Funnel From Date').fill(tomorrow); await page.getByLabel('Funnel To Date').fill(today); await page.getByRole('button',{name:'Apply funnel dates',exact:true}).click();
   await page.getByRole('alert').filter({hasText:'Choose valid historical dates'}).waitFor();
-  await page.getByLabel('Funnel From Date').fill(today);
+  await page.getByLabel('Funnel From Date').fill(fixtureStart);
 
   await page.getByRole('button',{name:'Apply funnel dates',exact:true}).click();
   await page.getByText(/Deals created .*Recorded milestones through/).filter({hasNotText:'current'}).waitFor();
   assert.equal(await page.getByText('View revenue and outcome data',{exact:true}).count(),0);
   assert.equal(await page.getByText(/Reporting limitations \(/).count(),0);
   assert.equal(await page.getByText(/Automatic updates connected|Assigned records only/).count(),0);
-  const cohort = await http(`/reporting/dashboard?range=custom&start=${today}&end=${today}&revenueInterval=month&funnelRange=custom&funnelStart=${today}&funnelEnd=${today}`);
+  const cohort = await http(`/reporting/dashboard?range=custom&start=${fixtureStart}&end=${fixtureEnd}&revenueInterval=month&funnelRange=custom&funnelStart=${fixtureStart}&funnelEnd=${today}`);
   for (const [label, rate] of [
     ['Lead → Contacted', cohort.conversion.leadToContacted], ['Contacted → Qualified', cohort.conversion.contactedToQualified],
     ['Qualified → Closed Won', cohort.conversion.qualifiedToWon], ['Qualified → Closed Lost', cohort.conversion.qualifiedToLost],

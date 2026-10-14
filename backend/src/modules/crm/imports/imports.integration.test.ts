@@ -417,11 +417,13 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     const cross = person(`cross-${randomUUID()}@example.com`, 'Biometrics');
     const people = await Promise.all([run('leads', csv([cross])), run('contacts', csv([cross]))]);
     expect(people.map(job => job.successfulRecords).sort()).toEqual([0, 1]);
-    const name = `Concurrent ${randomUUID()} Account`;
-    const accounts = await Promise.all([run('accounts', csv([{ name }])), run('accounts', csv([{ name: ` ${name.toUpperCase().replace(/ /g, '   ')} ` }]))]);
-    expect(accounts.map(job => job.successfulRecords).sort()).toEqual([0, 1]);
-    await prisma.account.updateMany({ where: { tenantId, name }, data: { isArchived: true, deletedAt: new Date() } });
-    expect((await run('accounts', csv([{ name: ` ${name.toUpperCase()} ` }]))).duplicateRecords).toBe(1);
+    for (let round = 0; round < 3; round++) {
+      const name = `Concurrent ${randomUUID()} Account`;
+      const accounts = await Promise.all([run('accounts', csv([{ name }])), run('accounts', csv([{ name: ` ${name.toUpperCase().replace(/ /g, '   ')} ` }]))]);
+      expect(accounts.map(job => job.successfulRecords).sort()).toEqual([0, 1]);
+      await prisma.account.updateMany({ where: { tenantId, name }, data: { isArchived: true, deletedAt: new Date() } });
+      expect((await run('accounts', csv([{ name: ` ${name.toUpperCase()} ` }]))).duplicateRecords).toBe(1);
+    }
     const invalidFirst = csv([{ ...person(`valid-after-${randomUUID()}@example.com`), firstName: '' }]);
     const mapped = mapImportCsv('leads', invalidFirst)[0].data;
     expect((await run('leads', csv([mapped, { ...mapped, firstName: 'Valid' }]))).successfulRecords).toBe(1);

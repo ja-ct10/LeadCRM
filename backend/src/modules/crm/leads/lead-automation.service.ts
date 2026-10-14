@@ -29,7 +29,11 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
       return salesContext.run(tx, () => work(tx));
     }, { isolationLevel: 'Serializable', timeout: 20000 }); }
     catch (error) {
-      if ((isCrmTransactionConflict(error) || error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') && attempt < 4) continue;
+      if ((isCrmTransactionConflict(error) || error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') && attempt < 4) {
+        // Let concurrent writers commit before taking another serializable snapshot.
+        await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt + Math.floor(Math.random() * 25)));
+        continue;
+      }
       throw error;
     }
     return result;

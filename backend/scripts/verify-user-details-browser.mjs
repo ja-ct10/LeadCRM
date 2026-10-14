@@ -79,7 +79,7 @@ try {
     const response = await page.request.fetch(apiBase + path + url.search, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined });
     await route.fulfill({ response });
   });
-  await page.goto(base + '/settings?tab=users');
+  await page.goto(base + '/settings?tab=users', { waitUntil: 'domcontentloaded' });
   await page.getByRole('button', { name: 'View Nicolette Cuison' }).click();
   const panel = page.getByRole('dialog', { name: 'User Details' }); await panel.waitFor();
   assert.equal(await panel.getByRole('tablist').count(), 0);
@@ -174,10 +174,12 @@ try {
   assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: staff.id } })).status, 'INACTIVE');
   record('Header Archive reuses the parent confirmation and existing archive API');
   await panel.getByRole('button', { name: 'Close drawer' }).click();
+  // The exiting drawer retains its focus trap until it unmounts.
+  await panel.waitFor({ state: 'hidden' });
   // Recent success toasts can cover this corner; use the button's keyboard entry point.
-  await page.getByRole('button', { name: 'New User', exact: true }).focus();
-  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'New User', exact: true }).press('Enter');
   const create = page.getByRole('dialog', { name: 'New User' });
+  await create.waitFor();
   await create.getByLabel('First Name', { exact: false }).fill('Created'); await create.getByLabel('Last Name', { exact: false }).fill('Staff');
   await create.getByLabel('Email', { exact: false }).fill('created.staff@gmail.com'); await create.getByLabel('Phone', { exact: false }).fill('9171234567');
   await create.getByLabel('Role', { exact: false }).selectOption('Sales'); await create.getByRole('button', { name: 'Create User', exact: true }).click();
@@ -198,6 +200,8 @@ try {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'FAIL', checks, pageErrors, error: String(error) }, null, 2));
   throw error;
 } finally {
+  // Finish intercepted refresh requests before disposing their API request context.
+  await page?.unrouteAll({ behavior: 'wait' });
   await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
   await prisma?.$disconnect(); await socket?.stop(); await pg?.close();
