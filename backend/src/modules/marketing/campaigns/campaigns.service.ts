@@ -8,7 +8,10 @@ import { writeAuditLog } from '../../../core/audit/audit.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { getPaginationParams, paginate } from '../../../shared/helpers/pagination';
 import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissionError } from '../../../shared/services/email.service';
-import { sendSms, assertSmsConfigured, getSmsSenderIdentity, SmsSubmissionError } from '../../../shared/services/sms.service';
+import { sendSms, assertSmsConfigured, getSmsSenderIdentity, getSmsDeviceId, SmsSubmissionError } from '../../../shared/services/sms.service';
+import { runSubmissionPool } from './campaign-submission-pool';
+import { smsCampaignSummary } from './sms-campaign-outcomes';
+import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience, campaignFieldsForAudienceSource } from './audiences.service';
 import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
 import { findCampaignReport } from './campaigns.repository';
@@ -65,8 +68,8 @@ export async function getCampaignReport(id: string, tenantId: string) {
       deliveryStatus: recipient.status === 'excluded' ? 'Excluded'
         : recipientDeliveryFailed(recipient) ? (campaign.type === 'EMAIL' && recipient.bouncedAt ? 'Bounced' : 'Failed')
         : recipient.deliveredAt ? 'Delivered'
-        : campaign.type === 'SMS' && (recipient.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(recipient.failureReason ?? '')) ? 'Pending'
         : recipient.sentAt && (campaign.type !== 'EMAIL' || recipient.submittedAt || confirmedSentIds.has(recipient.messageId)) ? 'Sent'
+        : campaign.type === 'SMS' && (recipient.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(recipient.failureReason ?? '')) ? 'Pending'
         : recipient.submittedAt || (campaign.type === 'EMAIL' && recipient.sentAt) ? 'Submitted' : 'Pending',
       opened: campaign.type !== 'SMS' && (!!recipient.openedAt || openingRecipients.has((recipient.email ?? '').toLowerCase())),
       clicked: campaign.type !== 'SMS' && (!!recipient.clickedAt || clickingRecipients.has((recipient.email ?? '').toLowerCase())),
@@ -98,6 +101,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
   // Historical receipts still prove which recipients clicked each destination,
   // even when repeatable event totals cannot be reconstructed.
   return { ...campaign, recipients, topLinks, sendResult: campaignSendResult(campaign),
+    ...(campaign.type === 'SMS' ? { smsDelivery: smsCampaignSummary(campaignContacts) } : {}),
     deliveredCount,
     bouncedCount: recipients.filter(row => row.deliveryStatus === 'Bounced').length,
     openedCount: openingRecipients.size, clickedCount: clickingRecipients.size,
@@ -246,8 +250,12 @@ export async function cancelCampaignSchedule(id: string, tenantId: string, userI
   return getCampaignById(id, tenantId);
 }
 
-async function prepareCampaign(id: string, tenantId: string, expected?: ScheduledExpectation) {
+async function prepareCampaign(id: string, tenantId: string, expected?: ScheduledExpectation, submittedById?: string) {
   const scope = campaignScope(tenantId);
+  const preparationStarted = performance.now();
+  if (!acceptingSubmissions) throw new AppError('Campaign sending is temporarily unavailable while the server restarts.', 503);
+  const channel = await prisma.campaign.findFirst({ where: { id, ...scope }, select: { type: true } });
+  const smsDeviceId = channel?.type === 'SMS' ? await getSmsDeviceId() : null;
   if (!acceptingSubmissions) throw new AppError('Campaign sending is temporarily unavailable while the server restarts.', 503);
   const leaseId = randomUUID();
   const preparation = prisma.$transaction(async tx => {
@@ -287,12 +295,14 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
       ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: { ...r.personalization, ...sender }, status: 'excluded', failureReason: r.reason })),
     ] });
     if (campaign.type === 'EMAIL') await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
-    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...content } });
-    return { recipients: sends, leaseId };
+    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId } : {}), ...content } });
+    return { recipients: sends, leaseId, smsDeviceId };
   }, { timeout: 30000 });
   activePreparations.add(preparation);
   void preparation.finally(() => activePreparations.delete(preparation)).catch(() => undefined);
-  return preparation;
+  const result = await preparation;
+  console.info('[Campaigns]', { event: 'preparation_completed', campaignId: id, tenantId, durationMs: Math.round(performance.now() - preparationStarted) });
+  return result;
 }
 
 async function submissionTransaction<T>(id: string, tenantId: string, leaseId: string, work: (tx: Prisma.TransactionClient) => Promise<T>) {
@@ -309,10 +319,10 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
   const { recipients: prepared, leaseId } = preparation;
   // No external HTTP inside a transaction. Keep at most five provider requests active.
   console.info('[Campaigns]', { event: 'submission_started', campaignId: id, tenantId, recipientCount: prepared.length });
-  for (let offset = 0; offset < prepared.length; offset += 5) {
+  const submit = async (recipient: typeof prepared[number]) => {
     if (!acceptingSubmissions) throw new AppError('Campaign submission interrupted by server shutdown.', 503);
-    await assertCampaignSender(tenantId, userId);
-    const results = await Promise.allSettled(prepared.slice(offset, offset + 5).map(async recipient => {
+    if (recipient.channel === 'SMS') await assertCampaignSender(tenantId, userId);
+      const intentStarted = performance.now();
       // Persist the intent before the HTTP call so crash recovery can distinguish
       // untouched recipients from messages the provider may have accepted.
       await submissionTransaction(id, tenantId, leaseId, async tx => {
@@ -322,32 +332,40 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
         if (recipient.channel === 'EMAIL') await tx.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: 'submitting' } });
       });
       let result;
+      const providerStarted = performance.now();
       try {
         result = recipient.channel === 'SMS'
-          ? await sendSms(recipient.phone!, recipient.sms)
+          ? await sendSms(recipient.phone!, recipient.sms, { deviceId: preparation.smsDeviceId! })
           : await sendMail({ to: recipient.email!, subject: recipient.subject, html: recipient.html, requireDelivery: true });
       } catch (error) {
         const rejected = (error instanceof EmailSubmissionError || error instanceof SmsSubmissionError) && error.outcome === 'rejected';
         const reason = rejected ? `${recipient.channel === 'SMS' ? 'TEXTBEE' : 'BREVO'}_HTTP_${error.httpStatus}` : 'PROVIDER_SUBMISSION_UNCONFIRMED';
-        console.warn('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: rejected ? 'rejected' : 'unconfirmed', httpStatus: error instanceof EmailSubmissionError ? error.httpStatus : undefined });
+        console.warn('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: rejected ? 'rejected' : 'unconfirmed', httpStatus: error instanceof EmailSubmissionError || error instanceof SmsSubmissionError ? error.httpStatus : undefined, providerMs: Math.round(performance.now() - providerStarted) });
         // Unconfirmed requests may have been accepted: preserve them for review.
         await submissionTransaction(id, tenantId, leaseId, async tx => {
           await tx.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: rejected ? 'failed' : 'pending', failureReason: reason } });
           if (recipient.channel === 'EMAIL') await tx.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: rejected ? 'failed' : 'pending', errorMessage: reason } });
+          if (recipient.channel === 'SMS') await recalculateCampaignDelivery(tx, id, tenantId);
         });
+        if (recipient.channel === 'SMS') requestNotificationDispatch(tenantId);
         return;
       }
       const submitted = result.submitted;
       const now = new Date();
-      console.info('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: submitted ? 'accepted' : 'not_submitted', messageId: result.messageId });
+      console.info('[Campaigns]', { event: 'recipient_submission', campaignId: id, tenantId, recipientId: recipient.id, outcome: submitted ? 'accepted' : 'not_submitted', messageId: result.messageId, intentMs: Math.round(providerStarted - intentStarted), providerMs: Math.round(performance.now() - providerStarted) });
       await submissionTransaction(id, tenantId, leaseId, async tx => {
         await tx.campaign.update({ where: { id, ...scope }, data: submitted ? { sentCount: { increment: 1 } } : { failedCount: { increment: 1 } } });
         await tx.campaignContact.update({ where: { id: recipient.id, ...scope }, data: { status: submitted ? 'submitted' : 'failed', messageId: result.messageId,
           submittedAt: submitted ? now : null,
+          ...(recipient.channel === 'SMS' && submitted ? { nextSmsCheckAt: new Date(+now + 60000) } : {}),
           failureReason: submitted ? null : 'TRANSPORT_NOT_SUBMITTED' } });
         if (recipient.channel === 'EMAIL') await tx.emailDeliveryLog.update({ where: { id: recipient.logId, ...scope }, data: { status: submitted ? 'submitted' : 'failed', brevoMessageId: result.messageId } });
       });
-    }));
+  };
+  if (prepared[0]?.channel === 'SMS') await runSubmissionPool(prepared, submit);
+  else for (let offset = 0; offset < prepared.length; offset += 5) {
+    await assertCampaignSender(tenantId, userId);
+    const results = await Promise.allSettled(prepared.slice(offset, offset + 5).map(submit));
     if (results.some(result => result.status === 'rejected')) throw new AppError('Campaign delivery requires review because a result could not be saved.', 503);
   }
   const result = await submissionTransaction(id, tenantId, leaseId, async tx => {
@@ -359,6 +377,7 @@ async function deliverPrepared(id: string, tenantId: string, userId: string, pre
     return campaignSendResult(finished);
   });
   console.info('[Campaigns]', { event: 'submission_completed', tenantId, ...result });
+  requestNotificationDispatch(tenantId);
   await writeAuditLog({ tenantId, userId, action: 'campaign.submitted', entityType: 'Campaign', entityId: id, after: { ...result } });
   return result;
 }
@@ -384,12 +403,12 @@ export async function drainCampaignSubmissions() {
 // Service-level completion is useful to workers/tests; HTTP uses queueCampaign below.
 export async function sendCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {
   await assertCampaignSender(tenantId, userId);
-  return trackSubmission(id, tenantId, userId, await prepareCampaign(id, tenantId));
+  return trackSubmission(id, tenantId, userId, await prepareCampaign(id, tenantId, undefined, userId));
 }
 
 export async function queueCampaign(id: string, tenantId: string, userId: string): Promise<CampaignSendResult> {
   await assertCampaignSender(tenantId, userId);
-  const prepared = await prepareCampaign(id, tenantId);
+  const prepared = await prepareCampaign(id, tenantId, undefined, userId);
   // The committed snapshot and submissionStartedAt claim
   // prevent replays even if the browser closes or the proxy request finishes.
   void trackSubmission(id, tenantId, userId, prepared).catch(() => {
@@ -423,7 +442,7 @@ export async function dispatchDueCampaigns(now = new Date()) {
       await assertCampaignSender(row.tenantId, row.scheduledById);
       const approved = CampaignScheduleConfigSchema.parse(row.scheduleConfig);
       const definition = AudiencePreviewSchema.parse({ source: approved.source, matchMode: approved.matchMode, conditions: approved.conditions });
-      const prepared = await prepareCampaign(row.id, row.tenantId, { scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, updatedAt: row.updatedAt, definition });
+      const prepared = await prepareCampaign(row.id, row.tenantId, { scheduledFor: row.scheduledFor, scheduledById: row.scheduledById, updatedAt: row.updatedAt, definition }, row.scheduledById);
       dispatched++;
       void trackSubmission(row.id, row.tenantId, row.scheduledById, prepared).catch(() => console.error('[Campaigns] Scheduled submission interrupted; review persisted recipient outcomes.'));
     } catch (error) {

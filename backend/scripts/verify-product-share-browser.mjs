@@ -123,11 +123,40 @@ try {
   await drawer.getByRole('button', { name: 'Refresh Closed Won' }).evaluate(button => { button.click(); button.click(); });
   await drawer.getByRole('status', { name: 'Loading Closed Won' }).waitFor({ state: 'hidden' });
   assert.equal(wonRequests() - before, 1); delayPath = ''; record('Closed Won refresh has one request, a spinner, and stable metadata');
-  await drawer.getByRole('button', { name: 'Next page' }).click(); await drawer.getByText('Page 2 of 2', { exact: true }).waitFor();
-  await page.waitForFunction(() => document.querySelector('#sliding-drawer-container [aria-busy]')?.getAttribute('aria-busy') === 'false');
-  assert.equal(await drawer.locator('tbody tr').count(), 1);
-  await drawer.getByRole('button', { name: 'Records per page' }).click(); await drawer.getByRole('option', { name: '10', exact: true }).click();
-  await drawer.getByText('Page 1 of 3', { exact: true }).waitFor(); record('Closed Won page and per-page controls use server pagination');
+  // The page label changes before the effect starts its request. Wait for the
+  // requested server page and its rendered rows, including a delayed response.
+  delayPath = '/closed-won'; delayMs = 700;
+  const closedWon = drawer.getByRole('region', { name: 'Closed Won' });
+  const waitForWonPage = (pageNumber, limit) => page.waitForResponse(response => {
+    const url = new URL(response.url());
+    return url.pathname.endsWith(`/product-interests/${products[1].id}/closed-won`)
+      && url.searchParams.get('page') === String(pageNumber) && url.searchParams.get('limit') === String(limit);
+  });
+  const waitForWonRows = count => page.waitForFunction(expected => {
+    const section = document.querySelector('#sliding-drawer-container section[aria-label="Closed Won"]');
+    return section?.querySelector('[aria-busy]')?.getAttribute('aria-busy') === 'false'
+      && section.querySelectorAll('tbody tr').length === expected;
+  }, count);
+  const [secondPage] = await Promise.all([
+    waitForWonPage(2, 25),
+    closedWon.getByRole('button', { name: 'Next page' }).click(),
+  ]);
+  assert.equal(secondPage.status(), 200);
+  await closedWon.getByText('Page 2 of 2', { exact: true }).waitFor();
+  await waitForWonRows(1);
+  assert.equal(await closedWon.locator('tbody tr').count(), 1);
+  assert.equal(await closedWon.getByRole('button', { name: 'Refresh Closed Won' }).isDisabled(), false);
+  await closedWon.getByRole('button', { name: 'Records per page' }).click();
+  const [smallerPage] = await Promise.all([
+    waitForWonPage(1, 10),
+    page.getByRole('option', { name: '10', exact: true }).click(),
+  ]);
+  assert.equal(smallerPage.status(), 200);
+  await closedWon.getByText('Page 1 of 3', { exact: true }).waitFor();
+  await waitForWonRows(10);
+  assert.equal(await closedWon.locator('tbody tr').count(), 10);
+  assert.equal(await closedWon.getByRole('button', { name: 'Refresh Closed Won' }).isDisabled(), false);
+  delayPath = ''; record('Closed Won page and per-page controls wait for server responses and rendered rows');
   await responsive('product', drawer, 'Refresh Closed Won');
   await page.setViewportSize({ width: 1440, height: 900 }); await drawer.getByRole('button', { name: 'Close drawer' }).click();
   await page.getByRole('region', { name: 'Products table' }).getByText(products[0].name, { exact: true }).click();

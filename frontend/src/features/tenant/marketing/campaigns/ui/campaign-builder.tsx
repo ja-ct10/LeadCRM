@@ -19,6 +19,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { toast } from 'sonner';
+import { useAuth } from '@/store/AuthContext';
+import { trackSmsCampaignSubmission } from '@/features/tenant/notifications/hooks/notification-requests';
 import {
   ArrowLeft, Send, Mail, MessageSquare, Plus,
   Wand2, Monitor, Smartphone, Zap, Tags,
@@ -58,6 +60,7 @@ export function CampaignBuilder({
   initialContent,
 
 }: CampaignBuilderProps) {
+  const { tenant, user } = useAuth();
 
   const maySend = useHasPermission('campaigns.send') && canSend;
   const canCreate = useHasPermission('campaigns.create'), canEdit = useHasPermission('campaigns.edit');
@@ -221,6 +224,11 @@ export function CampaignBuilder({
       }
       if (send) {
         let result = (await campaignsApi.send(res.data.id)).data;
+        if (campaignType === 'SMS') {
+          toast.info('SMS campaign submitted. Waiting for gateway confirmation.');
+          trackSmsCampaignSubmission(tenant?.id ?? user?.tenantId ?? '', user?.id ?? '');
+          onBack(); return;
+        }
         // Each status request stays within the proxy timeout. Closing the editor
         // does not cancel a database-prepared campaign or submit it a second time.
         for (let attempt = 0; (result.submissionComplete === false || (result.status === 'SENDING' && result.submissionComplete === undefined && result.submittedRecipients + result.failedRecipients < result.eligibleRecipients)) && attempt < 150; attempt++) {
@@ -233,11 +241,11 @@ export function CampaignBuilder({
           onBack(); return;
         }
         if (result.status === 'SENDING') {
-          toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted. Waiting for provider confirmation.`);
+          toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted. Waiting for provider confirmation.`);
           onBack(); return;
         }
-        const message = `${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted successfully.`;
-        if (result.status === 'FAILED') toast.error(`Campaign sending failed. ${result.submittedRecipients} of ${result.eligibleRecipients} ${campaignType === 'SMS' ? 'SMS messages' : 'emails'} were submitted.`);
+        const message = `${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted successfully.`;
+        if (result.status === 'FAILED') toast.error(`Campaign sending failed. ${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted.`);
         else if (result.failedRecipients) toast.warning(`${message} ${result.failedRecipients} failed.`);
         else toast.success(message);
       } else toast.success('Campaign draft saved.');

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { ContactStatus } from '@prisma/client';
-import { DEFAULT_NOTIFICATION_PREFERENCES } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, DEFAULT_NOTIFICATION_PREFERENCES } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import app from '../../app';
 import { issueAuthSession } from '../../core/auth/auth-session';
@@ -28,7 +28,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   let tenantId: string, adminId: string, agentId: string, otherId: string, supportId: string, marketingId: string, deniedId: string, inactiveId: string;
   let agentRoleId: string, adminRoleId: string, supportRoleId: string, pipelineId: string, stages: Record<string, string>;
   let server: Server, base: string, token: string, otherToken: string;
-  const processEvents = async (now = new Date()) => {
+  const processEvents = async (now = new Date(Date.now() + 100)) => {
     for (let batch = 0; batch < 30; batch++) if (!(await dispatchTenantNotifications(tenantId, now, 100)).claimed) break;
   };
   const rows = (entityId: string) => prisma.notification.findMany({ where: { tenantId, entityId } });
@@ -138,6 +138,13 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     }
   });
   it('coalesces Qualified action and delivers the successful Won snapshot once to admin and owner', () => tenantContext.run({ tenantId }, async () => {
+    // These requirements are optional by default; this scenario explicitly
+    // configures required evidence before expecting a closing action notice.
+    for (const field of DEFAULT_CLOSING_FIELDS.filter(field => ['confirmation-type', 'confirmation-date'].includes(field.id))) {
+      const definition = { ...field, required: true };
+      await prisma.closingFieldDefinition.upsert({ where: { tenantId_id: { tenantId, id: field.id } },
+        create: { tenantId, id: field.id, definition }, update: { definition } });
+    }
     const customer = await lead(); const row = await deal();
     await prisma.leadDeal.create({ data: { tenantId, dealId: row.id, leadId: customer.id } });
     await moveDealStage(row.id, tenantId, stages.Contacted, adminId); await processEvents();
@@ -154,6 +161,9 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await recipients(row.id, 'closing_requirements_completed')).toEqual([]);
     await moveDealStage(row.id, tenantId, stages['Closed Won'], adminId); await processEvents();
     expect(await recipients(row.id, 'deal_won')).toHaveLength(2);
+    for (const field of DEFAULT_CLOSING_FIELDS.filter(field => ['confirmation-type', 'confirmation-date'].includes(field.id))) {
+      await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: field.id } }, data: { definition: { ...field } } });
+    }
   }));
   it('notifies successful Lost once, including an owner who acted, and suppresses failed or unchanged transitions', async () => {
     const row = await deal(); await processEvents();

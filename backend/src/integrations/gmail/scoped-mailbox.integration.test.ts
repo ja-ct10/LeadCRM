@@ -443,7 +443,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     for (let i = 0; i < 2; i++) await scope(() => ingestMailboxMessages(account, [...messages].reverse(), permissions));
     const result = await call('/emails');
     expect(result.body.emails).toHaveLength(1);
-    expect(result.body.emails[0]).toMatchObject({ id: 'thread-latest', threadId: 'thread-one', messageCount: 4, participants: ['Doris', 'You'], snippet: 'Latest follow-up', date: '2026-10-01T04:00:00.000Z', isRead: false, body: '' });
+    expect(result.body.emails[0]).toMatchObject({ id: 'thread-latest', threadId: 'thread-one', messageCount: 4, participants: ['Doris'], snippet: 'Latest follow-up', date: '2026-10-01T04:00:00.000Z', isRead: false, body: '' });
     expect(result.body.unreadCount).toBe(1); expect((await call('/unread-count')).body).toMatchObject({ unreadCount: 1, unreadCountUnit: 'conversations' });
     expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(4);
     const detail = await call('/threads/thread-one');
@@ -561,11 +561,14 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect((await call('/conversations/' + row.conversationId, 'GET', undefined, authorization)).status).toBe(404);
     expect((await call('/trash', 'POST', { conversationIds: [row.conversationId] }, authorization)).status).toBe(404);
     expect((await call('/messages/correspondent-private/read-state', 'PATCH', { isRead: true }, authorization)).status).toBe(404);
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true }, authorization)).status).toBe(404);
     expect(provider).not.toHaveBeenCalled();
     const tenant = await prisma.tenant.create({ data: { name: 'Isolated mailbox', slug: randomUUID(), onboardingCompletedAt: new Date() } });
     const foreign = await prisma.user.create({ data: { tenantId: tenant.id, email: `foreign-${randomUUID()}@camxian.com`, firstName: 'Other', lastName: 'Tenant', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     await prisma.emailAccount.create({ data: { tenantId: tenant.id, userId: foreign.id, email: foreign.email, accessToken: encryptToken('test-only'), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
     expect((await call('/conversations/' + row.conversationId, 'GET', undefined, `Bearer ${(await issueAuthSession(foreign)).token}`)).status).toBe(404);
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true }, `Bearer ${(await issueAuthSession(foreign)).token}`)).status).toBe(404);
+    expect(provider).not.toHaveBeenCalled();
   });
   it('stops a correspondent bulk action if assignment is revoked between provider writes', async () => {
     await persistHistorical(mail(leadEmail, 'mid-action-a')); await persistHistorical(mail(leadEmail, 'mid-action-b'));
@@ -1133,6 +1136,152 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     await scope(() => syncMailbox(tenantId, userId, 'worker')); expect(provider).toHaveBeenCalledTimes(1);
   });
 
+  it.each([1, 14, 51, 1001])('reads all unread messages in a %s-message conversation through bounded pages', async size => {
+    // Large histories also exercise skipping already-read messages without the old 1,000-message rejection.
+    const unread = size === 1001 ? 26 : size;
+    const createdAt = new Date(Date.now() - 10000);
+    await prisma.mailboxMessage.createMany({ data: Array.from({ length: size }, (_, index) => ({
+      tenantId, accountId: account.id, providerMessageId: `whole-${String(index).padStart(5, '0')}`, threadId: `whole-topic-${index % 3}`,
+      from: `Doris <${leadEmail}>`, fromAddress: leadEmail, recipients: [account.email], recipientAddresses: [account.email],
+      authorizationParticipants: [leadEmail, account.email].sort(), participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
+      direction: 'inbound', subject: 'Whole conversation', snippet: 'Message', body: 'Message', labels: index < size - unread ? ['INBOX'] : ['INBOX', 'UNREAD'], sentAt: createdAt, createdAt,
+    })) });
+    const row = (await call('/emails')).body.emails[0];
+    expect(row.messageCount).toBe(size);
+    const history = (await call('/conversations/' + row.conversationId)).body;
+    expect(history.emails).toHaveLength(Math.min(size, 50));
+    const activities = await prisma.activity.count({ where: { tenantId } });
+    const provider = vi.fn(async () => Response.json({})); vi.stubGlobal('fetch', provider);
+    let pageToken: string | undefined, changed = 0, pages = 0;
+    do {
+      const result = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true, pageToken });
+      expect(result.status).toBe(200); expect(result.body.count).toBeLessThanOrEqual(25);
+      expect(result.body.completedMessageIds.length).toBeLessThanOrEqual(25);
+      changed += result.body.count; pageToken = result.body.nextPageToken; pages++;
+      if (!pageToken) expect(result.body).toMatchObject({ isRead: true, unreadCount: 0 });
+    } while (pageToken);
+    expect(changed).toBe(unread); expect(provider).toHaveBeenCalledTimes(unread);
+    expect(pages).toBeGreaterThanOrEqual(Math.ceil(unread / 25));
+    expect(new Set(provider.mock.calls.map(args => String((args as unknown[])[0]))).size).toBe(unread);
+    expect(provider.mock.calls.every(args => !String((args as unknown[])[0]).includes('/threads/'))).toBe(true);
+    expect((await call('/emails')).body.emails[0]).toMatchObject({ isRead: true, messageCount: size, participants: ['Doris'] });
+    expect((await call('/emails?filter=unread')).body.emails).toHaveLength(0);
+    expect((await call('/unread-count')).body.unreadCount).toBe(0);
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true })).body.count).toBe(0);
+    expect(provider).toHaveBeenCalledTimes(unread); expect(await prisma.activity.count({ where: { tenantId } })).toBe(activities);
+  }, 120000);
+  it('excludes drafts, outgoing UNREAD, unrelated correspondents and unauthorized messages within the same provider topic', async () => {
+    await persistHistorical(mail(leadEmail, 'read-authorized'));
+    await persistHistorical({ ...mail('bank@example.com', 'read-private'), threadId: 'read-authorized' });
+    await persistHistorical({ ...mail(account.email, 'read-outgoing', ['SENT', 'UNREAD']), threadId: 'read-authorized', to: [leadEmail] });
+    await persistHistorical({ ...mail(account.email, 'read-conv-draft', ['DRAFT', 'UNREAD']), threadId: 'read-authorized', to: [leadEmail] });
+    await persistHistorical(mail(contactEmail, 'read-unrelated'));
+    const row = (await call('/emails')).body.emails.find((item: GmailEmail) => item.correspondentAddresses?.includes(leadEmail));
+    const provider = vi.fn(async () => Response.json({})); vi.stubGlobal('fetch', provider);
+    const result = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true });
+    expect(result.body).toMatchObject({ count: 1, completedMessageIds: ['read-authorized'], isRead: true, unreadCount: 1 });
+    expect(provider).toHaveBeenCalledOnce();
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, labels: { has: 'UNREAD' } } })).toBe(4);
+  });
+  it('retains partial progress, preserves concurrent labels and safely retries remaining unread messages', async () => {
+    await persistHistorical(mail(leadEmail, 'partial-a')); await persistHistorical(mail(leadEmail, 'partial-b'));
+    const row = (await call('/emails')).body.emails[0];
+    let writes = 0;
+    const provider = vi.fn(async () => {
+      if (++writes === 2) return Response.json({}, { status: 503 });
+      await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, providerMessageId: 'partial-a' }, data: { labels: ['INBOX', 'UNREAD', 'STARRED'] } });
+      return Response.json({});
+    }); vi.stubGlobal('fetch', provider);
+    const failed = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true });
+    expect(failed.status).toBe(503); expect(failed.body.error.code).toBe('GMAIL_OUTCOME_UNKNOWN');
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: 'partial-a' } } })).labels).toEqual(['INBOX', 'STARRED']);
+    expect((await call('/emails')).body.emails[0].isRead).toBe(false);
+    expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).mailboxVersion).toBeGreaterThan(account.mailboxVersion);
+    provider.mockImplementation(async () => Response.json({}));
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true })).body.count).toBe(1);
+    expect(provider).toHaveBeenCalledTimes(3);
+  });
+  it('bounds slow processing, binds continuations to their action and scope, and excludes later arrivals', async () => {
+    await persistHistorical(mail(leadEmail, 'bounded-a')); await persistHistorical(mail(leadEmail, 'bounded-b'));
+    const row = (await call('/emails')).body.emails[0];
+    let now = Date.now(); const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const provider = vi.fn(async () => { now += 6000; return Response.json({}); }); vi.stubGlobal('fetch', provider);
+    const first = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true });
+    expect(first.body.count).toBe(1); expect(first.body.nextPageToken).toBeTruthy(); expect(provider).toHaveBeenCalledOnce();
+    clock.mockRestore();
+    await persistHistorical(mail(leadEmail, 'bounded-new'), { createdAt: new Date(Date.now() + 1000) });
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: false, pageToken: first.body.nextPageToken })).status).toBe(409);
+    provider.mockImplementation(async () => Response.json({}));
+    const last = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true, pageToken: first.body.nextPageToken });
+    expect(last.body).toMatchObject({ count: 1, completedMessageIds: ['bounded-b'], isRead: false });
+    expect(last.body.nextPageToken).toBeUndefined(); expect(provider).toHaveBeenCalledTimes(2);
+    await crmActor.exit(async () => await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } }));
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true, pageToken: first.body.nextPageToken })).status).toBe(409);
+    expect(provider).toHaveBeenCalledTimes(2);
+  });
+  it('keeps failed provider updates unread and respects Gmail retryAt without duplicate attempts', async () => {
+    await persistHistorical(mail(leadEmail, 'limited-a')); await persistHistorical(mail(leadEmail, 'limited-b'));
+    const row = (await call('/emails')).body.emails[0];
+    let writes = 0;
+    const provider = vi.fn(async () => ++writes === 1 ? Response.json({}) : Response.json({}, { status: 429, headers: { 'Retry-After': '120' } })); vi.stubGlobal('fetch', provider);
+    const failed = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true });
+    expect(failed.status).toBe(429); expect(failed.body.error.code).toBe('GMAIL_RATE_LIMITED');
+    expect(Date.parse(failed.body.error.retryAt)).toBeGreaterThan(Date.now());
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, labels: { has: 'UNREAD' } } })).toBe(1);
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true })).status).toBe(429);
+    expect(provider).toHaveBeenCalledTimes(2);
+  });
+  it('stops subsequent writes and invalidates continuations when assignments change', async () => {
+    await persistHistorical(mail(leadEmail, 'revoke-read-a')); await persistHistorical(mail(leadEmail, 'revoke-read-b'));
+    const row = (await call('/emails')).body.emails[0];
+    const provider = vi.fn(async () => {
+      await crmActor.exit(async () => await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } }));
+      return Response.json({});
+    }); vi.stubGlobal('fetch', provider);
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true })).status).toBe(409);
+    expect(provider).toHaveBeenCalledOnce();
+    expect(await prisma.mailboxMessage.count({ where: { accountId: account.id, labels: { has: 'UNREAD' } } })).toBe(1);
+  });
+  it('does not consume incoming mail after the opening cutoff and retains manual Unread', async () => {
+    await persistHistorical(mail(leadEmail, 'new-read-original'));
+    const row = (await call('/emails')).body.emails[0];
+    const provider = vi.fn(async () => {
+      await persistHistorical(mail(leadEmail, 'new-read-arrival'), { createdAt: new Date(Date.now() + 1000) });
+      return Response.json({});
+    }); vi.stubGlobal('fetch', provider);
+    const result = await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true });
+    expect(result.body).toMatchObject({ count: 1, isRead: false, unreadCount: 1 });
+    expect(result.body.nextPageToken).toBeUndefined(); expect(provider).toHaveBeenCalledOnce();
+    provider.mockImplementation(async () => Response.json({}));
+    expect((await call('/messages/new-read-original/read-state', 'PATCH', { isRead: false })).body.count).toBe(1);
+    expect((await call('/emails')).body.emails[0].isRead).toBe(false);
+  });
+  it('preserves provider-confirmed Read after history sync and restores Unread for a new provider message', async () => {
+    const original = mail(leadEmail, 'sync-read-original'); await scope(() => ingestMailboxMessages(account, [original], permissions));
+    const row = (await call('/emails')).body.emails[0];
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({})));
+    expect((await call('/conversations/' + row.conversationId + '/read-state', 'PATCH', { isRead: true })).body.isRead).toBe(true);
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncCursor: 'read-history', syncScopeHash: (await scope(() => resolveMailboxScope(account, permissions))).hash, lastSyncAt: new Date(Date.now() - 61000) } });
+    const arrival = mail(leadEmail, 'sync-read-new');
+    const provider = vi.fn(async (path: string | URL) => String(path).includes('/history?')
+      ? Response.json({ history: [{ labelsRemoved: [{ message: { id: original.id } }], messagesAdded: [{ message: { id: arrival.id } }] }], historyId: 'read-history-next' })
+      : Response.json(apiMail(String(path).includes(original.id) ? { ...original, labels: ['INBOX'], isRead: true } : arrival)));
+    vi.stubGlobal('fetch', provider); await scope(() => syncMailbox(tenantId, userId, 'worker'));
+    expect((await call('/threads/' + original.threadId)).body.emails[0].isRead).toBe(true);
+    expect((await call('/emails')).body.emails[0]).toMatchObject({ isRead: false, messageCount: 2 });
+    expect((await call('/unread-count')).body.unreadCount).toBe(1);
+  });
+  it('retains external You names and excludes the owner from group and outgoing summaries', async () => {
+    await persistHistorical(mail(`You <${leadEmail}>`, 'named-you'));
+    await persistHistorical({ ...mail(account.email, 'named-you-reply', ['SENT']), threadId: 'named-you', to: [`You <${leadEmail}>`] }, { recipientAddresses: [leadEmail] });
+    await persistHistorical({ ...mail(`Doris <${leadEmail}>`, 'named-group'), to: [account.email, contactEmail] }, { recipientAddresses: [account.email, contactEmail], authorizationParticipants: [leadEmail, account.email, contactEmail].sort(), ccRecipients: [`Contact <${contactEmail}>`] });
+    const rows = (await call('/emails')).body.emails;
+    expect(rows.find((item: GmailEmail) => item.conversationKind === 'person').participants).toEqual(['You']);
+    const group = rows.find((item: GmailEmail) => item.conversationKind === 'group');
+    expect(group.participants.sort()).toEqual(['Contact', 'Doris']); expect(group.participants).not.toContain(account.email);
+    const detail = (await call('/conversations/' + rows.find((item: GmailEmail) => item.conversationKind === 'person').conversationId)).body;
+    expect(detail.emails.find((item: GmailEmail) => item.id === 'named-you-reply').from).toBe(account.email);
+  });
   it('marks only authorized non-draft thread messages read, persists after success, increments revision and is idempotent', async () => {
     const incoming = mail(leadEmail, 'read-one');
     await scope(() => ingestMailboxMessages(account, [incoming, { ...mail(leadEmail, 'read-two'), threadId: incoming.threadId }, { ...mail(account.email, 'read-draft', ['DRAFT', 'UNREAD']), threadId: incoming.threadId, to: [leadEmail] }], permissions));

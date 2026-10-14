@@ -1,20 +1,23 @@
-import type { NotificationType } from '@leadcrm/shared';
+import { SmsCampaignNotificationTypes, type NotificationType } from '@leadcrm/shared';
 
 export const assignmentNotifications = new Set<NotificationType>([
   'lead_assigned', 'contact_assigned', 'account_assigned', 'deal_assigned', 'task_assigned',
 ]);
 export const adminNotifications = new Set<NotificationType>([
+  ...SmsCampaignNotificationTypes,
   'website_lead', 'deal_won', 'deal_lost', 'campaign_failed', 'workflow_failed', 'form_processing_failed',
   'mailbox_disconnected', 'mailbox_sync_failed', 'user_created', 'user_status_changed',
   'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
 ]);
 export const staffNotifications = new Set<NotificationType>([
+  ...SmsCampaignNotificationTypes,
   ...assignmentNotifications, 'customer_hot', 'customer_cold', 'customer_cancelled', 'deal_won', 'deal_lost',
   'closing_requirements_needed', 'task_due', 'task_overdue', 'customer_reply',
   'campaign_failed', 'mailbox_disconnected', 'mailbox_sync_failed',
 ]);
 
 export const notificationEntities: Partial<Record<NotificationType, readonly string[]>> = {
+  ...Object.fromEntries(SmsCampaignNotificationTypes.map(type => [type, ['Campaign']])),
   website_lead: ['Lead'], lead_assigned: ['Lead'], contact_assigned: ['Contact'], account_assigned: ['Account'], deal_assigned: ['Deal'], task_assigned: ['Task'],
   customer_hot: ['Lead', 'Contact'], customer_cold: ['Lead', 'Contact'], customer_cancelled: ['Lead', 'Contact'],
   deal_won: ['Deal'], deal_lost: ['Deal'], closing_requirements_needed: ['Deal'], task_due: ['Task'], task_overdue: ['Task'],

@@ -73,7 +73,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
       else if (entityType === 'Account') { exists = await db.account.findFirst({ where: visible, select: { id: true } }); destination = '/crm/accounts/' + id; }
       else if (entityType === 'Deal') { exists = await db.deal.findFirst({ where: visible, select: { id: true } }); destination = '/crm/deals/' + id; }
       else if (entityType === 'Task') { exists = await db.task.findFirst({ where: { ...scope, isArchived: false, ...(!admin ? { assignedUserId: userId } : {}) }, select: { id: true } }); destination = '/operations/taskboard?taskId=' + id; }
-      else if (entityType === 'Campaign') { exists = await db.campaign.findFirst({ where: { ...scope, isArchived: false, ...(!admin ? { createdById: userId } : {}) }, select: { id: true } }); destination = '/marketing/campaigns?campaignId=' + id; }
+      else if (entityType === 'Campaign') { exists = await db.campaign.findFirst({ where: { ...scope, isArchived: false, ...(!admin ? { OR: [{ createdById: userId }, { type: 'SMS', submittedById: userId }] } : {}) }, select: { id: true } }); destination = '/marketing/campaigns?campaignId=' + id; }
       else if (entityType === 'Workflow') { exists = admin && await db.workflow.findFirst({ where: { ...scope, isArchived: false }, select: { id: true } }); destination = '/automation/workflows?workflowId=' + id; }
       else if (entityType === 'User') { exists = admin && await db.user.findFirst({ where: scope, select: { id: true } }); destination = '/settings?tab=users'; }
       else if (entityType === 'RoleDefinition') { exists = admin && await db.roleDefinition.findFirst({ where: scope, select: { id: true } }); destination = '/settings?tab=roles'; }

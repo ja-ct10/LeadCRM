@@ -1,0 +1,191 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { randomBytes, randomUUID } from 'node:crypto';
+import prisma from '../../../../config/database.config';
+import { tenantContext } from '../../../../core/tenant/tenant-context';
+import { processTextBeeEvent, applyTextBeeEvidence } from '../textbee-webhook';
+import { dispatchTenantNotifications } from '../../../notifications/notification-events.service';
+import { notificationCounts, deleteNotifications } from '../../../notifications/notifications.repository';
+import { saveNotificationPreferences } from '../../../notifications/notification-preferences.service';
+import { DEFAULT_NOTIFICATION_PREFERENCES } from '@leadcrm/shared';
+import { reconcileSmsStatuses } from '../sms-status-reconciliation';
+import { getSmsBatch, sendSms } from '../../../../shared/services/sms.service';
+import { interruptCampaignSubmission } from '../campaign-submission-recovery';
+import { smsCampaignSummary } from '../sms-campaign-outcomes';
+
+vi.mock('../../../../shared/services/sms.service', async original => ({ ...await original<object>(), sendSms: vi.fn(), getSmsBatch: vi.fn() }));
+vi.mock('../../../notifications/notification-events.service', async original => ({ ...await original<object>(), requestNotificationDispatch: vi.fn() }));
+const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
+const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_campaign_test_\d+$/.test(url.pathname);
+const device = '664a9b8cd0e1f2a3b4c5d6e7';
+describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () => {
+  let tenantId: string, creator: string, sender: string, denied: string;
+  const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
+  const batchId = () => randomBytes(12).toString('hex');
+  beforeAll(async () => {
+    tenantId = (await prisma.tenant.create({ data: { name: 'SMS tracking QA', slug: randomUUID(), status: 'SANDBOX', onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
+    await scope(async () => {
+      const admin = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
+      const marketing = await prisma.roleDefinition.create({ data: { tenantId, name: 'Marketing', permissions: { create: [{ module: 'campaigns', canView: true }] } } });
+      const noAccess = await prisma.roleDefinition.create({ data: { tenantId, name: 'No Access' } });
+      const user = async (roleId: string, role: string) => (await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'SMS', lastName: 'Tester', role,
+        status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date(), userRoles: { create: { roleId } } } })).id;
+      creator = await user(admin.id, 'Client Admin'); sender = await user(marketing.id, 'Marketing'); denied = await user(noAccess.id, 'No Access');
+    });
+  });
+  beforeEach(() => { vi.stubEnv('TEXTBEE_API_KEY', 'mock-only'); vi.stubEnv('TEXTBEE_DEVICE_ID', device); vi.mocked(getSmsBatch).mockReset(); vi.mocked(sendSms).mockClear(); });
+  afterEach(async () => { await scope(() => prisma.campaign.updateMany({ data: { isArchived: true } })); });
+  afterAll(async () => { vi.unstubAllEnvs(); await prisma.$disconnect(); });
+
+  async function submitted(count = 1, actor = sender) {
+    return scope(async () => {
+      const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Verified SMS', type: 'SMS', status: 'SENDING', createdById: creator, submittedById: actor,
+        recipientCount: count, submissionStartedAt: new Date(), submissionFinishedAt: new Date(), smsDeviceId: device } });
+      for (let index = 0; index < count; index++) await prisma.campaignContact.create({ data: { tenantId, campaignId: campaign.id,
+        phone: `+63917123456${index}`, messageId: batchId(), status: 'submitted', submittedAt: new Date(), submissionAttemptedAt: new Date() } });
+      return { campaign, rows: await prisma.campaignContact.findMany({ where: { campaignId: campaign.id }, orderBy: { phone: 'asc' } }) };
+    });
+  }
+  type Row = Awaited<ReturnType<typeof submitted>>['rows'][number];
+  const event = (row: Row, status: 'sent' | 'delivered' | 'failed' | 'unknown', key = randomUUID()) => ({
+    smsId: `sms-${row.id}`, smsBatchId: row.messageId, deviceId: device, recipient: row.phone,
+    webhookSubscriptionId: 'fixture-subscription', idempotencyKey: key,
+    webhookEvent: status === 'unknown' ? 'UNKNOWN_STATE' : `MESSAGE_${status.toUpperCase()}`, status,
+    ...(status === 'sent' || status === 'delivered' ? { sentAt: '2026-10-14T01:00:00.000Z' } : {}),
+    ...(status === 'delivered' ? { deliveredAt: '2026-10-14T01:00:01.000Z' } : {}),
+    ...(status === 'failed' ? { failedAt: '2026-10-14T01:00:02.000Z' } : {}),
+  });
+  const outbox = (id: string) => scope(() => prisma.notificationEvent.findMany({ where: { entityId: id, type: { startsWith: 'sms_campaign_' } }, orderBy: { createdAt: 'asc' } }));
+  const deliver = () => scope(async () => { for (let n = 0; n < 10; n++) if (!(await dispatchTenantNotifications(tenantId)).claimed) break; });
+
+  it('persists separate ordered Sent/Delivered results once for sender and creator, including worker restart and deleted notifications', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await processTextBeeEvent(event(row, 'sent'));
+    await processTextBeeEvent(event(row, 'sent'));
+    await processTextBeeEvent(event(row, 'delivered'));
+    expect((await outbox(campaign.id)).map(item => item.type)).toEqual(['sms_campaign_sent', 'sms_campaign_delivered']);
+    await scope(() => dispatchTenantNotifications(tenantId));
+    expect(await scope(() => prisma.notification.count({ where: { entityId: campaign.id, type: 'sms_campaign_delivered' } }))).toBe(0);
+    await deliver();
+    const notifications = await scope(() => prisma.notification.findMany({ where: { entityId: campaign.id } }));
+    expect(notifications).toHaveLength(4);
+    expect(new Set(notifications.map(n => n.userId))).toEqual(new Set([creator, sender]));
+    const mine = notifications.filter(n => n.userId === sender);
+    const delta = await scope(() => notificationCounts(tenantId, sender, { since: new Date(Date.now() - 60000).toISOString() }));
+    expect(delta.updates.filter(n => n.entityId === campaign.id).map(n => n.type)).toEqual(['sms_campaign_sent', 'sms_campaign_delivered']);
+    await scope(() => deleteNotifications(mine.map(n => n.id), tenantId, sender));
+    await processTextBeeEvent(event(row, 'delivered')); await deliver();
+    expect(await scope(() => prisma.notification.count({ where: { entityId: campaign.id, userId: sender } }))).toBe(0);
+    await expect(scope(() => notificationCounts(tenantId, creator, { after: delta.cursor }))).rejects.toThrow('cursor');
+  });
+
+  it('accepts direct Delivered without inventing a Sent event and prevents terminal regressions', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await processTextBeeEvent(event(row, 'delivered'));
+    await processTextBeeEvent(event(row, 'sent'));
+    await processTextBeeEvent(event(row, 'failed'));
+    expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_delivered']);
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('DELIVERED');
+  });
+
+  it('retains verified Sent when a later device report is unknown and another recipient completes', async () => {
+    const { campaign, rows } = await submitted(2);
+    await processTextBeeEvent(event(rows[0], 'sent'));
+    await processTextBeeEvent(event(rows[0], 'unknown'));
+    await processTextBeeEvent(event(rows[1], 'sent'));
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENT');
+    const saved = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } });
+    expect(smsCampaignSummary(saved)).toMatchObject({ total: 2, sent: 2, delivered: 0, unconfirmed: 0 });
+    expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_sent']);
+  });
+
+  it('does not call partial processing completed while recipients remain pending', async () => {
+    const { campaign, rows } = await submitted(3);
+    await processTextBeeEvent(event(rows[0], 'sent')); await processTextBeeEvent(event(rows[1], 'failed'));
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENDING');
+    expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_progress']);
+    await processTextBeeEvent(event(rows[2], 'sent'));
+    const saved = await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } });
+    expect(saved).toMatchObject({ status: 'PARTIALLY_SENT', failedCount: 1, sentCount: 3 });
+    const events = await outbox(campaign.id);
+    expect(events.map(n => n.type)).toEqual(['sms_campaign_progress', 'sms_campaign_partial']);
+    expect(events[1].payload).toMatchObject({ counts: { total: 3, sent: 2, failed: 1, submitted: 0 } });
+  });
+
+  it('records complete failure and unconfirmed outcomes with different semantics', async () => {
+    const failed = await submitted(), unknown = await submitted();
+    await processTextBeeEvent(event(failed.rows[0], 'failed')); await processTextBeeEvent(event(unknown.rows[0], 'unknown'));
+    expect((await outbox(failed.campaign.id)).map(n => n.type)).toEqual(['sms_campaign_failed']);
+    expect((await outbox(unknown.campaign.id)).map(n => n.type)).toEqual(['sms_campaign_unconfirmed']);
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: unknown.campaign.id } })).status).toBe('SENDING');
+  });
+
+  it('serializes concurrent duplicate callbacks on native PostgreSQL without duplicate metrics or events', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await Promise.all(Array.from({ length: 5 }, () => processTextBeeEvent(event(row, 'sent', row.id))));
+    await Promise.all(Array.from({ length: 5 }, () => processTextBeeEvent(event(row, 'sent'))));
+    expect(await scope(() => prisma.smsWebhookReceipt.count({ where: { campaignContactId: row.id } }))).toBe(6);
+    expect(await prisma.campaignMetrics.count({ where: { campaignId: campaign.id } })).toBe(1);
+    expect(await outbox(campaign.id)).toHaveLength(1);
+  });
+
+  it('rejects mismatched device/phone/SMS identities and retries callbacks preceding the committed receipt', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await expect(processTextBeeEvent({ ...event(row, 'sent'), deviceId: batchId() })).rejects.toThrow('device');
+    await expect(processTextBeeEvent({ ...event(row, 'sent'), recipient: '+639181234567' })).rejects.toThrow('match');
+    await expect(processTextBeeEvent({ ...event(row, 'sent'), smsBatchId: batchId() })).rejects.toMatchObject({ statusCode: 503 });
+    await processTextBeeEvent(event(row, 'sent'));
+    await expect(processTextBeeEvent({ ...event(row, 'delivered'), smsId: 'different-message' })).rejects.toThrow('identity');
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENT');
+  });
+
+  it('honors preferences and permission loss for sender without broadcasting successes', async () => {
+    const { campaign, rows: [row] } = await submitted(1, denied);
+    await scope(() => saveNotificationPreferences(tenantId, creator, { ...DEFAULT_NOTIFICATION_PREFERENCES, inAppGeneral: false }));
+    await processTextBeeEvent(event(row, 'sent')); await deliver();
+    expect(await scope(() => prisma.notification.count({ where: { entityId: campaign.id } }))).toBe(0);
+    await scope(() => saveNotificationPreferences(tenantId, creator, DEFAULT_NOTIFICATION_PREFERENCES));
+  });
+
+  const lookup = (row: Row, status: string) => ({ batch: { _id: row.messageId!, recipientCount: 1 }, messages: [{ _id: `sms-${row.id}`, device: { _id: device }, smsBatch: row.messageId!, recipient: row.phone!, status,
+    ...(status === 'sent' || status === 'delivered' ? { sentAt: '2026-10-14T01:00:00.000Z' } : {}), ...(status === 'delivered' ? { deliveredAt: '2026-10-14T01:00:01.000Z' } : {}) }] });
+  async function due(row: Row) { await scope(() => prisma.campaignContact.update({ where: { id: row.id }, data: { nextSmsCheckAt: new Date(Date.now() - 1000) } })); }
+  it('reconciles stale accepted batches once with backoff and preserves Sent when no delivery report exists', async () => {
+    const { campaign, rows: [row] } = await submitted(); await due(row);
+    vi.mocked(getSmsBatch).mockResolvedValue(lookup(row, 'sent') as never);
+    await Promise.all([reconcileSmsStatuses(), reconcileSmsStatuses()]);
+    expect(getSmsBatch).toHaveBeenCalledOnce(); expect(sendSms).not.toHaveBeenCalled();
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENT');
+    await due(row); await reconcileSmsStatuses();
+    expect(await outbox(campaign.id)).toHaveLength(1);
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).deliveredAt).toBeNull();
+    await due(row); vi.mocked(getSmsBatch).mockResolvedValue(lookup(row, 'delivered') as never); await reconcileSmsStatuses();
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).nextSmsCheckAt).toBeNull();
+    expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_sent', 'sms_campaign_delivered']);
+  });
+
+  it('never resends on offline/timeout or mismatched lookup results and ignores stale lookup evidence', async () => {
+    const { campaign, rows: [row] } = await submitted(); await due(row);
+    vi.mocked(getSmsBatch).mockRejectedValueOnce(new Error('offline'));
+    await reconcileSmsStatuses(); await reconcileSmsStatuses(); expect(getSmsBatch).toHaveBeenCalledOnce();
+    await due(row); vi.mocked(getSmsBatch).mockResolvedValue({ ...lookup(row, 'sent'), batch: { _id: batchId(), recipientCount: 1 } } as never);
+    await reconcileSmsStatuses(); expect(await outbox(campaign.id)).toHaveLength(0);
+    await processTextBeeEvent(event(row, 'sent'));
+    await applyTextBeeEvidence({ smsId: `sms-${row.id}`, smsBatchId: row.messageId!, deviceId: device, recipient: row.phone!, status: 'unknown' }, undefined, null);
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).failureReason).toBeNull();
+    expect(sendSms).not.toHaveBeenCalled();
+  });
+
+  it('recovers interrupted submissions without replaying attempted or accepted recipients', async () => {
+    const { campaign, rows } = await submitted(3);
+    await scope(async () => {
+      await prisma.campaign.update({ where: { id: campaign.id }, data: { submissionFinishedAt: null, submissionLeaseId: 'expired', submissionLeaseUntil: new Date(0) } });
+      await prisma.campaignContact.update({ where: { id: rows[1].id }, data: { status: 'submitting', submittedAt: null, messageId: null } });
+      await prisma.campaignContact.update({ where: { id: rows[2].id }, data: { status: 'pending', submittedAt: null, submissionAttemptedAt: null, messageId: null } });
+    });
+    await interruptCampaignSubmission(campaign.id, tenantId, 'expired');
+    const saved = await prisma.campaignContact.findMany({ where: { campaignId: campaign.id } });
+    expect(smsCampaignSummary(saved)).toMatchObject({ total: 3, submitted: 1, unconfirmed: 1, failed: 1 });
+    expect(sendSms).not.toHaveBeenCalled();
+    expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_progress', 'sms_campaign_unconfirmed']);
+  });
+});

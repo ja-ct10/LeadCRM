@@ -1,10 +1,14 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_NOTIFICATION_PREFERENCES = exports.NotificationPreferencesSchema = exports.NotificationQuerySchema = exports.NotificationTypes = exports.DeleteNotificationsSchema = void 0;
+exports.DEFAULT_NOTIFICATION_PREFERENCES = exports.NotificationPreferencesSchema = exports.NotificationQuerySchema = exports.NotificationTypes = exports.SmsCampaignNotificationTypes = exports.DeleteNotificationsSchema = void 0;
 const zod_1 = require("zod");
 exports.DeleteNotificationsSchema = zod_1.z.object({
     ids: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(500).transform(ids => [...new Set(ids)]),
 }).strict();
+exports.SmsCampaignNotificationTypes = [
+    'sms_campaign_sent', 'sms_campaign_delivered', 'sms_campaign_failed',
+    'sms_campaign_partial', 'sms_campaign_unconfirmed', 'sms_campaign_progress',
+];
 exports.NotificationTypes = [
     'lead_assigned', 'contact_assigned', 'account_assigned', 'deal_assigned', 'task_assigned',
     'customer_hot', 'customer_cold', 'customer_cancelled', 'deal_progressed', 'deal_won', 'deal_lost',
@@ -12,6 +16,7 @@ exports.NotificationTypes = [
     'customer_reply', 'campaign_failed', 'workflow_failed', 'user_created', 'user_status_changed',
     'mailbox_disconnected', 'mailbox_sync_failed', 'form_processing_failed', 'record_archived', 'record_restored',
     'website_lead', 'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
+    ...exports.SmsCampaignNotificationTypes,
 ];
 exports.NotificationQuerySchema = zod_1.z.object({
     page: zod_1.z.coerce.number().int().min(1).max(10000).default(1),

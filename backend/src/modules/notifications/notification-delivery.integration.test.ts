@@ -19,7 +19,9 @@ const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms_test_2')('Durable notification delivery', () => {
   let tenantId: string, agentId: string, otherId: string, adminId: string, foreignId: string, roleId: string;
   let pipelineId: string, stageId: string, token: string, adminToken: string, server: Server, base: string;
-  const processEvents = (now = new Date()) => dispatchTenantNotifications(tenantId, now, 100);
+  // Native PostgreSQL rounds trigger TIMESTAMP(3) values; explicit test clocks
+  // remain exact, while immediate drains allow that sub-millisecond rounding.
+  const processEvents = (now = new Date(Date.now() + 100)) => dispatchTenantNotifications(tenantId, now, 100);
   const contact = (owner = agentId) => prisma.contact.create({ data: { tenantId, firstName: 'Assigned', lastName: 'Contact', email: randomUUID() + '@example.test', assignedUserId: owner } });
   const notifications = (entityId: string, userId = agentId) => prisma.notification.findMany({ where: { tenantId, entityId, userId } });
   const request = async (path: string, method = 'GET', body?: unknown, auth = token) => {

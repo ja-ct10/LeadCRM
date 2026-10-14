@@ -64,9 +64,15 @@ export async function convertContact(id: string, tenantId: string, userId: strin
     if (dto.dealId && !await tx.deal.findFirst({ where: { tenantId, id: dto.dealId,
       leadDeals: { some: { tenantId, leadId: id } } } })) throw new ValidationError('Choose a Deal already associated with this Lead.');
     // Never replace the identity of a previously converted customer on a retry.
-    if (!lead.convertedAt) await tx.lead.update({ where: { tenantId, id }, data: {
-      ...(dto.contactId ? { contactId: dto.contactId } : {}), ...(dto.accountId ? { accountId: dto.accountId } : {}),
-    } });
+    if (!lead.convertedAt) {
+      if (dto.accountId && !await tx.account.findFirst({ where: { tenantId, id: dto.accountId, isArchived: false, deletedAt: null } })) throw new NotFoundError('Active Account');
+      if (dto.contactId && !await tx.contact.findFirst({ where: { tenantId, id: dto.contactId, isArchived: false, deletedAt: null } })) throw new NotFoundError('Active Contact');
+      if ((dto.contactId && dto.contactId !== lead.contactId) || (dto.accountId && dto.accountId !== lead.accountId)) {
+        await tx.lead.update({ where: { tenantId, id }, data: {
+          ...(dto.contactId ? { contactId: dto.contactId } : {}), ...(dto.accountId ? { accountId: dto.accountId } : {}),
+        } });
+      }
+    }
     const converted = await convertLead(tx, tenantId, id, userId, { previousLead: lead, accountName: dto.accountName });
     const account = converted.accountId ? await tx.account.findFirst({ where: { tenantId, id: converted.accountId } }) : null;
     const deal = dto.dealId ? await tx.deal.findFirst({ where: { tenantId, id: dto.dealId } }) : null;

@@ -151,10 +151,39 @@ describe('campaign report', () => {
     mount(); await screen.findByText('Doris Testing'); vi.mocked(campaignsApi.report).mockRejectedValueOnce(new Error('Network unavailable'));
     fireEvent.click(screen.getByRole('button', { name: 'Refresh' })); await screen.findByRole('alert'); expect(screen.getByText('Doris Testing')).toBeTruthy();
   });
+  it('uses slow polling for old SMS reports and refreshes on a matching verified outcome', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'SMS', status: 'sent', submissionStartedAt: new Date(Date.now() - 3600000).toISOString() } } as never);
+    render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(29999); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(1);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(2);
+    await act(async () => { window.dispatchEvent(new CustomEvent('sms-campaign-updated', { detail: { campaignIds: ['another-campaign'] } })); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(2);
+    await act(async () => { window.dispatchEvent(new CustomEvent('sms-campaign-updated', { detail: { campaignIds: [campaign.id] } })); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(3);
+  });
+  it('expires fast SMS report polling after five minutes without inventing delivery', async () => {
+    vi.useFakeTimers();
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'SMS', status: 'sent', submissionStartedAt: new Date(Date.now() - 297500).toISOString() } } as never);
+    render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
+    await act(async () => {});
+    await act(async () => { await vi.advanceTimersByTimeAsync(2500); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(29999); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(2);
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+    expect(campaignsApi.report).toHaveBeenCalledTimes(3);
+    expect(screen.getAllByText('Sent').length).toBeGreaterThan(0);
+  });
   it.each(['Email', 'Sms'])('updates %s from Sending to Sent automatically after provider confirmation', async type => {
     vi.useFakeTimers();
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
-    const first = { ...response().data, type, status: 'sending', recipients: [{ ...recipients[0], deliveryStatus: 'Submitted' }] };
+    const first = { ...response().data, type, status: 'sending', submissionStartedAt: new Date().toISOString(), recipients: [{ ...recipients[0], deliveryStatus: 'Submitted' }] };
     vi.mocked(campaignsApi.report).mockResolvedValueOnce({ success: true, data: first } as never);
     const { unmount } = render(<CampaignReportView campaign={{ ...campaign, type } as never} onBack={vi.fn()} />);
     await act(async () => {});
@@ -169,7 +198,7 @@ describe('campaign report', () => {
     vi.useFakeTimers();
     let hidden = false;
     vi.spyOn(document, 'hidden', 'get').mockImplementation(() => hidden);
-    const first = { ...response().data, type, status: 'sent', openedCount: 0, clickedCount: 0, topLinks: [], recipients: [{ ...recipients[0], deliveryStatus: 'Sent', opened: false, clicked: false }] };
+    const first = { ...response().data, type, status: 'sent', submissionStartedAt: new Date().toISOString(), openedCount: 0, clickedCount: 0, topLinks: [], recipients: [{ ...recipients[0], deliveryStatus: 'Sent', opened: false, clicked: false }] };
     vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: first } as never);
     const { unmount } = render(<CampaignReportView campaign={{ ...campaign, type } as never} onBack={vi.fn()} />);
     await act(async () => {});
