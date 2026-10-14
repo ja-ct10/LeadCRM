@@ -27,7 +27,7 @@ const originalLog = console.log;
 console.error = (...args) => runtimeLog.write(args.map(value => typeof value === 'string' ? value : JSON.stringify(value)).join(' ') + '\n');
 console.log = (...args) => runtimeLog.write(args.map(value => typeof value === 'string' ? value : JSON.stringify(value)).join(' ') + '\n');
 const port = 3019, base = `http://localhost:${port}`;
-let api, frontend, browser;
+let api, frontend, browser, failurePage;
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'CRM RBAC Browser QA', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   async function person(name, roleName) {
@@ -71,6 +71,7 @@ try {
   await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: a.token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
+  failurePage = page;
   page.on('pageerror', error => errors.push(error.message));
   const widths = [320,375,390,430,768,1024,1440,1920];
   async function capture(name, width) {
@@ -141,6 +142,10 @@ try {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors }, null, 2));
   originalLog(`Browser RBAC: ${checks.length} checks passed; evidence: ${output}`);
 } catch (error) {
+  if (failurePage) {
+    await failurePage.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {});
+    writeFileSync(resolve(output, 'failure.txt'), await failurePage.locator('body').innerText().catch(() => ''));
+  }
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, errors, failure: error.message }, null, 2));
   originalLog(`Browser RBAC failed; evidence: ${output}`); throw error;
 } finally {

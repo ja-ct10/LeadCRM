@@ -92,8 +92,34 @@ try {
     for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(250); // Wait for responsive layout/transition, never production loading.
-      const dimensions = await target.evaluate(root => ({ pageOverflow: document.documentElement.scrollWidth > innerWidth + 1, controlsOutside: [...root.querySelectorAll('input,select,textarea')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label')) }));
-      assert.equal(dimensions.pageOverflow, false, JSON.stringify(dimensions)); assert.deepEqual(dimensions.controlsOutside, [], JSON.stringify(dimensions));
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `${label} document overflow at ${width}px`);
+      for (const control of await target.locator('input,select,textarea').all()) {
+        const geometry = await control.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const outside = element.getClientRects().length && (rect.left < -1 || rect.right > innerWidth + 1);
+          let scroll;
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            const bounds = parent.getBoundingClientRect();
+            if (/^(auto|scroll)$/.test(getComputedStyle(parent).overflowX) && parent.scrollWidth > parent.clientWidth && bounds.left >= -1 && bounds.right <= innerWidth + 1) {
+              scroll = { left: parent.scrollLeft, top: parent.scrollTop }; break;
+            }
+          }
+          return { outside: Boolean(outside), scroll, label: element.getAttribute('aria-label') };
+        });
+        if (!geometry.outside) continue;
+        // Wide CRM tables clip controls inside their own horizontal viewport.
+        // Prove those controls are reachable; out-of-page form controls still fail.
+        assert.ok(geometry.scroll, JSON.stringify(geometry));
+        await control.scrollIntoViewIfNeeded();
+        assert.ok(await control.evaluate(element => { const rect = element.getBoundingClientRect(); return rect.left >= -1 && rect.right <= innerWidth + 1; }), JSON.stringify(geometry));
+        await control.evaluate((element, original) => {
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            if (/^(auto|scroll)$/.test(getComputedStyle(parent).overflowX) && parent.scrollWidth > parent.clientWidth) {
+              parent.scrollLeft = original.left; parent.scrollTop = original.top; break;
+            }
+          }
+        }, geometry.scroll);
+      }
       await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) }); record(`${label} ${theme} ${width}px`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });

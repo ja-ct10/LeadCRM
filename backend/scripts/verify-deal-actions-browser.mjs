@@ -332,9 +332,18 @@ try {
   await page.mouse.move(d.x+d.width/2,d.y+d.height/2);await page.mouse.down();await page.mouse.move(d.x+20,d.y+20,{steps:4});await page.mouse.move(q.x+q.width/2,q.y+120,{steps:20});await page.mouse.up();
   await until(async()=>(await stored('Desktop Drag')).stageId===qualified.id,'Desktop drag did not persist');record('Desktop handle drag commits stage');
   const keyboardDrag=page.getByRole('button',{name:'Drag Desktop Drag',exact:true});
-  const keyboardStart=async()=>{await keyboardDrag.focus();await page.keyboard.press('Space');await until(async()=>await page.getByRole('heading',{name:'Desktop Drag',exact:true}).count()===2,'Keyboard drag did not activate');};
+  const keyboardId=fixtures['Desktop Drag'].id;
+  const dragAnnouncement=page.locator('[role="status"][id^="DndLiveRegion"]').first();
+  const keyboardStart=async()=>{
+    await keyboardDrag.focus();await page.keyboard.press('Space');
+    await until(async()=>await keyboardDrag.getAttribute('aria-pressed')==='true'&&await page.getByRole('heading',{name:'Desktop Drag',exact:true}).count()===2,'Keyboard drag did not activate');
+    await until(async()=>(await dragAnnouncement.textContent()).includes(`Draggable item ${keyboardId} was moved over droppable area`),'Keyboard collision geometry did not become ready');
+    // Flush the sensor's already-queued keydown listener installation.
+    await page.evaluate(()=>new Promise(done=>setTimeout(done,0)));
+  };
   const keyboardLeft=async()=>{await page.keyboard.press('ArrowLeft');await until(async()=>await column(page,'Contacted').getByRole('heading',{name:'Desktop Drag',exact:true}).count()===1,'Keyboard arrow did not preview adjacent stage');};
   await keyboardStart();await keyboardLeft();await page.keyboard.press('Escape');
+  await until(async()=>(await dragAnnouncement.textContent())===`Dragging was cancelled. Draggable item ${keyboardId} was dropped.`,'Keyboard cancellation was not announced');
   await until(async()=>await page.getByRole('heading',{name:'Desktop Drag',exact:true}).count()===1,'Keyboard cancellation did not clear the overlay');
   assert.equal((await stored('Desktop Drag')).stageId,qualified.id);record('Keyboard drag cancellation preserves stage');
   await keyboardStart();await keyboardLeft();await page.keyboard.press('Space');
@@ -350,8 +359,13 @@ try {
   const br=await board(mobile).boundingBox();
   for(let i=0;i<12;i++){await touch('touchMove',br.x+br.width-6,y);await mobile.waitForTimeout(180);const b=await column(mobile,'Qualified').boundingBox();if(b.x<200)break;}
   assert.ok(await board(mobile).evaluate(el=>el.scrollLeft)>400,'Touch drag must auto-scroll horizontally');
-  const mq=await column(mobile,'Qualified').boundingBox();const tx=Math.min(350,Math.max(40,mq.x+100));const ty=Math.min(750,mq.y+150);
-  await touch('touchMove',tx,ty);await mobile.waitForTimeout(200);await touch('touchEnd',tx,ty);
+  const mq=await column(mobile,'Qualified').boundingBox();
+  const visibleLeft=Math.max(br.x+br.width*.2,mq.x),visibleRight=Math.min(br.x+br.width*.8,mq.x+mq.width);
+  assert.ok(visibleRight>visibleLeft,'Qualified must intersect the interior of the visible board');
+  const tx=(visibleLeft+visibleRight)/2,ty=Math.min(750,mq.y+150);
+  await touch('touchMove',tx,ty);
+  await until(async()=>await column(mobile,'Qualified').getByRole('heading',{name:'Mobile Drag',exact:true}).count()===1,'Touch drag did not preview Qualified');
+  await touch('touchEnd',tx,ty);
   await until(async()=>(await stored('Mobile Drag')).stageId===qualified.id,'Mobile touch drag did not persist');
   await mobile.screenshot({path:resolve(output,'mobile-drag-390.png')});record('390px touch hold/drag across horizontal board commits to database');
   await board(mobile).evaluate(el=>{el.scrollLeft=0;});

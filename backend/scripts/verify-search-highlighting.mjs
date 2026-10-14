@@ -155,6 +155,13 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   await setAcceptanceTheme(page, 'Light');
+  // The earlier customization case switches Name to First Name. Arrange the
+  // pinned Name fixture explicitly before checking its responsive behavior.
+  const configured = (await call('/preferences/columns/leads')).body.data;
+  const pinnedFixture = await call('/preferences/columns/leads', 'PUT', { columns: configured.columns.map(column => ({
+    ...column, visible: column.id === 'name' ? true : ['firstName', 'lastName'].includes(column.id) ? false : column.visible,
+  })) });
+  assert.equal(pinnedFixture.status, 200, JSON.stringify(pinnedFixture.body));
   await page.goto(base + `/crm/leads?highlight=${lead.id}`);
   const preferences = (await call('/preferences/columns/leads')).body.data;
   for (const width of [390, 768, 320, 1440]) {
