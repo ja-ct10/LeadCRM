@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..'), require = createRequire(import.meta.url);
 const ci = require('./qa-ci.cjs'), { sourceIdentity } = require('./qa-source-identity.cjs');
+assert.ok(process.argv.length <= 4, 'Unexpected CI command arguments');
 const [command, location] = process.argv.slice(2), source = sourceIdentity(root), manifest = ci.discovery(root), current = ci.invocation();
 assert.equal(source.revision, current.revision, 'Checkout does not match the tested workflow revision');
 const directory = resolve(location || 'data/outputs/ci-build');
@@ -71,8 +72,8 @@ if (command === 'pack') {
     assert.equal(sourceIdentity(root).sourceSha256, source.sourceSha256, 'Restoring builds changed source');
   } finally { assert.ok(staging.startsWith(stagingRoot + sep)); rmSync(staging, { recursive: true }); }
   console.log('Restored tested builds for ' + current.revision);
-} else if (command === 'gate') {
+} else if (command === 'gate' || command === 'pr-gate') {
   assert.ok(location, 'Gate requires the current workflow artifacts directory');
-  const result = ci.aggregate(reports(directory), JSON.parse(process.env.CI_NEEDS_JSON || '{}'), manifest, source, current);
+  const result = ci.aggregate(reports(directory), JSON.parse(process.env.CI_NEEDS_JSON || '{}'), manifest, source, current, command === 'pr-gate' ? 'pr' : 'full');
   console.log(JSON.stringify(result, null, 2));
-} else throw Error('Use qa-ci.mjs pack [directory], restore <directory>, or gate <directory>');
+} else throw Error('Use qa-ci.mjs pack [directory], restore <directory>, gate <directory>, or pr-gate <directory>');

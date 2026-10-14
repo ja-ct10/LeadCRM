@@ -10,6 +10,7 @@ const SHARDS = 3;
 const IMPORT_SUITE = 'backend/src/modules/crm/imports/imports.integration.test.ts';
 const NATIVE_BROWSERS = ['verify-crm-rbac-browser.mjs', 'verify-tasks-browser.mjs', 'verify-task-workflow-integrity-browser.mjs', 'verify-custom-fields-browser.mjs', 'verify-custom-fields-inline-browser.mjs', 'verify-ui-fixes-browser.mjs', 'verify-ui-polish-browser.mjs'];
 const REQUIRED_JOBS = ['quality', 'backend_unit', 'frontend_unit', 'database', 'build', 'acceptance_matrix', 'containers'];
+const PR_REQUIRED_JOBS = ['typecheck', 'backend_unit', 'frontend_unit', 'build'];
 const BUILD_PATHS = ['shared/dist', 'backend/dist', 'frontend/.next'];
 // Approximate elapsed seconds from the maintained suites; new suites receive a
 // conservative default and are assigned automatically, never omitted.
@@ -72,7 +73,8 @@ function partitions(entries, count = SHARDS) {
   }
   return shards.map(shard => shard.ids.sort());
 }
-function owners(manifest) {
+function owners(manifest, profile = 'full') {
+  assert.ok(['full', 'pr'].includes(profile), 'Unsupported CI profile');
   const fixed = [
     { owner: 'quality', mode: 'typecheck', suiteIds: [], labels: ['Local documentation references', 'shared TypeScript', 'backend TypeScript', 'frontend TypeScript'] },
     { owner: 'backend-unit', mode: 'unit', workspace: 'backend', suiteIds: [], labels: ['QA isolation regression tests', 'CI coordination regressions', 'Coolify release orchestration regressions', 'backend unit tests'] },
@@ -80,6 +82,11 @@ function owners(manifest) {
     { owner: 'database', mode: 'database', suiteIds: [IMPORT_SUITE], labels: ['Prisma validation', 'Rollout and migration regression tests', 'Contact preservation and retirement fixtures', 'Populated import History migration and HTTP rehearsal', 'Populated guarded db:deploy and backend startup rehearsal', 'Mailbox worker restart'] },
     { owner: 'build', mode: 'build', suiteIds: [], labels: ['shared production build', 'backend production build', 'frontend production build'] },
   ];
+  if (profile === 'pr') return [
+    ...['frontend', 'backend', 'shared'].map(workspace => ({ owner: `typecheck-${workspace}`, job: 'typecheck', mode: 'typecheck', workspace,
+      suiteIds: [], labels: [...(workspace === 'shared' ? ['Local documentation references'] : []), `${workspace} TypeScript`] })),
+    ...fixed.filter(owner => ['unit', 'build'].includes(owner.mode)),
+  ].map(owner => ({ ...owner, profile }));
   for (const mode of ['integration', 'browser']) {
     const entries = manifest[mode].filter(item => item.id !== IMPORT_SUITE);
     for (const [index, suiteIds] of partitions(entries, manifest.shards).entries()) {
@@ -87,17 +94,21 @@ function owners(manifest) {
         labels: suiteIds.map(id => mode === 'integration' ? id.slice('backend/'.length) : id) });
     }
   }
-  return fixed;
+  return fixed.map(owner => ({ ...owner, profile }));
 }
 function plan(args, manifest) {
   const mode = args[0] || 'all', ci = args.includes('--ci');
   const flags = args.slice(1);
   const selected = key => flags.filter(flag => flag.startsWith(`--${key}=`));
-  for (const key of ['workspace', 'shard']) assert.ok(selected(key).length <= 1, `Duplicate --${key} flag`);
+  for (const key of ['workspace', 'shard', 'profile']) assert.ok(selected(key).length <= 1, `Duplicate --${key} flag`);
   const workspace = selected('workspace')[0]?.slice('--workspace='.length), shard = selected('shard')[0]?.slice('--shard='.length);
+  const profile = selected('profile')[0]?.slice('--profile='.length) ?? 'full';
+  assert.ok(['full', 'pr'].includes(profile), 'Supported CI profiles are full and pr');
+  assert.ok(ci || !selected('profile').length, '--profile is only supported for CI');
   assert.ok(!selected('workspace').length || workspace, 'Workspace cannot be empty');
   assert.ok(!selected('shard').length || shard, 'Shard cannot be empty');
-  if (workspace) assert.ok(mode === 'unit' && ['backend', 'frontend'].includes(workspace), '--workspace is only supported for backend/frontend unit tests');
+  if (workspace) assert.ok((mode === 'unit' && ['backend', 'frontend'].includes(workspace)) ||
+    (mode === 'typecheck' && ['backend', 'frontend', 'shared'].includes(workspace)), '--workspace is only supported for unit tests or TypeScript checks');
   if (shard) {
     assert.ok(['integration', 'browser'].includes(mode), '--shard is only supported for integration/browser');
     assert.match(shard, /^[1-9]\d*\/[1-9]\d*$/, 'Use --shard=1/3');
@@ -105,11 +116,11 @@ function plan(args, manifest) {
     assert.ok(total === manifest.shards && index <= total, `Supported shards are 1/${manifest.shards} through ${manifest.shards}/${manifest.shards}`);
   }
   if (!ci) return { mode, ci: false, workspace, shard, suiteIds: shard ? owners(manifest).find(owner => owner.mode === mode && owner.shard === shard).suiteIds : undefined };
-  assert.ok(flags.every(flag => ['--ci', '--native'].includes(flag) || /^--(?:workspace|shard)=/.test(flag)), 'CI cannot use filters, exclusions, case selection or unknown flags');
+  assert.ok(flags.every(flag => ['--ci', '--native'].includes(flag) || /^--(?:workspace|shard|profile)=/.test(flag)), 'CI cannot use filters, exclusions, case selection or unknown flags');
   assert.ok(mode !== 'unit' || workspace, 'CI unit tests require an explicit workspace');
   assert.ok(!['integration', 'browser'].includes(mode) || shard, 'CI acceptance requires an explicit shard');
   assert.ok(!['database', 'integration', 'browser'].includes(mode) || flags.includes('--native'), 'CI database and acceptance require native PostgreSQL');
-  const owner = owners(manifest).find(item => item.mode === mode && item.workspace === workspace && item.shard === shard);
+  const owner = owners(manifest, profile).find(item => item.mode === mode && item.workspace === workspace && item.shard === shard);
   assert.ok(owner, `Unsupported CI owner for ${mode}`);
   return { ...owner, ci: true, manifestSha256: manifest.sha256 };
 }
@@ -125,14 +136,15 @@ function invocation(environment = process.env) {
 }
 function validateReport(report, owner, manifest, source, current) {
   assert.equal(report?.status, 'PASS', `${owner.owner}: required acceptance failed`);
-  assert.equal(report.ci?.version, 1, 'Unsupported CI report schema');
+  assert.equal(report.ci?.version, 2, 'Unsupported CI report schema');
+  assert.equal(report.ci.profile, owner.profile, 'Incorrect CI profile');
   assert.equal(report.ci?.owner, owner.owner, 'Unexpected evidence owner');
   assert.equal(report.ci.manifestSha256, manifest.sha256, 'Stale suite manifest');
   for (const key of ['runId', 'revision', 'repository']) assert.equal(report.ci.invocation?.[key], current[key], `Stale or foreign ${key}`);
   assert.match(report.ci.invocation?.attempt ?? '', /^[1-9]\d*$/, 'Invalid artifact run attempt');
   assert.ok(Number(report.ci.invocation.attempt) <= Number(current.attempt), 'Artifact belongs to a future attempt');
-  const job = owner.owner === 'backend-unit' ? 'backend_unit' : owner.owner === 'frontend-unit' ? 'frontend_unit'
-    : owner.shard ? 'acceptance_matrix' : owner.owner;
+  const job = owner.job ?? (owner.owner === 'backend-unit' ? 'backend_unit' : owner.owner === 'frontend-unit' ? 'frontend_unit'
+    : owner.shard ? 'acceptance_matrix' : owner.owner);
   assert.equal(report.ci.invocation.job, job, 'Evidence belongs to another job');
   assert.equal(report.mode, owner.mode, 'Incorrect owner mode');
   assert.equal(report.workspace, owner.workspace, 'Incorrect workspace ownership');
@@ -170,10 +182,11 @@ function validateReport(report, owner, manifest, source, current) {
     assert.match(report.ci.postgresVersion ?? '', /^PostgreSQL 18(?:\.|\b)/, 'Required PostgreSQL 18 runtime missing');
   }
 }
-function aggregate(reports, needs, manifest, source, current) {
-  assert.deepEqual(Object.keys(needs).sort(), [...REQUIRED_JOBS].sort(), 'Required jobs missing or unexpected');
-  for (const name of REQUIRED_JOBS) assert.equal(needs[name]?.result, 'success', `${name} did not succeed`);
-  const expected = owners(manifest);
+function aggregate(reports, needs, manifest, source, current, profile = 'full') {
+  const expected = owners(manifest, profile);
+  const requiredJobs = profile === 'pr' ? PR_REQUIRED_JOBS : REQUIRED_JOBS;
+  assert.deepEqual(Object.keys(needs).sort(), [...requiredJobs].sort(), 'Required jobs missing or unexpected');
+  for (const name of requiredJobs) assert.equal(needs[name]?.result, 'success', `${name} did not succeed`);
   assert.equal(reports.length, expected.length, 'Missing or duplicate owner evidence');
   for (const owner of expected) {
     const matches = reports.filter(report => report.ci?.owner === owner.owner);
@@ -181,10 +194,12 @@ function aggregate(reports, needs, manifest, source, current) {
     validateReport(matches[0], owner, manifest, source, current);
   }
   const actual = reports.flatMap(report => report.ci.executedSuiteIds).sort();
-  const required = [...manifest.integration, ...manifest.browser].map(item => item.id).sort();
+  const required = profile === 'full' ? [...manifest.integration, ...manifest.browser].map(item => item.id).sort() : [];
   assert.deepEqual(actual, required, 'Acceptance coverage is incomplete or duplicated');
-  return { status: 'PASS', revision: current.revision, manifestSha256: manifest.sha256, integrationSuites: manifest.integration.length,
-    browserSuites: manifest.browser.length, owners: expected.map(item => item.owner),
+  return { status: 'PASS', profile, revision: current.revision, manifestSha256: manifest.sha256,
+    coverageScope: profile === 'pr' ? 'Fast PR checks only; full acceptance runs on main.' : 'Complete main verification.',
+    integrationSuites: profile === 'full' ? manifest.integration.length : 0,
+    browserSuites: profile === 'full' ? manifest.browser.length : 0, owners: expected.map(item => item.owner),
     jobs: reports.map(report => ({ owner: report.ci.owner, attempt: report.ci.invocation.attempt,
       commandSeconds: report.commands.reduce((total, command) => total + Math.max(0, (Date.parse(command.finishedAt) - Date.parse(command.startedAt)) / 1000 || 0), 0),
       fixtures: [...new Set(report.results.map(result => result.database).filter(Boolean))] })) };
@@ -262,4 +277,4 @@ function validateArchive(archive) {
   return members;
 }
 
-module.exports = { SHARDS, IMPORT_SUITE, NATIVE_BROWSERS, REQUIRED_JOBS, BUILD_PATHS, digest, contained, files, discovery, partitions, owners, plan, invocation, validateReport, aggregate, archivePaths, buildLink, validateArchive };
+module.exports = { SHARDS, IMPORT_SUITE, NATIVE_BROWSERS, REQUIRED_JOBS, PR_REQUIRED_JOBS, BUILD_PATHS, digest, contained, files, discovery, partitions, owners, plan, invocation, validateReport, aggregate, archivePaths, buildLink, validateArchive };

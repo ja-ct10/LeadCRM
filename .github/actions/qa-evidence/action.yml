@@ -1,6 +1,9 @@
 name: Preserve disposable QA evidence
 description: Upload synthetic fixture reports, logs and browser failure captures.
 inputs:
+  profile:
+    description: Verification profile associated with this evidence.
+    default: full
   owner:
     description: Unique job or shard evidence owner.
     required: true
@@ -9,7 +12,7 @@ runs:
   steps:
     - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
       with:
-        name: qa-evidence-${{ inputs.owner }}
+        name: qa-evidence-${{ inputs.profile }}-${{ inputs.owner }}
         overwrite: true
         path: |
           data/outputs/ci/**/*.json
