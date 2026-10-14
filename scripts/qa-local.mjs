@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('./qa-environment.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
-const { browserEvidence, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
 const ci = require('./qa-ci.cjs');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceStart = sourceIdentity(root);
@@ -224,7 +224,13 @@ async function execute(section) {
       }
       catch (error) {
         const report = ensureBrowserFailureReport(browserOutput, error);
-        recordFailure(relative(root, script), error, { report: relative(root, report).replaceAll('\\', '/') });
+        const label = relative(root, script), reportName = relative(root, report).replaceAll('\\', '/');
+        let result;
+        try { result = JSON.parse(readFileSync(report, 'utf8')); }
+        catch { result = { error: error.stack || error.message }; }
+        const command = commands.findLast(item => item.label === label);
+        console.error(`\n[qa] Browser acceptance failed: ${label}\nReport: ${reportName}${command ? `\nCommand log: ${command.log}` : ''}\n${browserFailureDiagnostics(result, command?.exitCode ?? 1)}`);
+        recordFailure(label, error, { report: reportName });
       }
       finally { pg?.stop(); }
     }

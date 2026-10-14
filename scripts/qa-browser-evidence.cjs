@@ -24,4 +24,16 @@ function browserEvidence(result, exitCode) {
     complete: exitCode === 0 && passed > 0 && failed === 0 };
 }
 
-module.exports = { browserEvidence, ensureBrowserFailureReport };
+function browserFailureDiagnostics(result, exitCode) {
+  const { complete, ...counts } = browserEvidence(result, exitCode);
+  const failedChecks = Array.isArray(result?.checks) ? result.checks.filter(check => check?.passed === false) : [];
+  return JSON.stringify({
+    exitCode, ...counts,
+    status: result?.status ?? 'FAIL',
+    error: result?.error ?? result?.failure ?? 'Required browser assertions failed, were missing, or did not complete.',
+    failedChecks,
+    ...Object.fromEntries(['errors', 'pageErrors', 'transportErrors', 'serverErrors'].map(key => [key, Array.isArray(result?.[key]) ? result[key] : []])),
+  }, null, 2);
+}
+
+module.exports = { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport };

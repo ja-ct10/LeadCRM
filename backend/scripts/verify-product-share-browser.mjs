@@ -232,7 +232,7 @@ try {
   console.log(`Browser acceptance passed: ${checks.length} checks.`);
 } catch (error) {
   if (page) { await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {}); writeFileSync(resolve(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')); }
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, error: String(error) }, null, 2));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, error: error instanceof Error ? error.stack || error.message : String(error) }, null, 2));
   throw error;
 } finally {
   closing = true; await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
