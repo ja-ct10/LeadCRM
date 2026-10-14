@@ -1,6 +1,8 @@
 import { mailConfig } from '../../config/mail.config';
 import { createHash } from 'node:crypto';
 import { AppError } from '../../shared/errors/app-error';
+import { StaffEmailSchema } from '@leadcrm/shared';
+import { z } from 'zod';
 
 /**
  * Gmail OAuth2 helpers.
@@ -9,8 +11,6 @@ import { AppError } from '../../shared/errors/app-error';
  */
 
 const GMAIL_SCOPES = [
-  'https://www.googleapis.com/auth/gmail.readonly',
-  'https://www.googleapis.com/auth/gmail.send',
   'https://www.googleapis.com/auth/gmail.modify',
   'https://www.googleapis.com/auth/userinfo.email',
 ];
@@ -25,6 +25,7 @@ interface TokenResponse {
 
 interface UserInfoResponse {
   email: string;
+  verified_email: boolean;
   name?: string;
   picture?: string;
 }
@@ -102,7 +103,9 @@ export async function refreshAccessToken(refreshToken: string): Promise<TokenRes
   });
 
   if (!response.ok) {
-    throw new AppError('Gmail access expired or was revoked. Reconnect your work email.', 502);
+    const failure = await response.json().catch(() => null) as { error?: string } | null;
+    if (failure?.error === 'invalid_grant') throw new AppError('Gmail authorization expired or was revoked. Reconnect your registered email.', 409, 'GMAIL_RECONNECT_REQUIRED');
+    throw new AppError('Google could not refresh Gmail access. Please try again later.', 502, 'GMAIL_REFRESH_UNAVAILABLE');
   }
 
   return response.json() as Promise<TokenResponse>;
@@ -121,7 +124,23 @@ export async function getUserInfo(accessToken: string): Promise<UserInfoResponse
     throw new Error(`Failed to fetch user info: ${response.status}`);
   }
 
-  return response.json() as Promise<UserInfoResponse>;
+  const info = z.object({ email: StaffEmailSchema, verified_email: z.boolean(), name: z.string().optional(), picture: z.string().optional() }).safeParse(await response.json());
+  if (!info.success || !info.data.verified_email) throw new AppError('Select a Google account with a verified registered email.', 400, 'GMAIL_IDENTITY_UNVERIFIED');
+  return info.data;
+}
+
+/** A Google account email alone does not prove that this account has a Gmail mailbox. */
+export async function getMailboxProfile(accessToken: string): Promise<{ emailAddress: string }> {
+  const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/profile?fields=emailAddress', {
+    signal: AbortSignal.timeout(15000), headers: { Authorization: `Bearer ${accessToken}` },
+  });
+  if (!response.ok) {
+    if ([400, 403, 404].includes(response.status)) throw new AppError('Gmail is unavailable for this Google account. Connect your registered Gmail or Google Workspace mailbox; your Workspace administrator may need to allow access.', 400, 'GMAIL_MAILBOX_UNAVAILABLE');
+    throw new AppError('Google could not confirm your Gmail mailbox. Please try again later.', 502);
+  }
+  const profile = z.object({ emailAddress: StaffEmailSchema }).safeParse(await response.json());
+  if (!profile.success) throw new AppError('Google did not return a valid Gmail mailbox identity.', 502);
+  return profile.data;
 }
 
 export { GMAIL_SCOPES };

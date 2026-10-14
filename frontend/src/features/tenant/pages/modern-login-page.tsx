@@ -590,7 +590,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 )}
               </form>
 
-              <p className="text-center text-sm text-slate-500">LeadCRM is Camxian Technologies’ internal workspace for leads, customers, pipelines, and workflows. Use your @camxian.com employee account. Contact your administrator for access.</p>
+              <p className="text-center text-sm text-slate-500">LeadCRM is Camxian Technologies’ internal workspace for leads, customers, pipelines, and workflows. Use the registered staff email provided to your Client Administrator. Contact your administrator for access.</p>
         </div>
       </div>
     </div>

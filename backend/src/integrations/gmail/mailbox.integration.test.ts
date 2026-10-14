@@ -423,7 +423,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const parsed = new URL(oauth.url), state = parsed.searchParams.get('state')!;
     expect(parsed.searchParams.get('code_challenge_method')).toBe('S256'); expect(state).not.toContain(userId);
     expect(await prisma.mailboxOAuthState.findUnique({ where: { stateHash: hashToken(state) } })).not.toBeNull();
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input).includes('/token') ? Response.json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify' }) : Response.json({ email: account.email })));
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input).includes('/token') ? Response.json({ access_token: 'new-access', refresh_token: 'new-refresh', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify' }) : String(input).includes('/profile') ? Response.json({ emailAddress: account.email }) : Response.json({ email: account.email, verified_email: true })));
     await finishMailboxConnection(state, 'provider-code');
     const saved = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
     expect(saved.accessToken).not.toBe('new-access'); expect(decryptToken(saved.accessToken)).toBe('new-access');
@@ -454,7 +454,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('rejects connecting another email address to the staff account', async () => {
     const oauth = await scope(() => beginMailboxConnection({ userId, tenantId, email: account.email }, token));
-    vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input).includes('/token') ? Response.json({ access_token: 'wrong-access', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify' }) : Response.json({ email: 'personal@gmail.com' })));
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL) => String(input).includes('/token') ? Response.json({ access_token: 'wrong-access', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify' }) : String(input).includes('/profile') ? Response.json({ emailAddress: 'personal@gmail.com' }) : Response.json({ email: 'personal@gmail.com', verified_email: true })));
     await expect(finishMailboxConnection(new URL(oauth.url).searchParams.get('state')!, 'code')).rejects.toMatchObject({ statusCode: 400 });
     expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).email).toBe(account.email);
   });

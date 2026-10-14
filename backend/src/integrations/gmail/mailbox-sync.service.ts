@@ -19,17 +19,17 @@ import { salesTransaction } from '../../modules/crm/leads/lead-automation.servic
 import { isMailboxOwner } from './mailbox-ownership';
 import { readGmailJson as gmailJson, withMailboxWorkerReadBudget } from './gmail-read';
 
-export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true): Promise<MailboxPermissions> {
-  const user = await readAuthUser(userId, tenantId);
-  requireEmployeeAccount(user);
+export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true, db: Prisma.TransactionClient = prisma): Promise<MailboxPermissions> {
+  const user = await readAuthUser(userId, tenantId, db);
+  await requireEmployeeAccount(user, db);
   if (user.status !== 'ACTIVE' || user.mustChangePassword || !isWorkspaceAccessible(user.tenantStatus) || !isOnboardingComplete(user)) throw new AppError('Mailbox access unavailable.', 403);
   const identity = { userId, tenantId, role: user.role };
   const allowed = async (permission: 'leads.view' | 'contacts.view' | 'leads.edit' | 'contacts.edit' | 'deals.edit' | 'deals.view') => {
-    try { await assertPermissions(identity, [permission]); return true; } catch (error) { if (error instanceof AppError && error.statusCode === 403) return false; throw error; }
+    try { await assertPermissions(identity, [permission], db); return true; } catch (error) { if (error instanceof AppError && error.statusCode === 403) return false; throw error; }
   };
   const leadsView = await allowed('leads.view'), contactsView = await allowed('contacts.view');
   if (!leadsView && !contactsView) throw new AppError('CRM View permission is required.', 403);
-  const account = await prisma.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
+  const account = await db.emailAccount.findUnique({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (checkOwnership && account && !isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) throw new AppError('Mailbox ownership does not match, or temporary test access expired. Reconnect your staff work email in Messages.', 403);
   return { leadsView, contactsView, leadsEdit: await allowed('leads.edit'), contactsEdit: await allowed('contacts.edit'), dealsEdit: await allowed('deals.edit'), dealsView: await allowed('deals.view') };
 }

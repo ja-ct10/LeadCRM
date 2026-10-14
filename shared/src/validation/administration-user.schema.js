@@ -19,7 +19,7 @@ exports.AdministrationPhoneSchema = (0, exports.cleanText)(32).superRefine((valu
 exports.CreateAdministrationUserSchema = zod_1.z.object({
     firstName: (0, exports.cleanText)(100).pipe(zod_1.z.string().min(1, 'First name is required.')),
     lastName: (0, exports.cleanText)(100).pipe(zod_1.z.string().min(1, 'Last name is required.')),
-    email: security_schema_1.EmployeeEmailSchema,
+    email: security_schema_1.StaffEmailSchema,
     phone: exports.AdministrationPhoneSchema,
     // The existing user service accepts the canonical RoleDefinition.name.
     role: (0, exports.cleanText)(100).pipe(zod_1.z.string().min(1, 'Role is required.')),

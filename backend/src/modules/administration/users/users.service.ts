@@ -1,4 +1,4 @@
-import type { CreateAdministrationUserInput, UpdateAdministrationUserInput } from '@leadcrm/shared';
+import { EmployeeEmailSchema, isOnboardingComplete, isWorkspaceAccessible, type CreateAdministrationUserInput, type UpdateAdministrationUserInput } from '@leadcrm/shared';
 import { assertNoOwnership } from './user-deactivation.service';
 import { replaceUserGroups, serializeUserGroups } from './user-groups';
 import { eligibleAssignedAgents, hasAssignedAgentAccess, crmAssignmentRequirements, TASK_ASSIGNEE_REQUIREMENTS, type AssignedAgent } from '../../crm/access/assigned-agent-eligibility';
@@ -7,7 +7,9 @@ import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { readSelfAvatar } from '../../../core/auth/profile.service';
 import { replaceUserRole } from '../roles/roles.repository';
 import { CreateUsersSchema, UpdateUsersSchema } from './users.dto';
-import { requireEmployeeAccount } from '../../../core/auth/account-access';
+import { requireEmployeeAccount, requireStaffIdentity } from '../../../core/auth/account-access';
+import { assertPermissions } from '../../../core/permissions/permission.service';
+import { readAuthUser } from '../../../core/auth/auth-user';
 import { generateTemporaryPassword } from '../../../core/auth/temporary-password';
 import { sendWelcomeCredentials } from '../../../core/auth/welcome-credentials.service';
 import prisma from '../../../config/database.config';
@@ -69,15 +71,21 @@ export async function getAvatar(id: string, tenantId: string, avatarId: string) 
 
 export async function create(tenantId: string, actorId: string, dto: CreateAdministrationUserInput) {
   dto = CreateUsersSchema.parse(dto);
-  const role = await prisma.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: false } });
-  if (!role) throw new ValidationError('Select an active custom role.');
-  requireEmployeeAccount({ email: dto.email, role: dto.role });
+  requireStaffIdentity({ email: dto.email, role: dto.role });
   const existing = await prisma.user.findFirst({ where: { email: dto.email, tenantId } });
   if (existing) throw new ConflictError('A user with this email already exists in this tenant');
 
   const temporaryPassword = generateTemporaryPassword(dto.firstName, dto.lastName);
   const passwordHash = await hashPassword(temporaryPassword);
   const user = await prisma.$transaction(async tx => {
+    const actor = await readAuthUser(actorId, tenantId, tx);
+    await requireEmployeeAccount(actor, tx);
+    if (actor.status !== 'ACTIVE' || actor.mustChangePassword || !isOnboardingComplete(actor) || !isWorkspaceAccessible(actor.tenantStatus)) throw new ForbiddenError('Active administrator access is required.');
+    await assertPermissions({ userId: actorId, tenantId, role: actor.role }, ['users.create', 'roles.assign'], tx);
+    const externalEmail = !EmployeeEmailSchema.safeParse(dto.email).success;
+    if (externalEmail && actor.role !== 'Client Admin') throw new ForbiddenError('Only Client Admin users can approve an external staff email.');
+    const role = await tx.roleDefinition.findFirst({ where: { tenantId, name: dto.role, isArchived: false, isSystemRole: false } });
+    if (!role) throw new ValidationError('Select an active custom role.');
     const created = await tx.user.create({
       data: {
         tenantId, firstName: dto.firstName, lastName: dto.lastName,
@@ -87,6 +95,8 @@ export async function create(tenantId: string, actorId: string, dto: CreateAdmin
       },
       select: SAFE_USER_SELECT,
     });
+    if (externalEmail) await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.staff_approved', category: 'auth', entityType: 'User', entityId: created.id,
+      metadata: { email: dto.email, approvedByRole: actor.role } } });
     await replaceUserRole(tx, created.id, tenantId, created.role);
     if (dto.groupIds !== undefined) await replaceUserGroups(tx, tenantId, created.id, dto.groupIds);
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'user.created', entityType: 'User', entityId: created.id, changeset: { before: null, after: { email: dto.email, role: created.role } } } });
@@ -190,4 +200,22 @@ export async function sendPasswordReset(id: string, tenantId: string, actorId: s
   try { await requestPasswordReset({ email: user.email }, { userId: user.id, tenantId }); }
   catch { throw new ValidationError('Unable to send recovery email. Please try again.'); }
   await writeAuditLog({ tenantId, userId: actorId, action: 'user.password_reset_requested_by_admin', entityType: 'User', entityId: id });
+}
+
+/** Explicit approval for historical external-email staff with no provisioning evidence. */
+export async function approveStaffEmail(id: string, tenantId: string, actorId: string): Promise<void> {
+  await prisma.$transaction(async tx => {
+    const actor = await readAuthUser(actorId, tenantId, tx);
+    await requireEmployeeAccount(actor, tx);
+    if (actor.role !== 'Client Admin' || actor.status !== 'ACTIVE' || actor.mustChangePassword || !isOnboardingComplete(actor) || !isWorkspaceAccessible(actor.tenantStatus)) throw new ForbiddenError('Only an active Client Admin can approve a staff email.');
+    await assertPermissions({ userId: actorId, tenantId, role: actor.role }, ['users.edit'], tx);
+    const target = await tx.user.findFirst({ where: { id, tenantId } });
+    if (!target) throw new NotFoundError('User');
+    if (target.status !== 'ACTIVE') throw new ForbiddenError('Activate this staff account before approving its email.');
+    requireStaffIdentity(target);
+    const existing = await tx.auditLog.findFirst({ where: { tenantId, entityType: 'User', entityId: id, action: 'user.staff_approved',
+      AND: [{ metadata: { path: ['email'], equals: target.email.trim().toLowerCase() } }, { metadata: { path: ['approvedByRole'], equals: 'Client Admin' } }] }, select: { id: true } });
+    if (!existing) await tx.auditLog.create({ data: { tenantId, userId: actorId, entityType: 'User', entityId: id,
+      action: 'user.staff_approved', category: 'auth', metadata: { email: target.email.trim().toLowerCase(), approvedByRole: actor.role } } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
 }

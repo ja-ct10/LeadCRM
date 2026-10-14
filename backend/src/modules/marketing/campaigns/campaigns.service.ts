@@ -176,7 +176,7 @@ export async function getCampaignMetrics(tenantId: string) {
 type ScheduledExpectation = { scheduledFor: Date; scheduledById: string; updatedAt: Date; definition: AudienceInput };
 async function assertCampaignSender(tenantId: string, userId: string) {
   const actor = await readAuthUser(userId, tenantId);
-  requireEmployeeAccount(actor);
+  await requireEmployeeAccount(actor);
   if (actor.status !== 'ACTIVE' || actor.mustChangePassword || !isWorkspaceAccessible(actor.tenantStatus) || !isOnboardingComplete(actor)) throw new AppError('Campaign sender access is unavailable.', 403);
   await assertPermissions({ userId, tenantId, role: actor.role }, ['campaigns.send']);
 }

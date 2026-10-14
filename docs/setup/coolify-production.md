@@ -83,7 +83,7 @@ and do not prevent the rest of the CRM from starting.
 | GMAIL_CLIENT_SECRET | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | Secret, Gmail required | Development credentials | Preserve Render credential |
 | GMAIL_REDIRECT_URI | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | Public URL, Gmail required | Local backend callback registered in Google | Verified API `/api/v1/integrations/gmail/callback`; register exact URI in Google |
 | GMAIL_SYNC_INTERVAL_SECONDS | backend/src/integrations/gmail/mailbox-sync.service.ts; config/validate-env.ts | Number, optional; integer 60–3600 | Default 60 | Default 60; one leased incremental sync per mailbox, independent of browser tabs |
-| GMAIL_TEST_MAILBOX_OVERRIDE | backend/src/config/mail.config.ts; integrations/gmail/mailbox-ownership.ts | Private JSON, optional | Exact temporary mailbox exception only | Preserve a deliberate existing exception; expired/invalid JSON grants no access |
+| GMAIL_TEST_MAILBOX_OVERRIDE | backend/src/config/mail.config.ts; integrations/gmail/mailbox-ownership.ts | Private JSON, optional | Exact temporary mailbox exception only | Ignored in production; only the registered email can connect |
 | GMAIL_SYSTEM_SENDER_USER_ID | backend/src/integrations/gmail/gmail.service.ts | Private account identifier, feature required for system sender | Existing connected account if used | Same stored production account |
 | GMAIL_SYSTEM_SENDER_GMAIL_EMAIL | backend/src/integrations/gmail/gmail.service.ts | Legacy system sender identity, optional | Actual connected sender when used; display name Camxian Technologies | Preserve the authorized mailbox identity; no invented default |
 | SMTP_FROM | backend/src/integrations/gmail/gmail.service.ts | Explicit legacy system sender header, optional | Must belong to the connected system mailbox | Preserve if configured; does not enable SMTP transport. Staff Inbox sends always use their own connected mailbox |
@@ -95,8 +95,10 @@ and do not prevent the rest of the CRM from starting.
 | RECORD_FILES_STORAGE_BUCKET | backend/src/modules/crm/record-files/record-files.service.ts | Directory name, optional | Defaults to `crm-record-files` | `crm-record-files`, migrated with original keys |
 | LEADCRM_TEST_AUTH_ENABLED | backend/src/core/auth/account-access.ts | Access policy, optional | Explicit development Gmail exception | Ignored in production; set false |
 | LEADCRM_TEST_EMAIL_ALLOWLIST | backend/src/core/auth/account-access.ts | Private access policy, optional | Exact approved Gmail addresses only | Ignored in production |
-| LEADCRM_PRODUCTION_AUTH_ENABLED | backend/src/core/auth/account-access.ts | Access policy, feature required for approved Gmail accounts | Ignored outside production | Preserve explicit approved Render policy |
-| LEADCRM_PRODUCTION_EMAIL_ALLOWLIST | backend/src/core/auth/account-access.ts | Private access policy, feature required for approved Gmail accounts | Ignored outside production | Preserve exact approved Render allowlist; never broaden |
+| LEADCRM_PRODUCTION_AUTH_ENABLED | backend/src/core/auth/account-access.ts; prisma/provisionTestUser.ts | Legacy provisioning CLI guard, optional | Ignored outside production | No longer controls application login; persisted exact-email staff approval does |
+| LEADCRM_PRODUCTION_EMAIL_ALLOWLIST | backend/src/core/auth/account-access.ts; prisma/provisionTestUser.ts | Legacy CLI exact-address guard, optional | Ignored outside production | No per-user edits for Team Management staff; keep disabled unless deliberately using the legacy CLI |
+| MAILBOX_HISTORY_RETENTION_DAYS | backend/src/config/data-retention.config.ts | Proposed retention target, optional positive integer | Unset | Leave unset pending Camxian approval; no application deletion scheduler is enabled |
+| BACKUP_RETENTION_DAYS | backend/src/config/data-retention.config.ts | Proposed retention target, optional positive integer | Unset | Leave unset pending Camxian approval; does not alter Coolify/provider backup retention |
 | SOURCE_COMMIT | backend/src/api/routes/index.ts | Public release metadata, optional | Normally absent | Coolify-injected full deployed SHA |
 | RENDER_GIT_COMMIT | backend/src/api/routes/index.ts | Public release metadata, optional | Normally absent | Render-injected SHA; fallback when SOURCE_COMMIT absent |
 

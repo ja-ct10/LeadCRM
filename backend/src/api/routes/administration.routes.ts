@@ -65,6 +65,7 @@ router.patch( '/users/:id/restore',      authorizeAll('archived_data.restore', '
 router.post(  '/users/bulk-update',      authorizeUserChanges, userController.bulkUpdate);
 
 router.post('/users/:id/password-reset', authorize('users.edit'), passwordResetRateLimiter, userController.sendPasswordReset);
+router.post('/users/:id/approve-email', authorizeClientAdmin, authorize('users.edit'), userController.approveStaffEmail);
 
 // -- Roles (RoleDefinition) ----------------------------
 router.get(   '/roles',                authorize('roles.view'), roleController.getRoles);

@@ -13,7 +13,7 @@ export async function completeOnboarding(actor: OnboardingActor, _input?: Compan
     if (!user || user.status !== 'ACTIVE') {
       throw new AppError('Active account required.', 403);
     }
-    requireEmployeeAccount(user);
+    await requireEmployeeAccount(user, tx);
     if (user.mustChangePassword) throw new AppError('Change your password first.', 403, 'PASSWORD_CHANGE_REQUIRED');
     const changed = await tx.user.updateMany({
       where: { id: user.id, tenantId: user.tenantId, onboardingCompletedAt: null },

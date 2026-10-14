@@ -232,7 +232,7 @@ export async function replaceUserRole(
       ['guest', 'clientadmin'].includes(role.name.toLowerCase().replace(/[\s_-]/g, ''))) {
     throw new ForbiddenError('Select an active custom role for a non-administrator user');
   }
-  requireEmployeeAccount({ role: role.name, email: user.email });
+  await requireEmployeeAccount({ ...user, role: role.name }, tx);
   await tx.user.update({ where: { id: user.id }, data: { role: role.name } });
   await tx.userRole.deleteMany({ where: { userId, tenantId, roleId: { not: role.id }, role: { tenantId, name: user.role } } });
   await tx.userRole.upsert({

@@ -181,6 +181,7 @@ function InboxMailbox(): React.ReactElement {
           setError(error instanceof Error ? error.message : 'Unable to load emails.');
         }
         if ([401, 403, 409].includes((error as ApiRequestError).status ?? 0)) invalidateMailbox();
+        if (apiError.code === 'GMAIL_RECONNECT_REQUIRED') setConnectionStatus({ isConnected: false, email: null, connectedAt: null, lastSyncAt: null });
       } finally {
         if (id === requestId.current) { request.current = null; setRefreshing(false); setInitialLoading(false); }
       }

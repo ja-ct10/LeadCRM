@@ -114,7 +114,7 @@ async function project(event: NotificationEvent, now: Date) {
   if (type === 'user_created') {
     const user = await prisma.user.findFirst({ where: { tenantId: event.tenantId, id: event.entityId }, select: { email: true, role: true } });
     if (!user) return;
-    try { requireEmployeeAccount(user); } catch (error) { if (error instanceof AppError) return; throw error; }
+    try { await requireEmployeeAccount(user); } catch (error) { if (error instanceof AppError) return; throw error; }
   }
   if (type === 'user_status_changed' && !['ACTIVE', 'INACTIVE'].includes(facts.status ?? '')) return;
   if (['task_due', 'task_overdue'].includes(event.type)) {

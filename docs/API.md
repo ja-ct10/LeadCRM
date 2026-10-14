@@ -469,7 +469,7 @@ are preserved; whitespace-only addresses and markup/control characters fail vali
 Cleared optional fields become `null`. The
 response contains `id` and all six canonical saved values. Tenant identity comes
 from the session, never the request body. `domain` is descriptive organization
-metadata and does not change the fixed employee-email policy.
+metadata and does not change the registered staff eligibility policy.
 
 ### Users and Groups
 
@@ -485,13 +485,16 @@ metadata and does not change the fixed employee-email policy.
 | PATCH | `/administration/users/:id/archive` | Archive user | `users.archive` |
 | PATCH | `/administration/users/:id/restore` | Restore user | `archived_data.restore` + `users.view` |
 | POST | `/administration/users/:id/password-reset` | Recovery request; no token returned to administrator | `users.edit` |
+| POST | `/administration/users/:id/approve-email` | Approve the exact registered address of existing active staff; empty body | Active ready Client Admin + `users.edit` |
 | GET | `/administration/groups` | Group/member reference | `groups.view` |
 | POST / PUT | `/administration/groups` / `/administration/groups/:id` | Create/update Group | `groups.create` / `groups.edit` |
 | DELETE | `/administration/groups/:id` | Remove Group | `groups.delete` |
 | POST | `/administration/groups/:id/members` | Add same-tenant member | Client Admin + `groups.edit` |
 | DELETE | `/administration/groups/:id/members/:userId` | Remove membership | Client Admin + `groups.edit` |
 
-User create requires first/last name, normalized employee email, PH mobile phone, and an active custom role's exact name. Group writes accept `groupIds: string[]` (unique UUIDs, at most 100); omitted means no membership change, and `[]` clears memberships. Only Client Admin with `groups.edit` can submit membership changes. Group IDs must belong to the current tenant. Membership writes require the target user to be active; activation and membership changes can commit together. User/auth responses expose `groups: [{id,name}]`; self-profile cannot modify them. The retired Department field is rejected.
+User create requires first/last name, a normalized valid staff email, PH mobile phone, and an active custom role's exact name. Client Admin provisioning records exact-email approval for external addresses; delegated provisioners retain the company-domain restriction. Historical unaudited external accounts require explicit same-tenant Client Admin approval before login. Approval does not bypass account status, password change, onboarding or permissions. See [authentication](authentication.md).
+
+Group writes accept `groupIds: string[]` (unique UUIDs, at most 100); omitted means no membership change, and `[]` clears memberships. Only Client Admin with `groups.edit` can submit membership changes. Group IDs must belong to the current tenant. Membership writes require the target user to be active; activation and membership changes can commit together. User/auth responses expose `groups: [{id,name}]`; self-profile cannot modify them. The retired Department field is rejected.
 
 Membership, role, audit, and scalar user writes are transactional. Unfinished, nonarchived Tasks participate in deactivation reassignment; completed/cancelled historical Tasks keep their original assignee. Replacement eligibility includes Task view access when unfinished Tasks exist. There is no registered Users export, permanent-delete, invite, or standalone status endpoint.
 
@@ -514,6 +517,8 @@ Role create/update bodies use `permissions` rows from the shared module/action c
 ### Inbox integration
 
 Gmail routes are under `/integrations/gmail`. The OAuth callback is state-validated; other routes require an authenticated ready workspace, either `leads.view` or `contacts.view`, and mailbox ownership/current CRM scope checks. Staff Inbox uses the employee's own connected account. Recipient access is rechecked before delivery, including Workflow and scheduled sends.
+
+New consent requests use `gmail.modify` and `userinfo.email`. The backend derives `login_hint` from the persisted registered email, verifies Google's verified account email and Gmail profile identity, and rechecks current sessions/eligibility/permissions before encrypted credential storage. Production mailbox overrides are ignored. `GMAIL_RECONNECT_REQUIRED` means Google revoked or expired the refresh grant; credentials are cleared while synchronized CRM history remains. Disconnect also cancels pending OAuth requests.
 
 | Method | Path | Purpose |
 | --- | --- | --- |

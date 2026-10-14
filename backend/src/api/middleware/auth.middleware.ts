@@ -52,7 +52,7 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
 
     const user = await readAuthUser(payload.userId, payload.tenantId);
     if (user.status !== 'ACTIVE') throw new AppError('Account is inactive.', 401);
-    requireEmployeeAccount(user);
+    await requireEmployeeAccount(user);
     const authPath = req.baseUrl?.endsWith('/auth') ? req.path : '';
     const recovery = ['/me', '/change-password', '/logout'].includes(authPath);
     if (!isWorkspaceAccessible(user.tenantStatus)) {

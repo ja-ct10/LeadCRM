@@ -11,14 +11,15 @@ import {
 import { getAuthAppOrigin, getPasswordResetTtlMinutes } from '../../shared/helpers/auth-email-config';
 import { requireEmployeeAccount } from './account-access';
 import { authTransaction } from './auth-transaction';
+import type { Prisma } from '@prisma/client';
 
 export function hashResetToken(token: string): string {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-function eligible(user: { role: string; email: string; status: string; tenant: { status: string } | null }): boolean {
+async function eligible(user: { id: string; tenantId: string; role: string; email: string; status: string; tenant: { status: string } | null }, db: Prisma.TransactionClient = prisma): Promise<boolean> {
   if (user.status !== 'ACTIVE' || !isWorkspaceAccessible(user.tenant?.status)) return false;
-  try { requireEmployeeAccount(user); return true; } catch (error) {
+  try { await requireEmployeeAccount(user, db); return true; } catch (error) {
     if (error instanceof AppError) return false;
     throw error;
   }
@@ -47,7 +48,7 @@ export async function requestPasswordReset(dto: ForgotPasswordDto, target?: { us
   }
   // Public recovery cannot select between tenant-scoped duplicate identities or reveal restrictions.
   const user = candidates.length === 1 ? candidates[0] : null;
-  if (!user || !eligible(user)) {
+  if (!user || !await eligible(user)) {
     if (target) throw new AppError('Password recovery is unavailable for this account.', 403, 'PASSWORD_RECOVERY_UNAVAILABLE');
     return result;
   }
@@ -60,7 +61,7 @@ export async function requestPasswordReset(dto: ForgotPasswordDto, target?: { us
     // Serializable reads of the indexed token range arbitrate concurrent requests.
     // Keep the tenant-scoped ORM boundary intact; provider calls are never retried by the transaction.
     const current = await tx.user.findFirst({ where: { id: user.id, tenantId: user.tenantId }, include: { tenant: { select: { status: true } } } });
-    if (!current || current.email.toLowerCase() !== dto.email || !eligible(current)) return false;
+    if (!current || current.email.toLowerCase() !== dto.email || !await eligible(current, tx)) return false;
     const previous = await tx.passwordResetToken.findFirst({ where: { userId: user.id }, orderBy: { createdAt: 'desc' } });
     if (previous && previous.expires > new Date()) {
       if (['PENDING', 'UNCONFIRMED'].includes(previous.submissionStatus)) throw unconfirmed(previous.expires);
@@ -124,7 +125,7 @@ export async function resetPasswordWithToken(dto: ResetPasswordDto): Promise<voi
       include: { tenant: { select: { status: true } } }, take: 2,
     });
     const user = candidates.length === 1 ? candidates[0] : null;
-    if (!user || !eligible(user)) throw invalid();
+    if (!user || !await eligible(user, tx)) throw invalid();
     if (user.passwordHash && await comparePassword(dto.password, user.passwordHash)) {
       throw new AppError('Choose a password different from your current password.', 400, 'PASSWORD_REUSE');
     }

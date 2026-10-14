@@ -8,18 +8,18 @@ const mocks = vi.hoisted(() => ({
   account: { findUnique: vi.fn(), upsert: vi.fn() },
   state: { deleteMany: vi.fn(), create: vi.fn(), findUnique: vi.fn() },
   session: { findUnique: vi.fn() },
-  readUser: vi.fn(), decrypt: vi.fn(), exchange: vi.fn(), info: vi.fn(), refresh: vi.fn(), audit: vi.fn(), authorize: vi.fn(),
+  readUser: vi.fn(), decrypt: vi.fn(), exchange: vi.fn(), info: vi.fn(), profile: vi.fn(), refresh: vi.fn(), audit: vi.fn(), authorize: vi.fn(),
 }));
 vi.mock('../../config/mail.config', () => ({ mailConfig: mocks.config }));
 vi.mock('../../config/database.config', () => {
-  const tx = { emailAccount: mocks.account, mailboxOAuthState: mocks.state, session: mocks.session };
+  const tx = { emailAccount: mocks.account, mailboxOAuthState: mocks.state, session: mocks.session, auditLog: { findFirst: vi.fn().mockResolvedValue(null) } };
   return { default: { ...tx, $transaction: vi.fn(async (work: (client: typeof tx) => Promise<unknown>) => work(tx)) } };
 });
 vi.mock('../../core/auth/auth-user', () => ({ readAuthUser: mocks.readUser }));
 vi.mock('../../core/encryption/crypto.service', () => ({ decryptToken: mocks.decrypt, encryptToken: (value: string) => `encrypted:${value}` }));
 vi.mock('../../core/permissions/permission.service', () => ({ assertPermissions: vi.fn() }));
 vi.mock('../../core/audit/audit.service', () => ({ writeAuditLog: mocks.audit }));
-vi.mock('./gmail.oauth', () => ({ getAuthorizationUrl: mocks.authorize, exchangeCodeForTokens: mocks.exchange, getUserInfo: mocks.info, refreshAccessToken: mocks.refresh }));
+vi.mock('./gmail.oauth', () => ({ getAuthorizationUrl: mocks.authorize, exchangeCodeForTokens: mocks.exchange, getUserInfo: mocks.info, getMailboxProfile: mocks.profile, refreshAccessToken: mocks.refresh }));
 
 const user = { userId: '00000000-0000-4000-8000-000000000001', tenantId: '00000000-0000-4000-8000-000000000002', email: 'tester@camxian.com' };
 const entry = { userId: user.userId, tenantId: user.tenantId, staffEmail: user.email, mailboxEmail: 'tester@gmail.com', startsAt: '2026-10-01T00:00:00.000Z', expiresAt: '2026-10-08T00:00:00.000Z' };
@@ -27,7 +27,7 @@ const account = { id: 'account', isActive: true, email: entry.mailboxEmail, acce
 const configure = (value: unknown) => { mocks.config.gmail.testMailboxOverride = JSON.stringify(value); };
 
 beforeEach(() => {
-  vi.clearAllMocks(); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02'));
+  vi.clearAllMocks(); vi.stubEnv('NODE_ENV', 'test'); vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-02'));
   configure(entry);
   mocks.readUser.mockResolvedValue({ ...user, id: user.userId, role: 'Sales', status: 'ACTIVE', tenantStatus: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() });
   mocks.account.findUnique.mockResolvedValue(account);
@@ -36,11 +36,19 @@ beforeEach(() => {
   mocks.state.findUnique.mockResolvedValue({ ...user, expiresAt: new Date('2026-10-03'), verifier: 'encrypted:verifier', sessionHash: 'session' });
   mocks.session.findUnique.mockResolvedValue({ ...user, expiresAt: new Date('2026-10-03'), revokedAt: null });
   mocks.exchange.mockResolvedValue({ access_token: 'new-token', refresh_token: 'new-refresh', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify' });
-  mocks.info.mockResolvedValue({ email: entry.mailboxEmail });
+  mocks.info.mockResolvedValue({ email: entry.mailboxEmail, verified_email: true });
+  mocks.profile.mockResolvedValue({ emailAddress: entry.mailboxEmail });
 });
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.unstubAllEnvs(); });
 
 describe('temporary mailbox ownership exception', () => {
+  it('cannot connect a different mailbox in production even with a valid test override', async () => {
+    vi.stubEnv('NODE_ENV', 'production');
+    expect(getMailboxTestOverride(user)).toBeNull();
+    expect(isMailboxOwner(user, entry.mailboxEmail)).toBe(false);
+    await expect(finishMailboxConnection('state', 'code')).rejects.toHaveProperty('statusCode', 400);
+    expect(mocks.account.upsert).not.toHaveBeenCalled();
+  });
   it('accepts only the exact configured staff, tenant and normalized mailbox', () => {
     expect(isMailboxOwner(user, ' TESTER@gmail.com ')).toBe(true);
     expect(isMailboxOwner(user, 'someone-else@gmail.com')).toBe(false);

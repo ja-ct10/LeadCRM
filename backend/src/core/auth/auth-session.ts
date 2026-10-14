@@ -24,7 +24,7 @@ export async function createAuthSessionToken(
   ctx: SessionContext = {},
   db: Prisma.TransactionClient = prisma,
 ) {
-  requireEmployeeAccount(user);
+  await requireEmployeeAccount(user, db);
   const token = signToken({
     userId: user.id,
     tenantId: user.tenantId,

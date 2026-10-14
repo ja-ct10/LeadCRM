@@ -7,7 +7,7 @@ import PublicSupportPage from './public-support-page';
 
 afterEach(cleanup);
 describe('public legal documents without an authentication provider', () => {
-  it.each([[privacyPolicy, 17], [termsOfService, 20]] as const)('renders every section of $title with accurate organization information', (document, count) => {
+  it.each([[privacyPolicy, 18], [termsOfService, 20]] as const)('renders every section of $title with accurate organization information', (document, count) => {
     const { container } = render(<LegalDocumentPage document={document} />);
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
     expect(container.querySelectorAll('article section')).toHaveLength(count);
@@ -31,6 +31,11 @@ describe('public legal documents without an authentication provider', () => {
     render(<PublicSupportPage />);
     expect(screen.getByRole('link', { name: 'Open Help Center' }).getAttribute('href')).toBe('/help');
     expect(screen.getAllByRole('link', { name: 'leadcrm.tech@gmail.com' }).every(link => link.getAttribute('href') === 'mailto:leadcrm.tech@gmail.com')).toBe(true);
+  });
+  it('links the Gmail Limited Use disclosure to the exact Google policy URL', () => {
+    render(<LegalDocumentPage document={privacyPolicy} />);
+    const policy = 'https://developers.google.com/terms/api-services-user-data-policy';
+    expect(screen.getByRole('link', { name: policy }).getAttribute('href')).toBe(policy);
   });
   it('escapes document text instead of accepting HTML', () => {
     const { container } = render(<LegalDocumentPage document={{ ...termsOfService, sections: [{ number: 1, title: 'Safety', blocks: [{ type: 'paragraph', text: '<script>alert(1)</script>' }] }] }} />);

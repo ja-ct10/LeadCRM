@@ -1,7 +1,9 @@
 import { z } from 'zod';
+import { readDataRetentionPolicy } from './data-retention.config';
 
 /** Report variable names only; configuration errors must never echo secrets. */
 export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): void {
+  readDataRetentionPolicy(env);
   for (const key of ['DATABASE_URL', 'JWT_SECRET']) {
     if (!env[key]?.trim()) throw new Error(`Missing required environment variable: ${key}`);
   }
