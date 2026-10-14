@@ -1,14 +1,14 @@
 const assert = require('node:assert/strict');
 const { verifyWorkspaceCoverage } = require('./verify-crm-import-rollout.cjs');
-const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts', DEAL: 'deals' };
+const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts' };
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone Number', companyName: 'Company Name', address: 'Full Address', productInterest: 'Product Interest' };
 const fields = {
   LEAD: Object.entries(labels), CONTACT: Object.entries(labels),
-  ACCOUNT: [['name','Company Name'],['productInterest','Product Interest'],['industry','Industry'],['website','Website'],['address','Address'],['city','City']],
-  DEAL: [['title','Deal Title'],['productInterest','Product Interest'],['pipeline','Pipeline'],['stage','Stage'],['customer','Customer Email'],['priority','Priority']],
+  ACCOUNT: [['name','Company Name'],['productInterest','Product Interest'],['industry','Industry'],['website','Website'],['address','Full Address'],['size','Company Size']],
 };
+const singular = { LEAD: 'Lead', CONTACT: 'Contact', ACCOUNT: 'Account' };
 const normalize = value => String(value).replace(/\s+/g, ' ').trim();
-const badges = { completed:'Success', completed_with_errors:'Partial', failed:'Failed', pending:'In Progress', importing:'In Progress' };
+const badges = { completed:'Succeeded', completed_with_errors:'Partially Succeeded', failed:'Failed', pending:'In Progress', importing:'In Progress' };
 const date = value => new Date(value).toLocaleDateString('en-US', { timeZone:'Asia/Manila', month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
 // Operator-collected DOM evidence is an alternative transport, not authentication
@@ -27,7 +27,7 @@ function validatePages(evidence, origin, now = Date.now()) {
     for (const page of workspace.pages) {
       const url = new URL(page.url), age = now - Date.parse(page.capturedAt);
       assert.equal(url.origin, origin);
-      assert(/^\/crm\/(leads|contacts|accounts|deals)\/imports?(?:\/[^/]+)?$/.test(url.pathname));
+      assert(/^\/crm\/(leads|contacts|accounts)\/imports?(?:\/[^/]+)?$/.test(url.pathname));
       assert(!url.search && !url.hash);
       assert(Number.isFinite(age) && age >= 0 && age <= 30 * 60 * 1000, 'Browser evidence is stale');
       assert(!urls.has(page.url), 'Duplicate page evidence'); urls.add(page.url);
@@ -71,10 +71,17 @@ async function verifyBrowserImportRollout(db, origin, evidence) {
         const expected = rows.map(row => {
           const data = row.data || {};
           const status = row.status === 'imported' ? 'Imported' : row.status === 'duplicate' ? 'Duplicate' : 'Failed';
-          const remarks = row.status === 'imported' ? 'Successfully imported' + (data.resolvedValue === undefined ? '' : ' · Product value: ₱' + Number(data.resolvedValue).toLocaleString('en-PH')) : row.remarks || '—';
+          const remarks = row.status === 'imported' ? 'Successfully imported' : row.remarks || '—';
           return [row.rowNumber,...fields[module].map(([key]) => data[key] || '—'),status,remarks].map(normalize);
         });
-        assert.deepEqual(actual.slice(1), expected, 'Visible row results mismatch');
+        const visibleRows = actual.slice(1).map((cells, index) => {
+          const row = rows[index];
+          if (row?.status !== 'imported' || !row.recordId) return cells;
+          const link = new RegExp(`\\s*View ${singular[module]}$`);
+          assert.match(cells.at(-1), link, 'Missing imported record link');
+          return [...cells.slice(0, -1), cells.at(-1).replace(link, '')];
+        });
+        assert.deepEqual(visibleRows, expected, 'Visible row results mismatch');
       }
       moduleChecks.push({module,jobs:jobs.length});
     }

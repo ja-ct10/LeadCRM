@@ -24,7 +24,7 @@ const scenarios = [
   [0, 6, 4, 'error', 'No Records Imported'],
 ] as const;
 const job = (module: CrmImportModule, valid = 6, duplicate = 2, invalid = 2): ImportSummary => ({
-  id: 'job', module: ({ leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT', deals: 'DEAL' } as const)[module],
+  id: 'job', module: ({ leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT' } as const)[module],
   fileName: 'test.csv', status: valid === 10 ? 'completed' : valid ? 'completed_with_errors' : 'failed',
   totalRecords: 10, successfulRecords: valid, duplicateRecords: duplicate, failedRecords: invalid,
   createdAt: '2026-10-11T00:00:00Z', completedAt: '2026-10-11T00:01:00Z',
@@ -33,7 +33,7 @@ function source(module: CrmImportModule, length = 10) {
   const fields = [...getImportConfig(module).requiredFields, ...getImportConfig(module).optionalFields];
   const headers = fields.map(f => f.label);
   const values: Record<string, string> = { firstName: 'Test', lastName: 'Person', email: 'test@example.com', phone: '9123456789',
-    companyName: 'Company', address: 'Manila', name: 'Company', productInterest: 'Biometrics', title: 'Opportunity', pipeline: 'Sales Pipeline', stage: 'Lead' };
+    companyName: 'Company', address: 'Manila', name: 'Company', productInterest: 'Biometrics' };
   const csvText = [headers.join(','), ...Array.from({ length }, () => fields.map(f => values[f.key] ?? '').join(','))].join('\n');
   return { fileName: 'test.csv', csvText, mappings: Object.fromEntries(fields.map((f, i) => [f.key, i])), idempotencyKey: crypto.randomUUID() };
 }
@@ -99,7 +99,7 @@ it('invalidates Contact and automatic Deal caches after a completed Contact impo
   clearPageCache();
 });
 
-describe.each<CrmImportModule>(['leads', 'contacts', 'accounts', 'deals'])('%s import UI', module => {
+describe.each<CrmImportModule>(['leads', 'contacts', 'accounts'])('%s import UI', module => {
   it.each(scenarios)('handles %i valid / %i duplicate / %i invalid', async (valid, duplicate, invalid, type, title) => {
     await review(module, valid, duplicate, invalid);
     const button = screen.getByRole('button', { name: new RegExp(`^Import ${valid} `) }) as HTMLButtonElement;

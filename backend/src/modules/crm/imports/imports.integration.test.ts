@@ -4,13 +4,12 @@ import type { Server } from 'node:http';
 import { CreateCrmImportSchema, importRowSchemas, mapImportCsv, parseImportCsv, type CrmImportModule } from '@leadcrm/shared';
 vi.mock('../../../shared/services/email.service', () => ({ sendMail: vi.fn() }));
 import prisma from '../../../config/database.config';
-import { tenantContext } from '../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../core/auth/auth-session';
-import { salesTransaction, salesPipeline } from '../leads/lead-automation.service';
 import app from '../../../app';
 import { purgeExpiredImportUploads } from './import-cleanup.service';
 import { importHandlers, importValidationErrors } from './import-rows.service';
 import { ValidationError } from '../../../shared/errors/http-error';
+import { databaseImportModule, importModules } from './import-modules';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && url.pathname === '/leadcrm_forms_test_2';
@@ -23,6 +22,14 @@ const csv = (rows: Record<string, string>[]) => {
 const person = (email: string, productInterest = 'CCTV Surveillance System; Biometrics') => ({ firstName: 'John', lastName: 'Doe', email, phone: '9123456789', companyName: 'ABC Corporation', address: 'Manila', productInterest });
 
 describe('shared CSV contract', () => {
+  it('rejects retired module discriminators before mapping or database access', () => {
+    expect(Object.keys(importModules).sort()).toEqual(['accounts', 'contacts', 'leads']);
+    expect(Object.keys(importHandlers).sort()).toEqual(['accounts', 'contacts', 'leads']);
+    // @ts-expect-error Deals are not an active import request module.
+    const retired: CrmImportModule = 'deals';
+    expect(() => databaseImportModule(retired)).toThrow('Unsupported CRM import module');
+    expect(() => mapImportCsv(retired, csv([{ name: 'Company' }]))).toThrow('Unsupported CRM import module');
+  });
   it('validates structure, normalized headers, mapping, size, row limits and physical lines', () => {
     expect(parseImportCsv('\ufeffName,Note\r\n\r\nA,"first\nsecond"\r\nB,end').rowNumbers).toEqual([3, 5]);
     for (const content of ['Name,name\nA,B', 'Name,\nA,B', 'A,B\nx', 'A\n"unclosed']) expect(() => parseImportCsv(content)).toThrow();
@@ -34,7 +41,6 @@ describe('shared CSV contract', () => {
     expect(() => mapImportCsv('accounts', { ...csv([{ name: 'Acme' }]), mappings: { name: 0, unsupported: 1 } })).toThrow('Unsupported import field');
     expect(CreateCrmImportSchema.safeParse({ ...csv([{ name: 'Acme' }]), fileName: 'test.exe' }).success).toBe(false);
     expect(CreateCrmImportSchema.safeParse({ ...csv([{ name: 'Acme' }]), csvText: 'a'.repeat(10 * 1024 * 1024 + 1) }).success).toBe(false);
-    expect(importRowSchemas.deals.safeParse({ title: 'A', pipeline: 'Sales', stage: 'Lead', productInterest: 'CCTV', value: '999' }).success).toBe(false);
     const invalidPhone = importRowSchemas.leads.safeParse({ ...person('phone@example.com'), phone: '123' });
     expect(invalidPhone.success).toBe(false);
     if (!invalidPhone.success) expect(importValidationErrors(invalidPhone.error)?.join()).toContain('Phone Number: Philippine mobile number must start with 9.');
@@ -43,8 +49,7 @@ describe('shared CSV contract', () => {
 
 describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
   let tenantId: string, actorId: string, token: string, denied: string, foreign: string, base: string, server: Server;
-  let pipeline: string, stage: string, cctv: string, bio: string;
-  const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
+  let cctv: string, bio: string;
   async function request(module: CrmImportModule, suffix = '', method = 'GET', body?: unknown, auth = token) {
     const r = await fetch(`${base}/crm/${module}/imports${suffix}`, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) });
     return { status: r.status, body: await r.json() };
@@ -71,8 +76,6 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     cctv = (await prisma.productInterest.create({ data: { tenantId, name: 'CCTV Surveillance System', dealValue: 25000 } })).id;
     bio = (await prisma.productInterest.create({ data: { tenantId, name: 'Biometrics', dealValue: 15000 } })).id;
     await prisma.productInterest.create({ data: { tenantId, name: 'Archived Product', dealValue: 10, active: false } });
-    const sales = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
-    pipeline = sales.pipeline.name; stage = sales.initial.name;
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
@@ -132,16 +135,16 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     const lead = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: 'parallel@example.com' }, include: { leadDeals: { include: { deal: true } } } });
     expect(lead.leadDeals).toHaveLength(1);
     const priceProduct = await prisma.productInterest.create({ data: { tenantId, name: 'Preview Product', dealValue: 100 } });
-    const input = csv([{ title: 'Fresh price', customer: 'parallel@example.com', productInterest: priceProduct.id, pipeline, stage }]);
-    expect((await request('deals', '/preview', 'POST', input)).body.data[0].resolvedValue).toBe(100);
+    const input = csv([person('fresh-price@example.com', priceProduct.id)]);
+    expect((await request('leads', '/preview', 'POST', input)).body.data[0].isValid).toBe(true);
     await prisma.productInterest.update({ where: { id: priceProduct.id }, data: { dealValue: 200 } });
-    expect((await run('deals', input)).successfulRecords).toBe(1);
-    expect((await prisma.deal.findFirstOrThrow({ where: { tenantId, title: 'Fresh price' } })).value).toBe(200);
-    const next = csv([{ title: 'Inactive since preview', customer: 'parallel@example.com', productInterest: priceProduct.id, pipeline, stage }]);
-    expect((await request('deals', '/preview', 'POST', next)).body.data[0].isValid).toBe(true);
+    expect((await run('leads', input)).successfulRecords).toBe(1);
+    expect((await prisma.deal.findFirstOrThrow({ where: { tenantId, leadDeals: { some: { lead: { email: 'fresh-price@example.com' } } } } })).value).toBe(200);
+    const next = csv([person('inactive-since-preview@example.com', priceProduct.id)]);
+    expect((await request('leads', '/preview', 'POST', next)).body.data[0].isValid).toBe(true);
     await prisma.productInterest.update({ where: { id: priceProduct.id }, data: { active: false } });
-    expect((await run('deals', next)).failedRecords).toBe(1);
-    expect(await prisma.deal.count({ where: { tenantId, title: 'Inactive since preview' } })).toBe(0);
+    expect((await run('leads', next)).failedRecords).toBe(1);
+    expect(await prisma.lead.count({ where: { tenantId, email: 'inactive-since-preview@example.com' } })).toBe(0);
   });
   it('imports Contact/Account snapshots from canonical Products and blocks normalized reimports and cross-person duplicates', async () => {
     const input = csv([person('contact@example.com')]);
@@ -182,34 +185,11 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(duplicate.duplicateRecords).toBe(1);
     expect(await prisma.deal.count({ where: { tenantId, contactDeals: { some: { contactId: contact.id } } } })).toBe(3);
   });
-  it('resolves each Deal price, permits repeat opportunities and preserves historical prices after changes', async () => {
-    const row = { title: 'CCTV Project', customer: 'CONTACT@example.com', productInterest: 'CCTV Surveillance System', pipeline, stage };
-    const input = csv([row, { ...row, title: 'Biometrics Project', productInterest: 'Biometrics' }, row]);
-    const preview = await request('deals', '/preview', 'POST', input);
-    expect(preview.body.data.map((r: { resolvedValue?: number }) => r.resolvedValue)).toEqual([25000, 15000, undefined]);
-    const result = await run('deals', input); expect(result.successfulRecords).toBe(2); expect(result.duplicateRecords).toBe(1);
-    expect((await run('deals', input)).id).toBe(result.id);
-    const old = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: row.title }, include: { contactDeals: true } });
-    await prisma.productInterest.update({ where: { id: cctv }, data: { dealValue: 30000 } });
-    const second = await run('deals', csv([{ ...row, title: '2027 CCTV Expansion' }])); expect(second.successfulRecords).toBe(1);
-    expect((await prisma.deal.findUniqueOrThrow({ where: { id: old.id } })).value).toBe(25000);
-    const next = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: '2027 CCTV Expansion' }, include: { contactDeals: true } });
-    expect(next.value).toBe(30000); expect(next.productInterestId).toBe(cctv);
-    expect(next.contactDeals.map(link => link.contactId)).toEqual(old.contactDeals.map(link => link.contactId));
-    expect(old.contactDeals).toHaveLength(1);
-    // Two Contact-created Product Deals plus these three explicit imported opportunities.
-    expect(await prisma.contactDeal.count({ where: { tenantId, contactId: old.contactDeals[0].contactId } })).toBe(5);
-  });
-  it('reports unknown/inactive Products, missing relationships, invalid dates and field lengths per row', async () => {
+  it('reports unknown/inactive Products, invalid email and field lengths per row', async () => {
     const result = await request('leads', '/preview', 'POST', csv([person('unknown@example.com', 'Unknown CCTV Package'), person('inactive@example.com', 'Archived Product'), { ...person('bad-email'), firstName: 'x'.repeat(101) }]));
     expect(result.body.data[0].errors.join()).toContain('Unknown Product Interest');
     expect(result.body.data[1].errors.join()).toContain('Inactive Product');
     expect(result.body.data[2].errors.join()).toContain('email');
-    const baseRow = { title: 'Invalid', customer: 'missing@example.com', productInterest: 'Biometrics', pipeline, stage };
-    for (const patch of [{}, { pipeline: 'Unknown' }, { stage: 'Unknown' }, { expectedCloseDate: '2026-02-30' }, { account: 'Unknown' }, { assignedUser: 'missing@camxian.com', customer: 'contact@example.com' }]) {
-      const preview = await request('deals', '/preview', 'POST', csv([{ ...baseRow, ...patch }]));
-      expect(preview.status).toBe(200); expect(preview.body.data[0].status).toBe('invalid'); expect(preview.body.data[0].errors.length).toBeGreaterThan(0);
-    }
     const job = await run('leads', csv([person('unknown@example.com', 'Unknown CCTV Package')]));
     expect(job.failedRecords).toBe(1); expect(job.successfulRecords).toBe(0);
     expect(await prisma.productInterest.count({ where: { tenantId, name: 'Unknown CCTV Package' } })).toBe(0);
@@ -255,12 +235,12 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect((await request('accounts', '/preview', 'POST', payload)).body.import.successfulRecords).toBe(1);
     expect((await request('accounts', '', 'POST', payload)).body.data.successfulRecords).toBe(1);
   });
-  it('resumes batches after interruption and exposes truthful tenant-scoped history for all four modules', async () => {
+  it('resumes batches after interruption and exposes truthful tenant-scoped history for all three active modules', async () => {
     const input = csv(Array.from({ length: 27 }, (_, i) => ({ name: `Batch account ${i}` })));
     const partial = await request('accounts', '', 'POST', input);
     expect(partial.status).toBe(202); expect(partial.body.data.successfulRecords).toBe(25);
     const done = await run('accounts', input); expect(done.successfulRecords).toBe(27); expect(done.id).toBe(partial.body.data.id);
-    for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) {
+    for (const module of ['leads', 'contacts', 'accounts'] as const) {
       const history = await request(module); expect(history.status).toBe(200); expect(history.body.meta.total).toBeGreaterThan(0);
       const job = history.body.data[0];
       const results = await request(module, `/${job.id}/results?limit=100`);
@@ -280,9 +260,8 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
       leads: csv([person('shared-lead@example.com', 'Biometrics')]),
       contacts: csv([person('shared-contact@example.com', 'Biometrics')]),
       accounts: csv([{ name: 'Shared job account', productInterest: 'Biometrics' }]),
-      deals: csv([{ title: 'Shared job Deal', customer: 'contact@example.com', productInterest: 'Biometrics', pipeline, stage }]),
     };
-    const modules = { leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT', deals: 'DEAL' } as const;
+    const modules = { leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT' } as const;
     const ids: string[] = [];
     for (const module of Object.keys(modules) as CrmImportModule[]) {
       const payload = { ...inputs[module], idempotencyKey: key };
@@ -307,9 +286,9 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
         expect((await request(other, `/${first.id}/results`)).status).toBe(404);
       }
     }
-    expect(new Set(ids).size).toBe(4);
-    expect(await prisma.crmImportJob.count({ where: { tenantId, idempotencyKey: key } })).toBe(4);
-    expect(await prisma.crmImportRowResult.count({ where: { importJobId: { in: ids } } })).toBe(4);
+    expect(new Set(ids).size).toBe(3);
+    expect(await prisma.crmImportJob.count({ where: { tenantId, idempotencyKey: key } })).toBe(3);
+    expect(await prisma.crmImportRowResult.count({ where: { importJobId: { in: ids } } })).toBe(3);
   });
   it('cleans expired upload parents and chunks without deleting job history', async () => {
     const expired = await prisma.crmImportUpload.create({ data: { tenantId, actorId, module: 'ACCOUNT', totalChunks: 1,
@@ -327,41 +306,32 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     await prisma.crmImportUpload.delete({ where: { id: active.id } });
   });
   it('persists the applicable ten-row outcome matrix for every module', async () => {
-    const customer = `matrix-${randomUUID()}@example.com`;
-    await prisma.contact.create({ data: { tenantId, firstName: 'Matrix', lastName: 'Customer', email: customer } });
     const scenarios = [[10, 0, 0], [7, 3, 0], [8, 0, 2], [6, 2, 2], [0, 10, 0], [0, 0, 10], [0, 6, 4]];
-    for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) {
+    for (const module of ['leads', 'contacts', 'accounts'] as const) {
       for (const [valid, duplicate, invalid] of scenarios) {
-        // Deals have no global identity. A fresh file cannot consist entirely of duplicates.
-        if (module === 'deals' && duplicate === 10) continue;
         const seed = randomUUID();
         const make = (i: number): Record<string, string> => module === 'accounts' ? { name: `Matrix ${seed} ${i}`, productInterest: 'Biometrics' }
-          : module === 'deals' ? { title: `Matrix ${seed} ${i}`, customer, productInterest: 'Biometrics', pipeline, stage }
-            : person(`matrix-${seed}-${i}@example.com`, 'Biometrics');
+          : person(`matrix-${seed}-${i}@example.com`, 'Biometrics');
         const rows = Array.from({ length: valid }, (_, i) => make(i));
         const invalidRow = (i: number) => ({ ...make(valid + i), productInterest: 'Missing Matrix Product' });
-        if (!valid && module !== 'deals' && duplicate) await run(module, csv([make(0)]));
-        if (!valid && module === 'deals' && duplicate) rows.push(invalidRow(0));
+        if (!valid && duplicate) await run(module, csv([make(0)]));
         const repeated = rows[0] ?? make(0);
         rows.push(...Array.from({ length: duplicate }, () => ({ ...repeated })));
-        rows.push(...Array.from({ length: invalid - (!valid && module === 'deals' && duplicate ? 1 : 0) }, (_, i) => invalidRow(i + 1)));
+        rows.push(...Array.from({ length: invalid }, (_, i) => invalidRow(i + 1)));
         const input = csv(rows);
         const preview = await request(module, '/preview', 'POST', input);
         expect(preview.status).toBe(200);
         expect(preview.body.data.filter((row: { status: string }) => row.status === 'valid')).toHaveLength(valid);
-        // With no valid Deal row or global identity, invalid repeated Deals remain invalid.
-        const actualDuplicate = module === 'deals' && !valid ? 0 : duplicate;
-        const actualInvalid = invalid + duplicate - actualDuplicate;
-        expect(preview.body.data.filter((row: { status: string }) => row.status === 'duplicate')).toHaveLength(actualDuplicate);
+        expect(preview.body.data.filter((row: { status: string }) => row.status === 'duplicate')).toHaveLength(duplicate);
         const job = await run(module, input);
-        expect([job.successfulRecords, job.duplicateRecords, job.failedRecords]).toEqual([valid, actualDuplicate, actualInvalid]);
+        expect([job.successfulRecords, job.duplicateRecords, job.failedRecords]).toEqual([valid, duplicate, invalid]);
         expect(job.totalRecords).toBe(10); expect(job.completedAt).toBeTruthy();
         expect(job.status).toBe(!valid ? 'failed' : duplicate + invalid ? 'completed_with_errors' : 'completed');
         const outcomes = await request(module, `/${job.id}/results?limit=100`);
         expect(outcomes.body.data).toHaveLength(10);
         expect(outcomes.body.data.filter((row: { recordId: string | null }) => row.recordId)).toHaveLength(valid);
         const failed = await request(module, `/${job.id}/results?status=failed`);
-        expect(failed.body.meta.total).toBe(actualInvalid);
+        expect(failed.body.meta.total).toBe(invalid);
         expect((await run(module, input)).id).toBe(job.id);
         const history = await request(module, `?status=${job.status}&limit=100`);
         expect(history.body.data.some((row: { id: string }) => row.id === job.id)).toBe(true);
@@ -431,6 +401,32 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     const input = csv([productFirst, { ...productFirst, productInterest: 'Biometrics' }]);
     expect((await request('leads', '/preview', 'POST', input)).body.data.map((r: { status: string }) => r.status)).toEqual(['invalid', 'valid']);
     expect((await run('leads', input)).successfulRecords).toBe(1);
+  });
+  it('rejects every retired Deal import endpoint without changing historical evidence', async () => {
+    const historic = await prisma.crmImportJob.create({ data: {
+      tenantId, createdById: actorId, module: 'DEAL', fileName: 'historical-deals.csv', totalRecords: 1,
+      successfulRecords: 1, status: 'completed', completedAt: new Date(),
+      results: { create: { rowNumber: 2, status: 'imported', data: { title: 'Historical Deal', resolvedValue: '25000', nested: { keep: true } } } },
+    } });
+    await prisma.auditLog.create({ data: { tenantId, userId: actorId, action: 'deals.import', entityType: 'CrmImportJob', entityId: historic.id, metadata: { module: 'deals', preserved: true } } });
+    const snapshot = async () => ({
+      jobs: await prisma.crmImportJob.findMany({ where: { tenantId, module: 'DEAL' }, include: { results: true }, orderBy: { id: 'asc' } }),
+      audit: await prisma.auditLog.findMany({ where: { tenantId, entityId: historic.id } }),
+      uploads: await prisma.crmImportUpload.count({ where: { tenantId, module: 'DEAL' } }),
+      deals: await prisma.deal.count({ where: { tenantId } }),
+    });
+    const before = await snapshot();
+    for (const [method, suffix] of [['POST', ''], ['POST', '/upload'], ['POST', '/preview'], ['GET', ''], ['GET', `/${historic.id}`], ['GET', `/${historic.id}/results`]]) {
+      const response = await fetch(`${base}/crm/deals/imports${suffix}`, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        ...(method === 'POST' ? { body: JSON.stringify(csv([{ title: 'Retired import' }])) } : {}),
+      });
+      expect(response.status).toBe(404);
+    }
+    for (const module of ['leads', 'contacts', 'accounts'] as const) {
+      expect((await request(module, `/${historic.id}`)).status).toBe(404);
+      expect((await request(module, `/${historic.id}/results`)).status).toBe(404);
+    }
+    expect(await snapshot()).toEqual(before);
   });
   it.skipIf(!process.env.CRM_IMPORT_ROLLOUT_TEST)('verifies migrated History through deployed APIs before approving retirement', async () => {
     const { verifyImportRollout } = require('../../../../scripts/verify-crm-import-rollout.cjs');

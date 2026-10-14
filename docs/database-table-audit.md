@@ -1,5 +1,7 @@
 # LeadCRM database table audit
 
+> Product update (2026-10-14): Deal CSV import is retired. Active import functionality supports only Leads, Contacts and Accounts. Deal import descriptions, routes, tables and test results below are historical evidence, not supported product functionality. Historical database records and migrations remain preserved. See [Deal import retirement](deal-import-retirement.md).
+
 **Audit date:** 2026-10-02  
 **Scope:** current repository and configured PostgreSQL schema source; read-only audit. No schema, migration, or data was changed.
 

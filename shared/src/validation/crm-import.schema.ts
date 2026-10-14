@@ -4,7 +4,7 @@ import { LeadNameSchema, LeadPhoneSchema, OptionalLeadSourceSchema } from '../co
 export const CSV_MAX_BYTES = 10 * 1024 * 1024;
 export const CSV_MAX_ROWS = 5000;
 export const CSV_MAX_COLUMNS = 100;
-export type CrmImportModule = 'leads' | 'contacts' | 'accounts' | 'deals';
+export type CrmImportModule = 'leads' | 'contacts' | 'accounts';
 export const importIdentity = (value: string) => value.trim().replace(/\s+/g, ' ').toLowerCase();
 export const splitProductInterests = (value: string) => [...new Map(value.split(';').map(v => v.trim()).filter(Boolean).map(v => [importIdentity(v), v])).values()];
 
@@ -64,22 +64,11 @@ export function resolveAccountImportMappings(headers: string[], mappings: Record
   }
   return resolved;
 }
-export const ImportDealRowSchema = z.object({
-  title: required('Deal Title'), pipeline: required('Pipeline'), stage: required('Stage'),
-  productInterest: required('Product Interest', 200).refine(v => splitProductInterests(v).length === 1, 'Each Deal must have exactly one Product Interest.'),
-  customer: optional(254), contact: optional(254), lead: optional(254), account: optional(255), assignedUser: optional(254),
-  priority: optional(10).transform(v => v.toUpperCase() || 'MEDIUM').pipe(z.enum(['LOW', 'MEDIUM', 'HIGH'])),
-  expectedCloseDate: optional(10).refine(v => {
-    if (!v) return true;
-    const date = new Date(`${v}T00:00:00.000Z`);
-    return /^\d{4}-\d{2}-\d{2}$/.test(v) && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === v;
-  }, 'Expected close date must be a real date in YYYY-MM-DD format.'),
-}).strict();
-export const importRowSchemas = { leads: ImportLeadRowSchema, contacts: ImportContactRowSchema, accounts: ImportAccountRowSchema, deals: ImportDealRowSchema };
+export const importRowSchemas = { leads: ImportLeadRowSchema, contacts: ImportContactRowSchema, accounts: ImportAccountRowSchema };
 export const importRequiredFields: Record<CrmImportModule, string[]> = {
   leads: ['firstName', 'lastName', 'email'],
   contacts: ['firstName', 'lastName', 'email', 'phone', 'companyName', 'address'],
-  accounts: ['name'], deals: ['title', 'productInterest', 'pipeline', 'stage'],
+  accounts: ['name'],
 };
 
 // Source CSV is validated on the server; callers cannot bypass parsing with mapped rows.
@@ -106,7 +95,6 @@ export interface ImportReviewRow {
   isValid: boolean;
   status: 'valid' | 'invalid' | 'duplicate';
   errors: string[];
-  resolvedValue?: number;
 }
 
 /** Quoted commas, BOM, CRLF, multiline cells and physical CSV line numbers. */
@@ -147,7 +135,9 @@ export function mapImportCsv(module: CrmImportModule, input: CreateCrmImportInpu
   if (!input.csvText) throw new Error('CSV upload is unavailable. Select the file again.');
   const parsed = parseImportCsv(input.csvText);
   if (!parsed.rows.length) throw new Error('The CSV must contain headers and at least one data row.');
-  const fields = Object.keys(importRowSchemas[module].shape);
+  if (!Object.prototype.hasOwnProperty.call(importRowSchemas, module)) throw new Error('Unsupported CRM import module.');
+  const schema = importRowSchemas[module];
+  const fields = Object.keys(schema.shape);
   const indices = Object.values(input.mappings);
   if (new Set(indices).size !== indices.length) throw new Error('Each CSV column may only be mapped once.');
   for (const [key, index] of Object.entries(input.mappings)) {

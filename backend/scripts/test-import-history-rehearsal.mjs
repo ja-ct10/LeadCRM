@@ -53,6 +53,7 @@ try {
   for (const mutation of [
     `UPDATE "CrmImportJob" SET "fileName"='changed.csv' WHERE id='Lead-historic-0'`,
     `UPDATE "CrmImportRowResult" SET remarks='changed reason' WHERE id='Lead-historic-0-0'`,
+    `UPDATE "CrmImportRowResult" SET data='{"title":"Changed historical Deal"}' WHERE id='Deal-historic-0-0'`,
     `UPDATE "CrmImportJob" SET "sourceDigest"='invented',"sourceReference"='invented' WHERE id='Lead-historic-0'`,
   ]) {
     try {

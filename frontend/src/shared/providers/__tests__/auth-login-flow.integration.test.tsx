@@ -184,6 +184,18 @@ describe('Feature: auth-login-blank-screen-fix, Integration — credentials logi
     );
   }
 
+  it.each(['login', 'restore'])('routes an expired returning user to change-password after %s', async mode => {
+    const expired = { ...VERIFIED_ONBOARDED_USER, mustChangePassword: true };
+    if (mode === 'restore') meApiMock.mockResolvedValue(authResponse(expired));
+    else meApiMock.mockRejectedValue(Object.assign(new Error('Unauthorized'), { status: 401 }));
+    loginApiMock.mockResolvedValue(authResponse(expired));
+    renderApp();
+    await waitFor(() => expect(captured?.isLoading).toBe(false));
+    if (mode === 'login') await act(async () => { await captured!.login(expired.email, 'CorrectExpired1!'); });
+    await waitFor(() => expect(redirectTargets()).toContain('/change-password'));
+    expect(redirectTargets()).not.toContain('/onboarding');
+  });
+
   it('logs in a verified, onboarded user → settles on /dashboard with no blank frame (login path)', async () => {
     // On mount there is no session yet (401 → not an error, user = null).
     meApiMock.mockRejectedValueOnce(new Error('401 authentication required'));

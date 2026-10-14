@@ -12,6 +12,8 @@ vi.mock('@/shared/services/roles.api', () => ({
 vi.mock('@/store/mockData', () => ({ MOCK_USERS: [], MOCK_TENANTS: [] }));
 import { AuthProvider, useAuth } from '../AuthContext';
 import { clearPageCache, getPageCacheGeneration, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
+import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
+import { getAccountDestination } from '@/shared/auth/auth-routing';
 let auth: ReturnType<typeof useAuth>;
 const user = {
   id: 'user', tenantId: 'tenant', role: 'Sales', firstName: 'Alice', lastName: 'Owner',
@@ -35,6 +37,75 @@ beforeEach(() => {
   mocks.permissions.mockResolvedValue({ data: { dashboard: { canView: true } } });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+it('deduplicates password-required signals, refreshes the canonical user and clears workspace data', async () => {
+  const established = { ...user, mustChangePassword: false, onboardingCompletedAt: '2026-01-01' };
+  mocks.me.mockResolvedValue({ data: { user: established } });
+  show(); await waitFor(() => { expect(auth.user?.id).toBe(user.id); expect(auth.isPermissionsLoaded).toBe(true); });
+  setPageCache('expired-workspace', 'tenant', {}, { secret: 'workspace data' });
+  mocks.me.mockClear();
+  let finish!: (value: unknown) => void;
+  mocks.me.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  act(() => {
+    window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+    window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+    window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+  });
+  expect(mocks.me).toHaveBeenCalledOnce();
+  await act(async () => { finish({ data: { user: { ...established, mustChangePassword: true } } }); });
+  expect(auth.user?.id).toBe(user.id);
+  expect(getAccountDestination(auth.user)).toBe('/change-password');
+  expect(auth.permissions).toEqual({});
+  expect(getPageCacheSize()).toBe(0);
+  act(() => auth.applyAuthUser(established as never, user.id));
+  expect(getAccountDestination(auth.user)).toBe('/dashboard');
+});
+it('refreshes a password-required SSE event without signing out and stops reconnection', async () => {
+  class AccessEvents {
+    static instances: AccessEvents[] = [];
+    listeners = new Map<string, (event: MessageEvent) => void>();
+    close = vi.fn();
+    constructor() { AccessEvents.instances.push(this); }
+    addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, listener); }
+    emit(data: unknown) { this.listeners.get('authorization-access-changed')?.(new MessageEvent('authorization-access-changed', { data: JSON.stringify(data) })); }
+  }
+  vi.stubGlobal('EventSource', AccessEvents);
+  const established = { ...user, mustChangePassword: false, onboardingCompletedAt: '2026-01-01' };
+  mocks.me.mockResolvedValue({ data: { user: established } });
+  show(); await waitFor(() => expect(AccessEvents.instances).toHaveLength(1));
+  const source = AccessEvents.instances[0];
+  mocks.me.mockResolvedValue({ data: { user: { ...established, mustChangePassword: true } } });
+  await act(async () => source.emit({ code: 'PASSWORD_CHANGE_REQUIRED' }));
+  expect(auth.user?.id).toBe(user.id);
+  expect(getAccountDestination(auth.user)).toBe('/change-password');
+  expect(source.close).toHaveBeenCalled();
+  expect(AccessEvents.instances).toHaveLength(1);
+  expect(mocks.logout).not.toHaveBeenCalled();
+});
+it('keeps ordinary authorization access-loss behavior', async () => {
+  class AccessEvents {
+    static current: AccessEvents;
+    listeners = new Map<string, (event: MessageEvent) => void>();
+    close = vi.fn();
+    constructor() { AccessEvents.current = this; }
+    addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, listener); }
+  }
+  vi.stubGlobal('EventSource', AccessEvents);
+  mocks.me.mockResolvedValue({ data: { user } });
+  show(); await waitFor(() => expect(auth.isLoading).toBe(false));
+  act(() => AccessEvents.current.listeners.get('authorization-access-changed')?.(new MessageEvent('authorization-access-changed', { data: '{}' })));
+  expect(auth.user).toBeNull();
+  expect(AccessEvents.current.close).toHaveBeenCalled();
+});
+it('ignores a recovery response that arrives after logout', async () => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  show(); await waitFor(() => expect(auth.isLoading).toBe(false));
+  let finish!: (value: unknown) => void;
+  mocks.me.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  act(() => window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT)));
+  await act(async () => { await auth.logout(); });
+  await act(async () => { finish({ data: { user: { ...user, mustChangePassword: true } } }); });
+  expect(auth.user).toBeNull();
+});
 it('synchronizes saved organization metadata and ignores another tenant response', async () => {
   show(); await waitFor(() => expect(auth.isLoading).toBe(false));
   await act(async () => { await auth.login(user.email, 'password'); });

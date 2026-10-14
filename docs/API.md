@@ -263,7 +263,8 @@ and `deals`. These reuse the existing scoped file service and storage provider.
 ### CRM CSV imports
 
 Paths below are relative to `/api/v1`. Replace `{module}` with `leads`, `contacts`,
-`accounts`, or `deals`. The browser preserves Upload → Map Columns → Review & Validate;
+or `accounts`. Deal CSV import is retired; no Deal import API routes are registered.
+The browser preserves Upload → Map Columns → Review & Validate;
 both preview and execution parse the source CSV and validate relationships on the server.
 
 | Method | Path | Description | Permission |
@@ -275,8 +276,8 @@ both preview and execution parse the source CSV and validate relationships on th
 | `GET` | `/crm/{module}/imports/:importId` | Saved summary | `{module}.view` |
 | `GET` | `/crm/{module}/imports/:importId/results` | Paginated results; optional `status=imported\|failed\|duplicate` | `{module}.view` |
 
-Import permissions are `leads.import`, `contacts.import`, `accounts.import`, and
-the existing `deals.create`. Preview and execution accept `{ fileName, csvText,
+Import permissions are `leads.import`, `contacts.import`, and `accounts.import`.
+Preview and execution accept `{ fileName, csvText,
 mappings, idempotencyKey }`; mappings associate field keys with zero-based CSV
 column indices. Alternatively replace `csvText` with `uploadId` after uploading
 `{ uploadId, chunkIndex, totalChunks, content }`. Limits: 10 MiB UTF-8, 5,000 rows,
@@ -287,8 +288,11 @@ expired upload parents and remaining chunks without deleting job history.
 Repeat the identical execution request until its status is no longer `importing`.
 Reuse the UUID idempotency key across retries; different input with the same key
 returns 409. Committed rows and automatically created Deals are transactional.
-All four routes use `CrmImportJob` and `CrmImportRowResult`, filtered by tenant
-and the `CrmImportModule` enum. Idempotency is unique per tenant/module/key.
+The three active import modules use `CrmImportJob` and `CrmImportRowResult`, filtered
+by tenant and module. The application contract accepts only Leads, Contacts and
+Accounts. The persisted Prisma enum also retains `DEAL` for historical records;
+retiring the feature does not delete import jobs, results or audit evidence.
+Idempotency is unique per tenant/module/key.
 Responses retain the existing summary fields and result aliases while also
 exposing `module`, `importJobId` and `recordId`. See the
 [normalization report and two-phase rollout](csv-import-normalization.md)

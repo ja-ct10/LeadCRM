@@ -1,6 +1,5 @@
 "use client";
 import { PageHeader } from '@/shared/components/ui/page-header';
-import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
 
 import React, { useEffect, useRef, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -18,14 +17,13 @@ import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/modu
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
-import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { DealPanel } from '@/shared/components/crm';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
 import { DealLostDialog } from '@/shared/components/crm/deal-lost-dialog';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
 import { PipelineStagesDialog } from './pipeline-stages-dialog';
 import KanbanBoardSkeleton from '@/shared/components/kanban-skeleton';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import ForecastBar from './forecast-bar';
 import { getTenantCurrency } from '@/shared/utils/currency';
@@ -52,12 +50,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const defaultPipeline = availablePipelines.find(p => p.name.trim().toLowerCase() === 'sales pipeline') ?? availablePipelines[0];
   const pipeline = target ? availablePipelines.find(p => p.id === target.pipelineId)
     : availablePipelines.find(p => p.id === searchParams.get('pipelineId')) ?? defaultPipeline;
-  const selectPipeline = (id: string) => {
-    const next = new URLSearchParams(searchParams.toString()); next.set('pipelineId', id);
-    next.delete('highlight'); next.delete('dealId');
-    router.replace('/crm/deals?' + next.toString(), { scroll: false });
-    setFilters(previous => ({ ...previous, stage: [] }));
-  };
+  const initialStageId = (pipeline?.stages.find(s => s.isDefault) ?? pipeline?.stages.find(s => s.name.toLowerCase() === 'lead'))?.id ?? pipeline?.stages[0]?.id;
   const [search, setSearch] = useState(''), [myDeals, setMyDeals] = useState(false);
   const [showFilters, setShowFilters] = useState(false), [filterSearch, setFilterSearch] = useState('');
   const [filters, setFilters] = useState<Record<string, string[]>>({});
@@ -176,12 +169,10 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
             <Settings size={16} aria-hidden="true" />
           </Button>
         </TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}
-        {canCreate && <CreateActionDropdown primaryActionLabel="New Deal"
-          onPrimaryAction={() => setCreateStage((pipeline.stages.find(s => s.isDefault) ?? pipeline.stages.find(s => s.name.toLowerCase() === 'lead'))?.id ?? pipeline.stages[0]?.id)}
-          onImport={() => router.push('/crm/deals/import')} />}
+        {canCreate && <CreateButton label="New Deal" disabled={!initialStageId} onClick={() => setCreateStage(initialStageId)} />}
       </div>} />
     <div className="mb-3 flex gap-1 border-b border-border">{['All Deals', 'My Deals'].map((label, i) => <button key={label} onClick={() => setMyDeals(!!i)} className={`min-h-11 px-3 text-sm ${myDeals === !!i ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>{label}</button>)}</div>
-    <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2"><label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<select aria-label="Pipeline" value={pipeline?.id ?? ''} onChange={event => selectPipeline(event.target.value)} className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] rounded-lg border border-border bg-card px-2 text-foreground">{availablePipelines.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></label><div className="relative min-w-32 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
+    <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2"><label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<input aria-label="Pipeline" value={pipeline?.name ?? ''} readOnly className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] cursor-default rounded-lg border border-border bg-card px-2 text-foreground" /></label><div className="relative min-w-32 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
       <ModuleFilterRail showFilters={showFilters} filterGroups={groups} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={all.length} onClearFilters={() => setFilters({})} onFilterToggle={(group, item) => setFilters(old => ({ ...old, [group]: old[group]?.includes(item) ? old[group].filter(id => id !== item) : [...(old[group] ?? []), item] }))} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">

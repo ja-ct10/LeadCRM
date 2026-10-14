@@ -1,6 +1,6 @@
 const assert = require('node:assert/strict');
 
-const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts', DEAL: 'deals' };
+const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts' };
 const wire = value => JSON.parse(JSON.stringify(value));
 
 /** Read-only verification. Tokens never leave this process or appear in reports. */
@@ -18,6 +18,7 @@ async function verifyImportRollout(db, apiUrl, tokens) {
 }
 
 async function verifyRequests(db, requests) {
+  // SQL compares every historical payload, including the retired DEAL discriminator.
   const counts = await db.$queryRawUnsafe('SELECT * FROM crm_verify_import_normalization()');
   const historicalTenants = await db.$queryRawUnsafe(`SELECT DISTINCT payload->>'tenantId' AS id FROM _crm_legacy_import_jobs`);
   const verified = new Set(), moduleChecks = [];

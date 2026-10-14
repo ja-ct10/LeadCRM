@@ -13,7 +13,7 @@ for concurrency, shared IP limits, browser restoration and deployment requiremen
 ## Supported flows
 
 - All new users: sign in with email/password → change temporary password when required → informational LeadCRM onboarding → dashboard with existing role permissions.
-- Returning users who have completed setup: sign in → dashboard.
+- Returning users who have completed setup: sign in → dashboard, or change their password first when it has expired.
 - Existing users with `mustChangePassword=false` at migration time keep their established access; their passwords and roles are unchanged.
 
 Tenant portal accounts require a valid registered staff identity. Exact, case-insensitive @camxian.com accounts retain their existing access policy. Other addresses require persisted Client Admin approval for that same user, tenant and exact normalized email. The backend checks this policy at password login and on authenticated requests, including existing sessions. Inactive accounts and unavailable workspaces are denied access.
@@ -38,7 +38,19 @@ Team Management generates `firstname.lastnameNN`: names are normalized to lowerc
 
 The existing bcrypt helper hashes the credential. User creation, selected custom-role assignment, and the audit entry commit together. Only the hash is stored. Plaintext exists transiently for the existing branded `sendMail()` welcome email, which includes the recipient's own credential and `${APP_URL}/login`; it is never returned by the API, logged, or stored in audit records. The subject is **Welcome to LeadCRM**. `setupEmailSent=true` means the provider accepted submission; it does not confirm inbox delivery. An unsubmitted, rejected, or failed request produces an account-created warning. Retry account creation does not duplicate the user; administrators can use the existing Send Password Reset action for recovery.
 
-User.mustChangePassword is persisted. Until cleared, authenticated tenant users can read /auth/me, change their password, or log out. Other protected APIs, including onboarding completion and preference endpoints, reject requests with PASSWORD_CHANGE_REQUIRED.
+User.mustChangePassword is persisted. The canonical auth response also requires a change when server time is at least 90 × 24 hours after User.passwordChangedAt. The rule lives in `backend/src/core/auth/password-expiration.ts`; it is recalculated on login, session restoration, and every protected request. Correct expired credentials still authenticate. Until changed, authenticated tenant users can read /auth/me, change their password, or log out. Other protected APIs, including onboarding completion and preference endpoints, reject requests with 403 PASSWORD_CHANGE_REQUIRED. The existing browser auth routing sends them to /change-password, including when an HTTP request or an existing authorization stream detects expiration.
+
+Successful password change or token-based reset writes the new hash, clears the stored requirement, and sets passwordChangedAt to server time. This starts a new 90-day period without clearing onboarding. Requesting a reset email does not change the timestamp. Null timestamps do not themselves force expiration; deployment must first audit established legacy password users and apply the conditional backfill below.
+
+### Legacy timestamp rollout
+
+Before releasing expiration enforcement, identify the deployment database and audit it using `backend/scripts/backfill-password-timestamps.mjs`. It never loads application `.env` files and defaults to a read-only transaction. Set `PASSWORD_EXPIRATION_DATABASE_URL` securely for the explicit target, then run:
+
+```powershell
+node backend/scripts/backfill-password-timestamps.mjs --target=host:5432/database
+```
+
+Replace the target with the exact host, port and database from that URL. Only if the audit finds existing users with a password hash, null passwordChangedAt, and mustChangePassword=false, stop old writers and obtain immediately-before-cutover approval for the exact environment and count. Run the same command with `--apply --expected-count=N`, using the verified eligible count. The transaction refuses count drift, initializes only those rows at one UTC database timestamp, verifies preservation, and rolls back on a mismatch. Existing timestamps, temporary/passwordless users, credentials and onboarding remain intact. Repeating the read-only audit must show zero eligible rows; rerunning the backfill with expected count zero changes nothing. No schema migration is required.
 
 POST /auth/change-password accepts `{ password }` from the authenticated session. It compares the current password hash before applying `StrongPasswordSchema` so a lowercase temporary password gets the precise `PASSWORD_REUSE` error: “You cannot reuse your temporary password. Please choose a new password.” Different passwords must meet the shared strength policy. It writes the new hash, clears the flag, revokes other sessions and account-bound reset tokens, and records an audit event in one serializable transaction. The current database session stays valid. The frontend reuses the profile password form, shows field errors and “Password updated successfully.”, and applies the canonical user response to advance to onboarding. Password recovery uses the same strength policy, clears the flag, and revokes sessions; it does not complete onboarding.
 

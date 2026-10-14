@@ -2,19 +2,16 @@ import { productRelationData } from '../leads/product-relations';
 import type { Prisma } from '@prisma/client';
 import { importIdentity, importRowSchemas, normalizeAccountImportRow, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
-import { createAssignedLead, validateSalesOwner } from '../leads/lead-automation.service';
-import { CreateDealSchema, type CreateDealDto } from '../deals/deals.dto';
-import { createDeal } from '../deals/deals.repository';
+import { createAssignedLead } from '../leads/lead-automation.service';
 import sanitizeHtml from 'sanitize-html';
 import { ZodError, type ZodIssue } from 'zod';
 import { createAssignedContact } from '../contacts-v2/contact-creation';
-import { fireDealCreated } from '../../automation/triggers/triggers.service';
 
 type Tx = Prisma.TransactionClient;
 export type MappedRow = { rowNumber: number; data: Record<string, string> };
 type Product = { id: string; name: string; dealValue: Prisma.Decimal; active: boolean };
-export interface ResolvedRow extends ImportReviewRow { products: Product[]; deal?: CreateDealDto }
-const plainTextFields = new Set(['firstName', 'lastName', 'title', 'name', 'companyName', 'address', 'description', 'city', 'province', 'country', 'source', 'industry']);
+export interface ResolvedRow extends ImportReviewRow { products: Product[] }
+const plainTextFields = new Set(['firstName', 'lastName', 'name', 'companyName', 'address', 'city', 'province', 'country', 'source', 'industry']);
 const parseRow = (module: CrmImportModule, data: Record<string, string>) => importRowSchemas[module].safeParse(
   Object.fromEntries(Object.entries(data).map(([key, value]) => [key,
     plainTextFields.has(key) ? sanitizeHtml(value, { allowedTags: [], allowedAttributes: {} }) : value])),
@@ -26,8 +23,7 @@ export function importValidationErrors(error: unknown): string[] | null {
     const issues = error.issues.flatMap<ZodIssue>(issue => issue.code === 'invalid_union'
       ? issue.unionErrors.flatMap(branch => branch.issues).filter(detail => detail.code !== 'invalid_literal') : [issue]);
     const labels: Record<string, string> = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone Number',
-      companyName: 'Company Name', address: 'Full Address', productInterest: 'Product Interest', assignedUser: 'Assigned Agent',
-      title: 'Deal Title', expectedCloseDate: 'Expected Close Date', name: 'Company Name' };
+      companyName: 'Company Name', address: 'Full Address', productInterest: 'Product Interest', name: 'Company Name' };
     return [...new Set(issues.map(issue => `${labels[String(issue.path[0])] ?? issue.path.join('.')}: ${issue.message}`))];
   }
   return null;
@@ -49,61 +45,6 @@ export async function resolveImportProducts(tx: Tx, tenantId: string, input: str
   })).values()];
 }
 
-async function resolveAccount(tx: Tx, tenantId: string, value: string) {
-  const records = await tx.account.findMany({ where: { tenantId, isArchived: false, deletedAt: null } });
-  return unique(records.filter(r => r.id === value || importIdentity(r.name) === importIdentity(value)), 'Account', value);
-}
-async function resolvePerson(tx: Tx, tenantId: string, value: string, kind: 'lead' | 'contact') {
-  const where = { tenantId, isArchived: false, deletedAt: null, OR: [{ id: value }, { email: { contains: value.trim(), mode: 'insensitive' as const } }] };
-  const records = kind === 'lead' ? await tx.lead.findMany({ where }) : await tx.contact.findMany({ where });
-  return records.filter(r => r.id === value || importIdentity(r.email ?? '') === importIdentity(value));
-}
-
-async function resolveDeal(tx: Tx, tenantId: string, data: Record<string, string>, product: Product) {
-  const pipelines = await tx.pipeline.findMany({ where: { tenantId, isArchived: false } });
-  const pipeline = unique(pipelines.filter(p => p.id === data.pipeline || importIdentity(p.name) === importIdentity(data.pipeline)), 'Pipeline', data.pipeline);
-  const stages = await tx.stage.findMany({ where: { tenantId, pipelineId: pipeline.id } });
-  const stage = unique(stages.filter(s => s.id === data.stage || importIdentity(s.name) === importIdentity(data.stage)), 'Stage', data.stage);
-  if (stage.isWon || stage.isLost) throw new ValidationError('Import into an open stage, then complete the normal closing action.');
-  if ([data.customer, data.contact, data.lead].filter(Boolean).length > 1) throw new ValidationError('Use only one customer column: Customer Email, Lead, or Contact.');
-  let lead, contact;
-  if (data.lead) lead = unique(await resolvePerson(tx, tenantId, data.lead, 'lead'), 'Lead', data.lead);
-  if (data.contact) contact = unique(await resolvePerson(tx, tenantId, data.contact, 'contact'), 'Contact', data.contact);
-  if (data.customer) {
-    const leads = await resolvePerson(tx, tenantId, data.customer, 'lead');
-    const contacts = await resolvePerson(tx, tenantId, data.customer, 'contact');
-    // A converted Lead and its Contact are one identity; retain the canonical Contact.
-    const activeLeads = leads.filter(l => !('contactId' in l && contacts.some(c => c.id === l.contactId)));
-    const customer = unique([...activeLeads.map(record => ({ kind: 'lead', record })), ...contacts.map(record => ({ kind: 'contact', record }))], 'Customer', data.customer);
-    if (customer.kind === 'lead') lead = customer.record; else contact = customer.record;
-  }
-  if (lead && 'contactId' in lead && lead.contactId) {
-    contact = unique(await resolvePerson(tx, tenantId, String(lead.contactId), 'contact'), 'converted Contact', String(lead.contactId));
-    lead = undefined;
-  }
-  const personAccountId = lead?.accountId ?? contact?.accountId;
-  const account = data.account ? await resolveAccount(tx, tenantId, data.account) : personAccountId ? await resolveAccount(tx, tenantId, personAccountId) : undefined;
-  if (account && personAccountId && account.id !== personAccountId) throw new ValidationError('Account conflicts with the selected customer relationship.');
-  if (!lead && !contact && !account) throw new ValidationError('Provide a Customer Email, Lead, Contact, or Account for this Deal.');
-  let assignee;
-  if (data.assignedUser) {
-    const users = await tx.user.findMany({ where: { tenantId, status: 'ACTIVE', OR: [{ id: data.assignedUser }, { email: { equals: data.assignedUser, mode: 'insensitive' } }] } });
-    assignee = unique(users, 'Assigned Agent', data.assignedUser);
-    await validateSalesOwner(tx, tenantId, assignee.id, ['deals']);
-  }
-  const dto = CreateDealSchema.parse({ title: data.title, pipelineId: pipeline.id, stageId: stage.id,
-    productInterestId: product.id, productInterestIds: [product.id], value: Number(product.dealValue), priority: data.priority,
-    expectedCloseDate: data.expectedCloseDate ? `${data.expectedCloseDate}T00:00:00.000Z` : undefined,
-    accountId: account?.id, contactIds: contact ? [contact.id] : undefined, leadIds: lead ? [lead.id] : undefined,
-    assignedUserId: assignee?.id,
-  });
-  for (const field of stage.requiredFields) {
-    const value = (dto as Record<string, unknown>)[field];
-    if (value === undefined || value === null || value === '' || (Array.isArray(value) && !value.length)) throw new ValidationError(`Stage requires ${field}.`);
-  }
-  return dto;
-}
-
 export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantId: string, raw: MappedRow, duplicate?: string): Promise<ResolvedRow> {
   const parsed = parseRow(module, raw.data);
   const result: ResolvedRow = { ...raw, data: parsed.success ? (module === 'accounts' ? normalizeAccountImportRow(parsed.data) : parsed.data) : raw.data, products: [], isValid: false, status: 'invalid', errors: [] };
@@ -116,7 +57,6 @@ export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantI
     if (result.errors.length) { result.status = 'duplicate'; return result; }
     result.products = await resolveImportProducts(tx, tenantId, result.data.productInterest);
     result.data.productInterest = result.products.map(p => p.name).join('; ');
-    if (handler.resolve) await handler.resolve(tx, tenantId, result);
     result.isValid = true; result.status = 'valid';
   } catch (error) {
     const errors = importValidationErrors(error);
@@ -185,31 +125,6 @@ async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId:
     ...await productRelationData(tx, 'account', tenantId, { ids: row.products.map(p => p.id) }), tags: [],
   } })).id;
 }
-async function createImportedDeal(tx: Tx, tenantId: string, actorId: string, _jobId: string, row: ResolvedRow) {
-  const names = row.products.map(p => p.name);
-  // The existing repository resolves the Product price again inside this transaction.
-  const deal = await createDeal(tenantId, actorId, row.deal!, tx);
-  const leadId = row.deal!.leadIds?.[0], contactId = row.deal!.contactIds?.[0], accountId = row.deal!.accountId;
-  if (leadId) {
-    const lead = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId } });
-    await tx.lead.update({ where: { tenantId, id: leadId }, data: {
-      ...await productRelationData(tx, 'lead', tenantId, { names: [...new Set([...lead.productInterest, ...names])] }, lead, true),
-    } });
-  }
-  if (contactId) {
-    const contact = await tx.contact.findFirstOrThrow({ where: { tenantId, id: contactId } });
-    await tx.contact.update({ where: { tenantId, id: contactId }, data: await productRelationData(tx, 'contact', tenantId, { names: [...new Set([...contact.productInterests, ...names])] }, contact, true) });
-  }
-  if (accountId) {
-    const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
-    await tx.account.update({ where: { tenantId, id: accountId }, data: await productRelationData(tx, 'account', tenantId, { names: [...new Set([...account.productInterests, ...names])] }, account, true) });
-  }
-  await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id, metadata: { source: 'import' } } });
-  await tx.activity.create({ data: { tenantId, dealId: deal.id, createdById: actorId, type: 'deal_action', title: `Deal imported: ${deal.title}` } });
-  await fireDealCreated({ tenantId, actorId, deal });
-  return deal.id;
-}
-
 async function personDuplicates(tx: Tx, tenantId: string, data: Record<string, string>) {
   const where = { tenantId, email: { contains: data.email, mode: 'insensitive' as const } };
   const leads = await tx.lead.findMany({ where, select: { email: true } });
@@ -223,7 +138,6 @@ interface ImportHandler {
   identity(data: Record<string, string>): string;
   duplicateLabel: string;
   duplicates(tx: Tx, tenantId: string, data: Record<string, string>): Promise<string[]>;
-  resolve?(tx: Tx, tenantId: string, row: ResolvedRow): Promise<void>;
   create: typeof createLead;
 }
 const personIdentity = (data: Record<string, string>) => importIdentity(data.email || '');
@@ -236,14 +150,6 @@ export const importHandlers: Record<CrmImportModule, ImportHandler> = {
     duplicates: async (tx, tenantId, data) => {
       const accounts = await tx.account.findMany({ where: { tenantId }, select: { name: true } });
       return accounts.some(a => importIdentity(a.name) === importIdentity(data.name)) ? ['Existing Account: an Account with this name already exists.'] : [];
-    },
-  },
-  deals: {
-    identity: data => JSON.stringify(Object.entries(data).sort(([a], [b]) => a.localeCompare(b)).map(([k, v]) => [k, importIdentity(v)])),
-    duplicateLabel: 'row', duplicates: async () => [], create: createImportedDeal,
-    resolve: async (tx, tenantId, row) => {
-      row.deal = await resolveDeal(tx, tenantId, row.data, row.products[0]);
-      row.resolvedValue = Number(row.products[0].dealValue);
     },
   },
 };

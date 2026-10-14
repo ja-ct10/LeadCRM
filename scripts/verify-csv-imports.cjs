@@ -9,7 +9,7 @@ const base = process.env.CSV_PREVIEW_URL || 'http://localhost:3100';
 if (!/^http:\/\/(127\.0\.0\.1|localhost):\d+$/.test(base)) throw new Error('Disposable local preview required.');
 const runId = Date.now();
 const email = `${runId}@example.test`;
-const personCsv = `First Name,Last Name,Email,Phone Number,Company Name,Full Address,Product Interest\nCSV,Tester,${email},09123456789,CSV Browser Company,Manila,CCTV Surveillance System; Biometrics\nCSV,Duplicate,${email.toUpperCase()},09123456789,CSV Browser Company,Manila,Biometrics\nCSV,Invalid,invalid,09123456789,CSV Browser Company,Manila,Unknown CCTV Package`;
+const personCsv = `First Name,Last Name,Email,Phone Number,Company Name,Full Address,Product Interest\nCSV,Tester,${email},9123456789,CSV Browser Company,Manila,CCTV Surveillance System; Biometrics\nCSV,Duplicate,${email.toUpperCase()},9123456789,CSV Browser Company,Manila,Biometrics\nCSV,Invalid,invalid,9123456789,CSV Browser Company,Manila,Unknown CCTV Package`;
 const widths = [1440, 768, 390, 375, 320];
 (async () => {
   const browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -46,7 +46,7 @@ const widths = [1440, 768, 390, 375, 320];
       }
       await page.getByRole('heading', { name: 'Map your columns' }).waitFor();
     }
-    for (const module of (process.argv.includes('--large-only') ? [] : ['leads', 'contacts', 'accounts', 'deals'])) {
+    for (const module of (process.argv.includes('--large-only') ? [] : ['leads', 'contacts', 'accounts'])) {
       await page.goto(`${base}/crm/${module}/import`);
       await page.getByRole('heading', { name: `Import ${module[0].toUpperCase() + module.slice(1)}`, exact: true }).waitFor();
       await capture(module, 'upload');
@@ -56,11 +56,9 @@ const widths = [1440, 768, 390, 375, 320];
       await download.saveAs(`${output}/${module}-template.csv`);
       const template = readFileSync(`${output}/${module}-template.csv`, 'utf8');
       assert(template.includes('Product Interest'));
-      if (module === 'deals') assert(!template.split(',').some(h => /value/i.test(h)));
       const text = module === 'leads' ? personCsv
         : module === 'contacts' ? personCsv.replaceAll(email, 'contact-' + email).replaceAll(email.toUpperCase(), ('contact-' + email).toUpperCase())
-        : module === 'accounts' ? `Company Name,Product Interest\nCSV Browser Company ${runId},CCTV Surveillance System; Biometrics\n csv browser company ${runId} ,Biometrics\nUnknown Products,Unknown CCTV Package`
-        : `Deal Title,Customer Email,Product Interest,Pipeline,Stage\nCCTV Browser ${runId},contact-${email},CCTV Surveillance System,Sales Pipeline,Lead\nBiometrics Browser ${runId},contact-${email},Biometrics,Sales Pipeline,Lead\nCCTV Browser ${runId},contact-${email},CCTV Surveillance System,Sales Pipeline,Lead`;
+        : `Company Name,Product Interest\nCSV Browser Company ${runId},CCTV Surveillance System; Biometrics\n csv browser company ${runId} ,Biometrics\nUnknown Products,Unknown CCTV Package`;
       await upload(module, text, module === 'accounts');
       await capture(module, 'mapping');
       if (module === 'leads') {
@@ -74,11 +72,10 @@ const widths = [1440, 768, 390, 375, 320];
       assert.equal(await reviewTable.locator('thead th').count(), await reviewTable.locator('tbody tr').first().locator('td').count());
       assert((await reviewTable.locator('tbody tr').first().innerText()).includes('CCTV Surveillance System'));
       assert((await page.locator('body').innerText()).includes('Duplicate'));
-      if (module === 'deals') assert((await page.locator('body').innerText()).includes('Product value:'));
       await capture(module, 'review');
       const importButton = page.getByRole('button', { name: /^Import \d+ / });
       await importButton.dblclick();
-      await page.getByRole('heading', { name: 'Import Complete', exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Import Partially Succeeded', exact: true }).waitFor();
       await capture(module, 'result');
       const keyUrl = page.url();
       await page.getByRole('button', { name: 'View Details', exact: true }).click();
@@ -91,7 +88,7 @@ const widths = [1440, 768, 390, 375, 320];
         await page.getByRole('button', { name: 'Retry results', exact: true }).waitFor();
         await page.unroute(failedResults);
         await page.getByRole('button', { name: 'Retry results', exact: true }).click();
-        await page.getByText('Duplicate CSV email', { exact: false }).waitFor();
+        await page.getByText('Duplicate email address', { exact: false }).waitFor();
         await page.getByRole('button', { name: 'All', exact: true }).click();
       }
       await capture(module, 'details');
@@ -100,7 +97,7 @@ const widths = [1440, 768, 390, 375, 320];
       await page.getByRole('button', { name: 'Browse files' }).waitFor();
       await upload(module, text);
       await page.getByRole('button', { name: 'Continue', exact: true }).click();
-      await page.getByRole('heading', { name: 'Import Complete', exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Import Partially Succeeded', exact: true }).waitFor();
       await page.getByRole('button', { name: 'History', exact: true }).click();
       await page.getByRole('heading', { name: 'Import history', exact: true }).waitFor();
       await capture(module, 'history');
@@ -111,6 +108,7 @@ const widths = [1440, 768, 390, 375, 320];
     }
     // Exercise the actual chunk upload transport and multiple execution batches.
     await page.goto(`${base}/crm/accounts/import`);
+    await page.getByRole('button', { name: 'New import', exact: true }).click();
     await page.getByRole('button', { name: 'Browse files' }).waitFor();
     const largeCsv = 'Company Name,Unused Notes\n' + Array.from({ length: 40 }, (_, i) => `Large CSV ${runId} ${i},${'x'.repeat(20000)}`).join('\n');
     let chunksSent = 0;
@@ -137,8 +135,8 @@ const widths = [1440, 768, 390, 375, 320];
     await upload('accounts', largeCsv);
     await page.getByRole('button', { name: 'Continue', exact: true }).click();
     await page.getByRole('button', { name: 'Resume import', exact: true }).click();
-    await page.getByRole('heading', { name: 'Import Complete', exact: true }).waitFor();
-    assert((await page.locator('body').innerText()).includes('40 accounts imported successfully.'));
+    await page.getByRole('heading', { name: 'Import Succeeded', exact: true }).waitFor();
+    await page.getByRole('main').getByText('All 40 records were imported successfully.', { exact: true }).waitFor();
     report.push(`Large CSV: ${Buffer.byteLength(largeCsv)} bytes, ${chunksSent} upload chunks including recovery, 40 records, interrupted batch resumed through History passed`);
     page.off('request', countChunks);
     assert.deepEqual(errors, []);

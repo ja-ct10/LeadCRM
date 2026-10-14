@@ -1,5 +1,7 @@
 # Settings, Team Management and Deal Import verification
 
+> Product update (2026-10-14): Deal CSV import is retired. Active import functionality supports only Leads, Contacts and Accounts. Deal import descriptions, routes, tables and test results below are historical evidence, not supported product functionality. Historical database records and migrations remain preserved. See [Deal import retirement](deal-import-retirement.md).
+
 Implemented and verified locally on September 24, 2026. No production migration
 or deployment was performed. Route registration in `backend/src/api/routes`
 is authoritative; frontend services use the existing API client's `/api/v1` prefix.

@@ -3,6 +3,7 @@
 import { invalidateApiPageCache } from '@/shared/cache/invalidate-api-page-cache';
 import { invalidatePageCache } from '@/shared/cache/page-cache';
 import type { ApiError } from '@leadcrm/shared';
+import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
 
 export type ApiRequestError = Error & Partial<Pick<ApiError['error'], 'code' | 'retryAt' | 'serverNow'>> & { status?: number; fieldErrors?: Record<string, string[]> };
 
@@ -72,6 +73,9 @@ async function request<T>(
       if (typeof rawError.serverNow === 'string' && Number.isFinite(Date.parse(rawError.serverNow))) error.serverNow = rawError.serverNow;
     }
     error.status = res.status;
+    if (res.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
+      window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
+    }
     // Preserve HTTP rate-limit guidance as an absolute time for callers.
     // Retry-After is emitted by the API limiter as seconds or an HTTP date.
     if (res.status === 429 && !error.retryAt) {

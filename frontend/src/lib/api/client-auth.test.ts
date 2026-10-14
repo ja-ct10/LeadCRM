@@ -1,7 +1,28 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
+import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
 
 afterEach(() => vi.unstubAllGlobals());
+it('signals password-change-required without retrying the protected request', async () => {
+  const changed = vi.fn();
+  window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed);
+  try {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'Change your password first.' } }), { status: 403 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(apiClient.get('/crm/leads')).rejects.toMatchObject({ status: 403, code: 'PASSWORD_CHANGE_REQUIRED' });
+    expect(changed).toHaveBeenCalledOnce();
+    expect(fetchMock).toHaveBeenCalledOnce();
+  } finally { window.removeEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed); }
+});
+it('does not signal password recovery for ordinary permission denials', async () => {
+  const changed = vi.fn();
+  window.addEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed);
+  try {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"error":{"code":"FORBIDDEN","message":"Access denied"}}', { status: 403 })));
+    await expect(apiClient.get('/crm/leads')).rejects.toMatchObject({ status: 403 });
+    expect(changed).not.toHaveBeenCalled();
+  } finally { window.removeEventListener(PASSWORD_CHANGE_REQUIRED_EVENT, changed); }
+});
 
 it('preserves authoritative lockout expiry and server time without retrying credentials', async () => {
   const error = { code: 'AUTH_LOGIN_LOCKED', message: 'Cooldown', retryAt: '2030-01-01T00:05:00.000Z', serverNow: '2030-01-01T00:00:00.000Z' };

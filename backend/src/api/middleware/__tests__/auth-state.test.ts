@@ -1,5 +1,7 @@
-import { beforeEach, expect, it, vi } from 'vitest';
-vi.mock('../../../core/auth/auth-user', () => ({ readAuthUser: vi.fn() }));
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+vi.mock('../../../core/auth/auth-user', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../core/auth/auth-user')>(), readAuthUser: vi.fn(),
+}));
 vi.mock('../../../core/auth/session.service', () => ({ validateSession: vi.fn() }));
 vi.mock('../../../config/app.config', () => ({ appConfig: { jwtSecret: 'test-only-secret' } }));
 import jwt from 'jsonwebtoken';
@@ -7,6 +9,8 @@ import { authMiddleware } from '../auth.middleware';
 import { readAuthUser } from '../../../core/auth/auth-user';
 import { validateSession } from '../../../core/auth/session.service';
 import { appConfig } from '../../../config/app.config';
+import { buildAuthUserResponse } from '../../../core/auth/auth-user';
+import { workspaceReadyMiddleware } from '../tenant.middleware';
 
 const claims = { userId: 'user-1', tenantId: 'tenant-1', role: 'Client Admin' };
 it('rejects an existing session after its current database role is retired', async () => {
@@ -17,6 +21,41 @@ it('rejects an existing session after its current database role is retired', asy
 });
 const request = () => ({
   cookies: { leadcrm_token: jwt.sign(claims, appConfig.jwtSecret) }, headers: {},
+});
+afterEach(() => vi.useRealTimers());
+const expiringUser = () => ({
+  id: 'user-1', tenantId: 'tenant-1', firstName: 'Staff', lastName: 'User', role: 'Sales',
+  email: 'staff@camxian.com', status: 'ACTIVE', tenant: { status: 'ACTIVE' },
+  mustChangePassword: false, passwordHash: 'hash', passwordChangedAt: new Date('2030-01-01'),
+  onboardingCompletedAt: new Date('2029-12-01'),
+});
+
+it.each(['cookie', 'bearer'])('restricts the same %s session on its next protected request at exactly 90 days', async transport => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-03-31T23:59:59.999Z'));
+  const source = expiringUser();
+  vi.mocked(readAuthUser).mockImplementation(async () => buildAuthUserResponse(source));
+  const req = { ...request(), baseUrl: '/api/v1/crm', path: '/leads' };
+  if (transport === 'bearer') Object.assign(req, { headers: { authorization: `Bearer ${req.cookies.leadcrm_token}` }, cookies: {} });
+  const next = vi.fn();
+  await authMiddleware(req as never, {} as never, next);
+  expect(next).toHaveBeenLastCalledWith();
+  vi.setSystemTime(new Date('2030-04-01T00:00:00.000Z'));
+  await authMiddleware(req as never, {} as never, next);
+  expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403, code: 'PASSWORD_CHANGE_REQUIRED' }));
+  expect(source.mustChangePassword).toBe(false);
+});
+it.each(['/me', '/change-password', '/logout'])('permits expired-password recovery at %s', async path => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-04-01'));
+  vi.mocked(readAuthUser).mockResolvedValue(buildAuthUserResponse(expiringUser()));
+  const next = vi.fn();
+  await authMiddleware({ ...request(), baseUrl: '/api/v1/auth', path } as never, {} as never, next);
+  expect(next).toHaveBeenCalledWith();
+});
+it('workspace readiness uses the same effective expiration flag', () => {
+  vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-04-01'));
+  const next = vi.fn();
+  workspaceReadyMiddleware({ authUser: buildAuthUserResponse(expiringUser()) } as never, {} as never, next);
+  expect(next).toHaveBeenCalledWith(expect.objectContaining({ statusCode: 403, code: 'PASSWORD_CHANGE_REQUIRED' }));
 });
 beforeEach(() => {
   vi.resetAllMocks();

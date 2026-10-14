@@ -345,10 +345,10 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
       }
       // A list-refresh failure cannot change a confirmed, committed import outcome.
       for (const module of new Set([moduleKey, `counts-${moduleKey}`, 'activities', 'dashboard', 'reports',
-        ...(['leads', 'contacts', 'deals'].includes(moduleKey) ? ['deals', 'counts-deals', 'pipeline'] : [])])) invalidatePageCache(module);
+        ...(['leads', 'contacts'].includes(moduleKey) ? ['deals', 'counts-deals', 'pipeline'] : [])])) invalidatePageCache(module);
       void Promise.allSettled([
-        ...(moduleKey === 'deals' || moduleKey === 'leads' || moduleKey === 'contacts' ? [refreshDeals()] : []),
-        ...(moduleKey === 'accounts' ? [refreshOrganizations()] : moduleKey !== 'deals' ? [refreshContacts()] : []),
+        ...(moduleKey === 'leads' || moduleKey === 'contacts' ? [refreshDeals()] : []),
+        ...(moduleKey === 'accounts' ? [refreshOrganizations()] : [refreshContacts()]),
       ]);
     } catch (err) {
       const status = (err as ApiRequestError | undefined)?.status;
@@ -429,9 +429,8 @@ export default function ImportPage({ moduleKey }: ImportPageProps): React.ReactE
 
               {/* ── Step Content Card ──────────────────────────────── */}
               <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700/60 rounded-2xl min-w-0 px-3 sm:px-6 py-6">
-                {moduleKey !== 'deals' && <p className="mb-4 text-sm text-slate-500">Use existing Product names separated by semicolons, for example: CCTV Surveillance System; Biometrics. Imports create new records only; existing customers are reported as duplicates.</p>}
+                <p className="mb-4 text-sm text-slate-500">Use existing Product names separated by semicolons, for example: CCTV Surveillance System; Biometrics. Imports create new records only; existing customers are reported as duplicates.</p>
                 {isParsing && <p role="status" className="mb-4 text-sm text-slate-500">Reading CSV…</p>}
-                {moduleKey === 'deals' && <p className="mb-4 text-sm text-slate-500">Each row creates one Deal for one active Product. Deal Value comes from Settings &gt; Products. Use pipeline and stage names or IDs. Accounts accept names or IDs; customers and assigned agents accept email addresses or IDs. Dates use YYYY-MM-DD. Relationships must already exist in this workspace.</p>}
                 {step === 1 && <Step1Upload config={config} file={file} recordCount={csvRows.length} isDragging={isDragging} fileInputRef={fileInputRef} onFileChange={handleFileChange} onDrop={handleDrop} onDragEnter={() => setIsDragging(true)} onDragLeave={() => setIsDragging(false)} onReplaceFile={() => fileInputRef.current?.click()} onDownloadTemplate={handleDownloadTemplate} />}
                 {step === 2 && <Step2MapColumns config={config} csvHeaders={csvHeaders} mappings={mappings} unmappedColumns={unmappedColumns} allRequiredMapped={allRequiredMapped} previewRows={previewRows} firstUnmappedRequired={firstUnmappedRequired} onMappingChange={handleMappingChange} mappedRequiredCount={mappedRequiredCount} totalRecords={csvRows.length} />}
                 {step === 2 && compatibility.error && <p role="alert" className="mt-3 text-sm text-red-600">{compatibility.error}</p>}
@@ -745,7 +744,7 @@ function Step3Review({ config, validatedRows, validCount, totalCount }: { config
                     ? <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400"><CircleCheck size={11} /> Valid</span>
                     : <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-semibold bg-red-100 dark:bg-red-500/20 text-red-700 dark:text-red-400"><CircleX size={11} /> {row.status === 'duplicate' ? 'Duplicate' : 'Invalid'}</span>}
                 </td>
-                <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">{row.isValid ? (row.resolvedValue === undefined ? 'Ready to import' : 'Product value: ' + new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(row.resolvedValue)) : row.errors.join(' ')}</td>
+                <td className="px-3 py-2.5 text-[11px] text-slate-500 dark:text-slate-400">{row.isValid ? 'Ready to import' : row.errors.join(' ')}</td>
               </tr>
             ))}
           </tbody>

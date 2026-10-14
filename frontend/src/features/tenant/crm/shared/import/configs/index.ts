@@ -1,5 +1,5 @@
-import { dealImportConfig } from './deal-import.config';
 import type { ImportModuleConfig } from '../types/import.types';
+import type { CrmImportModule } from '@leadcrm/shared';
 import { leadImportConfig } from './lead-import.config';
 import { accountImportConfig } from './account-import.config';
 import { contactImportConfig } from './contact-import.config';
@@ -8,8 +8,7 @@ import { contactImportConfig } from './contact-import.config';
  * Registry of all CRM import module configurations.
  * Add new modules here as they become import-capable.
  */
-const IMPORT_CONFIGS: Record<string, ImportModuleConfig> = {
-  deals: dealImportConfig,
+const IMPORT_CONFIGS: Record<CrmImportModule, ImportModuleConfig> = {
   leads: leadImportConfig,
   accounts: accountImportConfig,
   contacts: contactImportConfig,
@@ -20,11 +19,10 @@ const IMPORT_CONFIGS: Record<string, ImportModuleConfig> = {
  * Throws if the module is not registered.
  */
 export function getImportConfig(moduleKey: string): ImportModuleConfig {
-  const config = IMPORT_CONFIGS[moduleKey];
-  if (!config) {
+  if (!Object.prototype.hasOwnProperty.call(IMPORT_CONFIGS, moduleKey)) {
     throw new Error(`Import configuration not found for module: "${moduleKey}"`);
   }
-  return config;
+  return IMPORT_CONFIGS[moduleKey as CrmImportModule];
 }
 
 export { leadImportConfig, accountImportConfig, contactImportConfig };

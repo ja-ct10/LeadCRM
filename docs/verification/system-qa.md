@@ -65,7 +65,7 @@ tests and skipped required assertions fail the gate. Only non-native login
 contention assertions may be skipped, and that does not satisfy native acceptance.
 The full integration coordinator executes the import suite in its populated
 rehearsal so the historical HTTP case runs with no conditional skip. It
-retains legacy tables, checks exact migrated payloads through authenticated HTTP,
+retains legacy tables, checks active-module histories through authenticated HTTP and all migrated payloads (including retired DEAL jobs) through the SQL preservation verifier,
 and proves altered job/result fields and invented source metadata are rejected.
 On Windows, unavailable symlink privileges leave the POSIX private-storage boundary
 case BLOCKED; Linux CI must execute it successfully. A skipped assertion is never
