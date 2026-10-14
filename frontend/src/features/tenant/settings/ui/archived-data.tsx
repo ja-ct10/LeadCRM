@@ -79,6 +79,9 @@ export function ArchivedData(): React.ReactElement {
       if (succeeded.size) toast.success(pending.bulk ? `${succeeded.size} record${succeeded.size === 1 ? '' : 's'} restored` : `${pending.records[0].type} restored`);
       if (failures.length) toast.error(pending.bulk ? `${failures.length} record${failures.length === 1 ? '' : 's'} could not be restored. ${failures[0]}` : failures[0]);
       setPending(failures.length ? { ...pending, records: pending.records.filter(record => !succeeded.has(rowId(record))) } : null);
+      if (restoredTypes.has('Product') && identityRef.current === restoreIdentity) {
+        window.dispatchEvent(new CustomEvent('product-interests-changed'));
+      }
       await refetch();
       if (identityRef.current === restoreIdentity) {
         const refreshes: Promise<void>[] = [];

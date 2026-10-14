@@ -15,7 +15,7 @@ export async function wonDeals(req: Request, res: Response, next: NextFunction) 
   catch (error) { next(error); }
 }
 
-const fieldKey = (tenantId: string) => ({ tenantId, module: 'product-interests', key: 'enabled' });
+const fieldKey = service.productFieldKey;
 export async function get(req: Request, res: Response, next: NextFunction) {
   try {
     const tenantId = req.user!.tenantId;
@@ -36,8 +36,8 @@ async function mutate(req: Request, res: Response, next: NextFunction, action: '
       if (id && !await tx.productInterest.findFirst({ where: { id, tenantId, active: true } })) throw new AppError('Product not found.', 404);
       if (input?.name && await tx.productInterest.findFirst({ where: { tenantId, active: true, name: { equals: input.name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) } })) throw new AppError('Product names must be unique.', 409);
       if (action === 'create') {
-        if ((await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value === false) throw new AppError('Add the Product Interest field first.', 409);
-        if (await tx.productInterest.count({ where: { tenantId, active: true } }) >= 100) throw new AppError('Maximum 100 products.', 400);
+        await service.assertProductCatalogEnabled(tx, tenantId);
+        await service.assertProductCatalogCapacity(tx, tenantId);
         await tx.productInterest.create({ data: { tenantId, ...ProductInterestCreateSchema.parse(input) } });
       }
       if (action === 'update') {

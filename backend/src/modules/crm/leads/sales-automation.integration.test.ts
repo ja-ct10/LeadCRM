@@ -7,7 +7,7 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { createAssignedLead, createProductDeals, salesTransaction, productConfiguration, salesPipeline } from './lead-automation.service';
 import { moveDealStage } from '../deals/deals.repository';
 import { updateContact } from '../contacts/contacts.repository';
-import { defaultContactForm, ProductInterestConfigSchema, FORM_PRODUCT_INTERESTS } from '@leadcrm/shared';
+import { ARCHIVE_TYPES, defaultContactForm, ProductInterestConfigSchema, FORM_PRODUCT_INTERESTS, type ArchiveType } from '@leadcrm/shared';
 import { submitPublicForm } from '../../marketing/forms/public-forms.service';
 import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
@@ -348,7 +348,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await prisma.pipeline.create({ data: { tenantId, name: 'Hidden archived pipeline', type: 'Sales', isArchived: true } });
     const all = await request('/administration/archived-data');
     expect(all.status).toBe(200);
-    expect(all.body.data.every((r: { type: string }) => ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow', 'Role'].includes(r.type))).toBe(true);
+    expect(all.body.data.every((r: { type: ArchiveType }) => ARCHIVE_TYPES.includes(r.type))).toBe(true);
     for (const type of ['Pipeline', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
     expect((await request('/administration/archived-data?type=Role')).status).toBe(200);
     expect(await prisma.pipeline.count({ where: { tenantId, name: 'Hidden archived pipeline', isArchived: true } })).toBe(1);

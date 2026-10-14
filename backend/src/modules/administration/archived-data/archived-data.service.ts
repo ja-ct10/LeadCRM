@@ -1,5 +1,6 @@
 import { compareSortValues, ArchiveQuerySchema, ArchiveRestoreParamsSchema, ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import type { z } from 'zod';
+import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { assertPermissions } from '../../../core/permissions/permission.service';
@@ -9,6 +10,8 @@ import type { PermissionKey } from '../../../shared/constants/permissions';
 import { loadArchiveDatePage } from './archive-date-page';
 import { resolveCrmActor } from '../../crm/access/crm-record-access.service';
 import { restoreTask } from '../../operations/tasks/tasks.service';
+import { salesTransaction } from '../../crm/leads/lead-automation.service';
+import { assertProductCatalogCapacity, assertProductCatalogEnabled } from '../product-interests/product-interests.service';
 
 async function applyAssignmentRestorePolicy(actor: Actor, rows: ArchivedRecord[]) {
   const policy = await resolveCrmActor(prisma, actor);
@@ -29,11 +32,13 @@ const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchem
   Task: ['tasks.view', 'archived_data.restore'],
   Lead: ['leads.view', 'archived_data.restore'], Contact: ['contacts.view', 'archived_data.restore'],
   Account: ['accounts.view', 'archived_data.restore'], Deal: ['deals.view', 'archived_data.restore'],
+  Product: ['products.view', 'archived_data.restore'],
   Pipeline: ['deals.view', 'archived_data.restore'], User: ['users.view', 'archived_data.restore'],
   Role: ['roles.view', 'archived_data.restore'], Workflow: ['workflows.view', 'archived_data.restore'],
   Campaign: ['campaigns.view', 'archived_data.restore'], Template: ['campaigns.view', 'archived_data.restore'],
 };
 const protectedRole = (name: string) => ['guest', 'clientadmin'].includes(name.toLowerCase().replace(/[\s_-]/g, ''));
+const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
 function scope(actor: Actor) {
   const context = tenantContext.getStore();
@@ -49,16 +54,17 @@ function source<T>(count: () => Promise<number>, load: (skip: number, take: numb
 export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchema>) {
   await assertPermissions(actor, ['archived_data.view']);
   const where = scope(actor);
-  const searchWhere = (...fields: string[]) => query.search?.trim() ? {
+  const searchWhere = (fields: string[], literal = false) => query.search?.trim() ? {
     AND: query.search.trim().split(/\s+/).map(term => ({
-      OR: fields.map(field => ({ [field]: { contains: term, mode: 'insensitive' as const } })),
+      OR: fields.map(field => ({ [field]: { contains: literal ? term.replace(/[\\%_]/g, '\\$&') : term, mode: 'insensitive' as const } })),
     })),
   } : {};
-  const personWhere = { ...where, ...searchWhere('firstName', 'lastName', 'email') };
-  const titleWhere = { ...where, ...searchWhere('title') };
-  const nameWhere = { ...where, ...searchWhere('name') };
-  const accountWhere = { ...where, ...searchWhere('name', 'website', 'address') };
-  const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, ...searchWhere('firstName', 'lastName', 'email') };
+  const personWhere = { ...where, ...searchWhere(['firstName', 'lastName', 'email']) };
+  const titleWhere = { ...where, ...searchWhere(['title']) };
+  const nameWhere = { ...where, ...searchWhere(['name']) };
+  const accountWhere = { ...where, ...searchWhere(['name', 'website', 'address']) };
+  const usersWhere = { tenantId: actor.tenantId, status: 'INACTIVE' as const, ...searchWhere(['firstName', 'lastName', 'email']) };
+  const productsWhere = { tenantId: actor.tenantId, active: false, ...searchWhere(['name'], true) };
   const pageArgs = (skip: number, take: number) => ({ skip, take, orderBy: { id: 'asc' as const } });
   const person = (r: { id: string; firstName: string; lastName: string; email: string | null; deletedAt: Date | null }) =>
     ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email ?? '', archivedAt: r.deletedAt });
@@ -70,6 +76,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     Account: source(() => prisma.account.count({ where: accountWhere }), (skip, take) => prisma.account.findMany({ where: accountWhere, ...pageArgs(skip, take), select: { id: true, name: true, website: true, address: true, deletedAt: true } }), r => ({ id: r.id, name: r.name, detail: r.website || r.address || '', archivedAt: r.deletedAt })),
     Deal: source(() => prisma.deal.count({ where: titleWhere }), (skip, take) => prisma.deal.findMany({ where: titleWhere, ...pageArgs(skip, take), select: { id: true, title: true, value: true, currency: true, deletedAt: true } }), r => ({ id: r.id, name: r.title, detail: r.value === null ? '' : [r.currency, String(r.value)].filter(Boolean).join(' '), archivedAt: r.deletedAt })),
     Pipeline: source(() => prisma.pipeline.count({ where }), (skip, take) => prisma.pipeline.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
+    Product: source(() => prisma.productInterest.count({ where: productsWhere }), (skip, take) => prisma.productInterest.findMany({ where: productsWhere, ...pageArgs(skip, take), select: { id: true, name: true, dealValue: true, updatedAt: true } }), r => ({ id: r.id, name: r.name, detail: php.format(Number(r.dealValue)), archivedAt: r.updatedAt })),
     User: source(() => prisma.user.count({ where: usersWhere }), (skip, take) => prisma.user.findMany({ where: usersWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true } }), r => ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email })),
     Role: source(() => prisma.roleDefinition.count({ where: nameWhere }), (skip, take) => prisma.roleDefinition.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true, isSystemRole: true } }), r => ({ id: r.id, name: r.name, canRestore: !r.isSystemRole && !protectedRole(r.name) })),
     Workflow: source(() => prisma.workflow.count({ where: nameWhere }), (skip, take) => prisma.workflow.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
@@ -92,7 +99,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
   if ((query.sortBy ?? 'archivedAt') === 'archivedAt') {
     const rows = await loadArchiveDatePage(actor.tenantId, visible, query);
     const restorePermissions = new Map(await Promise.all(visible.map(async type => [type, await allowed(permissions[type][1])] as const)));
-    const data: ArchivedRecord[] = rows.map(row => ({ type: row.type, id: row.id, name: row.name, detail: row.detail,
+    const data: ArchivedRecord[] = rows.map(row => ({ type: row.type, id: row.id, name: row.name, detail: row.type === 'Product' ? php.format(Number(row.detail)) : row.detail,
       archivedAt: row.archivedAt?.toISOString() ?? null,
       canRestore: restorePermissions.get(row.type) === true && (row.type !== 'Role' || !row.isSystemRole && !protectedRole(row.name)) }));
     return { data: await applyAssignmentRestorePolicy(actor, data), meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
@@ -103,7 +110,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     const canRestore = await allowed(permissions[type][1]);
     for (let offset = 0; offset < counts[index]; offset += 500) {
       const rows = await sources[type].load(offset, 500);
-      const audits = await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type === 'Role' ? { in: ['Role', 'RoleDefinition'] } : type,
+      const audits = type === 'Product' ? [] : await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type === 'Role' ? { in: ['Role', 'RoleDefinition'] } : type,
         entityId: { in: rows.map(row => row.id) }, OR: [{ action: { endsWith: '.archived' } }, ...(type === 'User' ? [{ action: 'user.updated' }, { action: 'user.deactivated_with_reassignment' }] : [])] },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { entityId: true, createdAt: true, changeset: true, action: true } });
       const dates = new Map<string, Date>();
@@ -128,6 +135,28 @@ export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestor
   const where = { ...scope(actor), id: params.id };
   let result: { count: number };
   switch (params.type) {
+    case 'Product': {
+      const conflict = () => new AppError('An active product with this name already exists.', 409);
+      try {
+        await salesTransaction(async tx => {
+          await assertPermissions(actor, ['archived_data.restore', 'products.view'], tx);
+          const product = await tx.productInterest.findFirst({ where: { id: params.id, tenantId: actor.tenantId, active: false }, select: { id: true, name: true } });
+          if (!product) throw new AppError('Archived record not found or already restored', 404);
+          await assertProductCatalogEnabled(tx, actor.tenantId, 'Enable Product Interest before restoring products.');
+          if (await tx.productInterest.findFirst({ where: { tenantId: actor.tenantId, active: true, name: { equals: product.name.replace(/[\\%_]/g, '\\$&'), mode: 'insensitive' } }, select: { id: true } })) throw conflict();
+          await assertProductCatalogCapacity(tx, actor.tenantId);
+          const restored = await tx.productInterest.updateMany({ where: { id: product.id, tenantId: actor.tenantId, active: false }, data: { active: true } });
+          if (!restored.count) throw new AppError('Archived record not found or already restored', 404);
+          await writeAuditLog({ tenantId: actor.tenantId, userId: actor.userId, action: 'product.restored', entityType: 'Product', entityId: product.id, before: { active: false }, after: { active: true } });
+        });
+      } catch (error) {
+        // The partial index is the final guard against competing catalog writes.
+        if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002' &&
+          (error.meta?.modelName === 'ProductInterest' || JSON.stringify(error.meta?.target ?? '').includes('ProductInterest_active_name_key'))) throw conflict();
+        throw error;
+      }
+      return;
+    }
     case 'Task':
       await restoreTask(params.id, actor.tenantId, actor.userId);
       return;

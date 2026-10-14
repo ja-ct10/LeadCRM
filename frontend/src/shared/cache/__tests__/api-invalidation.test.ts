@@ -23,6 +23,8 @@ it.each([
   ['/notifications/123/read', ['notifications']],
   ['/administration/archived-data/Pipeline/123/restore', ['archived-crm', 'pipeline', 'pipelines']],
   ['/administration/archived-data/Workflow/123/restore', ['archived-crm', 'workflows']],
+  ['/administration/archived-data/Product/123/restore', ['archived-crm']],
+  ['/administration/product-interests/123', ['archived-crm']],
   ['/administration/archived-data/Task/123/restore', ['archived-crm', 'tasks', 'activities', 'reports']],
   ['/operations/tasks/123/archive', ['archived-crm', 'tasks', 'activities', 'reports']],
   ['/operations/tasks/bulk', ['archived-crm', 'tasks', 'activities', 'reports']],

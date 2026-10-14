@@ -3,6 +3,8 @@ import {
   parseProductCreateAmount,
   ProductInterestCreateSchema,
   ProductInterestPatchSchema,
+  ProductInterestConfigSchema,
+  MAX_ACTIVE_PRODUCTS,
 } from '@leadcrm/shared';
 
 describe('new Product Interest validation', () => {
@@ -21,5 +23,11 @@ describe('new Product Interest validation', () => {
 
   it('retains decimal numeric updates for existing products', () => {
     expect(ProductInterestPatchSchema.safeParse({ dealValue: 25000.5 }).success).toBe(true);
+  });
+
+  it('uses the same active catalog ceiling as creation and restoration', () => {
+    const products = Array.from({ length: MAX_ACTIVE_PRODUCTS }, (_, index) => ({ name: `Product ${index}`, dealValue: 0 }));
+    expect(ProductInterestConfigSchema.safeParse(products).success).toBe(true);
+    expect(ProductInterestConfigSchema.safeParse([...products, { name: 'Overflow', dealValue: 0 }]).success).toBe(false);
   });
 });
