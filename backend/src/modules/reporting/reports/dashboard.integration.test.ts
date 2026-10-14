@@ -260,6 +260,14 @@ describe('authoritative dashboard', () => {
       expect(result.metrics).toMatchObject({ totalRevenue: 100, won: 1, lost: 1 });
       expect(result.trend).toEqual([{ name: '2020-01-06', revenue: 100, won: 1, lost: 1 }]);
       expect(result.leaderboard).toMatchObject([{ id: 'agent', won: 1, revenue: 100 }]);
+      // The HTTP contract preserves calendar strings and uses the same boundaries.
+      const response = await http('/reporting/dashboard?range=custom&start=2020-01-10&end=2020-01-10&revenueInterval=week');
+      expect(response.status).toBe(200);
+      const api = (await response.json()).data;
+      expect(api.period).toMatchObject({ start: '2020-01-10', end: '2020-01-10', timezone: 'Asia/Manila' });
+      expect(api.metrics).toMatchObject({ totalRevenue: 100, won: 1, lost: 1 });
+      expect(api.trend).toEqual(result.trend);
+      expect(api.leaderboard).toEqual(result.leaderboard);
     } finally { await db.deal.updateMany({ where: { id: { in: ids } }, data: { isArchived: true } }); }
   });
   it('reconciles cent-normalized legacy amounts across dates and stage groups', async () => {
