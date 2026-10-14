@@ -135,6 +135,14 @@ try {
   await page.getByRole('button', { name: 'Create Workflow', exact: true }).click();
   await page.getByRole('dialog', { name: 'Create workflow', exact: true }).waitFor();
   assert.ok(await page.locator('[data-template-index]').count() >= 16);
+  const configuredStages = await prisma.stage.findMany({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id } });
+  assert.ok(configuredStages.length > 0);
+  // Generic starters render before the authenticated stage options resolve.
+  // Await each actual bound stage card, rather than sampling an initial render.
+  for (const configuredStage of configuredStages) {
+    const scenario = configuredStage.isWon ? 'won' : configuredStage.isLost ? 'lost' : 'entry';
+    await page.locator(`[data-template-id="stage:${scenario}:${pipeline.pipeline.id}:${configuredStage.id}"]`).waitFor();
+  }
   assert.ok(await page.locator('[data-template-id^="stage:"]').count() > 0);
   await page.getByLabel('Search templates', { exact: true }).fill('Move Related Deal');
   assert.equal(await page.locator('[data-template-index]').count(), 2);
