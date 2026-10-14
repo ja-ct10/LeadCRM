@@ -187,6 +187,39 @@ test('Actual PR gate CLI accepts complete reports and rejects missing evidence a
     assert.notEqual(run(['pr-gate', reports]).status, 0);
   } finally { fs.rmSync(directory, { recursive: true }); }
 });
+test('Full gate reads all eleven separate artifact directories and still rejects failed jobs and duplicate owners', () => {
+  const directory = fixture();
+  try {
+    const names = seed(directory);
+    for (const name of ['qa-ci.cjs', 'qa-ci.mjs', 'qa-source-identity.cjs']) {
+      fs.mkdirSync(path.resolve(directory, 'scripts'), { recursive: true });
+      fs.copyFileSync(path.resolve(__dirname, name), path.resolve(directory, 'scripts', name)); names.push('scripts/' + name);
+    }
+    fs.writeFileSync(path.resolve(directory, 'package-lock.json'), '{}'); names.push('package-lock.json');
+    fs.writeFileSync(path.resolve(directory, '.qa-source-snapshot.json'), JSON.stringify({ revision: current.revision, files: names.sort() }));
+    const inventory = ci.discovery(directory), identity = sourceIdentity(directory), reports = path.resolve(directory, 'data/outputs/ci-evidence');
+    const owners = ci.owners(inventory);
+    assert.equal(owners.length, 11);
+    for (const owner of owners) {
+      const folder = path.resolve(reports, `qa-evidence-full-${owner.owner.replaceAll('/', '-')}`, 'ci', owner.owner.replaceAll('/', '-'));
+      fs.mkdirSync(folder, { recursive: true });
+      fs.writeFileSync(path.resolve(folder, 'qa-ci-report.json'), JSON.stringify(evidence(owner, inventory, identity)));
+    }
+    const jobs = needs();
+    const run = () => spawnSync(process.execPath, ['scripts/qa-ci.mjs', 'gate', reports], { cwd: directory, encoding: 'utf8', windowsHide: true,
+      env: { ...process.env, GITHUB_RUN_ID: current.runId, GITHUB_RUN_ATTEMPT: current.attempt, GITHUB_SHA: current.revision,
+        GITHUB_REPOSITORY: current.repository, GITHUB_JOB: 'acceptance', CI_NEEDS_JSON: JSON.stringify(jobs) } });
+    const passed = run(); assert.equal(passed.status, 0, passed.stderr);
+    assert.equal(JSON.parse(passed.stdout).status, 'PASS');
+    jobs.database.result = 'failure';
+    const failed = run(); assert.notEqual(failed.status, 0); assert.match(failed.stderr, /database did not succeed/);
+    jobs.database.result = 'success';
+    fs.mkdirSync(path.resolve(reports, 'duplicate'));
+    fs.writeFileSync(path.resolve(reports, 'duplicate/qa-ci-report.json'), JSON.stringify(evidence(owners[0], inventory, identity)));
+    assert.notEqual(run().status, 0);
+  } finally { fs.rmSync(directory, { recursive: true }); }
+});
+
 test('Report inventory refuses symlink or junction evidence outside its owned directory', () => {
   const directory = fixture(), outside = fixture();
   try {

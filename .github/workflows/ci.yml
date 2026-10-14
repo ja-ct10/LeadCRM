@@ -180,6 +180,7 @@ jobs:
         with:
           pattern: qa-evidence-full-*
           path: data/outputs/ci-evidence
+          # Keep owner artifacts separate; the gate discovers evidence recursively.
           merge-multiple: false
       - name: Require all jobs and complete matching suite evidence
         if: always()
