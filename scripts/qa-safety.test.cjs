@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { resolve } = require('node:path');
 const { qaEnvironment } = require('./qa-environment.cjs');
-const { browserEvidence, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
 const { acceptanceRuns, cleanPhaseEnvironment, cleanPhaseEvidence } = require('./qa-clean-evidence.cjs');
 const root = resolve(__dirname, '..');
@@ -30,6 +30,29 @@ test('Browser acceptance rejects empty, incomplete, failed and stale successful 
     assert.equal(browserEvidence({ status, checks: ['first'] }, 0).complete, false, `Status ${status} cannot pass`);
   }
   for (const status of ['PASS', 'passed']) assert.equal(browserEvidence({ status, checks: ['first'] }, 0).complete, true);
+});
+
+test('Browser failure diagnostics expose the exact assertion and captured browser errors without changing acceptance', () => {
+  const error = new assert.AssertionError({ actual: { syncError: null }, expected: {}, operator: 'deepStrictEqual' });
+  const result = {
+    checks: Array.from({ length: 39 }, (_, index) => `check ${index + 1}`), error: error.stack,
+    pageErrors: ['Uncaught fixture exception'], transportErrors: [{ url: '/api/proxy/fixture', error: 'net::ERR_FAILED' }],
+    errors: ['fixture error'], serverErrors: ['fixture server error'],
+  };
+  const before = JSON.stringify(result), diagnostics = JSON.parse(browserFailureDiagnostics(result, 1));
+  assert.deepEqual({ executed: diagnostics.executed, passed: diagnostics.passed, failed: diagnostics.failed }, { executed: 40, passed: 39, failed: 1 });
+  assert.equal(diagnostics.exitCode, 1);
+  assert.equal(diagnostics.error, error.stack);
+  assert.match(diagnostics.error, /syncError/);
+  for (const key of ['errors', 'pageErrors', 'transportErrors', 'serverErrors']) assert.deepEqual(diagnostics[key], result[key]);
+  assert.equal(JSON.stringify(result), before, 'Reporting preserves the original evidence');
+  assert.equal(browserEvidence(result, 1).complete, false);
+  const explicit = { checks: [{ label: 'mailbox status', passed: false }] };
+  assert.deepEqual(JSON.parse(browserFailureDiagnostics(explicit, 0)).failedChecks, explicit.checks);
+  const cleanupFailure = JSON.parse(browserFailureDiagnostics({ status: 'PASS', checks: ['assertion passed'] }, 1));
+  assert.equal(cleanupFailure.status, 'PASS');
+  assert.equal(cleanupFailure.failed, 1, 'A failing process remains visible even with a successful report');
+  assert.equal(JSON.parse(browserFailureDiagnostics(null, 1)).failed, 1);
 });
 
 test('Browser startup crashes retain failure evidence without replacing the suite report', () => {

@@ -11,6 +11,11 @@ afterEach(() => vi.unstubAllEnvs());
 const account = (expiresAt: Date) => ({ id: 'account', email: 'staff@camxian.com', isActive: true,
   accessToken: encryptToken('access'), refreshToken: encryptToken('refresh'), tokenExpiresAt: expiresAt });
 
+it.each([null, { isActive: false, syncError: null }])('preserves the empty connection-status contract without a reconnect reason', async stored => {
+  state.account.findUnique.mockResolvedValue(stored);
+  expect(await getConnectionStatus('tenant', 'staff')).toEqual({ isConnected: false, email: null, connectedAt: null, lastSyncAt: null });
+});
+
 it('uses a valid encrypted access token without refreshing or requesting consent', async () => {
   state.account.findUnique.mockResolvedValue(account(new Date(Date.now() + 3600000)));
   expect(await getValidAccessToken('tenant', 'staff')).toBe('access');
