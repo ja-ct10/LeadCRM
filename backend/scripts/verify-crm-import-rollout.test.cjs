@@ -82,22 +82,23 @@ test('UI verification compares every module history and every visible result cel
   const columns = {
     LEAD:['First Name','Last Name','Email','Phone Number','Company Name','Full Address','Product Interest'],
     CONTACT:['First Name','Last Name','Email','Phone Number','Company Name','Full Address','Product Interest'],
-    ACCOUNT:['Company Name','Product Interest','Industry','Website','Address','City'],
+    ACCOUNT:['Company Name','Product Interest','Industry','Website','Full Address','Company Size'],
   };
+  const accountData = { name: 'Acme', productInterest: 'Biometrics', industry: 'Technology', website: 'https://example.com', address: '10 Street, Manila', size: '11-50' };
   const pages=[];
   for(const job of jobs) {
     job.createdBy={firstName:'Test',lastName:'Admin'};
     const route={LEAD:'leads',CONTACT:'contacts',ACCOUNT:'accounts'}[job.module];
     pages.push({...entry(`/crm/${route}/import`),tables:[[
       ['Date','File Name','Status','Records','Failed / Duplicates','Imported By'],
-      ['Oct 4, 2026, 08:00 AM','qa.csv','Success','1 / 1','0 / 0','Test Admin'],
+      ['Oct 4, 2026, 08:00 AM','qa.csv','Succeeded','1 / 1','0 / 0','Test Admin'],
     ]]});
     pages.push({...entry(`/crm/${route}/imports/${job.id}`),text:'Import Results qa.csv 1 / 1',tables:[[
       ['Row',...columns[job.module],'Status','Remarks'],
-      ['2',...columns[job.module].map(()=> '—'),'Imported','Successfully imported'],
+      ['2',...(job.module === 'ACCOUNT' ? Object.values(accountData) : columns[job.module].map(()=> '—')),'Imported',job.module === 'ACCOUNT' ? 'Successfully importedView Account' : 'Successfully imported'],
     ]]});
   }
-  db.crmImportRowResult.findMany=async()=>[{rowNumber:2,status:'imported',data:{}}];
+  db.crmImportRowResult.findMany=async({ where })=>[{rowNumber:2,status:'imported',data:where.importJobId === 'ACCOUNT' ? accountData : {}, recordId:where.importJobId === 'ACCOUNT' ? 'account-record' : null}];
   const data=evidence(pages);
   assert.equal((await verifyBrowserImportRollout(db,base,data)).moduleChecks.length,3);
   const missing=structuredClone(data); missing.workspaces[0].pages.pop();
@@ -106,4 +107,11 @@ test('UI verification compares every module history and every visible result cel
   await assert.rejects(verifyBrowserImportRollout(db,base,wrongRow));
   const wrongCount=structuredClone(data); wrongCount.workspaces[0].pages[0].tables[0][1][3]='2 / 2';
   await assert.rejects(verifyBrowserImportRollout(db,base,wrongCount));
+  const accountPage = data.workspaces[0].pages.findIndex(page => page.url.endsWith('/imports/ACCOUNT'));
+  for (const [column, value] of [[6, '200+'], [8, 'Successfully imported'], [8, 'Wrong remarks View Account']]) {
+    const changed = structuredClone(data); changed.workspaces[0].pages[accountPage].tables[0][1][column] = value;
+    await assert.rejects(verifyBrowserImportRollout(db,base,changed));
+  }
+  const oldBadge=structuredClone(data); oldBadge.workspaces[0].pages[0].tables[0][1][2]='Success';
+  await assert.rejects(verifyBrowserImportRollout(db,base,oldBadge));
 });

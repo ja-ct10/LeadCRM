@@ -4,10 +4,11 @@ const routes = { LEAD: 'leads', CONTACT: 'contacts', ACCOUNT: 'accounts' };
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone Number', companyName: 'Company Name', address: 'Full Address', productInterest: 'Product Interest' };
 const fields = {
   LEAD: Object.entries(labels), CONTACT: Object.entries(labels),
-  ACCOUNT: [['name','Company Name'],['productInterest','Product Interest'],['industry','Industry'],['website','Website'],['address','Address'],['city','City']],
+  ACCOUNT: [['name','Company Name'],['productInterest','Product Interest'],['industry','Industry'],['website','Website'],['address','Full Address'],['size','Company Size']],
 };
+const singular = { LEAD: 'Lead', CONTACT: 'Contact', ACCOUNT: 'Account' };
 const normalize = value => String(value).replace(/\s+/g, ' ').trim();
-const badges = { completed:'Success', completed_with_errors:'Partial', failed:'Failed', pending:'In Progress', importing:'In Progress' };
+const badges = { completed:'Succeeded', completed_with_errors:'Partially Succeeded', failed:'Failed', pending:'In Progress', importing:'In Progress' };
 const date = value => new Date(value).toLocaleDateString('en-US', { timeZone:'Asia/Manila', month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit' });
 
 // Operator-collected DOM evidence is an alternative transport, not authentication
@@ -73,7 +74,14 @@ async function verifyBrowserImportRollout(db, origin, evidence) {
           const remarks = row.status === 'imported' ? 'Successfully imported' : row.remarks || '—';
           return [row.rowNumber,...fields[module].map(([key]) => data[key] || '—'),status,remarks].map(normalize);
         });
-        assert.deepEqual(actual.slice(1), expected, 'Visible row results mismatch');
+        const visibleRows = actual.slice(1).map((cells, index) => {
+          const row = rows[index];
+          if (row?.status !== 'imported' || !row.recordId) return cells;
+          const link = new RegExp(`\\s*View ${singular[module]}$`);
+          assert.match(cells.at(-1), link, 'Missing imported record link');
+          return [...cells.slice(0, -1), cells.at(-1).replace(link, '')];
+        });
+        assert.deepEqual(visibleRows, expected, 'Visible row results mismatch');
       }
       moduleChecks.push({module,jobs:jobs.length});
     }
