@@ -28,7 +28,7 @@ const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session
 const workflows = require('../dist/backend/src/modules/automation/workflows/workflows.service.js');
 const { fireWorkflowTrigger } = require('../dist/backend/src/modules/automation/workflows/workflow.engine.js');
 let api, frontend, browser, page, closing = false, contactsGate, optionsGate, failContacts = false, failOptions = false;
-let contactRequests = 0;
+let heldContactRequests = 0;
 const checks = [], pageErrors = [], transportErrors = [];
 const record = label => { checks.push(label); console.log('PASS', label); };
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
@@ -77,9 +77,16 @@ try {
     const localUrl = apiBase + path + url.search, headers = { ...request.headers(), authorization: `Bearer ${token}` };
     if (path.endsWith('/events') || path === '/crm/record-events') return route.continue({ url: localUrl, headers });
     if (path === '/crm/contacts' && request.method() === 'GET' && url.searchParams.get('search') === 'Polish') {
-      contactRequests++;
-      if (contactsGate) await contactsGate.promise;
-      if (failContacts) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Acceptance: contacts unavailable' } }) });
+      // SSE/polling may start between the ready check and the click. Only hold
+      // a response once the page has entered its actual manual-refresh state;
+      // background reads must finish so they cannot disable the pending click.
+      const gate = contactsGate;
+      if (gate && await page.evaluate(() => document.querySelector('[aria-label="Contacts table area"]')?.getAttribute('aria-busy') === 'true')) {
+        heldContactRequests++;
+        const failResponse = failContacts;
+        await gate.promise;
+        if (failResponse) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Acceptance: contacts unavailable' } }) });
+      }
     }
     if (path === '/automation/workflow-options') {
       if (optionsGate) await optionsGate.promise;
@@ -300,11 +307,24 @@ try {
   await page.getByText('Page 2 of 2', { exact: true }).waitFor();
   let original = await contactsGrid.textContent();
   for (const failure of [false, true]) {
-    // A committed Contact also triggers the normal SSE reconciliation. Let that
-    // read finish before reserving the next deliberately held manual response.
+    // Background reconciliation stays live. Its reads are never held by the
+    // manual-response gate, including a read that races this ready check.
     await page.waitForFunction(() => { const button = document.querySelector('button[aria-label="Refresh"]'); return button && !button.disabled; });
-    const beforeRequests = contactRequests;
+    const beforeRequests = heldContactRequests;
     contactsGate = deferred(); failContacts = failure;
+    if (failure) {
+      // Reproduce the CI race deterministically: reserve the manual response,
+      // then trigger a real background reconciliation before clicking Refresh.
+      const backgroundResponse = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/proxy/crm/contacts' && url.searchParams.get('search') === 'Polish' && response.request().method() === 'GET';
+      });
+      await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Background', lastName: 'Reconciliation', status: 'WARM', assignedUserId: admin.id } });
+      assert.equal((await backgroundResponse).status(), 200);
+      await page.waitForFunction(() => { const button = document.querySelector('button[aria-label="Refresh"]'); return button && !button.disabled; });
+      assert.equal(heldContactRequests, beforeRequests);
+      record('Contacts background reconciliation completes while a manual response is reserved');
+    }
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
     await contactsSpinner.waitFor();
     assert.equal(await contactsGrid.textContent(), original);
@@ -322,7 +342,7 @@ try {
     assert.equal(new URL(page.url()).searchParams.get('tab'), 'my');
     assert.equal(await page.getByRole('button', { name: 'Refresh', exact: true }).isDisabled(), true);
     await page.getByRole('button', { name: 'Refresh', exact: true }).evaluate(button => { button.click(); button.click(); });
-    assert.equal(contactRequests, beforeRequests + 1);
+    assert.equal(heldContactRequests, beforeRequests + 1);
     // Later SSE invalidations are independently governed reconciliation, not
     // duplicate manual clicks. Cross-session behavior has its own record suite.
     await responsive(failure ? 'contacts-refresh-failure' : 'contacts-refresh', contactsArea);
@@ -338,9 +358,11 @@ try {
       await page.getByText('Acceptance: contacts unavailable', { exact: true }).waitFor();
     }
     else {
+      // Completion of the refresh promise can precede React's data render,
+      // especially when the Contact write also invalidates the active request.
+      await page.getByText('31 total records', { exact: true }).waitFor();
       assert.notEqual(await contactsGrid.textContent(), original);
       assert.equal(await contactsGrid.getByRole('row').count(), 7); // Header plus six rows on page two.
-      await page.getByText('31 total records', { exact: true }).waitFor();
       original = await contactsGrid.textContent();
     }
     await page.getByText('Page 2 of 2', { exact: true }).waitFor();
