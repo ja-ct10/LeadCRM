@@ -1,4 +1,5 @@
 import type { CampaignStatus, Prisma } from '@prisma/client';
+import { enqueueSmsCampaignOutcomes } from './sms-campaign-outcomes';
 
 type RecipientEvidence = {
   status: string;
@@ -15,7 +16,7 @@ export function recipientDeliveryFailed(recipient: RecipientEvidence) {
 }
 
 export function deriveCampaignDeliveryStatus(
-  campaign: { status: CampaignStatus; recipientCount: number },
+  campaign: { status: CampaignStatus; recipientCount: number; type?: string },
   recipients: RecipientEvidence[],
 ): CampaignStatus {
   // Preparation changes DRAFT to SENDING and freezes recipientCount atomically.
@@ -27,9 +28,12 @@ export function deriveCampaignDeliveryStatus(
   const successful = eligible.filter(row => !recipientDeliveryFailed(row) && (row.sentAt || row.deliveredAt)).length;
   const delivered = eligible.filter(row => !recipientDeliveryFailed(row) && row.deliveredAt).length;
   if (delivered === campaign.recipientCount && failed === 0) return 'DELIVERED';
-  if (successful > 0 && failed > 0) return 'PARTIALLY_SENT';
+  const uncertain = campaign.type === 'SMS' && eligible.some(row => !row.sentAt && !row.deliveredAt
+    && (row.status === 'unknown' || ['TEXTBEE_UNKNOWN_STATE', 'PROVIDER_SUBMISSION_UNCONFIRMED'].includes(row.failureReason ?? '')));
+  if (successful > 0 && failed > 0 && (!campaign.type || campaign.type !== 'SMS' || (!uncertain && successful + failed === campaign.recipientCount))) return 'PARTIALLY_SENT';
   if (failed === campaign.recipientCount) return 'FAILED';
-  if (successful === campaign.recipientCount && failed === 0) return 'SENT';
+  if (successful === campaign.recipientCount && failed === 0 && !uncertain) return 'SENT';
+  if (campaign.type === 'SMS' && campaign.status === 'PARTIALLY_SENT') return 'SENDING';
   // Submitted/pending recipients cannot be presented as sent. Legacy records
   // without conclusive evidence retain their original state.
   return campaign.status;
@@ -73,5 +77,6 @@ export async function recalculateCampaignDelivery(tx: Prisma.TransactionClient, 
     deliveryRate: submitted ? delivered / submitted * 100 : 0,
     bounceRate: submitted ? bounced / submitted * 100 : 0,
   } });
+  await enqueueSmsCampaignOutcomes(tx, updated, rows);
   return updated;
 }

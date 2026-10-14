@@ -1,0 +1,63 @@
+import prisma from '../../../config/database.config';
+import { tenantContext } from '../../../core/tenant/tenant-context';
+import { getSmsBatch, isSmsConfigured } from '../../../shared/services/sms.service';
+import { applyTextBeeEvidence } from './textbee-webhook';
+
+const DAY = 86400000;
+const delays = [5, 15, 60];
+export async function reconcileSmsStatuses(now = new Date()) {
+  if (!isSmsConfigured()) return 0;
+  // Discovery contains no customer content; all claims/writes then enter tenant scope.
+  const due = await prisma.campaignContact.findMany({ where: {
+    messageId: { not: null }, submittedAt: { gte: new Date(+now - 30 * DAY) },
+    deliveredAt: null, status: { notIn: ['failed', 'excluded'] }, nextSmsCheckAt: { lte: now },
+    campaign: { type: 'SMS' },
+  }, orderBy: [{ nextSmsCheckAt: 'asc' }, { id: 'asc' }], take: 10,
+  select: { id: true, tenantId: true, campaignId: true, messageId: true, phone: true, providerUpdatedAt: true, nextSmsCheckAt: true, smsCheckAttempts: true,
+    campaign: { select: { smsDeviceId: true } } } });
+  let checked = 0;
+  for (const row of due) await tenantContext.run({ tenantId: row.tenantId }, async () => {
+    // Reserve the next check before HTTP. Concurrent workers and restarts do not
+    // hammer the provider; a failed lookup can never trigger a send.
+    const claimed = await prisma.$transaction(async tx => {
+      await tx.campaign.update({ where: { id: row.campaignId, tenantId: row.tenantId }, data: { engagement: { increment: 0 } } });
+      return tx.campaignContact.updateMany({ where: { id: row.id, tenantId: row.tenantId, nextSmsCheckAt: row.nextSmsCheckAt,
+        deliveredAt: null, status: { notIn: ['failed', 'excluded'] } }, data: {
+        nextSmsCheckAt: new Date(+now + delays[Math.min(row.smsCheckAttempts, delays.length - 1)] * 60000), smsCheckAttempts: { increment: 1 },
+      } });
+    });
+    if (!claimed.count) return;
+    const deviceId = row.campaign.smsDeviceId ?? process.env.TEXTBEE_DEVICE_ID?.trim();
+    if (!deviceId || !row.messageId || !row.phone) return;
+    try {
+      const result = await getSmsBatch(deviceId, row.messageId);
+      const message = result.messages[0];
+      if (result.batch._id !== row.messageId || result.batch.recipientCount !== 1 || result.messages.length !== 1
+        || !message || message.recipient !== row.phone || message.device._id !== deviceId
+        || (message.smsBatch && message.smsBatch !== row.messageId)) throw new Error('SMS_IDENTITY_MISMATCH');
+      checked++;
+      const sentAt = message.sentAt ? new Date(message.sentAt) : undefined;
+      const deliveredAt = message.deliveredAt ? new Date(message.deliveredAt) : undefined;
+      const failedAt = message.failedAt ? new Date(message.failedAt) : undefined;
+      if ((message.status === 'sent' && !sentAt) || (message.status === 'delivered' && (!sentAt || !deliveredAt)) || (message.status === 'failed' && !failedAt)) return;
+      if (['sent', 'delivered', 'failed', 'unknown', 'delivery_failed'].includes(message.status)) {
+        await applyTextBeeEvidence({ smsId: message._id, smsBatchId: row.messageId, deviceId, recipient: row.phone,
+          status: message.status === 'delivery_failed' ? 'unknown' : message.status, sentAt, deliveredAt, failedAt }, undefined, row.providerUpdatedAt);
+      }
+      console.info('[Campaigns]', { event: 'sms_status_lookup', campaignId: row.campaignId, recipientId: row.id, status: message.status,
+        requestedAt: message.requestedAt, dispatchedAt: message.dispatchedAt, pushReceivedAt: message.pushReceivedAt,
+        sendAttemptedAt: message.sendAttemptedAt, sentAt: message.sentAt, deliveredAt: message.deliveredAt });
+    } catch { console.warn('[Campaigns] SMS status verification deferred; no message was resent.', { campaignId: row.campaignId, recipientId: row.id }); }
+  });
+  return checked;
+}
+
+export function startSmsStatusReconciliation() {
+  let running: Promise<unknown> | undefined;
+  const run = () => {
+    if (!running) running = reconcileSmsStatuses().catch(() => console.warn('[Campaigns] SMS verification unavailable.')).finally(() => { running = undefined; });
+  };
+  // Starting after one minute also limits calls across frequent deployments.
+  const timer = setInterval(run, 60000); timer.unref();
+  return async () => { clearInterval(timer); await running; };
+}

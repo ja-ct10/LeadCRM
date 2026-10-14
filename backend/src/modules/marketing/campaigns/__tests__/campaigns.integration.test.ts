@@ -11,7 +11,8 @@ vi.hoisted(() => {
   }
 });
 vi.mock('../../../../shared/services/email.service', async importOriginal => ({ ...await importOriginal<object>(), sendMail: vi.fn() }));
-vi.mock('../../../../shared/services/sms.service', async importOriginal => ({ ...await importOriginal<object>(), sendSms: vi.fn() }));
+vi.mock('../../../../shared/services/sms.service', async importOriginal => ({ ...await importOriginal<object>(), sendSms: vi.fn(), getSmsDeviceId: vi.fn(async () => 'device-fixture') }));
+vi.mock('../../../notifications/notification-events.service', async importOriginal => ({ ...await importOriginal<object>(), requestNotificationDispatch: vi.fn() }));
 // This suite exercises multiple authorized/invalid sends from one loopback IP.
 // Keep the middleware active with a test traffic budget; product limits stay unchanged.
 vi.mock('express-rate-limit', async importOriginal => {
@@ -520,7 +521,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'SMS send', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}, your proposal is ready.' }));
     const sends = await Promise.allSettled([scoped(() => sendCampaign(campaign.id, tenantId, userId)), scoped(() => sendCampaign(campaign.id, tenantId, userId))]);
     expect(sends.filter(r => r.status === 'fulfilled')).toHaveLength(1); expect(sendSms).toHaveBeenCalledOnce();
-    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.']);
+    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.', { deviceId: 'device-fixture' }]);
     const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: person.id } });
     expect(row).toMatchObject({ email: null, phone: '+639171234567', status: 'submitted', sentAt: null, submittedAt: expect.any(Date), messageId: expect.stringContaining('msg_') });
     expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id } })).toBe(0);
@@ -960,7 +961,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
         await vi.waitFor(async () => expect((await getCampaignById(campaign.id, tenantId)).submissionFinishedAt).not.toBeNull(), { timeout: 10000 });
       } finally { await stop(); }
       expect(sendSms).toHaveBeenCalledOnce();
-      expect(vi.mocked(sendSms).mock.calls[0]).toEqual([phone, expect.stringContaining('Hello Startup')]);
+      expect(vi.mocked(sendSms).mock.calls[0]).toEqual([phone, expect.stringContaining('Hello Startup'), { deviceId: 'device-fixture' }]);
       expect(await dispatchDueCampaigns()).toBe(0);
       expect(sendMail).not.toHaveBeenCalled();
     });
@@ -1205,14 +1206,14 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect((await request('/marketing/campaigns/sms-settings')).body.data).toEqual({ organizationName: 'Configured Organization', organizationEmail: 'contact@example.test' });
       const sms = await createCampaign(tenantId, userId, { name: randomUUID(), type: 'SMS', targetAudienceId: audience.id, body: '{{sender_name}} {{sender_email}}' });
       await sendCampaign(sms.id, tenantId, userId);
-      expect(sendSms).toHaveBeenLastCalledWith(lead.phone, expect.stringContaining('Configured Organization contact@example.test'));
+      expect(sendSms).toHaveBeenLastCalledWith(lead.phone, expect.stringContaining('Configured Organization contact@example.test'), { deviceId: 'device-fixture' });
       const smsSnapshot = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: sms.id } });
       const futureSms = await createCampaign(tenantId, userId, { name: randomUUID(), type: 'SMS', targetAudienceId: audience.id, body: '{{sender_name}} {{sender_email}}' });
       await scheduleCampaign(futureSms.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() });
       await prisma.tenant.update({ where: { id: tenantId }, data: { name: 'Changed Organization', email: 'changed-contact@example.test' } });
       await prisma.campaign.update({ where: { id: futureSms.id }, data: { scheduledFor: new Date(Date.now() - 1000) } });
       await dispatchDueCampaigns();
-      await vi.waitFor(() => expect(sendSms).toHaveBeenLastCalledWith(lead.phone, expect.stringContaining('Changed Organization changed-contact@example.test')), { timeout: 10000 });
+      await vi.waitFor(() => expect(sendSms).toHaveBeenLastCalledWith(lead.phone, expect.stringContaining('Changed Organization changed-contact@example.test'), { deviceId: 'device-fixture' }), { timeout: 10000 });
       expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: smsSnapshot.id } })).personalization).toEqual(smsSnapshot.personalization);
       await prisma.tenant.update({ where: { id: tenantId }, data: { name: 'Changed Organization', email: null } });
       const missing = await createCampaign(tenantId, userId, { name: randomUUID(), type: 'SMS', targetAudienceId: audience.id, body: '{{sender_email}}' });

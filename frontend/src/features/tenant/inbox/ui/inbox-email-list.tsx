@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Mail, Trash2, Archive, Loader2, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { mailboxDate } from '../services/email-presentation';
+import { mailboxDate, conversationNames } from '../services/email-presentation';
 import { trashGmailConversations, archiveGmailConversations, GmailEmail } from '../services/gmail.service';
 
 interface InboxEmailListProps {
   emails: GmailEmail[];
+  mailboxEmail?: string;
   onEmailsChanged: () => void | Promise<void>;
   refreshDisabled?: boolean;
   loading?: boolean;
@@ -22,15 +23,10 @@ interface InboxEmailListProps {
 
 
 
-function extractName(from: string): string {
-  const match = from.match(/^(.+?)\s*<.+>$/);
-  return match ? match[1].trim() : from.split('@')[0];
-}
-
 const rowId = (email: GmailEmail) => email.conversationId ?? (email.messageCount ? email.threadId : email.id);
 const eligible = (email: GmailEmail) => !email.scheduledStatus && !email.labels.includes('DRAFT');
 
-export default function InboxEmailList({ emails, onEmailsChanged, refreshDisabled = false, loading = false, hasLoadError = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
+export default function InboxEmailList({ emails, mailboxEmail, onEmailsChanged, refreshDisabled = false, loading = false, hasLoadError = false, totalCount, onEmailClick, currentPage = 1, hasNextPage = false, onNextPage, onPrevPage }: InboxEmailListProps): React.ReactElement {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
   const [isArchiving, setIsArchiving] = useState(false);
@@ -210,6 +206,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
         )}
         {emails.map((email) => {
           const isSelected = selectedIds.has(rowId(email));
+          const names = conversationNames(email, mailboxEmail);
           return (
             <div
               key={rowId(email)}
@@ -229,7 +226,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                   disabled={!eligible(email) || refreshDisabled || busy}
                   onChange={() => toggleSelect(rowId(email))}
                   className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-primary focus:ring-primary focus:ring-offset-0 cursor-pointer"
-                  aria-label={`Select email from ${extractName(email.from)}`}
+                  aria-label={`Select email from ${names}`}
                 />
               </div>
 
@@ -237,7 +234,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
               <button
                 onClick={() => onEmailClick(email)}
                 className="flex-1 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-y-1 min-w-0 text-left cursor-pointer py-0.5 md:flex"
-                aria-label={email.scheduledStatus ? `Review scheduled email: ${email.subject}` : `Open email from ${extractName(email.from)}: ${email.subject}`}
+                aria-label={email.scheduledStatus ? `Review scheduled email: ${email.subject}` : `Open email from ${names}: ${email.subject}`}
               >
                 {/* Sender */}
                 <span
@@ -248,7 +245,7 @@ export default function InboxEmailList({ emails, onEmailsChanged, refreshDisable
                       : 'font-normal text-slate-700 dark:text-slate-400',
                   )}
                 >
-                  <span className="min-w-0 truncate">{email.participants?.length ? email.participants.join(', ') : email.direction === 'outbound' ? `You → ${extractName(email.to[0] ?? '')}` : extractName(email.from)}</span>{(email.messageCount ?? 0) > 0 && <span className="ml-1 shrink-0" aria-label={`${email.messageCount} messages`}>({email.messageCount})</span>}
+                  <span className="min-w-0 truncate">{names}</span>{(email.messageCount ?? 0) > 0 && <span className="ml-1 shrink-0" aria-label={`${email.messageCount} messages`}>({email.messageCount})</span>}
                 </span>
 
                 {/* Subject + Snippet */}

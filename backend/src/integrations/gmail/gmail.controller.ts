@@ -1,7 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { SendMailboxEmailSchema, SaveMailboxDraftSchema, MailboxListSchema, ScheduleMailboxEmailSchema, MailboxReadStateSchema, MailboxBulkActionSchema, MailboxConversationIdSchema } from '@leadcrm/shared';
-import { mutateMailboxThread, mutateMailboxThreads, mutateMailboxCorrespondents, mutateMailboxMessages } from './mailbox-thread-actions';
+import { mutateMailboxThread, mutateMailboxThreads, mutateMailboxCorrespondents, mutateMailboxMessages, mutateMailboxConversationReadState } from './mailbox-thread-actions';
 import { readMailboxCorrespondent } from './mailbox-correspondents.service';
 import { sendMailboxEmail, saveMailboxDraft, deleteMailboxDraft } from './mailbox-send.service';
 import { scheduleMailboxEmail, getScheduledMailboxEmail, cancelScheduledMailboxEmail } from './scheduled-mailbox.service';
@@ -69,6 +69,10 @@ export async function correspondent(req: Request, res: Response, next: NextFunct
 }
 export async function messageReadState(req: Request, res: Response, next: NextFunction) {
   try { const { isRead } = MailboxReadStateSchema.parse(req.body); res.json(await mutateMailboxMessages(req.user!.tenantId, req.user!.userId, [providerId.parse(req.params.messageId)], isRead ? 'read' : 'unread')); } catch (error) { next(error); }
+}
+export async function conversationReadState(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await mutateMailboxConversationReadState(req.user!.tenantId, req.user!.userId, MailboxConversationIdSchema.parse(req.params.conversationId), req.body)); }
+  catch (error) { next(error); }
 }
 export async function attachment(req: Request, res: Response, next: NextFunction) {
   try {

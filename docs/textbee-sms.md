@@ -12,7 +12,7 @@ proof of handset delivery.
 Set backend-only `TEXTBEE_API_KEY`, optional `TEXTBEE_DEVICE_ID` (otherwise the
 TextBee default device), and `TEXTBEE_WEBHOOK_SECRET`. Empty placeholders live in
 `backend/.env.example`; actual values belong in ignored `backend/.env` and the
-Render backend environment. Never put them in public frontend variables.
+Coolify backend environment. Never put them in public frontend variables.
 
 Keep the Android gateway enabled, online, permitted to send SMS, and equipped
 with an active SIM. Provider account/plan and carrier limits still apply.
@@ -53,17 +53,39 @@ their existing execution steps.
 
 Webhook authentication is HMAC-SHA256 of the exact raw request bytes, compared
 in constant time against `X-Signature`. Delivery updates require matching batch,
-recipient and configured device. The additive
+recipient, provider message and the device frozen for that submission. The additive
 `20261107000000_textbee_webhook_receipts` migration stores provider idempotency
 keys with a composite tenant/recipient foreign key. Repeated events do not
 inflate counts, and final delivered/failed states never regress. A callback
 arriving before the submission receipt gets a retryable 503.
 
 Reports distinguish submitted, sent, delivered, failed and pending.
-`UNKNOWN_STATE` retains any confirmed sent fact internally while displaying a
-neutral Pending recipient label until a later confirmation. SMS never fabricates opened/clicked activity. Webhook
+`UNKNOWN_STATE` retains verified Sent evidence in the campaign, recipient report
+and summary. Without Sent evidence it remains Pending/unconfirmed. SMS never fabricates opened/clicked activity. Webhook
 metrics are recomputed from persisted recipients. Existing Email history remains
 intact. Historical UniSMS callbacks are no longer processed after the switch.
+
+The forward `20261205000000_sms_campaign_outcomes` migration adds the frozen
+device/sender and bounded verification schedule. It preserves existing receipts
+and notification history. Verified outcomes produce durable notifications for
+eligible creator/sender recipients through the existing notification outbox and
+deletion-safe delivery ledger. Submitted is an immediate info toast; Sent,
+Delivered, Failed, partial failure and unconfirmed outcomes have separate
+deduplicated toasts while the application is open. Refresh does not replay old
+completion toasts. General notification preferences and current access apply.
+
+The shared notification watcher polls every 2.5 seconds only for relevant SMS
+activity within five minutes of submission, then every 30 seconds. It shares
+requests across consumers, pauses while hidden and backs off on errors. SMS
+reports use the same bounded fast window and refresh on new outcome notices.
+
+Accepted batches with no final report can be checked through the read-only
+TextBee batch endpoint. At most ten due recipients are claimed each minute;
+subsequent checks back off to 5, 15 and 60 minutes and expire after 30 days.
+Identity checks and campaign locks protect concurrent callbacks. No lookup sends
+or resends a message. Missing delivery reports leave verified Sent unchanged.
+SMS submissions use a rolling pool of at most five HTTP calls; the 15-second
+timeout and durable submission intent/receipt safeguards remain in place.
 
 ## Validation and controlled release check
 
@@ -71,7 +93,12 @@ Run SMS service tests, disposable campaign tests, Workflow SMS integration tests
 campaign composer/report tests, Prisma validate/generate, shared/backend/frontend
 typechecks, both builds, rollout tests and `git diff --check`.
 
-Deploy the same verified commit and additive migration to Render, then verify
+Validate the forward migration and native PostgreSQL SMS regression suites with
+`node backend/scripts/test-sms-tracking-postgres.mjs` (set `POSTGRES_TEST_BIN` to
+the local PostgreSQL bin directory where required).
+
+Only with separate approval, deploy the verified commit and additive migration
+through Coolify, then verify
 the serving commit through the frontend proxy. Use only an approved isolated
 test recipient for one SMS. Confirm its provider batch, signed status callbacks,
 persisted recipient status and actual receipt. Ask the recipient to verify the

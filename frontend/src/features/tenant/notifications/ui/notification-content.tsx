@@ -11,6 +11,7 @@ function notificationIcon(type: string) {
     case 'new_leads': case 'website_lead': case 'lead_assigned': case 'contact_assigned': case 'account_assigned': case 'deal_assigned': case 'task_assigned': case 'user_created': case 'user_status_changed':
     case 'role_created': case 'role_archived': case 'role_permissions_changed': case 'user_role_changed': return Users;
     case 'listing_expiring': case 'task_due': case 'task_overdue': return Clock;
+    case 'sms_campaign_failed': case 'sms_campaign_partial': case 'sms_campaign_unconfirmed': case 'sms_campaign_progress':
     case 'approval_pending': case 'workflow_failed': case 'campaign_failed': case 'form_processing_failed':
     case 'mailbox_disconnected': case 'mailbox_sync_failed': case 'closing_requirements_needed': return AlertCircle;
     case 'customer_hot': case 'customer_cold': case 'customer_cancelled': case 'deal_won': case 'deal_lost': case 'deal_progressed': case 'closing_requirements_completed': return TrendingUp;

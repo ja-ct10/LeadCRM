@@ -4,6 +4,21 @@ import { safeMailboxHtml } from './email-html';
 import type { MailboxComposeMode } from '@leadcrm/shared';
 
 export const emailAddress = (value: string) => (value.match(/<([^<>]+)>/)?.[1] ?? value).trim();
+
+/** Summary participants are external-only. Legacy/draft rows use exact addresses. */
+export function conversationNames(email: GmailEmail, mailbox?: string): string {
+  if (email.conversationId && email.participants?.length) return email.participants.join(', ');
+  const owner = mailbox ? emailAddress(mailbox).toLowerCase() : undefined;
+  const names = new Map<string, string>();
+  const people = email.direction === 'outbound' ? [...email.to, ...(email.cc ?? [])] : [email.from, ...email.to, ...(email.cc ?? [])];
+  for (const value of people) {
+    const address = emailAddress(value).toLowerCase();
+    if (!address || address === owner || !address.includes('@')) continue;
+    const name = value.match(/^(.+?)\s*<[^<>]+>$/)?.[1]?.replace(/^"|"$/g, '').trim();
+    if (!names.has(address) || name) names.set(address, name || address.split('@')[0] || address);
+  }
+  return [...names.values()].join(', ') || '(no external recipient)';
+}
 export const senderName = (value: string) => (value.match(/^(.+?)\s*<[^<>]+>$/)?.[1] ?? value.split('@')[0]).replace(/^"|"$/g, '').trim();
 export function mailboxDate(value: string, full = false, now = new Date()): string {
   const date = new Date(value);

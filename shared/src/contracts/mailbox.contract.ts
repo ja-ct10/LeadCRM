@@ -110,6 +110,16 @@ export interface ScheduledMailboxEmailDetail {
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export const MailboxConversationIdSchema = z.string().regex(/^c_[a-f0-9]{32}$/);
+export const MailboxConversationReadStateSchema = MailboxReadStateSchema.extend({
+  pageToken: z.string().max(2000).optional(),
+}).strict();
+export interface MailboxConversationReadState {
+  count: number;
+  completedMessageIds: string[];
+  nextPageToken?: string;
+  isRead: boolean;
+  unreadCount: number;
+}
 export const MailboxConversationPageSchema = z.object({
   maxResults: z.coerce.number().int().min(1).max(50).default(50),
   pageToken: z.string().max(2000).optional(),

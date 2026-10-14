@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { NotificationEvent } from '@prisma/client';
-import { NotificationTypes, type NotificationType } from '@leadcrm/shared';
+import { NotificationTypes, SmsCampaignNotificationTypes, type SmsCampaignSummary, type NotificationType } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
 import { activeAdminWhere } from './notification-access';
@@ -13,6 +13,7 @@ type Event = Omit<CreateNotificationParams, 'userId'> & { ownerId?: string | nul
 export async function deliverEvent({ ownerId, actorId, admins, ...event }: Event) {
   const recipients = new Set<string>(staffNotifications.has(event.type) && ownerId
     && !(assignmentNotifications.has(event.type) && ownerId === actorId) ? [ownerId] : []);
+  if (actorId && SmsCampaignNotificationTypes.includes(event.type as typeof SmsCampaignNotificationTypes[number])) recipients.add(actorId);
   if (admins && adminNotifications.has(event.type)) {
     const users = await prisma.user.findMany({ where: activeAdminWhere(event.tenantId), select: { id: true } });
     users.forEach(user => recipients.add(user.id));
@@ -21,6 +22,9 @@ export async function deliverEvent({ ownerId, actorId, admins, ...event }: Event
 }
 
 const titles: Record<NotificationType, string> = {
+  sms_campaign_sent: 'SMS Campaign Sent', sms_campaign_delivered: 'SMS Campaign Delivered',
+  sms_campaign_failed: 'SMS Campaign Failed', sms_campaign_partial: 'SMS Campaign Partially Completed',
+  sms_campaign_unconfirmed: 'SMS Campaign Pending Verification', sms_campaign_progress: 'SMS Campaign Delivery Update',
   lead_assigned: 'Lead Assigned to You', contact_assigned: 'Contact Assigned to You', account_assigned: 'Account Assigned to You',
   deal_assigned: 'Deal Assigned to You', task_assigned: 'New Task Assigned', customer_hot: 'Customer Became Hot',
   customer_cold: 'Customer became Cold', customer_cancelled: 'Customer became Cancelled', deal_progressed: 'Deal progressed',
@@ -34,7 +38,7 @@ const titles: Record<NotificationType, string> = {
   role_permissions_changed: 'Role Permissions Updated', user_role_changed: 'User Role Updated',
 };
 
-type Facts = { version?: number; incidentId?: string; stage?: string; status?: string; name?: string;
+type Facts = { version?: number; incidentId?: string; stage?: string; status?: string; name?: string; counts?: SmsCampaignSummary;
   assignedName?: string; value?: number; currency?: string; before?: unknown; after?: unknown; hasAccess?: boolean };
 const safeName = (value: unknown, fallback: string) => typeof value === 'string' && value.trim()
   ? value.replace(/<[^>]*>/g, '').replace(/[\u0000-\u001f\u007f]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 160) || fallback : fallback;
@@ -63,7 +67,15 @@ async function presentation(event: NotificationEvent, facts: Facts) {
   }
   const name = safeName(facts.name ?? stored.name, event.entityType === 'Lead' || event.entityType === 'Contact' ? 'A customer' : `The ${event.entityType.toLowerCase()}`);
   let title = titles[type], body = 'Open the related record for details.';
-  if (assignmentNotifications.has(type)) body = `${name} has been assigned to you.`;
+  if (type.startsWith('sms_campaign_') && facts.counts) {
+    const c = facts.counts;
+    if (type === 'sms_campaign_sent') body = `SMS campaign sent successfully. ${c.sent + c.delivered} of ${c.total} messages sent.`;
+    else if (type === 'sms_campaign_delivered') body = `SMS campaign delivered successfully. ${c.delivered} of ${c.total} messages delivered.`;
+    else if (type === 'sms_campaign_failed') body = `SMS campaign failed to send. ${c.failed} of ${c.total} messages failed.`;
+    else if (type === 'sms_campaign_partial') body = `SMS campaign partially completed. Some messages failed. ${c.sent + c.delivered} of ${c.total} sent; ${c.failed} failed.`;
+    else if (type === 'sms_campaign_progress') body = `SMS campaign update: ${c.failed} of ${c.total} messages failed; ${c.total - c.failed - c.sent - c.delivered} awaiting confirmation.`;
+    else body = `SMS campaign status is pending verification. ${c.unconfirmed} of ${c.total} messages require review. Verified Sent messages are retained; uncertain messages are not resent.`;
+  } else if (assignmentNotifications.has(type)) body = `${name} has been assigned to you.`;
   else if (type === 'website_lead') body = `${name} submitted a new inquiry.${facts.assignedName ? ` Assigned to ${safeName(facts.assignedName, 'an agent')}.` : ''}`;
   else if (['customer_hot', 'customer_cold', 'customer_cancelled'].includes(type)) {
     const status = type.slice('customer_'.length); const label = status[0].toUpperCase() + status.slice(1);
@@ -133,10 +145,16 @@ export async function dispatchTenantNotifications(tenantId: string, now = new Da
   if (scope && scope.tenantId !== tenantId) throw new Error('NOTIFICATION_TENANT_MISMATCH');
   const events = await tenantContext.exit(async () => await prisma.$queryRaw<NotificationEvent[]>`
     WITH pending AS (
-      SELECT id FROM "NotificationEvent"
-      WHERE "tenantId"=${tenantId} AND "processedAt" IS NULL AND "availableAt"<=${utcNow}::timestamp
-        AND ("leaseUntil" IS NULL OR "leaseUntil"<=${utcNow}::timestamp)
-      ORDER BY "availableAt",id FOR UPDATE SKIP LOCKED LIMIT ${limit}
+      SELECT e.id FROM "NotificationEvent" e
+      WHERE e."tenantId"=${tenantId} AND e."processedAt" IS NULL AND e."availableAt"<=${utcNow}::timestamp
+        AND (e."leaseUntil" IS NULL OR e."leaseUntil"<=${utcNow}::timestamp)
+        AND (e.type NOT LIKE 'sms_campaign_%' OR NOT EXISTS (
+          SELECT 1 FROM "NotificationEvent" earlier WHERE earlier."tenantId"=e."tenantId"
+            AND earlier."entityId"=e."entityId" AND earlier.type LIKE 'sms_campaign_%'
+            AND earlier."processedAt" IS NULL
+            AND (earlier.payload->>'sequence')::int < (e.payload->>'sequence')::int
+        ))
+      ORDER BY e."availableAt",e.id FOR UPDATE OF e SKIP LOCKED LIMIT ${limit}
     )
     UPDATE "NotificationEvent" e SET "leaseToken"=${leaseToken}, "leaseUntil"=${utcLeaseUntil}::timestamp, attempts=attempts+1
     FROM pending WHERE e.id=pending.id RETURNING e.*`);
@@ -158,6 +176,24 @@ export async function dispatchTenantNotifications(tenantId: string, now = new Da
     }
   }
   return { claimed: events.length, processed, failed };
+}
+
+const dispatching = new Map<string, Promise<void>>();
+const dispatchRequested = new Set<string>();
+/** Low-latency wake-up; the durable scheduler remains responsible after crashes. */
+export function requestNotificationDispatch(tenantId: string) {
+  if (process.env.NOTIFICATION_WORKER_ENABLED === 'false') return;
+  dispatchRequested.add(tenantId);
+  if (dispatching.has(tenantId)) return;
+  const work = tenantContext.run({ tenantId }, async () => {
+    dispatchRequested.delete(tenantId);
+    for (let batch = 0; batch < 8; batch++) {
+      const result = await dispatchTenantNotifications(tenantId);
+      if (!result.claimed || result.failed) break;
+    }
+  }).catch(() => { console.warn('[Notifications] Immediate dispatch deferred to durable worker', { tenantId }); })
+    .finally(() => { dispatching.delete(tenantId); if (dispatchRequested.has(tenantId)) requestNotificationDispatch(tenantId); });
+  dispatching.set(tenantId, work);
 }
 
 // Compatibility entrypoint: reminders now live in the same durable queue.

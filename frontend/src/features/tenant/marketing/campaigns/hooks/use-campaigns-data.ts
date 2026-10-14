@@ -25,6 +25,7 @@ export function useCampaignsData(options?: { disabled?: boolean; intervalMs?: nu
     params: { canViewReports, ...options?.query, limit: options?.query?.limit ?? 25 },
     intervalMs: options?.intervalMs ?? 7500,
     pauseWhenHidden: true,
+    revalidateOnInvalidation: true,
     disabled: options?.disabled ?? false,
     fetchFn: async () => {
       const [campaigns, templates, metrics] = await Promise.all([

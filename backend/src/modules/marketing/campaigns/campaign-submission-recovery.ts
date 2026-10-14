@@ -2,6 +2,7 @@ import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { recalculateCampaignDelivery } from './campaign-delivery-status';
+import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 
 export const CAMPAIGN_LEASE_MS = 120_000;
 
@@ -33,6 +34,7 @@ export async function interruptCampaignSubmission(id: string, tenantId: string, 
       if (campaign.status === 'SENDING') await tx.campaign.update({ where: { id, tenantId }, data: { status: 'INTERRUPTED' } });
       return { unsent: unsent.length, uncertain: uncertain.length, userId: campaign.createdById };
     });
+    if (interrupted) requestNotificationDispatch(tenantId);
     if (interrupted?.userId) await writeAuditLog({ tenantId, userId: interrupted.userId, action: 'campaign.delivery_interrupted', entityType: 'Campaign', entityId: id, severity: 'WARNING', metadata: { source: 'submission-recovery' }, after: { unsent: interrupted.unsent, uncertain: interrupted.uncertain } });
     else if (interrupted) console.warn('[Campaigns] Historical campaign has no creator for audit attribution; interruption is preserved on the campaign.', { campaignId: id });
     return interrupted;

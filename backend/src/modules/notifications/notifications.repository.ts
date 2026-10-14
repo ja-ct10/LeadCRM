@@ -1,9 +1,10 @@
 import prisma from '../../config/database.config';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { NotificationQuerySchema } from '@leadcrm/shared';
+import { NotificationQuerySchema, SmsCampaignNotificationTypes } from '@leadcrm/shared';
 import { NotFoundError, ValidationError } from '../../shared/errors/http-error';
-import { presentNotifications } from './notification-access';
+import { presentNotifications, notificationAccess } from './notification-access';
+import { getNotificationPreferences } from './notification-preferences.service';
 
 const cursorSchema = z.object({ createdAt: z.string().datetime(), id: z.string().uuid(), snapshot: z.string().datetime() }).strict();
 export async function findNotifications(tenantId: string, userId: string, input: Record<string, unknown>) {
@@ -36,8 +37,47 @@ async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: st
   const groups = await tx.notification.groupBy({ by: ['isRead'], where: { tenantId, userId }, _count: { _all: true } });
   return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0 };
 }
-export async function notificationCounts(tenantId: string, userId: string) {
-  return prisma.$transaction(tx => counts(tx, tenantId, userId), { isolationLevel: 'RepeatableRead' });
+export async function notificationCounts(tenantId: string, userId: string, input: Record<string, unknown> = {}) {
+  const query = z.object({ after: z.string().max(2048).optional(), since: z.string().datetime().optional() }).strict().parse(input);
+  const now = new Date();
+  const shape = z.object({ tenantId: z.string(), userId: z.string(), since: z.string().datetime(), at: z.string().datetime(), id: z.string(), page: z.boolean() }).strict();
+  let cursor: z.infer<typeof shape>;
+  if (query.after) {
+    try { cursor = shape.parse(JSON.parse(Buffer.from(query.after, 'base64url').toString())); }
+    catch { throw new ValidationError('Invalid notification update cursor'); }
+    if (cursor.tenantId !== tenantId || cursor.userId !== userId) throw new ValidationError('Invalid notification update cursor');
+  } else {
+    const since = new Date(Math.min(+now, Math.max(+now - 300000, query.since ? Date.parse(query.since) : +now))).toISOString();
+    cursor = { tenantId, userId, since, at: since, id: '', page: false };
+  }
+  const since = new Date(cursor.since);
+  const result = await prisma.$transaction(async tx => {
+    const totals = await counts(tx, tenantId, userId);
+    const preferences = await getNotificationPreferences(tenantId, userId, tx);
+    const after: Prisma.NotificationWhereInput = cursor.page ? { OR: [
+      { createdAt: { gt: new Date(cursor.at) } }, { createdAt: new Date(cursor.at), id: { gt: cursor.id } },
+    ] } : { createdAt: { gte: new Date(Math.max(+since, Date.parse(cursor.at) - 30000)) } };
+    // A small overlap catches transactions committed out of timestamp order.
+    // The shared watcher deduplicates immutable notification IDs.
+    const rows = preferences.data.inAppGeneral ? await tx.notification.findMany({ where: {
+      tenantId, userId, type: { in: [...SmsCampaignNotificationTypes] }, occurredAt: { gte: since }, AND: [after],
+    }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 101 }) : [];
+    const active = preferences.data.inAppGeneral ? await tx.campaign.findFirst({ where: {
+      tenantId, type: 'SMS', isArchived: false, submissionStartedAt: { gt: new Date(+now - 300000) },
+      status: { in: ['SENDING', 'SENT', 'INTERRUPTED'] }, OR: [{ createdById: userId }, { submittedById: userId }],
+    }, orderBy: { submissionStartedAt: 'desc' }, select: { id: true, submissionStartedAt: true } }) : null;
+    return { ...totals, rows, active };
+  }, { isolationLevel: 'RepeatableRead' });
+  const hasMore = result.rows.length > 100;
+  const records = result.rows.slice(0, 100);
+  const last = records[records.length - 1];
+  const next = { ...cursor, at: hasMore && last ? last.createdAt.toISOString() : now.toISOString(), id: hasMore && last ? last.id : '', page: hasMore };
+  const updates = (await presentNotifications(tenantId, userId, records)).filter(row => row.available);
+  const access = result.active ? await notificationAccess(tenantId, userId) : null;
+  return { totalCount: result.totalCount, unreadCount: result.unreadCount, updates, hasMore,
+    cursor: Buffer.from(JSON.stringify(next)).toString('base64url'),
+    activeSmsUntil: result.active?.submissionStartedAt && await access?.resolve('Campaign', result.active.id)
+      ? new Date(+result.active.submissionStartedAt + 300000).toISOString() : null };
 }
 export async function markNotificationRead(id: string, tenantId: string, userId: string) {
   return prisma.$transaction(async tx => {

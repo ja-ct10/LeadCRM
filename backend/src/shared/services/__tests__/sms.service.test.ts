@@ -3,7 +3,7 @@ import { buildFinalSms, smsMessageStats } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 vi.mock('../../../config/database.config', () => ({ default: { tenant: { findUnique: vi.fn() } } }));
 import prisma from '../../../config/database.config';
-import { isSmsConfigured, normalizeSmsPhone, sendSms, getSmsSenderIdentity } from '../sms.service';
+import { isSmsConfigured, normalizeSmsPhone, sendSms, getSmsSenderIdentity, getSmsDeviceId, getSmsBatch } from '../sms.service';
 const batchId = '66f7c3a8b1c2d3e4f5a6b7c0';
 const accepted = () => new Response(JSON.stringify({ data: { success: true, smsBatchId: batchId, recipientCount: 1 } }));
 const send = (body = 'Hello') => tenantContext.run({ tenantId: 'test-tenant' }, () => sendSms('+639171234567', body));
@@ -14,6 +14,30 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('TextBee shared SMS transport', () => {
+  it('resolves the default device once with a read-only request and honors an explicit configured device', async () => {
+    const device = '664a9b8cd0e1f2a3b4c5d6e7';
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: [{ _id: device, enabled: true, isDefault: true }] })));
+    expect(await getSmsDeviceId()).toBe(device);
+    expect(fetch).toHaveBeenCalledWith('https://api.textbee.dev/api/v1/gateway/devices', expect.objectContaining({ method: 'GET', headers: { 'x-api-key': 'fixture-key', Accept: 'application/json' } }));
+    vi.stubEnv('TEXTBEE_DEVICE_ID', device); expect(await getSmsDeviceId()).toBe(device); expect(fetch).toHaveBeenCalledOnce();
+  });
+  it('parses the official batch/message device shape and strips customer content at the read boundary', async () => {
+    const device = '664a9b8cd0e1f2a3b4c5d6e7';
+    vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: { batch: { _id: batchId, recipientCount: 1, message: 'private content' }, messages: [
+      { _id: 'sms-id', device: { _id: device, name: 'Gateway' }, recipient: '+639171234567', smsBatch: batchId, message: 'private content' },
+    ] } })));
+    const result = await getSmsBatch(device, batchId);
+    expect(result.batch).toEqual({ _id: batchId, recipientCount: 1 });
+    expect(result.messages[0]).toMatchObject({ device: { _id: device }, status: 'unknown' });
+    expect(JSON.stringify(result)).not.toContain('private content'); expect(fetch).toHaveBeenCalledOnce();
+    expect(vi.mocked(fetch).mock.calls[0][1]?.method).toBe('GET');
+  });
+  it('uses a frozen campaign device without substituting a later configured device', async () => {
+    const frozen = '664a9b8cd0e1f2a3b4c5d6e7';
+    vi.stubEnv('TEXTBEE_DEVICE_ID', '664a9b8cd0e1f2a3b4c5d6e8');
+    await tenantContext.run({ tenantId: 'test-tenant' }, () => sendSms('+639171234567', 'Hello', { deviceId: frozen }));
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0][1]?.body)).deviceId).toBe(frozen);
+  });
   it('awaits the current operation claim immediately before transport and sends nothing if it is revoked', async () => {
     let release!: () => void;
     const boundary = new Promise<void>(resolve => { release = resolve; });

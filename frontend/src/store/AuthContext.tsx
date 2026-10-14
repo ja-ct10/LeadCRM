@@ -14,6 +14,7 @@ import { resolveMockPermissions } from './mock-permissions';
 import { authApi } from '@/shared/services/auth.api';
 import { rolesApi } from '@/shared/services/roles.api';
 import { clearPageCache }         from '@/shared/cache/page-cache';
+import { clearNotificationTracking } from '@/features/tenant/notifications/hooks/notification-requests';
 
 // When true, auth calls hit the mock localStorage data instead of the backend.
 // Set NEXT_PUBLIC_USE_MOCK_AUTH=false in .env.local to use the real API.
@@ -127,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
     const identity = JSON.stringify([apiUser.id, apiUser.tenantId, apiUser.role, apiUser.status, apiUser.tenantStatus, apiUser.mustChangePassword]);
+    if (authenticatedIdentity.current !== identity) clearNotificationTracking();
     if (authenticatedIdentity.current !== null && authenticatedIdentity.current !== identity) {
       permissionGeneration.current += 1;
       appliedPermissions.current = null;
@@ -361,6 +363,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   // ── Logout ────────────────────────────────────────────────────────
   const logout = async (): Promise<void> => {
+    clearNotificationTracking();
     requestGeneration.current += 1;
     if (!USE_MOCK_AUTH) {
       // Revoke the LeadCRM backend session + clear HttpOnly JWT cookie

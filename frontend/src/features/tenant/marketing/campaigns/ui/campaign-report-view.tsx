@@ -63,6 +63,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const inFlight = useRef(false);
   const pendingReport = useRef<Promise<CampaignReportResponse> | null>(null);
   const activeRequest = useRef<AbortController | null>(null);
+  const polling = useRef({ fastUntil: 0, failures: 0 });
   const fetchReport = useCallback(async (background = false) => {
     if (inFlight.current) { if (!background) setLoading(true); await pendingReport.current?.catch(() => {}); return; }
     inFlight.current = true;
@@ -75,9 +76,16 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       const pending = campaignsApi.report(campaign.id, controller.signal);
       pendingReport.current = pending;
       const result = await pending;
-      if (sequence === request.current) setReport(result.data);
+      if (sequence === request.current) {
+        setReport(result.data);
+        polling.current.failures = 0;
+        const started = result.data.submissionStartedAt ? Date.parse(result.data.submissionStartedAt) : 0;
+        polling.current.fastUntil = result.data.type.toUpperCase() === 'SMS'
+          && ['sending', 'sent', 'interrupted'].includes(result.data.status.toLowerCase()) ? started + 300000 : 0;
+      }
     } catch (failure) {
       if (sequence === request.current) {
+        polling.current.failures++;
         if ([401, 403, 404].includes((failure as { status?: number })?.status || 0)) setReport(null);
         setError(failure instanceof Error ? failure.message : 'Unable to load campaign report. Please try again.');
       }
@@ -89,21 +97,39 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     setReport(null); setSearch(''); setShowFilters(false); setFilterSearch('');
     setDeliveryFilter([]); setEngagementFilter([]); setShowAllLinks(false);
     inFlight.current = false;
-    void fetchReport();
+    polling.current = { fastUntil: 0, failures: 0 };
+    let disposed = false;
     const refresh = () => { if (!document.hidden) void fetchReport(true); };
-    const interval = setInterval(refresh, 2500);
+    let timer: ReturnType<typeof setTimeout>;
+    const schedule = () => {
+      if (disposed) return;
+      const isSms = campaign.type.toUpperCase() === 'SMS';
+      const delay = isSms && Date.now() >= polling.current.fastUntil ? 30000 : 2500;
+      timer = setTimeout(async () => {
+        if (!document.hidden) await fetchReport(true);
+        schedule();
+      }, Math.max(delay, polling.current.failures ? Math.min(30000, 2500 * 2 ** polling.current.failures) : 0));
+    };
+    void fetchReport().finally(schedule);
+    const outcome = (event: Event) => {
+      const detail = (event as CustomEvent<{ campaignIds?: string[] }>).detail;
+      if (detail?.campaignIds?.includes(campaign.id)) refresh();
+    };
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('online', refresh);
     window.addEventListener('focus', refresh);
+    window.addEventListener('sms-campaign-updated', outcome);
     return () => {
+      disposed = true;
       request.current++;
       activeRequest.current?.abort();
-      clearInterval(interval);
+      clearTimeout(timer);
       document.removeEventListener('visibilitychange', refresh);
       window.removeEventListener('online', refresh);
       window.removeEventListener('focus', refresh);
+      window.removeEventListener('sms-campaign-updated', outcome);
     };
-  }, [fetchReport]);
+  }, [fetchReport, campaign.id, campaign.type]);
 
   const recipients = report?.recipients ?? [];
   const visibleRecipients = useMemo(() => recipients.filter(row => {

@@ -2,7 +2,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { Archive, ArrowLeft, Forward, Loader2, Reply, ReplyAll, Trash2 } from 'lucide-react';
-import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, setGmailThreadReadState, setGmailMessageReadState, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, type GmailEmail } from '../services/gmail.service';
+import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, type GmailEmail } from '../services/gmail.service';
 import type { MailboxConversationDetail } from '@leadcrm/shared';
 import { forwardDraft, replyDraft, replyAllDraft, type MailboxComposeDraft } from '../services/email-presentation';
 import type { ApiRequestError } from '@/lib/api/client';
@@ -18,8 +18,9 @@ function TopicDealSelector({ topic, disabled, onAssociate }: { topic: MailboxCon
     <button type="submit" disabled={!dealId || disabled} className={control}>Associate Deal</button>
   </form>;
 }
-export default function EmailConversationView({ email, mailboxEmail, revision = 0, retryAt = 0, onBack, onEmailsChanged }: {
+export default function EmailConversationView({ email, mailboxEmail, revision = 0, retryAt = 0, readError, readPending = false, onRetryRead, onBack, onEmailsChanged }: {
   email: GmailEmail; mailboxEmail?: string; revision?: number; retryAt?: number; onBack: (error?: string) => void; onEmailsChanged: () => void;
+  readError?: string; readPending?: boolean; onRetryRead?: () => void;
 }) {
   const [messages, setMessages] = useState<GmailEmail[]>([email]);
   const [topics, setTopics] = useState<MailboxConversationDetail['threads']>([]);
@@ -33,7 +34,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
   const [canAssociate, setCanAssociate] = useState(false), [dealId, setDealId] = useState('');
   const [busy, setBusy] = useState(false), [draft, setDraft] = useState<MailboxComposeDraft | null>(null);
   const [refresh, setRefresh] = useState(0), [cooldown, setCooldown] = useState(0);
-  const pending = useRef(false), readPending = useRef(false), readAttempt = useRef('');
+  const pending = useRef(false);
   const callbacks = useRef({ onBack, onEmailsChanged }); callbacks.current = { onBack, onEmailsChanged };
   const paused = Math.max(retryAt, cooldown) > Date.now();
   useEffect(() => { if (!cooldown) return; const timer = setTimeout(() => setCooldown(0), Math.max(0, cooldown - Date.now())); return () => clearTimeout(timer); }, [cooldown]);
@@ -59,17 +60,6 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
     }).catch(error => { if (active) failure(error); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; historyController.current?.abort(); if (historyGeneration.current === generation) historyGeneration.current++; };
   }, [email.conversationId, email.threadId, revision, refresh, failure]);
-  const unreadIds = messages.filter(message => !message.isRead && (!email.conversationId || expanded[message.id])).map(message => message.id).sort().join(',');
-  useEffect(() => {
-    const key = `${email.threadId}:${unreadIds}`;
-    if (loading || paused || !unreadIds || readPending.current || readAttempt.current === key) return;
-    readAttempt.current = key; readPending.current = true;
-    const action = email.conversationId ? (async () => { for (const id of unreadIds.split(',')) await setGmailMessageReadState(id, true); })() : setGmailThreadReadState(email.threadId, true);
-    void action.then(() => {
-      setMessages(previous => previous.map(message => unreadIds.split(',').includes(message.id) ? { ...message, isRead: true, labels: message.labels.filter(label => label !== 'UNREAD') } : message));
-      callbacks.current.onEmailsChanged();
-    }).catch(failure).finally(() => { readPending.current = false; });
-  }, [email.conversationId, email.threadId, unreadIds, loading, paused, failure]);
   const loadMore = async () => {
     if (!email.conversationId || !nextPageToken || historyPending.current || loading) return;
     historyPending.current = true; setLoading(true);
@@ -125,7 +115,8 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
         </div>}
         {loading && <p role="status" className="text-xs text-muted-foreground">Loading conversation…</p>}
         {paused && <p role="status" className="text-xs text-muted-foreground">Gmail updates are temporarily paused. Saved emails remain available.</p>}
-        {error && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{error}</p><button type="button" className={control} disabled={paused || busy} onClick={() => { readAttempt.current = ''; setLoading(true); setRefresh(value => value + 1); }}>Retry</button></div>}
+        {readError && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{readError}</p><button type="button" className={control} disabled={paused || readPending} onClick={onRetryRead}>Retry marking as read</button></div>}
+        {error && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{error}</p><button type="button" className={control} disabled={paused || busy} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Retry</button></div>}
       </header>
       {messages.map((message, index) => <React.Fragment key={message.id}>
         {email.conversationId && (index === 0 || message.threadId !== messages[index - 1].threadId) && <section className="border-b border-border bg-muted/30 px-3 py-3 sm:px-6" aria-label={`Original Gmail conversation: ${message.subject}`}>

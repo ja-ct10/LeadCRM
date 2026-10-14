@@ -1020,6 +1020,9 @@ model Campaign {
   submissionLeaseUntil DateTime?
   submissionInterruptedAt DateTime?
   notificationRunVersion Int @default(0)
+  smsTransitionVersion Int @default(0)
+  submittedById String?
+  smsDeviceId String?
   submissionFinishedAt DateTime?
   subject          String?
   body             String? // inline body override when no template selected
@@ -1142,6 +1145,9 @@ model CampaignMetrics {
 // CAMPAIGN-CONTACT JUNCTION (per-contact delivery tracking)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignContact {
+  smsId String?
+  nextSmsCheckAt DateTime?
+  smsCheckAttempts Int @default(0)
   email String?
   phone String?
   submittedAt DateTime? // Provider acceptance; sentAt is provider-confirmed sent
@@ -1173,6 +1179,7 @@ model CampaignContact {
   @@unique([campaignId, contactId])
   @@unique([id, tenantId])
   @@index([campaignId, tenantId, status])
+  @@index([nextSmsCheckAt, tenantId])
   @@index([tenantId])
 }
 

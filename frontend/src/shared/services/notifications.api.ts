@@ -2,7 +2,7 @@
 
 import { apiClient } from '@/lib/api/client';
 
-import type { NotificationsResponse, NotificationMutationResponse, NotificationPreferences, NotificationPreferencesResponse } from '@leadcrm/shared';
+import type { NotificationsResponse, NotificationMutationResponse, NotificationCountsResponse, NotificationPreferences, NotificationPreferencesResponse } from '@leadcrm/shared';
 export type { NotificationRecord as Notification, NotificationsResponse } from '@leadcrm/shared';
 
 export const notificationsApi = {
@@ -23,7 +23,10 @@ export const notificationsApi = {
   markAllRead: (before?: string) =>
     apiClient.patch<NotificationMutationResponse>('/notifications/read-all', before ? { before } : {}),
 
-  counts: () => apiClient.get<NotificationMutationResponse>('/notifications/counts'),
+  counts: (query: { after?: string; since?: string } = {}) => {
+    const params = new URLSearchParams(query);
+    return apiClient.get<NotificationCountsResponse>('/notifications/counts' + (params.size ? `?${params}` : ''));
+  },
   destination: (id: string) => apiClient.get<{ success: boolean; destination: string | null }>(`/notifications/${encodeURIComponent(id)}/destination`),
   preferences: () => apiClient.get<NotificationPreferencesResponse>('/notifications/preferences'),
   savePreferences: (data: NotificationPreferences) => apiClient.put<NotificationPreferencesResponse>('/notifications/preferences', data),

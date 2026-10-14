@@ -12,7 +12,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'builder-u
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key) }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { variableFields: vi.fn(), create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn(), schedule: vi.fn(), cancelSchedule: vi.fn() } }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { fields: vi.fn(), companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
-vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn() } }));
+vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() } }));
 const counts = { matched: 2, eligible: 2, missingEmail: 0, invalidEmail: 0, duplicateEmail: 0, staffEmail: 0, unsubscribed: 0, blocked: 0, inactive: 0, recipientNotAllowed: 0, recipients: [], meta: { page: 1, limit: 25, total: 2, hasMore: false } };
 const audience = { id: 'ac9a6eb7-c05a-4756-8f6b-9d678f62c559', name: 'Customers', source: 'LEADS' as const, conditions: [] };
 beforeEach(() => {
@@ -258,6 +258,8 @@ describe('campaign composer', () => {
     sendNow();
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
     expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: 'Hi {{first_name}}, your proposal is ready.' }));
+    await waitFor(() => expect(toast.info).toHaveBeenCalledWith('SMS campaign submitted. Waiting for gateway confirmation.'));
+    expect(campaignsApi.get).not.toHaveBeenCalled();
   });
   it('schedules once using an explicit Manila date converted to UTC and does not call Send Now', async () => {
     frozenManilaAfternoon();
