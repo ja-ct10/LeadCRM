@@ -29,6 +29,7 @@
     "qa:local": "node scripts/qa-local.mjs all",
     "qa:typecheck": "node scripts/qa-local.mjs typecheck",
     "qa:build": "node scripts/qa-local.mjs build",
+    "qa:database": "node scripts/qa-local.mjs database",
     "qa:clean": "node scripts/qa-clean-checkout.mjs --run",
     "test": "node scripts/qa-local.mjs unit",
     "test:integration": "node scripts/qa-local.mjs integration",

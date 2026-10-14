@@ -9,15 +9,56 @@ The application database remains a separate running Coolify resource.
 
 `.github/workflows/ci.yml` uses Ubuntu 24.04, Node 22, npm 11.19.1 and native
 PostgreSQL 18, plus the existing root-context Docker compatibility job. The full
-`npm run qa:local -- --native` suite runs the maintained contracts, integration,
-migration and real browser harnesses. Missing reports, crashes and required skips
-remain failures. Successful builds must leave generated shared companions clean.
+`npm run qa:local -- --native` command remains available locally. CI runs those
+maintained checks as independent jobs, reusing one verified production build.
+Missing reports, crashes and required skips remain failures. Successful builds
+must leave generated shared companions clean.
 Actions are pinned to official release commits; CI has read-only repository
 permissions and cancels obsolete runs for the same branch/PR.
 The Actions summary lists each acceptance check and its available counts. Commands
 that only report an exit status show a dash rather than an invented test count.
 The disposable QA artifact retains browser failure screenshots/text alongside
 JSON reports and logs; it contains synthetic fixture data only.
+
+| Job | Required verification |
+| --- | --- |
+| Documentation and static checks | Existing documentation links and workspace type/lint checks |
+| Backend unit and QA safety tests | Backend tests, isolation, CI coordination and release regressions |
+| Frontend component tests | Complete existing frontend component suite |
+| Production build and shared contracts | Shared, backend and frontend builds; unchanged generated companions |
+| Migrations, preservation and guarded startup | Migration/security regressions, populated import History, actual guarded startup and mailbox restart |
+| Integration/browser acceptance matrix | Three integration and three browser shards; at most three run concurrently |
+| Root-context Docker compatibility | Existing backend/frontend Docker builds and Compose validation |
+| Clean checkout — build, isolated QA, native PostgreSQL | Final mandatory gate checking all jobs and complete matching evidence |
+
+Static checks, unit tests, production builds and Docker checks run independently.
+Database and acceptance jobs require the static, unit and production-build jobs
+to succeed. Each acceptance shard has its own runner, temporary storage,
+PostgreSQL fixtures and build directories; its browser scripts run sequentially.
+Duration weights distribute suites deterministically. Newly discovered suites
+receive a default weight and are included automatically.
+
+The database job owns the populated import History integration suite, guarded
+startup and mailbox restart once per CI run. Existing unsharded local acceptance
+retains its complete checks. For local diagnosis, `--workspace=backend` or
+`--workspace=frontend` selects unit tests and `--shard=1/3` through `3/3` selects
+integration/browser suites. An individual shard does not establish full release
+acceptance. CI rejects filters, exclusions and individual-case selection.
+
+Build archives preserve relative links within build outputs and exclude mutable
+Next caches and credentials. Consumers verify the source, lockfile, suite manifest,
+workflow run and archive checksum before restoring them. The final gate runs even
+after dependency failure and rejects missing, duplicate, skipped, canceled or
+foreign evidence. It requires the exact union of inventoried suites and all
+required job results to be successful.
+
+GitHub's failed-job rerun can reuse successful evidence and build outputs from
+an earlier attempt of the same run and source. Rerun artifacts replace their own
+owner's evidence. A different run, commit, lockfile or future attempt is rejected.
+Initial job limits are 20 minutes for static/unit/build, 30 for database/Docker,
+45 per acceptance shard and 5 for the final gate; these are cutoffs, not promised
+completion times. Use the per-job summaries and retained evidence to measure
+the actual critical path.
 
 Linux fixture environments allocate private short directories directly under
 `/tmp`, independent of checkout depth and inherited TMPDIR. Windows keeps
