@@ -1,24 +1,47 @@
-# Verified GitHub CI and Coolify releases
+# GitHub CI and Coolify deployment options
 
-The intended release sequence is protected PR → both CI checks → merge → both
-main CI checks → tested SHA pinned in both Coolify applications → backend
-deployment and release health → frontend deployment and public verification.
-The application database remains a separate running Coolify resource.
+The selected setup uses fast checks on protected pull requests and complete
+verification after merging to main. Existing Coolify Git connections and deployment
+controls remain unchanged. The unused GitHub deployment workflow is disabled in
+Actions because its production credentials and resource variables are unconfigured.
+Full main CI verifies the release source; it cannot gate direct Coolify deployments.
+The coordinated release procedure below is retained as an optional future setup.
 
 ## Verification
 
-`.github/workflows/ci.yml` uses Ubuntu 24.04, Node 22, npm 11.19.1 and native
-PostgreSQL 18, plus the existing root-context Docker compatibility job. The full
+Both CI workflows use Ubuntu 24.04, Node 22 and npm 11.19.1.
+`.github/workflows/pr-ci.yml` runs only for pull requests targeting main:
+
+| Pull-request check | Required verification |
+| --- | --- |
+| Frontend — TypeScript Check | Existing frontend TypeScript command |
+| Backend — TypeScript Check | Existing backend TypeScript command |
+| Shared Package — TypeScript Check | Shared TypeScript and documentation links, once |
+| Frontend — Tests | Complete frontend component suite |
+| Backend — Tests | Backend unit, isolation, CI coordination and release regressions |
+| Production Build | Shared, backend and frontend builds; unchanged generated companions |
+| PR CI — Required Gate | All six evidence owners and every required job succeeded |
+
+These jobs run independently. The lint scripts already use TypeScript, so CI does
+not run a second identical lint command. Routine PR checks do not install browser
+or native database tooling, run acceptance rehearsals, or build Docker images.
+Their report uses `ci.profile = pr` and does not claim integration/browser coverage.
+
+`.github/workflows/ci.yml` runs complete verification on pushes to main and supports
+manual execution. It uses native PostgreSQL 18, plus the existing root-context
+Docker compatibility job. The full
 `npm run qa:local -- --native` command remains available locally. CI runs those
 maintained checks as independent jobs, reusing one verified production build.
-Missing reports, crashes and required skips remain failures. Successful builds
+Both gates reject missing reports, crashes, failed commands and required skips.
+Reports bind their explicit `pr` or `full` profile to the source, run and owner;
+evidence from one profile cannot satisfy the other. Successful builds
 must leave generated shared companions clean.
 Actions are pinned to official release commits; CI has read-only repository
 permissions and cancels obsolete runs for the same branch/PR.
 The Actions summary lists each acceptance check and its available counts. Commands
 that only report an exit status show a dash rather than an invented test count.
-The disposable QA artifact retains browser failure screenshots/text alongside
-JSON reports and logs; it contains synthetic fixture data only.
+Profile-qualified evidence artifacts retain browser failure screenshots/text alongside
+JSON reports and logs; they contain synthetic fixture data only.
 
 | Job | Required verification |
 | --- | --- |
@@ -42,7 +65,10 @@ The database job owns the populated import History integration suite, guarded
 startup and mailbox restart once per CI run. Existing unsharded local acceptance
 retains its complete checks. For local diagnosis, `--workspace=backend` or
 `--workspace=frontend` selects unit tests and `--shard=1/3` through `3/3` selects
-integration/browser suites. An individual shard does not establish full release
+integration/browser suites. `--workspace` also selects frontend, backend or shared
+TypeScript checks; documentation links run only with shared or an unqualified
+TypeScript invocation. `--ci --profile=pr` selects the fast CI profile; omitted
+profile defaults to full. An individual shard does not establish full release
 acceptance. CI rejects filters, exclusions and individual-case selection.
 
 Build archives preserve relative links within build outputs and exclude mutable
@@ -88,15 +114,26 @@ record access and permissions, and clears actions on identity or route changes.
 The browser regression waits for the second session's new column before checking
 each draft, then verifies persisted Task associations and governed stage outcomes.
 
-## Activation checklist
+## Branch protection and optional release activation
 
-Activate only after the repair PR has both green CI checks and a private SQL-only
+The current required check is `PR CI — Required Gate`, bound to GitHub Actions.
+Main requires up-to-date pull requests, administrator enforcement, no force pushes
+or deletion, and zero mandatory human approvals. Full main CI and Docker checks
+remain mandatory within the full workflow rather than required PR check names.
+Changing profiles does not hide earlier failed runs or turn failures into success.
+
+Keep `Deploy verified main to Coolify` disabled while using existing Coolify
+deployment controls. The coordinator and its regression tests remain available.
+No production secrets, application settings, webhooks or database settings need
+changing for the fast PR setup.
+
+Optionally activate coordinated GitHub releases only after the repair PR and full
+main CI are green and a private SQL-only
 restore rehearsal of an existing production backup has succeeded. A source diff
 or simulated coordinator test does not prove production deployment.
 
-1. Protect `main`: require PRs, strict/up-to-date checks named
-   `Clean checkout — build, isolated QA, native PostgreSQL` and
-   `Root-context Docker compatibility`; enforce administrators, disallow force
+1. Protect `main`: require PRs and the strict/up-to-date check named
+   `PR CI — Required Gate`; enforce administrators, disallow force
    pushes/deletion and allow zero required human approvals for the sole owner.
 2. Create the GitHub `production` environment with a custom deployment branch
    policy allowing only branch `main`, no tags. No PR/fork receives its secrets.
@@ -109,8 +146,10 @@ or simulated coordinator test does not prove production deployment.
 5. Disable **Deploy on push** in both applications. Preserve Git sources,
    Nixpacks, build/start commands, domains, private networks and persistent storage.
    Keep SOURCE_COMMIT available at runtime. Do not save unrelated UI edits.
-6. Merge the green PR. Successful trusted main CI automatically triggers the
-   serialized release workflow. Verify its JSON outcome and both public revisions.
+6. Re-enable `Deploy verified main to Coolify` only after the configuration and
+   private restore rehearsal are complete. Successful trusted main push CI then
+   triggers the serialized release workflow. Verify its JSON outcome and both
+   public revisions. A manual full CI run does not trigger a production release.
 
 | Variable | Audited value |
 | --- | --- |

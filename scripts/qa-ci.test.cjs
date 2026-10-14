@@ -18,8 +18,8 @@ function manifest() {
 function evidence(owner, inventory = manifest(), identity = source) {
   return { mode: owner.mode, workspace: owner.workspace, shard: owner.shard, status: 'PASS', native: true, exclude: [], sourceChanged: false, validForFinalSource: true, validForExecutableSource: true,
     sourceStart: identity, sourceEnd: identity,
-    ci: { version: 1, owner: owner.owner, manifestSha256: inventory.sha256, suiteIds: owner.suiteIds, executedSuiteIds: owner.suiteIds,
-      postgresVersion: 'PostgreSQL 18.4', invocation: { ...current, attempt: '1', job: owner.owner === 'backend-unit' ? 'backend_unit' : owner.owner === 'frontend-unit' ? 'frontend_unit' : owner.shard ? 'acceptance_matrix' : owner.owner } },
+    ci: { version: 2, profile: owner.profile, owner: owner.owner, manifestSha256: inventory.sha256, suiteIds: owner.suiteIds, executedSuiteIds: owner.suiteIds,
+      postgresVersion: 'PostgreSQL 18.4', invocation: { ...current, attempt: '1', job: owner.job ?? (owner.owner === 'backend-unit' ? 'backend_unit' : owner.owner === 'frontend-unit' ? 'frontend_unit' : owner.shard ? 'acceptance_matrix' : owner.owner) } },
     results: owner.labels.map(label => ({ label, status: 'PASS', passed: 1, failed: 0, skipped: 0, exitCode: 0 })),
     commands: owner.labels.map(label => ({ label, exitCode: 0, startedAt: new Date(Date.now() - 10).toISOString(), finishedAt: new Date().toISOString() })) };
 }
@@ -78,7 +78,7 @@ test('Mandatory gate permits only complete successful same-run evidence, includi
   const inventory = manifest(), reports = ci.owners(inventory).map(owner => evidence(owner, inventory));
   assert.equal(ci.aggregate(reports, needs(), inventory, source, current).status, 'PASS');
   for (const change of [
-    report => { report.ci.version = 99; }, report => { report.ci.invocation.attempt = '3'; }, report => { report.ci.invocation.runId = 'other-run'; },
+    report => { report.ci.version = 1; }, report => { report.ci.version = 99; }, report => { report.ci.invocation.attempt = '3'; }, report => { report.ci.invocation.runId = 'other-run'; },
     report => { report.ci.invocation.repository = 'foreign/repo'; }, report => { report.ci.invocation.revision = 'e'.repeat(40); },
     report => { report.ci.invocation.job = 'foreign-job'; }, report => { report.ci.manifestSha256 = 'stale'; },
     report => { report.sourceStart.lockSha256 = 'changed'; }, report => { report.sourceEnd.sourceSha256 = 'changed'; },
@@ -103,6 +103,89 @@ test('Mandatory gate permits only complete successful same-run evidence, includi
   assert.throws(() => ci.aggregate(missingSuite, needs(), inventory, source, current));
   const wrongDatabase = structuredClone(reports); wrongDatabase.find(report => report.ci.owner === 'database').ci.postgresVersion = 'PostgreSQL 17.4';
   assert.throws(() => ci.aggregate(wrongDatabase, needs(), inventory, source, current));
+});
+
+test('PR selection owns all three TypeScript checks, documentation once, both test jobs and the build', () => {
+  const inventory = manifest(), owners = ci.owners(inventory, 'pr');
+  assert.equal(owners.length, 6);
+  assert.equal(owners.flatMap(owner => owner.suiteIds).length, 0);
+  assert.equal(owners.flatMap(owner => owner.labels).filter(label => label === 'Local documentation references').length, 1);
+  assert.equal(owners.find(owner => owner.workspace === 'shared').labels[0], 'Local documentation references');
+  for (const workspace of ['frontend', 'backend', 'shared']) {
+    assert.equal(ci.plan(['typecheck', '--ci', '--profile=pr', `--workspace=${workspace}`], inventory).owner, `typecheck-${workspace}`);
+    assert.equal(ci.plan(['typecheck', `--workspace=${workspace}`], inventory).workspace, workspace);
+  }
+  for (const args of [
+    ['typecheck', '--ci', '--profile=pr'], ['typecheck', '--ci', '--workspace=shared'],
+    ['database', '--ci', '--native', '--profile=pr'], ['integration', '--ci', '--native', '--profile=pr', '--shard=1/3'],
+    ['browser', '--ci', '--native', '--profile=pr', '--shard=1/3'], ['unit', '--ci', '--profile=pr', '--workspace=shared'],
+    ['build', '--ci', '--profile='], ['build', '--ci', '--profile=unknown'], ['build', '--ci', '--profile=pr', '--profile=full'],
+    ['typecheck', '--profile=pr', '--workspace=frontend'], ['build', '--ci', '--profile=pr', '--filter=shared'],
+  ]) assert.throws(() => ci.plan(args, inventory), undefined, JSON.stringify(args));
+  assert.equal(ci.plan(['typecheck', '--ci'], inventory).profile, 'full');
+  assert.equal(ci.plan(['all', '--native'], inventory).ci, false);
+});
+
+test('PR gate rejects omitted checks, canceled jobs, skipped tests and foreign or mixed-profile evidence', () => {
+  const inventory = manifest(), owners = ci.owners(inventory, 'pr'), reports = owners.map(owner => evidence(owner, inventory));
+  const jobs = Object.fromEntries(ci.PR_REQUIRED_JOBS.map(name => [name, { result: 'success' }]));
+  const gate = (values = reports, required = jobs) => ci.aggregate(values, required, inventory, source, current, 'pr');
+  const result = gate();
+  assert.equal(result.status, 'PASS'); assert.equal(result.profile, 'pr');
+  assert.equal(result.integrationSuites, 0); assert.equal(result.browserSuites, 0);
+  for (const report of reports) assert.throws(() => gate(reports.filter(value => value !== report)));
+  assert.throws(() => gate([...reports, reports[0]]));
+  for (const job of ci.PR_REQUIRED_JOBS) for (const status of ['failure', 'cancelled', 'skipped', undefined]) {
+    const modified = structuredClone(jobs); modified[job].result = status; assert.throws(() => gate(reports, modified));
+  }
+  for (const change of [
+    report => { report.ci.profile = 'full'; }, report => { delete report.ci.profile; },
+    report => { report.ci.invocation.runId = '999'; }, report => { report.ci.invocation.attempt = '3'; },
+    report => { report.ci.invocation.revision = 'e'.repeat(40); }, report => { report.ci.invocation.repository = 'foreign/repo'; },
+    report => { report.sourceEnd.sourceSha256 = 'stale'; }, report => { report.ci.manifestSha256 = 'stale'; },
+    report => { report.results[0].skipped = 1; }, report => { report.results[0].passed = 0; },
+    report => { report.commands[0].exitCode = 1; }, report => { report.status = 'FAIL'; },
+  ]) {
+    const modified = structuredClone(reports); change(modified[0]); assert.throws(() => gate(modified));
+  }
+  assert.throws(() => gate(reports, { ...jobs, database: { result: 'success' } }));
+  const full = ci.owners(inventory).map(owner => evidence(owner, inventory));
+  assert.throws(() => ci.aggregate(reports, needs(), inventory, source, current), /Missing or duplicate/);
+  assert.throws(() => gate(full));
+  for (const name of ['backend-unit', 'frontend-unit', 'build']) {
+    const fullOwner = ci.owners(inventory).find(owner => owner.owner === name), prOwner = owners.find(owner => owner.owner === name);
+    assert.throws(() => ci.validateReport(evidence(prOwner), fullOwner, inventory, source, current), /Incorrect CI profile/);
+    assert.throws(() => ci.validateReport(evidence(fullOwner), prOwner, inventory, source, current), /Incorrect CI profile/);
+  }
+});
+
+test('Actual PR gate CLI accepts complete reports and rejects missing evidence and unexpected arguments', () => {
+  const directory = fixture();
+  try {
+    const names = seed(directory);
+    for (const name of ['qa-ci.cjs', 'qa-ci.mjs', 'qa-source-identity.cjs']) {
+      fs.mkdirSync(path.resolve(directory, 'scripts'), { recursive: true });
+      fs.copyFileSync(path.resolve(__dirname, name), path.resolve(directory, 'scripts', name)); names.push('scripts/' + name);
+    }
+    fs.writeFileSync(path.resolve(directory, 'package-lock.json'), '{}'); names.push('package-lock.json');
+    fs.writeFileSync(path.resolve(directory, '.qa-source-snapshot.json'), JSON.stringify({ revision: current.revision, files: names.sort() }));
+    const inventory = ci.discovery(directory), identity = sourceIdentity(directory), reports = path.resolve(directory, 'data/outputs/ci/pr');
+    fs.mkdirSync(reports, { recursive: true });
+    for (const owner of ci.owners(inventory, 'pr')) {
+      const folder = path.resolve(reports, owner.owner); fs.mkdirSync(folder);
+      fs.writeFileSync(path.resolve(folder, 'qa-ci-report.json'), JSON.stringify(evidence(owner, inventory, identity)));
+    }
+    const jobs = Object.fromEntries(ci.PR_REQUIRED_JOBS.map(name => [name, { result: 'success' }]));
+    const env = { ...process.env, GITHUB_RUN_ID: current.runId, GITHUB_RUN_ATTEMPT: current.attempt, GITHUB_SHA: current.revision,
+      GITHUB_REPOSITORY: current.repository, GITHUB_JOB: 'required', CI_NEEDS_JSON: JSON.stringify(jobs) };
+    const run = args => spawnSync(process.execPath, ['scripts/qa-ci.mjs', ...args], { cwd: directory, env, encoding: 'utf8', windowsHide: true });
+    const passed = run(['pr-gate', reports]); assert.equal(passed.status, 0, passed.stderr);
+    assert.equal(JSON.parse(passed.stdout).integrationSuites, 0);
+    assert.notEqual(run(['gate', reports]).status, 0);
+    assert.notEqual(run(['pr-gate', reports, '--profile=full']).status, 0);
+    fs.unlinkSync(path.resolve(reports, 'typecheck-shared/qa-ci-report.json'));
+    assert.notEqual(run(['pr-gate', reports]).status, 0);
+  } finally { fs.rmSync(directory, { recursive: true }); }
 });
 test('Report inventory refuses symlink or junction evidence outside its owned directory', () => {
   const directory = fixture(), outside = fixture();
@@ -150,10 +233,21 @@ test('Actual pack/restore preserves scoped builds and rejects checksum or source
     if (process.platform !== 'win32') fs.symlinkSync('./BUILD_ID', path.resolve(directory, 'frontend/.next/release-link'));
     const inventory = ci.discovery(directory), identity = sourceIdentity(directory), owner = ci.owners(inventory).find(item => item.owner === 'build');
     const reportDirectory = path.resolve(directory, 'data/outputs/ci/build'); fs.mkdirSync(reportDirectory, { recursive: true });
-    fs.writeFileSync(path.resolve(reportDirectory, 'qa-ci-report.json'), JSON.stringify(evidence(owner, inventory, identity)));
+    const buildReport = path.resolve(reportDirectory, 'qa-ci-report.json');
+    fs.writeFileSync(buildReport, JSON.stringify(evidence(owner, inventory, identity)));
     const environment = { ...process.env, GITHUB_RUN_ID: current.runId, GITHUB_RUN_ATTEMPT: current.attempt, GITHUB_SHA: current.revision, GITHUB_REPOSITORY: current.repository, GITHUB_JOB: 'build' };
     const run = command => spawnSync(process.execPath, ['scripts/qa-ci.mjs', command], { cwd: directory, env: environment, encoding: 'utf8', windowsHide: true });
     const packed = run('pack'); assert.equal(packed.status, 0, packed.stderr);
+    const fullReport = fs.readFileSync(buildReport, 'utf8');
+    const prBuildOwner = ci.owners(inventory, 'pr').find(item => item.owner === 'build');
+    fs.writeFileSync(buildReport, JSON.stringify(evidence(prBuildOwner, inventory, identity)));
+    const prPack = run('pack'); assert.notEqual(prPack.status, 0); assert.match(prPack.stderr, /Incorrect CI profile/);
+    fs.writeFileSync(buildReport, fullReport);
+    const profileMetadata = path.resolve(directory, 'data/outputs/ci-build/build.json'), fullMetadata = fs.readFileSync(profileMetadata, 'utf8');
+    const prMetadata = JSON.parse(fullMetadata); prMetadata.report.ci.profile = 'pr';
+    fs.writeFileSync(profileMetadata, JSON.stringify(prMetadata));
+    const prRestore = run('restore'); assert.notEqual(prRestore.status, 0); assert.match(prRestore.stderr, /Incorrect CI profile/);
+    fs.writeFileSync(profileMetadata, fullMetadata);
     fs.writeFileSync(path.resolve(directory, 'backend/dist/start.js'), 'stale-build');
     const restored = run('restore'); assert.equal(restored.status, 0, restored.stderr);
     assert.equal(fs.readFileSync(path.resolve(directory, 'backend/dist/start.js'), 'utf8'), 'tested-build');

@@ -173,8 +173,10 @@ async function integration() {
 }
 async function execute(section) {
   if (section === 'typecheck') {
-    await check('Local documentation references', ['scripts/verify-doc-links.cjs']);
-    for (const workspace of ['shared', 'backend', 'frontend']) await check(`${workspace} TypeScript`, [resolve(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--project', resolve(root, workspace, 'tsconfig.json')]);
+    if (!ciPlan.workspace || ciPlan.workspace === 'shared') await check('Local documentation references', ['scripts/verify-doc-links.cjs']);
+    for (const workspace of ['shared', 'backend', 'frontend'].filter(name => !ciPlan.workspace || name === ciPlan.workspace)) {
+      await check(`${workspace} TypeScript`, [resolve(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--project', resolve(root, workspace, 'tsconfig.json')]);
+    }
   } else if (section === 'import-history') {
     await importHistory();
   } else if (section === 'unit') {
@@ -254,7 +256,7 @@ const compact = ({ fileHashes, ...identity }) => identity;
 const report = { mode, native, runId, filter, exclude, testNamePattern, workspace: ciPlan.workspace, shard: ciPlan.shard,
   ...(ciPlan.workspace || ciPlan.shard ? { coverageScope: 'Selected workspace or shard only; the mandatory CI gate verifies combined coverage.' } : {}),
   capturedAt: new Date().toISOString(), sourceStart: compact(sourceStart), sourceEnd: compact(sourceEnd), sourceChanged, changedFiles, executableSourceChanged, documentationChanged,
-  ...(ciPlan.ci ? { ci: { version: 1, owner: ciPlan.owner, manifestSha256: suiteManifest.sha256, suiteIds: ciPlan.suiteIds,
+  ...(ciPlan.ci ? { ci: { version: 2, profile: ciPlan.profile, owner: ciPlan.owner, manifestSha256: suiteManifest.sha256, suiteIds: ciPlan.suiteIds,
     executedSuiteIds: records.filter(result => result.status === 'PASS' && result.suiteId).map(result => result.suiteId).sort(), invocation: ciInvocation, postgresVersion: ciPostgresVersion } } : {}),
   validForFinalSource: !sourceChanged, validForExecutableSource: !executableSourceChanged,
   revalidationRequired: executableSourceChanged ? 'Relevant executable QA must be repeated.' : documentationChanged ? 'Recheck changed documentation references and inventory; executable evidence retains its code identity.' : null,
@@ -262,7 +264,7 @@ const report = { mode, native, runId, filter, exclude, testNamePattern, workspac
   tools: { node: process.version, platform: process.platform, npm: process.env.npm_execpath ? execFileSync(process.execPath, [process.env.npm_execpath, '--version'], { encoding: 'utf8', windowsHide: true }).trim() : null, vitest: toolVersion('vitest', 'node_modules/vitest'), prisma: toolVersion('prisma', 'node_modules/prisma'), next: toolVersion('next', 'node_modules/next'), typescript: toolVersion('typescript', 'node_modules/typescript') }, invocation: process.argv.slice(2), commands, results: records };
 writeFileSync(resolve(output, `qa-${mode}${native ? '-native' : ''}.json`), JSON.stringify(report, null, 2) + '\n');
 if (ciPlan.ci) {
-  const portable = resolve(root, 'data/outputs/ci', ciPlan.owner.replaceAll('/', '-')); mkdirSync(portable, { recursive: true });
+  const portable = resolve(root, 'data/outputs/ci', ciPlan.profile, ciPlan.owner.replaceAll('/', '-')); mkdirSync(portable, { recursive: true });
   writeFileSync(resolve(portable, 'qa-ci-report.json'), JSON.stringify(report, null, 2) + '\n');
 }
 if (process.env.GITHUB_STEP_SUMMARY) {
