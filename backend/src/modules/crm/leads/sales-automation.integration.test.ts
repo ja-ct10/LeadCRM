@@ -13,6 +13,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
 import { dispatchQueuedWorkflows } from '../../automation/workflows/workflow-queue';
 import * as triggers from '../../automation/triggers/triggers.service';
+import { listFields, saveField } from '../closing-requirements/closing-requirements.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && (url.pathname === '/leadcrm_forms_test_2' || /^\/leadcrm_sales_test_\d+$/.test(url.pathname));
@@ -61,6 +62,11 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       const product = await prisma.productInterest.create({ data: { tenantId, name, dealValue: name === 'Smart Lock' ? 1250.75 : 550 } });
       productIds[name] = product.id;
     }
+    // Final-save conversion and rollback assertions require configured mandatory evidence.
+    await scope(async () => {
+      await listFields(tenantId);
+      for (const id of ['confirmation-type', 'confirmation-date']) await saveField(tenantId, adminId, { required: true }, id);
+    });
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });

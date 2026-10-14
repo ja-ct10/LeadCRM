@@ -175,9 +175,21 @@ try {
   await stageChange.getByRole('button',{name:'Move deal',exact:true}).click();await stageChange.waitFor({state:'hidden'});
   await until(async()=>(await stored('Action Deal')).stageId===qualified.id,'Single-pipeline stage selection did not persist');
   assert.equal((await stored('Action Deal')).pipelineId,pipeline.id);assert.equal(await prisma.dealStageHistory.count({where:{dealId:fixtures['Action Deal'].id}}),initialStageHistory+1);
+  await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:'Qualified',exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor({timeout:12000});
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
-  await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:'Qualified',exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor({timeout:12000});
+  await action('Lost Action','Add a task',observer);
+  const pendingTask=observer.getByRole('dialog');
+  await pendingTask.getByLabel(/^Title/).fill('Keep this unfinished task');
+  await action('Lost Action','Change stage');
+  const contacted=allStages.find(stage=>stage.name==='Contacted');
+  await stageChange.getByLabel('Choose the target stage',{exact:true}).selectOption(contacted.id);
+  await stageChange.getByRole('button',{name:'Move deal',exact:true}).click();await stageChange.waitFor({state:'hidden'});
+  await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:contacted.name,exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Lost Action',exact:true}).waitFor({timeout:12000});
+  assert.equal(await pendingTask.getByLabel(/^Title/).inputValue(),'Keep this unfinished task');
+  assert.equal(await prisma.task.count({where:{tenantId:tenant.id,title:'Keep this unfinished task'}}),0);
+  await pendingTask.getByRole('button',{name:'Close',exact:true}).click();await pendingTask.waitFor({state:'hidden'});
+  record('Second-session stage synchronization preserves an unsaved Task draft without creating a record');
   await action('Action Deal','Edit deal',observer);await observer.getByRole('dialog').getByLabel('Title',{exact:false}).fill('Keep this unfinished edit');
   record('Single Sales Pipeline stage selection commits once and second-session sync preserves the open edit draft');
   await action('Action Deal','Edit deal');
@@ -276,9 +288,12 @@ try {
   await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({timeout:12000});record('Archive hides active card, preserves children and restores via existing path with realtime refresh');
 
   await page.getByLabel('Pipeline',{exact:true}).selectOption(pipeline.id);
+  const beforeLoss=(await stored('Lost Action')).stageId;
+  const beforeLossHistory=await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}});
   await action('Lost Action','Mark as lost');
   const lostDialog=page.getByRole('dialog',{name:'Close Deal as lost'});assert.equal(await lostDialog.getByRole('button',{name:'Save',exact:true}).isEnabled(),false);
-  await lostDialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal((await stored('Lost Action')).stageId,initial.id);
+  await lostDialog.getByRole('button',{name:'Cancel',exact:true}).click();assert.equal((await stored('Lost Action')).stageId,beforeLoss);
+  assert.equal(await prisma.dealStageHistory.count({where:{dealId:fixtures['Lost Action'].id}}),beforeLossHistory);
   await action('Lost Action','Mark as lost');await lostDialog.getByLabel('Lost reason').fill('Customer postponed project');await lostDialog.getByRole('button',{name:'Save',exact:true}).click();
   await until(async()=>(await stored('Lost Action')).stageId===lost.id,'Lost did not persist');assert.equal((await stored('Lost Action')).lostReason,'Customer postponed project');record('Lost requires nonblank reason, cancellation is inert, outcome persists');
 
@@ -317,9 +332,18 @@ try {
   await page.mouse.move(d.x+d.width/2,d.y+d.height/2);await page.mouse.down();await page.mouse.move(d.x+20,d.y+20,{steps:4});await page.mouse.move(q.x+q.width/2,q.y+120,{steps:20});await page.mouse.up();
   await until(async()=>(await stored('Desktop Drag')).stageId===qualified.id,'Desktop drag did not persist');record('Desktop handle drag commits stage');
   const keyboardDrag=page.getByRole('button',{name:'Drag Desktop Drag',exact:true});
-  const keyboardStart=async()=>{await keyboardDrag.focus();await page.keyboard.press('Space');await until(async()=>await page.getByRole('heading',{name:'Desktop Drag',exact:true}).count()===2,'Keyboard drag did not activate');};
+  const keyboardId=fixtures['Desktop Drag'].id;
+  const dragAnnouncement=page.locator('[role="status"][id^="DndLiveRegion"]').first();
+  const keyboardStart=async()=>{
+    await keyboardDrag.focus();await page.keyboard.press('Space');
+    await until(async()=>await keyboardDrag.getAttribute('aria-pressed')==='true'&&await page.getByRole('heading',{name:'Desktop Drag',exact:true}).count()===2,'Keyboard drag did not activate');
+    await until(async()=>(await dragAnnouncement.textContent()).includes(`Draggable item ${keyboardId} was moved over droppable area`),'Keyboard collision geometry did not become ready');
+    // Flush the sensor's already-queued keydown listener installation.
+    await page.evaluate(()=>new Promise(done=>setTimeout(done,0)));
+  };
   const keyboardLeft=async()=>{await page.keyboard.press('ArrowLeft');await until(async()=>await column(page,'Contacted').getByRole('heading',{name:'Desktop Drag',exact:true}).count()===1,'Keyboard arrow did not preview adjacent stage');};
   await keyboardStart();await keyboardLeft();await page.keyboard.press('Escape');
+  await until(async()=>(await dragAnnouncement.textContent())===`Dragging was cancelled. Draggable item ${keyboardId} was dropped.`,'Keyboard cancellation was not announced');
   await until(async()=>await page.getByRole('heading',{name:'Desktop Drag',exact:true}).count()===1,'Keyboard cancellation did not clear the overlay');
   assert.equal((await stored('Desktop Drag')).stageId,qualified.id);record('Keyboard drag cancellation preserves stage');
   await keyboardStart();await keyboardLeft();await page.keyboard.press('Space');
@@ -335,8 +359,13 @@ try {
   const br=await board(mobile).boundingBox();
   for(let i=0;i<12;i++){await touch('touchMove',br.x+br.width-6,y);await mobile.waitForTimeout(180);const b=await column(mobile,'Qualified').boundingBox();if(b.x<200)break;}
   assert.ok(await board(mobile).evaluate(el=>el.scrollLeft)>400,'Touch drag must auto-scroll horizontally');
-  const mq=await column(mobile,'Qualified').boundingBox();const tx=Math.min(350,Math.max(40,mq.x+100));const ty=Math.min(750,mq.y+150);
-  await touch('touchMove',tx,ty);await mobile.waitForTimeout(200);await touch('touchEnd',tx,ty);
+  const mq=await column(mobile,'Qualified').boundingBox();
+  const visibleLeft=Math.max(br.x+br.width*.2,mq.x),visibleRight=Math.min(br.x+br.width*.8,mq.x+mq.width);
+  assert.ok(visibleRight>visibleLeft,'Qualified must intersect the interior of the visible board');
+  const tx=(visibleLeft+visibleRight)/2,ty=Math.min(750,mq.y+150);
+  await touch('touchMove',tx,ty);
+  await until(async()=>await column(mobile,'Qualified').getByRole('heading',{name:'Mobile Drag',exact:true}).count()===1,'Touch drag did not preview Qualified');
+  await touch('touchEnd',tx,ty);
   await until(async()=>(await stored('Mobile Drag')).stageId===qualified.id,'Mobile touch drag did not persist');
   await mobile.screenshot({path:resolve(output,'mobile-drag-390.png')});record('390px touch hold/drag across horizontal board commits to database');
   await board(mobile).evaluate(el=>{el.scrollLeft=0;});

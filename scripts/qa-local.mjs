@@ -8,9 +8,14 @@ import { randomUUID } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('./qa-environment.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
-const { browserEvidence } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
+const ci = require('./qa-ci.cjs');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceStart = sourceIdentity(root);
+const suiteManifest = ci.discovery(root);
+const ciPlan = ci.plan(process.argv.slice(2), suiteManifest);
+const ciInvocation = ciPlan.ci ? ci.invocation() : undefined;
+if (ciInvocation && sourceStart.revision !== ciInvocation.revision) throw Error('CI checkout does not match its tested GITHUB_SHA');
 const runId = `${Date.now()}-${randomUUID()}`;
 const output = resolve(root, 'data/outputs/system-audit', runId);
 mkdirSync(output, { recursive: true });
@@ -20,12 +25,13 @@ const filter = process.argv.find(arg => arg.startsWith('--filter='))?.slice(9);
 const exclude = process.argv.find(arg => arg.startsWith('--exclude='))?.slice(10).split(',').filter(Boolean) ?? [];
 const testNamePattern = process.argv.find(arg => arg.startsWith('--testNamePattern='))?.slice(18);
 const selectedNames = testNamePattern ? new RegExp(testNamePattern) : undefined;
-const nativeBrowserScripts = ['verify-crm-rbac-browser.mjs', 'verify-tasks-browser.mjs', 'verify-task-workflow-integrity-browser.mjs', 'verify-custom-fields-browser.mjs', 'verify-custom-fields-inline-browser.mjs', 'verify-ui-fixes-browser.mjs', 'verify-ui-polish-browser.mjs'];
+const nativeBrowserScripts = ci.NATIVE_BROWSERS;
+let ciPostgresVersion;
 const records = [];
 const commands = [];
 let sequence = 0;
 const unavailableRuntime = error => error?.code === 'ENOENT' || /Set POSTGRES_TEST_BIN|Executable doesn't exist at|Chromium distribution 'chrome' is not found|spawn(?:Sync)? .*?(?:initdb|pg_config|chrome).*?(?:EACCES|EPERM|ENOENT)|Failed to launch the browser process.*?(?:EACCES|EPERM|ENOENT)/s.test(error?.message ?? String(error));
-function recordFailure(label, error) { if (!error.qaRecorded) records.push({ label, status: unavailableRuntime(error) ? 'BLOCKED' : 'FAIL', reason: error.message }); }
+function recordFailure(label, error, details = {}) { if (!error.qaRecorded) records.push({ label, status: unavailableRuntime(error) ? 'BLOCKED' : 'FAIL', reason: error.message, ...details }); }
 function run(label, args, cwd = root, overrides = {}) {
   console.log(`\n[qa] ${label}`);
   const env = qaEnvironment(root, overrides);
@@ -36,28 +42,36 @@ function run(label, args, cwd = root, overrides = {}) {
     const child = spawn(process.execPath, args, { cwd, env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
     for (const [stream, destination] of [[child.stdout, process.stdout], [child.stderr, process.stderr]]) stream.on('data', data => { appendFileSync(log, data); destination.write(data); });
     child.once('error', error => { command.error = error.message; reject(error); });
-    child.once('exit', code => { command.exitCode = code ?? 1; command.finishedAt = new Date().toISOString(); done(code ?? 1); });
+    child.once('close', code => { command.exitCode = code ?? 1; command.finishedAt = new Date().toISOString(); done(code ?? 1); });
   });
 }
 async function check(label, args, cwd = root, env = {}) {
+  const counted = ciPlan.ci && args[0] === '--test';
+  if (counted) args = ['--test', '--test-reporter=tap', ...args.slice(1)];
   const code = await run(label, args, cwd, env);
   const command = commands.at(-1), log = resolve(root, command.log);
-  const unavailable = code && existsSync(log) && unavailableRuntime(readFileSync(log, 'utf8'));
-  records.push({ label, status: code === 0 ? 'PASS' : unavailable ? 'BLOCKED' : 'FAIL', exitCode: code, ...(unavailable ? { reason: 'Required local runtime unavailable before acceptance assertions; see saved command log.' } : {}) });
-  if (code) { const error = new Error(`${label} failed (${code})`); error.qaRecorded = true; throw error; }
+  const evidence = existsSync(log) ? readFileSync(log, 'utf8') : '';
+  const unavailable = code && unavailableRuntime(evidence);
+  const count = name => Number([...evidence.matchAll(new RegExp('^# ' + name + ' (\\d+)\\r?$', 'gm'))].at(-1)?.[1] ?? NaN);
+  const counts = counted ? { passed: count('pass'), failed: count('fail'), skipped: count('skipped'), cancelled: count('cancelled'), todo: count('todo') } : {};
+  const incomplete = counted && (!counts.passed || counts.failed !== 0 || counts.skipped !== 0 || counts.cancelled !== 0 || counts.todo !== 0);
+  const status = code === 0 && !incomplete ? 'PASS' : unavailable ? 'BLOCKED' : 'FAIL';
+  records.push({ label, status, exitCode: code, ...counts, ...(incomplete ? { reason: 'Required Node assertions were missing, failed, cancelled or skipped.' } : {}), ...(unavailable ? { reason: 'Required local runtime unavailable before acceptance assertions; see saved command log.' } : {}) });
+  if (status !== 'PASS') { const error = new Error(`${label} failed (${code})`); error.qaRecorded = true; throw error; }
 }
 async function browserCheck(label, script, directory, env) {
   const code = await run(label, [script], root, env);
-  const reportPath = ['results.json', 'report.json'].map(name => resolve(directory, name)).find(path => existsSync(path));
-  const result = reportPath ? JSON.parse(readFileSync(reportPath, 'utf8')) : null;
+  const existingReport = ['results.json', 'report.json'].map(name => resolve(directory, name)).find(path => existsSync(path));
+  const reportPath = existingReport || ensureBrowserFailureReport(directory, new Error(`${label} exited ${code} before writing its required browser report; see the saved command log.`));
+  const result = JSON.parse(readFileSync(reportPath, 'utf8'));
   const { complete, ...counts } = browserEvidence(result, code);
   const log = resolve(root, commands.at(-1).log);
   const blocked = code && existsSync(log) && unavailableRuntime(readFileSync(log, 'utf8'));
   const status = reportPath && complete ? 'PASS' : blocked ? 'BLOCKED' : 'FAIL';
-  records.push({ label, status, exitCode: code, ...counts,
+  records.push({ label, suiteId: relative(root, script).replaceAll('\\', '/'), status, exitCode: code, ...counts,
     database: env.DATABASE_URL || script.endsWith('verify-notifications-browser.mjs') ? 'Fresh native PostgreSQL' : 'Fresh PGlite fixture',
     report: reportPath ? relative(root, reportPath).replaceAll('\\', '/') : null,
-    ...(!reportPath || !counts.executed ? { reason: 'Required browser assertions/report missing; exit zero alone cannot pass.' } : {}) });
+    ...(!existingReport || !counts.executed ? { reason: 'Required browser assertions/report missing; exit zero alone cannot pass.' } : {}) });
   if (status !== 'PASS') { const error = new Error(`${label}: failed, missing or empty browser evidence`); error.qaRecorded = true; throw error; }
 }
 function walk(folder) {
@@ -82,7 +96,7 @@ async function vitest(label, workspace, args, env = {}, expectedFile, database) 
   const windowsSymlink = process.platform === 'win32' && skippedNames.length === 1 && skippedNames[0].includes('refuses symlink directories and objects without touching outside files');
   const allowedConcurrencySkip = !native && label.includes('login-lockout');
   const status = !code && executed > 0 && found && (!skipped || allowedConcurrencySkip || (historyOnly && historicalRehearsal)) ? 'PASS' : (!code && (windowsSymlink || historyOnly) ? 'BLOCKED' : 'FAIL');
-  records.push({ label, status, passed, failed, skipped, skippedNames, ...(selectedNames ? { selectedCasePattern: testNamePattern, excludedByNamePattern: allAssertions.length - assertions.length, limitation: 'Explicitly selected cases only; excluded assertions do not satisfy full-suite acceptance.' } : {}), ...(historyOnly ? { requiredCaseCoveredBy: historicalRehearsal ? 'Populated import History migration and HTTP rehearsal' : null } : {}), ...(windowsSymlink ? { reason: 'Windows lacks file symlink privileges; mandatory POSIX storage boundary test requires Linux CI/container.' } : {}), database, report: relative(root, report).replaceAll('\\', '/') });
+  records.push({ label, ...(expectedFile ? { suiteId: 'backend/' + expectedFile } : {}), status, passed, failed, skipped, skippedNames, ...(selectedNames ? { selectedCasePattern: testNamePattern, excludedByNamePattern: allAssertions.length - assertions.length, limitation: 'Explicitly selected cases only; excluded assertions do not satisfy full-suite acceptance.' } : {}), ...(historyOnly ? { requiredCaseCoveredBy: historicalRehearsal ? 'Populated import History migration and HTTP rehearsal' : null } : {}), ...(windowsSymlink ? { reason: 'Windows lacks file symlink privileges; mandatory POSIX storage boundary test requires Linux CI/container.' } : {}), database, report: relative(root, report).replaceAll('\\', '/') });
   if (status !== 'PASS') { const error = new Error(`${label}: failed, missing or skipped required tests`); error.qaRecorded = true; throw error; }
 }
 function databaseFor(file) {
@@ -91,6 +105,7 @@ function databaseFor(file) {
   if (file.includes('/campaigns/') || file.includes('contact-relations') || file.includes('/groups/')) return 'leadcrm_campaign_test_1';
   if (file.includes('/permissions/') || file.includes('/roles/')) return 'leadcrm_environment_test_1';
   if (file.includes('crm-completion')) return 'leadcrm_completion_test_1';
+  if (file.includes('accounts-full-address')) return 'leadcrm_accounts_full_address_1';
   if (file.includes('custom-fields.integration')) return 'leadcrm_custom_fields_test';
   if (file.includes('single-workspace')) return 'leadcrm_smoke_test_1';
   if (file.includes('archive-date-page') || file.includes('user-groups')) return 'leadcrm_polish_test';
@@ -107,15 +122,15 @@ async function importHistory(label = 'Populated import History migration and HTT
   const skipped = assertions.length - passed - failed;
   const historical = assertions.some(test => test.fullName.includes('verifies migrated History through deployed APIs') && test.status === 'passed');
   const status = !code && passed > 0 && !failed && !skipped && historical ? 'PASS' : 'FAIL';
-  records.push({ label, status, passed, failed, skipped, database: `Populated disposable ${native ? 'native PostgreSQL' : 'PGlite'}`, report: relative(root, report).replaceAll('\\', '/') });
+  records.push({ label, suiteId: ci.IMPORT_SUITE, status, passed, failed, skipped, database: `Populated disposable ${native ? 'native PostgreSQL' : 'PGlite'}`, report: relative(root, report).replaceAll('\\', '/') });
   if (status !== 'PASS') { const error = new Error(`${label}: populated import assertions failed, missing or skipped`); error.qaRecorded = true; throw error; }
 }
 async function integration() {
-  const files = walk(resolve(root, 'backend/src')).filter(file => file.endsWith('.integration.test.ts')).map(file => relative(resolve(root, 'backend'), file).replaceAll('\\', '/')).filter(file => (!filter || filter.split(',').some(fragment => file.includes(fragment))) && !exclude.some(fragment => file.includes(fragment))).sort();
+  const files = suiteManifest.integration.filter(item => !ciPlan.suiteIds || ciPlan.suiteIds.includes(item.id)).map(item => item.id.slice('backend/'.length)).filter(file => (!filter || filter.split(',').some(fragment => file.includes(fragment))) && !exclude.some(fragment => file.includes(fragment))).sort();
   if (!files.length) throw new Error('No integration suites match the requested filter');
   let pg;
   if (native) {
-    await check('Populated guarded db:deploy and backend startup rehearsal', ['backend/scripts/test-guarded-startup.mjs']);
+    if (!ciPlan.shard) await check('Populated guarded db:deploy and backend startup rehearsal', ['backend/scripts/test-guarded-startup.mjs']);
     const { notificationTestPostgres } = await import('../backend/scripts/notification-test-postgres.mjs');
     pg = await notificationTestPostgres();
     records.push({ label: 'Disposable native PostgreSQL fixture', status: 'PASS', version: pg.version, durability: pg.durability, directory: relative(root, pg.directory).replaceAll('\\', '/') });
@@ -163,12 +178,20 @@ async function execute(section) {
   } else if (section === 'import-history') {
     await importHistory();
   } else if (section === 'unit') {
-    await check('QA isolation regression tests', ['--test', 'scripts/qa-safety.test.cjs']);
-    await check('Coolify release orchestration regressions', ['--test', 'scripts/deploy-coolify.test.mjs']);
-    try { await vitest('backend unit tests', 'backend', ['--exclude=**/*.integration.test.ts']); }
-    catch (error) { recordFailure('backend unit tests', error); }
-    await vitest('frontend tests', 'frontend', ['--testTimeout=20000']);
+    if (!ciPlan.workspace || ciPlan.workspace === 'backend') {
+      await check('QA isolation regression tests', ['--test', 'scripts/qa-safety.test.cjs']);
+      await check('CI coordination regressions', ['--test', 'scripts/qa-ci.test.cjs']);
+      await check('Coolify release orchestration regressions', ['--test', 'scripts/deploy-coolify.test.mjs']);
+      try { await vitest('backend unit tests', 'backend', ['--exclude=**/*.integration.test.ts']); }
+      catch (error) { recordFailure('backend unit tests', error); }
+    }
+    if (!ciPlan.workspace || ciPlan.workspace === 'frontend') await vitest('frontend tests', 'frontend', ['--testTimeout=20000']);
   } else if (section === 'integration') await integration();
+  else if (section === 'database') {
+    await execute('migrations');
+    await check('Populated guarded db:deploy and backend startup rehearsal', ['backend/scripts/test-guarded-startup.mjs']);
+    await check('Mailbox worker restart', ['backend/scripts/verify-mailbox-restart.mjs']);
+  }
   else if (section === 'migrations') {
     await check('Prisma validation', [resolve(root, 'node_modules/prisma/build/index.js'), 'validate', '--schema', resolve(root, 'backend/prisma/schema.prisma')]);
     try { await check('Rollout and migration regression tests', ['--test', ...walk(resolve(root, 'backend/scripts')).filter(file => /\.test\.(cjs|mjs)$/.test(file))]); }
@@ -182,7 +205,7 @@ async function execute(section) {
       await check(`${workspace} production build`, [npmCli, '--prefix', workspace, 'run', 'build'], root, { NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', LEADCRM_QA_BUILD_ASSETS: '1' });
     }
   } else if (section === 'browser') {
-    const scripts = walk(resolve(root, 'backend/scripts')).filter(file => /verify-.*-browser\.mjs$/.test(file) && (readFileSync(file, 'utf8').includes('PGlite.create(') || file.endsWith('verify-notifications-browser.mjs') || nativeBrowserScripts.some(name => file.endsWith(name)))).sort().filter(file => (!filter || filter.split(',').some(fragment => file.includes(fragment))) && !exclude.some(fragment => file.includes(fragment)));
+    const scripts = suiteManifest.browser.filter(item => !ciPlan.suiteIds || ciPlan.suiteIds.includes(item.id)).map(item => resolve(root, item.id)).sort().filter(file => (!filter || filter.split(',').some(fragment => file.includes(fragment))) && !exclude.some(fragment => file.includes(fragment)));
     if (!scripts.length) throw new Error('No disposable browser suites match the requested filter');
     for (const script of scripts) {
       const browserOutput = resolve(output, 'browser', script.split(/[\\/]/).at(-1).replace(/\.mjs$/, ''));
@@ -197,13 +220,23 @@ async function execute(section) {
         }
         await browserCheck(relative(root, script), script, browserOutput, browserEnv);
       }
-      catch (error) { recordFailure(relative(root, script), error); }
+      catch (error) {
+        const report = ensureBrowserFailureReport(browserOutput, error);
+        recordFailure(relative(root, script), error, { report: relative(root, report).replaceAll('\\', '/') });
+      }
       finally { pg?.stop(); }
     }
-    await check('Mailbox worker restart', ['backend/scripts/verify-mailbox-restart.mjs']);
+    if (!ciPlan.shard) await check('Mailbox worker restart', ['backend/scripts/verify-mailbox-restart.mjs']);
   } else throw new Error(`Unknown QA phase: ${section}`);
 }
 try {
+  if (ciPlan.ci && ['database', 'integration', 'browser'].includes(mode)) {
+    const bin = process.env.POSTGRES_TEST_BIN || execFileSync('pg_config', ['--bindir'], { encoding: 'utf8', windowsHide: true }).trim();
+    const version = execFileSync(resolve(bin, process.platform === 'win32' ? 'postgres.exe' : 'postgres'), ['--version'], { encoding: 'utf8', windowsHide: true });
+    const selected = version.match(/\bPostgreSQL\)? (18(?:\.\d+)*)\b/);
+    if (!selected) throw Error('CI requires installed native PostgreSQL 18: ' + version.trim());
+    ciPostgresVersion = 'PostgreSQL ' + selected[1];
+  }
   if (mode === 'all') {
     for (const section of ['typecheck', 'unit', 'migrations', 'build', 'integration', 'browser']) {
       try { await execute(section); } catch (error) { recordFailure(section, error); }
@@ -218,20 +251,30 @@ const executableSourceChanged = sourceStart.executableSourceSha256 !== sourceEnd
 const documentationChanged = sourceStart.documentationSha256 !== sourceEnd.documentationSha256;
 const toolVersion = (name, path) => { try { return JSON.parse(readFileSync(resolve(root, path, 'package.json'), 'utf8')).version; } catch { return null; } };
 const compact = ({ fileHashes, ...identity }) => identity;
-const report = { mode, native, runId, filter, exclude, testNamePattern, capturedAt: new Date().toISOString(), sourceStart: compact(sourceStart), sourceEnd: compact(sourceEnd), sourceChanged, changedFiles, executableSourceChanged, documentationChanged,
+const report = { mode, native, runId, filter, exclude, testNamePattern, workspace: ciPlan.workspace, shard: ciPlan.shard,
+  ...(ciPlan.workspace || ciPlan.shard ? { coverageScope: 'Selected workspace or shard only; the mandatory CI gate verifies combined coverage.' } : {}),
+  capturedAt: new Date().toISOString(), sourceStart: compact(sourceStart), sourceEnd: compact(sourceEnd), sourceChanged, changedFiles, executableSourceChanged, documentationChanged,
+  ...(ciPlan.ci ? { ci: { version: 1, owner: ciPlan.owner, manifestSha256: suiteManifest.sha256, suiteIds: ciPlan.suiteIds,
+    executedSuiteIds: records.filter(result => result.status === 'PASS' && result.suiteId).map(result => result.suiteId).sort(), invocation: ciInvocation, postgresVersion: ciPostgresVersion } } : {}),
   validForFinalSource: !sourceChanged, validForExecutableSource: !executableSourceChanged,
   revalidationRequired: executableSourceChanged ? 'Relevant executable QA must be repeated.' : documentationChanged ? 'Recheck changed documentation references and inventory; executable evidence retains its code identity.' : null,
   status: records.some(result => result.status === 'FAIL') ? 'FAIL' : sourceChanged ? 'REVALIDATION REQUIRED' : records.every(result => result.status === 'PASS') ? 'PASS' : 'BLOCKED',
   tools: { node: process.version, platform: process.platform, npm: process.env.npm_execpath ? execFileSync(process.execPath, [process.env.npm_execpath, '--version'], { encoding: 'utf8', windowsHide: true }).trim() : null, vitest: toolVersion('vitest', 'node_modules/vitest'), prisma: toolVersion('prisma', 'node_modules/prisma'), next: toolVersion('next', 'node_modules/next'), typescript: toolVersion('typescript', 'node_modules/typescript') }, invocation: process.argv.slice(2), commands, results: records };
 writeFileSync(resolve(output, `qa-${mode}${native ? '-native' : ''}.json`), JSON.stringify(report, null, 2) + '\n');
+if (ciPlan.ci) {
+  const portable = resolve(root, 'data/outputs/ci', ciPlan.owner.replaceAll('/', '-')); mkdirSync(portable, { recursive: true });
+  writeFileSync(resolve(portable, 'qa-ci-report.json'), JSON.stringify(report, null, 2) + '\n');
+}
 if (process.env.GITHUB_STEP_SUMMARY) {
   const cell = value => String(value ?? '—').replaceAll('|', '\\|').replace(/[\r\n]/g, ' ');
-  const rows = records.map(result => `| ${[result.label, result.status, result.passed, result.failed, result.skipped].map(cell).join(' | ')} |`);
+  const seconds = command => command?.finishedAt ? ((Date.parse(command.finishedAt) - Date.parse(command.startedAt)) / 1000).toFixed(1) : undefined;
+  const rows = records.map(result => `| ${[result.label, result.status, result.passed, result.failed, result.skipped, seconds(commands.findLast(command => command.label === result.label)), result.database].map(cell).join(' | ')} |`);
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
     `\n### LeadCRM acceptance: ${report.status}`, '',
     `Mode: ${mode}. Native PostgreSQL: ${native ? 'requested' : 'not requested'}. Source unchanged: ${!sourceChanged}.`, '',
-    '| Check | Result | Passed | Failed | Skipped |', '| --- | --- | ---: | ---: | ---: |', ...rows, '',
+    '| Check | Result | Passed | Failed | Skipped | Seconds | Fixture |', '| --- | --- | ---: | ---: | ---: | ---: | --- |', ...rows, '',
     'A dash means this command reports an exit status rather than individual test counts. Full reports, command logs and browser failure captures are retained in the disposable QA evidence artifact.', '',
+    ...(ciInvocation ? [`[Current run and evidence artifacts](https://github.com/${ciInvocation.repository}/actions/runs/${ciInvocation.runId})`, ''] : []),
   ].join('\n'));
 }
 console.log(JSON.stringify(report, null, 2));

@@ -1,4 +1,16 @@
 'use strict';
+const { existsSync, mkdirSync, writeFileSync } = require('node:fs');
+const { resolve } = require('node:path');
+
+function ensureBrowserFailureReport(directory, error) {
+  const existing = ['results.json', 'report.json'].map(name => resolve(directory, name)).find(path => existsSync(path));
+  if (existing) return existing;
+  mkdirSync(directory, { recursive: true });
+  const report = resolve(directory, 'results.json');
+  writeFileSync(report, JSON.stringify({ status: 'FAIL', checks: [], pageErrors: [], transportErrors: [],
+    error: error instanceof Error ? error.stack || error.message : String(error) }, null, 2) + '\n');
+  return report;
+}
 
 function browserEvidence(result, exitCode) {
   const checks = Array.isArray(result?.checks) ? result.checks : [];
@@ -12,4 +24,4 @@ function browserEvidence(result, exitCode) {
     complete: exitCode === 0 && passed > 0 && failed === 0 };
 }
 
-module.exports = { browserEvidence };
+module.exports = { browserEvidence, ensureBrowserFailureReport };

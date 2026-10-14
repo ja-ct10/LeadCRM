@@ -92,8 +92,34 @@ try {
     for await (const { theme, width } of responsiveMatrix(page)) {
       await page.setViewportSize({ width, height: 900 });
       await page.waitForTimeout(250); // Wait for responsive layout/transition, never production loading.
-      const dimensions = await target.evaluate(root => ({ pageOverflow: document.documentElement.scrollWidth > innerWidth + 1, controlsOutside: [...root.querySelectorAll('input,select,textarea')].filter(el => el.getClientRects().length && (el.getBoundingClientRect().left < -1 || el.getBoundingClientRect().right > innerWidth + 1)).map(el => el.getAttribute('aria-label')) }));
-      assert.equal(dimensions.pageOverflow, false, JSON.stringify(dimensions)); assert.deepEqual(dimensions.controlsOutside, [], JSON.stringify(dimensions));
+      assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false, `${label} document overflow at ${width}px`);
+      for (const control of await target.locator('input,select,textarea').all()) {
+        const geometry = await control.evaluate(element => {
+          const rect = element.getBoundingClientRect();
+          const outside = element.getClientRects().length && (rect.left < -1 || rect.right > innerWidth + 1);
+          let scroll;
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            const bounds = parent.getBoundingClientRect();
+            if (/^(auto|scroll)$/.test(getComputedStyle(parent).overflowX) && parent.scrollWidth > parent.clientWidth && bounds.left >= -1 && bounds.right <= innerWidth + 1) {
+              scroll = { left: parent.scrollLeft, top: parent.scrollTop }; break;
+            }
+          }
+          return { outside: Boolean(outside), scroll, label: element.getAttribute('aria-label') };
+        });
+        if (!geometry.outside) continue;
+        // Wide CRM tables clip controls inside their own horizontal viewport.
+        // Prove those controls are reachable; out-of-page form controls still fail.
+        assert.ok(geometry.scroll, JSON.stringify(geometry));
+        await control.scrollIntoViewIfNeeded();
+        assert.ok(await control.evaluate(element => { const rect = element.getBoundingClientRect(); return rect.left >= -1 && rect.right <= innerWidth + 1; }), JSON.stringify(geometry));
+        await control.evaluate((element, original) => {
+          for (let parent = element.parentElement; parent; parent = parent.parentElement) {
+            if (/^(auto|scroll)$/.test(getComputedStyle(parent).overflowX) && parent.scrollWidth > parent.clientWidth) {
+              parent.scrollLeft = original.left; parent.scrollTop = original.top; break;
+            }
+          }
+        }, geometry.scroll);
+      }
       await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) }); record(`${label} ${theme} ${width}px`);
     }
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -262,6 +288,8 @@ try {
   await page.goto(base + '/crm/contacts');
   const contactsGrid = page.getByRole('grid', { includeHidden: true }); await contactsGrid.waitFor();
   const contactsArea = page.locator('[aria-label="Contacts table area"]');
+  const contactsRegion = contactsArea.getByRole('region', { name: 'Contacts data grid', exact: true });
+  const contactsSpinner = contactsRegion.getByRole('status', { name: 'Refreshing data...', exact: true });
   await page.getByRole('button', { name: 'My Contacts', exact: true }).click();
   await page.waitForURL(url => url.searchParams.get('tab') === 'my');
   await page.getByPlaceholder('Search contacts...').fill('Polish');
@@ -278,15 +306,18 @@ try {
     const beforeRequests = contactRequests;
     contactsGate = deferred(); failContacts = failure;
     await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-    await page.getByText('Loading contacts...', { exact: true }).waitFor();
+    await contactsSpinner.waitFor();
     assert.equal(await contactsGrid.textContent(), original);
-    assert.equal(await contactsGrid.isVisible(), false);
-    assert.equal(await contactsArea.getByRole('status').count(), 1);
-    const dimensions = await contactsArea.evaluate(area => {
-      const loader = area.querySelector('[role="status"]');
+    assert.equal(await contactsGrid.isVisible(), true);
+    assert.equal(await page.getByRole('status', { name: 'Refreshing data...', exact: true }).count(), 1);
+    assert.equal(await contactsArea.getAttribute('aria-busy'), 'true');
+    const dimensions = await contactsRegion.evaluate(area => {
+      const loader = area.querySelector('[role="status"][aria-label="Refreshing data..."]');
       return { loader: loader?.getBoundingClientRect().toJSON(), table: area.getBoundingClientRect().toJSON() };
     });
-    assert.ok(dimensions.loader && dimensions.loader.width > 0 && Math.abs(dimensions.loader.width - dimensions.table.width) < 1, JSON.stringify(dimensions));
+    const { loader, table } = dimensions;
+    assert.ok(loader && loader.width > 0 && loader.height > 0 && loader.left >= table.left - 1 && loader.right <= table.right + 1 && loader.top >= table.top - 1 && loader.bottom <= table.bottom + 1, JSON.stringify(dimensions));
+    assert.ok(Math.abs(loader.left + loader.width / 2 - table.left - table.width / 2) < 1.5 && Math.abs(loader.top + loader.height / 2 - table.top - table.height / 2) < 1.5, JSON.stringify(dimensions));
     assert.equal(await page.getByPlaceholder('Search contacts...').inputValue(), 'Polish');
     assert.equal(new URL(page.url()).searchParams.get('tab'), 'my');
     assert.equal(await page.getByRole('button', { name: 'Refresh', exact: true }).isDisabled(), true);
@@ -297,10 +328,15 @@ try {
     await responsive(failure ? 'contacts-refresh-failure' : 'contacts-refresh', contactsArea);
     if (!failure) await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Polish Refreshed', lastName: 'Contact', status: 'WARM', assignedUserId: admin.id } });
     contactsGate.resolve(); contactsGate = undefined;
-    await page.getByText('Loading contacts...', { exact: true }).waitFor({ state: 'hidden' });
+    await contactsSpinner.waitFor({ state: 'hidden' });
+    await page.waitForFunction(() => { const button = document.querySelector('button[aria-label="Refresh"]'); return button && !button.disabled; });
+    assert.equal(await contactsArea.getAttribute('aria-busy'), 'false');
     await contactsGrid.waitFor({ state: 'visible' });
     await page.getByRole('button', { name: 'Refresh', exact: true }).waitFor();
-    if (failure) assert.equal(await contactsGrid.textContent(), original);
+    if (failure) {
+      assert.equal(await contactsGrid.textContent(), original);
+      await page.getByText('Acceptance: contacts unavailable', { exact: true }).waitFor();
+    }
     else {
       assert.notEqual(await contactsGrid.textContent(), original);
       assert.equal(await contactsGrid.getByRole('row').count(), 7); // Header plus six rows on page two.
@@ -312,24 +348,25 @@ try {
   }
   failContacts = false;
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await page.getByText('Loading contacts...', { exact: true }).waitFor({ state: 'hidden' });
+  await contactsSpinner.waitFor({ state: 'hidden' });
+  await page.waitForFunction(() => { const button = document.querySelector('button[aria-label="Refresh"]'); return button && !button.disabled; });
   record('Contacts retry succeeds after a failed manual refresh');
   await theme('Dark');
   contactsGate = deferred();
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-  await page.getByText('Loading contacts...', { exact: true }).waitFor();
+  await contactsSpinner.waitFor();
   await responsive('contacts-dark', contactsArea);
   contactsGate.resolve(); contactsGate = undefined;
-  await page.getByText('Loading contacts...', { exact: true }).waitFor({ state: 'hidden' });
+  await contactsSpinner.waitFor({ state: 'hidden' });
   await contactsGrid.waitFor({ state: 'visible' });
 
   assert.equal((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).createdAt.toISOString(), '2026-10-08T23:35:37.695Z');
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []);
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors }, null, 2));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'PASS', checks, pageErrors, transportErrors }, null, 2));
   console.log(`Browser acceptance passed: ${checks.length} checks. Output: ${output}`);
 } catch (error) {
   if (page) { await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {}); writeFileSync(resolve(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')); }
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, error: String(error) }, null, 2)); throw error;
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'FAIL', checks, pageErrors, transportErrors, error: String(error) }, null, 2)); throw error;
 } finally {
   closing = true; contactsGate?.resolve(); optionsGate?.resolve();
   await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }

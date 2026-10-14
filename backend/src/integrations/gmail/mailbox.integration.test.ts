@@ -23,6 +23,7 @@ import { validateImportRow } from '../../modules/crm/imports/import-rows.service
 import { processBrevoEvent } from '../../modules/marketing/campaigns/brevo-webhook';
 import * as dealRepository from '../../modules/crm/deals/deals.repository';
 import { dispatchQueuedWorkflows } from '../../modules/automation/workflows/workflow-queue';
+import { listFields, saveField } from '../../modules/crm/closing-requirements/closing-requirements.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_mailbox_test_\d+$/.test(url.pathname);
@@ -69,6 +70,11 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const pipeline = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     pipelineId = pipeline.pipeline.id;
     stages = Object.fromEntries((await prisma.stage.findMany({ where: { tenantId, pipelineId } })).map(stage => [stage.name, stage.id]));
+    // These acceptance cases exercise an explicitly configured required-evidence policy.
+    await scope(async () => {
+      await listFields(tenantId);
+      for (const id of ['confirmation-type', 'confirmation-date']) await saveField(tenantId, userId, { required: true }, id);
+    });
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
@@ -342,12 +348,23 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
       actions: [{ type: 'move_deal_stage', config: { stageId: stages.Contacted, currentStageId: stages.Lead, productInterestId: product.id } }] } });
     try {
       const definitions = await prisma.closingFieldDefinition.count({ where: { tenantId } });
-      const preview = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: c.lead.id });
-      expect(preview.status).toBe(200); expect(preview.body.data.actions[0].message).toContain(c.deals[1].id);
+      const skippedPreview = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: c.lead.id });
+      expect(skippedPreview.status, JSON.stringify(skippedPreview.body)).toBe(200);
+      expect(skippedPreview.body.data.conditions.matched).toBe(false);
+      expect(skippedPreview.body.data.actions[0]).toMatchObject({ status: 'skipped', valid: true });
+      expect(skippedPreview.body.data.actions[0].message).toContain('Workflow conditions did not match');
       expect(await stageOf(c.deals[1].id)).toBe('Lead');
       expect(await prisma.closingFieldDefinition.count({ where: { tenantId } })).toBe(definitions);
       const reply = message(c.thread, c.email, 'inbound', 'Thanks', 0);
       await ingest([reply]); await ingest([reply]);
+      expect((await read(c.lead.id)).status).toBe('Hot');
+      const preview = await call(`/automation/workflows/${workflow.id}/test`, 'POST', { entityId: c.lead.id });
+      expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+      expect(preview.body.data.conditions.matched).toBe(true);
+      expect(preview.body.data.actions[0].status).toBe('ready');
+      expect(preview.body.data.actions[0].message).toContain(c.deals[1].id);
+      expect(await stageOf(c.deals[1].id)).toBe('Lead');
+      expect(await prisma.closingFieldDefinition.count({ where: { tenantId } })).toBe(definitions);
       await scope(() => dispatchQueuedWorkflows());
       expect(await stageOf(c.deals[0].id)).toBe('Lead');
       expect(await prisma.workflowExecutionRun.findFirst({ where: { workflowId: workflow.id }, include: { steps: true } })).toMatchObject({ status: 'completed' });

@@ -1194,14 +1194,15 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     expect(provider).not.toHaveBeenCalled();
   });
   async function setReadOnly(leadEdit = false, contactEdit = false) {
-    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Inbox access ' + randomUUID() } });
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Inbox access ' + randomUUID(), crmAssignmentRestricted: true } });
     await prisma.rolePermission.createMany({ data: [{ tenantId, roleId: role.id, module: 'leads', canView: true, canEdit: leadEdit }, { tenantId, roleId: role.id, module: 'contacts', canView: true, canEdit: contactEdit }] });
     await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId } });
-    await prisma.user.update({ where: { id: userId }, data: { role: 'Sales' } });
+    await prisma.user.update({ where: { id: userId }, data: { role: role.name } });
   }
   it('allows scoped reading but rejects customer sends, drafts and scheduling for a read-only role', async () => {
     await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'read-only')], permissions)); await setReadOnly();
-    expect((await call('/threads/read-only')).status).toBe(200);
+    const readable = await call('/threads/read-only');
+    expect(readable.status, JSON.stringify(readable.body)).toBe(200);
     const provider = vi.fn(); vi.stubGlobal('fetch', provider);
     const data = { to: leadEmail, subject: 'Inquiry', body: '<p>Hello</p>' };
     expect((await call('/send', 'POST', data)).status).toBe(403);
@@ -1220,6 +1221,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const userRole = await prisma.userRole.findFirstOrThrow({ where: { tenantId, userId } });
     await prisma.rolePermission.updateMany({ where: { tenantId, roleId: userRole.roleId, module }, data: { canView: false } });
     const result = await call('/emails');
+    expect(result.status, JSON.stringify(result.body)).toBe(200);
     expect(result.body.emails.map((row: GmailEmail) => row.id).sort()).toEqual([module === 'leads' ? 'contact-view' : 'lead-view', 'fixed-view'].sort());
     expect((await call('/threads/' + (module === 'leads' ? 'lead-view' : 'contact-view'))).status).toBe(404);
   });

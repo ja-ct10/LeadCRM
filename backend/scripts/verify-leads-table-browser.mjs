@@ -37,7 +37,7 @@ const prisma = require('../dist/backend/src/config/database.config.js').default;
 const app = require('../dist/backend/src/app.js').default;
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
 const checks = [], errors = [];
-let api, frontend, browser, closing = false;
+let api, frontend, browser, failurePage, closing = false;
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Table Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const foreignTenant = await prisma.tenant.create({ data: { name: 'Other Tenant', slug: randomUUID() } });
@@ -121,6 +121,7 @@ try {
   await context.addInitScript(() => { Object.defineProperty(window, 'EventSource', { value: undefined, configurable: true }); });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000);
+  failurePage = page;
   page.on('pageerror', error => errors.push(error.message));
   const failures = { preference: 0, reset: 0, create: 0 };
   const reads = [];
@@ -255,6 +256,13 @@ try {
   await verifySearchHighlighting({ page, prisma, tenant, foreignTenant, admin, call, until, record, control, output });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'passed', environment: 'Local production build + disposable PGlite SQL; background SSE paused to isolate manual refresh', checks, errors }, null, 2));
+} catch (error) {
+  if (failurePage) {
+    await failurePage.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {});
+    writeFileSync(resolve(output, 'failure.txt'), await failurePage.locator('body').innerText().catch(() => ''));
+  }
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'failed', checks, errors, failure: String(error) }, null, 2));
+  throw error;
 } finally {
   closing = true;
   await browser?.close(); frontend?.kill();

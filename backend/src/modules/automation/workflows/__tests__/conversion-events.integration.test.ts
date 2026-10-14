@@ -6,7 +6,7 @@ import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { salesTransaction } from '../../../crm/leads/lead-automation.service';
 import { convertClosedLead } from '../../../crm/leads/lead-conversion.service';
 import { convertContact, updateContact } from '../../../crm/contacts/contacts.service';
-import { saveValues } from '../../../crm/closing-requirements/closing-requirements.service';
+import { listFields, saveField, saveValues } from '../../../crm/closing-requirements/closing-requirements.service';
 import { submitPublicForm } from '../../../marketing/forms/public-forms.service';
 import { createWorkflow } from '../workflows.service';
 import * as triggers from '../../triggers/triggers.service';
@@ -44,6 +44,12 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     qualifiedId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Qualified', order: 0 } })).id;
     wonId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Closed Won', isWon: true, order: 1 } })).id;
     productId = (await prisma.productInterest.create({ data: { tenantId, name: 'Conversion Product', dealValue: 125.5 } })).id;
+    await scope(async () => {
+      const fields = await listFields(tenantId);
+      for (const field of fields.filter(field => ['confirmation-type', 'confirmation-date'].includes(field.id))) {
+        await saveField(tenantId, actorId, { required: true }, field.id);
+      }
+    });
   }, 30000);
   beforeEach(async () => { vi.restoreAllMocks(); await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } }); });
   afterAll(async () => { vi.restoreAllMocks(); await prisma.$disconnect(); });
@@ -89,12 +95,17 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     const original = await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } });
     const converted = await scope(() => convertContact(lead.id, tenantId, actorId, { createContact: true, createDeal: false, accountName: 'Manual selected company', dealId: deal.id }));
     expect(await events(lead.id, 'lead.updated')).toHaveLength(1);
-    expect(await events(lead.id, 'lead.status_changed')).toHaveLength(1);
+    expect(await events(lead.id, 'lead.status_changed')).toHaveLength(0);
     expect(await events(converted.contact.id, 'contact.created')).toHaveLength(1);
     expect(await events(deal.id, 'deal.updated')).toHaveLength(1);
     expect(await events(deal.id, 'deal.created')).toHaveLength(0);
     const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, entityId: lead.id, trigger: { triggerType: 'lead.updated' } } });
-    expect((run.dispatchContext as any).context['event.changedFields']).toEqual(expect.arrayContaining(['companyName', 'status', 'contactId', 'convertedAt']));
+    expect((run.dispatchContext as any).context['event.changedFields']).toEqual(expect.arrayContaining(['accountId', 'contactId', 'convertedAt', 'convertedById']));
+    expect((run.dispatchContext as any).context['event.changedFields']).not.toContain('status');
+    expect((run.dispatchContext as any).context['event.changedFields']).not.toContain('companyName');
+    const persistedLead = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
+    expect(persistedLead).toMatchObject({ status: lead.status, companyName: null, convertedById: actorId, contactId: converted.contact.id });
+    expect(await prisma.account.findUniqueOrThrow({ where: { id: persistedLead.accountId! } })).toMatchObject({ tenantId, name: 'Manual selected company' });
     const count = await prisma.workflowTriggerRecord.count({ where: { tenantId } });
     await scope(() => convertContact(lead.id, tenantId, actorId, { createContact: true, createDeal: false, contactId: randomUUID(), dealId: deal.id }));
     expect(await prisma.workflowTriggerRecord.count({ where: { tenantId } })).toBe(count);

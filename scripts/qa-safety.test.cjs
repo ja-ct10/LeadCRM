@@ -4,7 +4,7 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { resolve } = require('node:path');
 const { qaEnvironment } = require('./qa-environment.cjs');
-const { browserEvidence } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
 const { acceptanceRuns, cleanPhaseEnvironment, cleanPhaseEvidence } = require('./qa-clean-evidence.cjs');
 const root = resolve(__dirname, '..');
@@ -30,6 +30,26 @@ test('Browser acceptance rejects empty, incomplete, failed and stale successful 
     assert.equal(browserEvidence({ status, checks: ['first'] }, 0).complete, false, `Status ${status} cannot pass`);
   }
   for (const status of ['PASS', 'passed']) assert.equal(browserEvidence({ status, checks: ['first'] }, 0).complete, true);
+});
+
+test('Browser startup crashes retain failure evidence without replacing the suite report', () => {
+  const fs = require('node:fs'), directory = resolve(qaEnvironment(root).TEMP, 'browser-evidence');
+  const childResult = child("throw new Error('fixture startup failed before browser initialization');");
+  assert.equal(childResult.status, 1);
+  const report = ensureBrowserFailureReport(directory, new Error(childResult.stderr));
+  const failure = JSON.parse(fs.readFileSync(report, 'utf8'));
+  assert.equal(failure.status, 'FAIL');
+  assert.match(failure.error, /fixture startup failed before browser initialization/);
+  assert.equal(browserEvidence(failure, childResult.status).complete, false);
+  assert.equal(browserEvidence(failure, 0).complete, false, 'The fallback never satisfies required browser assertions');
+  const original = fs.readFileSync(report, 'utf8');
+  assert.equal(ensureBrowserFailureReport(directory, new Error('later cleanup failed')), report);
+  assert.equal(fs.readFileSync(report, 'utf8'), original);
+  const successfulDirectory = resolve(directory, 'successful'); fs.mkdirSync(successfulDirectory);
+  const successfulReport = resolve(successfulDirectory, 'report.json');
+  fs.writeFileSync(successfulReport, JSON.stringify({ status: 'PASS', checks: ['real assertion'] }));
+  assert.equal(ensureBrowserFailureReport(successfulDirectory, new Error('cleanup')), successfulReport);
+  assert.equal(fs.existsSync(resolve(successfulDirectory, 'results.json')), false);
 });
 
 test('Clean acceptance binds evidence to the current phase and rejects missing, malformed or conflicting outcomes', () => {

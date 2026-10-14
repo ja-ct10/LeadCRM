@@ -13,7 +13,7 @@ import { saveNotificationPreferences } from './notification-preferences.service'
 import { findNotifications, deleteNotifications } from './notifications.repository';
 import { salesPipeline, salesTransaction } from '../crm/leads/lead-automation.service';
 import { moveDealStage } from '../crm/deals/deals.repository';
-import { saveValues } from '../crm/closing-requirements/closing-requirements.service';
+import { listFields, saveField, saveValues } from '../crm/closing-requirements/closing-requirements.service';
 import { createForm, publishForm } from '../marketing/forms/forms.service';
 import { submitPublicForm } from '../marketing/forms/public-forms.service';
 import { ensureSalesGroup } from '../administration/groups/sales-group';
@@ -61,6 +61,11 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     inactiveId = (await user('Inactive', agentRoleId, 'Sales Agent', 'INACTIVE')).id;
     const pipeline = await salesTransaction(tx => salesPipeline(tx, tenantId)); pipelineId = pipeline.pipeline.id;
     stages = Object.fromEntries((await prisma.stage.findMany({ where: { tenantId, pipelineId } })).map(stage => [stage.name, stage.id]));
+    // A Qualified action is needed only while configured required evidence is missing.
+    await tenantContext.run({ tenantId }, async () => {
+      await listFields(tenantId);
+      for (const id of ['confirmation-type', 'confirmation-date']) await saveField(tenantId, adminId, { required: true }, id);
+    });
     await ensureSalesGroup(prisma, tenantId);
     const group = await prisma.tenantGroup.findFirstOrThrow({ where: { tenantId, systemKey: 'SALES' } });
     await prisma.tenantGroupMember.create({ data: { tenantId, groupId: group.id, userId: agentId } });

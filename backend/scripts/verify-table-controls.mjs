@@ -133,13 +133,20 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
       search.fill(module.search),
     ]);
     await until(async () => !await refresh.isDisabled() && (await region.locator('tbody tr').count()) > 0, `${module.id} initial search`);
-    await page.getByRole('navigation', { name: 'Pagination' }).getByRole('button', { name: 'Records per page' }).click();
-    if (module.id === 'users') await page.getByRole('option', { name: '10', exact: true }).click();
-    else await Promise.all([
-      page.waitForResponse(response => { const url = new URL(response.url()); return response.request().method() === 'GET' && url.pathname === `/api/proxy${module.api}` && url.searchParams.get('search') === module.search && (url.searchParams.get('limit') === '10' || url.searchParams.get('pageSize') === '10') && response.ok(); }),
-      page.getByRole('option', { name: '10', exact: true }).click(),
-    ]);
-    await until(async () => await region.locator('tbody tr').count() === 10 && !await refresh.isDisabled(), `${module.id} requested page size rendered`);
+    const pageSize = page.getByRole('navigation', { name: 'Pagination' }).getByRole('button', { name: 'Records per page' });
+    const firstSize = (await pageSize.textContent()).trim() === '20' ? '50' : '20';
+    const total = (await call(module.api + `?search=${encodeURIComponent(module.search)}`)).body.meta.total;
+    // Selecting the current size is a no-op. Exercise two actual transitions.
+    for (const size of [firstSize, '10']) {
+      await pageSize.click();
+      const option = page.getByRole('option', { name: size, exact: true });
+      if (module.id === 'users') await option.click();
+      else await Promise.all([
+        page.waitForResponse(response => { const url = new URL(response.url()); return response.request().method() === 'GET' && url.pathname === `/api/proxy${module.api}` && url.searchParams.get('search') === module.search && (url.searchParams.get('limit') === size || url.searchParams.get('pageSize') === size) && response.ok(); }),
+        option.click(),
+      ]);
+      await until(async () => await region.locator('tbody tr').count() === Math.min(Number(size), total) && !await refresh.isDisabled(), `${module.id} page size ${size} rendered`);
+    }
 
     const primary = { leads: ['Name', 'name'], contacts: ['First Name', 'firstName'], accounts: ['Account Name', 'name'], tasks: ['Task title', 'title'], workflows: ['Name', 'name'], campaigns: ['Campaign', 'name'], users: ['User', 'name'] }[module.id];
     const primaryTrigger = region.getByRole('button', { name: `Column options for ${primary[0]}`, exact: true });
