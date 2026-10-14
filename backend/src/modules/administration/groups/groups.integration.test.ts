@@ -7,6 +7,7 @@ import { issueAuthSession } from '../../../core/auth/auth-session';
 import app from '../../../app';
 import { ensureSalesGroup } from './sales-group';
 import { deleteEmptyGroup } from './groups.repository';
+import { assignRoleToUser } from '../roles/roles.repository';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_(?:polish_test|campaign_test_\d+)$/.test(url.pathname);
@@ -65,12 +66,12 @@ it.skipIf(!disposable)('allows group viewers to view group members but reserves 
   const id = (await request('', 'POST', { name: 'Read only group' })).body.data.id;
   expect((await request(`/${id}/members`, 'POST', { userId })).status).toBe(200);
 
-  const viewerRole = await scoped(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Group Viewer' } }));
+  const viewerRole = await scoped(() => prisma.roleDefinition.create({ data: { tenantId, name: 'Group Viewer', crmAssignmentRestricted: true } }));
   await scoped(() => prisma.rolePermission.create({ data: { tenantId, roleId: viewerRole.id, module: 'groups', canView: true } }));
   const staff = await prisma.user.findFirstOrThrow({ where: { tenantId, role: 'Sales' } });
-  await scoped(() => prisma.userRole.create({ data: { tenantId, userId: staff.id, roleId: viewerRole.id } }));
+  await scoped(() => assignRoleToUser(staff.id, viewerRole.id, tenantId));
   const visible = await request('', 'GET', undefined, deniedToken);
-  expect(visible.status).toBe(200);
+  expect(visible.status, JSON.stringify(visible.body)).toBe(200);
   expect(visible.body.data.find((group: { id: string }) => group.id === id).members[0].user)
     .toMatchObject({ firstName: 'Julie', lastName: 'Tiron', role: 'Client Admin' });
   expect((await request(`/${id}/members`, 'POST', { userId }, deniedToken)).status).toBe(403);
