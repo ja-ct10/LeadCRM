@@ -72,8 +72,8 @@ and provide or explicitly approve these facts:
    campaign engagement, accounts, audit/security logs, archives and backups,
    together with actual disposal procedures. Section 8 requires a schedule.
 2. Actual production service-provider categories, arrangements and safeguards.
-   Code integrations identify Brevo, connected Gmail accounts, PostgreSQL and
-   Supabase storage; deployment uses Coolify. Code alone does not establish every
+   Current code integrations identify Brevo, connected Gmail accounts, TextBee,
+   PostgreSQL and private mounted file storage; deployment uses Coolify. Code alone does not establish every
    enabled production processor, contract or processing location.
 3. Production processing locations and cross-border transfer safeguards. Sections
    6 and 7 require verification against actual services and agreements.
@@ -88,6 +88,67 @@ and provide or explicitly approve these facts:
 These facts were not invented. `LEGAL_REVIEW_PENDING` should be removed only after
 the reviewed content accurately reflects the approved operations. The draft banner
 and metadata are controlled in `legal-documents.ts`.
+
+## Gmail production readiness — October 14, 2026
+
+The revised draft adds section 18 on Gmail/Workspace consent, permission breadth,
+CRM scope, stored message data, encrypted OAuth credentials, Limited Use and the
+difference between disconnecting access and deleting retained correspondence.
+The Terms remain an organizational review draft. No retention period, processing
+country, privacy handler or organizational approval is inferred.
+
+New authorization requests need `gmail.modify` for reading, drafts, sending/replying,
+read status, archive and trash, plus `userinfo.email` for identity verification.
+The redundant `gmail.readonly` and `gmail.send` requests are removed from new
+consent; existing grants are preserved. Google classifies `gmail.modify` as
+restricted. This server stores/synchronizes restricted data, so plan for Google's
+restricted-scope verification and annual approved third-party security assessment
+unless Google confirms an applicable exception. Supporting personal Gmail and
+external Workspace users does not establish an Internal-only exception. See
+[Gmail scope definitions](https://developers.google.com/workspace/gmail/api/auth/scopes)
+and [restricted-scope verification](https://developers.google.com/identity/protocols/oauth2/production-readiness/restricted-scope-verification).
+
+The existing Google project matched the deployed client. Branding homepage,
+Privacy Policy and Terms URLs were saved as the exact `lead-crm.tech` destinations.
+Audience remains **External / Testing**; this is not a verified production launch.
+The Console's declared scopes still reflect the serving release and should be
+reconciled with the two new scopes when the separately authorized release is made.
+
+Production Coolify inspection confirms the live frontend/backend and private
+PostgreSQL resource on its local server, with private files mounted from
+`/data/coolify/leadcrm-private-files` into `/var/lib/leadcrm/files`. Brevo and TextBee
+integration settings are present; configured services are not proof of their
+contract terms or data residency. The file backup schedule is enabled daily at
+18:10 UTC, keeps containers running and has a local count limit of 14 backups;
+no validated S3 destination is configured for that file backup. These existing
+settings were not changed or treated as approved retention rules. Physical host,
+provider regions, SMS-device location and backup agreements remain pending where
+account-level evidence is unavailable.
+
+`MAILBOX_HISTORY_RETENTION_DAYS` and `BACKUP_RETENTION_DAYS` accept optional positive
+integer candidate targets, default to unset, and never enable deletion. They do
+not control existing Coolify/provider backups. Camxian must separately review
+existing provider retention and approve the applicable disposal procedures.
+
+Before verification submission:
+
+1. Obtain Camxian's retention/deletion rules (including mailbox history/backups),
+   verified processor/location/transfer arrangements, authorized privacy handler,
+   and approval of both legal documents.
+2. Publish the reviewed legal content and public homepage through an explicitly
+   authorized release; remove draft status/noindex only after that approval.
+3. Confirm `lead-crm.tech` ownership in Search Console using a project Owner/Editor.
+   Resolve any obsolete shared hosting domains/redirects with their owner before
+   removing them. Verify the exact HTTPS backend callback.
+4. Reconcile Data Access, prepare a controlled-account consent/Inbox demo video,
+   scope justifications and accurate data-flow/storage/access evidence; complete
+   Google's required assessment with its designated assessor when applicable.
+5. Submit only after organizational authorization. Complete publishing when
+   eligible, record Google's actual approval state, and perform separately
+   authorized Gmail/Workspace smoke tests with user-selected recipients.
+
+Workspace administrators can still restrict OAuth apps or Gmail availability.
+Application readiness cannot override those controls or Google's review.
 
 ## Sender and authentication security audit
 

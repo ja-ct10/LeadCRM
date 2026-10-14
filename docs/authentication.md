@@ -16,24 +16,19 @@ for concurrency, shared IP limits, browser restoration and deployment requiremen
 - Returning users who have completed setup: sign in → dashboard.
 - Existing users with `mustChangePassword=false` at migration time keep their established access; their passwords and roles are unchanged.
 
-By default, tenant portal accounts require an exact, case-insensitive @camxian.com domain. Subdomains and suffix lookalikes are rejected. The backend checks the domain at password login and on every authenticated request, including existing sessions. Inactive accounts and suspended/rejected workspaces are denied access.
+Tenant portal accounts require a valid registered staff identity. Exact, case-insensitive @camxian.com accounts retain their existing access policy. Other addresses require persisted Client Admin approval for that same user, tenant and exact normalized email. The backend checks this policy at password login and on authenticated requests, including existing sessions. Inactive accounts and unavailable workspaces are denied access.
 
 For local development and automated testing only, the backend can permit exact Gmail addresses from the server-side `LEADCRM_TEST_EMAIL_ALLOWLIST` when `LEADCRM_TEST_AUTH_ENABLED=true`. This exception is active only when `NODE_ENV` is `development` or `test`; production always ignores these test settings. Keep allowlists out of frontend variables. Users still need real persisted User records, normal passwords/sessions, roles, and backend permissions. Turning the applicable flag off rejects Gmail accounts at login and on existing sessions.
 
-## Explicitly approved production accounts
+## Client Admin approval of production staff
 
-The owner's subsequent instruction permits the two named Gmail accounts in the existing live deployment. This supersedes the earlier requirement that production have no personal-email exception. Keep `NODE_ENV=production`; enable the separate backend-only settings `LEADCRM_PRODUCTION_AUTH_ENABLED=true` and `LEADCRM_PRODUCTION_EMAIL_ALLOWLIST=tironjulieann10@gmail.com,reymarkjpanes@gmail.com` only for that approved policy. These settings have no effect in development, test, or unknown environments. The development test flag still cannot enable production access.
+Client Admin can provision a personal Gmail or Workspace address through Team Management with an existing active custom role. User creation, exact-email approval (`user.staff_approved`), role/group assignments and audit records commit together. Welcome submission follows the commit using the existing transport. New addresses require no environment-variable edits. Non-admin provisioners retain the company-domain policy even when their role allows user creation.
 
-Matching remains exact after trimming/lowercasing; wildcards, Gmail dot/plus aliases and other accounts are rejected. No Google tokens, sessions, or permissions are fabricated. Disable `LEADCRM_PRODUCTION_AUTH_ENABLED` to remove this production exception immediately, including existing sessions.
+Historical external staff without approval evidence remain denied until Client Admin selects **Approve registered email** in their User Details. The corresponding `POST /administration/users/:id/approve-email` requires an active ready Client Admin and `users.edit`, verifies the target in the same tenant, and records approval once. It does not create an account, reset credentials, assign permissions or bypass onboarding. Email matching remains exact after trimming/lowercasing; Gmail dot/plus aliases are not interchangeable.
 
-After `npm --prefix backend run db:deploy`, run the existing provisioning CLI against the intended production database with `NODE_ENV=production`, the production settings above, and explicit `--production`:
+Existing `user.production_provisioned` or `user.production_credentials_reissued` audit evidence from the deliberately invoked CLI remains accepted for its exact user/tenant/email. The legacy `LEADCRM_PRODUCTION_AUTH_ENABLED` and `LEADCRM_PRODUCTION_EMAIL_ALLOWLIST` flags now gate only that CLI, not application login. Disabling them does not revoke persisted approvals; deactivate a staff account through the existing guarded workflow to revoke access.
 
-```powershell
-npm --prefix backend run db:provision-test-user -- --production --tenant-id <production-tenant-id> --email tironjulieann10@gmail.com --first-name "Julie Ann" --last-name Tiron
-npm --prefix backend run db:provision-test-user -- --production --tenant-id <production-tenant-id> --email reymarkjpanes@gmail.com --first-name Reymark --last-name Panes
-```
-
-This deliberate operator action creates the persisted User and existing Client Admin assignment, hashes the independently generated temporary password, and submits each recipient's own welcome email. It preserves existing users unless `--reissue` is explicitly provided. `APP_URL=https://lead-crm-frontend-pi.vercel.app` supplies the approved login link. No credential is printed or returned by the CLI.
+Gmail OAuth remains separate from password login: an eligible, ready staff member with CRM View permission must consent to their own registered Google mailbox. Public signup remains disabled. A Google account without Gmail cannot connect through this integration.
 
 ## Internal provisioning and passwords
 
@@ -59,7 +54,7 @@ All protected module APIs and mailbox operations enforce password setup first, t
 
 ## Development test-user provisioning
 
-Use a confirmed development/test backend and database for the development mode, with both test-auth environment variables configured server-side. A production backend ignores this development exception even when the flag is enabled. The Vercel frontend URL alone does not establish the backend environment; `render.yaml` configures production. Do not switch production to development to permit these accounts; use the explicitly approved production policy above.
+Use a confirmed development/test backend and database for the development mode, with both test-auth environment variables configured server-side. A production backend ignores this development exception even when the flag is enabled. The frontend URL alone does not establish the backend environment. Keep production in production mode and use Client Admin staff approval.
 
 After applying the migration to the confirmed development database, run the deliberate CLI for each account (replace `<development-tenant-id>` with the existing test workspace ID):
 
@@ -84,7 +79,7 @@ Tenant user accounts are provisioned by administrators through Team Management. 
 
 Public signup, Google account sign-in, OTP, email-verification sessions, company setup, and old onboarding progress endpoints are disabled. Retired authentication bridge routes are unavailable. Gmail OAuth remains a separate CRM email integration and is not affected by the LeadCRM test-account exception: each tester must connect their mailbox through Google's real OAuth authorization and grant the requested Gmail scopes.
 
-If the Google OAuth app is configured as **External** and its publishing status is **Testing**, add both `tironjulieann10@gmail.com` and `reymarkjpanes@gmail.com` to the OAuth app's **Test users** list in Google Auth Platform. An **Internal** app is limited to accounts in its Google Workspace organization, so personal Gmail accounts cannot use that configuration. See Google's [OAuth app state and access rules](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview) and [consent screen setup](https://developers.google.com/workspace/guides/configure-oauth-consent).
+An **External / Testing** Google app still requires selected controlled Google test users until production publishing and applicable verification are completed. That is an external launch blocker, not the production onboarding design. An **Internal** app excludes personal Gmail accounts outside its Workspace organization. See Google's [OAuth app state and access rules](https://developers.google.com/identity/protocols/oauth2/production-readiness/overview) and [consent screen setup](https://developers.google.com/workspace/guides/configure-oauth-consent).
 
 ## Deployment
 

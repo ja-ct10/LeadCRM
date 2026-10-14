@@ -68,6 +68,7 @@ export const usersService = {
   },
 
   sendPasswordReset: (id: string) => apiClient.post<{ success: boolean; message: string }>(`/administration/users/${id}/password-reset`, {}),
+  approveStaffEmail: (id: string) => apiClient.post<{ success: boolean; message: string }>(`/administration/users/${id}/approve-email`, {}),
 
   archive: (id: string): Promise<void> =>
     apiClient.patch<void>(`/administration/users/${id}/archive`),

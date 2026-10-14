@@ -1,8 +1,8 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), reset: vi.fn(), success: vi.fn(), error: vi.fn(), getGroups: vi.fn(), actor: { role: 'User', tenantId: 't' } }));
-vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { create: mocks.create, update: mocks.update, sendPasswordReset: mocks.reset } }));
+const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), reset: vi.fn(), approve: vi.fn(), success: vi.fn(), error: vi.fn(), getGroups: vi.fn(), actor: { role: 'User', tenantId: 't' } }));
+vi.mock('@/features/tenant/administration/users/services/users.service', () => ({ usersService: { create: mocks.create, update: mocks.update, sendPasswordReset: mocks.reset, approveStaffEmail: mocks.approve } }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ userCan: () => true, user: mocks.actor }) }));
 vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.error } }));
 vi.mock('@/shared/services/groups.api', () => ({ groupsApi: { getAll: mocks.getGroups } }));
@@ -45,7 +45,7 @@ it('renders red required markers and one accessible error below each invalid con
 
 it('awaits creation, normalizes the API payload, blocks duplicates and preserves failed inputs', async () => {
   const { onClose, onSaved } = renderPanel();
-  change('First Name', ' Juan '); change('Last Name', ' Dela Cruz '); change('Email', ' JUAN '); change('Phone', '9171234567'); change('Role', 'Sales');
+  change('First Name', ' Juan '); change('Last Name', ' Dela Cruz '); change('Email', ' JUAN@CAMXIAN.COM '); change('Phone', '9171234567'); change('Role', 'Sales');
   let reject!: (error: Error) => void;
   mocks.create.mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
   const form = screen.getByLabelText('First Name', { exact: false }).closest('form')!;
@@ -56,7 +56,7 @@ it('awaits creation, normalizes the API payload, blocks duplicates and preserves
   reject(Object.assign(new Error('Email already exists'), { status: 409 }));
   await screen.findByText('Email already exists');
   expect((screen.getByLabelText('First Name', { exact: false }) as HTMLInputElement).value).toBe(' Juan ');
-  change('Email', 'juan2');
+  change('Email', 'juan2@camxian.com');
   mocks.create.mockResolvedValueOnce({ data: user }); fireEvent.submit(form);
   await waitFor(() => expect(onSaved).toHaveBeenCalledWith(user));
   expect(onClose).toHaveBeenCalledTimes(1);
@@ -80,20 +80,40 @@ it('opens readonly, cancels to persisted values and keeps edit mode on failed sa
   await waitFor(() => expect(mocks.reset).toHaveBeenCalledWith(user.id));
 });
 
-it('shows placeholders and a locked domain and rejects invalid usernames', () => {
+it('accepts full registered email addresses and rejects malformed addresses', () => {
   renderPanel();
-  for (const placeholder of ['e.g. Juan', 'e.g. Dela Cruz', 'e.g. juan.delacruz', '9xxxxxxxxx', 'e.g. Sales Representative']) expect(screen.getByPlaceholderText(placeholder)).toBeTruthy();
-  const suffix = screen.getByText('@camxian.com');
-  expect(suffix.tagName).toBe('SPAN');
+  for (const placeholder of ['e.g. Juan', 'e.g. Dela Cruz', 'e.g. juan@camxian.com', '9xxxxxxxxx', 'e.g. Sales Representative']) expect(screen.getByPlaceholderText(placeholder)).toBeTruthy();
+  expect(screen.queryByText('@camxian.com')).toBeNull();
   const email = screen.getByLabelText('Email', { exact: false }) as HTMLInputElement;
-  change('Email', 'someone@gmail.com'); expect(email.value).toBe('');
-  for (const invalid of ['bad user', 'bad!user', 'bad..user', 'bad\u0001user']) {
+  change('Email', 'someone@gmail.com'); expect(email.value).toBe('someone@gmail.com');
+  for (const invalid of ['bad user@gmail.com', 'missing-domain', 'bad..user@gmail.com', 'bad\u0001user@gmail.com']) {
     change('Email', invalid); fireEvent.blur(email);
     expect(email.getAttribute('aria-invalid')).toBe('true');
   }
-  change('Email', ' Juan.Dela_Cruz+sales-2 '); fireEvent.blur(email);
+  change('Email', ' Juan.Dela_Cruz+sales-2@camxian.com '); fireEvent.blur(email);
   expect(email.getAttribute('aria-invalid')).toBe('false');
   expect(mocks.create).not.toHaveBeenCalled();
+});
+it('lets Client Admin provision Gmail staff using the exact full address', async () => {
+  mocks.actor.role = 'Client Admin'; renderPanel();
+  change('First Name', 'New'); change('Last Name', 'Staff'); change('Email', ' NEW.STAFF@GMAIL.COM '); change('Phone', '9171234567'); change('Role', 'Sales');
+  mocks.create.mockResolvedValue({ data: { ...user, email: 'new.staff@gmail.com' } });
+  fireEvent.click(screen.getByText('Create User'));
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ email: 'new.staff@gmail.com' })));
+});
+it('does not let delegated staff approve an external email', async () => {
+  renderPanel();
+  change('First Name', 'New'); change('Last Name', 'Staff'); change('Email', 'new@gmail.com'); change('Phone', '9171234567'); change('Role', 'Sales');
+  fireEvent.click(screen.getByText('Create User'));
+  expect(screen.getByText('Only Client Admin users can approve an external staff email.')).toBeTruthy();
+  expect(mocks.create).not.toHaveBeenCalled();
+});
+it('offers Client Admin an explicit approval action for an existing external-email staff member', async () => {
+  mocks.actor.role = 'Client Admin'; renderPanel({ ...user, email: 'existing@gmail.com' });
+  mocks.approve.mockResolvedValue({ success: true });
+  fireEvent.click(screen.getByRole('button', { name: 'Approve registered email' }));
+  await waitFor(() => expect(mocks.approve).toHaveBeenCalledWith(user.id));
+  expect(mocks.reset).not.toHaveBeenCalled();
 });
 
 it('admin edits existing Groups while ordinary staff cannot grant themselves membership', async () => {

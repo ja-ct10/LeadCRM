@@ -5,7 +5,7 @@ import { useAuth } from '@/store/AuthContext';
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema, EMPLOYEE_EMAIL_DOMAIN } from '@leadcrm/shared';
+import { CreateAdministrationUserSchema, UpdateAdministrationUserSchema, EmployeeEmailSchema } from '@leadcrm/shared';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
 import { normalizePhInput } from '@/shared/utils/ph-phone';
@@ -16,7 +16,7 @@ import { groupsApi, type TenantGroup } from '@/shared/services/groups.api';
 type Draft = { firstName: string; lastName: string; email: string; phone: string; role: string; jobTitle: string; status: string };
 type DraftErrors = Partial<Record<keyof Draft | 'groupIds', string>>;
 const makeDraft = (user?: User): Draft => ({ firstName: user?.firstName ?? '', lastName: user?.lastName ?? '', email: user?.email ?? '', phone: normalizePhInput(user?.phone ?? ''), role: user?.role ?? '', jobTitle: user?.jobTitle ?? '', status: user?.status ?? 'active' });
-const placeholders: Partial<Record<keyof Draft | 'groupIds', string>> = { firstName: 'e.g. Juan', lastName: 'e.g. Dela Cruz', email: 'e.g. juan.delacruz', jobTitle: 'e.g. Sales Representative' };
+const placeholders: Partial<Record<keyof Draft | 'groupIds', string>> = { firstName: 'e.g. Juan', lastName: 'e.g. Dela Cruz', email: 'e.g. juan@camxian.com', jobTitle: 'e.g. Sales Representative' };
 const labels = { firstName: 'First Name', lastName: 'Last Name', email: 'Email', phone: 'Phone', role: 'Role', jobTitle: 'Job Title', status: 'Status' };
 
 export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEditing = false }: {
@@ -66,7 +66,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
   }, [user, editing]);
 
   const parse = (value: Draft) => creating
-    ? CreateAdministrationUserSchema.safeParse({ firstName: value.firstName, lastName: value.lastName, email: `${value.email.trim()}@${EMPLOYEE_EMAIL_DOMAIN}`, phone: value.phone, role: value.role, jobTitle: value.jobTitle, ...(canManageGroups && groupIds.length ? { groupIds } : {}) })
+    ? CreateAdministrationUserSchema.safeParse({ firstName: value.firstName, lastName: value.lastName, email: value.email, phone: value.phone, role: value.role, jobTitle: value.jobTitle, ...(canManageGroups && groupIds.length ? { groupIds } : {}) })
     : UpdateAdministrationUserSchema.safeParse({ ...(canEdit ? { firstName: value.firstName, lastName: value.lastName, jobTitle: value.jobTitle } : {}),
       ...(canEdit && value.phone !== normalizePhInput(saved?.phone ?? '') ? { phone: value.phone } : {}),
       ...(canManageGroups && value.status === 'active' && [...groupIds].sort().join(',') !== (saved?.groups ?? []).map(group => group.id).sort().join(',') ? { groupIds } : {}),
@@ -80,7 +80,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
       const field = issue.path[0] as keyof Draft | 'groupIds';
       if (!next[field]) next[field] = issue.message;
     }
-    if (creating && (!/^[a-zA-Z0-9._+\-]+$/.test(value.email.trim()) || /[\u0000-\u001f\u007f-\u009f]/.test(value.email))) next.email = 'Enter an email username using letters, numbers, dots, underscores, hyphens or plus signs.';
+    if (creating && result.success && actor?.role !== 'Client Admin' && !EmployeeEmailSchema.safeParse(value.email).success) next.email = 'Only Client Admin users can approve an external staff email.';
     if ((creating || value.role !== saved?.role) && value.role && !roles.some(role => role.name === value.role)) next.role = 'Select an active custom role.';
     return next;
   };
@@ -131,6 +131,13 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
     catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to send recovery email.'); }
     finally { locked.current = false; setBusy(false); }
   };
+  const approveEmail = async () => {
+    if (!saved || locked.current || actor?.role !== 'Client Admin' || !canEdit) return;
+    locked.current = true; setBusy(true);
+    try { await usersService.approveStaffEmail(saved.id); toast.success('Registered staff email approved. This user can sign in with their existing credentials.'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to approve staff email.'); }
+    finally { locked.current = false; setBusy(false); }
+  };
   const input = (key: keyof Draft, required = false) => {
     const id = `user-${key}`;
     const error = errors[key];
@@ -145,13 +152,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
         : key === 'role' || key === 'status' ? <select {...props} disabled={busy || (key === 'role' && !canAssign) || (key === 'status' && !canActivate) || (key === 'role' && !!saved && !roles.some(role => role.name === saved.role))} onChange={event => change(key, event.target.value, true)}>
           {key === 'role' ? <><option value="">Select role</option>{saved && !roles.some(role => role.name === saved.role) && <option value={saved.role}>{saved.role}</option>}{roles.map(role => <option key={role.id} value={role.name}>{role.name}</option>)}</>
             : <><option value="active">Active</option><option value="inactive">Inactive</option>{draft.status === 'pending' && <option value="pending">Pending</option>}</>}
-        </select> : key === 'email' && creating ? <div className={`flex min-w-0 overflow-hidden rounded-xl border bg-white dark:bg-slate-800 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 ${error ? 'border-red-500' : 'border-slate-200 dark:border-slate-700'}`}>
-          <input {...props} type="text" autoCapitalize="none" autoCorrect="off" maxLength={64}
-            className="w-full min-w-0 flex-1 bg-transparent px-3 py-2.5 text-sm outline-none"
-            onChange={event => { if (!event.target.value.includes('@')) change(key, event.target.value); else setErrors(prev => ({ ...prev, email: 'Enter only the username, without @ or a domain.' })); }}
-            onPaste={event => { if (event.clipboardData.getData('text').includes('@')) { event.preventDefault(); setErrors(prev => ({ ...prev, email: 'Enter only the username, without @ or a domain.' })); } }} />
-          <span className="shrink-0 border-l border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 px-2 py-2.5 text-xs sm:text-sm text-slate-500">@{EMPLOYEE_EMAIL_DOMAIN}</span>
-        </div> : <input {...props} type={key === 'email' ? 'email' : 'text'} maxLength={key === 'email' ? 254 : 100} onChange={event => change(key, event.target.value)} />}
+        </select> : <input {...props} type={key === 'email' ? 'email' : 'text'} autoCapitalize={key === 'email' ? 'none' : undefined} autoCorrect={key === 'email' ? 'off' : undefined} maxLength={key === 'email' ? 254 : 100} onChange={event => change(key, event.target.value)} />}
       {key !== 'phone' && error && <p id={`${id}-error`} className="text-xs text-red-500" role="alert">{error}</p>}
     </div>;
   };
@@ -184,6 +185,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, initiallyEdi
       {canChange && <div className={panelFooterClass}>
         <button disabled={busy} onClick={() => setEditing(true)} className={panelPrimaryActionClass}>Edit User</button>
         <button disabled={busy || !canEdit || saved?.status !== 'active'} onClick={resetPassword} className={panelSecondaryActionClass}>{busy ? 'Sending…' : 'Send Password Reset'}</button>
+        {saved && actor?.role === 'Client Admin' && canEdit && !EmployeeEmailSchema.safeParse(saved.email).success && <button disabled={busy || saved.status !== 'active'} onClick={approveEmail} className={panelSecondaryActionClass}>Approve registered email</button>}
       </div>}
     </div>}
   </SlidingDrawer>;

@@ -65,6 +65,14 @@ export async function sendPasswordReset(req: Request, res: Response, next: NextF
   } catch (err) { next(err); }
 }
 
+export async function approveStaffEmail(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    z.object({}).strict().parse(req.body);
+    await service.approveStaffEmail(z.string().uuid().parse(req.params.id), req.user!.tenantId, req.user!.userId);
+    res.json({ success: true, message: 'Registered staff email approved.' });
+  } catch (err) { next(err); }
+}
+
 export async function deactivationImpact(req: Request, res: Response, next: NextFunction) {
   try { res.json({ success: true, data: await deactivation.deactivationImpact(z.string().uuid().parse(req.params.id), req.user!.tenantId, req.user!.userId) }); }
   catch (error) { next(error); }

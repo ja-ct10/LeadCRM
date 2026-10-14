@@ -652,5 +652,39 @@
         "text": "This Privacy Policy is intended to provide clear information about LeadCRM-related personal-data processing and will be finalized following verification of the organization's actual processing practices, service providers, retention schedule, and privacy contacts."
       }
     ]
+  },
+  {
+    "number": 18,
+    "title": "Connected Gmail and Google Workspace Accounts",
+    "blocks": [
+      {
+        "type": "paragraph",
+        "text": "An authorized staff member can connect the Google mailbox registered to their LeadCRM account after granting Google OAuth consent. Gmail authorization does not create a LeadCRM account or grant additional CRM permissions."
+      },
+      {
+        "type": "paragraph",
+        "text": "The Gmail permission used by Inbox allows reading messages, managing drafts, sending and replying, changing read status, archiving, and moving messages to trash. It does not permit immediate permanent deletion that bypasses Gmail's trash. LeadCRM also requests the Google Account email to verify the registered mailbox identity."
+      },
+      {
+        "type": "paragraph",
+        "text": "LeadCRM processes message headers, sender and recipient addresses, subject lines, content, labels and attachment metadata to synchronize authorized customer correspondence and support related CRM activities. Attachment content is accessed when an authorized user requests it. Provider permissions can cover the mailbox more broadly than the correspondence displayed in LeadCRM; application access remains limited by mailbox ownership, roles and current CRM assignments."
+      },
+      {
+        "type": "paragraph",
+        "text": "OAuth access and refresh tokens are encrypted in the application database. Copies of synchronized correspondence and related metadata are stored for the CRM's authorized features; token encryption should not be interpreted as a claim that every stored message uses the same encryption method."
+      },
+      {
+        "type": "paragraph",
+        "text": "LeadCRM's use and transfer of information received from Google APIs will adhere to the Google API Services User Data Policy, including the Limited Use requirements. Google user data is used to provide the authorized Inbox and related customer-relationship features, rather than advertising targeting or training generalized artificial-intelligence models."
+      },
+      {
+        "type": "paragraph",
+        "text": "Google API Services User Data Policy: https://developers.google.com/terms/api-services-user-data-policy"
+      },
+      {
+        "type": "paragraph",
+        "text": "Users can disconnect in Inbox or revoke authorization in their Google Account. Disconnect removes stored provider credentials and stops further mailbox access through LeadCRM; it does not automatically erase previously synchronized CRM correspondence. Retention, deletion requests, backup handling, permitted human access and processor arrangements remain subject to the organizational review requirements in this draft policy."
+      }
+    ]
   }
 ]

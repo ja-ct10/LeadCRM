@@ -76,7 +76,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     const current = await tx.user.findFirst({ where: { id: verified.id, tenantId: verified.tenantId }, include: authUserInclude });
     if (!current || current.passwordHash !== verified.passwordHash) return { error: new AppError(INVALID_LOGIN_MESSAGE, 401), events };
     try {
-      requireEmployeeAccount(current);
+      await requireEmployeeAccount(current, tx);
       if (!isWorkspaceAccessible(current.tenant?.status)) throw new AppError('Workspace access is unavailable.', 403);
       if (current.status !== 'ACTIVE') throw new AppError('Account is inactive. Contact your administrator.', 403);
     } catch (error) {

@@ -5,6 +5,7 @@ import { Mail, Loader2 } from 'lucide-react';
 import { motion } from 'motion/react';
 import { useReducedMotion } from 'motion/react';
 import { initiateGmailConnect } from '../services/gmail.service';
+import { useAuth } from '@/store/AuthContext';
 
 function GmailIcon(): React.ReactElement {
   return (
@@ -23,6 +24,7 @@ function GmailIcon(): React.ReactElement {
 }
 
 export default function InboxCurrentEmpty(): React.ReactElement {
+  const { user } = useAuth();
   const shouldReduceMotion = useReducedMotion();
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState('');
@@ -64,12 +66,13 @@ export default function InboxCurrentEmpty(): React.ReactElement {
 
         {/* Description */}
         <p className="text-sm text-slate-500 dark:text-slate-400 leading-relaxed mb-4">
-          Connect the Google Workspace email used by your LeadCRM staff account.
+          Connect the Gmail or Google Workspace mailbox registered to your LeadCRM staff account.
         </p>
+        {user?.email && <p className="mb-4 max-w-full break-all text-sm font-semibold text-slate-700 dark:text-slate-200">{user.email}</p>}
 
         {/* Upcoming feature mention */}
         <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed mb-8 max-w-xs">
-          Read and send work email here. Customer conversations link to matching CRM records. You stay in control of the final Closed Won confirmation.
+          Your email must be hosted by Gmail or Google Workspace. Read and send authorized customer conversations here. You stay in control of the final Closed Won confirmation.
         </p>
 
         {/* CTA Button */}

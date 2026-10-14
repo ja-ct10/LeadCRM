@@ -21,7 +21,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
   const user = await db.user.findFirst({ where: { tenantId, id: userId, status: 'ACTIVE', tenant: { status: { in: ['ACTIVE', 'SANDBOX'] } } } });
   let active = !!user;
   if (user) {
-    try { requireEmployeeAccount(user); } catch (error) { if (error instanceof AppError) active = false; else throw error; }
+    try { await requireEmployeeAccount(user, db); } catch (error) { if (error instanceof AppError) active = false; else throw error; }
   }
   const admin = active && !!await db.user.findFirst({ where: { ...activeAdminWhere(tenantId), id: userId }, select: { id: true } });
   const permissions = active && !admin ? await findUserEffectivePermissions(userId, tenantId, db) : {};

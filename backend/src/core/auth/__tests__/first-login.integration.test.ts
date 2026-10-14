@@ -37,6 +37,10 @@ beforeAll(async () => {
   vi.stubEnv('LEADCRM_TEST_AUTH_ENABLED', 'true');
   vi.stubEnv('LEADCRM_TEST_EMAIL_ALLOWLIST', testers.map(user => user.email).join(','));
   vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
+  vi.stubEnv('GMAIL_CLIENT_ID', 'disposable-oauth-client');
+  vi.stubEnv('GMAIL_CLIENT_SECRET', 'disposable-oauth-secret');
+  vi.stubEnv('GMAIL_REDIRECT_URI', 'https://api.lead-crm.tech/api/v1/integrations/gmail/callback');
+  vi.stubEnv('ENCRYPTION_KEY', 'c'.repeat(64));
   pg = await PGlite.create();
   await replayCrmMigrations(pg, '20261104000000');
   // Verify the migration preserves established users and leaves temporary users pending.
@@ -55,6 +59,8 @@ beforeAll(async () => {
   tenantId = (await db.tenant.create({ data: { name: 'First login tests', slug: 'first-login', status: 'ACTIVE' } })).id;
   await db.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
   await db.roleDefinition.create({ data: { tenantId, name: 'Limited tester', isSystemRole: false } });
+  const inboxRole = await db.roleDefinition.create({ data: { tenantId, name: 'Inbox staff', isSystemRole: false } });
+  await db.rolePermission.create({ data: { tenantId, roleId: inboxRole.id, module: 'leads', canView: true } });
   const { hashPassword } = await import('../../../shared/helpers/crypto');
   const admin = await db.user.create({ data: { tenantId, email: 'admin@camxian.com', firstName: 'Existing', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date(), passwordHash: await hashPassword('ExistingAdmin1!') } });
   const { issueAuthSession } = await import('../auth-session');
@@ -190,8 +196,9 @@ describe.sequential('first login with real sessions and migrated disposable Post
       expect((await call('/auth/onboarding/complete', {}, auth.cookie)).status).toBe(200);
       expect((await call('/crm/leads', undefined, auth.cookie)).status).toBe(200);
       vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
-      expect((await call('/auth/me', undefined, auth.cookie)).status).toBe(403);
-      expect((await call('/auth/login', { email: tester.email, password: 'ProductionPermanent1!' }, '')).status).toBe(403);
+      vi.stubEnv('LEADCRM_PRODUCTION_EMAIL_ALLOWLIST', '');
+      expect((await call('/auth/me', undefined, auth.cookie)).status).toBe(200);
+      expect((await call('/auth/login', { email: tester.email, password: 'ProductionPermanent1!' }, '')).status).toBe(200);
     } finally {
       vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
       vi.stubEnv('NODE_ENV', 'test');
@@ -219,6 +226,92 @@ describe.sequential('first login with real sessions and migrated disposable Post
       expect(await db.user.count({ where: { tenantId, email: tester.email } })).toBe(1);
     } finally { generate.mockRestore(); }
   }, 20_000);
+  it.each(['new.staff@gmail.com', 'new.staff@workspace.example', 'later.staff@gmail.com'])('provisions and connects %s in production without an address allowlist', async email => {
+    vi.stubEnv('NODE_ENV', 'production');
+    vi.stubEnv('LEADCRM_PRODUCTION_AUTH_ENABLED', 'false');
+    vi.stubEnv('LEADCRM_PRODUCTION_EMAIL_ALLOWLIST', '');
+    const realFetch = globalThis.fetch;
+    try {
+      const input = { firstName: 'Approved', lastName: 'Staff', email, phone: '9171234567', role: 'Inbox staff' };
+      const created = await call('/administration/users', input);
+      expect(created.status).toBe(201);
+      const id = created.body.data.id;
+      const approval = await db.auditLog.findFirstOrThrow({ where: { tenantId, entityId: id, action: 'user.staff_approved' } });
+      expect(approval.metadata).toMatchObject({ email, approvedByRole: 'Client Admin' });
+      const auth = await call('/auth/login', { email, password: credentialFor(email) }, '');
+      expect(auth.status).toBe(200);
+      expect((await call('/integrations/gmail/authorize', undefined, auth.cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
+      expect((await call('/auth/change-password', { password: 'NewApprovedStaff1!' }, auth.cookie)).status).toBe(200);
+      expect((await call('/integrations/gmail/authorize', undefined, auth.cookie)).body.error.code).toBe('ONBOARDING_REQUIRED');
+      expect((await call('/auth/onboarding/complete', {}, auth.cookie)).status).toBe(200);
+      const started = await call('/integrations/gmail/authorize', undefined, auth.cookie);
+      expect(started.status).toBe(200);
+      const params = new URL(started.body.url).searchParams;
+      expect(params.get('login_hint')).toBe(email);
+      expect(params.get('scope')?.split(' ')).toEqual(['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/userinfo.email']);
+      vi.stubGlobal('fetch', vi.fn(async (url: string | URL | Request, init?: RequestInit) => {
+        const target = String(url);
+        if (target.startsWith(base)) return realFetch(url, init);
+        if (target.startsWith('https://oauth2.googleapis.com/token')) return Response.json({ access_token: 'fixture-access', refresh_token: 'fixture-refresh', expires_in: 3600, scope: 'https://www.googleapis.com/auth/gmail.modify https://www.googleapis.com/auth/userinfo.email' });
+        if (target.startsWith('https://www.googleapis.com/oauth2/v2/userinfo')) return Response.json({ email, verified_email: true });
+        if (target.startsWith('https://gmail.googleapis.com/gmail/v1/users/me/profile')) return Response.json({ emailAddress: email });
+        throw new Error('Unexpected network request in isolated OAuth fixture');
+      }));
+      const callbackUrl = `${base}/integrations/gmail/callback?${new URLSearchParams({ state: params.get('state')!, code: 'fixture-code' })}`;
+      const callback = await fetch(callbackUrl, { redirect: 'manual' });
+      expect(new URL(callback.headers.get('location')!).searchParams.get('gmail_connected')).toBe('true');
+      const account = await db.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId: id, provider: 'gmail' } } });
+      const { decryptToken } = await import('../../encryption/crypto.service');
+      expect(decryptToken(account.refreshToken!)).toBe('fixture-refresh');
+      expect(account.refreshToken).not.toContain('fixture-refresh');
+      const returning = await call('/auth/login', { email, password: 'NewApprovedStaff1!' }, '');
+      expect((await call('/integrations/gmail/status', undefined, returning.cookie)).body).toMatchObject({ isConnected: true, email });
+      const replay = await fetch(callbackUrl, { redirect: 'manual' });
+      expect(new URL(replay.headers.get('location')!).searchParams.has('gmail_error')).toBe(true);
+      expect((await call('/integrations/gmail/disconnect', {}, returning.cookie)).status).toBe(200);
+      expect((await call('/integrations/gmail/status', undefined, returning.cookie)).body.isConnected).toBe(false);
+      await db.user.update({ where: { id }, data: { email: `changed-${email}` } });
+      expect((await call('/auth/me', undefined, returning.cookie)).status).toBe(403);
+    } finally { vi.unstubAllGlobals(); vi.stubEnv('NODE_ENV', 'test'); }
+  }, 30_000);
+  it('does not turn an unaudited external user row or a foreign approval into staff access', async () => {
+    const { hashPassword } = await import('../../../shared/helpers/crypto');
+    const outsider = await db.user.create({ data: { tenantId, email: 'unapproved@gmail.com', firstName: 'No', lastName: 'Approval', role: 'Inbox staff', passwordHash: await hashPassword('UnauditedStaff1!') } });
+    expect((await call('/auth/login', { email: outsider.email, password: 'UnauditedStaff1!' }, '')).status).toBe(403);
+    const foreignTenant = await db.tenant.create({ data: { name: 'Foreign approval', slug: 'foreign-approval', status: 'ACTIVE' } });
+    const foreignActor = await db.user.create({ data: { tenantId: foreignTenant.id, email: 'admin@foreign.example', firstName: 'Foreign', lastName: 'Admin', role: 'Client Admin' } });
+    await db.auditLog.create({ data: { tenantId: foreignTenant.id, userId: foreignActor.id, entityType: 'User', entityId: outsider.id,
+      action: 'user.staff_approved', metadata: { email: outsider.email, approvedByRole: 'Client Admin' } } });
+    expect((await call('/auth/login', { email: outsider.email, password: 'UnauditedStaff1!' }, '')).status).toBe(403);
+    const approved = await call(`/administration/users/${outsider.id}/approve-email`, {});
+    expect(approved.status).toBe(200);
+    expect((await call('/auth/login', { email: outsider.email, password: 'UnauditedStaff1!' }, '')).status).toBe(200);
+    expect((await call(`/administration/users/${outsider.id}/approve-email`, {})).status).toBe(200);
+    expect(await db.auditLog.count({ where: { tenantId, entityId: outsider.id, action: 'user.staff_approved' } })).toBe(1);
+  });
+  it('rolls back external staff approval when group validation fails', async () => {
+    const result = await call('/administration/users', { firstName: 'Atomic', lastName: 'Approval', email: 'atomic@gmail.com', phone: '9171234567', role: 'Inbox staff', groupIds: ['00000000-0000-4000-8000-000000000099'] });
+    expect(result.status).not.toBe(201);
+    expect(await db.user.count({ where: { tenantId, email: 'atomic@gmail.com' } })).toBe(0);
+    expect(await db.auditLog.count({ where: { tenantId, metadata: { path: ['email'], equals: 'atomic@gmail.com' } } })).toBe(0);
+  });
+  it('denies delegated user creation and approval of external addresses', async () => {
+    const role = await db.roleDefinition.create({ data: { tenantId, name: 'Delegated provisioner' } });
+    await db.rolePermission.createMany({ data: [
+      { tenantId, roleId: role.id, module: 'users', canView: true, canCreate: true, canEdit: true },
+      { tenantId, roleId: role.id, module: 'roles', canView: true, canAssign: true },
+    ] });
+    const actor = await db.user.create({ data: { tenantId, email: 'delegated@camxian.com', firstName: 'Delegated', lastName: 'Staff', role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await db.userRole.create({ data: { tenantId, userId: actor.id, roleId: role.id } });
+    const { issueAuthSession } = await import('../auth-session');
+    const cookie = `leadcrm_token=${(await issueAuthSession(actor)).token}`;
+    const result = await call('/administration/users', { firstName: 'External', lastName: 'Denied', email: 'delegated-new@gmail.com', phone: '9171234567', role: 'Inbox staff' }, cookie);
+    expect(result.status).toBe(403);
+    expect(await db.user.count({ where: { tenantId, email: 'delegated-new@gmail.com' } })).toBe(0);
+    const target = await db.user.findFirstOrThrow({ where: { tenantId, email: 'unapproved@gmail.com' } });
+    expect((await call(`/administration/users/${target.id}/approve-email`, {}, cookie)).status).toBe(403);
+    expect((await call('/administration/users', { firstName: 'Company', lastName: 'Allowed', email: 'delegated-company@camxian.com', phone: '9171234567', role: 'Inbox staff' }, cookie)).status).toBe(201);
+  });
   it('password recovery establishes a strong password but does not bypass onboarding', async () => {
     const target = await db.user.findFirstOrThrow({ where: { tenantId, email: 'not-submitted@camxian.com' } });
     expect((await call('/auth/forgot-password', { email: target.email }, '')).status).toBe(200);

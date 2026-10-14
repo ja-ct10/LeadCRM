@@ -14,6 +14,7 @@ const testOverrideSchema = z.object({
 
 /** One explicitly configured test mailbox; invalid or expired configuration grants no exception. */
 export function getMailboxTestOverride(user: StaffIdentity, now = Date.now()) {
+  if (!['development', 'test'].includes(process.env.NODE_ENV ?? '')) return null;
   try {
     const parsed = testOverrideSchema.safeParse(JSON.parse(mailConfig.gmail.testMailboxOverride));
     if (!parsed.success) return null;

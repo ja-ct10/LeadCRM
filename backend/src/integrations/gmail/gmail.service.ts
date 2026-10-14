@@ -58,7 +58,15 @@ export async function getValidAccessToken(tenantId: string, userId: string): Pro
 
   // Decrypt refresh token before passing to OAuth client
   const decryptedRefreshToken = decryptToken(account.refreshToken);
-  const tokens = await refreshAccessToken(decryptedRefreshToken);
+  let tokens;
+  try { tokens = await refreshAccessToken(decryptedRefreshToken); }
+  catch (error) {
+    if (error instanceof AppError && error.code === 'GMAIL_RECONNECT_REQUIRED') {
+      await prisma.emailAccount.updateMany({ where: { id: account.id, tenantId, userId, isActive: true, refreshToken: account.refreshToken },
+        data: { isActive: false, accessToken: '', refreshToken: null, syncError: error.message, syncLeaseId: null, syncLeaseUntil: null, mailboxVersion: { increment: 1 } } });
+    }
+    throw error;
+  }
 
   const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
@@ -251,7 +259,7 @@ export async function getConnectionStatus(
   });
 
   if (!account || !account.isActive) {
-    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null };
+    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null, syncError: account?.syncError ?? null };
   }
 
   const user = await readAuthUser(userId, tenantId);
@@ -272,9 +280,10 @@ export async function getConnectionStatus(
  * Disconnects a Gmail account (soft-delete — sets isActive to false).
  */
 export async function disconnectAccount(tenantId: string, userId: string): Promise<void> {
+  await prisma.mailboxOAuthState.deleteMany({ where: { tenantId, userId } });
   await prisma.emailAccount.update({
     where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } },
-    data: { isActive: false, accessToken: '', refreshToken: null, syncLeaseId: null, syncLeaseUntil: null },
+    data: { isActive: false, accessToken: '', refreshToken: null, syncLeaseId: null, syncLeaseUntil: null, syncError: null, mailboxVersion: { increment: 1 } },
   });
 }
 
