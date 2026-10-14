@@ -1,9 +1,15 @@
 import rateLimit from 'express-rate-limit';
 import { createHash } from 'crypto';
+import type { Request, Response } from 'express';
 export { loginIpRateLimiter } from './login-ip-rate-limit.middleware';
 
 // In development, use very high limits to avoid blocking local testing
 const isDev = process.env.NODE_ENV !== 'production';
+export function apiRateLimitResponse(req: Request, res: Response) {
+  // TextBee permanently stops retrying a callback on 4xx; overload is temporary.
+  const textbee = /^\/api\/v1\/webhooks\/textbee\/?$/.test(req.originalUrl.split('?')[0]);
+  res.status(textbee ? 503 : 429).json({ success: false, error: 'Too many requests — please try again later.' });
+}
 
 // General API rate limit — 100 requests per minute per IP
 export const rateLimitMiddleware = rateLimit({
@@ -12,6 +18,7 @@ export const rateLimitMiddleware = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
   message: { success: false, error: 'Too many requests — please try again later.' },
+  handler: apiRateLimitResponse,
 });
 
 // Existing password-change budget. Login uses shared short-window IP protection

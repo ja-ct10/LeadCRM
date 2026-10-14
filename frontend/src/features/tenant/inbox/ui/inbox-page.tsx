@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Mail, Check, Filter, ArrowDownAZ, Loader2, Pencil, Search } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
-import { associateThreadDeal, getGmailStatus, fetchGmailEmails, fetchGmailThread, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
+import { associateThreadDeal, getGmailStatus, fetchGmailEmails, fetchGmailThread, setGmailConversationReadState, setGmailThreadReadState, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
 import InboxCurrentEmpty from './inbox-current-empty';
 import InboxEmailList from './inbox-email-list';
 import EmailConversationView from './email-conversation-view';
@@ -87,6 +87,12 @@ function InboxMailbox(): React.ReactElement {
   const [selectedSchedule, setSelectedSchedule] = useState<string>();
   const [authorizationRevision, setAuthorizationRevision] = useState(0);
   const authorizationGeneration = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [readFailure, setReadFailure] = useState<{ email: GmailEmail; message: string }>();
+  const [readBusy, setReadBusy] = useState(false);
+  const readOperations = useRef(new Map<string, Promise<void>>());
+  const opened = useRef<GmailEmail | null>(null);
   useNotificationRecordLink('threadId', `${connectionStatus?.email ?? ''}:${authorizationRevision}`, !!connectionStatus?.isConnected,
     async id => { const generation = authorizationGeneration.current; const response = await fetchGmailThread(id); if (generation !== authorizationGeneration.current) throw new Error('Access changed'); const latest = response.emails[response.emails.length - 1]; if (!latest) throw new Error('Unavailable'); return latest; }, setSelectedEmail);
   const [revision, setRevision] = useState(0);
@@ -107,6 +113,8 @@ function InboxMailbox(): React.ReactElement {
     request.current?.controller.abort(); request.current = null; requestId.current++;
     authorizationGeneration.current++; setAuthorizationRevision(value => value + 1);
     setEmails([]); setSelectedEmail(null); setSelectedSchedule(undefined); setUnreadCount(undefined);
+    setReadFailure(undefined);
+    readOperations.current.clear(); setReadBusy(false);
     setNextPageToken(undefined); setPage(1); pageRef.current = 1; tokenRef.current = undefined; pageTokens.current = [undefined];
     loaded.current = false; setRefreshing(false); setInitialLoading(false); setRevision(value => value + 1);
     if (composeDraftRef.current?.draftId || composeDraftRef.current?.sourceDealId) { setComposeDraft(null); setIsComposeOpen(false); }
@@ -180,6 +188,63 @@ function InboxMailbox(): React.ReactElement {
     request.current = { key, controller, promise };
     return promise;
   }, [tenant?.id, user?.id, filter, sort, debouncedSearch, applyApiCooldown, invalidateMailbox]);
+  const refreshAfterMutation = useRef(() => {});
+  refreshAfterMutation.current = () => {
+    // A pre-write request must never be reused for post-write reconciliation.
+    request.current?.controller.abort(); request.current = null; requestId.current++;
+    void loadEmails(undefined, 1);
+    setRevision(value => value + 1);
+  };
+  const mailboxIdentity = useRef(connectionStatus?.email);
+  mailboxIdentity.current = connectionStatus?.email;
+  const markOpenedRead = useCallback((email: GmailEmail) => {
+    const generation = authorizationGeneration.current, mailbox = mailboxIdentity.current;
+    const current = () => mounted.current && generation === authorizationGeneration.current && mailbox === mailboxIdentity.current;
+    const key = `${generation}:${mailbox}:${email.conversationId ?? email.threadId}`;
+    const existing = readOperations.current.get(key);
+    if (existing) return existing;
+    if (current()) { setReadFailure(undefined); setReadBusy(true); }
+    const operation = Promise.resolve().then(async () => {
+      try {
+        if (!current()) return;
+        if (email.conversationId) {
+          let pageToken: string | undefined;
+          do {
+            const result = await setGmailConversationReadState(email.conversationId, true, pageToken);
+            if (!current()) return;
+            refreshAfterMutation.current();
+            pageToken = result.nextPageToken;
+          } while (pageToken);
+        } else if (!email.isRead) {
+          await setGmailThreadReadState(email.threadId, true);
+          if (current()) refreshAfterMutation.current();
+        }
+      } catch (error) {
+        if (!current()) return;
+        const failure = error as ApiRequestError;
+        refreshAfterMutation.current(); // Earlier messages may already have persisted.
+        setReadFailure({ email, message: `Could not mark all messages as read. ${error instanceof Error ? error.message : 'Try again.'}` });
+        setRetryAt(Date.parse(failure.retryAt ?? '') || 0);
+        applyApiCooldown(failure);
+        if ([401, 403, 404, 409].includes(failure.status ?? 0)) {
+          invalidateMailbox(); setError(failure.message || 'Mailbox access changed. Refresh your Inbox.');
+        }
+      } finally {
+        readOperations.current.delete(key);
+        if (current()) setReadBusy(readOperations.current.size > 0);
+      }
+    });
+    readOperations.current.set(key, operation);
+    return operation;
+  }, [applyApiCooldown, invalidateMailbox]);
+  useEffect(() => {
+    if (!selectedEmail) { opened.current = null; return; }
+    if (opened.current === selectedEmail) return;
+    opened.current = selectedEmail;
+    // One attempt per opening; revisions/new arrivals must not re-mark the history.
+    if (retryAt > Date.now()) { setReadFailure({ email: selectedEmail, message: 'Gmail updates are temporarily paused. Retry marking as read when updates resume.' }); return; }
+    void markOpenedRead(selectedEmail);
+  }, [selectedEmail, markOpenedRead, retryAt]);
   useEffect(() => {
     if (connectionStatus?.isConnected) void loadEmails();
     return () => { request.current?.controller.abort(); request.current = null; requestId.current++; };
@@ -293,7 +358,7 @@ function InboxMailbox(): React.ReactElement {
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
   if (selectedEmail) return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card">
-    <EmailConversationView key={selectedEmail.conversationId ?? selectedEmail.threadId} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => { void loadEmails(tokenRef.current, pageRef.current); setRevision(value => value + 1); }} />
+    <EmailConversationView key={selectedEmail.conversationId ?? selectedEmail.threadId} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} readError={readFailure?.message} readPending={readBusy} onRetryRead={() => { if (readFailure) void markOpenedRead(readFailure.email); }} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => refreshAfterMutation.current()} />
   </motion.div>;
   return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col gap-4 pb-16">
     <header><h1 className="font-display text-2xl font-bold tracking-tight">Inbox</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}</p>}</header>
@@ -311,7 +376,8 @@ function InboxMailbox(): React.ReactElement {
       </>}
       {syncError && <p role="status" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{syncError}</p>}
       {error && <p role="alert" className="px-4 py-3 text-sm text-red-600">{error}</p>}
-      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
+      {readFailure && <div role="alert" className="px-4 py-3 text-sm text-red-600"><p>{readFailure.message}</p><button type="button" className={control} disabled={readBusy || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void markOpenedRead(readFailure.email)}>Retry marking as read</button></div>}
+      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} mailboxEmail={connectionStatus?.email ?? undefined} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
     {connectionStatus?.isConnected && selectedSchedule && <ScheduledEmailDialog key={selectedSchedule} id={selectedSchedule} onClose={() => setSelectedSchedule(undefined)} onCancelled={() => { void loadEmails(tokenRef.current, pageRef.current); toast.success('Scheduled send cancelled. The email is available in Drafts.'); }} />}

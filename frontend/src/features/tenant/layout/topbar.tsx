@@ -39,7 +39,9 @@ export default function Topbar({ onOpenSidebar, onOpenInbox, sidebarOpen = false
   // Fetch unread email count for inbox badge
   useEffect(() => {
     let isMounted = true;
-    const unreadChanged = (event: Event) => { const count = (event as CustomEvent<number>).detail; if (Number.isSafeInteger(count) && count >= 0) setInboxCount(count); };
+    let changed = false;
+    setInboxCount(0);
+    const unreadChanged = (event: Event) => { const count = (event as CustomEvent<number>).detail; if (isMounted && Number.isSafeInteger(count) && count >= 0) { changed = true; setInboxCount(count); } };
     window.addEventListener('mailbox-unread-change', unreadChanged);
     getGmailStatus()
       .then((status) => {
@@ -49,14 +51,14 @@ export default function Topbar({ onOpenSidebar, onOpenInbox, sidebarOpen = false
         return null;
       })
       .then((result) => {
-        if (isMounted && result) {
+        if (isMounted && !changed && result) {
           setInboxCount(result.unreadCount);
         }
       })
       .catch(() => { /* silently ignore � Gmail may not be connected */ });
 
     return () => { isMounted = false; window.removeEventListener('mailbox-unread-change', unreadChanged); };
-  }, []);
+  }, [tenant?.id, user?.id]);
 
   // Listen for settings tab changes to update breadcrumb
   useEffect(() => {

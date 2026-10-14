@@ -23,6 +23,23 @@ export interface NotificationMutationResponse {
   readBefore?: string;
 }
 
+export interface SmsCampaignSummary {
+  total: number; pending: number; submitting: number; submitted: number;
+  sent: number; delivered: number; failed: number; unconfirmed: number;
+}
+export interface NotificationCountsResponse extends NotificationMutationResponse {
+  updates?: NotificationRecord[];
+  cursor?: string;
+  hasMore?: boolean;
+  /** Fast checks expire even when an offline gateway never reports a result. */
+  activeSmsUntil?: string | null;
+}
+
+export const SmsCampaignNotificationTypes = [
+  'sms_campaign_sent', 'sms_campaign_delivered', 'sms_campaign_failed',
+  'sms_campaign_partial', 'sms_campaign_unconfirmed', 'sms_campaign_progress',
+] as const;
+
 export const NotificationTypes = [
   'lead_assigned', 'contact_assigned', 'account_assigned', 'deal_assigned', 'task_assigned',
   'customer_hot', 'customer_cold', 'customer_cancelled', 'deal_progressed', 'deal_won', 'deal_lost',
@@ -30,6 +47,7 @@ export const NotificationTypes = [
   'customer_reply', 'campaign_failed', 'workflow_failed', 'user_created', 'user_status_changed',
   'mailbox_disconnected', 'mailbox_sync_failed', 'form_processing_failed', 'record_archived', 'record_restored',
   'website_lead', 'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
+  ...SmsCampaignNotificationTypes,
 ] as const;
 export type NotificationType = typeof NotificationTypes[number];
 export const NotificationQuerySchema = z.object({

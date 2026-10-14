@@ -25,15 +25,15 @@ const correspondentId = 'c_' + 'a'.repeat(32);
 const olderTopic: GmailEmail = { ...latest, id: 'older-topic-message', threadId: 'older-topic', subject: 'CCTV quotation', date: old.date, body: '<p>Older quotation</p>' };
 const groupedEmail: GmailEmail = { ...latest, conversationId: correspondentId, participants: ['Doris', 'You'], correspondentAddresses: ['customer@example.test'], messageCount: 2 };
 const groupResult = (emails = [olderTopic, latest]) => ({ emails, threads: [], messageCount: emails.length });
-it('uses correspondent history, distinguishes original topics and marks only expanded messages read', async () => {
+it('keeps older messages collapsed and leaves automatic marking to the Inbox owner', async () => {
   mocks.correspondent.mockResolvedValue(groupResult()); mocks.readMessage.mockResolvedValue({ success: true });
   render(<EmailConversationView {...props()} email={groupedEmail} mailboxEmail="staff@camxian.com" />); await loaded();
   expect(mocks.correspondent).toHaveBeenCalledWith(correspondentId, undefined, expect.any(AbortSignal)); expect(mocks.thread).not.toHaveBeenCalled();
   expect(screen.getByRole('heading', { name: 'CCTV quotation' })).toBeTruthy(); expect(screen.getByRole('heading', { name: 'Fire Detection Inquiry' })).toBeTruthy();
-  await waitFor(() => expect(mocks.readMessage).toHaveBeenCalledWith('latest', true));
-  expect(mocks.readMessage).toHaveBeenCalledOnce(); expect(mocks.read).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Expand message from Doris' })).toBeTruthy();
+  expect(mocks.readMessage).not.toHaveBeenCalled(); expect(mocks.read).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: 'Expand message from Doris' }));
-  await waitFor(() => expect(mocks.readMessage).toHaveBeenCalledWith(olderTopic.id, true));
+  expect(mocks.readMessage).not.toHaveBeenCalled();
 });
 it('replies to an older selected message and preserves its own source identity in the composer', async () => {
   mocks.correspondent.mockResolvedValue(groupResult([{ ...olderTopic, isRead: true }, { ...latest, isRead: true }]));
@@ -118,13 +118,12 @@ it('folds only recognizable quotes and keeps complete sanitized content accessib
   expect(document.querySelector('details')?.open).toBe(true);
   expect(latest.body).toContain('class="gmail_quote"');
 });
-it('marks unread only once under Strict Mode and does not re-mark read refreshes', async () => {
+it('does not issue read operations on Strict Mode or revision changes', async () => {
   const actions = props(), view = render(<StrictMode><EmailConversationView {...actions} /></StrictMode>);
-  await waitFor(() => expect(mocks.read).toHaveBeenCalledOnce());
-  expect(mocks.read).toHaveBeenCalledWith('conversation', true);
+  await loaded(); expect(mocks.read).not.toHaveBeenCalled();
   mocks.thread.mockResolvedValue({ emails: [{ ...latest, isRead: true }, old], dealOptions: [], canAssociateDeal: false });
   view.rerender(<StrictMode><EmailConversationView {...actions} revision={1} /></StrictMode>);
-  await loaded(); expect(mocks.read).toHaveBeenCalledOnce();
+  await loaded(); expect(mocks.read).not.toHaveBeenCalled();
 });
 it('renders a single read message without a provider write', async () => {
   mocks.thread.mockResolvedValue({ emails: [old], dealOptions: [], canAssociateDeal: false });
@@ -161,10 +160,10 @@ it('prevents duplicate association submits and updates visible Deal context', as
 });
 it('keeps saved content on provider failure, reports error and respects retryAt', async () => {
   mocks.read.mockRejectedValue(Object.assign(new Error('Gmail updates paused'), { status: 429, retryAt: new Date(Date.now() + 60000).toISOString() }));
-  render(<EmailConversationView {...props()} />); await screen.findByRole('alert');
+  render(<EmailConversationView {...props()} readError="Gmail updates paused" retryAt={Date.now() + 60000} />); await loaded();
   expect(screen.getByText('Please send the catalog', { selector: 'p' })).toBeTruthy();
-  expect((screen.getByRole('button', { name: 'Retry' }) as HTMLButtonElement).disabled).toBe(true);
-  expect(mocks.read).toHaveBeenCalledOnce();
+  expect((screen.getByRole('button', { name: 'Retry marking as read' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(mocks.read).not.toHaveBeenCalled();
 });
 it('uses Manila calendar dates across midnight regardless of browser timezone', () => {
   const now = new Date('2026-10-08T16:30:00Z');

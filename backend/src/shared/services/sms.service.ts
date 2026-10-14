@@ -34,22 +34,52 @@ export class SmsSubmissionError extends ValidationError {
     super(outcome === 'rejected' ? `SMS provider rejected the message${httpStatus ? ` (HTTP ${httpStatus})` : ''}. Check the TextBee API key, enabled Android device, SMS permission and plan allowance.` : 'SMS submission could not be confirmed. Review the provider history before sending again.');
   }
 }
+
+async function textBeeRead(path: string) {
+  assertSmsConfigured();
+  const response = await fetch(`https://api.textbee.dev/api/v1${path}`, { method: 'GET', redirect: 'error', signal: AbortSignal.timeout(15000),
+    headers: { 'x-api-key': process.env.TEXTBEE_API_KEY!.trim(), Accept: 'application/json' } });
+  if (!response.ok) throw new SmsSubmissionError('unconfirmed', response.status);
+  return response.json() as Promise<unknown>;
+}
+/** Resolve the optional provider default once, before the campaign transaction. */
+export async function getSmsDeviceId(): Promise<string> {
+  assertSmsConfigured();
+  if (process.env.TEXTBEE_DEVICE_ID?.trim()) return process.env.TEXTBEE_DEVICE_ID.trim();
+  const devices = z.object({ data: z.array(z.object({ _id: z.string().regex(/^[a-f\d]{24}$/i), enabled: z.boolean(), isDefault: z.boolean(), lastHeartbeat: z.string().optional().nullable() })) }).parse(await textBeeRead('/gateway/devices'));
+  const enabled = devices.data.filter(device => device.enabled);
+  const device = enabled.find(item => item.isDefault) ?? enabled.sort((a, b) => (b.lastHeartbeat ?? '').localeCompare(a.lastHeartbeat ?? ''))[0];
+  if (!device) throw new ValidationError('No enabled TextBee Android gateway is available.');
+  return device._id;
+}
+const providerDate = z.string().datetime({ offset: true }).optional().nullable();
+export async function getSmsBatch(deviceId: string, batchId: string) {
+  if (!/^[a-f\d]{24}$/i.test(deviceId) || !/^[a-f\d]{24}$/i.test(batchId)) throw new ValidationError('Invalid SMS provider identity.');
+  const message = z.object({ _id: z.string().min(1), device: z.object({ _id: z.string() }), smsBatch: z.string().optional(), recipient: z.string(), status: z.string().default('unknown'),
+    requestedAt: providerDate, dispatchedAt: providerDate, pushReceivedAt: providerDate, sendAttemptedAt: providerDate,
+    sentAt: providerDate, deliveredAt: providerDate, failedAt: providerDate });
+  // Strip message content and other provider fields at this boundary.
+  return z.object({ data: z.object({ batch: z.object({ _id: z.string(), recipientCount: z.number().int() }), messages: z.array(message) }) })
+    .parse(await textBeeRead(`/gateway/devices/${deviceId}/sms-batch/${batchId}`)).data;
+}
 const receiptSchema = z.object({ data: z.object({ success: z.literal(true), smsBatchId: z.string().regex(/^[a-f\d]{24}$/i), recipientCount: z.literal(1) }) });
 /** Every caller, including Workflows, gets the shared Camxian contact footer. */
-export async function sendSms(recipient: string, content: string, options: { beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
+export async function sendSms(recipient: string, content: string, options: { beforeProviderWrite?: () => Promise<void>; deviceId?: string } = {}): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
   assertSmsConfigured();
   const phone = normalizeSmsPhone(recipient);
   const tenantId = tenantContext.getStore()?.tenantId;
   if (!tenantId) throw new ValidationError('CRM tenant context is required for SMS.');
   if (!content.trim()) throw new ValidationError('SMS message content is required.');
   const finalContent = buildFinalSms({ body: content });
+  const deviceId = options.deviceId ?? process.env.TEXTBEE_DEVICE_ID?.trim();
+  if (deviceId && !/^[a-f\d]{24}$/i.test(deviceId)) throw new ValidationError('Invalid SMS gateway Device ID.');
   if (finalContent.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
   await options.beforeProviderWrite?.();
   let response: Response;
   try {
     response = await fetch('https://api.textbee.dev/api/v1/gateway/send-sms', { method: 'POST', signal: AbortSignal.timeout(15000), redirect: 'error',
       headers: { 'x-api-key': process.env.TEXTBEE_API_KEY!.trim(), 'Content-Type': 'application/json', Accept: 'application/json' },
-      body: JSON.stringify({ recipients: [phone], message: finalContent, ...(process.env.TEXTBEE_DEVICE_ID?.trim() ? { deviceId: process.env.TEXTBEE_DEVICE_ID.trim() } : {}) }),
+      body: JSON.stringify({ recipients: [phone], message: finalContent, ...(deviceId ? { deviceId } : {}) }),
     });
   } catch { throw new SmsSubmissionError('unconfirmed'); }
   if (!response.ok) throw new SmsSubmissionError(response.status >= 500 || response.status === 408 ? 'unconfirmed' : 'rejected', response.status);

@@ -1,5 +1,6 @@
 import { Campaign, CampaignType, CampaignStatus, CreateCampaignInput } from '../types/campaign.types';
 import type { CampaignSendResult } from './campaign-email';
+import type { SmsCampaignSummary } from './notifications';
 export type { Campaign, CampaignType, CampaignStatus, CreateCampaignInput };
 
 export interface UpdateCampaignInput extends Partial<CreateCampaignInput> {
@@ -64,6 +65,7 @@ export interface CampaignClickedLink {
 
 export interface CampaignReportResponse extends CampaignDetailResponse {
   data: CampaignDetailResponse['data'] & {
+    smsDelivery?: SmsCampaignSummary;
     deliveredCount: number;
     bouncedCount: number;
     recipients: CampaignRecipient[];

@@ -6,6 +6,7 @@ import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
 import { recalculateCampaignDelivery } from './campaign-delivery-status';
+import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 
 const identity = z.string().min(1).max(500);
 const timestamp = z.string().datetime({ offset: true }).transform(value => new Date(value));
@@ -31,29 +32,46 @@ export async function processTextBeeEvent(input: unknown) {
   const parsed = TextBeeEventSchema.safeParse(input);
   if (!parsed.success) throw new AppError('Invalid outbound SMS event.', 400);
   const event = parsed.data;
-  const deviceId = process.env.TEXTBEE_DEVICE_ID?.trim();
-  if (deviceId && event.deviceId !== deviceId) throw new AppError('SMS device does not match.', 400);
-  const recipient = await prisma.campaignContact.findUnique({ where: { messageId: event.smsBatchId }, include: { campaign: { select: { type: true } } } });
+  return applyTextBeeEvidence({ ...event, status: event.webhookEvent === 'UNKNOWN_STATE' ? 'unknown' : event.status,
+    sentAt: 'sentAt' in event ? event.sentAt : undefined, deliveredAt: 'deliveredAt' in event ? event.deliveredAt : undefined,
+    failedAt: 'failedAt' in event ? event.failedAt : undefined }, event.idempotencyKey);
+}
+
+export type TextBeeEvidence = { smsId: string; smsBatchId: string; deviceId: string; recipient: string; status: string;
+  sentAt?: Date; deliveredAt?: Date; failedAt?: Date };
+/** Shared verified-fact writer. Provider GET results are not webhook receipts. */
+export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: string, expectedUpdatedAt?: Date | null) {
+  const started = performance.now();
+  const recipient = await prisma.campaignContact.findUnique({ where: { messageId: event.smsBatchId }, include: { campaign: { select: { type: true, smsDeviceId: true } } } });
   if (!recipient) {
     // Workflows persist their submission in the existing execution step. They do
     // not own CampaignContacts, so acknowledge their outbound events without
     // creating campaign records or changing workflow engagement.
     const workflow = await prisma.workflowExecutionStep.findFirst({ where: { actionType: 'send_sms', output: { path: ['messageId'], equals: event.smsBatchId } }, select: { id: true } });
-    if (workflow) return;
+    if (workflow && receiptKey) return;
     // Retry if the callback arrived before the send receipt was persisted.
     throw new AppError('SMS delivery record is not available.', 503);
   }
   if (recipient.campaign.type !== 'SMS' || recipient.phone !== event.recipient) throw new AppError('SMS delivery record does not match.', 400);
-  return tenantContext.run({ tenantId: recipient.tenantId }, () => prisma.$transaction(async tx => {
+  const deviceId = recipient.campaign.smsDeviceId ?? process.env.TEXTBEE_DEVICE_ID?.trim();
+  if (deviceId && event.deviceId !== deviceId) throw new AppError('SMS device does not match.', 400);
+  if (recipient.smsId && recipient.smsId !== event.smsId) throw new AppError('SMS message identity does not match.', 400);
+  await tenantContext.run({ tenantId: recipient.tenantId }, () => prisma.$transaction(async tx => {
     const where = { tenantId: recipient.tenantId, campaignId: recipient.campaignId };
-    await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: { engagement: { increment: 0 } } });
-    const receipt = await tx.smsWebhookReceipt.createMany({ data: [{ idempotencyKey: event.idempotencyKey, tenantId: recipient.tenantId, campaignContactId: recipient.id }], skipDuplicates: true });
-    if (!receipt.count) return;
+    const locked = await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: { engagement: { increment: 0 } } });
+    if (locked.smsDeviceId && locked.smsDeviceId !== event.deviceId) throw new AppError('SMS device does not match.', 400);
+    if (!locked.smsDeviceId) await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: { smsDeviceId: event.deviceId } });
+    if (receiptKey) {
+      const receipt = await tx.smsWebhookReceipt.createMany({ data: [{ idempotencyKey: receiptKey, tenantId: recipient.tenantId, campaignContactId: recipient.id }], skipDuplicates: true });
+      if (!receipt.count) return;
+    }
     const current = await tx.campaignContact.findUniqueOrThrow({ where: { id: recipient.id, ...where } });
+    if (expectedUpdatedAt !== undefined && current.providerUpdatedAt?.getTime() !== expectedUpdatedAt?.getTime()) return;
+    if (current.smsId && current.smsId !== event.smsId) throw new AppError('SMS message identity does not match.', 400);
     // Final delivery/failure cannot regress, even on a new delivery identity.
     if (['delivered', 'failed', 'excluded'].includes(current.status)) return;
-    const status = event.webhookEvent === 'UNKNOWN_STATE' ? 'unknown' : event.status;
-    const at = 'deliveredAt' in event ? event.deliveredAt : 'failedAt' in event ? event.failedAt : 'sentAt' in event ? event.sentAt : null;
+    const status = event.status;
+    const at = event.deliveredAt ?? event.failedAt ?? event.sentAt ?? null;
     if (at && current.providerUpdatedAt && at < current.providerUpdatedAt) return;
     if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE') return;
     // UNKNOWN_STATE has no event timestamp. Preserve the confirmed sent fact,
@@ -61,17 +79,23 @@ export async function processTextBeeEvent(input: unknown) {
     if (status === 'unknown' && current.failureReason === 'TEXTBEE_UNKNOWN_STATE') return;
     await tx.campaignContact.update({ where: { id: recipient.id, ...where }, data: {
       status: status === 'unknown' && current.sentAt ? 'sent' : status,
+      smsId: event.smsId,
+      ...(['delivered', 'failed'].includes(status) ? { nextSmsCheckAt: null } : {}),
       ...(at ? { providerUpdatedAt: at } : {}),
-      ...('sentAt' in event ? { sentAt: current.sentAt ?? event.sentAt } : {}),
-      ...('deliveredAt' in event ? { deliveredAt: event.deliveredAt } : {}),
+      ...(event.sentAt ? { sentAt: current.sentAt ?? event.sentAt } : {}),
+      ...(event.deliveredAt ? { deliveredAt: event.deliveredAt } : {}),
       failureReason: status === 'failed' ? 'TEXTBEE_FAILED' : status === 'unknown' ? 'TEXTBEE_UNKNOWN_STATE' : null,
     } });
     await recalculateCampaignDelivery(tx, recipient.campaignId, recipient.tenantId);
   }));
+  requestNotificationDispatch(recipient.tenantId);
+  console.info('[Campaigns]', { event: 'sms_evidence_processed', source: receiptKey ? 'webhook' : 'provider_lookup', campaignId: recipient.campaignId,
+    tenantId: recipient.tenantId, recipientId: recipient.id, status: event.status, durationMs: Math.round(performance.now() - started) });
 }
 
 export const textbeeWebhookRouter = Router();
-textbeeWebhookRouter.post('/', rateLimit({ windowMs: 60000, limit: 1000, standardHeaders: true, legacyHeaders: false }), async (req, res, next) => {
+textbeeWebhookRouter.post('/', rateLimit({ windowMs: 60000, limit: 1000, standardHeaders: true, legacyHeaders: false,
+  handler: (_req, res) => { res.status(503).json({ success: false, error: 'SMS webhook temporarily busy. Retry later.' }); } }), async (req, res, next) => {
   try {
     if (process.env.NODE_ENV === 'production' && !req.secure) throw new AppError('HTTPS is required.', 400);
     if (!Buffer.isBuffer(req.body)) throw new AppError('Raw SMS webhook body is required.', 400);

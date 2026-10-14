@@ -45,7 +45,7 @@ export async function markAllRead(req: Request, res: Response, next: NextFunctio
 }
 
 export async function getCounts(req: Request, res: Response, next: NextFunction) {
-  try { res.json({ success: true, ...await notificationCounts(req.user!.tenantId, req.user!.userId) }); } catch (err) { next(err); }
+  try { res.json({ success: true, ...await notificationCounts(req.user!.tenantId, req.user!.userId, req.query as Record<string, unknown>) }); } catch (err) { next(err); }
 }
 export async function getOperations(req: Request, res: Response, next: NextFunction) {
   try {

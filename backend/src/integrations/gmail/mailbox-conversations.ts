@@ -39,7 +39,7 @@ export function correspondentCte(account: EmailAccount, scope: MailboxScope, que
     OR strpos(lower(array_to_string(m.recipients || m."ccRecipients", ' ')), lower(${query})) > 0)` : Prisma.sql`TRUE`;
   return Prisma.sql`authorized AS MATERIALIZED (
     SELECT m.id, m."providerMessageId", m."threadId", m."fromAddress", m."recipientAddresses", m."from", m.recipients,
-      m."ccRecipients", m.subject, m.snippet, m."sentAt", m.labels, m.direction, m."replyToAddress", m."leadId", m."contactId",
+      m."ccRecipients", m.subject, m.snippet, m."sentAt", m."createdAt", m.labels, m.direction, m."replyToAddress", m."leadId", m."contactId",
       (${incomingUnread(account)}) AS unread, (${search}) AS matched
     FROM "MailboxMessage" m WHERE ${scopedMessagesSql(account, scope)} AND NOT ('DRAFT' = ANY(m.labels))
   ), thread_people AS (
@@ -109,14 +109,12 @@ export async function listMailboxConversations(account: EmailAccount, scope: Mai
     FROM page p JOIN people ON people."conversationId" = p."conversationId" JOIN latest ON latest."conversationId" = p."conversationId"
     ORDER BY ${options.sort === 'unread' ? Prisma.sql`p.unread DESC,` : Prisma.empty} p.date ${order}, p."conversationId" ASC`);
   const visible = rows.slice(0, options.maxResults);
-  const mailbox = mailboxAddress(account.email);
   const emails: GmailEmail[] = visible.map(row => {
     const names = new Map(row.externalAddresses.map(address => [address, address.split('@')[0]]));
     for (const value of row.presentations) {
       const address = mailboxAddress(value);
       if (address && names.has(address) && value.includes('<')) names.set(address, (value.match(/^(.+?)\s*<[^<>]+>$/)?.[1] ?? address).replace(/^"|"$/g, '').trim());
     }
-    if (row.authors.some(author => mailboxAddress(author) === mailbox)) names.set(mailbox ?? '', 'You');
     return { id: row.id, threadId: row.threadId, conversationId: row.conversationId, conversationKind: row.conversationKind,
       correspondentAddresses: row.externalAddresses, from: row.from, to: row.to, cc: row.cc, subject: row.subject, snippet: row.snippet,
       body: '', date: row.date.toISOString(), isRead: !row.unread, labels: row.labels, direction: row.direction,

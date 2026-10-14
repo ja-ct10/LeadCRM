@@ -1,12 +1,24 @@
 import { productRelationData } from './product-relations';
+import { isDeepStrictEqual } from 'node:util';
 import type { ContactStatus, Deal, Prisma } from '@prisma/client';
 import { normalizeCrmStatus } from '@leadcrm/shared';
+import { AppError } from '../../../shared/errors/app-error';
 import { ConflictError, NotFoundError } from '../../../shared/errors/http-error';
+import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { fireContactCreated, fireContactStatusChanged, fireContactUpdated, fireDealUpdated, fireLeadStatusChanged, fireLeadUpdated } from '../../automation/triggers/triggers.service';
 import { recordChanges } from '../record-updates';
 import { salesContext } from './sales-context';
 
 const companyIdentity = (name: string) => name.trim().replace(/\s+/g, ' ').toLowerCase();
+async function conversionWrite<T>(operation: string, work: () => Promise<T>): Promise<T> {
+  try { return await work(); }
+  catch (error) {
+    if (error instanceof AppError && error.statusCode === 403) {
+      throw new AppError(`Cannot convert this Lead: ${operation}. ${error.message}`, error.statusCode, error.code);
+    }
+    throw error;
+  }
+}
 export interface LeadConversionEvents {
   previousLead?: { status: string };
   /** The Lead edit callback already captures its complete scalar/custom field changes. */
@@ -18,6 +30,7 @@ export interface LeadConversionEvents {
 
 /** Runs in the caller's serializable sales transaction. Original records and FKs are retained. */
 export async function convertLead(tx: Prisma.TransactionClient, tenantId: string, leadId: string, actorId: string, events: LeadConversionEvents = {}, completedSale = false) {
+  await assertCrmRecordMutation(tx, 'leads', leadId);
   const lead = await tx.lead.findFirst({ where: { tenantId, id: leadId } });
   if (!lead || lead.isArchived || lead.deletedAt) throw new NotFoundError('Lead');
   if (lead.convertedAt && lead.contactId) {
@@ -30,19 +43,25 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   const source = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId }, select: { productsNormalized: true } });
   const initialInterests = source.productsNormalized ? { ids: lead.productInterestIds } : { names: lead.productInterest };
   // Merge canonical IDs, including retired Products, without resolving a reused name.
-  const mergedProducts = async (kind: 'contact' | 'account', record: { id: string; productInterests: string[]; activeProducts?: string[] }) => {
-    const args = { where: { tenantId, id: record.id }, select: { productsNormalized: true, productLinks: true } } as const;
-    const target = kind === 'contact' ? await tx.contact.findFirstOrThrow(args) : await tx.account.findFirstOrThrow(args);
+  const mergedContactProducts = async (record: { id: string; productInterests: string[] }) => {
+    if (!lead.productInterest.length && !lead.productInterestIds.length) return;
+    const target = await tx.contact.findFirstOrThrow({ where: { tenantId, id: record.id }, select: {
+      productsNormalized: true, productLinks: { orderBy: [{ position: 'asc' }, { productInterestId: 'asc' }] },
+    } });
     const previous = { ...record, productInterestIds: [...target.productLinks.map(link => link.productInterestId), ...lead.productInterestIds] };
-    const canonicalTarget = target.productsNormalized || (!record.productInterests.length && !(kind === 'account' && record.activeProducts?.length));
+    const canonicalTarget = target.productsNormalized || !record.productInterests.length;
     if (source.productsNormalized && canonicalTarget) {
-      return productRelationData(tx, kind, tenantId, {
+      if (target.productsNormalized && lead.productInterestIds.every(id => target.productLinks.some(link => link.interested && link.productInterestId === id))) return;
+      return productRelationData(tx, 'contact', tenantId, {
         ids: [...new Set([...target.productLinks.filter(link => link.interested).map(link => link.productInterestId), ...lead.productInterestIds])],
-        ...(kind === 'account' ? { activeIds: target.productLinks.filter(link => link.activeProduct).map(link => link.productInterestId) } : {}),
       }, previous, true);
     }
     const productInterests = [...new Set([...record.productInterests, ...lead.productInterest])];
-    return productRelationData(tx, kind, tenantId, { names: productInterests, ...(kind === 'account' ? { activeNames: record.activeProducts ?? [] } : {}) }, { ...previous, productInterests }, true);
+    const data = await productRelationData(tx, 'contact', tenantId, { names: productInterests }, { ...previous, productInterests }, true);
+    const links = target.productLinks.map(({ productInterestId, position, interested, activeProduct }) => ({ productInterestId, position, interested, activeProduct }));
+    if (data.productsNormalized === target.productsNormalized && isDeepStrictEqual(data.productLinks.create, links) &&
+      (target.productsNormalized || 'productInterests' in data && isDeepStrictEqual(data.productInterests, record.productInterests))) return;
+    return data;
   };
   const conflict = () => new ConflictError('Multiple, archived, or conflicting Contact/Account matches found. Resolve the CRM relationship before converting this Lead.');
   let contact = lead.contactId ? await tx.contact.findFirst({ where: { tenantId, id: lead.contactId } }) : null;
@@ -74,12 +93,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
   if (accountId && deals.some(deal => deal.accountId && deal.accountId !== accountId)) throw conflict();
-  if (accountId) {
-    const account = await tx.account.findFirstOrThrow({ where: { tenantId, id: accountId } });
-    await tx.account.update({ where: { tenantId, id: accountId }, data: {
-      ...await mergedProducts('account', account),
-    } });
-  }
+  // Linking an existing Account does not authorize editing its fields or Products.
   const legacyDescription = await tx.customFieldValue.findFirst({ where: { tenantId, leadId, fieldId: 'retired-lead-description', module: 'leads' } });
   const now = new Date();
   const firstWon = deals.flatMap(deal => deal.wonConfirmedAt ? [deal.wonConfirmedAt] : []).sort((a, b) => a.getTime() - b.getTime())[0];
@@ -90,18 +104,30 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
     ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
     customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });
-  else contact = await tx.contact.update({ where: { tenantId, id: contact.id }, data: { accountId,
-    ...(firstWon ? { status: 'CLOSED', lifecycleStage: 'CUSTOMER', customerSince: contact.customerSince && contact.customerSince <= firstWon ? contact.customerSince : firstWon,
-      lastStatusChangedAt: contact.status === 'CLOSED' ? contact.lastStatusChangedAt : now } : {}),
-    convertedAt: contact.convertedAt ?? now,
-    ...await mergedProducts('contact', contact) } });
+  else {
+    const current = contact;
+    const data = { accountId,
+      ...(firstWon ? { status: 'CLOSED' as const, lifecycleStage: 'CUSTOMER' as const, customerSince: current.customerSince && current.customerSince <= firstWon ? current.customerSince : firstWon,
+        lastStatusChangedAt: current.status === 'CLOSED' ? current.lastStatusChangedAt : now } : {}),
+      convertedAt: current.convertedAt ?? now,
+    };
+    const products = await mergedContactProducts(current);
+    if (products || Object.entries(data).some(([field, value]) => !isDeepStrictEqual(current[field as keyof typeof current], value))) {
+      contact = await conversionWrite('updating the existing Contact requires Contact edit access', () =>
+        tx.contact.update({ where: { tenantId, id: current.id }, data: { ...data, ...products } }));
+    }
+  }
   // Link every original Deal, including archived/terminal history, without changing its sales data.
   const updatedDeals: { before: Deal; after: Deal }[] = [];
   for (const deal of deals) {
-    await tx.contactDeal.upsert({ where: { contactId_dealId: { contactId: contact.id, dealId: deal.id } },
-      create: { tenantId, contactId: contact.id, dealId: deal.id, addedById: actorId }, update: {} });
+    const contactId = contact.id;
+    if (!await tx.contactDeal.findFirst({ where: { tenantId, contactId, dealId: deal.id } })) {
+      await conversionWrite('adding the Contact to a related Deal requires Deal edit access', () =>
+        tx.contactDeal.create({ data: { tenantId, contactId, dealId: deal.id, addedById: actorId } }));
+    }
     if (!deal.accountId && accountId) updatedDeals.push({ before: deal,
-      after: await tx.deal.update({ where: { tenantId, id: deal.id }, data: { accountId } }) });
+      after: await conversionWrite('setting the Account on a related Deal requires Deal edit access', () =>
+        tx.deal.update({ where: { tenantId, id: deal.id }, data: { accountId } })) });
   }
   const convertedLead = await tx.lead.update({ where: { tenantId, id: leadId }, data: { contactId: contact.id, accountId,
     convertedAt: lead.convertedAt ?? now, convertedById: lead.convertedById ?? actorId } });
