@@ -496,7 +496,8 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const failedDeal = await confirmedDeal(failedSource.body.data.id);
     const archivedContact = await scope(() => prisma.contact.create({ data: { tenantId, firstName: 'Archived', lastName: 'Conversion contact', isArchived: true, productInterests: [] } }));
     const failed = await call('/crm/leads/' + failedSource.body.data.id + '/convert', 'POST', { accountName: 'Rolled back account', contactId: archivedContact.id, dealId: failedDeal.id });
-    expect(failed.status, JSON.stringify(failed.body)).toBe(409);
+    expect(failed.status, JSON.stringify(failed.body)).toBe(404);
+    expect(failed.body).toMatchObject({ success: false, error: 'Active Contact not found' });
     expect(await runs(contactWorkflow.id)).toHaveLength(0);
     expect(await runs(dealWorkflow.id)).toHaveLength(0);
     expect(await runs(leadWorkflow.id)).toHaveLength(1);
