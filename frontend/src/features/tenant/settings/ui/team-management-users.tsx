@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import {
-  Plus, UserCheck, UserX,
+  Archive, Eye, Pencil, UserCheck, UserX,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -19,13 +19,14 @@ import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { usersService } from '@/features/tenant/administration/users/services/users.service';
 import { DataGrid, type DataGridColumnDef, type SortState } from '@/shared/components/data-grid';
+import type { RowActionItem } from '@/shared/components/data-grid/row-actions-menu';
 import { BulkSelectionBar, executeSelectedRows } from '@/shared/components/crm/bulk-selection-bar';
 import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
 import { USERS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { UserPanel } from './user-panel';
-import { UserAvatar as ProfileAvatar } from '@/shared/components/user-avatar';
+import { UserAvatar as ProfileAvatar, administrationAvatarUrl } from '@/shared/components/user-avatar';
 import { DataErrorState } from '@/shared/components/crm/data-view-states';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { cn } from '@/lib/utils';
@@ -36,9 +37,7 @@ import type { User } from '@/store/types';
 function UserAvatar({ user, size = 8 }: { user: User; size?: number }): React.ReactElement {
   const px = size * 4;
   // Private profile images are read through the tenant's users permission guard.
-  const avatarUrl = user.avatarUrl?.startsWith('/api/proxy/auth/profile/avatar/')
-    ? user.avatarUrl.replace('/api/proxy/auth/profile/avatar/', `/api/proxy/administration/users/${encodeURIComponent(user.id)}/avatar/`)
-    : user.avatarUrl;
+  const avatarUrl = administrationAvatarUrl(user);
   return (
     <div style={{ width: px, height: px, minWidth: px }}
       className="rounded-full bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-bold shrink-0 text-[10px]">
@@ -111,7 +110,6 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const groups = useMemo(() => [...new Map(tenantUsers.flatMap(user => user.groups ?? []).map(group => [group.id, group])).values()].sort((a, b) => a.name.localeCompare(b.name)), [tenantUsers]);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
-  const [initiallyEditing, setInitiallyEditing] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [editingUser, setEditingUser] = useState<User | null>(null);
   useEffect(() => { setEditingUser(null); setIsAddOpen(false); }, [tenantId]);
@@ -124,8 +122,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const [reassignUser, setReassignUser] = useState<User | null>(null);
   const [preflighting, setPreflighting] = useState(false);
   const beginStatusChange = async (target: User) => {
-    if (preflighting) return;
-    if (target.status === 'active' && currentUser?.role !== 'Client Admin') return;
+    if (statusDisabledReason(target)) return;
     setReplacement(''); setImpact(null);
     if (target.status !== 'active') { setStatusChangeUser(target); return; }
     setPreflighting(true);
@@ -154,7 +151,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   });
   const paginated = paginateItems(filtered);
   useEffect(() => { setSelected(new Set()); }, [tenantId, currentPage, pageSize, search, roleFilter, statusFilter, groupFilter]);
-  const openUser = (user: User, edit = false) => { setInitiallyEditing(edit); setEditingUser(user); };
+  const openUser = (user: User) => setEditingUser(user);
 
   const handleSavedUser = (saved: User, refresh = true) => {
     setAllUsers(previous => previous.some(user => user.id === saved.id) ? previous.map(user => user.id === saved.id ? saved : user) : [saved, ...previous]);
@@ -208,6 +205,29 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const canAssignRoles = userCan('roles', 'canAssign');
   const canManageUsers = userCan('users', 'canEdit'), canCreateUsers = userCan('users', 'canCreate') && userCan('roles', 'canAssign'), canActivateUsers = userCan('users', 'canActivate'), canArchiveUsers = userCan('users', 'canArchive');
   const canDeactivateUsers = canActivateUsers && currentUser?.role === 'Client Admin';
+  const statusDisabledReason = (target: User) => {
+    if (!canActivateUsers) return 'You do not have permission to change user status.';
+    if (target.status === 'active' && !canDeactivateUsers) return 'Client Admin is required to deactivate and reassign ownership.';
+    if (target.status === 'active' && target.id === currentUser?.id) return 'You cannot deactivate your own account.';
+    if (preflighting || changingStatus || archiving) return 'Wait for the current user action to finish.';
+    return undefined;
+  };
+  const archiveDisabledReason = (target: User) => {
+    if (!canArchiveUsers) return 'You do not have permission to archive users.';
+    if (target.role === 'Client Admin') return 'Client Admin cannot be archived.';
+    if (target.id === currentUser?.id) return 'You cannot archive your own account.';
+    if (target.isArchived) return 'This user is already archived.';
+    if (preflighting || changingStatus || archiving) return 'Wait for the current user action to finish.';
+    return undefined;
+  };
+  const managementActions = (target: User): RowActionItem[] => [
+    { id: 'status', label: target.status === 'active' ? 'Deactivate' : 'Activate',
+      icon: target.status === 'active' ? <UserX size={14} /> : <UserCheck size={14} />,
+      disabled: !!statusDisabledReason(target), disabledReason: statusDisabledReason(target), onClick: () => void beginStatusChange(target) },
+    { id: 'archive', label: 'Archive', icon: <Archive size={14} />,
+      disabled: !!archiveDisabledReason(target), disabledReason: archiveDisabledReason(target),
+      onClick: () => { if (!archiveDisabledReason(target)) setConfirmArchive(target); } },
+  ];
   const columns: DataGridColumnDef<User>[] = [
     { id: 'name', sortable: true, header: 'User', accessor: u => `${u.firstName} ${u.lastName}`, width: 240, cell: (_, u) => <button aria-label={`View ${u.firstName} ${u.lastName}`} onClick={() => openUser(u)} className="flex items-center gap-2 text-left"><UserAvatar user={u} /><span>{u.firstName} {u.lastName}</span></button> },
     { id: 'role', sortable: true, header: 'Role', accessor: u => u.role, width: 180, cell: (_, u) => <span className={cn('rounded-full border px-2 py-0.5 text-xs', roleColor(u.role))}>{u.role}</span> },
@@ -217,7 +237,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     { id: 'activity', header: 'Actions', accessor: () => '', width: 90, cell: (_, u) => {
       const active = u.status === 'active';
       const label = active ? `Deactivate ${u.firstName} ${u.lastName}` : `Activate ${u.firstName} ${u.lastName}`;
-      return <button type="button" aria-label={label} title={active && !canDeactivateUsers ? 'Client Admin is required to deactivate and reassign ownership' : active ? 'Deactivate user' : 'Activate user'} disabled={(active ? !canDeactivateUsers : !canActivateUsers) || preflighting} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
+      return <button type="button" aria-label={label} title={statusDisabledReason(u) || (active ? 'Deactivate user' : 'Activate user')} disabled={!!statusDisabledReason(u)} className="min-h-11 min-w-11 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => void beginStatusChange(u)}>{active ? <UserX size={16} /> : <UserCheck size={16} />}</button>;
     } },
   ];
 
@@ -252,11 +272,10 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
           {loading ? <TableLoadingState label="Loading users..." /> : loadError && !allUsers.length ? <DataErrorState message={loadError} onRetry={() => setReload(value => value + 1)} /> :
             <DataGrid<User> isRefreshing={directory.isRefreshing} sort={sort} sortingMode="external" sortFields={tableColumns.sortFields} defaultSort={{ field: "createdAt", direction: "desc" }} onSortReset={() => setSort(null)} onSortChange={next => setSort(next)} columns={tableColumns.columns} onColumnWidthChange={tableColumns.onColumnWidthChange} data={paginated} getRowId={row => row.id} height="auto" selectable={canArchiveUsers} selectedIds={selected} onSelectionChange={setSelected} enableColumnMenu ariaLabel="Team Management table" summaryLabel={`${totalItems} total records`} emptyMessage="No users found"
               onRowClick={u => openUser(u)} rowActions={u => [
-                { id: 'view', label: 'View', onClick: () => openUser(u) },
+                { id: 'view', label: 'View', icon: <Eye size={14} />, onClick: () => openUser(u) },
                 ...((canManageUsers || canAssignRoles || canActivateUsers || canArchiveUsers) ? [
-                  { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u, true) },
-                  { id: 'status', label: u.status === 'active' ? 'Deactivate' : 'Activate', disabled: u.status === 'active' ? !canDeactivateUsers : !canActivateUsers, onClick: () => void beginStatusChange(u) },
-                  { id: 'archive', label: 'Archive', disabled: !!u.isArchived || !canArchiveUsers, onClick: () => setConfirmArchive(u) },
+                  { id: 'edit', label: canManageUsers ? 'Edit' : 'Change access', icon: <Pencil size={14} />, disabled: !canManageUsers && !canAssignRoles && !canActivateUsers, onClick: () => openUser(u) },
+                  ...managementActions(u),
                 ] : []),
               ]} />}
           <BulkSelectionBar selectedCount={selected.size} selectedIds={selected} onClearSelection={() => setSelected(new Set())} onRemoveIds={ids => setSelected(previous => new Set([...previous].filter(id => !ids.includes(id))))}
@@ -282,7 +301,8 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
           <UserPanel roles={roleObjs} canEdit={canCreateUsers} onSaved={handleSavedUser} onClose={() => setIsAddOpen(false)} />
         )}
         {editingUser && (
-          <UserPanel key={`${editingUser.id}:${initiallyEditing}`} initiallyEditing={initiallyEditing} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)} />
+          <UserPanel key={editingUser.id} user={editingUser} roles={roleObjs} canEdit={canManageUsers} onSaved={handleSavedUser} onClose={() => setEditingUser(null)}
+            actions={managementActions(editingUser).filter(action => action.id === 'status' ? canActivateUsers : canArchiveUsers)} />
         )}
       </AnimatePresence>
       <ConfirmActionDialog

@@ -2,6 +2,13 @@
 
 import { useState } from 'react';
 
+/** Other users' private profile images require the tenant administration read guard. */
+export function administrationAvatarUrl(user: { id: string; avatarUrl?: string | null }) {
+  return user.avatarUrl?.startsWith('/api/proxy/auth/profile/avatar/')
+    ? user.avatarUrl.replace('/api/proxy/auth/profile/avatar/', `/api/proxy/administration/users/${encodeURIComponent(user.id)}/avatar/`)
+    : user.avatarUrl;
+}
+
 /** Fill an existing avatar frame while retaining its initials on missing/broken images. */
 export function UserAvatar({ user }: { user?: { firstName?: string; lastName?: string; avatarUrl?: string | null } | null }) {
   const [failedUrl, setFailedUrl] = useState<string | null>(null);
