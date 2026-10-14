@@ -174,10 +174,12 @@ try {
   assert.equal((await prisma.user.findUniqueOrThrow({ where: { id: staff.id } })).status, 'INACTIVE');
   record('Header Archive reuses the parent confirmation and existing archive API');
   await panel.getByRole('button', { name: 'Close drawer' }).click();
+  // The exiting drawer retains its focus trap until it unmounts.
+  await panel.waitFor({ state: 'hidden' });
   // Recent success toasts can cover this corner; use the button's keyboard entry point.
-  await page.getByRole('button', { name: 'New User', exact: true }).focus();
-  await page.keyboard.press('Enter');
+  await page.getByRole('button', { name: 'New User', exact: true }).press('Enter');
   const create = page.getByRole('dialog', { name: 'New User' });
+  await create.waitFor();
   await create.getByLabel('First Name', { exact: false }).fill('Created'); await create.getByLabel('Last Name', { exact: false }).fill('Staff');
   await create.getByLabel('Email', { exact: false }).fill('created.staff@gmail.com'); await create.getByLabel('Phone', { exact: false }).fill('9171234567');
   await create.getByLabel('Role', { exact: false }).selectOption('Sales'); await create.getByRole('button', { name: 'Create User', exact: true }).click();
