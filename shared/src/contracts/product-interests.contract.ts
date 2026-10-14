@@ -23,6 +23,7 @@ export const PRODUCT_DEAL_VALUE_REQUIRED_ERROR = 'Deal value is required.';
 export const PRODUCT_DEAL_VALUE_DIGITS_ERROR = 'Deal value must contain digits only.';
 export const PRODUCT_DEAL_VALUE_NEGATIVE_ERROR = 'Deal value must not be negative.';
 export const PRODUCT_INTEREST_NAME_MAX_LENGTH = 200;
+export const MAX_ACTIVE_PRODUCTS = 100;
 export const PRODUCT_INTEREST_NAME_MAX_ERROR = `Product name must not exceed ${PRODUCT_INTEREST_NAME_MAX_LENGTH} characters.`;
 
 const productNameSchema = z.string().trim().min(1, 'Product name is required').max(PRODUCT_INTEREST_NAME_MAX_LENGTH, PRODUCT_INTEREST_NAME_MAX_ERROR)
@@ -39,7 +40,7 @@ export const ProductInterestCreateSchema = ProductInterestSchema.extend({
 });
 export const ProductInterestIdSchema = z.string().uuid();
 export const ProductInterestPatchSchema = ProductInterestSchema.partial().refine(v => Object.keys(v).length > 0, 'Provide a name or Deal value');
-export const ProductInterestConfigSchema = z.array(ProductInterestSchema).max(100).refine(
+export const ProductInterestConfigSchema = z.array(ProductInterestSchema).max(MAX_ACTIVE_PRODUCTS).refine(
   rows => new Set(rows.map(row => row.name.toLowerCase())).size === rows.length, 'Product names must be unique',
 );
 export interface ProductInterest {

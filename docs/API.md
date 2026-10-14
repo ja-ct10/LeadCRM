@@ -512,6 +512,8 @@ Membership, role, audit, and scalar user writes are transactional. Unfinished, n
 | GET | `/administration/archived-data` | Supported archived records, including roles | `archived_data.view` plus per-type service checks |
 | PATCH | `/administration/archived-data/:type/:id/restore` | Restore supported record type | `archived_data.restore` plus per-type service checks |
 
+Archived Data includes `Product` records from the authenticated tenant's inactive `ProductInterest` catalog. Product rows use PHP-formatted default Deal values and `updatedAt` as the archive timestamp. Viewing requires `archived_data.view` plus `products.view`; `PATCH /administration/archived-data/Product/:id/restore` requires `archived_data.restore` plus `products.view`. Restore activates the original catalog record without changing relationships or historical Deal prices. An active case-insensitive name conflict or disabled Product Interest field returns 409; the shared 100-active-product limit returns 400.
+
 Role create/update bodies use `permissions` rows from the shared module/action catalog. There are no separate registered role permission-update endpoints. Protected system roles keep their safeguards. Group membership does not replace module permission grants.
 
 ### Inbox integration

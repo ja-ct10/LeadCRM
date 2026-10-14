@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { type Server } from 'node:http';
 import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 import { createPrivateStorageFixture } from '../../../../tests/private-storage-fixture';
+import { MAX_ACTIVE_PRODUCTS } from '@leadcrm/shared';
 
 // Always use an isolated in-memory PostgreSQL database, never DATABASE_URL.
 vi.mock('../../../../config/database.config', async () => {
@@ -68,6 +69,133 @@ afterAll(async () => {
   if (server) await new Promise<void>(resolve => server.close(() => resolve()));
   await storage?.cleanup();
   await db?.$disconnect(); await socket?.stop(); await pg?.close();
+});
+
+describe.sequential('Product recovery through the existing Settings archive API', () => {
+  async function productActor(grants?: Array<{ module: string; canView: boolean; canRestore?: boolean }>, tenant?: string) {
+    const tenantId = tenant ?? (await db.tenant.create({ data: { name: 'Product recovery', slug: randomUUID(), status: 'ACTIVE' } })).id;
+    const role = grants ? await db.roleDefinition.create({ data: { tenantId, name: randomUUID(), permissions: { create: grants } } }) : null;
+    const user = await db.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Product', lastName: 'Recovery', role: role?.name ?? 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    if (role) await db.userRole.create({ data: { tenantId, userId: user.id, roleId: role.id } });
+    const { issueAuthSession } = await import('../../../../core/auth/auth-session');
+    const cookie = `leadcrm_token=${(await issueAuthSession(user)).token}`;
+    const request = async (path: string, method = 'GET', body?: unknown) => {
+      const response = await fetch(`${base}/administration/${path}`, { method, headers: { Cookie: cookie, 'Content-Type': 'application/json' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+      return { status: response.status, body: await response.json() };
+    };
+    return { tenantId, userId: user.id, request };
+  }
+
+  it('archives and restores the same Product in Product/All without changing linked CRM history or prices', async () => {
+    const actor = await productActor();
+    const product = await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'CCTV Surveillance System', dealValue: 5000.25 } });
+    const other = await db.productInterest.create({ data: { tenantId: otherTenantId, name: product.name, dealValue: 999, active: false } });
+    const pipeline = await db.pipeline.create({ data: { tenantId: actor.tenantId, name: 'Historical product pipeline' } });
+    const stage = await db.stage.create({ data: { tenantId: actor.tenantId, pipelineId: pipeline.id, name: 'Won', order: 1, isWon: true } });
+    const lead = await db.lead.create({ data: { tenantId: actor.tenantId, firstName: 'Historical', lastName: 'Lead', productsNormalized: true, productLinks: { create: { productInterestId: product.id, position: 0 } } } });
+    const account = await db.account.create({ data: { tenantId: actor.tenantId, name: 'Historical Account', productsNormalized: true, productLinks: { create: { productInterestId: product.id, position: 0, activeProduct: true } } } });
+    const contact = await db.contact.create({ data: { tenantId: actor.tenantId, firstName: 'Historical', lastName: 'Contact', accountId: account.id, productsNormalized: true, productLinks: { create: { productInterestId: product.id, position: 0, activeProduct: true } } } });
+    const deal = await db.deal.create({ data: { tenantId: actor.tenantId, title: 'Original product price', pipelineId: pipeline.id, stageId: stage.id, accountId: account.id, productInterestId: product.id, productsNormalized: true, value: 3210.75, currency: 'PHP', leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } } } });
+    const history = () => Promise.all([
+      db.deal.findUniqueOrThrow({ where: { id: deal.id }, include: { leadDeals: true, contactDeals: true } }),
+      db.leadProductInterest.findMany({ where: { leadId: lead.id } }),
+      db.contactProductInterest.findMany({ where: { contactId: contact.id } }),
+      db.accountProductInterest.findMany({ where: { accountId: account.id } }),
+    ]);
+    const before = await history();
+    expect((await actor.request('archived-data?type=Product')).body.meta.total).toBe(0);
+    expect((await actor.request('product-interests')).body.data.some((row: any) => row.id === product.id)).toBe(true);
+    expect((await actor.request(`product-interests/${product.id}`, 'DELETE')).status).toBe(200);
+    const archived = await db.productInterest.findUniqueOrThrow({ where: { id: product.id } });
+    expect(archived.active).toBe(false);
+    expect((await actor.request('product-interests')).body.data.some((row: any) => row.id === product.id)).toBe(false);
+    for (const sortBy of ['archivedAt', 'name']) {
+      for (const type of ['', '&type=Product']) {
+        const listed = await actor.request(`archived-data?search=cctv%20surveillance&sortBy=${sortBy}${type}`);
+        expect(listed.status).toBe(200);
+        expect(listed.body.meta.total).toBe(1);
+        expect(listed.body.data).toEqual([{ type: 'Product', id: product.id, name: product.name, detail: '₱5,000.25', archivedAt: archived.updatedAt.toISOString(), canRestore: true }]);
+        expect(listed.body.data.some((row: any) => row.id === other.id)).toBe(false);
+      }
+    }
+    expect((await actor.request(`archived-data/Product/${other.id}/restore`, 'PATCH')).status).toBe(404);
+    expect((await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(200);
+    expect(await db.productInterest.findUniqueOrThrow({ where: { id: product.id } })).toMatchObject({ ...product, active: true, updatedAt: expect.any(Date) });
+    expect((await actor.request('archived-data?type=Product')).body.meta.total).toBe(0);
+    expect((await actor.request('product-interests')).body.data).toEqual([expect.objectContaining({ id: product.id, name: product.name, dealValue: 5000.25, active: true })]);
+    expect(await history()).toEqual(before);
+    expect(await db.auditLog.findMany({ where: { tenantId: actor.tenantId, entityId: product.id, action: 'product.restored' } })).toEqual([expect.objectContaining({ entityType: 'Product', changeset: { before: { active: false }, after: { active: true } } })]);
+    expect((await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(404);
+    expect(await db.productInterest.count({ where: { tenantId: actor.tenantId } })).toBe(1);
+  });
+
+  it('enforces products.view and archived_data.restore independently on HTTP reads and writes', async () => {
+    const owner = await productActor();
+    const product = await db.productInterest.create({ data: { tenantId: owner.tenantId, name: 'Restricted product', dealValue: 0, active: false } });
+    for (const grants of [
+      [{ module: 'archived_data', canView: true, canRestore: true }],
+      [{ module: 'archived_data', canView: true }, { module: 'products', canView: true }],
+      [{ module: 'products', canView: true }],
+    ]) {
+      const staff = await productActor(grants, owner.tenantId);
+      const canView = grants.some(grant => grant.module === 'archived_data') && grants.some(grant => grant.module === 'products');
+      expect((await staff.request('archived-data?type=Product')).status).toBe(canView ? 200 : 403);
+      const all = await staff.request('archived-data');
+      if (all.status === 200) expect(all.body.data).toEqual(canView ? [expect.objectContaining({ id: product.id, canRestore: false })] : []);
+      expect((await staff.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(403);
+    }
+    const restorer = await productActor([{ module: 'archived_data', canView: true, canRestore: true }, { module: 'products', canView: true }], owner.tenantId);
+    expect((await restorer.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(200);
+  });
+
+  it('returns controlled case-insensitive duplicate conflicts and retains the archived record', async () => {
+    const actor = await productActor();
+    const product = await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'CCTV Surveillance System', dealValue: 5000, active: false } });
+    await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'cctv surveillance system', dealValue: 9000 } });
+    const response = await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH');
+    expect(response.status).toBe(409);
+    expect(response.body.error.message ?? response.body.error).toBe('An active product with this name already exists.');
+    expect(await db.productInterest.findUniqueOrThrow({ where: { id: product.id } })).toEqual(product);
+    expect(await db.auditLog.count({ where: { entityId: product.id, action: 'product.restored' } })).toBe(0);
+  });
+
+  it('does not mistake wildcard characters in a Product name for an active duplicate', async () => {
+    const actor = await productActor();
+    const product = await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'CCTV 100%_kit', dealValue: 1, active: false } });
+    await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'CCTV 100XXkit', dealValue: 2 } });
+    expect((await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(200);
+    expect((await db.productInterest.findUniqueOrThrow({ where: { id: product.id } })).active).toBe(true);
+  });
+
+  it('requires explicit field enablement and shares the creation limit at 99/100 active Products', async () => {
+    const actor = await productActor();
+    const product = await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'Restore capacity', dealValue: 12.34, active: false } });
+    await db.tenantPreference.create({ data: { tenantId: actor.tenantId, module: 'product-interests', key: 'enabled', value: false } });
+    expect((await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(409);
+    expect((await db.productInterest.findUniqueOrThrow({ where: { id: product.id } })).active).toBe(false);
+    expect((await actor.request('product-interests/field', 'POST', {})).status).toBe(200);
+    await db.productInterest.createMany({ data: Array.from({ length: MAX_ACTIVE_PRODUCTS - 1 }, (_, index) => ({ tenantId: actor.tenantId, name: `Capacity ${index}`, dealValue: 0 })) });
+    expect((await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(200);
+    const another = await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'Overflow', dealValue: 0, active: false } });
+    const full = await actor.request(`archived-data/Product/${another.id}/restore`, 'PATCH');
+    expect(full.status).toBe(400);
+    expect(full.body.error.message ?? full.body.error).toBe('Maximum 100 products.');
+    expect((await actor.request('product-interests', 'POST', { name: 'Created overflow', dealValue: 0 })).status).toBe(400);
+    expect((await db.productInterest.findUniqueOrThrow({ where: { id: another.id } })).active).toBe(false);
+    expect(await db.productInterest.count({ where: { tenantId: actor.tenantId, active: true } })).toBe(MAX_ACTIVE_PRODUCTS);
+  });
+
+  it('rolls back Product activation when its restore audit cannot be written', async () => {
+    const actor = await productActor();
+    const product = await db.productInterest.create({ data: { tenantId: actor.tenantId, name: 'Atomic recovery', dealValue: 1, active: false } });
+    const auditService = await import('../../../../core/audit/audit.service');
+    const audit = vi.spyOn(auditService, 'writeAuditLog').mockRejectedValueOnce(new Error('Acceptance: audit unavailable'));
+    try {
+      expect((await actor.request(`archived-data/Product/${product.id}/restore`, 'PATCH')).status).toBe(500);
+      expect(await db.productInterest.findUniqueOrThrow({ where: { id: product.id } })).toEqual(product);
+      expect(await db.auditLog.count({ where: { entityId: product.id, action: 'product.restored' } })).toBe(0);
+    } finally { audit.mockRestore(); }
+  });
 });
 
 describe.sequential('CRM archive and restore through authenticated HTTP and PostgreSQL', () => {

@@ -1,8 +1,23 @@
-import { ProductInterestIdSchema, type ProductInterest, type ProductWonDeal } from '@leadcrm/shared';
+import { MAX_ACTIVE_PRODUCTS, ProductInterestIdSchema, type ProductInterest, type ProductWonDeal } from '@leadcrm/shared';
+import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
 import * as repository from './product-interests.repository';
+
+export const productFieldKey = (tenantId: string) => ({ tenantId, module: 'product-interests', key: 'enabled' });
+
+export async function assertProductCatalogEnabled(tx: Prisma.TransactionClient, tenantId: string, message = 'Add the Product Interest field first.') {
+  if ((await tx.tenantPreference.findUnique({ where: { tenantId_module_key: productFieldKey(tenantId) } }))?.value === false) {
+    throw new AppError(message, 409);
+  }
+}
+
+export async function assertProductCatalogCapacity(tx: Prisma.TransactionClient, tenantId: string) {
+  if (await tx.productInterest.count({ where: { tenantId, active: true } }) >= MAX_ACTIVE_PRODUCTS) {
+    throw new AppError(`Maximum ${MAX_ACTIVE_PRODUCTS} products.`, 400);
+  }
+}
 
 export async function getProduct(tenantId: string, input: unknown): Promise<ProductInterest> {
   const product = await repository.findProduct(tenantId, ProductInterestIdSchema.parse(input));

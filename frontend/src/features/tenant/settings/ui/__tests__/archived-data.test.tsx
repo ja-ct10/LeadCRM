@@ -4,22 +4,28 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ArchivedData } from '../archived-data';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import type { ArchivedRecord } from '@leadcrm/shared';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
-const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant-a' }, userCan: () => true, user: { id: 'user-a', role: 'Client Admin', } }) }));
+const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), tenantId: 'tenant-a', canRestore: true }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: state.tenantId }, userCan: () => state.canRestore, user: { id: 'user-a', tenantId: state.tenantId, role: 'Client Admin' } }) }));
 vi.mock('sonner', () => ({ toast: { success: state.success, error: state.error } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshRoles: vi.fn(), refreshPipelines: vi.fn(), refreshDeals: vi.fn(), refreshOrganizations: vi.fn() }) }));
 let rows: ArchivedRecord[];
 let failIds: Set<string>;
 let failFetch: boolean;
+let failureStatus: number, failureMessage: string;
+let activeProducts: Array<{ id: string; name: string; dealValue: number; active: boolean; createdAt: string; updatedAt: string }>;
 const request = vi.fn(async (url: string, options: RequestInit) => {
   const path = new URL(url, 'http://localhost');
   if (options.method === 'PATCH') {
     const id = path.pathname.split('/').at(-2)!;
-    if (failIds.has(id)) return new Response(JSON.stringify({ error: 'Permission denied' }), { status: 403 });
+    if (failIds.has(id)) return new Response(JSON.stringify({ error: failureMessage }), { status: failureStatus });
+    const product = rows.find(row => row.id === id && row.type === 'Product');
+    if (product) activeProducts.push({ id, name: product.name, dealValue: 5000.25, active: true, createdAt: '', updatedAt: '' });
     rows = rows.filter(row => row.id !== id);
     return new Response(JSON.stringify({ success: true }));
   }
+  if (path.pathname.endsWith('/product-interests')) return new Response(JSON.stringify({ data: activeProducts, meta: { enabled: true } }));
   if (failFetch) return new Response(JSON.stringify({ error: 'Fetch failed' }), { status: 500 });
   const filtered = rows.filter(row => (!path.searchParams.get('type') || row.type === path.searchParams.get('type')) && row.name.toLowerCase().includes((path.searchParams.get('search') || '').toLowerCase()));
   const page = Number(path.searchParams.get('page')), limit = Number(path.searchParams.get('limit'));
@@ -27,6 +33,8 @@ const request = vi.fn(async (url: string, options: RequestInit) => {
 });
 beforeEach(() => {
   clearPageCache(); failIds = new Set(); failFetch = false;
+  failureStatus = 403; failureMessage = 'Permission denied'; activeProducts = [];
+  state.tenantId = 'tenant-a'; state.canRestore = true;
   rows = (['Lead', 'Contact', 'Account'] as const).map(type => ({ id: type.toLowerCase() + '-id', type, name: 'Saved ' + type, detail: type + '@example.com', archivedAt: type === 'Lead' ? '2026-09-01T00:00:00.000Z' : null, canRestore: true }));
   vi.clearAllMocks(); vi.stubGlobal('fetch', request);
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -40,7 +48,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(screen.getByRole('status').querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Archived Data Recovery')).toBeTruthy();
   const filters = screen.getByRole('group', { name: 'Archived record types' });
-  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow', 'Role']);
+  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow', 'Role']);
   expect(filters.className).toContain('overflow-x-auto');
   expect(filters.className).toContain('flex-nowrap');
   await screen.findByText('Saved Lead');
@@ -51,7 +59,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
 });
 
 it.each([
-  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'], ['Campaign', 'administration/archived-data/Campaign'], ['Workflow', 'administration/archived-data/Workflow'], ['Role', 'administration/archived-data/Role'],
+  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['Product', 'administration/archived-data/Product'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'], ['Campaign', 'administration/archived-data/Campaign'], ['Workflow', 'administration/archived-data/Workflow'], ['Role', 'administration/archived-data/Role'],
 ])('confirms %s restoration using its configured endpoint', async (label, route) => {
   rows = [{ ...rows[0], id: label.toLowerCase() + '-id', type: label as ArchivedRecord['type'], name: 'Saved ' + label }];
   render(<ArchivedData />); await screen.findByText('Saved ' + label);
@@ -169,4 +177,93 @@ it('searches server records beyond the visible page and resets pagination', asyn
   await screen.findByText('Needle campaign');
   expect(request.mock.calls.some(([url]) => url.includes('search=Needle') && url.includes('page=1'))).toBe(true);
   expect(screen.queryByText('Lead 0')).toBeNull();
+});
+
+const savedProduct = (id = 'product-id'): ArchivedRecord => ({ type: 'Product', id, name: `CCTV Surveillance System ${id}`, detail: '₱5,000.25', archivedAt: '2026-10-14T10:00:00.000Z', canRestore: true });
+
+it('requests type=Product and renders Product details, timestamp and the existing restore action', async () => {
+  rows.push(savedProduct());
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('button', { name: /^Product$/ }));
+  await screen.findByText(savedProduct().name);
+  await waitFor(() => expect(screen.queryByText('Saved Lead')).toBeNull());
+  const grid = screen.getByRole('grid');
+  expect(within(grid).getByText('Product', { exact: true })).toBeTruthy();
+  expect(within(grid).getByText('₱5,000.25')).toBeTruthy();
+  expect(within(grid).getByText(new Date(savedProduct().archivedAt!).toLocaleString())).toBeTruthy();
+  expect(within(grid).getByRole('button', { name: 'Restore' })).toBeTruthy();
+  expect(request.mock.calls.some(([url]) => new URL(url, 'http://localhost').searchParams.get('type') === 'Product')).toBe(true);
+});
+
+function ActiveCatalog() {
+  const { products } = useProductInterests();
+  return <div data-testid="active-catalog">Catalog: {products.map(product => product.name).join(', ')}</div>;
+}
+
+it('refreshes an already-mounted active Product catalog through product-interests-changed', async () => {
+  rows = [savedProduct()];
+  render(<><ArchivedData /><ActiveCatalog /></>);
+  await screen.findByText(savedProduct().name);
+  expect(screen.getByTestId('active-catalog').textContent).toBe('Catalog: ');
+  fireEvent.click(within(screen.getByRole('grid')).getByRole('button', { name: 'Restore' })); confirm();
+  await waitFor(() => expect(screen.getByTestId('active-catalog').textContent).toContain(savedProduct().name));
+  await screen.findByText('No archived records found.');
+  expect(writes()[0][0]).toBe('/api/proxy/administration/archived-data/Product/product-id/restore');
+  expect(request.mock.calls.filter(([url]) => url.endsWith('/product-interests')).length).toBeGreaterThanOrEqual(2);
+});
+
+it.each([false, true])('restores a Product batch and emits one catalog refresh (mixed types: %s)', async mixed => {
+  rows = [savedProduct('one'), savedProduct('two'), ...(mixed ? [rows[0]] : [])];
+  const changed = vi.fn(); window.addEventListener('product-interests-changed', changed);
+  try {
+    render(<ArchivedData />); await screen.findByText(savedProduct('one').name);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+    fireEvent.click(screen.getByText('Restore', { selector: 'button' })); confirm();
+    await screen.findByText('No archived records found.');
+    expect(writes()).toHaveLength(mixed ? 3 : 2);
+    expect(changed).toHaveBeenCalledOnce();
+    expect(activeProducts).toHaveLength(2);
+  } finally { window.removeEventListener('product-interests-changed', changed); }
+});
+
+it('retains conflicted Products and reports partial mixed bulk restore accurately', async () => {
+  rows = [savedProduct('conflict'), savedProduct('success'), rows[0]];
+  failIds.add('conflict'); failureStatus = 409; failureMessage = 'An active product with this name already exists.';
+  render(<ArchivedData />); await screen.findByText(savedProduct('conflict').name);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(screen.getByText('Restore', { selector: 'button' })); confirm();
+  await waitFor(() => expect(state.error).toHaveBeenCalledWith('1 record could not be restored. An active product with this name already exists.'));
+  expect(state.success).toHaveBeenCalledWith('2 records restored');
+  expect(screen.getByText(savedProduct('conflict').name)).toBeTruthy();
+  expect(screen.getByText('1 selected')).toBeTruthy();
+  expect(screen.queryByText(savedProduct('success').name)).toBeNull();
+});
+
+it('does not refresh Products after a failed restore or disabled restore permission', async () => {
+  rows = [savedProduct()]; failIds.add('product-id');
+  const changed = vi.fn(); window.addEventListener('product-interests-changed', changed);
+  try {
+    const view = render(<ArchivedData />); await screen.findByText(savedProduct().name);
+    fireEvent.click(within(screen.getByRole('grid')).getByRole('button', { name: 'Restore' })); confirm();
+    await waitFor(() => expect(state.error).toHaveBeenCalledWith('Permission denied'));
+    expect(changed).not.toHaveBeenCalled();
+    state.canRestore = false; view.rerender(<ArchivedData />);
+    expect((within(screen.getByRole('grid')).getByRole('button', { name: 'Restore' }) as HTMLButtonElement).disabled).toBe(true);
+  } finally { window.removeEventListener('product-interests-changed', changed); }
+});
+
+it('does not publish a Product refresh into a different workspace after an in-flight restore', async () => {
+  rows = [savedProduct()];
+  const changed = vi.fn(); window.addEventListener('product-interests-changed', changed);
+  try {
+    const view = render(<ArchivedData />); await screen.findByText(savedProduct().name);
+    let finish!: (response: Response) => void;
+    request.mockReturnValueOnce(new Promise(done => { finish = done; }));
+    fireEvent.click(within(screen.getByRole('grid')).getByRole('button', { name: 'Restore' })); confirm();
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    state.tenantId = 'tenant-b'; view.rerender(<ArchivedData />);
+    await act(async () => finish(new Response(JSON.stringify({ success: true }))));
+    await waitFor(() => expect(state.success).toHaveBeenCalledWith('Product restored'));
+    expect(changed).not.toHaveBeenCalled();
+  } finally { window.removeEventListener('product-interests-changed', changed); }
 });

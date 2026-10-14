@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ProductInterestsSettings } from './product-interests-settings';
 import { ProductsPage } from './products-page';
 import { apiClient } from '@/lib/api/client';
@@ -75,6 +75,17 @@ it('can enable the existing product field from Products after removing its Custo
   await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests/field', {}));
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Enable Product Interest' })).toBeNull());
   await waitFor(() => expect((screen.getByRole('button', { name: 'Add Product' }) as HTMLButtonElement).disabled).toBe(false));
+});
+
+it('refreshes the active Products table when Archived Data signals a restored Product', async () => {
+  vi.mocked(apiClient.get).mockResolvedValue({ data: [], meta: { enabled: true } });
+  render(<ProductsPage />);
+  await screen.findByRole('grid');
+  expect(screen.queryByText(product.name)).toBeNull();
+  vi.mocked(apiClient.get).mockResolvedValue({ data: [product], meta: { enabled: true } });
+  act(() => { window.dispatchEvent(new CustomEvent('product-interests-changed')); });
+  await screen.findByText(product.name);
+  expect(screen.getByText('₱25,000.00')).toBeTruthy();
 });
 it('validates money and persists only trimmed names and numeric amounts through the API', async () => {
   render(<ProductsPage />);

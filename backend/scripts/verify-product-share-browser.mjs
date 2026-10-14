@@ -37,11 +37,13 @@ try {
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   const products = [];
   for (const [name, dealValue] of [['Electric Fence', 12000], ['Laptop/Server/Data Cabinets', 45000], ['Archived Product', 8000]]) products.push(await prisma.productInterest.create({ data: { tenantId: tenant.id, name, dealValue, active: name !== 'Archived Product' } }));
+  const cctv = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Surveillance System', dealValue: 5000 } });
   const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const won = await prisma.stage.findFirstOrThrow({ where: { pipelineId: pipeline.id, isWon: true } });
   const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Customer Company' } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Lead', lastName: 'Customer', email: 'lead@example.test' } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Contact', lastName: 'Customer', email: 'contact+sales@example.test', company: account.name } });
+  const cctvDeal = await prisma.deal.create({ data: { tenantId: tenant.id, title: 'Historical CCTV price', pipelineId: pipeline.id, stageId: won.id, productInterestId: cctv.id, productsNormalized: true, value: 3210.75, currency: 'PHP', accountId: account.id, assignedUserId: admin.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } } } });
   for (let index = 0; index < 26; index++) await prisma.deal.create({ data: { tenantId: tenant.id, title: `Historical Laptop Deal ${index + 1}`, pipelineId: pipeline.id, stageId: won.id, productInterestId: products[1].id, productsNormalized: true, value: 41000.75, currency: 'PHP', accountId: account.id, assignedUserId: admin.id, closedAt: new Date('2026-10-06T10:00:00Z'), contactDeals: { create: { contactId: contact.id, position: 0 } } } });
   const deals = [];
   for (const [index, product] of products.slice(0, 2).entries()) deals.push(await prisma.deal.create({ data: { tenantId: tenant.id, title: `Email Acceptance ${index + 1}`, pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true, value: product.dealValue.toNumber(), leadDeals: { create: { leadId: lead.id, position: 0 } }, ...(index === 0 ? { contactDeals: { create: { contactId: contact.id, position: 0 } } } : {}) } }));
@@ -104,6 +106,49 @@ try {
   }
 
   await navigate('/settings?tab=products');
+  const cctvHistory = await prisma.deal.findUniqueOrThrow({ where: { id: cctvDeal.id }, include: { leadDeals: true, contactDeals: true } });
+  const dealCount = await prisma.deal.count({ where: { tenantId: tenant.id } });
+  for await (const { theme, width } of responsiveMatrix(page)) {
+    if (![320, 375, 768, 1440].includes(width)) continue;
+    await navigate('/settings?tab=products');
+    const activeRow = page.getByRole('region', { name: 'Products table' }).getByRole('row').filter({ hasText: cctv.name });
+    await activeRow.waitFor();
+    assert((await activeRow.innerText()).includes('₱5,000.00'));
+    await activeRow.getByRole('button', { name: 'Row actions' }).click();
+    await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Archive', exact: true }).click();
+    await activeRow.waitFor({ state: 'hidden' });
+    assert.equal((await prisma.productInterest.findUniqueOrThrow({ where: { id: cctv.id } })).active, false);
+    await navigate('/settings?tab=archived');
+    const filters = page.getByRole('group', { name: 'Archived record types' });
+    await filters.waitFor();
+    assert.deepEqual(await filters.getByRole('button').allTextContents(), ['All', 'Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow', 'Role']);
+    const archivedRow = page.getByRole('region', { name: 'Archived data grid' }).getByRole('row').filter({ hasText: cctv.name });
+    await archivedRow.waitFor();
+    await filters.getByRole('button', { name: 'Product', exact: true }).click();
+    await archivedRow.waitFor();
+    assert((await archivedRow.innerText()).includes('₱5,000.00'));
+    assert((await archivedRow.innerText()).includes('Product'));
+    assert.notEqual((await archivedRow.locator('td').nth(4).innerText()).trim(), '—');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+    await filters.evaluate(element => { element.scrollLeft = element.scrollWidth; });
+    assert.equal(await filters.getByRole('button', { name: 'Role', exact: true }).evaluate(element => {
+      const item = element.getBoundingClientRect(), container = element.parentElement.getBoundingClientRect();
+      return item.left >= container.left - 1 && item.right <= container.right + 1;
+    }), true);
+    await filters.getByRole('button', { name: 'Product', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(output, `archived-product-${theme}-${width}.png`) });
+    await archivedRow.getByRole('button', { name: 'Restore', exact: true }).click();
+    await page.getByRole('alertdialog').getByRole('button', { name: 'Restore', exact: true }).click();
+    await archivedRow.waitFor({ state: 'hidden' });
+    await navigate('/settings?tab=products');
+    await activeRow.waitFor();
+    assert((await activeRow.innerText()).includes('₱5,000.00'));
+    assert.equal((await prisma.productInterest.findUniqueOrThrow({ where: { id: cctv.id } })).active, true);
+    assert.deepEqual(await prisma.deal.findUniqueOrThrow({ where: { id: cctvDeal.id }, include: { leadDeals: true, contactDeals: true } }), cctvHistory);
+    assert.equal(await prisma.deal.count({ where: { tenantId: tenant.id } }), dealCount);
+    record(`CCTV archive/All/Product/restore preserves original price and Deal history: ${theme} ${width}px`);
+  }
   await page.getByRole('region', { name: 'Products table' }).getByText(products[1].name, { exact: true }).click();
   const drawer = page.locator('#sliding-drawer-container');
   await drawer.getByText('26 records', { exact: true }).waitFor();

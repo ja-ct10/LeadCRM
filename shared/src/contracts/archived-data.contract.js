@@ -2,7 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.ArchiveRestoreParamsSchema = exports.ArchiveQuerySchema = exports.ArchiveTypeSchema = exports.ARCHIVE_TYPES = void 0;
 const zod_1 = require("zod");
-exports.ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'User', 'Task', 'Campaign', 'Workflow', 'Role'];
+exports.ARCHIVE_TYPES = ['Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow', 'Role'];
 exports.ArchiveTypeSchema = zod_1.z.enum(exports.ARCHIVE_TYPES);
 exports.ArchiveQuerySchema = zod_1.z.object({
     type: exports.ArchiveTypeSchema.optional(),
@@ -14,6 +14,6 @@ exports.ArchiveQuerySchema = zod_1.z.object({
 }).strict();
 // Types with no existing restore route. Other types keep their established APIs.
 exports.ArchiveRestoreParamsSchema = zod_1.z.object({
-    type: zod_1.z.enum(['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template', 'Task']),
+    type: zod_1.z.enum(['Pipeline', 'Role', 'Workflow', 'Campaign', 'Template', 'Task', 'Product']),
     id: zod_1.z.string().uuid(),
 }).strict();
