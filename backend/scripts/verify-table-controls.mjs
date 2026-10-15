@@ -277,7 +277,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
     const freshRecord = {
       leads: { ...common, firstName: 'Josh Fresh Total', lastName: 'Acceptance', productsNormalized: true },
       contacts: { ...common, firstName: 'Search Target Fresh', lastName: 'Acceptance', productsNormalized: true },
-      accounts: { ...common, name: 'Search Target Fresh Account', productsNormalized: true },
+      accounts: { ...common, name: 'Search Target Fresh Account' },
       tasks: { ...common, title: 'Search Target Fresh Task', assignedUserId: admin.id, dueDate: new Date(), createdById: admin.id },
       workflows: { ...common, name: 'Search Target Fresh Workflow', trigger: 'lead.created', actions: [] },
       campaigns: { ...common, name: 'Search Target Fresh Campaign', type: 'EMAIL' },
