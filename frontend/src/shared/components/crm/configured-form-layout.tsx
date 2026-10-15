@@ -9,9 +9,9 @@ export function ConfiguredFormLayout({ form, children, module = form.module }: {
   const controls = new Map<string, React.ReactElement>();
   const collect = (nodes: React.ReactNode): React.ReactNode => React.Children.map(nodes, node => {
     if (!React.isValidElement(node)) return node;
-    const element = node as React.ReactElement<{ fieldKey?: string; 'data-crm-field-key'?: string; children?: React.ReactNode; num?: number; title?: string; label?: string }>;
+    const element = node as React.ReactElement<{ fieldKey?: string; 'data-crm-field-key'?: string; 'data-crm-secondary-field-key'?: string; children?: React.ReactNode; num?: number; title?: string; label?: string }>;
     const key = element.props.fieldKey ?? element.props['data-crm-field-key'];
-    if (key) { controls.set(key, element); return null; }
+    if (key) { controls.set(key, element); if (element.props['data-crm-secondary-field-key']) controls.set(element.props['data-crm-secondary-field-key'], element); return null; }
     if (element.type === CustomFieldGroup || element.type === CustomFieldExtraGroups || (element.props.num !== undefined && element.props.title)) return null;
     if (!Object.prototype.hasOwnProperty.call(element.props, 'children')) return element;
     const remaining = collect(element.props.children);
@@ -19,8 +19,15 @@ export function ConfiguredFormLayout({ form, children, module = form.module }: {
   });
   const layout = form.layout ?? defaultFieldLayout(module ?? 'contacts');
   const remainder = collect(children), catalog = getCrmFieldCatalog(module ?? 'contacts', form.fields, layout);
+  const renderedControls = new Set<React.ReactElement>();
   return <>{[...layout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map((group, index) => {
-    const entries = catalog.filter(field => field.groupId === group.id && field.visibleInForm && field.active && (field.customFieldId || controls.has(field.technicalKey)));
+    const entries = catalog.filter(field => {
+      if (field.groupId !== group.id || !field.visibleInForm || !field.active) return false;
+      if (field.customFieldId) return true;
+      const control = controls.get(field.technicalKey);
+      if (!control || renderedControls.has(control)) return false;
+      renderedControls.add(control); return true;
+    });
     return entries.length ? <section key={group.id} className="min-w-0 space-y-4"><PanelSectionHeading number={index + 1}>{group.label}</PanelSectionHeading><div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">{entries.map(field => {
       if (field.customFieldId) { const definition = form.fields.find(item => item.id === field.customFieldId)!; return <CustomFieldInput key={field.technicalKey} field={definition} form={form} />; }
       const original = controls.get(field.technicalKey)! as React.ReactElement<{ label?: string }>;

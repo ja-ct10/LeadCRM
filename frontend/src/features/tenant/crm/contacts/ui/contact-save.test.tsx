@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { defaultFieldLayout, type FieldLayout } from '@leadcrm/shared';
 import { ContactFormInner } from './contact-form';
 const fixtures = vi.hoisted(() => ({ layout: undefined as FieldLayout | undefined }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: { id: 'account-1', name: 'Acme', industry: 'Technology', size: '11-50', website: 'https://acme.test' }, isInitialLoad: false, refetch: vi.fn() }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [
   { id: 'active', firstName: 'Active', lastName: 'Agent', role: 'Sales', status: 'ACTIVE', assignableAgent: true, assignableModules: ['contacts', 'deals'] },
   { id: 'inactive', firstName: 'Inactive', lastName: 'Agent', role: 'Sales', status: 'INACTIVE', assignableAgent: true },
@@ -69,6 +70,7 @@ it.each([false, true])('creates with the required section order and saves Accoun
   fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Nora' } });
   fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Lim' } });
   fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'nora@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Link existing Account' }));
   fireEvent.change(screen.getByLabelText('Account'), { target: { value: 'account-1' } });
   fireEvent.change(screen.getByLabelText('Product Interest'), { target: { value: 'CCTV' } });
   fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'Hot' } });

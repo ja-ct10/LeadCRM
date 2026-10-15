@@ -6,7 +6,7 @@ The Lead, Contact, Account and Deal drawers and full pages share `CrmRecordView`
 
 [Customize Fields](custom-fields.md) configures module-specific labels, visibility, groups and ordering using stable system keys and custom field IDs. Details combines native and custom fields in the same saved sections. Staff forms retain their existing input controls and validation while using the same layout. Hidden values remain stored; closing evidence is enforced independently of Details visibility.
 
-Lead conversion references remain stored, while the former Converted contact section is omitted. Lead and Contact headers use the existing Inbox shortcut. Deal relationships display Lead/Contact and Account separately under their respective view permissions.
+Lead conversion references remain stored, while the former Converted contact section is omitted. Lead and Contact headers use the existing Inbox shortcut. Organization displays the linked company once; Deal Relationships groups its Leads, Contacts and Account under their respective view permissions. See [organization, notes and workflow polish](crm-polish.md).
 
 ## Notes, Tasks and Activity Timeline
 

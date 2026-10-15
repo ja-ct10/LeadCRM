@@ -4,6 +4,7 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { LEAD_SOURCES, defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
+import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
@@ -67,6 +68,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const actionAllowed = useHasPermission(initialData ? 'contacts.edit' : 'contacts.create');
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('contacts', initialData?.id);
+  const organization = useOrganizationForm(initialData);
   const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
   const isEdit = !!initialData;
@@ -121,6 +123,11 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     mode: 'onBlur',
   });
 
+  useEffect(() => {
+    setValue('companyName', organization.fields.companyName);
+    setValue('accountId', organization.mode === 'existing' ? organization.accountId : '');
+  }, [organization.fields.companyName, organization.mode, organization.accountId, setValue]);
+
   // Scroll to first error on submit
   const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -141,7 +148,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const [saveError, setSaveError] = useState('');
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
     if (!canSubmit) return;
-    if (!customFields.validate()) return;
+    if (!customFields.validate() || !organization.validate()) return;
     setSaveError('');
     // contactsV2Api translates the display aliases to Contact API columns.
     const cleaned: Partial<Contact> = {
@@ -150,7 +157,8 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       lastName: data.lastName || undefined,
       email: data.email || undefined,
       phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
-      companyName: data.companyName || (isEdit ? '' : undefined),
+      companyName: organization.payload().companyName,
+      newAccount: organization.payload().newAccount,
       ...(isEdit ? { notes: data.notes || '' } : {}),
       status: data.status || 'Warm',
       leadSource: data.source || (isEdit ? '' : undefined),
@@ -160,7 +168,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     };
 
     // Pass accountId through directly — adapter maps it correctly
-    if (data.accountId || isEdit) (cleaned as Record<string, unknown>).accountId = data.accountId || null;
+    (cleaned as Record<string, unknown>).accountId = organization.payload().accountId;
     if (isEdit && !data.assignedUserId) (cleaned as Record<string, unknown>).assignedUserId = null;
 
     try { await onSave(cleaned); }
@@ -231,17 +239,6 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             </FieldWrap>
           </div>
 
-          {/* Company Name */}
-          <FieldWrap fieldKey="company" label="Company Name" htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message}>
-            <input
-              {...register('companyName')}
-              id={`${fieldId}-companyName`}
-              aria-invalid={!!errors.companyName}
-              aria-describedby={errors.companyName ? `${fieldId}-companyName-error` : undefined}
-              className={`${inputCls} ${errors.companyName ? inputErrorCls : ''}`}
-              placeholder="Company or organization name"
-            />
-          </FieldWrap>
           <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
 
@@ -283,21 +280,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           <SectionHeader num={3} title="Organization" />
 
           {/* Account (organization) selector */}
-          <FieldWrap fieldKey="accountId" label="Account">
-            <Controller
-              name="accountId"
-              control={control}
-              render={({ field }) => (
-                <EntityCombobox
-                  entityType="accounts"
-                  value={field.value || null}
-                  onChange={(id) => field.onChange(id || '')}
-                  placeholder="Search accounts..."
-                  error={errors.accountId?.message}
-                />
-              )}
-            />
-          </FieldWrap>
+          <div data-crm-field-key="company" data-crm-secondary-field-key="accountId" className="sm:col-span-2"><OrganizationFields draft={organization} companyLabel={customFields.layout?.fields.company?.label ?? 'Company Name'} showCompany={customFields.layout?.fields.company?.visibleInForm !== false} showAccount={configuredFields.layout?.fields.accountId?.visibleInForm !== false} /></div>
 
           <CustomFieldGroup form={customFields} group="Organization" />
         </div>

@@ -24,7 +24,6 @@ export interface Company {
   tags?: string[];
   address?: string;
   notes?: string;
-  internalNotes?: string;
   createdAt: string;
   updatedAt?: string;
 
@@ -43,7 +42,6 @@ export interface CreateCompanyRequest {
   tags?: string[];
   address?: string;
   notes?: string;
-  internalNotes?: string;
 }
 
 /**

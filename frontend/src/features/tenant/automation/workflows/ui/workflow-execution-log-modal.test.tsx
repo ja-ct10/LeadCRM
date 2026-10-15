@@ -51,7 +51,8 @@ it('shows the executed version, snapshot and resolved assignee independently of 
   expect(screen.getByText(/Oct 1, 2026 08:00:00 PM/)).toBeTruthy();
   expect(screen.getByText(/Finished:/).textContent).toContain('Oct 1, 2026 08:01:00 PM');
   expect(screen.getByText(/Assigned to Ana · Sales team · Round-robin/)).toBeTruthy();
-  expect(screen.getByText(/Original follow-up/).textContent).toContain('Old title');
+  expect(screen.getByText('Original follow-up')).toBeTruthy();
+  expect(screen.getByText('Old title')).toBeTruthy();
 });
 it('does not claim a completed assignment when the action failed after resolving a user', async () => {
   vi.mocked(workflowsApi.getExecutions).mockResolvedValue({ data: [{ ...run, status: 'failed',

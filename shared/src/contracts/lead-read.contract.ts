@@ -27,7 +27,7 @@ export type LeadRead = {
   deletedAt: string | null;
   deletedBy: string | null;
   assignedUser?: LeadUserSummary | null;
-  account?: { id: string; name: string } | null;
+  account?: import("./organization").AccountSummary | null;
   createdBy?: LeadUserSummary | null;
   updatedBy?: LeadUserSummary | null;
 };

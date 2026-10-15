@@ -45,7 +45,7 @@ export interface Contact {
 
   // Joined relations (included in list/detail responses)
   assignedUser?: { id: string; firstName: string; lastName: string };
-  account?: { id: string; name: string };
+  account?: import("../contracts/organization").AccountSummary | null;
   createdByUser?: { id: string; firstName: string; lastName: string };
   updatedByUser?: { id: string; firstName: string; lastName: string };
   convertedContact?: { id: string; firstName: string; lastName: string };
@@ -58,6 +58,7 @@ export interface Contact {
  */
 export interface CreateContactRequest {
   requestId: string;
+  newAccount?: import("../contracts/organization").NewAccountInput;
   productInterestIds?: string[];
   firstName: string;
   lastName: string;

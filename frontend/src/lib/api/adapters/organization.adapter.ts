@@ -58,7 +58,6 @@ export function toFrontendOrg(backendOrg: any): Record<string, any> {
     email: backendOrg.email || '',
     phone: backendOrg.phone || '',
     notes: backendOrg.notes || '',
-    internalNotes: backendOrg.internalNotes || '',
     updatedAt: backendOrg.updatedAt || undefined,
     tags: Array.isArray(backendOrg.tags) ? backendOrg.tags : [],
     createdAt: backendOrg.createdAt || new Date().toISOString(),

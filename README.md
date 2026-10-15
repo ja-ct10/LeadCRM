@@ -23,6 +23,11 @@ Public signup, a separate platform portal, SaaS billing, service orders, technic
 
 Accounts represent companies and organizations. Their assignment and product fields are retired; Account actions use tenant-scoped module grants. Products and assignment remain on supported sales records. See [Account field retirement](docs/accounts-field-retirement.md) for preservation and guarded cutover.
 
+Lead and Contact Organization forms can atomically create linked Accounts. Account
+legacy notes move into Activity before a separately guarded internal-notes column
+retirement. Workflow run definitions use readable saved settings. See
+[CRM polish and notes rollout](docs/crm-polish.md).
+
 ## Groups replace Department
 
 Group membership has one source of truth: `TenantGroupMember`. User administration accepts `groupIds`; User and auth responses expose `groups: [{ id, name }]`. Client Admin manages memberships in the user form or existing Groups screen. Profile displays memberships read-only. Workflows use these same Groups for assignment; roles continue to control permissions.

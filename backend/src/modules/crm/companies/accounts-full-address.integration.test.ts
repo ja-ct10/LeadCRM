@@ -42,14 +42,14 @@ describe.skipIf(!disposable).sequential('Accounts on isolated native PostgreSQL'
     const account = await scope(() => createCompany(tenantId, CreateCompanySchema.parse({ name: 'Full Address Account', address: '123 Street\nMakati, Metro Manila, Philippines' }), userId));
     accountId = account.id;
     const stored = await scope(() => findCompanyById(account.id, tenantId));
-    expect(stored).toMatchObject({ address: '123 Street\nMakati, Metro Manila, Philippines', notes: null, internalNotes: null });
+    expect(stored).toMatchObject({ address: '123 Street\nMakati, Metro Manila, Philippines', notes: null });
   });
 
   it('keeps historical Notes, legacy fields, and Account relationships during editing', async () => {
-    await scope(() => updateCompany(accountId, tenantId, UpdateCompanySchema.parse({ notes: 'Public notes', internalNotes: 'Internal notes' }), userId));
+    await scope(() => updateCompany(accountId, tenantId, UpdateCompanySchema.parse({ notes: 'Public notes' }), userId));
     await scope(() => prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', accountId, assignedUserId: userId } }));
     const edited = await scope(() => updateCompany(accountId, tenantId, { address: '42 Street\nParis, France' }, userId));
-    expect(edited).toMatchObject({ address: '42 Street\nParis, France', notes: 'Public notes', internalNotes: 'Internal notes' });
+    expect(edited).toMatchObject({ address: '42 Street\nParis, France', notes: 'Public notes' });
     for (const field of ['city', 'province', 'country']) expect(edited).not.toHaveProperty(field);
     expect(await scope(() => prisma.contact.count({ where: { tenantId, accountId } }))).toBe(1);
   });

@@ -1,4 +1,6 @@
+import { assertContactAccountSelection, mayReadContactAccount } from '../contacts-v2/contact-account-access';
 import type { Lead as LeadRecord } from '@prisma/client';
+import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
@@ -37,6 +39,7 @@ const CONTACT_FIELD_ALIASES: Record<string, string> = {
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
+  const canReadAccount = await mayReadContactAccount(prisma, tenantId);
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
 
@@ -55,7 +58,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   }
   const filterClauses = buildPrismaFilters(parsedFilters, CONTACT_FILTER_FIELDS, CONTACT_FIELD_ALIASES);
   filterClauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'companyName', 'source'], contains => [
-    { account: { name: contains } },
+    ...(canReadAccount ? [{ account: { name: contains } }] : []),
     ...(['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
       .map(status => ({ status: { in: [status, status.toUpperCase()] } }))),
   ]));
@@ -92,7 +95,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
       orderBy: [{ [dateSort ? sortField : 'createdAt']: sortDirection }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        account:      { select: { id: true, name: true } },
+        account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
         createdBy:    { select: { id: true, firstName: true, lastName: true } },
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
@@ -120,7 +123,7 @@ export async function findContactById(id: string, tenantId: string) {
     where: { id, tenantId, isArchived: false, deletedAt: null },
     include: {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-      account:      { select: { id: true, name: true, industry: true } },
+      account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
       createdBy:    { select: { id: true, firstName: true, lastName: true } },
       updatedBy:    { select: { id: true, firstName: true, lastName: true } },
     },
@@ -132,11 +135,16 @@ export async function createContact(
   dto: CreateContactDto,
   createdById?: string,
 ) {
-  const { requestId, productInterest, customFieldValues, ...fields } = dto;
+  const { requestId, productInterest, customFieldValues, newAccount, ...fields } = dto;
   await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
   if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   return salesTransaction(async tx => {
     const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
+    if (!existing) await assertContactAccountSelection(tx, tenantId, fields.accountId);
+    if (!existing && newAccount) {
+      const account = await createLinkedAccount(tx, tenantId, newAccount, createdById);
+      fields.accountId = account.id; fields.companyName = account.name;
+    }
     const lead = await createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
       ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById);
     if (!existing) await saveRecordValues(tx, tenantId, 'leads', lead.id, customFieldValues, createdById);
@@ -155,6 +163,7 @@ export async function updateContact(
   try {
     const data: Record<string, unknown> = { ...dto };
     delete data.customFieldValues;
+    delete data.newAccount;
     if (updatedById) data.updatedById = updatedById;
     // Stamp lastStatusChangedAt when status actually changes
     if (dto.status && prevStatus !== undefined && dto.status !== prevStatus) {
@@ -165,6 +174,11 @@ export async function updateContact(
       const current = await tx.lead.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null } });
       if (!current) throw new NotFoundError('Active Lead');
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
+      await assertContactAccountSelection(tx, tenantId, dto.accountId, current.accountId);
+      if (dto.newAccount) {
+        const account = await createLinkedAccount(tx, tenantId, dto.newAccount, updatedById);
+        data.accountId = account.id; data.companyName = account.name;
+      }
       const previousCustom = dto.customFieldValues === undefined ? undefined : await readRecordValues(tx, tenantId, 'leads', id);
       await saveRecordValues(tx, tenantId, 'leads', id, dto.customFieldValues, updatedById);
       const finish = async <T extends LeadRecord>(saved: T): Promise<T> => {
@@ -204,7 +218,7 @@ export async function updateContact(
       data,
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        account:      { select: { id: true, name: true } },
+        account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
         createdBy:    { select: { id: true, firstName: true, lastName: true } },
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
@@ -225,7 +239,7 @@ export async function updateContact(
       if (updated.status === 'Closed' && updatedById) {
         await convertClosedLead(tx, tenantId, id, updatedById, { previousLead: current, emitLeadEvents: !onCommitted });
         return finish(await tx.lead.findFirstOrThrow({ where: { id, tenantId }, include: {
-          assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true } },
+          assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } }, updatedBy: { select: { id: true, firstName: true, lastName: true } },
         } }));
       }

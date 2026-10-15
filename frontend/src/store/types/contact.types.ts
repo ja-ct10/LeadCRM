@@ -22,6 +22,7 @@ export interface Organization extends SharedCompany {
  * companyName, status, etc.) come from @leadcrm/shared.
  */
 export interface Contact extends SharedContact {
+  newAccount?: import('@leadcrm/shared').NewAccountInput;
   customFieldValues?: import('@leadcrm/shared').ClosingValues;
   organizationId?: string;
   contactPerson?: string;

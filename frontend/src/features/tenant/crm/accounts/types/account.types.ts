@@ -11,7 +11,6 @@ export interface Account {
   address?: string;
   tags?: string[];
   notes?: string;
-  internalNotes?: string;
   createdAt: string;
   isArchived?: boolean;
 }

@@ -187,7 +187,7 @@ it('disables invalid Lead email and omits missing phone/address actions', async 
   expect(screen.queryByRole('button', { name: /^Copy (phone|address)/ })).toBeNull();
 });
 
-it('shows a consolidated Account address once and retains its Notes', async () => {
+it('shows a consolidated Account address once and omits legacy scalar Notes from Details', async () => {
   const original = mocks.get.getMockImplementation()!;
   mocks.get.mockImplementation(async (path: string) => path === '/crm/accounts/accounts-1'
     ? { data: { ...records.accounts, address: '42 Main Street, Manila, Philippines', city: 'Manila', country: 'Philippines', notes: 'Retained Account notes' } }
@@ -196,7 +196,8 @@ it('shows a consolidated Account address once and retains its Notes', async () =
   await screen.findAllByText('42 Main Street, Manila, Philippines');
   expect(screen.queryByText('42 Main Street, Manila, Philippines, Manila, Philippines')).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByText('Retained Account notes');
+  expect(screen.queryByText('Retained Account notes')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit Notes' })).toBeNull();
 });
 
 it.each(['accounts', 'deals'] as const)('keeps phone and address chip behavior for %s', async module => {
@@ -224,7 +225,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByRole('button', { name: module === 'deals' ? /^Lead\/Contact/ : /^Deals/ });
+  await screen.findByRole('button', { name: module === 'deals' ? /^Relationships/ : /^Deals/ });
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'deals' ? 'dealId' : module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
   expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
@@ -444,4 +445,31 @@ it('removes retired Lead Website and Notes editors while keeping Contact Notes a
   await screen.findByRole('heading', { name: 'North Company' });
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
   expect(screen.getByRole('button', { name: 'Edit Website' })).toBeTruthy();
+});
+
+
+it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('shows one company inside Organization on $module $surface', async ({ module, surface }) => {
+  const original = mocks.get.getMockImplementation()!;
+  const account = { id: 'company', name: 'Canonical company', industry: 'Technology', size: '11-50', website: 'https://company.test' };
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], accountId: account.id, account, companyName: 'Old company', company: 'Old company' } }
+    : path.includes('/relationships') ? { data: { account, deals: [] } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  const organization = await screen.findByRole('button', { name: 'Organization' });
+  await waitFor(() => expect(organization.closest('section')?.querySelectorAll('a[href="/crm/accounts/company"]')).toHaveLength(1));
+  expect(organization.closest('section')?.textContent).toContain('Technology');
+  expect(organization.closest('section')?.textContent?.match(/Technology/g)).toHaveLength(1);
+  expect(organization.closest('section')?.textContent).toContain('11-50');
+  expect(screen.queryByRole('button', { name: /Company \/ Organization|Account \/ Company/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit Company Name' })).toBeNull();
+});
+it('groups Deal participants and Account under Relationships exactly once', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, organization: { id: 'company', name: 'Linked company' }, contactDeals: [{ contact: { id: 'contact', firstName: 'Linked', lastName: 'Contact' } }] } } : original(path));
+  render(<CrmRecordView module="deals" id="one" />); await screen.findByRole('heading', { level: 1 });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  const group = (await screen.findByRole('button', { name: 'Relationships' })).closest('section')!;
+  for (const path of ['/crm/leads/lead-one', '/crm/contacts/contact', '/crm/accounts/company']) expect(group.querySelectorAll(`a[href="${path}"]`)).toHaveLength(1);
+  expect(screen.queryByRole('button', { name: 'Lead/Contact' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Account' })).toBeNull();
 });

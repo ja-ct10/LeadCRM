@@ -36,7 +36,7 @@ export interface ContactV2Query {
 /** Contact screens still use display aliases; the Contact API uses canonical columns. */
 export function toContactWrite(data: Partial<Contact>): Record<string, unknown> {
   const { companyName, leadSource, organizationId, productInterest } = data;
-  const allowed = new Set(['firstName', 'lastName', 'email', 'phone', 'company', 'address', 'source', 'notes', 'status', 'accountId', 'assignedUserId', 'productInterests', 'productInterestIds', 'productInterestOther', 'customFieldValues']);
+  const allowed = new Set(['firstName', 'lastName', 'email', 'phone', 'company', 'address', 'source', 'notes', 'status', 'accountId', 'assignedUserId', 'productInterests', 'productInterestIds', 'productInterestOther', 'customFieldValues', 'newAccount']);
   const payload = Object.fromEntries(Object.entries(data).filter(([key]) => allowed.has(key)));
   return {
     ...payload,

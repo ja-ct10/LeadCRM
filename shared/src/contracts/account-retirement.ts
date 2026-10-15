@@ -1,9 +1,9 @@
 import type { FieldLayout } from './field-catalog';
 
-export const RETIRED_ACCOUNT_FIELDS = ['assignedUserId', 'assignedUser', 'productInterest', 'productInterests', 'productInterestId', 'productInterestIds', 'activeProducts', 'activeProductIds', 'productInterestOther', 'productsNormalized', 'productLinks'] as const;
+export const RETIRED_ACCOUNT_FIELDS = ['assignedUserId', 'assignedUser', 'productInterest', 'productInterests', 'productInterestId', 'productInterestIds', 'activeProducts', 'activeProductIds', 'productInterestOther', 'productsNormalized', 'productLinks', 'internalNotes'] as const;
 export const ACCOUNT_ADDITIONAL_GROUP_ID = 'accounts:additional-information';
-export const ACCOUNT_RETIRED_GROUP_IDS = ['accounts:section:2', 'accounts:section:3'];
-export const ACCOUNT_RETIREMENT_REASON = 'Account assignment and product fields are retired. Repair the referenced fields before activating this workflow.';
+export const ACCOUNT_RETIRED_GROUP_IDS = ['accounts:section:2', 'accounts:section:3', 'accounts:section:4'];
+export const ACCOUNT_RETIREMENT_REASON = 'Account assignment, product fields and internal notes are retired. Repair the referenced fields before activating this workflow.';
 
 export function accountAdditionalGroupId(groups: FieldLayout['groups']): string {
   return groups.find(group => group.id === ACCOUNT_ADDITIONAL_GROUP_ID)?.id
@@ -69,7 +69,7 @@ export function upgradeAccountFieldLayout(layout: FieldLayout): FieldLayout {
       .forEach(([, field], index) => { field.order = index; });
   }
   for (const [key, field] of Object.entries(next.fields)) {
-    if (isRetiredAccountField(key, 'account')) delete next.fields[key];
+    if (key === 'notes' || isRetiredAccountField(key, 'account')) delete next.fields[key];
     else if (removed.has(field.groupId)) field.groupId = target;
   }
   return next;

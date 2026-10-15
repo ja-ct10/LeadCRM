@@ -48,7 +48,10 @@
     "typecheck:tests": "tsc --noEmit --project tsconfig.tests.json",
     "db:accounts:fields:status": "node scripts/deploy-account-fields-retirement.cjs --status",
     "db:accounts:fields:verify": "node scripts/deploy-account-fields-retirement.cjs --verify",
-    "db:accounts:fields:retire": "node scripts/deploy-account-fields-retirement.cjs --retire"
+    "db:accounts:fields:retire": "node scripts/deploy-account-fields-retirement.cjs --retire",
+    "db:accounts:notes:status": "node scripts/deploy-account-notes-retirement.cjs --status",
+    "db:accounts:notes:verify": "node scripts/deploy-account-notes-retirement.cjs --verify",
+    "db:accounts:notes:retire": "node scripts/deploy-account-notes-retirement.cjs --retire"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

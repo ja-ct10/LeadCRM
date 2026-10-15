@@ -64,7 +64,6 @@ export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: Cl
     choice('size', 'Size', COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'),
     { ...text('notes', 'Notes'), multiline: true },
     // These remain editable in Account Edit; retain their supported automation contract.
-    { ...text('internalNotes', 'Internal Notes'), multiline: true },
   ];
   else standard = [text('firstName', 'First Name', true, 100), text('lastName', 'Last Name', true, 100), text('email', 'Email', true, 254), text('phone', 'Phone', false, entity === 'contact' ? 100 : 2000),
     text(entity === 'lead' ? 'companyName' : 'company', 'Company Name'),

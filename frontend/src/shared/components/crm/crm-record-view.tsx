@@ -85,10 +85,10 @@ function RecordRows({ rows }: { rows: [string, unknown][] }) {
   </div>)}</dl>;
 }
 
-function RelatedRecords({ records, module, empty }: { records: RecordData[]; module: string; empty: string }) {
+function RelatedRecords({ records, module, empty, showSubtitle = true }: { records: RecordData[]; module: string; empty: string; showSubtitle?: boolean }) {
   if (module === 'deals') return records.length ? <div className="divide-y divide-border/60">{records.filter(record => !record.isArchived).map(record => <div key={text(record.id)} className="flex min-w-0 items-center gap-2 px-3 py-2"><Link href={'/crm/deals/' + encodeURIComponent(text(record.id))} className="min-w-0 flex-1 py-2 text-sm font-medium [overflow-wrap:anywhere]">{text(record.title)}<span className="mt-1 block text-xs text-muted-foreground">{text(object(record.stage)?.name)}</span></Link><DealCardMenu dealId={text(record.id)} dealTitle={text(record.title)} /></div>)}</div> : <p className="p-4 text-sm text-muted-foreground">{empty}</p>;
   return records.length ? <div className="divide-y divide-border/60">{records.map(record => <Link key={text(record.id)} href={`/crm/${module}/${encodeURIComponent(text(record.id))}`} className="flex min-w-0 items-center gap-3 px-3 py-3 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
-    <div className="min-w-0 flex-1 [overflow-wrap:anywhere]"><p className="text-sm font-medium">{text(record.name) || text(record.title) || personName(record)}</p><p className="mt-0.5 text-xs text-muted-foreground">{text(record.email) || text(record.industry) || text(object(record.stage)?.name)}</p></div><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    <div className="min-w-0 flex-1 [overflow-wrap:anywhere]"><p className="text-sm font-medium">{text(record.name) || text(record.title) || personName(record)}</p>{showSubtitle && <p className="mt-0.5 text-xs text-muted-foreground">{text(record.email) || text(record.industry) || text(object(record.stage)?.name)}</p>}</div><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
   </Link>)}</div> : <p className="px-4 py-7 text-center text-sm text-muted-foreground">{empty}</p>;
 }
 
@@ -195,7 +195,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const person = module === 'deals' ? object((record.contactDeals as RecordData[] | undefined)?.[0]?.contact) ?? object((record.leadDeals as RecordData[] | undefined)?.[0]?.lead) : record;
   const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
   const owner = personName(object(record.assignedUser)) || 'Unassigned';
-  const company = text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
+  const company = text(object(record.account)?.name) || text(object(record.organization)?.name) || text(person?.companyName) || text(person?.company) || text(record.companyName) || text(record.company) || text(object(record.account)?.name);
   const location = module === 'accounts' ? text(record.address)
     : [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
@@ -220,12 +220,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     finally { setSaving(false); }
   };
   const statuses = [...CRM_STATUSES];
-  const rows: [string, unknown][] = [
-    ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
-    ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', formatDateTime(record.createdAt as string | null | undefined)]] as [string, unknown][] : []),
-    ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', module === 'leads' ? record.jobTitle : undefined], ['Website', record.website],
-    ['Product interests', module === 'accounts' ? undefined : record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Assigned Agent', module === 'accounts' ? undefined : owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
-  ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
   const productRow: InlineRowDef = { technicalKey: 'productInterestIds', label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
@@ -262,13 +256,34 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     productRow,
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
     ...(module === 'accounts' ? [] : [{ technicalKey: 'assignedUserId', label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' as const }]),
-    ...(module === 'leads' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
-    ...(module === 'accounts' ? [{ label: 'Internal Notes', value: record.internalNotes, apiField: 'internalNotes', type: 'textarea' as const }] : []),
+    ...(module === 'leads' || module === 'accounts' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ];
   // Saved retired values remain readable; closing evidence uses its specialized component.
   const catalog = getCrmFieldCatalog(module, customFields.fields.map(field => ({ ...field, deletedAt: undefined })), fieldLayout.layout);
-  const configuredRows = aboutRows.map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
+  const accountField = catalog.find(field => field.technicalKey === 'accountId');
+  const showAccount = canReadAccounts && accountField?.visibleInDetails !== false;
+  const linkedAccount = showAccount ? relationships?.account ?? object(record.account) ?? object(record.organization) : null;
+  const configuredRows = aboutRows.filter(row => row.technicalKey !== 'accountId' &&
+    !(linkedAccount && (row.apiField === 'companyName' || row.apiField === 'company')))
+    .map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
+  const relationshipGroupId = accountField?.groupId ?? `${module}:section:${module === 'deals' ? 1 : 2}`;
+  const relationshipContent = module === 'deals' ? <div className="divide-y divide-border">
+    {canReadLeads && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Leads</h3><RelatedRecords records={(record.leadDeals as RecordData[] | undefined)?.map(link => object(link.lead)!).filter(Boolean) ?? []} module="leads" empty="No originating Lead." /></div>}
+    {canReadContacts && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Contacts</h3><RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." /></div>}
+    {showAccount && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3><RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." /></div>}
+  </div> : (module === 'leads' || module === 'contacts') && showAccount ? <div>
+    <RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." showSubtitle={false} />
+    {linkedAccount && <RecordRows rows={[["Industry", linkedAccount.industry], ["Size", linkedAccount.size], ["Website", linkedAccount.website]]} />}
+  </div> : null;
+  const showRelationships = module === 'deals' ? canReadLeads || canReadContacts || showAccount : (module === 'leads' || module === 'contacts') && showAccount;
+  const detailGroups = [...fieldLayout.layout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => ({ group,
+    fields: catalog.filter(field => field.groupId === group.id && field.visibleInDetails && (field.customFieldId ? !USE_MOCK_DATA : configuredRows.some(item => item.field?.technicalKey === field.technicalKey))),
+    relationships: group.id === relationshipGroupId && showRelationships,
+  })).filter(group => group.fields.length || group.relationships);
+  const detailCount = detailGroups.reduce((count, group) => count + group.fields.length + (group.relationships ? module === 'deals'
+    ? (canReadLeads ? ((record.leadDeals as unknown[])?.length ?? 0) : 0) + (canReadContacts ? ((record.contactDeals as unknown[])?.length ?? 0) : 0) + (linkedAccount ? 1 : 0)
+    : linkedAccount ? 1 : 0 : 0), 0);
 
   const mockCustomFields = object(record.customFields);
   const deals = relationships?.deals ?? [];
@@ -350,7 +365,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           tabs[next].focus(); tabs[next].click();
         }}><TabsList className="grid w-full grid-cols-3 gap-1 overflow-visible bg-muted/70">
           <TabsTrigger value="activity" badge={timeline.total} className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center [&>span]:gap-1">Activity</TabsTrigger>
-          <TabsTrigger value="details" badge={rows.filter(([, value]) => present(value)).length} className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center [&>span]:gap-1">Details</TabsTrigger>
+          <TabsTrigger value="details" badge={detailCount} className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center [&>span]:gap-1">Details</TabsTrigger>
           <TabsTrigger value="files" className="min-w-0 px-1 py-2 text-xs data-[state=active]:bg-card data-[state=active]:shadow-sm [&>span]:justify-center">Files</TabsTrigger>
         </TabsList></div>
         </div>
@@ -364,8 +379,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
             {!USE_MOCK_DATA && customFields.query.error && <div role="alert" className="text-xs text-destructive">{customFields.query.error}<Button variant="ghost" size="sm" onClick={() => void customFields.query.refetch()}>Retry custom fields</Button></div>}
-            {[...fieldLayout.layout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => <RecordSection key={group.id} title={group.label}>
-              {catalog.filter(field => field.groupId === group.id && field.visibleInDetails).map(field => {
+            {detailGroups.map(({ group, fields, relationships: hasRelationships }) => <RecordSection key={group.id} title={group.label}>
+              {hasRelationships && relationshipContent}
+              {fields.map(field => {
                 if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldInlineRow key={field.customFieldId} details={customFields} fieldId={field.customFieldId} canEdit={canEdit} />;
                 const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
                 return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label, apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
@@ -373,7 +389,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
             </RecordSection>)}
             {detailsVisited && relatedQuery.isInitialLoad && <p role="status" className="animate-pulse p-3 text-sm text-muted-foreground">Loading related records…</p>}
             {relatedQuery.error && <div role="alert" className="rounded-xl border border-border p-3 text-sm"><p>{relatedQuery.error}</p><Button variant="ghost" size="sm" onClick={() => void relatedQuery.refetch()}>Retry related records</Button></div>}
-            {module === 'deals' && <><RecordSection title="Lead/Contact">{canReadLeads && <RelatedRecords records={(record.leadDeals as RecordData[] | undefined)?.map(link => object(link.lead)!).filter(Boolean) ?? []} module="leads" empty="No originating Lead." />}{canReadContacts && <RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." />}</RecordSection>{canReadAccounts && <RecordSection title="Account"><RelatedRecords records={object(record.organization) || object(record.account) ? [object(record.organization) ?? object(record.account)!] : []} module="accounts" empty="No Account linked yet." /></RecordSection>}</>}
+
             {relationships && <>
               {module === 'accounts' && canReadContacts && <RecordSection title="Contacts" count={(relationships.contacts?.length ?? 0) < 50 ? relationships.contacts?.length : undefined}><RelatedRecords records={relationships.contacts ?? []} module="contacts" empty="No contacts linked to this account." /></RecordSection>}
               {module !== 'deals' && canReadDeals && <RecordSection title="Deals" count={deals.length < 50 ? deals.length : undefined} actions={canCreateDeal && !USE_MOCK_DATA && <Button variant="ghost" size="sm" className="min-h-9 gap-1 text-xs text-[var(--primary)]" onClick={() => setCreatingDeal(true)}><Plus size={13} />Create deal</Button>}>
@@ -384,7 +400,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
                   setCreatingDeal(false);
                 }} /></div>}
               </RecordSection>}
-              {module !== 'accounts' && canReadAccounts && <RecordSection title={module === 'leads' ? 'Company / Organization' : 'Account / Company'} count={relationships.account ? 1 : 0}><RelatedRecords records={relationships.account ? [relationships.account] : []} module="accounts" empty="No parent company assigned." /></RecordSection>}
+
               {module === 'contacts' && relationships.sourceLead && canReadLeads && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
             </>}
 
