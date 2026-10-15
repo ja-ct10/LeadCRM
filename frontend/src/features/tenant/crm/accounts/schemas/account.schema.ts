@@ -14,11 +14,8 @@ export const CreateAccountSchema = z.object({
   website: z.string().url('Must be a valid URL').optional().or(z.literal('')),
   tags: z.array(z.string()).default([]),
   address: z.string().optional(),
-  assignedUserId: z.string().min(1).optional().or(z.literal('')),
   notes: z.string().optional(),
   internalNotes: z.string().optional(),
-  productInterests: z.array(z.string()).optional(),
-  activeProducts: z.array(z.string()).optional(),
 });
 
 export const UpdateAccountSchema = CreateAccountSchema.partial();

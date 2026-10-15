@@ -73,7 +73,7 @@ export async function assertCrmRecordMutation(tx: Tx, module: CrmModule, id: str
   // active when middleware executes the lock statement.
   await internal.run(true, async () => await tx.$queryRaw(Prisma.sql`SELECT "id" FROM ${Prisma.raw('"' + tables[module] + '"')} WHERE "tenantId" = ${actor.tenantId} AND "id" = ${id} FOR UPDATE`));
   const model = tables[module][0].toLowerCase() + tables[module].slice(1);
-  const record = await (tx as any)[model].findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, assignedUserId: true } });
+  const record = await (tx as any)[model].findFirst({ where: { id, tenantId: actor.tenantId }, select: { id: true, ...(module === 'accounts' ? {} : { assignedUserId: true }) } });
   if (!record) throw new AppError('Record not found.', 404);
   if (authority) return; // validated saved automation, scoped to its tenant and audited by its execution
   const policy = await resolveCrmActor(tx, actor);
@@ -84,14 +84,14 @@ export async function assertCrmRecordMutation(tx: Tx, module: CrmModule, id: str
     throw new AppError('Access denied', 403);
   }
   if (operation === 'restore' && !policy.clientAdmin && !hasModulePermission(policy.permissions, module, 'canView')) throw new AppError('Access denied', 403);
-  if (policy.assignmentRestricted && !initializing) {
+  if (module !== 'accounts' && policy.assignmentRestricted && !initializing) {
     if (record.assignedUserId !== actor.userId) deny(module);
     const assignment = data.assignedUserId;
     if ((assignment !== undefined && (typeof assignment === 'object' ? assignment?.set : assignment) !== record.assignedUserId) || data.assignedUser) {
       throw new AppError('Sales users cannot reassign CRM records.', 403, 'CRM_REASSIGNMENT_DENIED');
     }
   }
-  if (data.assignedUserId !== undefined && data.assignedUserId !== record.assignedUserId && data.assignedUserId !== null && data.assignedUserId !== '') {
+  if (module !== 'accounts' && data.assignedUserId !== undefined && data.assignedUserId !== record.assignedUserId && data.assignedUserId !== null && data.assignedUserId !== '') {
     const targetId = typeof data.assignedUserId === 'object' ? data.assignedUserId.set : data.assignedUserId;
     await assertEligibleAssignedAgent(tx, actor.tenantId, targetId, crmAssignmentRequirements(module));
   }
@@ -108,7 +108,7 @@ export async function assertCrmCreateAssignment(db: Tx, tenantId: string, assign
 const childParents: Record<string, Array<[string, CrmModule]>> = {
   CustomFieldValue: [['leadId', 'leads'], ['contactId', 'contacts'], ['accountId', 'accounts'], ['dealId', 'deals']],
   RecordFile: [['leadId', 'leads'], ['contactId', 'contacts'], ['accountId', 'accounts'], ['dealId', 'deals']],
-  LeadProductInterest: [['leadId', 'leads']], ContactProductInterest: [['contactId', 'contacts']], AccountProductInterest: [['accountId', 'accounts']],
+  LeadProductInterest: [['leadId', 'leads']], ContactProductInterest: [['contactId', 'contacts']],
   // Participant links belong to the Deal. Selecting a Contact/Lead reference does not edit that person.
   LeadDeal: [['dealId', 'deals']], ContactDeal: [['dealId', 'deals']], DealStageHistory: [['dealId', 'deals']],
 };

@@ -4,7 +4,7 @@ import type { ImportModuleConfig } from '../types/import.types';
  * Import configuration for the Accounts module.
  *
  * Required fields: name
- * Optional fields: productInterest, industry, website, address, size
+ * Optional fields: industry, website, address, size
  */
 export const accountImportConfig: ImportModuleConfig = {
   moduleKey: 'accounts',
@@ -31,7 +31,6 @@ export const accountImportConfig: ImportModuleConfig = {
   ],
 
   optionalFields: [
-    { key: 'productInterest', label: 'Product Interest', required: false, type: 'text', autoMapPatterns: ['product interest', 'product interests', 'product_interest', 'products', 'product'] },
     {
       key: 'industry',
       label: 'Industry',

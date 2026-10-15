@@ -35,8 +35,8 @@ const CONTACT_MERGE_FIELDS = [
 
 const ACCOUNT_MERGE_FIELDS = [
   'name', 'industry', 'size', 'website', 'notes', 'internalNotes',
-  'tags', 'productInterests', 'activeProducts',
-  'address', 'assignedUserId',
+  'tags',
+  'address',
 ];
 
 /**
@@ -295,11 +295,7 @@ async function executeAccountMerge(
     if (!primary) throw new NotFoundError('Primary account');
     if (!secondary) throw new NotFoundError('Secondary account');
     const mergedData = resolveFields(primary, secondary, fieldResolutions, ACCOUNT_MERGE_FIELDS);
-    if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) {
-      await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId), ['accounts']);
-    }
     const reassignedCounts = await repo.reassignAccountRelationships(tx, primaryId, secondaryId, tenantId);
-    if (mergedData.productInterests !== undefined || mergedData.activeProducts !== undefined) Object.assign(mergedData, await productRelationData(tx, 'account', tenantId, { names: mergedData.productInterests as string[] | undefined, activeNames: mergedData.activeProducts as string[] | undefined }, { ...primary, productInterests: [...primary.productInterests, ...secondary.productInterests], activeProducts: [...primary.activeProducts, ...secondary.activeProducts] }, true));
 
     const updatedPrimary = await tx.account.update({
       where: { id: primaryId, tenantId },
@@ -358,6 +354,8 @@ function resolveFields(
   allowedFields: string[],
 ): Record<string, unknown> {
   const merged: Record<string, unknown> = {};
+  const unsupported = Object.keys(resolutions).filter(field => !allowedFields.includes(field));
+  if (unsupported.length) throw new ValidationError('Unsupported merge fields: ' + unsupported.join(', '));
 
   for (const field of allowedFields) {
     if (SYSTEM_FIELDS.has(field)) continue;

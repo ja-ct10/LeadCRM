@@ -13,7 +13,7 @@ exports.CLOSED_WON_GROUP_ID = 'deals:closing-evidence';
 exports.CUSTOM_FIELD_BUILT_IN_GROUPS = {
     leads: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent'],
     contacts: ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent'],
-    accounts: ['Basic Information', 'Address', 'Assigned Agent', 'Products & Interests', 'Notes'],
+    accounts: ['Basic Information', 'Address', 'Notes', 'Additional Information'],
     deals: ['Deal Information', 'Relationships', 'Additional Details', exports.CLOSED_WON_GROUP, 'Assigned Agent'],
 };
 const customFieldGroupOptions = (module, previous) => [...new Set([...exports.CUSTOM_FIELD_BUILT_IN_GROUPS[module], ...(previous?.module === module ? [previous.group] : [])])];

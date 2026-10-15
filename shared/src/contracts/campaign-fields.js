@@ -23,11 +23,6 @@ function originKey(field) {
 function originSupported(field, source) {
     return !!source && supportedModules(source).includes(field.module);
 }
-/** A retired direct Contact token must never acquire a related Account meaning. */
-function sourceFields(fields, source) {
-    return source === 'CONTACTS' ? fields.map(field => field.module === 'accounts' && field.technicalKey === 'activeProductIds'
-        ? { ...field, technicalKey: 'account.activeProductIds' } : field) : fields;
-}
 function campaignPersonalizationAvailable(field) {
     return field.active && field.personalizationAvailable && (field.visibleInForm || field.visibleInDetails);
 }
@@ -36,7 +31,6 @@ function campaignVariableChoices(fields, source, { forInsertion = false } = {}) 
     // Limit new picker entries without narrowing validation of saved variables.
     if (forInsertion)
         fields = fields.filter(field => field.active && (field.module === 'leads' || field.module === 'contacts'));
-    fields = sourceFields(fields, source);
     const module = source === 'LEADS' ? 'leads' : source === 'CONTACTS' ? 'contacts' : undefined;
     const choices = new Map();
     for (const field of fields) {
@@ -81,7 +75,6 @@ function campaignApprovedVariableKeys(fields, source) {
 }
 /** Selects direct and safely resolvable related fields for one audience source. */
 function campaignFieldsForSource(fields, source) {
-    fields = sourceFields(fields, source);
     const choices = campaignVariableChoices(fields, source);
     const allowed = new Set(choices.filter(choice => choice.personalizationAvailable).flatMap(choice => choice.origins.filter(origin => originSupported(origin, source)).map(originKey)));
     return fields.filter(field => allowed.has(originKey(field)));

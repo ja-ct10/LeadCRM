@@ -105,7 +105,8 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
         return rect.top >= 0 && rect.top < innerHeight;
       }), 'Selected record was not vertically visible');
       if (target.module === 'deals') {
-        assert.equal(await page.getByLabel('Pipeline', { exact: true }).inputValue(), pipeline.id);
+        assert.equal(await page.getByLabel('Pipeline', { exact: true }).inputValue(), pipeline.name);
+        assert.equal(await page.getByLabel('Pipeline', { exact: true }).evaluate(element => element.readOnly), true);
         await until(async () => await selected.evaluate(element => {
           const card = element.getBoundingClientRect(), stageScroll = element.parentElement.getBoundingClientRect();
           const board = element.closest('[aria-label="Deal pipeline"]');

@@ -1,11 +1,11 @@
-import { compatibleWorkflow, supportedChangedFields } from './workflow-fields';
+import { compatibleWorkflow, supportedChangedFields, accountWorkflowRetirementReferences } from './workflow-fields';
 import { runAuthorizedWorkflow } from '../../crm/access/crm-record-access.service';
 import type { Prisma, Workflow, WorkflowExecutionRun } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { workflowChain as chain, workflowLease } from './workflow-dispatch-context';
 import { fenceWorkflowLease, isWorkflowLeaseLost, workflowLeaseWrite } from './workflow-lease';
 import { interruptWorkflowEvidence } from './workflow-interruption';
-import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, type WorkflowDraft } from '@leadcrm/shared';
+import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, ACCOUNT_RETIREMENT_REASON, type WorkflowDraft } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import * as repo from './workflows.repository';
@@ -57,6 +57,11 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
   const workflows = prepared ? [prepared.workflow] : await repo.activeWorkflows(params.tenantId, params.triggerType);
   for (const workflow of workflows) {
     if (visited.has(workflow.id)) continue;
+    if ((await accountWorkflowRetirementReferences(workflow, params.tenantId)).length) {
+      await prisma.workflow.updateMany({ where: { id: workflow.id, tenantId: params.tenantId, version: workflow.version, isActive: true }, data: { isActive: false, status: 'PAUSED', version: { increment: 1 } } });
+      if (prepared) await repo.updateExecutionRun(prepared.run.id, params.tenantId, { status: 'skipped', completedAt: new Date(), errorMessage: ACCOUNT_RETIREMENT_REASON });
+      continue;
+    }
     await chain.run(new Set([...visited, workflow.id]), async () => {
       const actions = Array.isArray(workflow.actions) ? workflow.actions.map(action => {
         const parsed = WorkflowActionSchema.safeParse(action);

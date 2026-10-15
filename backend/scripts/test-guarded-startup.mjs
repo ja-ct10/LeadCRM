@@ -16,7 +16,7 @@ assert.ok(npmCli, 'Run the guarded startup rehearsal through npm run test:integr
 if (process.platform === 'linux') assert.notEqual(process.getuid(), 0, 'Native runner must initialize PostgreSQL as an unprivileged user');
 const pg = await notificationTestPostgres();
 const name = 'leadcrm_startup_test_1';
-const deferred = ['20261102000000_retire_relationship_compatibility', '20261110000000_retire_unused_crm_columns', '20261112000000_retire_lead_nonform_columns', '20261129000000_retire_contact_obsolete_columns', '20261130000000_remove_contact_job_title', '20261202000000_retire_account_address_columns'];
+const deferred = ['20261102000000_retire_relationship_compatibility', '20261110000000_retire_unused_crm_columns', '20261112000000_retire_lead_nonform_columns', '20261129000000_retire_contact_obsolete_columns', '20261130000000_remove_contact_job_title', '20261202000000_retire_account_address_columns', '20261208000000_retire_account_fields'];
 const pending = '20261204000000_workflow_stage_entry_identity';
 let env;
 const checks = [];
@@ -29,7 +29,8 @@ try {
     INSERT INTO "User" (id,"tenantId",email,"firstName","lastName",role,"updatedAt") VALUES ('actor','startup','actor@example.test','QA','Actor','Client Admin',now());
     INSERT INTO "Pipeline" (id,"tenantId",name,"updatedAt") VALUES ('pipeline','startup','Existing Sales',now());
     INSERT INTO "Stage" (id,"tenantId","pipelineId",name,"order","requiredFields") VALUES ('stage','startup','pipeline','Lead',0,ARRAY[]::text[]);
-    INSERT INTO "Deal" (id,"tenantId",title,"pipelineId","stageId","ownerId","updatedAt") VALUES ('deal','startup','Preserved deal','pipeline','stage','actor',now());`);
+    INSERT INTO "Deal" (id,"tenantId",title,"pipelineId","stageId","ownerId","updatedAt") VALUES ('deal','startup','Preserved deal','pipeline','stage','actor',now());
+    INSERT INTO "Account" (id,"tenantId",name,"assignedUserId","productInterests","activeProducts","updatedAt") VALUES ('startup-account','startup','Preserved Account','actor',ARRAY['Unresolved interest'],ARRAY['Historical purchase'],now());`);
   const before = pg.executeSql(name, `SELECT row_to_json(h) FROM "DealStageHistory" h ORDER BY id;`);
   const deploy = run([npmCli, '--prefix', 'backend', 'run', 'db:deploy']);
   assert.equal(deploy.status, 0, deploy.stdout + deploy.stderr);
@@ -37,6 +38,8 @@ try {
   assert.match(pg.executeSql(name, `SELECT title,"currentStageHistoryId" IS NOT NULL FROM "Deal" WHERE id='deal';`), /Preserved deal\s*\| t/);
   for (const migration of deferred) assert.match(pg.executeSql(name, `SELECT count(*) FROM "_prisma_migrations" WHERE migration_name='${migration}';`), /\b0\b/);
   assert.match(pg.executeSql(name, `SELECT column_name FROM information_schema.columns WHERE table_name='Deal' AND column_name='leadId';`), /leadId/);
+  assert.match(pg.executeSql(name, `SELECT column_name FROM information_schema.columns WHERE table_name='Account' AND column_name='assignedUserId';`), /assignedUserId/);
+  assert.match(pg.executeSql(name, `SELECT retired_values->>'assignedUserId',retired_values->'productInterests',retired_values->'activeProducts' FROM crm_history.account_retired_values WHERE account_id='startup-account';`), /actor\s*\| \["Unresolved interest"\]\s*\| \["Historical purchase"\]/);
   checks.push('Real db:deploy applies the reviewed pending migration, preserves CRM/history and defers retirement');
   // Actual guard against a future unreviewed pending migration, using an owned
   // copy of the release. The workspace migration inventory remains untouched.

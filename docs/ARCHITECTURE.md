@@ -20,6 +20,8 @@ Shared UI under `frontend/src/shared` contains drawers, forms, permission guards
 
 Related relationship, audit, and record writes commit together. Tenant-scoped IDs are validated before association. Create/edit/archive/restore actions retain their module-specific authorization. Backend guards remain authoritative even when the frontend hides a control.
 
+Accounts use module permissions within the authenticated tenant, without an Assigned Agent predicate. Lead, Contact and Deal assignment restrictions remain enforced. Account product metadata is preserved in operator-only history and retired through a separate guarded cutover; see [Account retirement](accounts-field-retirement.md).
+
 ## Canonical data and integration points
 
 | Domain | Canonical relationship or rule |

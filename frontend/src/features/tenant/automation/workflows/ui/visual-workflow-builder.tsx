@@ -12,6 +12,8 @@ import {
 } from '@dnd-kit/core';
 import {
   WorkflowDraftSchema,
+  retiredAccountWorkflowReferences,
+  ACCOUNT_RETIREMENT_REASON,
   type Workflow,
   type WorkflowDraft,
   type ActionDefinition,
@@ -391,7 +393,7 @@ export default function WorkflowBuilder({
       commit(
         insertAction(
           document,
-          { type: item.type, config: {} },
+          { type: item.type, config: item.type === 'create_task' && trigger?.entity === 'account' ? { assignmentTarget: { type: 'user', id: '' } } : {} },
           target.index,
           id,
         ),
@@ -852,6 +854,7 @@ export default function WorkflowBuilder({
           </div>
         </div>
       </header>
+      {retiredAccountWorkflowReferences(draft).length > 0 && <p role="alert" className="border-b border-border px-5 py-3 text-sm text-destructive">{ACCOUNT_RETIREMENT_REASON}</p>}
       {dirty && savedId && <p className="border-b border-[var(--border)] px-5 py-2 text-sm text-[var(--muted-foreground)]">Testing uses the last saved version of this workflow. Save changes before running the check.</p>}
       {error && (
         <p

@@ -61,20 +61,23 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect((await request(path)).body.data.dealValue).toBe(30000);
   });
 
-  it('keeps Account interests and active Products distinct through create, edit and rename', async () => {
+  it('rejects retired Account product writes without changing the Product catalog', async () => {
     const first = await prisma.productInterest.create({ data: { tenantId, name: 'Account interest', dealValue: 10 } });
     const second = await prisma.productInterest.create({ data: { tenantId, name: 'Account purchase', dealValue: 20 } });
     const created = await request('/crm/accounts', 'POST', { name: 'Normalized Account', productInterests: [first.name], activeProducts: [second.name] });
-    expect(created.status, JSON.stringify(created.body)).toBe(201);
-    const id = created.body.data.id;
-    expect(created.body.data).toMatchObject({ productInterests: [first.name], activeProducts: [second.name] });
+    expect(created.status, JSON.stringify(created.body)).toBe(400);
+    expect(await prisma.account.count({ where: { tenantId, name: 'Normalized Account' } })).toBe(0);
+    const valid = await request('/crm/accounts', 'POST', { name: 'Normal Account' });
+    expect(valid.status).toBe(201);
+    const id = valid.body.data.id;
     const updated = await request('/crm/accounts/' + id, 'PUT', { activeProducts: [first.name] });
-    expect(updated.status, JSON.stringify(updated.body)).toBe(200);
-    expect(updated.body.data).toMatchObject({ productInterests: [first.name], activeProducts: [first.name] });
-    const links = await prisma.accountProductInterest.findMany({ where: { accountId: id } });
-    expect(links).toHaveLength(1); expect(links[0]).toMatchObject({ productInterestId: first.id, interested: true, activeProduct: true });
+    expect(updated.status, JSON.stringify(updated.body)).toBe(400);
     await prisma.productInterest.update({ where: { id: first.id }, data: { name: 'Renamed Account Product' } });
-    expect((await request('/crm/accounts/' + id)).body.data).toMatchObject({ productInterests: ['Renamed Account Product'], activeProducts: ['Renamed Account Product'] });
+    const reloaded = (await request('/crm/accounts/' + id)).body.data;
+    expect(reloaded.name).toBe('Normal Account');
+    expect(reloaded).not.toHaveProperty('productInterests');
+    expect(reloaded).not.toHaveProperty('activeProducts');
+    expect(await prisma.productInterest.findUniqueOrThrow({ where: { id: second.id } })).toMatchObject(second);
   });
 
   it('rejects foreign selections and preserves retired Product identity and nested projections', async () => {

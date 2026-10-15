@@ -30,7 +30,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
   async function owned(userId: string) {
     const lead = await prisma.lead.create({ data: { tenantId, ...input(), assignedUserId: userId, createdById: userId } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Transfer', assignedUserId: userId } });
-    const account = await prisma.account.create({ data: { tenantId, name: 'Transfer Account', assignedUserId: userId } });
+    const account = await prisma.account.create({ data: { tenantId, name: 'Transfer Account',  } });
     const deal = await prisma.deal.create({ data: { tenantId, title: 'Transfer Deal', pipelineId, stageId, assignedUserId: userId, ownerId: userId, value: 123.45 } });
     return { lead, contact, account, deal };
   }
@@ -102,7 +102,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
   it('preflights without writing and rejects missing, self, foreign, admin and guest replacements', async () => {
     const target = await newAgent(); await owned(target.id);
     const impact = await call(`/administration/users/${target.id}/deactivation-impact`);
-    expect(impact.body.data).toMatchObject({ total: 4, counts: { leads: 1, contacts: 1, accounts: 1, deals: 1 } });
+    expect(impact.body.data).toMatchObject({ total: 3, counts: { leads: 1, contacts: 1, accounts: 0, deals: 1 } });
     expect((await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).status).toBe('ACTIVE');
     for (const replacementAgentId of [undefined, target.id, foreignId, adminId, deniedId]) {
       expect((await call(`/administration/users/${target.id}/deactivate`, 'POST', { replacementAgentId })).status).toBe(409);
@@ -131,8 +131,9 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
     expect((await resolveMailboxScope(mailbox(target.id), permissions)).leadIds).toContain(records.lead.id);
     const spies = (['fireLeadUpdated','fireContactUpdated','fireAccountUpdated','fireDealUpdated'] as const).map(key => vi.spyOn(events, key));
     const result = await call(`/administration/users/${target.id}/deactivate`, 'POST', { replacementAgentId: otherId });
-    expect(result.status).toBe(200); expect(result.body.data.impact.total).toBe(4);
+    expect(result.status).toBe(200); expect(result.body.data.impact.total).toBe(3);
     for (const [kind, record] of Object.entries(records)) {
+      if (kind === 'account') { expect(await prisma.account.findUniqueOrThrow({ where: { id: record.id } })).toEqual(record); continue; }
       const row = await (prisma[kind as 'lead'] as typeof prisma.lead).findUniqueOrThrow({ where: { id: record.id } });
       expect(row.assignedUserId).toBe(otherId);
       expect(await prisma.activity.count({ where: { tenantId, [`${kind}Id`]: record.id, metadata: { path: ['reason'], equals: 'user_deactivation' } } })).toBe(1);
@@ -152,11 +153,14 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
   });
   it('rolls back every transfer and session revocation when any module fails', async () => {
     const target = await newAgent(), records = await owned(target.id); await issueAuthSession(target);
-    await prisma.$executeRawUnsafe(`CREATE FUNCTION acceptance_fail_transfer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${records.account.id}' THEN RAISE EXCEPTION 'Acceptance rollback'; END IF; RETURN NEW; END $$`);
-    await prisma.$executeRawUnsafe('CREATE TRIGGER acceptance_fail_transfer BEFORE UPDATE ON "Account" FOR EACH ROW EXECUTE FUNCTION acceptance_fail_transfer()');
+    await prisma.$executeRawUnsafe(`CREATE FUNCTION acceptance_fail_transfer() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${records.deal.id}' THEN RAISE EXCEPTION 'Acceptance rollback'; END IF; RETURN NEW; END $$`);
+    await prisma.$executeRawUnsafe('CREATE TRIGGER acceptance_fail_transfer BEFORE UPDATE ON "Deal" FOR EACH ROW EXECUTE FUNCTION acceptance_fail_transfer()');
     try { await expect(scope(() => deactivateUser(target.id, tenantId, adminId, agentId))).rejects.toThrow(); }
-    finally { await prisma.$executeRawUnsafe('DROP TRIGGER acceptance_fail_transfer ON "Account"'); await prisma.$executeRawUnsafe('DROP FUNCTION acceptance_fail_transfer()'); }
-    for (const [kind, record] of Object.entries(records)) expect((await (prisma[kind as 'lead'] as typeof prisma.lead).findUniqueOrThrow({ where: { id: record.id } })).assignedUserId).toBe(target.id);
+    finally { await prisma.$executeRawUnsafe('DROP TRIGGER acceptance_fail_transfer ON "Deal"'); await prisma.$executeRawUnsafe('DROP FUNCTION acceptance_fail_transfer()'); }
+    for (const [kind, record] of Object.entries(records)) {
+      if (kind === 'account') expect(await prisma.account.findUniqueOrThrow({ where: { id: record.id } })).toEqual(record);
+      else expect((await (prisma[kind as 'lead'] as typeof prisma.lead).findUniqueOrThrow({ where: { id: record.id } })).assignedUserId).toBe(target.id);
+    }
     expect((await prisma.user.findUniqueOrThrow({ where: { id: target.id } })).status).toBe('ACTIVE');
     expect(await prisma.session.count({ where: { userId: target.id, revokedAt: null } })).toBe(1);
     expect(await prisma.auditLog.count({ where: { entityId: target.id, action: 'user.deactivated_with_reassignment' } })).toBe(0);

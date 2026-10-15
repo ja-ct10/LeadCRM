@@ -41,7 +41,7 @@ try {
   const records = {};
   records.lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Workflow', lastName: 'Lead', email: 'lead@example.test', assignedUserId: admin.id } });
   records.contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Workflow', lastName: 'Contact', email: 'contact@example.test', assignedUserId: admin.id } });
-  records.account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Workflow Account', assignedUserId: admin.id } });
+  records.account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Workflow Account',  } });
   const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id } });
   records.deal = await prisma.deal.create({ data: { tenantId: tenant.id, title: 'Workflow Deal', pipelineId: stage.pipelineId, stageId: stage.id, assignedUserId: admin.id } });
   await prisma.leadDeal.create({ data: { tenantId: tenant.id, leadId: records.lead.id, dealId: records.deal.id } });

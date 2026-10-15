@@ -142,9 +142,12 @@ it.each((['leads', 'contacts', 'accounts', 'deals'] as const).flatMap(module => 
     ? { data: { ...records[module], assignedUser: { firstName: 'Actual', lastName: 'Agent' }, owner: { firstName: 'Other', lastName: 'Owner' } } }
     : original(path));
   render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
-  await screen.findByText('Agent: Actual Agent');
+  await screen.findByRole('heading', { level: 1 });
+  if (module === 'accounts') expect(screen.queryByText('Agent: Actual Agent')).toBeNull();
+  else await screen.findByText('Agent: Actual Agent');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  expect(screen.getByText('Assigned Agent', { selector: 'dt' })).toBeTruthy();
+  if (module === 'accounts') expect(screen.queryByText('Assigned Agent', { selector: 'dt' })).toBeNull();
+  else expect(screen.getByText('Assigned Agent', { selector: 'dt' })).toBeTruthy();
   expect(screen.queryByText(/Owner \/ Representative|Assigned user|Rep:/)).toBeNull();
 });
 

@@ -100,7 +100,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const { user, tenant } = useAuth();
   const data = useData();
   const hasEditPermission = useHasPermission(module === 'deals' ? 'deals.edit' : module === 'accounts' ? 'accounts.edit' : module === 'leads' ? 'leads.edit' : 'contacts.edit');
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess(module);
   const hasArchivePermission = useHasPermission(module === 'deals' ? 'deals.archive' : module === 'accounts' ? 'accounts.archive' : module === 'leads' ? 'leads.archive' : 'contacts.archive');
   const canCreateDeal = useHasPermission('deals.create');
   const canReadDeals = useHasPermission('deals.view');
@@ -224,7 +224,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ...(module === 'accounts' ? [['Account name', record.name], ['Industry', record.industry], ['Company size', record.size]] as [string, unknown][] : []),
     ...(module === 'deals' ? [['Deal title', title], ['Deal value', subtitle.split(' · ')[0]], ['Priority', record.priority], ['Associated Lead / Contact', personName(person)], ['Created', formatDateTime(record.createdAt as string | null | undefined)]] as [string, unknown][] : []),
     ['Email', person?.email], ['Phone', person?.phone], ['Address', location], ['Company', module !== 'accounts' ? company : undefined], ['Job title', module === 'leads' ? record.jobTitle : undefined], ['Website', record.website],
-    ['Product interests', record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Assigned Agent', owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
+    ['Product interests', module === 'accounts' ? undefined : record.productInterest ?? record.productInterests], ['Source', module === 'deals' ? record.leadSource : source], ['Status', statusLabel], ['Assigned Agent', module === 'accounts' ? undefined : owner], ['Notes', module === 'deals' ? undefined : record.notes ?? record.description],
   ];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
@@ -260,9 +260,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
     productRow,
-    ...(module === 'accounts' ? [{ technicalKey: 'activeProductIds', label: 'Active Products', value: record.activeProducts }] : []),
     ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
-    { technicalKey: 'assignedUserId', label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
+    ...(module === 'accounts' ? [] : [{ technicalKey: 'assignedUserId', label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' as const }]),
     ...(module === 'leads' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
     ...(module === 'accounts' ? [{ label: 'Internal Notes', value: record.internalNotes, apiField: 'internalNotes', type: 'textarea' as const }] : []),
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
@@ -337,7 +336,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
           { value: phone, icon: Phone, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
           ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
-          { value: owner, icon: User, label: 'Agent: ' },
+          ...(module === 'accounts' ? [] : [{ value: owner, icon: User, label: 'Agent: ' }]),
           ...(module === 'accounts' ? [{ value: website, icon: Globe, href: websiteHref }] : []),
           { value: location, icon: MapPin, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(location, 'Address'); }, ariaLabel: `Copy address ${location}` } : {}) },
         ]} />

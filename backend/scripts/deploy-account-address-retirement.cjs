@@ -84,7 +84,7 @@ async function verifyAccountsRelease({ api, commit, token }, request = fetch) {
       if (expectedTotal !== list.meta.total) fail('ACCOUNT_PAGINATION_INVALID');
       for (const account of list.data) {
         if (!account.id || seen.has(account.id) || account.tenantId !== user.tenantId || fields.some(key => Object.hasOwn(account, key))
-          || !(account.address === null || typeof account.address === 'string') || !Array.isArray(account.productInterests)) fail('ACCOUNT_PUBLIC_CONTRACT_INVALID');
+          || !(account.address === null || typeof account.address === 'string')) fail('ACCOUNT_PUBLIC_CONTRACT_INVALID');
         seen.add(account.id);
         if (!archived) {
           const detail = (await get(`/crm/accounts/${encodeURIComponent(account.id)}`)).data;
@@ -123,6 +123,10 @@ async function preservationSnapshot(tx, split) {
   const [addresses] = await tx.$queryRawUnsafe(projection);
   const relationships = {};
   for (const table of ['AccountProductInterest', 'TaskAccount', 'Lead', 'Contact', 'Deal']) {
+    if (table === 'AccountProductInterest') {
+      const [linkTable] = await tx.$queryRawUnsafe(`SELECT to_regclass('public."AccountProductInterest"') IS NOT NULL AS present`);
+      if (!linkTable.present) continue;
+    }
     // Identifiers come exclusively from this fixed allowlist.
     const [state] = await tx.$queryRawUnsafe(`SELECT count(*)::int AS count,
       md5(coalesce(string_agg(md5(to_jsonb(t)::text), '' ORDER BY to_jsonb(t)::text), '')) AS digest FROM public."${table}" t`);

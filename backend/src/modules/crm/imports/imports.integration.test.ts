@@ -30,6 +30,11 @@ describe('shared CSV contract', () => {
     expect(() => databaseImportModule(retired)).toThrow('Unsupported CRM import module');
     expect(() => mapImportCsv(retired, csv([{ name: 'Company' }]))).toThrow('Unsupported CRM import module');
   });
+  it('rejects retired Account product and assignment mappings', () => {
+    for (const field of ['productInterest', 'productInterests', 'activeProducts', 'productInterestIds', 'assignedUserId']) {
+      expect(() => mapImportCsv('accounts', csv([{ name: 'Company', [field]: 'Legacy value' }]))).toThrow('Unsupported import field');
+    }
+  });
   it('validates structure, normalized headers, mapping, size, row limits and physical lines', () => {
     expect(parseImportCsv('\ufeffName,Note\r\n\r\nA,"first\nsecond"\r\nB,end').rowNumbers).toEqual([3, 5]);
     for (const content of ['Name,name\nA,B', 'Name,\nA,B', 'A,B\nx', 'A\n"unclosed']) expect(() => parseImportCsv(content)).toThrow();
@@ -81,27 +86,27 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
-  it('imports canonical and old Account templates with identical preview/persistence and retained Products/history', async () => {
-    const headers = 'Company Name,Product Interest,Industry,Website,Full Address,City,Province / State,Country,Company Size';
-    const input = { fileName:'old-accounts.csv', csvText: headers + '\nLegacy Address Account,Biometrics,IT,https://example.test,"10 Street\nToronto",Toronto,Ontario,Canada,1-10',
-      mappings:{name:0,productInterest:1,industry:2,website:3,address:4,size:8},idempotencyKey:randomUUID() };
+  it('imports canonical and old Account templates with identical preview/persistence and retained address/history', async () => {
+    const headers = 'Company Name,Industry,Website,Full Address,City,Province / State,Country,Company Size';
+    const input = { fileName:'old-accounts.csv', csvText: headers + '\nLegacy Address Account,IT,https://example.test,"10 Street\nToronto",Toronto,Ontario,Canada,1-10',
+      mappings:{name:0,industry:1,website:2,address:3,size:7},idempotencyKey:randomUUID() };
     expect((await request('accounts','/preview','POST',input,denied)).status).toBe(403);
     const preview = await request('accounts','/preview','POST',input);
     expect(preview.status).toBe(200);
-    expect(preview.body.data[0]).toMatchObject({isValid:true,data:{address:'10 Street\nToronto, Ontario, Canada',productInterest:'Biometrics'}});
+    expect(preview.body.data[0]).toMatchObject({isValid:true,data:{address:'10 Street\nToronto, Ontario, Canada'}});
     for (const field of ['city','province','country']) expect(preview.body.data[0].data).not.toHaveProperty(field);
     const result = await run('accounts',input);
     expect(result.successfulRecords).toBe(1);
-    const account = await prisma.account.findFirstOrThrow({where:{tenantId,name:'Legacy Address Account'},include:{productLinks:true}});
+    const account = await prisma.account.findFirstOrThrow({where:{tenantId,name:'Legacy Address Account'},include:{}});
     expect(account.address).toBe(preview.body.data[0].data.address);
-    expect(account.productLinks.map(link=>link.productInterestId)).toEqual([bio]);
+    expect(account).not.toHaveProperty('productLinks');
     expect((await run('accounts',input)).id).toBe(result.id);
     expect((await run('accounts',{...input,idempotencyKey:randomUUID()})).duplicateRecords).toBe(1);
     const history = await request('accounts',`/${result.id}/results`);
     expect(history.body.data[0]).toMatchObject({recordId:account.id,data:{address:'10 Street\nToronto',city:'Toronto',province:'Ontario',country:'Canada'}});
     expect((await request('accounts',`/${result.id}`,'GET',undefined,foreign)).status).toBe(404);
     expect(await prisma.account.count({where:{tenantId,name:account.name}})).toBe(1);
-    const full = await run('accounts',csv([{name:'Canonical Address Account',address:'42 Queen Street\nParis, France',productInterest:'Biometrics'}]));
+    const full = await run('accounts',csv([{name:'Canonical Address Account',address:'42 Queen Street\nParis, France'}]));
     expect(full.successfulRecords).toBe(1);
     expect((await prisma.account.findFirstOrThrow({where:{tenantId,name:'Canonical Address Account'}})).address).toBe('42 Queen Street\nParis, France');
     const country = await run('accounts', {fileName:'country.csv',csvText:'Company Name,Country\nExplicit Country Account,Philippines',mappings:{name:0},idempotencyKey:randomUUID()});
@@ -153,10 +158,9 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect((await run('contacts', csv([person('CONTACT@example.com')]))).duplicateRecords).toBe(1);
     expect((await run('leads', csv([person('CONTACT@example.com')]))).duplicateRecords).toBe(1);
     expect((await run('contacts', csv([person('one@example.com')]))).duplicateRecords).toBe(1);
-    expect((await run('accounts', csv([{ name: 'ABC Corporation', productInterest: 'CCTV Surveillance System; Biometrics', size: '11-50' }]))).successfulRecords).toBe(1);
-    expect((await run('accounts', csv([{ name: ' abc  corporation ', productInterest: 'Biometrics' }]))).duplicateRecords).toBe(1);
+    expect((await run('accounts', csv([{ name: 'ABC Corporation', size: '11-50' }]))).successfulRecords).toBe(1);
+    expect((await run('accounts', csv([{ name: ' abc  corporation ' }]))).duplicateRecords).toBe(1);
     const account = await prisma.account.findFirstOrThrow({ where: { tenantId, name: 'ABC Corporation' } });
-    expect(account.productInterests).toHaveLength(2); expect(account.size).toBe('11-50');
   });
   it('creates only unique Contact Product Deals and replays a completed upload after its parent is deleted', async () => {
     const zero = await prisma.productInterest.create({ data: { tenantId, name: `Zero ${randomUUID()}`, dealValue: 0 } });
@@ -169,7 +173,7 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(created.status).toBe(201); expect(created.body.data.successfulRecords).toBe(1);
     const contact = await prisma.contact.findFirstOrThrow({ where: { tenantId, email } });
     const deals = await prisma.deal.findMany({ where: { tenantId, contactDeals: { some: { contactId: contact.id } } }, include: { stage: true } });
-    expect(deals).toHaveLength(3); expect(deals.map(deal => deal.value).sort((a, b) => a - b)).toEqual([0, 15000, 25000]);
+    expect(deals).toHaveLength(3); expect(deals.map(deal => { expect(deal.value).not.toBeNull(); return deal.value!; }).sort((a, b) => a - b)).toEqual([0, 15000, 25000]);
     expect(deals.every(deal => deal.stage.name === 'Lead' && deal.currency === 'PHP')).toBe(true);
     const job = await prisma.crmImportJob.findUniqueOrThrow({ where: { id: created.body.data.id } });
     expect(job.sourceDigest).toMatch(/^[a-f0-9]{64}$/); expect(job.sourceReference).toBe(uploadId);
@@ -213,7 +217,6 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     expect(contact.assignedUserId).toBe(lead.assignedUserId);
     const account = await prisma.account.findUniqueOrThrow({ where: { id: converted.accountId! } });
     expect(account.name).toBe('ABC Corporation');
-    expect(account.productInterests.sort()).toEqual(['Biometrics', 'CCTV Surveillance System']);
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'conversion' } })).toBe(1);
     expect(await prisma.contactDeal.count({ where: { contactId: contact.id } })).toBe(2);
     expect((await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).map(d => [d.id, d.value]).sort()).toEqual(lead.leadDeals.map(({ deal: d }) => [d.id, d.value]).sort());
@@ -259,7 +262,7 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     const inputs = {
       leads: csv([person('shared-lead@example.com', 'Biometrics')]),
       contacts: csv([person('shared-contact@example.com', 'Biometrics')]),
-      accounts: csv([{ name: 'Shared job account', productInterest: 'Biometrics' }]),
+      accounts: csv([{ name: 'Shared job account' }]),
     };
     const modules = { leads: 'LEAD', contacts: 'CONTACT', accounts: 'ACCOUNT' } as const;
     const ids: string[] = [];
@@ -310,10 +313,10 @@ describe.skipIf(!disposable)('CRM CSV import database and HTTP', () => {
     for (const module of ['leads', 'contacts', 'accounts'] as const) {
       for (const [valid, duplicate, invalid] of scenarios) {
         const seed = randomUUID();
-        const make = (i: number): Record<string, string> => module === 'accounts' ? { name: `Matrix ${seed} ${i}`, productInterest: 'Biometrics' }
+        const make = (i: number): Record<string, string> => module === 'accounts' ? { name: `Matrix ${seed} ${i}` }
           : person(`matrix-${seed}-${i}@example.com`, 'Biometrics');
         const rows = Array.from({ length: valid }, (_, i) => make(i));
-        const invalidRow = (i: number) => ({ ...make(valid + i), productInterest: 'Missing Matrix Product' });
+        const invalidRow = (i: number): Record<string, string> => module === 'accounts' ? { name: 'X'.repeat(256) } : { ...make(valid + i), productInterest: 'Missing Matrix Product' };
         if (!valid && duplicate) await run(module, csv([make(0)]));
         const repeated = rows[0] ?? make(0);
         rows.push(...Array.from({ length: duplicate }, () => ({ ...repeated })));

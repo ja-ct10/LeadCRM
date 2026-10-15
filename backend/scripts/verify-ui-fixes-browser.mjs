@@ -35,7 +35,7 @@ try {
   await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Acceptance', dealValue: 25000 } });
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount', internalNotes: 'Historical note', activeProducts: ['Historical product'] } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount', internalNotes: 'Historical note',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'QALead', lastName: 'Tester', email: 'lead@example.test', companyName: ' McDonalds ' } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'QAContact', lastName: 'Tester', email: 'contact@example.test', company: 'McDonalds' } });
   const pipeline = await prisma.pipeline.findFirstOrThrow({ where: { tenantId: tenant.id }, include: { stages: true } });
@@ -106,8 +106,8 @@ try {
   await navigate('/crm/accounts'); await page.getByRole('button', { name: 'Add Account', exact: true }).click();
   await page.getByText('Create New', { exact: true }).click();
   const accountForm = page.locator('form').last();
-  assert.equal(await accountForm.getByLabel('Assigned Agent').locator('option:checked').innerText(), 'Assign automatically');
-  assert.equal(await accountForm.getByText('Active Products', { exact: true }).count(), 0); assert.equal(await accountForm.getByText('Internal Notes', { exact: true }).count(), 0);
+  for (const label of ['Assigned Agent', 'Product Interest', 'Active Products', 'Products & Interests']) assert.equal(await accountForm.getByText(label, { exact: true }).count(), 0, `${label} is retired from Account creation`);
+  assert.equal(await accountForm.getByText('Internal Notes', { exact: true }).count(), 0);
   await responsive('account-create', accountForm);
   await accountForm.getByLabel('Account Name *').fill('NewQA Account'); await accountForm.locator('button[type="submit"]').click();
   await page.getByText('NewQA Account', { exact: true }).first().waitFor();

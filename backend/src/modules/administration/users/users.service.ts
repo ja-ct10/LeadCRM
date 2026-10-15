@@ -30,7 +30,7 @@ const SAFE_USER_SELECT = {
 };
 
 function assignmentEligibility(user: AssignedAgent, tenantId: string) {
-  const assignableModules = (['leads', 'contacts', 'accounts', 'deals', 'tasks'] as const).filter(module =>
+  const assignableModules = (['leads', 'contacts', 'deals', 'tasks'] as const).filter(module =>
     hasAssignedAgentAccess(user, tenantId, module === 'tasks' ? TASK_ASSIGNEE_REQUIREMENTS : crmAssignmentRequirements(module)));
   return { assignableModules, assignableAgent: ['leads', 'deals'].every(module => assignableModules.includes(module as 'leads' | 'deals')) };
 }

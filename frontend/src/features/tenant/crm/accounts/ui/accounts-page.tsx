@@ -11,7 +11,6 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useAccounts } from '../hooks/use-accounts';
 import { useData } from '@/store/DataContext';
-import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
@@ -42,9 +41,9 @@ export default function AccountsPage(): React.ReactElement {
   const canImport = useHasPermission('accounts.import');
   const canEdit = useHasPermission('accounts.edit');
   const canDelete = useHasPermission('accounts.archive');
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('accounts');
 
-  const { deals, users } = useData();
+  const { deals } = useData();
   const { getParam, getArrayParam, updateParams } = useFilterUrlSync('accounts');
 
   // ── Column Preferences ────────────────────────────────────────────────
@@ -74,7 +73,7 @@ export default function AccountsPage(): React.ReactElement {
 
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
-  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
+  const [activeTab, setActiveTab] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const highlightId = getParam('highlight') ?? undefined;
@@ -88,7 +87,6 @@ export default function AccountsPage(): React.ReactElement {
   const [selectedSystemFilters, setSelectedSystemFilters] = useState<string[]>(() => getArrayParam('system'));
   const [selectedIndustries, setSelectedIndustries] = useState<string[]>(() => getArrayParam('industries'));
   const [selectedTypes, setSelectedTypes] = useState<string[]>(() => getArrayParam('types'));
-  const [selectedOwners, setSelectedOwners] = useState<string[]>(() => getArrayParam('owners'));
   const [selectedRelated, setSelectedRelated] = useState<string[]>(() => getArrayParam('related'));
 
   const debouncedSearch = useDebounce(searchTerm, 300);
@@ -99,7 +97,6 @@ export default function AccountsPage(): React.ReactElement {
     setSelectedSystemFilters([]);
     setSelectedIndustries([]);
     setSelectedTypes([]);
-    setSelectedOwners([]);
     setSelectedRelated([]);
   }, [highlightId]);
 
@@ -107,16 +104,15 @@ export default function AccountsPage(): React.ReactElement {
   useEffect(() => {
     if (highlightId) return;
     updateParams({
-      tab: activeTab !== 'all' ? activeTab : null,
+      tab: null, owners: null,
       search: debouncedSearch || null,
       view: activeView !== 'list' ? activeView : null,
       system: selectedSystemFilters,
       industries: selectedIndustries,
       types: selectedTypes,
-      owners: selectedOwners,
       related: selectedRelated,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, highlightId, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedIndustries, selectedTypes, selectedRelated, highlightId, updateParams]);
 
   // ── Persist filter selections (fire-and-forget) ────────────────────────
   useEffect(() => {
@@ -127,9 +123,6 @@ export default function AccountsPage(): React.ReactElement {
     if (selectedTypes.length > 0) {
       conditions.push({ field: 'size', operator: 'in', value: selectedTypes });
     }
-    if (selectedOwners.length > 0) {
-      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
-    }
     if (selectedRelated.length > 0) {
       conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
     }
@@ -137,28 +130,23 @@ export default function AccountsPage(): React.ReactElement {
       conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
     }
     persistFilters(conditions);
-  }, [selectedIndustries, selectedTypes, selectedOwners, selectedRelated, selectedSystemFilters, persistFilters]);
+  }, [selectedIndustries, selectedTypes, selectedRelated, selectedSystemFilters, persistFilters]);
 
   // ── Pagination ───────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState(1);
 
   // ── Server-side filter conditions ─────────────────────────────────────────
-  // Industry, size/type, and assignedUserId are now sent to the server.
   // selectedRelated (has_deals) stays client-side — no direct DB field.
   const serverFilters = useMemo((): import('@leadcrm/shared').FilterCondition[] => {
     const conditions: import('@leadcrm/shared').FilterCondition[] = [];
-    if (activeTab === 'my') conditions.push({ field: 'scope', operator: 'equals', value: 'my' });
     if (selectedIndustries.length > 0) {
       conditions.push({ field: 'industry', operator: 'in', value: selectedIndustries });
     }
     if (selectedTypes.length > 0) {
       conditions.push({ field: 'size', operator: 'in', value: selectedTypes });
     }
-    if (selectedOwners.length > 0) {
-      conditions.push({ field: 'assignedUserId', operator: 'in', value: selectedOwners });
-    }
     return conditions;
-  }, [selectedIndustries, selectedTypes, selectedOwners, activeTab]);
+  }, [selectedIndustries, selectedTypes, activeTab]);
 
   const {
     accounts,
@@ -199,7 +187,7 @@ export default function AccountsPage(): React.ReactElement {
   // Reset page on filter/search/pageSize/sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedOwners, selectedRelated, pageSize, sort]);
+  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedRelated, pageSize, sort]);
 
   // Client-side secondary filter — only has_deals (no server equivalent)
   const filteredAccounts = useMemo(() => {
@@ -214,11 +202,6 @@ export default function AccountsPage(): React.ReactElement {
     return name.slice(0, 2).toUpperCase();
   };
 
-  const getOwnerName = (userId?: string): string => {
-    if (!userId) return '—';
-    const u = users.find((usr) => usr.id === userId);
-    return u ? `${u.firstName} ${u.lastName}` : '—';
-  };
 
   const getAccountDeals = (accountId: string): number => {
     return deals.filter((d) => d.organizationId === accountId && !d.isArchived).length;
@@ -280,12 +263,6 @@ export default function AccountsPage(): React.ReactElement {
           count: accounts.filter((a) => a.size === sz).length,
           isChecked: selectedTypes.includes(sz),
         })),
-        ...getAssignableAgents(users, ['accounts']).slice(0, 5).map((u) => ({
-          id: `owner:${u.id}`,
-          label: `Owner: ${u.firstName} ${u.lastName}`,
-          count: accounts.filter((a) => a.assignedUserId === u.id).length,
-          isChecked: selectedOwners.includes(u.id),
-        })),
       ],
     },
     {
@@ -296,7 +273,7 @@ export default function AccountsPage(): React.ReactElement {
         { id: 'has_deals', label: 'Accounts with Deals', count: accounts.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived)).length, isChecked: selectedRelated.includes('has_deals') },
       ],
     },
-  ], [accounts, distinctIndustries, distinctSizes, selectedSystemFilters, selectedIndustries, selectedTypes, users, selectedOwners, selectedRelated, deals]);
+  ], [accounts, distinctIndustries, distinctSizes, selectedSystemFilters, selectedIndustries, selectedTypes, selectedRelated, deals]);
 
   const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
     if (groupId === 'system') {
@@ -313,11 +290,6 @@ export default function AccountsPage(): React.ReactElement {
         const typ = itemId.replace('size:', '');
         setSelectedTypes((prev) =>
           prev.includes(typ) ? prev.filter((x) => x !== typ) : [...prev, typ],
-        );
-      } else if (itemId.startsWith('owner:')) {
-        const ownerId = itemId.replace('owner:', '');
-        setSelectedOwners((prev) =>
-          prev.includes(ownerId) ? prev.filter((x) => x !== ownerId) : [...prev, ownerId],
         );
       }
     } else if (groupId === 'related') {
@@ -383,7 +355,6 @@ export default function AccountsPage(): React.ReactElement {
         onViewModeChange={setViewMode}
         savedTabs={[
           { id: 'all', label: 'All Accounts' },
-          { id: 'my', label: 'My Accounts' },
         ]}
         activeTab={activeTab}
         onTabChange={setActiveTab}
@@ -438,7 +409,6 @@ export default function AccountsPage(): React.ReactElement {
             onRowClick={handleRowClick}
             selectedIds={accountSelectedIds}
             onSelectionChange={setAccountSelectedIds}
-            getOwnerName={getOwnerName}
             canEdit={canEdit}
             canArchive={canDelete}
             onEdit={handleOpenEdit}

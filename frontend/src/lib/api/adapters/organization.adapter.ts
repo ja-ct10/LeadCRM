@@ -15,7 +15,6 @@ export function toBackendCreateOrg(data: Record<string, any>): Record<string, an
     website: data.website || undefined,
     tags: Array.isArray(data.tags) ? data.tags : [],
     address: data.address || undefined,
-    assignedUserId: data.assignedUserId || undefined,
   };
 }
 
@@ -35,7 +34,6 @@ export function toBackendUpdateOrg(data: Record<string, any>): Record<string, an
   if (data.website !== undefined) result.website = data.website || undefined;
   if (data.tags !== undefined) result.tags = Array.isArray(data.tags) ? data.tags : [];
   if (data.address !== undefined) result.address = data.address || undefined;
-  if (data.assignedUserId !== undefined) result.assignedUserId = data.assignedUserId || undefined;
 
   return result;
 }
@@ -61,11 +59,7 @@ export function toFrontendOrg(backendOrg: any): Record<string, any> {
     phone: backendOrg.phone || '',
     notes: backendOrg.notes || '',
     internalNotes: backendOrg.internalNotes || '',
-    productInterests: Array.isArray(backendOrg.productInterests) ? backendOrg.productInterests : [],
-    activeProducts: Array.isArray(backendOrg.activeProducts) ? backendOrg.activeProducts : [],
     updatedAt: backendOrg.updatedAt || undefined,
-    assignedUser: backendOrg.assignedUser || undefined,
-    assignedUserId: backendOrg.assignedUserId || '',
     tags: Array.isArray(backendOrg.tags) ? backendOrg.tags : [],
     createdAt: backendOrg.createdAt || new Date().toISOString(),
     isArchived: !!backendOrg.isArchived,

@@ -55,6 +55,41 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     return { status: response.status, body: payload };
   }
   const closingValues = { 'confirmation-type': 'Approved Quotation', 'confirmation-date': '2026-10-01' };
+  it('resolves template retirement by tenant and actual message overrides while preserving saved content', async () => {
+    const template = await prisma.template.create({ data: { tenantId, name: `Old Account token ${randomUUID()}`, type: 'Email', subject: 'Original', content: 'Purchased {{account.activeProductIds}}' } });
+    const actions = [{ type:'send_email',config:{templateId:template.id,senderUserId:owner.id} }];
+    const saved = await prisma.workflow.create({ data: { tenantId, name:`Template repair ${randomUUID()}`,trigger:'contact.updated',actions,isActive:false,status:'PAUSED' } });
+    const read = await call(`/automation/workflows/${saved.id}`);
+    expect(read.body.data.repairReason).toContain('Account assignment and product fields are retired');
+    expect(read.body.data.actions).toEqual(actions);
+    expect((await call(`/automation/workflows/${saved.id}`, 'PUT', { isActive:true })).status).toBe(400);
+    expect((await call(`/automation/workflows/${saved.id}`, 'PUT', { description:'Template repair in progress' })).status).toBe(200);
+    const { accountWorkflowRetirementReferences } = await import('../workflow-fields');
+    expect(await accountWorkflowRetirementReferences({trigger:'contact.updated',actions:[{type:'send_email',config:{templateId:template.id,body:'Supported {{firstName}}'}}]},tenantId)).toEqual([]);
+    expect(await accountWorkflowRetirementReferences({trigger:'contact.updated',actions},otherTenantId)).toEqual([]);
+    expect((await prisma.template.findUniqueOrThrow({ where:{id:template.id} })).content).toBe('Purchased {{account.activeProductIds}}');
+  });
+  it('preserves retired Account workflow definitions for repair and blocks activation and new retired references', async () => {
+    const conditions = { operator: 'AND', conditions: [{ field: 'account.productInterests', operator: 'is_empty', value: null }] };
+    const actions = [{ type: 'assign_owner', config: { userId: owner.id } }];
+    const saved = await prisma.workflow.create({ data: { tenantId, name: `Retired Account ${randomUUID()}`, trigger: 'account.updated', conditions, actions, isActive: false, status: 'PAUSED' } });
+    const read = await call(`/automation/workflows/${saved.id}`);
+    expect(read.status).toBe(200);
+    expect(read.body.data).toMatchObject({ isActive: false, status: 'PAUSED', conditions, actions });
+    expect(read.body.data.repairReason).toContain('Account assignment and product fields are retired');
+    const activate = await call(`/automation/workflows/${saved.id}`, 'PUT', { isActive: true });
+    expect(activate.status).toBe(400);
+    expect(activate.body.error).toContain('Account assignment and product fields are retired');
+    expect((await prisma.workflow.findUniqueOrThrow({ where: { id: saved.id } })).actions).toEqual(actions);
+    const draft = { name: `Invalid Account ${randomUUID()}`, trigger: 'account.updated', conditions, actions, isActive: false };
+    expect((await call('/automation/workflows', 'POST', draft)).status).toBe(400);
+    const partial = await call(`/automation/workflows/${saved.id}`, 'PUT', { description: 'Repair in progress' });
+    expect(partial.status, JSON.stringify(partial.body)).toBe(200);
+    expect(partial.body.data.conditions).toEqual(conditions);
+    const repaired = await call(`/automation/workflows/${saved.id}`, 'PUT', { conditions: null, actions: [{ type: 'create_task', config: { title: 'Account follow-up', assignedUserId: owner.id } }], isActive: true });
+    expect(repaired.status, JSON.stringify(repaired.body)).toBe(200);
+    expect(repaired.body.data.isActive).toBe(true);
+  });
   async function prepareQualified(id: string) {
     const evidence = await call('/crm/deals/' + id + '/closing-requirements', 'PATCH', { values: closingValues });
     expect(evidence.status, JSON.stringify(evidence.body)).toBe(200);
@@ -224,6 +259,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     for (const action of draft.actions) {
       if (action.type === 'assign_owner') action.config.userId = owner.id;
       if (action.type === 'send_email') action.config.senderUserId = owner.id;
+      if (action.type === 'create_task' && draft.trigger.startsWith('account.')) action.config.assignmentTarget = { type: 'user', id: owner.id };
       if (action.type === 'move_deal_stage') action.config.stageId = contacted.id;
     }
     const entity = draft.trigger.split('.')[0];
@@ -278,14 +314,14 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       }
       if (action.type === 'move_deal_stage') expect((await prisma.deal.findUniqueOrThrow({ where: { id: relatedDeal?.id ?? record.id } })).stageId).toBe(contacted.id);
       if (action.type === 'assign_owner') {
-        const model = entity === 'lead' ? prisma.lead : entity === 'contact' ? prisma.contact : prisma.account;
-        expect((await (model as typeof prisma.account).findUniqueOrThrow({ where: { id: record.id } })).assignedUserId).toBe(owner.id);
+        const assigned = entity === 'lead' ? await prisma.lead.findUniqueOrThrow({ where: { id: record.id } }) : await prisma.contact.findUniqueOrThrow({ where: { id: record.id } });
+        expect(assigned.assignedUserId).toBe(owner.id);
       }
     }
   });
   it('filters Account sizes through authenticated HTTP, preserves the legacy alias, and rejects unsupported operators', async () => {
     const industry = randomUUID();
-    const expected = await prisma.account.create({ data: { tenantId, name: 'Matching size', size: 'SMB', industry, assignedUserId: actor.id } });
+    const expected = await prisma.account.create({ data: { tenantId, name: 'Matching size', size: 'SMB', industry,  } });
     await prisma.account.create({ data: { tenantId, name: 'Other size', size: 'Enterprise', industry } });
     await prisma.account.create({ data: { tenantId: otherTenantId, name: 'Foreign size', size: 'SMB', industry } });
     for (const field of ['size', 'type']) {
@@ -296,9 +332,8 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       expect(result.body.meta.total).toBe(1);
     }
     const mine = await call('/crm/accounts?' + new URLSearchParams({ 'filter[industry]': 'equals:' + industry, 'filter[scope]': 'equals:my' }));
-    expect(mine.status, JSON.stringify(mine.body)).toBe(200);
-    expect(mine.body.data.map((row: { id: string }) => row.id)).toEqual([expected.id]);
-    expect(mine.body.meta.total).toBe(1);
+    expect(mine.status, JSON.stringify(mine.body)).toBe(400);
+    expect(mine.body.error).toContain('Account assignment and product filters are retired');
     const invalid = await call('/crm/accounts?' + new URLSearchParams({ 'filter[size]': 'greater_than:3' }));
     expect(invalid.status).toBe(400);
   });
@@ -529,7 +564,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   it.each(['lead', 'contact', 'account'] as const)('requires an unambiguous canonical Deal for a %s Task action', async entity => {
     const record = entity === 'lead' ? await prisma.lead.create({ data: { tenantId, firstName: 'Resolve', lastName: 'Lead', assignedUserId: actor.id } })
       : entity === 'contact' ? await prisma.contact.create({ data: { tenantId, firstName: 'Resolve', lastName: 'Contact', assignedUserId: actor.id } })
-        : await prisma.account.create({ data: { tenantId, name: 'Resolve Account', assignedUserId: actor.id } });
+        : await prisma.account.create({ data: { tenantId, name: 'Resolve Account',  } });
     const title = `Resolve ${entity} Task`;
     const trigger = entity === 'account' ? 'account.updated' : `${entity}.created`;
     const fireRecord = () => scope(() => fireWorkflowTrigger({ tenantId, actorId: actor.id, eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: trigger, context: entity === 'account' ? { 'event.changedFields': ['name'] } : {} }));
@@ -648,7 +683,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     await fire('deal', deal); expect((await runs(workflow.id))[0].status).toBe('failed');
   });
   it.each([
-    ['lead', 'leads'], ['contact', 'contacts'], ['account', 'accounts'], ['deal', 'deals'],
+    ['lead', 'leads'], ['contact', 'contacts'], ['deal', 'deals'],
   ] as const)('validates %s Assigned Agent conditions using combined grants for that module', async (entity, module) => {
     const viewRole = await prisma.roleDefinition.create({ data: { tenantId, name: `View ${module} ${randomUUID()}`,
       permissions: { create: { module, canView: true } } } });
@@ -656,7 +691,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       permissions: { create: { module, canEdit: true } } } });
     const moduleAgent = await prisma.user.create({ data: { tenantId, role: 'Module staff', firstName: 'Module', lastName: 'Agent', email: `${randomUUID()}@camxian.com`,
       userRoles: { create: [{ roleId: viewRole.id }, { roleId: editRole.id }] } } });
-    const configuration = (userId: string) => ({ trigger: entity === 'account' ? 'account.updated' : `${entity}.created`, conditions: {
+    const configuration = (userId: string) => ({ trigger: `${entity}.created`, conditions: {
       operator: 'AND' as const, conditions: [{ field: `${entity}.assignedUserId`, operator: 'equals' as const, value: userId }],
     } });
     const actions: WorkflowAction[] = [{ type: 'assign_owner', config: { userId: moduleAgent.id } }];

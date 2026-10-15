@@ -76,7 +76,7 @@ function partitions(entries, count = SHARDS) {
 function owners(manifest, profile = 'full') {
   assert.ok(['full', 'pr'].includes(profile), 'Unsupported CI profile');
   const fixed = [
-    { owner: 'quality', mode: 'typecheck', suiteIds: [], labels: ['Local documentation references', 'shared TypeScript', 'backend TypeScript', 'frontend TypeScript'] },
+    { owner: 'quality', mode: 'typecheck', suiteIds: [], labels: ['Local documentation references', 'shared TypeScript', 'backend TypeScript', 'backend test TypeScript', 'frontend TypeScript'] },
     { owner: 'backend-unit', mode: 'unit', workspace: 'backend', suiteIds: [], labels: ['QA isolation regression tests', 'CI coordination regressions', 'Coolify release orchestration regressions', 'backend unit tests'] },
     { owner: 'frontend-unit', mode: 'unit', workspace: 'frontend', suiteIds: [], labels: ['frontend tests'] },
     { owner: 'database', mode: 'database', suiteIds: [IMPORT_SUITE], labels: ['Prisma validation', 'Rollout and migration regression tests', 'Contact preservation and retirement fixtures', 'Populated import History migration and HTTP rehearsal', 'Populated guarded db:deploy and backend startup rehearsal', 'Mailbox worker restart'] },
@@ -84,7 +84,7 @@ function owners(manifest, profile = 'full') {
   ];
   if (profile === 'pr') return [
     ...['frontend', 'backend', 'shared'].map(workspace => ({ owner: `typecheck-${workspace}`, job: 'typecheck', mode: 'typecheck', workspace,
-      suiteIds: [], labels: [...(workspace === 'shared' ? ['Local documentation references'] : []), `${workspace} TypeScript`] })),
+      suiteIds: [], labels: [...(workspace === 'shared' ? ['Local documentation references'] : []), `${workspace} TypeScript`, ...(workspace === 'backend' ? ['backend test TypeScript'] : [])] })),
     ...fixed.filter(owner => ['unit', 'build'].includes(owner.mode)),
   ].map(owner => ({ ...owner, profile }));
   for (const mode of ['integration', 'browser']) {
@@ -197,7 +197,7 @@ function aggregate(reports, needs, manifest, source, current, profile = 'full') 
   const required = profile === 'full' ? [...manifest.integration, ...manifest.browser].map(item => item.id).sort() : [];
   assert.deepEqual(actual, required, 'Acceptance coverage is incomplete or duplicated');
   return { status: 'PASS', profile, revision: current.revision, manifestSha256: manifest.sha256,
-    coverageScope: profile === 'pr' ? 'Fast PR checks only; full acceptance runs on main.' : 'Complete main verification.',
+    coverageScope: profile === 'pr' ? 'Fast checks only; complete acceptance is required separately.' : 'Complete verification of the tested revision.',
     integrationSuites: profile === 'full' ? manifest.integration.length : 0,
     browserSuites: profile === 'full' ? manifest.browser.length : 0, owners: expected.map(item => item.owner),
     jobs: reports.map(report => ({ owner: report.ci.owner, attempt: report.ci.invocation.attempt,

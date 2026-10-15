@@ -21,6 +21,8 @@ The codebase is a Turborepo monorepo with Next.js, Express, TypeScript, PostgreS
 
 Public signup, a separate platform portal, SaaS billing, service orders, technician dispatch, asset inventory, and customer invoicing are retired. Historical documents are background; the current route registrations and shared contracts define supported functionality.
 
+Accounts represent companies and organizations. Their assignment and product fields are retired; Account actions use tenant-scoped module grants. Products and assignment remain on supported sales records. See [Account field retirement](docs/accounts-field-retirement.md) for preservation and guarded cutover.
+
 ## Groups replace Department
 
 Group membership has one source of truth: `TenantGroupMember`. User administration accepts `groupIds`; User and auth responses expose `groups: [{ id, name }]`. Client Admin manages memberships in the user form or existing Groups screen. Profile displays memberships read-only. Workflows use these same Groups for assignment; roles continue to control permissions.

@@ -50,7 +50,7 @@ try {
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', website: 'https://example.test', assignedUserId: admin.id } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', website: 'https://example.test',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
   const source = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Converted', lastName: 'Source', email: 'source@example.test', accountId: account.id, assignedUserId: admin.id, contactId: contact.id, convertedAt: new Date() } });

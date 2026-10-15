@@ -54,7 +54,7 @@ try {
   const stage = await prisma.stage.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, name: 'Inquiry', order: 0, requiredFields: [] } });
   for (let index = 1; index <= 3; index++) {
     const common = { tenantId: tenant.id };
-    await prisma.account.create({ data: { ...common, name: `Search Target Account ${index}`, productsNormalized: true } });
+    await prisma.account.create({ data: { ...common, name: `Search Target Account ${index}`,  } });
     await prisma.contact.create({ data: { ...common, firstName: 'Search Target', lastName: `Person ${index}`, productsNormalized: true } });
     await prisma.deal.create({ data: { ...common, title: `Search Target Deal ${index}`, pipelineId: pipeline.id, stageId: stage.id, accountId: account.id, productsNormalized: true, productInterests: [], tags: [] } });
     await prisma.task.create({ data: { ...common, title: `Search Target Task ${index}`, assignedUserId: admin.id, dueDate: new Date(), createdById: admin.id } });

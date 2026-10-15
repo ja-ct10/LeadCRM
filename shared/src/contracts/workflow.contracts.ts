@@ -127,6 +127,7 @@ export interface WorkflowOptions {
   smsConfigured?: boolean;
 }
 export interface Workflow extends WorkflowDraft {
+  repairReason?: string;
   id: string; tenantId: string;
   version?: number;
   isArchived: boolean; createdAt: string; updatedAt: string; lastRunAt?: string | null;

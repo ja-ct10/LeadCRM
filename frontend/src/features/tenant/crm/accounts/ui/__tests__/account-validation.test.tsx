@@ -11,9 +11,10 @@ import { AccountFormInner } from '../account-form';
 afterEach(cleanup);
 it.each([false, true])('submits an Account without obsolete fields (edit=%s)', async edit => {
   const save = vi.fn();
-  render(<AccountFormInner initialData={edit ? { id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', internalNotes: 'Historical note', activeProducts: ['Historical product'] } : undefined} onSave={save} onCancel={vi.fn()} />);
+  render(<AccountFormInner initialData={edit ? { id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', internalNotes: 'Historical note' } : undefined} onSave={save} onCancel={vi.fn()} />);
   if (!edit) {
-    expect(screen.getByRole('option', { name: 'Assign automatically' })).toBeTruthy();
+    expect(screen.queryByText('Assigned Agent')).toBeNull();
+    expect(screen.queryByText('Products & Interests')).toBeNull();
     expect(screen.queryByText('Active Products')).toBeNull();
     expect(screen.queryByLabelText('Internal Notes')).toBeNull();
     expect(screen.queryByLabelText('Notes')).toBeNull();
@@ -29,18 +30,18 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   expect(save.mock.calls[0][0]).toMatchObject({ name: 'New Account', address: '123 Main Street\nMakati City, Metro Manila, Philippines' });
   for (const field of ['city', 'province', 'country']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
   for (const label of ['City', 'Province', 'Country']) expect(screen.queryByLabelText(label)).toBeNull();
-  for (const field of ['taxId', 'customerType', 'customerSince']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
-  if (edit) expect(save.mock.calls[0][0]).toMatchObject({ internalNotes: 'Historical note', activeProducts: ['Historical product'] });
+  for (const field of ['assignedUserId', 'productInterests', 'activeProducts', 'taxId', 'customerType', 'customerSince']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
+  if (edit) expect(save.mock.calls[0][0]).toMatchObject({ internalNotes: 'Historical note' });
   else for (const field of ['notes', 'internalNotes', 'activeProducts']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
 });
 
 it('keeps existing Notes and international address data when editing', async () => {
   const save = vi.fn();
-  render(<AccountFormInner initialData={{ id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes', internalNotes: 'Private notes', assignedUserId: 'agent' }} onSave={save} onCancel={vi.fn()} />);
+  render(<AccountFormInner initialData={{ id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes', internalNotes: 'Private notes' }} onSave={save} onCancel={vi.fn()} />);
   expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('Historical notes');
   expect((screen.getByLabelText('Full Address') as HTMLTextAreaElement).value).toBe('42 Queen Street\nToronto, Ontario, Canada');
   fireEvent.submit(screen.getByLabelText(/Account Name/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalled());
-  expect(save.mock.calls[0][0]).toMatchObject({ address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes', internalNotes: 'Private notes', assignedUserId: 'agent' });
+  expect(save.mock.calls[0][0]).toMatchObject({ address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes', internalNotes: 'Private notes' });
   for (const field of ['city', 'province', 'country']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
 });

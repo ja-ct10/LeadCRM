@@ -35,7 +35,7 @@ try {
   const { token } = await issueAuthSession(admin);
   const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Tasks QA staff', permissions: { create: { module: 'tasks', canView: true } } } });
   const staff = await prisma.user.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Staff', email: 'tasks-staff@camxian.com', role: role.name, userRoles: { create: { roleId: role.id } } } });
-  const account = await prisma.account.create({ data: { tenantId, name: 'Tasks QA Account', assignedUserId: admin.id } });
+  const account = await prisma.account.create({ data: { tenantId, name: 'Tasks QA Account',  } });
   const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Contact', assignedUserId: admin.id } });
   const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Lead', assignedUserId: admin.id, contactId: contact.id, convertedAt: new Date() } });
   const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Tasks QA Pipeline' } });

@@ -35,7 +35,7 @@ try {
   await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Acceptance', dealValue: 25000 } });
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount', internalNotes: 'Historical note', activeProducts: ['Historical product'] } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount', internalNotes: 'Historical note',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'QALead', lastName: 'Tester', email: 'lead@example.test', companyName: ' McDonalds ' } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'QAContact', lastName: 'Tester', email: 'contact@example.test', company: 'McDonalds' } });
   const pipeline = await prisma.pipeline.findFirstOrThrow({ where: { tenantId: tenant.id }, include: { stages: true } });
@@ -49,7 +49,7 @@ try {
     agents.push(agent);
   }
   const [departing, replacement] = agents;
-  for (const [kind, row] of [['lead',lead],['contact',contact],['account',account],['deal',deal]]) await prisma[kind].update({ where: { id: row.id }, data: { assignedUserId: departing.id } });
+  for (const [kind, row] of [['lead',lead],['contact',contact],['deal',deal]]) await prisma[kind].update({ where: { id: row.id }, data: { assignedUserId: departing.id } });
   for (const [key, record] of [['leadId', lead], ['contactId', contact], ['accountId', account], ['dealId', deal]]) {
     for (let i = 0; i < 16; i++) await prisma.activity.create({ data: { tenantId: tenant.id, [key]: record.id, type: 'note', title: `QA activity ${i}`, description: 'Timeline scrolling acceptance', createdById: admin.id } });
   }
@@ -144,8 +144,9 @@ try {
   await responsive('deactivation-final-confirmation', transfer);
   await transfer.getByRole('button', { name: 'Deactivate', exact: true }).click();
   await page.getByRole('button', { name: 'Activate Departure Agent', exact: true }).waitFor();
-  for (const [kind, row] of [['lead',lead],['contact',contact],['account',account],['deal',deal]]) assert.equal((await prisma[kind].findUniqueOrThrow({ where: { id: row.id } })).assignedUserId, replacement.id);
-  record('Final confirmation transfers all four modules and immediately renders Inactive');
+  for (const [kind, row] of [['lead',lead],['contact',contact],['deal',deal]]) assert.equal((await prisma[kind].findUniqueOrThrow({ where: { id: row.id } })).assignedUserId, replacement.id);
+  assert.deepEqual(await prisma.account.findUniqueOrThrow({ where: { id: account.id } }), account);
+  record('Final confirmation transfers owned CRM records, preserves the Account and immediately renders Inactive');
   await navigate('/crm/leads');
   await page.getByRole('button', { name: 'Create Lead', exact: true }).click();
   await page.getByText('Create New', { exact: true }).click();

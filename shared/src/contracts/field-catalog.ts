@@ -1,3 +1,4 @@
+import { ACCOUNT_ADDITIONAL_GROUP_ID, accountAdditionalGroupId, upgradeAccountFieldLayout, ACCOUNT_RETIRED_GROUP_IDS } from './account-retirement';
 import { z } from 'zod';
 import { customFieldTechnicalKey } from './custom-field-identity';
 import { COMPANY_INDUSTRIES } from '../constants/company-industries';
@@ -28,6 +29,7 @@ export interface CrmFieldCatalogEntry {
   unavailableReason?: string; options?: readonly string[]; customFieldId?: string; reference?: 'account' | 'user' | 'stage' | 'pipeline';
 }
 export const defaultFieldGroupId = (module: CustomFieldModule, label: string) => {
+  if (module === 'accounts') return ({ 'basic information': 'accounts:section:0', address: 'accounts:section:1', notes: 'accounts:section:4', 'additional information': ACCOUNT_ADDITIONAL_GROUP_ID } as Record<string, string>)[customFieldNameKey(label)] ?? 'accounts:additional-information';
   const legacyContactGroup = module === 'contacts' ? ({ 'status & classification': 1, relationships: 2 } as Record<string, number>)[customFieldNameKey(label)] : undefined;
   return module === 'deals' && customFieldNameKey(label) === 'closed won requirements' ? CLOSED_WON_GROUP_ID : `${module}:section:${legacyContactGroup ?? CUSTOM_FIELD_BUILT_IN_GROUPS[module].findIndex(group => customFieldNameKey(group) === customFieldNameKey(label))}`;
 };
@@ -36,7 +38,7 @@ const person: NativeInput[] = [['firstName', 'First Name', 'text', 0, true], ['l
 const native: Record<CustomFieldModule, NativeInput[]> = {
   leads: [...person, ['companyName', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account']],
   contacts: [...person, ['company', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account'], ['notes', 'Notes', 'longText', 3]],
-  accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Full Address', 'longText', 1], ['assignedUserId', 'Assigned Agent', 'reference', 2, false, undefined, 'user'], ['productInterestIds', 'Product Interest', 'products', 3], ['activeProductIds', 'Active Products', 'products', 3], ['notes', 'Notes', 'longText', 4], ['internalNotes', 'Internal Notes', 'longText', 4]],
+  accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Full Address', 'longText', 1], ['notes', 'Notes', 'longText', 2], ['internalNotes', 'Internal Notes', 'longText', 2]],
   deals: [['title', 'Title', 'text', 0, true], ['value', 'Deal Value', 'number', 0], ['productInterestIds', 'Product Interest', 'products', 0, true], ['pipelineId', 'Pipeline', 'reference', 0, true, undefined, 'pipeline'], ['stageId', 'Stage', 'reference', 0, true, undefined, 'stage'], ['priority', 'Priority', 'dropdown', 0, false, ['LOW', 'MEDIUM', 'HIGH']], ['expectedCloseDate', 'Expected Close Date', 'date', 2], ['assignedUserId', 'Assigned Agent', 'reference', 4, false, undefined, 'user'], ['accountId', 'Account', 'reference', 1, false, undefined, 'account'], ['leadSource', 'Lead Source', 'dropdown', 2, false, LEAD_SOURCES], ['industry', 'Industry', 'dropdown', 2, false, COMPANY_INDUSTRIES], ['address', 'Address', 'longText', 2]],
 };
 export const CRM_SYSTEM_FIELDS = Object.fromEntries(CUSTOM_FIELD_MODULES.map(module => [module, [...native[module], ['createdAt', 'Created', 'date', 0] as NativeInput].map(([technicalKey, label, type, groupIndex, mandatory = false, options, reference], order): CrmFieldCatalogEntry => ({ technicalKey, label: module === 'contacts' && technicalKey === 'source' ? 'Source' : label, module, kind: 'System', type, groupId: defaultFieldGroupId(module, CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex]), group: CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex], order, required: mandatory, mandatory, active: true, visibleInForm: !['value', 'createdAt'].includes(technicalKey), visibleInDetails: true, conditionAvailable: true, personalizationAvailable: true, ...(options ? { options } : {}), ...(reference ? { reference } : {}) }))])) as Record<CustomFieldModule, CrmFieldCatalogEntry[]>;
@@ -51,7 +53,7 @@ export function getCrmFieldCatalog(module: CustomFieldModule, definitions: Closi
     return { ...resolved, group: groups.find(group => group.id === resolved.groupId)?.label ?? field.group };
   });
   const custom = definitions.map(normalizeCustomField).filter(field => field.module === module && !field.deletedAt).map((field): CrmFieldCatalogEntry => {
-    const groupId = field.groupId ?? groups.find(group => customFieldNameKey(group.label) === customFieldNameKey(field.group))?.id ?? defaultFieldGroupId(module, field.group);
+    const groupId = module === 'accounts' && (ACCOUNT_RETIRED_GROUP_IDS.includes(field.groupId ?? '') || !field.groupId && ['Assigned Agent', 'Relationships', 'Products & Interests'].includes(field.group)) ? accountAdditionalGroupId(groups) : field.groupId ?? groups.find(group => customFieldNameKey(group.label) === customFieldNameKey(field.group))?.id ?? defaultFieldGroupId(module, field.group);
     return { technicalKey: customFieldTechnicalKey(field), canonicalTechnicalKey: `customFieldValues.${field.id}`, customFieldId: field.id, label: field.name, module, kind: isSystemClosingField(field) ? 'System' : 'Custom', type: field.type === 'Text' ? 'text' : field.type === 'Long Text' ? 'longText' : field.type === 'Number' ? 'number' : field.type === 'Date' ? 'date' : field.type === 'Dropdown' ? 'dropdown' : 'file', groupId, group: groups.find(group => group.id === groupId)?.label ?? field.group, order: field.order, required: field.required, mandatory: false, active: field.active, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, conditionAvailable: field.active && !isClosedWonField(field), personalizationAvailable: field.active && field.type !== 'File Upload' && !isClosedWonField(field), options: field.options, ...(field.type === 'File Upload' ? { unavailableReason: 'Private files support presence conditions only; file links cannot be personalized.' } : {}) };
   });
   return [...standard, ...custom].sort((a, b) => (groups.find(group => group.id === a.groupId)?.order ?? 100000) - (groups.find(group => group.id === b.groupId)?.order ?? 100000) || a.order - b.order || a.technicalKey.localeCompare(b.technicalKey));
@@ -61,7 +63,7 @@ export function defaultFieldLayout(module: CustomFieldModule): FieldLayout {
 }
 /** Upgrade only untouched built-in assignment defaults, identified by stable IDs. */
 export function upgradeAssignmentLayout(layout: FieldLayout, definitions: ClosingField[] = []): FieldLayout {
-  const next = structuredClone(layout);
+  const next = structuredClone(upgradeAccountFieldLayout(layout));
   const module = layout.module;
   if (module === 'accounts') for (const key of ['city', 'province', 'country']) delete next.fields[key];
   if (layout.fields.assignedUserId || layout.module !== 'accounts' && layout.groups.some(group => group.id === layout.module + ':section:4')) return next;

@@ -42,7 +42,7 @@ exports.ImportContactRowSchema = zod_1.z.object(person).strict();
 exports.ImportAccountRowSchema = zod_1.z.object({ name: required('Company Name').transform(v => v.replace(/\s+/g, ' ')),
     // Split components are accepted only for legacy CSV/API compatibility.
     industry: optional(255), website, address: optional(500), city: optional(100), province: optional(100), country: optional(100),
-    size: optional(20).refine(v => !v || ['1-10', '11-50', '51-200', '200+'].includes(v), 'Invalid Company Size.'), productInterest: products,
+    size: optional(20).refine(v => !v || ['1-10', '11-50', '51-200', '200+'].includes(v), 'Invalid Company Size.'),
 }).strict();
 /** CSV values are explicit: never infer or discard a supplied country. */
 function normalizeAccountImportRow(data) {

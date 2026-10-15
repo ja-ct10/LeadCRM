@@ -19,11 +19,12 @@ export function WorkflowAssignmentFields({ action, options, className, entity, o
   return <fieldset className="min-w-0 space-y-3">
     <legend className="sr-only">Assignment</legend>
     <label className="block space-y-1">Assign to
-      <select aria-label="Assign to" className={className} value={target.type} onChange={event => {
+      <select aria-label="Assign to" className={className} value={entity === 'account' && target.type === 'record_owner' ? '' : target.type} onChange={event => {
         const type = event.target.value as WorkflowAssignmentTarget['type'];
         change(type === 'record_owner' ? { type } : type === 'user' ? { type, id: '' } : { type, id: '', strategy: 'round_robin' });
       }}>
-        {action.type === 'create_task' && <option value="record_owner">Current Record Agent</option>}
+        {entity === 'account' && <option value="" disabled>Choose assignment target</option>}
+        {action.type === 'create_task' && entity !== 'account' && <option value="record_owner">Current Record Agent</option>}
         <option value="user">Specific User</option><option value="role">Role</option><option value="group">Group</option>
       </select>
     </label>
@@ -37,6 +38,6 @@ export function WorkflowAssignmentFields({ action, options, className, entity, o
     {target.type !== 'record_owner' && target.id && !selected && <p role="status" className="text-sm text-amber-700 dark:text-amber-300">This assignment target is unavailable. Choose another before activating.</p>}
     {selected?.eligibleMemberCounts && <p className="text-xs text-[var(--muted-foreground)]">{selected.memberCount} members · {selected.eligibleMemberCounts[action.type === 'create_task' ? 'task_assignee' : 'crm_owner']} eligible</p>}
     {pool && <WorkflowAssignmentSettings target={target} entity={entity} task={action.type === 'create_task'} className={className} onChange={change} members={(selected?.members ?? []).filter(member => member.purposes.includes(action.type === 'create_task' ? 'task_assignee' : 'crm_owner'))} />}
-    {target.type === 'record_owner' && <p className="text-xs text-[var(--muted-foreground)]">The current record agent must be active and have Tasks access when this action runs.</p>}
+    {target.type === 'record_owner' && <p className="text-xs text-[var(--muted-foreground)]">{entity === 'account' ? 'Choose a user, role or group to assign this Account follow-up task.' : 'The current record agent must be active and have Tasks access when this action runs.'}</p>}
   </fieldset>;
 }

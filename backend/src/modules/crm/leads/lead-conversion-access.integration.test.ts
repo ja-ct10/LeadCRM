@@ -34,9 +34,9 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     tenantId, firstName: 'Conversion', lastName: 'Customer', email: `${randomUUID()}@example.test`, status: 'Warm', assignedUserId: a.id,
     productsNormalized: true, productLinks: { create: { productInterestId: productId, position: 0 } }, ...extra,
   } });
-  const account = (assignedUserId = b.id, extra: Partial<Prisma.AccountUncheckedCreateInput> = {}) => prisma.account.create({ data: {
-    tenantId, name: `Existing ${randomUUID()}`, assignedUserId, industry: 'Technology', address: 'Makati', notes: 'Preserve this Account', tags: ['existing'],
-    productsNormalized: true, productLinks: { create: { productInterestId: priorProductId, position: 3, interested: true, activeProduct: true } }, ...extra,
+  const account = (extra: Partial<Prisma.AccountUncheckedCreateInput> = {}) => prisma.account.create({ data: {
+    tenantId, name: `Existing ${randomUUID()}`,  industry: 'Technology', address: 'Makati', notes: 'Preserve this Account', tags: ['existing'],
+      ...extra,
   } });
   const contact = (accountId: string | null, extra: Partial<Prisma.ContactUncheckedCreateInput> = {}) => prisma.contact.create({ data: {
     tenantId, firstName: 'Existing', lastName: 'Contact', email: `${randomUUID()}@example.test`, assignedUserId: a.id, accountId, convertedAt,
@@ -52,7 +52,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
       prisma.contact.findMany({ where: { tenantId }, orderBy: { id: 'asc' } }),
       prisma.account.findMany({ where: { tenantId }, orderBy: { id: 'asc' } }),
       prisma.deal.findMany({ where: { tenantId }, orderBy: { id: 'asc' } }),
-      ...['leadProductInterest', 'contactProductInterest', 'accountProductInterest', 'leadDeal', 'contactDeal', 'activity', 'auditLog',
+      ...['leadProductInterest', 'contactProductInterest', 'leadDeal', 'contactDeal', 'activity', 'auditLog',
         'dealStageHistory', 'notificationEvent', 'notificationDelivery', 'workflowTriggerRecord', 'workflowExecutionRun'].map(async model =>
         (await (prisma as any)[model].findMany({ where: { tenantId } })).map((row: unknown) => JSON.stringify(row)).sort()),
     ]);
@@ -70,11 +70,10 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
   }, 60000);
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await prisma.$disconnect(); });
 
-  it.each(['same', 'other'])('links a %s-agent Account without Account edit permission or Account changes', async owner => {
-    const existing = await account(owner === 'same' ? a.id : b.id);
+  it('links a tenant Account without Account edit permission or Account changes', async () => {
+    const existing = await account();
     const source = await lead();
     const accountBefore = await prisma.account.findUniqueOrThrow({ where: { id: existing.id } });
-    const productsBefore = await prisma.accountProductInterest.findMany({ where: { accountId: existing.id } });
     await prisma.rolePermission.updateMany({ where: { tenantId, roleId: a.roleId, module: 'accounts' }, data: { canEdit: false } });
     try {
       const result = await convert(source.id, { accountId: existing.id });
@@ -82,10 +81,9 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
       expect(result.body.data.contact).toMatchObject({ assignedUserId: a.id, accountId: existing.id, productInterests: ['Lead Product'] });
       expect(await prisma.contactProductInterest.findMany({ where: { contactId: result.body.data.contact.id } })).toMatchObject([{ productInterestId: productId, interested: true }]);
       expect(await prisma.account.findUniqueOrThrow({ where: { id: existing.id } })).toEqual(accountBefore);
-      expect(await prisma.accountProductInterest.findMany({ where: { accountId: existing.id } })).toEqual(productsBefore);
       expect((await call(`/accounts/${existing.id}`, { name: 'Forbidden edit' }, a, 'PUT')).status).toBe(403);
     } finally { await prisma.rolePermission.updateMany({ where: { tenantId, roleId: a.roleId, module: 'accounts' }, data: { canEdit: true } }); }
-    if (owner === 'other') expect((await call(`/accounts/${existing.id}`, { name: 'Forbidden ownership edit' }, a, 'PUT')).status).toBe(403);
+    expect((await call(`/accounts/${existing.id}`, { name: 'Granted module edit' }, a, 'PUT')).status).toBe(200);
   });
   it('reuses a matching existing company without merging or reassigning its Account', async () => {
     const existing = await account();
@@ -96,17 +94,16 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     expect(result.body.data.contact.accountId).toBe(existing.id);
     expect(await prisma.account.findUniqueOrThrow({ where: { id: existing.id } })).toEqual(before);
   });
-  it('creates an Account and Contact with the Lead assignment and canonical retired Product ID', async () => {
+  it('creates an Account without assignment or products and retains the Lead assignment and canonical Product ID on its Contact', async () => {
     const retired = await prisma.productInterest.create({ data: { tenantId, name: 'Retired conversion product', active: false, dealValue: 50 } });
     await prisma.productInterest.create({ data: { tenantId, name: retired.name, active: true, dealValue: 75 } });
     const source = await lead({ companyName: `New ${randomUUID()}`, productLinks: { create: { productInterestId: retired.id } } });
     const result = await convert(source.id);
     expect(result.status, JSON.stringify(result.body)).toBe(200);
-    expect(result.body.data.account.assignedUserId).toBe(a.id);
+    expect(result.body.data.account).not.toHaveProperty('assignedUserId');
+    expect(result.body.data.account).not.toHaveProperty('productInterests');
     expect(result.body.data.contact.assignedUserId).toBe(a.id);
-    for (const [model, field, id] of [['accountProductInterest', 'accountId', result.body.data.account.id], ['contactProductInterest', 'contactId', result.body.data.contact.id]]) {
-      expect(await (prisma as any)[model].findMany({ where: { [field]: id } })).toMatchObject([{ productInterestId: retired.id, interested: true, activeProduct: false }]);
-    }
+    expect(await prisma.contactProductInterest.findMany({ where: { contactId: result.body.data.contact.id } })).toMatchObject([{ productInterestId: retired.id, interested: true, activeProduct: false }]);
   });
   it('preserves original Deal ownership, stage, product, history and Lead association while adding authorized links', async () => {
     const existing = await account(); const source = await lead(); const original = await deal(source.id);
@@ -181,8 +178,8 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     expect(await prisma.account.count({ where: { tenantId, name: source.companyName! } })).toBe(0);
   });
   it.each(['missing', 'foreign', 'archived', 'deleted'])('rejects a %s Account before any conversion changes', async kind => {
-    const accountId = kind === 'missing' ? randomUUID() : (await account(b.id, kind === 'foreign'
-      ? { tenantId: foreignTenant, assignedUserId: null, productLinks: undefined }
+    const accountId = kind === 'missing' ? randomUUID() : (await account(kind === 'foreign'
+      ? { tenantId: foreignTenant }
       : kind === 'archived' ? { isArchived: true } : { deletedAt: new Date() })).id;
     const source = await lead(); const before = await snapshot();
     const result = await convert(source.id, { accountId });
@@ -214,7 +211,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     const result = await convert(source.id, { contactId: target.id, accountId: existing.id }, admin);
     expect(result.status, JSON.stringify(result.body)).toBe(200);
     expect(result.body.data.contact.assignedUserId).toBe(b.id);
-    expect(result.body.data.account.assignedUserId).toBe(b.id);
+    expect(result.body.data.account).not.toHaveProperty('assignedUserId');
   });
   it('deduplicates simultaneous conversion and later retries, retaining one Contact, Account and conversion audit', async () => {
     const source = await lead({ companyName: `Concurrent ${randomUUID()}` });

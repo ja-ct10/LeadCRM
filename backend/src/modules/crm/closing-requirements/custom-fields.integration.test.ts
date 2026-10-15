@@ -225,7 +225,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
       expect((await call('/administration/closing-requirements', 'POST', { module: 'contacts', group, name: 'Invalid group', type: 'Text', required: false })).status).toBe(400);
     }
   });
-  it('automatically assigns Accounts through the existing sales rotation and excludes Client Admin', async () => {
+  it('creates tenant Accounts without consuming sales assignment rotation', async () => {
     const agents = [];
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Agent' } });
     for (const module of ['accounts']) await prisma.rolePermission.create({ data: { tenantId, roleId: role.id, module, canView: true, canEdit: true } });
@@ -237,9 +237,10 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const first = await call('/crm/accounts', 'POST', { name: 'First automatic' });
     const second = await call('/crm/accounts', 'POST', { name: 'Second automatic' });
     expect(first.status).toBe(201); expect(second.status).toBe(201);
-    expect(new Set([first.body.data.assignedUserId, second.body.data.assignedUserId])).toEqual(new Set(agents));
-    expect(first.body.data.assignedUserId).not.toBe(actorId);
-    expect((await call(`/crm/accounts/${first.body.data.id}`)).body.data.assignedUserId).toBe(first.body.data.assignedUserId);
+    for (const result of [first, second, await call(`/crm/accounts/${first.body.data.id}`)]) {
+      expect(result.body.data).not.toHaveProperty('assignedUserId');
+      expect(result.body.data).not.toHaveProperty('assignedUser');
+    }
   });
 
   it('persists field sections and technical identities through rename, ordering, safe moves and independent Details hiding', async () => {

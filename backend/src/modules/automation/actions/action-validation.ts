@@ -16,6 +16,7 @@ import { mailboxPermissions } from '../../../integrations/gmail/mailbox-sync.ser
 import { assertMailboxCustomerPermission, assertMailboxRecipients } from '../../../integrations/gmail/mailbox-recipient-access';
 import { authorizedMailbox } from '../../../integrations/gmail/mailbox-store';
 import { mailboxAddress, projectMailboxScope } from '../../../integrations/gmail/mailbox-scope';
+import { retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 
 export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   const matches = (['lead', 'contact', 'deal', 'account'] as const).filter(entity => typeof context[`${entity}.id`] === 'string');
@@ -23,6 +24,10 @@ export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   return matches[0];
 }
 export async function validateAction(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>, incomplete = false): Promise<void> {
+  if (retiredAccountWorkflowReferences({ trigger: `${entity}.updated`, actions: [action] }).length) {
+    if (incomplete) return;
+    throw new ValidationError(ACCOUNT_RETIREMENT_REASON);
+  }
   if (['send_campaign', 'create_notification'].includes(action.type)) {
     if (incomplete || action.enabled === false) return;
     throw new ValidationError('This action is retired. Disable or remove it before activating.');

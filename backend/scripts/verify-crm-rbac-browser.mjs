@@ -46,7 +46,7 @@ try {
   for (const [module, delegate] of Object.entries({ leads: 'lead', contacts: 'contact', accounts: 'account', deals: 'deal' })) {
     records[module] = {};
     for (const [kind, assignedUserId] of Object.entries({ own: a.id, other: b.id, unassigned: null })) records[module][kind] = await prisma[delegate].create({ data: {
-      tenantId: tenant.id, assignedUserId, ...(module === 'accounts' ? { name: `QA ${kind} Account` } : module === 'deals' ? {
+      tenantId: tenant.id, ...(module === 'accounts' ? {} : { assignedUserId }), ...(module === 'accounts' ? { name: `QA ${kind} Account` } : module === 'deals' ? {
         title: `QA ${kind} Deal`, ownerId: a.id, pipelineId: pipeline.id, stageId: stage.id, productInterestId: product.id, value: 100, productsNormalized: true,
       } : { firstName: 'QA', lastName: `${kind} ${module}`, email: `${kind}-${module}@example.test` }),
     } });
@@ -83,13 +83,17 @@ try {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${base}/crm/${module}/${records[module].other.id}`);
       await page.getByRole('tab', { name: /^Details/ }).click();
-      await page.getByText('Assigned Agent', { exact: true }).first().waitFor();
+      await page.getByText(module === 'accounts' ? 'Account Name' : 'Assigned Agent', { exact: true }).first().waitFor();
       await page.waitForFunction(() => !document.querySelector('[aria-label="Loading lead"], [aria-label="Loading contact"], [aria-label="Loading account"], [aria-label="Loading deal"]'));
-      assert.equal(await page.getByRole('button', { name: /^Edit (First name|Account name|Deal title|Title|Assigned Agent)$/i }).count(), 0, `${module} ${width} unauthorized editor`);
+      const editors = await page.getByRole('button', { name: /^Edit (First name|Account name|Deal title|Title|Assigned Agent)$/i }).count();
+      if (module === 'accounts') {
+        assert.ok(editors > 0, `Accounts module Edit permission allows editing at ${width}px`);
+        assert.equal(await page.getByText('Assigned Agent', { exact: true }).count(), 0);
+      } else assert.equal(editors, 0, `${module} ${width} unauthorized editor`);
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth + 1);
       assert.equal(overflow, false, `${module} ${width} document overflow`);
       await page.screenshot({ path: resolve(output, `${module}-readonly-${width}.png`), fullPage: true });
-      checks.push(`${module}: readable and read-only at ${width}px`);
+      checks.push(`${module}: ${module === 'accounts' ? 'editable with module permission' : 'readable and read-only'} at ${width}px`);
     }
   }
   for (const module of Object.keys(records)) for (const width of widths) {

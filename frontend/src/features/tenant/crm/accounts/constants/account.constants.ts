@@ -8,6 +8,5 @@ export const COMPANY_TABLE_COLUMNS = [
   { key: 'name',            label: 'Account Name' },
   { key: 'industry',        label: 'Industry' },
   { key: 'size',            label: 'Size' },
-  { key: 'assignedUserId',  label: 'Assigned Agent' },
   { key: 'createdAt',       label: 'Created' },
 ] as const;

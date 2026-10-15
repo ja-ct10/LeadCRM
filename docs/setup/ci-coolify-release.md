@@ -1,33 +1,16 @@
 # GitHub CI and Coolify deployment options
 
-The selected setup uses fast checks on protected pull requests and complete
-verification after merging to main. Existing Coolify Git connections and deployment
-controls remain unchanged. The unused GitHub deployment workflow is disabled in
-Actions because its production credentials and resource variables are unconfigured.
-Full main CI verifies the release source; it cannot gate direct Coolify deployments.
-The coordinated release procedure below is retained as an optional future setup.
+The selected setup requires complete verification before merging and repeats it on pushes to main. Existing Coolify Git connections and deployment protections remain in place.
 
-## Verification
+## Pull requests and main
 
-Both CI workflows use Ubuntu 24.04, Node 22 and npm 11.19.1.
-`.github/workflows/pr-ci.yml` runs only for pull requests targeting main:
+The PR workflow calls the same reusable full CI workflow used by main. It runs TypeScript (including focused backend test contracts), unit/component tests, production builds, native PostgreSQL migration/integration checks, browser acceptance, and Docker compatibility. One verified build is reused by isolated acceptance shards.
 
-| Pull-request check | Required verification |
-| --- | --- |
-| Frontend — TypeScript Check | Existing frontend TypeScript command |
-| Backend — TypeScript Check | Existing backend TypeScript command |
-| Shared Package — TypeScript Check | Shared TypeScript and documentation links, once |
-| Frontend — Tests | Complete frontend component suite |
-| Backend — Tests | Backend unit, isolation, CI coordination and release regressions |
-| Production Build | Shared, backend and frontend builds; unchanged generated companions |
-| PR CI — Required Gate | All six evidence owners and every required job succeeded |
+The protected status remains **PR CI — Required Gate**. Its always-running final job succeeds only when complete verification succeeds; failed, cancelled, or skipped verification cannot satisfy it. Branch protection continues to require an up-to-date PR and applies to administrators. PR runs cannot deploy production.
 
-These jobs run independently. The lint scripts already use TypeScript, so CI does
-not run a second identical lint command. Routine PR checks do not install browser
-or native database tooling, run acceptance rehearsals, or build Docker images.
-Their report uses `ci.profile = pr` and does not claim integration/browser coverage.
+Update affected shared contracts, fixtures and acceptance assertions in the same PR as each module change. Retired functionality must be replaced with assertions for its new behavior; do not bypass the whole suite.
 
-`.github/workflows/ci.yml` runs complete verification on pushes to main and supports
+`.github/workflows/ci.yml` is callable by PR CI, runs complete verification on pushes to main, and supports
 manual execution. It uses native PostgreSQL 18, plus the existing root-context
 Docker compatibility job. The full
 `npm run qa:local -- --native` command remains available locally. CI runs those
@@ -67,7 +50,7 @@ retains its complete checks. For local diagnosis, `--workspace=backend` or
 `--workspace=frontend` selects unit tests and `--shard=1/3` through `3/3` selects
 integration/browser suites. `--workspace` also selects frontend, backend or shared
 TypeScript checks; documentation links run only with shared or an unqualified
-TypeScript invocation. `--ci --profile=pr` selects the fast CI profile; omitted
+TypeScript invocation. `--ci --profile=pr` selects the legacy fast local profile; GitHub PR CI always uses full verification. Omitted
 profile defaults to full. An individual shard does not establish full release
 acceptance. CI rejects filters, exclusions and individual-case selection.
 
@@ -125,7 +108,7 @@ Changing profiles does not hide earlier failed runs or turn failures into succes
 Keep `Deploy verified main to Coolify` disabled while using existing Coolify
 deployment controls. The coordinator and its regression tests remain available.
 No production secrets, application settings, webhooks or database settings need
-changing for the fast PR setup.
+changing for complete PR verification.
 
 Optionally activate coordinated GitHub releases only after the repair PR and full
 main CI are green and a private SQL-only

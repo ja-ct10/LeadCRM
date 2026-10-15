@@ -72,12 +72,11 @@ it('preserves distinct Product IDs when a retired catalog name is reused', async
   const { lead } = await fixture.inquiry('Product identity customer');
   await fixture.db.productInterest.update({ where: { id: 'product' }, data: { active: false } });
   const duplicate = await fixture.db.productInterest.create({ data: { tenantId: 'conversion', name: 'CRM Enterprise', dealValue: 900 } });
-  const account = await fixture.db.account.create({ data: { tenantId: 'conversion', name: lead.companyName!, productsNormalized: true,
-    productLinks: { create: { productInterestId: duplicate.id, position: 0, interested: true, activeProduct: true } } } });
+  const account = await fixture.db.account.create({ data: { tenantId: 'conversion', name: lead.companyName!,
+     } });
   const existing = await fixture.db.contact.create({ data: { tenantId: 'conversion', firstName: 'Existing', lastName: 'Customer', email: lead.email,
     accountId: account.id, productsNormalized: true, productLinks: { create: { productInterestId: duplicate.id, position: 0, interested: true, activeProduct: true } } } });
   const accountBefore = await fixture.db.account.findUniqueOrThrow({ where: { id: account.id } });
-  const accountLinksBefore = await fixture.db.accountProductInterest.findMany({ where: { accountId: account.id } });
   const result = await fixture.convert(lead.id);
   expect(result.contact.id).toBe(existing.id);
   const contactLinks = await fixture.db.contactProductInterest.findMany({ where: { contactId: existing.id } });
@@ -85,8 +84,6 @@ it('preserves distinct Product IDs when a retired catalog name is reused', async
   expect(contactLinks.every(link => link.interested)).toBe(true);
   expect(contactLinks.find(link => link.productInterestId === duplicate.id)?.activeProduct).toBe(true);
   expect(contactLinks.find(link => link.productInterestId === 'product')?.activeProduct).toBe(false);
-  const accountLinks = await fixture.db.accountProductInterest.findMany({ where: { accountId: account.id } });
-  expect(accountLinks).toEqual(accountLinksBefore);
   expect(await fixture.db.account.findUniqueOrThrow({ where: { id: account.id } })).toEqual(accountBefore);
   expect(await fixture.db.contact.findFirst({ where: { id: existing.id }, select: { productsNormalized: true } })).toEqual({ productsNormalized: true });
 });

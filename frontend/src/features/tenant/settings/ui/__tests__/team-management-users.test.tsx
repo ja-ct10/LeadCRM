@@ -137,6 +137,7 @@ it('the header reuses impact, replacement, confirmation, mutation and immediate 
   fireEvent.click(screen.getByRole('button', { name: 'User actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Deactivate' }));
   const dialog = await screen.findByRole('alertdialog', { name: 'Reassign Records and Tasks' });
+  expect(within(dialog).queryByText('accounts')).toBeNull();
   expect(mocks.impact).toHaveBeenCalledExactlyOnceWith('a');
   expect(within(dialog).getByRole('button', { name: 'Continue' })).toHaveProperty('disabled', true);
   fireEvent.change(within(dialog).getByRole('combobox', { name: /Assigned Agent/ }), { target: { value: 'replacement' } });

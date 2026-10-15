@@ -318,12 +318,11 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [{ type: 'create_task', config: { title: 'Complete follow-up for entered Deal stage', dueDaysFromNow: 1, priority: 'Medium' } }],
   },
   {
-    name: 'Ownerless Account Routing',
-    description: 'Assign an eligible agent when an Account is updated with no assigned agent. Choose an agent, role or Group before activating. Existing assigned Accounts do not match; this is an update workflow, not a scheduled cleanup.',
+    name: 'Account Update Follow-up',
+    description: 'Create a follow-up task when an Account changes. Choose a task assignee, role or Group before activating.',
     trigger: 'account.updated',
     isActive: false,
-    conditions: { operator: 'AND', conditions: [{ field: 'account.assignedUserId', operator: 'is_empty', value: null }] },
-    actions: [{ type: 'assign_owner', config: { userId: '' } }],
+    actions: [{ type: 'create_task', config: { title: 'Review Account update', dueDaysFromNow: 1, priority: 'Medium', assignmentTarget: { type: 'user', id: '' } } }],
   },
 ];
 

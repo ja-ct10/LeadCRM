@@ -86,7 +86,7 @@ export function WorkflowExecutionLogModal({
             <DropdownMenu><DropdownMenuTrigger asChild><Button variant="ghost" size="icon" aria-label="Workflow actions" title="Workflow actions"><MoreHorizontal size={16} /></Button></DropdownMenuTrigger>
               <DropdownMenuContent aria-label="Workflow actions menu">
                 {userCan('workflows', 'canEdit') && <DropdownMenuItem disabled={unavailable} onSelect={() => router.push(`/automation/workflows/${workflowId}/edit`)}><Edit size={16} />Edit</DropdownMenuItem>}
-                {userCan('workflows', 'canActivate') && <DropdownMenuItem disabled={unavailable} onSelect={() => void mutate(() => workflowsApi.toggle(workflowId, !workflow!.isActive), workflow?.isActive ? 'Workflow paused.' : 'Workflow activated.')}>
+                {userCan('workflows', 'canActivate') && <DropdownMenuItem disabled={unavailable || !!workflow?.repairReason} onSelect={() => void mutate(() => workflowsApi.toggle(workflowId, !workflow!.isActive), workflow?.isActive ? 'Workflow paused.' : 'Workflow activated.')}>
                   {workflow?.isActive ? <Pause size={16} /> : <Play size={16} />}{workflow?.isActive ? 'Pause' : 'Resume'}
                 </DropdownMenuItem>}
                 {userCan('workflows', 'canDuplicate') && <DropdownMenuItem disabled={busy || loading || !workflow} onSelect={() => void mutate(() => workflowsApi.duplicate(workflowId), 'Workflow duplicated as a draft.')}><Copy size={16} />Duplicate</DropdownMenuItem>}
@@ -97,6 +97,7 @@ export function WorkflowExecutionLogModal({
           </div>
         </header>
         {error && <p role="alert" className="px-4 py-2 text-sm text-red-600">{error}</p>}
+        {workflow?.repairReason && <p role="alert" className="px-4 pt-4 text-sm text-destructive sm:px-6">{workflow.repairReason}</p>}
         {workflow?.description && <p className="px-4 pt-4 text-sm text-muted-foreground [overflow-wrap:anywhere] sm:px-6">{workflow.description}</p>}
         {canViewRuns ? <WorkflowRuns key={workflowId} workflowId={workflowId} layout="panel" refreshVersion={revision} onLoadingChange={setRunsLoading} /> : <p className="p-4 text-sm text-muted-foreground">Run history requires permission to view workflow runs.</p>}
         <ConfirmActionDialog open={archiveOpen} onOpenChange={setArchiveOpen} title="Archive workflow?" description="This pauses the workflow and preserves its run history." confirmLabel="Archive" variant="destructive" isLoading={busy}

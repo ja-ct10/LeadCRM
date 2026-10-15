@@ -74,10 +74,10 @@ function getWorkflowUpdateFields(entity, customFields = [], layout) {
         ];
     else if (entity === 'account')
         standard = [text('name', 'Account Name', true, 255), choice('industry', 'Industry', company_industries_1.COMPANY_INDUSTRIES),
-            choice('size', 'Size', record_experience_1.COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'), assignment, product,
+            choice('size', 'Size', record_experience_1.COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'),
             { ...text('notes', 'Notes'), multiline: true },
             // These remain editable in Account Edit; retain their supported automation contract.
-            { ...text('internalNotes', 'Internal Notes'), multiline: true }, { field: 'activeProductIds', label: 'Active Products', type: 'products' },
+            { ...text('internalNotes', 'Internal Notes'), multiline: true },
         ];
     else
         standard = [text('firstName', 'First Name', true, 100), text('lastName', 'Last Name', true, 100), text('email', 'Email', true, 254), text('phone', 'Phone', false, entity === 'contact' ? 100 : 2000),
@@ -109,7 +109,7 @@ exports.findTrigger = findTrigger;
 /** Legacy names map only on exact, unique catalog matches. Unresolved selections remain repairable. */
 function normalizeWorkflowReferences(draft, products) {
     const entity = (0, exports.findTrigger)(draft.trigger)?.entity;
-    if (!entity)
+    if (!entity || entity === 'account')
         return draft;
     const resolveProduct = (value) => {
         if (typeof value !== 'string')
@@ -171,7 +171,7 @@ function getAvailableActions() {
                 recipient: { type: 'select', label: 'Recipient', required: true, options: ['record', 'primary_contact', 'primary_lead'] },
                 message: { type: 'string', label: 'SMS message', required: true },
             } },
-        { type: 'assign_owner', label: 'Assign Agent', description: 'Assign the record to an eligible workspace agent.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
+        { type: 'assign_owner', label: 'Assign Agent', description: 'Assign the record to an eligible workspace agent.', entities: ['lead', 'contact', 'deal'], configSchema: {
                 userId: { type: 'user', label: 'Agent', required: false },
                 assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
             } },

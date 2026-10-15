@@ -5,6 +5,7 @@ import { isValidModule, isValidSortField } from './column-registry';
 import { AppError } from '../../shared/errors/app-error';
 import { findUserEffectivePermissions } from '../administration/roles/roles.repository';
 import { isSuperRole } from '../../shared/utils/is-super-role';
+import { isRetiredAccountField } from '@leadcrm/shared';
 
 // ─────────────────────────────────────────────────────
 // Table Preferences Controller
@@ -375,6 +376,9 @@ export async function saveFilters(
     // Store filter conditions as JSON (max 50 filter conditions)
     if (conditions.length > 50) {
       throw new AppError('Maximum 50 filter conditions allowed', 400);
+    }
+    if (module === 'accounts' && conditions.some(condition => typeof condition?.field === 'string' && (isRetiredAccountField(condition.field, 'account') || ['owner', 'scope'].includes(condition.field)))) {
+      throw new AppError('Account assignment and product filters are retired.', 400);
     }
 
     await repo.upsertUserPreference(tenantId, userId, module, 'filters', { conditions });

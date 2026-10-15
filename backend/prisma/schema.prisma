@@ -186,7 +186,6 @@ model User {
   tenant             Tenant             @relation(fields: [tenantId], references: [id])
   userRoles          UserRole[]
   sessions           Session[]
-  organizationsOwned Account[]
   assignedLeads      Lead[]             @relation("AssignedLeads")
   createdLeads       Lead[]             @relation("CreatedLeads")
   updatedLeads       Lead[]             @relation("UpdatedLeads")
@@ -373,13 +372,8 @@ model TenantGroupMember {
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
   customFieldValues CustomFieldValue[]
-  // False only for legacy rows requiring explicit product reconciliation.
-  productsNormalized Boolean @default(false)
-  productLinks AccountProductInterest[]
-  productInterestOther String?
   id               String    @id @default(uuid())
   tenantId         String
-  assignedUserId   String?
   name             String
   industry         String?
   size             String? // "1-10" | "11-50" | "51-200" | "200+"
@@ -387,8 +381,6 @@ model Account {
   notes            String?   @db.Text
   internalNotes    String?   @db.Text
   tags             String[] @default([])
-  productInterests String[] @default([])
-  activeProducts   String[] @default([])
   address          String?
   isArchived       Boolean   @default(false)
   deletedAt        DateTime?
@@ -397,7 +389,6 @@ model Account {
   updatedAt        DateTime  @default(now()) @updatedAt
 
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
-  assignedUser User?      @relation(fields: [assignedUserId], references: [id])
   leads        Lead[]
   deals        Deal[]
   activities   Activity[]
@@ -407,7 +398,6 @@ model Account {
   @@index([tenantId, isArchived])
   @@index([tenantId, name])
   @@index([tenantId, createdAt])
-  @@index([tenantId, assignedUserId])
   @@index([tenantId])
   taskLinks TaskAccount[]
 
@@ -1847,7 +1837,6 @@ model ProductInterest {
 
   leadLinks LeadProductInterest[]
   contactLinks ContactProductInterest[]
-  accountLinks AccountProductInterest[]
   @@unique([id, tenantId])
 
   @@index([tenantId, active])
@@ -1877,18 +1866,6 @@ model ContactProductInterest {
   @@index([tenantId, productInterestId])
 }
 
-model AccountProductInterest {
-  accountId String
-  productInterestId String
-  tenantId String
-  position Int @default(0)
-  interested Boolean @default(true)
-  activeProduct Boolean @default(false)
-  account Account @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Cascade)
-  product ProductInterest @relation(fields: [productInterestId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  @@id([accountId, productInterestId])
-  @@index([tenantId, productInterestId])
-}
 
 // One explicit Deal selection per provider account/thread; historical messages stay separate.
 model MailboxThreadAssociation {

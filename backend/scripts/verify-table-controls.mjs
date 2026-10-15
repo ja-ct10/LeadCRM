@@ -24,7 +24,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
   };
   const common = { tenantId: tenant.id };
   const foreignAdmin = await prisma.user.create({ data: { tenantId: foreignTenant.id, firstName: 'Search Target Foreign', lastName: 'Admin', email: 'foreign-admin@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
-  await prisma.account.create({ data: { tenantId: foreignTenant.id, name: 'Search Target Foreign Account', productsNormalized: true } });
+  await prisma.account.create({ data: { tenantId: foreignTenant.id, name: 'Search Target Foreign Account',  } });
   await prisma.contact.create({ data: { tenantId: foreignTenant.id, firstName: 'Search Target Foreign', lastName: 'Contact', productsNormalized: true } });
   await prisma.task.create({ data: { tenantId: foreignTenant.id, title: 'Search Target Foreign Task', assignedUserId: foreignAdmin.id, dueDate: new Date(), createdById: foreignAdmin.id } });
   await prisma.workflow.create({ data: { tenantId: foreignTenant.id, name: 'Search Target Foreign Workflow', trigger: 'lead.created', actions: [] } });
@@ -32,7 +32,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
   // Enough real records for every table to test a non-first page.
   for (let index = 4; index <= 32; index++) {
     const number = String(index).padStart(2, '0');
-    await prisma.account.create({ data: { ...common, name: `Search Target Account ${number}`, productsNormalized: true } });
+    await prisma.account.create({ data: { ...common, name: `Search Target Account ${number}`,  } });
     await prisma.contact.create({ data: { ...common, firstName: 'Search Target', lastName: `Person ${number}`, productsNormalized: true } });
     await prisma.task.create({ data: { ...common, title: `Search Target Task ${number}`, assignedUserId: admin.id, dueDate: new Date(), createdById: admin.id } });
     await prisma.workflow.create({ data: { ...common, name: `Search Target Workflow ${number}`, trigger: 'lead.created', actions: [] } });

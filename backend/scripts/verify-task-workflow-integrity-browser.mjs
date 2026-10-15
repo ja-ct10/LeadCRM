@@ -41,7 +41,7 @@ try {
   await prisma.userRole.create({ data: { tenantId, userId: denied.id, roleId: deniedRole.id } });
   const adminToken = (await issueAuthSession(admin)).token, staffToken = (await issueAuthSession(agent)).token, deniedToken = (await issueAuthSession(denied)).token;
   let browserToken = adminToken, slowPermissions = false;
-  const account = await prisma.account.create({ data: { tenantId, name: 'Integrity Account', assignedUserId: agent.id } });
+  const account = await prisma.account.create({ data: { tenantId, name: 'Integrity Account',  } });
   const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Integrity', lastName: 'Lead', assignedUserId: agent.id, status: 'Warm' } });
   const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Integrity', lastName: 'Contact', assignedUserId: agent.id } });
   const product = await prisma.productInterest.create({ data: { tenantId, name: 'Integrity Product', dealValue: 15000 } });

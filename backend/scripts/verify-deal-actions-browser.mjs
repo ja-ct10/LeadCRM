@@ -63,7 +63,7 @@ try {
   const target = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Lead',order:0,isDefault:true}});
   const required = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Review',order:1,requiredFields:['industry']}});
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', assignedUserId: agents[0].id } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
   const fixtures = {};

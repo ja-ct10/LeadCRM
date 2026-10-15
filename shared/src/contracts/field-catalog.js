@@ -5,6 +5,7 @@ exports.getCrmFieldCatalog = getCrmFieldCatalog;
 exports.defaultFieldLayout = defaultFieldLayout;
 exports.upgradeAssignmentLayout = upgradeAssignmentLayout;
 exports.resolveCrmField = resolveCrmField;
+const account_retirement_1 = require("./account-retirement");
 const zod_1 = require("zod");
 const custom_field_identity_1 = require("./custom-field-identity");
 const company_industries_1 = require("../constants/company-industries");
@@ -24,6 +25,8 @@ exports.FieldLayoutActionSchema = zod_1.z.discriminatedUnion('action', [
     zod_1.z.object({ action: zod_1.z.literal('reorderFields'), groupId: zod_1.z.string().min(1), technicalKeys: zod_1.z.array(zod_1.z.string().min(1)).min(1).max(200), expectedRevision: layoutRevision }).strict(),
 ]);
 const defaultFieldGroupId = (module, label) => {
+    if (module === 'accounts')
+        return { 'basic information': 'accounts:section:0', address: 'accounts:section:1', notes: 'accounts:section:4', 'additional information': account_retirement_1.ACCOUNT_ADDITIONAL_GROUP_ID }[(0, closing_requirements_1.customFieldNameKey)(label)] ?? 'accounts:additional-information';
     const legacyContactGroup = module === 'contacts' ? { 'status & classification': 1, relationships: 2 }[(0, closing_requirements_1.customFieldNameKey)(label)] : undefined;
     return module === 'deals' && (0, closing_requirements_1.customFieldNameKey)(label) === 'closed won requirements' ? closing_requirements_1.CLOSED_WON_GROUP_ID : `${module}:section:${legacyContactGroup ?? closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module].findIndex(group => (0, closing_requirements_1.customFieldNameKey)(group) === (0, closing_requirements_1.customFieldNameKey)(label))}`;
 };
@@ -32,7 +35,7 @@ const person = [['firstName', 'First Name', 'text', 0, true], ['lastName', 'Last
 const native = {
     leads: [...person, ['companyName', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account']],
     contacts: [...person, ['company', 'Company Name', 'text', 0], ['accountId', 'Account', 'reference', 2, false, undefined, 'account'], ['notes', 'Notes', 'longText', 3]],
-    accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, company_industries_1.COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, record_experience_1.COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Full Address', 'longText', 1], ['assignedUserId', 'Assigned Agent', 'reference', 2, false, undefined, 'user'], ['productInterestIds', 'Product Interest', 'products', 3], ['activeProductIds', 'Active Products', 'products', 3], ['notes', 'Notes', 'longText', 4], ['internalNotes', 'Internal Notes', 'longText', 4]],
+    accounts: [['name', 'Account Name', 'text', 0, true], ['industry', 'Industry', 'dropdown', 0, false, company_industries_1.COMPANY_INDUSTRIES], ['size', 'Company Size', 'dropdown', 0, false, record_experience_1.COMPANY_SIZE_OPTIONS], ['website', 'Website', 'text', 0], ['address', 'Full Address', 'longText', 1], ['notes', 'Notes', 'longText', 2], ['internalNotes', 'Internal Notes', 'longText', 2]],
     deals: [['title', 'Title', 'text', 0, true], ['value', 'Deal Value', 'number', 0], ['productInterestIds', 'Product Interest', 'products', 0, true], ['pipelineId', 'Pipeline', 'reference', 0, true, undefined, 'pipeline'], ['stageId', 'Stage', 'reference', 0, true, undefined, 'stage'], ['priority', 'Priority', 'dropdown', 0, false, ['LOW', 'MEDIUM', 'HIGH']], ['expectedCloseDate', 'Expected Close Date', 'date', 2], ['assignedUserId', 'Assigned Agent', 'reference', 4, false, undefined, 'user'], ['accountId', 'Account', 'reference', 1, false, undefined, 'account'], ['leadSource', 'Lead Source', 'dropdown', 2, false, record_experience_1.LEAD_SOURCES], ['industry', 'Industry', 'dropdown', 2, false, company_industries_1.COMPANY_INDUSTRIES], ['address', 'Address', 'longText', 2]],
 };
 exports.CRM_SYSTEM_FIELDS = Object.fromEntries(closing_requirements_1.CUSTOM_FIELD_MODULES.map(module => [module, [...native[module], ['createdAt', 'Created', 'date', 0]].map(([technicalKey, label, type, groupIndex, mandatory = false, options, reference], order) => ({ technicalKey, label: module === 'contacts' && technicalKey === 'source' ? 'Source' : label, module, kind: 'System', type, groupId: (0, exports.defaultFieldGroupId)(module, closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex]), group: closing_requirements_1.CUSTOM_FIELD_BUILT_IN_GROUPS[module][groupIndex], order, required: mandatory, mandatory, active: true, visibleInForm: !['value', 'createdAt'].includes(technicalKey), visibleInDetails: true, conditionAvailable: true, personalizationAvailable: true, ...(options ? { options } : {}), ...(reference ? { reference } : {}) }))]));
@@ -47,7 +50,7 @@ function getCrmFieldCatalog(module, definitions = [], layout) {
         return { ...resolved, group: groups.find(group => group.id === resolved.groupId)?.label ?? field.group };
     });
     const custom = definitions.map(closing_requirements_1.normalizeCustomField).filter(field => field.module === module && !field.deletedAt).map((field) => {
-        const groupId = field.groupId ?? groups.find(group => (0, closing_requirements_1.customFieldNameKey)(group.label) === (0, closing_requirements_1.customFieldNameKey)(field.group))?.id ?? (0, exports.defaultFieldGroupId)(module, field.group);
+        const groupId = module === 'accounts' && (account_retirement_1.ACCOUNT_RETIRED_GROUP_IDS.includes(field.groupId ?? '') || !field.groupId && ['Assigned Agent', 'Relationships', 'Products & Interests'].includes(field.group)) ? (0, account_retirement_1.accountAdditionalGroupId)(groups) : field.groupId ?? groups.find(group => (0, closing_requirements_1.customFieldNameKey)(group.label) === (0, closing_requirements_1.customFieldNameKey)(field.group))?.id ?? (0, exports.defaultFieldGroupId)(module, field.group);
         return { technicalKey: (0, custom_field_identity_1.customFieldTechnicalKey)(field), canonicalTechnicalKey: `customFieldValues.${field.id}`, customFieldId: field.id, label: field.name, module, kind: (0, closing_requirements_1.isSystemClosingField)(field) ? 'System' : 'Custom', type: field.type === 'Text' ? 'text' : field.type === 'Long Text' ? 'longText' : field.type === 'Number' ? 'number' : field.type === 'Date' ? 'date' : field.type === 'Dropdown' ? 'dropdown' : 'file', groupId, group: groups.find(group => group.id === groupId)?.label ?? field.group, order: field.order, required: field.required, mandatory: false, active: field.active, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, conditionAvailable: field.active && !(0, closing_requirements_1.isClosedWonField)(field), personalizationAvailable: field.active && field.type !== 'File Upload' && !(0, closing_requirements_1.isClosedWonField)(field), options: field.options, ...(field.type === 'File Upload' ? { unavailableReason: 'Private files support presence conditions only; file links cannot be personalized.' } : {}) };
     });
     return [...standard, ...custom].sort((a, b) => (groups.find(group => group.id === a.groupId)?.order ?? 100000) - (groups.find(group => group.id === b.groupId)?.order ?? 100000) || a.order - b.order || a.technicalKey.localeCompare(b.technicalKey));
@@ -57,7 +60,7 @@ function defaultFieldLayout(module) {
 }
 /** Upgrade only untouched built-in assignment defaults, identified by stable IDs. */
 function upgradeAssignmentLayout(layout, definitions = []) {
-    const next = structuredClone(layout);
+    const next = structuredClone((0, account_retirement_1.upgradeAccountFieldLayout)(layout));
     const module = layout.module;
     if (module === 'accounts')
         for (const key of ['city', 'province', 'country'])
