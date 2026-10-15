@@ -284,11 +284,11 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
       users: { ...common, firstName: 'Search Target Fresh', lastName: 'Acceptance', role: 'Sales', status: 'ACTIVE', email: 'fresh-total@camxian.com', mustChangePassword: false, onboardingCompletedAt: new Date() },
     };
     await prisma[module.model].create({ data: freshRecord[module.id] });
-    const count = () => reads.filter(read => read.path === module.api && read.method === 'GET').length;
+    const count = () => reads.filter(read => read.path === module.api && read.method === 'GET' && new URLSearchParams(read.query).get('search') === module.search).length;
     const calls = count();
     control.holdPath = module.api;
     await refresh.click();
-    await until(async () => control.pending === 1, module.id + ' refresh reached HTTP');
+    await until(async () => control.pending >= 1, module.id + ' refresh reached HTTP');
     assert.equal(await refresh.isDisabled(), true);
     assert.ok(await refresh.locator('.animate-spin').count());
     const spinner = region.getByRole('status', { name: 'Refreshing data...' });

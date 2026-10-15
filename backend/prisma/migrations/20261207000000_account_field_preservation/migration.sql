@@ -76,7 +76,7 @@ CREATE FUNCTION crm_history.capture_account_retirement() RETURNS bigint LANGUAGE
 DECLARE captured bigint := 0; count_rows bigint;
 BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='Account' AND column_name='assignedUserId') THEN RETURN 0; END IF;
-  LOCK TABLE public."Account", public."AccountProductInterest", public."Workflow", public."Template", public."TenantPreference", public."ClosingFieldDefinition" IN SHARE ROW EXCLUSIVE MODE;
+  LOCK TABLE public."Account", public."AccountProductInterest", public."Workflow", public."Template", public."TenantPreference", public."UserPreference", public."ClosingFieldDefinition" IN SHARE ROW EXCLUSIVE MODE;
   INSERT INTO crm_history.account_retired_values(tenant_id, account_id, retired_values, product_links)
   SELECT a."tenantId", a.id, snapshot.values, snapshot.links FROM public."Account" a
   CROSS JOIN LATERAL (SELECT
@@ -91,6 +91,7 @@ BEGIN
       SELECT 1 FROM public."Workflow" w, jsonb_array_elements(CASE WHEN jsonb_typeof(w.actions)='array' THEN w.actions ELSE '[]'::jsonb END) a
       WHERE w."tenantId"=t."tenantId" AND a->>'type'='send_email' AND a #>> '{config,templateId}'=t.id AND crm_history.resolved_account_workflow_references(w."tenantId",w.trigger,w.conditions,w.actions))
     UNION ALL SELECT p."tenantId",'TenantPreference',p.id,to_jsonb(p) FROM public."TenantPreference" p WHERE p.module='accounts'
+    UNION ALL SELECT p."tenantId",'UserPreference',p.id,to_jsonb(p) FROM public."UserPreference" p WHERE p.module='accounts'
     UNION ALL SELECT f."tenantId",'ClosingFieldDefinition',f.id,to_jsonb(f) FROM public."ClosingFieldDefinition" f WHERE f.definition->>'module'='accounts'
   ) source WHERE NOT EXISTS (SELECT 1 FROM crm_history.account_retired_configuration h WHERE h.tenant_id=source.tenant_id AND h.source_type=source.kind AND h.source_id=source.id AND h.payload=source.payload);
   GET DIAGNOSTICS count_rows = ROW_COUNT;
@@ -130,7 +131,11 @@ BEGIN
   WITH targets AS (
     SELECT tenant_id,crm_history.account_additional_group(COALESCE((SELECT p.value FROM public."TenantPreference" p WHERE p."tenantId"=tenant_id AND p.module='accounts' AND p.key='field-layout'),'{}'::jsonb)) AS group_id FROM unnest(moved_tenants) tenant_id
   ), ordered AS (
-    SELECT f.id,t.group_id,row_number() OVER (PARTITION BY f."tenantId" ORDER BY CASE WHEN definition->>'groupId'='accounts:section:2' OR nullif(definition->>'groupId','') IS NULL AND definition->>'group' IN ('Assigned Agent','Relationships') THEN 2 WHEN definition->>'groupId'='accounts:section:3' OR nullif(definition->>'groupId','') IS NULL AND definition->>'group'='Products & Interests' THEN 3 ELSE 5 END,COALESCE((definition->>'order')::int,0),f.id)-1 AS ordinal
+    SELECT f.id,t.group_id,row_number() OVER (PARTITION BY f."tenantId" ORDER BY COALESCE(
+      (SELECT (g->>'order')::int FROM public."TenantPreference" p CROSS JOIN LATERAL jsonb_array_elements(p.value->'groups') g
+        WHERE p."tenantId"=f."tenantId" AND p.module='accounts' AND p.key='field-layout'
+        AND (g->>'id'=f.definition->>'groupId' OR nullif(f.definition->>'groupId','') IS NULL AND g->>'label'=f.definition->>'group') LIMIT 1),
+      CASE WHEN definition->>'groupId'='accounts:section:2' OR nullif(definition->>'groupId','') IS NULL AND definition->>'group' IN ('Assigned Agent','Relationships') THEN 2 WHEN definition->>'groupId'='accounts:section:3' OR nullif(definition->>'groupId','') IS NULL AND definition->>'group'='Products & Interests' THEN 3 ELSE 5 END),COALESCE((definition->>'order')::int,0),f.id)-1 AS ordinal
     FROM public."ClosingFieldDefinition" f JOIN targets t ON t.tenant_id=f."tenantId" WHERE definition->>'module'='accounts' AND (definition->>'groupId' IN ('accounts:section:2','accounts:section:3',t.group_id) OR nullif(definition->>'groupId','') IS NULL AND definition->>'group' IN ('Assigned Agent','Relationships','Products & Interests','Additional Information'))
   ) UPDATE public."ClosingFieldDefinition" f SET definition=definition||jsonb_build_object('group','Additional Information','groupId',o.group_id,'order',o.ordinal),"updatedAt"=now() FROM ordered o WHERE f.id=o.id;
   UPDATE public."TenantPreference" p SET value=crm_history.normalize_account_layout(p.value)||jsonb_build_object('revision',COALESCE((p.value->>'revision')::int,0)+1),"updatedAt"=now()

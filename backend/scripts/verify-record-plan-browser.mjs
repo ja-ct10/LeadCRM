@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const runName = process.env.RECORD_PLAN_BROWSER_RUN_NAME || '';
@@ -93,8 +93,7 @@ try {
   assert.ok(ready, 'Built Next server did not become ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(auth) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await isolateBrowserContext(context);
+    const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
     await context.addInitScript(() => {
       const NativeEventSource = window.EventSource;
       window.__recordPlanStreams = {};

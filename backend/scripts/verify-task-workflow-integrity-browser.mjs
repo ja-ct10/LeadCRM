@@ -1,5 +1,5 @@
 // Real local API, worker, native PostgreSQL and browser; no application database or providers.
-import { isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -63,8 +63,7 @@ try {
   for (let attempt = 0; attempt < 100; attempt++) { try { if ((await fetch(base + '/login')).ok) { ready = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }
   assert.ok(ready, 'Local frontend did not start.');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ timezoneId: 'America/New_York', viewport: { width: 1440, height: 900 } });
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser, { timezoneId: 'America/New_York', viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: adminToken, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
   page.on('pageerror', error => errors.push(error.message));

@@ -1,7 +1,7 @@
 BEGIN;
 SET LOCAL lock_timeout = '10s';
 SET LOCAL statement_timeout = '60s';
-LOCK TABLE public."Account",public."AccountProductInterest",public."Workflow",public."Template",public."TenantPreference",public."ClosingFieldDefinition" IN SHARE ROW EXCLUSIVE MODE;
+LOCK TABLE public."Account",public."AccountProductInterest",public."Workflow",public."Template",public."TenantPreference",public."UserPreference",public."ClosingFieldDefinition" IN SHARE ROW EXCLUSIVE MODE;
 DO $$ BEGIN
   IF EXISTS (SELECT 1 FROM public."Account") AND COALESCE(obj_description('crm_history.account_retired_values'::regclass),'') !~ '^leadcrm-accounts-fields-compatible-v1:[0-9a-f]{40}$' THEN
     RAISE EXCEPTION 'ACCOUNT_FIELDS_VERIFIED_CUTOVER_REQUIRED';

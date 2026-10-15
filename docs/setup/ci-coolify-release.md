@@ -10,6 +10,8 @@ The protected status remains **PR CI — Required Gate**. Its always-running fin
 
 Update affected shared contracts, fixtures and acceptance assertions in the same PR as each module change. Retired functionality must be replaced with assertions for its new behavior; do not bypass the whole suite.
 
+Routed browser fixtures use the [shared browser context helper](../../backend/scripts/verify-browser-matrix.mjs), which blocks service workers so they cannot bypass fixture API interception. This follows [Playwright's network isolation guidance](https://playwright.dev/docs/network#missing-network-events-and-service-workers). Production service-worker behavior has separate frontend tests. Manual refresh assertions distinguish button clicks from background reads.
+
 `.github/workflows/ci.yml` is callable by PR CI, runs complete verification on pushes to main, and supports
 manual execution. It uses native PostgreSQL 18, plus the existing root-context
 Docker compatibility job. The full

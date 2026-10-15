@@ -21,11 +21,14 @@ describe('Account field retirement', () => {
       INSERT INTO "Account" (id,"tenantId",name,"assignedUserId","productInterests","activeProducts","productInterestOther","productsNormalized","updatedAt") VALUES ('retirement-account','retirement-tenant','Company','retirement-owner',ARRAY['Unresolved historical text'],ARRAY['Purchased'],'Historical detail',false,now());
       INSERT INTO "Account" (id,"tenantId",name,"isArchived","updatedAt") VALUES ('retirement-archived','retirement-tenant','Archived company',true,now());
       INSERT INTO "AccountProductInterest" ("accountId","tenantId","productInterestId",position,interested,"activeProduct") VALUES ('retirement-account','retirement-tenant','retirement-product',7,true,true);
+      INSERT INTO "UserPreference" (id,"tenantId","userId",module,key,value,"updatedAt") VALUES
+      ('retirement-columns','retirement-tenant','retirement-owner','accounts','columns','[{"id":"name","visible":true,"order":0},{"id":"assignedUser","visible":true,"order":1}]',now()),
+      ('retirement-filters','retirement-tenant','retirement-owner','accounts','filters','[{"field":"assignedUserId","operator":"equals","value":"retirement-owner"}]',now());
       INSERT INTO "Workflow" (id,"tenantId",name,trigger,conditions,actions,"isActive",status,"updatedAt") VALUES
       ('retired-workflow','retirement-tenant','Account assignment','account.updated','{"operator":"AND","conditions":[{"field":"account.assignedUserId","operator":"equals","value":"retirement-owner"}]}','[]',true,'ACTIVE',now()),
       ('healthy-workflow','retirement-tenant','Contact assignment','contact.updated',null,'[{"type":"assign_owner","config":{"userId":"retirement-owner"}}]',true,'ACTIVE',now()),
       ('task-workflow','retirement-tenant','Account follow-up','account.updated',null,'[{"type":"create_task","config":{"assignedUserId":"retirement-owner","title":"Follow up"}}]',true,'ACTIVE',now());
-      INSERT INTO "TenantPreference" (id,"tenantId",module,key,value,"updatedAt") VALUES ('retirement-layout','retirement-tenant','accounts','field-layout','{"version":1,"revision":3,"module":"accounts","groups":[{"id":"accounts:section:0","label":"Basic Information","order":0},{"id":"accounts:section:2","label":"Assigned Agent","order":2},{"id":"accounts:section:3","label":"Products & Interests","order":3},{"id":"accounts:section:4","label":"Notes","order":4}],"fields":{"assignedUserId":{"label":"Agent","groupId":"accounts:section:2","order":1,"visibleInForm":true,"visibleInDetails":true},"custom_note":{"label":"Custom","groupId":"accounts:section:3","order":2,"visibleInForm":true,"visibleInDetails":true}}}',now());
+      INSERT INTO "TenantPreference" (id,"tenantId",module,key,value,"updatedAt") VALUES ('retirement-layout','retirement-tenant','accounts','field-layout','{"version":1,"revision":3,"module":"accounts","groups":[{"id":"accounts:section:0","label":"Basic Information","order":0},{"id":"accounts:section:2","label":"Assigned Agent","order":6},{"id":"accounts:section:3","label":"Products & Interests","order":3},{"id":"accounts:section:4","label":"Notes","order":4}],"fields":{"assignedUserId":{"label":"Agent","groupId":"accounts:section:2","order":1,"visibleInForm":true,"visibleInDetails":true},"custom_note":{"label":"Custom","groupId":"accounts:section:3","order":2,"visibleInForm":true,"visibleInDetails":true}}}',now());
       INSERT INTO "ClosingFieldDefinition" (id,"tenantId",definition,"updatedAt") VALUES ('retirement-custom','retirement-tenant','{"id":"retirement-custom","name":"Custom","module":"accounts","group":"Products & Interests","groupId":"accounts:section:3","order":2,"required":true,"active":true,"visibleInForm":true,"visibleInDetails":true,"type":"Text"}',now());
       INSERT INTO "ClosingFieldDefinition" (id,"tenantId",definition,"updatedAt") VALUES ('retirement-agent-custom','retirement-tenant','{"id":"retirement-agent-custom","name":"Assignment context","module":"accounts","group":"Assigned Agent","groupId":"accounts:section:2","order":8,"required":false,"active":true,"visibleInForm":false,"visibleInDetails":true,"type":"Text"}',now());
       UPDATE "TenantPreference" SET value=jsonb_set(value,'{fields,custom_agent}','{"label":"Assignment context","groupId":"accounts:section:2","order":8,"visibleInForm":false,"visibleInDetails":true}') WHERE id='retirement-layout';
@@ -80,18 +83,23 @@ describe('Account field retirement', () => {
     expect((await db.query(`SELECT id,"isActive" FROM "Workflow" ORDER BY id`)).rows).toEqual([{id:'healthy-workflow',isActive:true},{id:'retired-template-workflow',isActive:false},{id:'retired-workflow',isActive:false},{id:'sms-workflow',isActive:true},{id:'task-workflow',isActive:true}]);
     expect((await db.query<{payload:{content:string}}>(`SELECT payload FROM crm_history.account_retired_configuration WHERE source_type='Template' AND source_id='retired-account-template'`)).rows[0].payload.content).toBe('Purchased {{account.activeProductIds}}');
     expect((await db.query<{payload:{isActive:boolean}}>(`SELECT payload FROM crm_history.account_retired_configuration WHERE source_id='retired-workflow'`)).rows[0].payload.isActive).toBe(true);
+    for (const id of ['retirement-columns','retirement-filters']) {
+      const original = (await db.query<{value:unknown}>(`SELECT value FROM "UserPreference" WHERE id=$1`,[id])).rows[0].value;
+      const preserved = (await db.query<{payload:{value:unknown}}>(`SELECT payload FROM crm_history.account_retired_configuration WHERE source_type='UserPreference' AND source_id=$1`,[id])).rows[0].payload.value;
+      expect(preserved).toEqual(original);
+    }
     const layout = (await db.query<{value: ReturnType<typeof defaultFieldLayout>}>(`SELECT value FROM "TenantPreference" WHERE id='retirement-layout'`)).rows[0].value;
     expect(layout.fields.assignedUserId).toBeUndefined();
     expect(layout.fields.custom_note.groupId).toBe('accounts:additional-information');
-    expect(layout.fields.custom_agent).toMatchObject({ groupId:'accounts:additional-information',order:0,visibleInForm:false,visibleInDetails:true });
-    expect(layout.fields.custom_note.order).toBe(1);
+    expect(layout.fields.custom_agent).toMatchObject({ groupId:'accounts:additional-information',order:1,visibleInForm:false,visibleInDetails:true });
+    expect(layout.fields.custom_note.order).toBe(0);
     const originalLayout = (await db.query<{payload:{value: typeof layout}}>(`SELECT payload FROM crm_history.account_retired_configuration WHERE source_type='TenantPreference' AND source_id='retirement-layout' ORDER BY id LIMIT 1`)).rows[0].payload.value;
     expect(upgradeAccountFieldLayout(originalLayout).fields).toEqual(layout.fields);
     expect(upgradeAccountFieldLayout(layout)).toEqual(layout);
     await db.exec('SELECT crm_history.reconcile_account_fields(); SELECT crm_history.reconcile_account_fields();');
     expect((await db.query<{value:typeof layout}>(`SELECT value FROM "TenantPreference" WHERE id='retirement-layout'`)).rows[0].value).toEqual(layout);
     expect((await db.query<{definition:{groupId:string;required:boolean}}>(`SELECT definition FROM "ClosingFieldDefinition" WHERE id='retirement-custom'`)).rows[0].definition).toMatchObject({groupId:'accounts:additional-information',required:true});
-    expect((await db.query<{definition:{order:number}}>(`SELECT definition FROM "ClosingFieldDefinition" WHERE "tenantId"='retirement-tenant' ORDER BY id`)).rows.map(row=>row.definition.order)).toEqual([0,1]);
+    expect((await db.query<{definition:{order:number}}>(`SELECT definition FROM "ClosingFieldDefinition" WHERE "tenantId"='retirement-tenant' ORDER BY id`)).rows.map(row=>row.definition.order)).toEqual([1,0]);
     const customized = (await db.query<{value:typeof layout}>(`SELECT value FROM "TenantPreference" WHERE id='existing-additional-layout'`)).rows[0].value;
     expect(customized.fields.preserved_custom.groupId).toBe('existing-additional');
     expect(customized.groups.filter(group=>group.label==='Additional Information')).toHaveLength(1);

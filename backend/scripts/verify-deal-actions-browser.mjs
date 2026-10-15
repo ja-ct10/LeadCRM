@@ -1,4 +1,4 @@
-import { isolateBrowserContext, responsiveMatrix } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real production UI + authenticated Express API against a fresh, migration-replayed
 // in-memory database. No existing tenant, provider, or deployment is contacted.
 // Build first; set PLAYWRIGHT_MODULE to an installed Playwright package.
@@ -84,9 +84,7 @@ try {
   assert.ok(ready, 'Next server did not become ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(auth, options = {}) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ...options });
-
-    await isolateBrowserContext(context);
+    const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, ...options });
     await context.addInitScript(() => {
       const NativeEventSource = window.EventSource;
       window.__recordPlanStreams = {};

@@ -53,6 +53,7 @@ beforeAll(async () => {
     // This in-memory fixture exercises the new code directly, without a hosted deployment.
     if (name === '20261102000000_retire_relationship_compatibility') await pg.exec(`COMMENT ON TABLE "MailboxThreadAssociation" IS 'canonical-crm-relations-api-verified-v1'`);
     if (name === '20261112000000_retire_lead_nonform_columns') await pg.exec(`COMMENT ON TABLE "Lead" IS 'lead-form-contract-api-verified-v1'`);
+    if (name === '20261208000000_retire_account_fields') await pg.exec(`COMMENT ON TABLE crm_history.account_retired_values IS 'leadcrm-accounts-fields-compatible-v1:${'a'.repeat(40)}'`);
     if (name === cleanupMigration) {
       await pg.query(`UPDATE "User" SET "passwordHash"=$1, "mfaEnabled"=true, "mfaSecretEncrypted"='old-secret', "passwordChangedAt"=NOW() WHERE id='migration-user'`, [hashSync(initialPassword, 4)]);
       await pg.exec(`
@@ -97,6 +98,9 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
     expect(columns).toContainEqual({ table_name: 'User', column_name: 'passwordChangedAt' });
     expect(columns).not.toContainEqual({ table_name: 'Contact', column_name: 'customerType' });
     expect(columns).toContainEqual({ table_name: 'Contact', column_name: 'customerSince' });
+    expect(await db.account.findUnique({ where: { id: 'migration-account' } })).toMatchObject({ name: 'Preserved Account', tags: ['keep'] });
+    const history = await pg.query<{ products: unknown }>(`SELECT retired_values->'activeProducts' AS products FROM crm_history.account_retired_values WHERE account_id='migration-account'`);
+    expect(history.rows.map(row => row.products)).toContainEqual(['CCTV']);
   });
   it('allows a formerly enrolled user to sign in normally with a password', async () => {
     const result = await call('/auth/login', { email: 'migration@camxian.com', password: initialPassword }, '');

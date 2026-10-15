@@ -1,4 +1,4 @@
-import { isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Invoked only by the disposable PostgreSQL runner. No configured tenant/database.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -66,9 +66,8 @@ try {
   }
   assert.ok(ready, 'Next dev server did not become ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
 
-  await isolateBrowserContext(context);
   await context.addCookies([{ name: 'leadcrm_token', value: a.token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
   failurePage = page;
