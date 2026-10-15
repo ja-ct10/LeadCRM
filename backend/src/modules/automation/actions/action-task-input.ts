@@ -7,6 +7,14 @@ interface TaskPreparation {
   action: WorkflowAction; entity: WorkflowEntity; tenantId: string; context: Record<string, unknown>;
   assignedUserId: string; requestId?: string; now?: Date;
 }
+/** A recovery uses the original payload so dates, assignees and receipt fingerprints stay stable. */
+export function restoredWorkflowTaskInput(value: unknown, requestId: string): CreateTaskDto | undefined {
+  const parsed = CreateTaskSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  if (parsed.data.requestId !== requestId) throw new ValidationError('The saved task request is unavailable. Review this execution before trying again.');
+  return parsed.data;
+}
+
 /** Preview and execution render and validate the same canonical Task payload. */
 export async function prepareWorkflowTaskInput(input: TaskPreparation): Promise<CreateTaskDto> {
   const { action, entity, tenantId, context, assignedUserId, requestId, now = new Date() } = input;

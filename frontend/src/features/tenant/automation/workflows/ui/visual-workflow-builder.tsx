@@ -846,7 +846,7 @@ export default function WorkflowBuilder({
                   ? 'Save changes before testing'
                   : 'Check the saved workflow without executing actions'
               }
-              onClick={() => setShowTest(true)}
+              onClick={() => { setSelected(null); setShowLibrary(false); setShowTest(true); }}
             >
               <FlaskConical size={15} />
               Test

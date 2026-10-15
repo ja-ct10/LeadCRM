@@ -1,7 +1,18 @@
 export const acceptanceWidths = [320, 375, 390, 430, 768, 1024, 1440, 1920];
 /** Routed fixtures own API traffic; service workers must not bypass those routes. */
 export async function createAcceptanceContext(browser, options = {}) {
-  const context = await browser.newContext({ ...options, serviceWorkers: 'block' });
+  const { sandboxedFrames = false, ...contextOptions } = options;
+  const context = await browser.newContext({ ...contextOptions, serviceWorkers: sandboxedFrames ? 'allow' : 'block' });
+  if (sandboxedFrames) {
+    // Playwright's blocker reads this property without a guard in every frame.
+    // Opaque sandbox origins throw on that read; keep registration blocked there too.
+    await context.addInitScript(() => {
+      try {
+        const worker = navigator.serviceWorker;
+        if (worker) worker.register = async () => { throw new Error('Service worker registration is disabled in acceptance tests.'); };
+      } catch { /* Sandboxed frames cannot register service workers. */ }
+    });
+  }
   await isolateBrowserContext(context);
   return context;
 }

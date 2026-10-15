@@ -8,7 +8,7 @@ import { references, workflowActionLabel } from '../services/workflow-editor';
 export const emptySnapshotOptions: WorkflowOptions = { users: [], pipelines: [], templates: [], campaigns: [] };
 const label = (key: string) => key.replace(/([a-z])([A-Z])/g, '$1 $2').replaceAll('_', ' ').replace(/^./, char => char.toUpperCase());
 const methods: Record<string, string> = { round_robin: 'Round-robin', least_workload: 'Least workload', random: 'Random', availability: 'Availability-based', capacity: 'Capacity-based', sticky: 'Previous assignee / Sticky assignment' };
-const referenceTypes: Record<string, string> = { id: 'user', userId: 'user', assignedUserId: 'user', senderUserId: 'sender', pipelineId: 'pipeline', stageId: 'stage', currentStageId: 'stage', templateId: 'template', productInterestId: 'products', productInterestIds: 'products', campaignId: 'campaign', accountId: 'account', contactIds: 'contacts', leadIds: 'leads' };
+const referenceTypes: Record<string, string> = { id: 'user', userId: 'user', assignedUserId: 'user', pipelineId: 'pipeline', stageId: 'stage', currentStageId: 'stage', templateId: 'template', productInterestId: 'products', productInterestIds: 'products', campaignId: 'campaign', accountId: 'account', contactIds: 'contacts', leadIds: 'leads' };
 
 function SnapshotValue({ value, fieldKey = '', referenceType, options, depth = 0 }: { value: unknown; fieldKey?: string; referenceType?: string; options: WorkflowOptions; depth?: number }) {
   if (value == null) return <span className="text-muted-foreground">Not set</span>;
@@ -28,7 +28,7 @@ function SnapshotValue({ value, fieldKey = '', referenceType, options, depth = 0
   if (['recipient', 'targetMode'].includes(fieldKey)) return <>{label(String(value))}</>;
   const type = referenceType ?? referenceTypes[fieldKey];
   if (type && typeof value === 'string' && value) {
-    const choices = type === 'sender' ? options.senders : references(type, options);
+    const choices = references(type, options);
     return <>{choices?.find(option => option.id === value)?.name ?? `Unavailable ${type} (${value})`}</>;
   }
   return <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{String(value) || 'Empty text'}</span>;
@@ -60,7 +60,7 @@ export function WorkflowDefinitionSummary({ definition, options = emptySnapshotO
       const config = action.config ?? {};
       const updateField = updateFields.find(field => field.field === config.field);
       const messages = Object.entries(config).filter(([key]) => ['body', 'message', 'description'].includes(key));
-      const settings = Object.entries(config).filter(([key]) => !['body', 'message', 'description'].includes(key));
+      const settings = Object.entries(config).filter(([key]) => !['body', 'message', 'description'].includes(key) && !(action.type === 'send_email' && key === 'senderUserId'));
       return <li key={index} className="min-w-0 space-y-2 rounded-lg border border-border bg-card p-3">
         <p className="flex flex-wrap items-center gap-2 font-medium">{index + 1}. {workflowActionLabel(action.type)}<span className="rounded bg-muted px-2 py-0.5 text-xs font-normal">{action.enabled === false ? 'Disabled' : 'Enabled'}</span></p>
         <dl className="space-y-2">{settings.map(([key, value]) => <div key={key} className="min-w-0"><dt className="text-xs text-muted-foreground">{descriptor?.configSchema[key]?.label ?? label(key)}</dt><dd className="mt-0.5 [overflow-wrap:anywhere]">

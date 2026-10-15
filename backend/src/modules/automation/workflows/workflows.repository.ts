@@ -24,13 +24,29 @@ async function executionVisibility(tenantId: string): Promise<Prisma.WorkflowExe
 }
 
 /** Dispatch snapshots and provider recovery evidence are server-only. */
-function presentExecution<T extends { dispatchContext: unknown; leaseId: unknown; leaseUntil: unknown; dispatchStartedAt: unknown; steps: Array<{ resolvedInput: unknown; actionType: string; output: unknown }> }>(run: T) {
+async function executionDealsVisible(tenantId: string) {
+  const actor = crmActor.getStore();
+  if (!actor) return true;
+  const policy = await resolveCrmActor(prisma, actor);
+  return policy.clientAdmin || hasModulePermission(policy.permissions, 'deals', 'canView');
+}
+function presentExecution<T extends { dispatchContext: unknown; leaseId: unknown; leaseUntil: unknown; dispatchStartedAt: unknown; steps: Array<{ resolvedInput: unknown; actionType: string; output: unknown }> }>(run: T, dealsVisible: boolean) {
   const { dispatchContext: _context, leaseId: _lease, leaseUntil: _until, dispatchStartedAt: _started, ...visible } = run;
-  return { ...visible, steps: visible.steps.map(({ resolvedInput: _input, ...step }) => ['send_email', 'send_sms'].includes(step.actionType) ? { ...step, output: null } : step) };
+  return { ...visible, steps: visible.steps.map(({ resolvedInput: _input, ...step }) => {
+    if (step.actionType === 'create_task' && !dealsVisible && step.output && typeof step.output === 'object') {
+      const output = { ...step.output } as Record<string, unknown>;
+      for (const key of ['dealIds', 'deals', 'dealNames', 'dealCount', 'associationSummary']) delete output[key];
+      return { ...step, output };
+    }
+    if (!['send_email', 'send_sms'].includes(step.actionType)) return step;
+    const warnings = step.actionType === 'send_email' && step.output && typeof step.output === 'object' && 'warnings' in step.output && Array.isArray(step.output.warnings)
+      ? step.output.warnings.filter((warning): warning is string => typeof warning === 'string') : [];
+    return { ...step, output: warnings.length ? { warnings } : null };
+  }) };
 }
 
 export async function builderOptions(tenantId: string, marketing: boolean, access: { contacts: boolean; accounts: boolean; leads: boolean; deals: boolean; products: boolean; users: boolean; roles?: boolean; groups?: boolean } = { contacts: false, accounts: false, leads: false, deals: false, products: false, users: false }) {
-  const [assignments, pipelines, templates, productInterests, accounts, contacts, leads, senders] = await Promise.all([
+  const [assignments, pipelines, templates, productInterests, accounts, contacts, leads] = await Promise.all([
     access.users || access.roles || access.groups ? assignmentOptions(prisma, tenantId, { users: access.users, roles: !!access.roles, groups: !!access.groups }) : { users: [], taskAssignees: [], roles: [], groups: [] },
     access.deals ? prisma.pipeline.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true, stages: { where: { tenantId }, select: { id: true, name: true, order: true, isDefault: true, isWon: true, isLost: true, requiredFields: true }, orderBy: [{ order: 'asc' }, { id: 'asc' }] } } }) : [],
     marketing ? prisma.template.findMany({ where: { tenantId, isArchived: false, type: 'Email' }, select: { id: true, name: true } }) : [],
@@ -38,18 +54,12 @@ export async function builderOptions(tenantId: string, marketing: boolean, acces
     access.accounts ? prisma.account.findMany({ where: { tenantId, isArchived: false }, select: { id: true, name: true }, orderBy: { name: 'asc' } }) : [],
     access.contacts ? prisma.contact.findMany({ where: { tenantId, isArchived: false }, select: { id: true, firstName: true, lastName: true } }) : [],
     access.leads ? prisma.lead.findMany({ where: { tenantId, isArchived: false }, select: { id: true, firstName: true, lastName: true } }) : [],
-    marketing && access.users ? connectedSenders(tenantId) : [],
   ]);
   const people = (rows: Array<{ id: string; firstName: string; lastName: string }>) => rows.map(user => ({ id: user.id, name: `${user.firstName} ${user.lastName}` }));
   const preferences = await prisma.tenantPreference.findMany({ where: { tenantId, key: 'field-layout', module: { in: CUSTOM_FIELD_MODULES.filter(module => access[module]) } } });
   const fieldLayouts: Partial<Record<typeof CUSTOM_FIELD_MODULES[number], FieldLayout>> = {};
   for (const preference of preferences) { const parsed = FieldLayoutSchema.safeParse(preference.value); if (parsed.success) fieldLayouts[parsed.data.module] = parsed.data; }
-  return { fieldLayouts, customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), ...assignments, senders: people(senders), pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
-}
-
-async function connectedSenders(tenantId: string) {
-  const accounts = await prisma.emailAccount.findMany({ where: { tenantId, isActive: true, provider: 'gmail' }, select: { userId: true } });
-  return prisma.user.findMany({ where: { tenantId, status: 'ACTIVE', id: { in: accounts.map(account => account.userId) } }, select: { id: true, firstName: true, lastName: true }, orderBy: { firstName: 'asc' } });
+  return { fieldLayouts, customFields: (await workflowCustomFields(tenantId)).filter(field => access[field.module]), ...assignments, pipelines, templates, campaigns: [], productInterests, accounts, contacts: people(contacts), leads: people(leads), smsConfigured: isSmsConfigured() };
 }
 
 export function findWorkflowById(id: string, tenantId: string) {
@@ -148,7 +158,8 @@ export async function listExecutions(workflowId: string, tenantId: string, page 
   const rows = await prisma.workflowExecutionRun.findMany({ where: { workflowId, tenantId, ...await executionVisibility(tenantId) }, orderBy: [{ startedAt: 'desc' }, { id: 'asc' }],
     skip: (page - 1) * limit, take: limit,
     include: { steps: { orderBy: { stepIndex: 'asc' } }, trigger: { select: { triggerType: true, entityType: true, triggeredAt: true, payload: true } } } });
-  return rows.map(presentExecution);
+  const dealsVisible = await executionDealsVisible(tenantId);
+  return rows.map(row => presentExecution(row, dealsVisible));
 }
 export async function entityContext(entity: WorkflowEntity, id: string, tenantId: string, db: Prisma.TransactionClient = prisma): Promise<Record<string, unknown> | null> {
   const where = { id, tenantId, isArchived: false };
@@ -209,5 +220,5 @@ export function finishExecutionStep(id: string, tenantId: string, data: { status
 }
 export async function findExecution(id: string, workflowId: string, tenantId: string) {
   const run = await prisma.workflowExecutionRun.findFirst({ where: { id, workflowId, tenantId, ...await executionVisibility(tenantId) }, include: { steps: { orderBy: { stepIndex: 'asc' } }, trigger: true } });
-  return run ? presentExecution(run) : null;
+  return run ? presentExecution(run, await executionDealsVisible(tenantId)) : null;
 }

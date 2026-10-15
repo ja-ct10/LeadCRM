@@ -5,7 +5,7 @@ import { clearPageCache, getPageCache, setPageCache } from '../page-cache';
 beforeEach(() => {
   clearPageCache();
   vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true }) }));
-  for (const module of ['settings', 'deals', 'leads', 'contacts', 'accounts', 'tasks', 'campaigns', 'templates', 'pipeline', 'pipelines', 'workflows', 'reports', 'activities', 'notifications', 'archived-crm', 'counts-leads', 'counts-contacts', 'counts-accounts']) {
+  for (const module of ['settings', 'deals', 'leads', 'contacts', 'accounts', 'tasks', 'campaigns', 'templates', 'pipeline', 'pipelines', 'workflows', 'reports', 'activities', 'notifications', 'archived-crm', 'counts-leads', 'counts-contacts', 'counts-accounts', 'counts-deals']) {
     setPageCache(module, 'tenant-a', {}, ['before-write']);
   }
 });
@@ -19,6 +19,7 @@ it.each([
   ['/crm/contacts/123/restore', ['contacts', 'counts-contacts', 'archived-crm']],
   ['/crm/accounts/123/restore', ['accounts', 'counts-accounts', 'archived-crm']],
   ['/crm/leads/123/convert', ['contacts', 'leads', 'accounts']],
+  ['/crm/contacts', ['contacts', 'accounts', 'deals', 'counts-deals', 'reports', 'activities']],
   ['/marketing/templates/123', ['campaigns']],
   ['/notifications/123/read', ['notifications']],
   ['/administration/archived-data/Pipeline/123/restore', ['archived-crm', 'pipeline', 'pipelines']],

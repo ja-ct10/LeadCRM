@@ -4,7 +4,7 @@ import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { isClosedWonField, type ClosingField, type CustomFieldModule } from './closing-requirements';
 import { getCrmFieldCatalog, type FieldLayout } from './field-catalog';
 import { isRetiredContactField } from './contact-retirement';
-import { campaignFieldsForSource, campaignApprovedVariableKeys, campaignPersonalizationAvailable } from './campaign-fields';
+import { campaignFields, campaignVariableChoices, campaignFieldsForSource, campaignApprovedVariableKeys, campaignPersonalizationAvailable } from './campaign-fields';
 
 export const WORKFLOW_MODULES: Record<WorkflowEntity, CustomFieldModule> = { lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' };
 export const WORKFLOW_MESSAGE_VARIABLES = [
@@ -27,6 +27,13 @@ export function getWorkflowMessageVariables(entity: WorkflowEntity, layout?: Fie
   const catalog = messageCatalog(entity, definitions, layout);
   return [...new Map(catalog.map(field => [field.technicalKey, { token: field.technicalKey, label: field.label }])).values(),
     { token: 'sender_name', label: 'Sender Name' }, { token: 'sender_email', label: 'Sender Email' }];
+}
+/** New email insertion is limited to fields owned by the triggering person. */
+export function getWorkflowEmailVariableChoices(entity: WorkflowEntity, layout?: FieldLayout, definitions: ClosingField[] = []) {
+  if (entity !== 'lead' && entity !== 'contact') return [];
+  const source = entity === 'lead' ? 'LEADS' : 'CONTACTS';
+  return campaignVariableChoices(campaignFields(source, definitions, layout), source, { forInsertion: true })
+    .filter(choice => choice.category !== 'Sender' && choice.personalizationAvailable);
 }
 export function workflowMessageVariableKeys(entity: WorkflowEntity, definitions: ClosingField[] = [], layout?: FieldLayout) {
   const keys = campaignApprovedVariableKeys(messageCatalog(entity, definitions, layout));
@@ -139,7 +146,11 @@ export const RETIRED_WORKFLOW_ACTIONS = ['send_campaign', 'create_notification']
 export function getAvailableActions(): ActionDefinition[] {
   return [
     { type: 'create_task', label: 'Create Task', description: 'Create a linked follow-up task.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
-      dealId: { type: 'string', label: 'Deal ID (required when several related Deals exist)', required: false },
+      targetMode: { type: 'select', label: 'Associate task with', required: false, options: ['triggering_deal', 'single_match', 'all_matching'] },
+      pipelineId: { type: 'pipeline', label: 'Pipeline filter', required: false },
+      currentStageId: { type: 'stage', label: 'Stage filter', required: false },
+      productInterestId: { type: 'products', label: 'Product filter', required: false },
+      dealId: { type: 'deal', label: 'Specific deal (optional)', required: false },
       title: { type: 'string', label: 'Task title', required: true }, description: { type: 'string', label: 'Description', required: false },
       assignedUserId: { type: 'user', label: 'Assign to (defaults to assigned agent)', required: false },
       assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
@@ -147,7 +158,7 @@ export function getAvailableActions(): ActionDefinition[] {
     } },
     { type: 'send_email', label: 'Send Email', description: 'Send a template through a connected Gmail account.', entities: ['lead', 'contact'], configSchema: {
       templateId: { type: 'template', label: 'Email template (optional with subject and message)', required: false },
-      subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false }, senderUserId: { type: 'user', label: 'Connected Gmail sender', required: true },
+      subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false },
     } },
     { type: 'send_sms', label: 'Send SMS', description: 'Send a message to the record or its explicitly selected primary relationship.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
       recipient: { type: 'select', label: 'Recipient', required: true, options: ['record', 'primary_contact', 'primary_lead'] },

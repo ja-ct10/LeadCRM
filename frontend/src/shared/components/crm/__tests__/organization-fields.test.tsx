@@ -7,7 +7,7 @@ vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: strin
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ organizations: [] }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: fixture.account, isInitialLoad: false, refetch: vi.fn() }) }));
-vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ onChange }: any) => <button type="button" onClick={() => onChange('account')}>Choose Company</button> }));
+vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ onChange, disabled, error }: any) => <><button disabled={disabled} type="button" onClick={() => onChange('account')}>Choose Company</button>{error && <p role="alert">{error}</p>}</> }));
 vi.mock('../record-custom-fields', () => ({
   useRecordCustomFields: () => ({ fields: [{ id: 'context', name: 'Company context' }], payload: () => ({ context: fixture.custom }), validate: () => !!fixture.custom, query: {} }),
   CustomFieldInput: () => <label>Company context<input onChange={event => { fixture.custom = event.target.value; }} /></label>,
@@ -20,27 +20,35 @@ function Form({ save, initial }: { save: (data: unknown) => void; initial?: { id
 }
 it('keeps legacy company text and an optional organization without creating an Account', () => {
   const save = vi.fn(); render(<Form save={save} initial={{ id: 'person', companyName: 'Historical company' }} />);
-  expect((screen.getByLabelText('Company Name') as HTMLInputElement).value).toBe('Historical company');
+  expect(screen.queryByLabelText('Company Name')).toBeNull();
   fireEvent.click(screen.getByText('Save'));
   expect(save).toHaveBeenCalledWith({ companyName: 'Historical company', accountId: null });
 });
-it('shows existing company fields read-only and links to its Account', () => {
+it('shows exactly two exclusive modes and only the account picker when linking', () => {
   const save = vi.fn(); render(<Form save={save} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Link existing Account' }));
+  const existing = screen.getByRole('button', { name: 'Link existing account' });
+  const create = screen.getByRole('button', { name: 'Create new account' });
+  expect(existing.getAttribute('aria-pressed')).toBe('true');
+  expect(create.getAttribute('aria-pressed')).toBe('false');
+  expect(screen.queryByText('Company name only')).toBeNull();
+  for (const label of ['Company Name', 'Industry', 'Company Size', 'Website', 'Full Address']) expect(screen.queryByLabelText(label)).toBeNull();
+  fireEvent.click(screen.getByText('Save'));
+  expect(save).toHaveBeenLastCalledWith({ accountId: null });
   fireEvent.click(screen.getByText('Choose Company'));
-  const name = screen.getByLabelText('Company Name') as HTMLInputElement;
-  expect(name.value).toBe('Linked Company'); expect(name.readOnly).toBe(true);
-  expect((screen.getByLabelText('Industry') as HTMLSelectElement).disabled).toBe(true);
-  expect((screen.getByLabelText('Size') as HTMLSelectElement).value).toBe('11-50');
-  expect(screen.getByRole('link', { name: 'Open Account' }).getAttribute('href')).toBe('/crm/accounts/account');
+  fireEvent.click(screen.getByText('Save'));
+  expect(save).toHaveBeenLastCalledWith({ accountId: 'account' });
+  fireEvent.click(create);
+  expect(existing.getAttribute('aria-pressed')).toBe('false');
+  expect(create.getAttribute('aria-pressed')).toBe('true');
 });
 it('validates new Account fields, preserves required custom values and reuses the retry identity', () => {
   const save = vi.fn(); render(<Form save={save} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Create new Account' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create new account' }));
   fireEvent.click(screen.getByText('Save')); expect(save).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('Company Name *'), { target: { value: 'New company' } });
   fireEvent.change(screen.getByLabelText('Industry'), { target: { value: 'Retail' } });
-  fireEvent.change(screen.getByLabelText('Size'), { target: { value: '51-200' } });
+  fireEvent.change(screen.getByLabelText('Company Size'), { target: { value: '51-200' } });
+  fireEvent.change(screen.getByLabelText('Full Address'), { target: { value: '42 Main Street\nMakati, Philippines' } });
   fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'bad url' } });
   fireEvent.click(screen.getByText('Save')); expect(save).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'https://new.test' } });
@@ -49,10 +57,22 @@ it('validates new Account fields, preserves required custom values and reuses th
   fireEvent.click(screen.getByText('Save')); fireEvent.click(screen.getByText('Save'));
   expect(save).toHaveBeenCalledTimes(2);
   expect(save.mock.calls[0][0]).toEqual(save.mock.calls[1][0]);
-  expect(save.mock.calls[0][0]).toMatchObject({ accountId: null, newAccount: { name: 'New company', industry: 'Retail', size: '51-200', website: 'https://new.test', customFieldValues: { context: 'Required context' } } });
+  expect(save.mock.calls[0][0]).toMatchObject({ newAccount: { name: 'New company', industry: 'Retail', size: '51-200', website: 'https://new.test', address: '42 Main Street\nMakati, Philippines', customFieldValues: { context: 'Required context' } } });
+  expect(save.mock.calls[0][0]).not.toHaveProperty('accountId');
+  expect(save.mock.calls[0][0]).not.toHaveProperty('companyName');
+  expect(screen.getByLabelText('Full Address').closest('.space-y-1\\.5')?.className).toContain('sm:col-span-2');
 });
 it('requires Account permissions for both linking and new company creation', () => {
   fixture.denied = ['accounts.view', 'accounts.create']; render(<Form save={vi.fn()} />);
-  expect((screen.getByRole('button', { name: 'Link existing Account' }) as HTMLButtonElement).disabled).toBe(true);
-  expect((screen.getByRole('button', { name: 'Create new Account' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Link existing account' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole('button', { name: 'Create new account' }) as HTMLButtonElement).disabled).toBe(true);
+});
+
+it('omits stale creation fields after switching back to linking', () => {
+  const save = vi.fn(); render(<Form save={save} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Create new account' }));
+  fireEvent.change(screen.getByLabelText('Company Name *'), { target: { value: 'Unsaved account' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Link existing account' }));
+  fireEvent.click(screen.getByText('Choose Company')); fireEvent.click(screen.getByText('Save'));
+  expect(save).toHaveBeenCalledWith({ accountId: 'account' });
 });

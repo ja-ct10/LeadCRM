@@ -13,6 +13,7 @@ import { workflowControl } from './workflow-fields';
 import { workflowActionLabel } from '../services/workflow-editor';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { useAuth } from '@/store/AuthContext';
+import { safeMailboxHtml } from '@/features/tenant/inbox/services/email-html';
 
 type StageHistory = NonNullable<DealResponse['data']['stageHistories']>[number];
 interface WorkflowTestPanelProps {
@@ -242,13 +243,22 @@ export function WorkflowTestPanel({
                 {index + 1}. {workflowActionLabel(action.type)}:{' '}
                 {action.message}
                 {action.taskPreview && <dl className="mt-2 space-y-1 rounded-lg bg-muted/40 p-3 [overflow-wrap:anywhere]">
+                  <div><dt className="sr-only">Result: </dt><dd className="font-medium">{action.taskPreview.associationSummary ?? `Creates 1 task linked to ${action.taskPreview.dealIds.length} deal${action.taskPreview.dealIds.length === 1 ? '' : 's'}.`}</dd></div>
                   <div><dt className="inline font-medium">Title: </dt><dd className="inline">{action.taskPreview.title}</dd></div>
                   {action.taskPreview.description && <div><dt className="inline font-medium">Description: </dt><dd className="inline whitespace-pre-wrap">{action.taskPreview.description}</dd></div>}
                   <div><dt className="inline font-medium">Priority / status: </dt><dd className="inline">{action.taskPreview.priority} / {action.taskPreview.status}</dd></div>
                   <div><dt className="inline font-medium">Due (Asia/Manila): </dt><dd className="inline">{formatDateTime(action.taskPreview.dueDate)}. Calculated from this check; execution uses its own start time.</dd></div>
                   <div><dt className="inline font-medium">Assigned Agent: </dt><dd className="inline">{action.assignment?.resolvedUserName ?? action.taskPreview.assignedUserId}</dd></div>
-                  <div><dt className="inline font-medium">Deal IDs: </dt><dd className="inline">{action.taskPreview.dealIds.join(', ')}</dd></div>
+                  <div><dt className="inline font-medium">Deals: </dt><dd className="inline">{action.taskPreview.deals?.map(deal => deal.title).join(', ') || action.taskPreview.dealIds.join(', ')}</dd></div>
                 </dl>}
+                {action.emailPreview && <div className="mt-2 space-y-2 rounded-lg bg-muted/40 p-3 [overflow-wrap:anywhere]">
+                  <p><span className="font-medium">From: </span>{action.emailPreview.senderName} &lt;{action.emailPreview.senderEmail}&gt;</p>
+                  <p><span className="font-medium">To: </span>{action.emailPreview.recipient}</p>
+                  <p><span className="font-medium">Subject: </span>{action.emailPreview.subject}</p>
+                  <iframe title={`Email message preview ${index + 1}`} sandbox="" className="min-h-48 w-full rounded border border-border bg-white" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><style>body{font:14px/1.6 system-ui;overflow-wrap:anywhere}img,table{max-width:100%}</style></head><body>${safeMailboxHtml(action.emailPreview.body)}</body></html>`} />
+                  <p className="text-xs text-muted-foreground">Preview only. No email was sent.</p>
+                </div>}
+                {!!(action.warnings?.length || action.emailPreview?.warnings.length) && <ul className="mt-2 list-inside list-disc text-sm text-amber-800 dark:text-amber-200">{(action.warnings ?? action.emailPreview?.warnings ?? []).map(warning => <li key={warning}>{warning}</li>)}</ul>}
               </li>
             ))}
           </ol>

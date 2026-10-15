@@ -404,7 +404,19 @@ stage metadata. The server checks the recorded event against the current entry;
 superseded entries return a skipped reason. This is a read-only historical-event
 check against current state, not a future transition. Create Task previews render
 and validate the same payload used at execution and return resolved title, notes,
-priority, status, assignee, Deal IDs and due instant without creating a Task.
+priority, status, assignee, named Deals, association count and due instant without creating a Task.
+Email checks return the authorized sender, recipient, rendered subject/message and
+missing-value warnings. Checks neither send messages nor write delivery records.
+
+Send Email automatically uses the triggering Lead/Contact's assigned agent's
+authorized Gmail connection, including an earlier owner assignment. The deprecated
+`senderUserId` setting is accepted and discarded; it is never required or used to
+select another mailbox. Missing assignment, Gmail connection or sender access
+fails with a corrective message at the record check/execution. Empty or whitespace
+overrides fall back independently to the template subject/message. New picker
+choices come only from the triggering person module; supported saved tokens and
+templates retain their existing rendering and permission checks. Optional missing
+values render blank with warnings; invalid/empty effective content blocks sending.
 
 Workflow options include stage order/default and terminal flags. The chooser
 generates templates bound to current tenant pipeline/stage IDs and opens inactive
@@ -449,9 +461,18 @@ CRM Task lists derive participants through Deal relationships and retain legacy
 direct links. Lead, Contact, and Account panels open Task details read-only; Deal
 panels and the standalone module retain authorized management. Lifecycle Activity
 and AuditLog events commit with Task mutations and preserve event-time context.
-Task history requires `tasks.view`, including after archive. Workflows use the
-triggering Deal, or the unique eligible related Deal; missing/ambiguous matches
-fail visibly. An optional validated action `dealId` resolves configured cases.
+Task history requires `tasks.view`, including after archive. Workflow Create Task
+uses `targetMode: triggering_deal` for Deal triggers, and `single_match` (default)
+or explicitly selected `all_matching` for Lead/Contact triggers. Optional
+`pipelineId`, `currentStageId`, and `productInterestId` narrow related matches.
+`all_matching` creates one Task with all matching Deal associations, up to 50;
+missing, ambiguous single-match, changed, or over-limit relationships fail visibly
+without truncation. Legacy exact `dealId` remains supported and must be related to
+the triggering record. Account triggers retain their unique-related-Deal behavior.
+The write transaction rechecks relationships and current author permissions.
+Terminal/interrupted workflow runs are not replayed automatically and there is no
+failed-step retry endpoint. Original step IDs and canonical Task inputs preserve
+duplicate protection; successful/uncertain email evidence remains preserved.
 See [Tasks implementation and verification](tasks-deal-only-implementation.md).
 
 ---

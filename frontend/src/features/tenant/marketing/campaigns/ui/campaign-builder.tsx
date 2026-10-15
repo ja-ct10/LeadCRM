@@ -1,4 +1,5 @@
 'use client';
+import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
@@ -173,11 +174,8 @@ export function CampaignBuilder({
     const field = campaignType === 'Email' ? activeField.current : 'body';
     const input = field === 'subject' ? subjectRef.current : bodyRef.current;
     const value = field === 'subject' ? emailSubject : messageContent;
-    const start = input?.selectionStart ?? value.length, end = input?.selectionEnd ?? start;
-    const next = value.slice(0, start) + token + value.slice(end);
-    (field === 'subject' ? setEmailSubject : setMessageContent)(next);
+    insertVariableAtSelection(input, value, token, field === 'subject' ? setEmailSubject : setMessageContent);
     setShowVarDropdown(false);
-    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + token.length, start + token.length); });
   }
   function dragVariable(event: React.DragEvent<HTMLButtonElement>, token: string) {
     event.dataTransfer.setData('text/plain', token);

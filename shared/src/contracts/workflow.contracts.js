@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WorkflowTestInputSchema = exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
+exports.WorkflowTestInputSchema = exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowTaskAssociationSchema = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
 exports.missingWorkflowConditionValues = missingWorkflowConditionValues;
 exports.workflowAssignmentTarget = workflowAssignmentTarget;
 exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
@@ -35,7 +35,20 @@ exports.WorkflowActionSchema = zod_1.z.object({
     type: zod_1.z.enum(['create_task', 'send_email', 'send_sms', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
     enabled: zod_1.z.boolean().optional(),
     config: zod_1.z.record(zod_1.z.unknown()),
-}).strict();
+}).strict().transform(action => {
+    if (action.type !== 'send_email')
+        return action;
+    const { senderUserId: _deprecated, ...config } = action.config;
+    return { ...action, config };
+});
+const optionalWorkflowReference = zod_1.z.preprocess(value => value === '' ? undefined : value, zod_1.z.string().uuid().optional());
+exports.WorkflowTaskAssociationSchema = zod_1.z.object({
+    targetMode: zod_1.z.preprocess(value => value === '' ? undefined : value, zod_1.z.enum(['triggering_deal', 'single_match', 'all_matching']).optional()),
+    pipelineId: optionalWorkflowReference,
+    currentStageId: optionalWorkflowReference,
+    productInterestId: optionalWorkflowReference,
+    dealId: optionalWorkflowReference,
+});
 exports.WORKFLOW_ASSIGNMENT_METHODS = {
     round_robin: 'Round-robin',
 };
@@ -88,6 +101,10 @@ function normalizeWorkflowAssignment(action) {
 }
 /** Adapt saved retired methods on read; new API input still uses the strict target schema. */
 function normalizeSavedWorkflowAssignment(action) {
+    if (action.type === 'send_email') {
+        const { senderUserId: _deprecated, ...config } = action.config;
+        return { ...action, config };
+    }
     if (!['create_task', 'assign_owner'].includes(action.type))
         return action;
     const normalized = normalizeWorkflowAssignment(action);

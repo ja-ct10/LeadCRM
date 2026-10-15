@@ -18,8 +18,8 @@ vi.mock('@/shared/components/crm/product-interest-select', () => ({ ProductInter
 vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: () => {} }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: ({ value, onChange }: any) => <select aria-label="Account" value={value ?? ''} onChange={event => onChange(event.target.value)}><option value="">No account</option><option value="account-1">Acme</option></select> }));
 vi.mock('@/shared/components/crm/record-custom-fields', () => ({
-  useRecordCustomFields: () => ({ fields: [], layout: fixtures.layout, blocked: false, validate: () => true, payload: () => ({}) }),
-  CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null,
+  useRecordCustomFields: () => ({ fields: [], layout: fixtures.layout, blocked: false, validate: () => true, payload: () => ({}), query: {} }),
+  CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null,
 }));
 afterEach(cleanup);
 beforeEach(() => { fixtures.layout = undefined; });
@@ -52,6 +52,30 @@ it('preserves Notes on Contact edits without the removed field', async () => {
   expect(save.mock.calls[0][0]).not.toHaveProperty('activeProducts');
 });
 
+it('keeps a failed nested Account draft, separates addresses and reuses its current retry identity', async () => {
+  const save = vi.fn().mockRejectedValueOnce(new Error('Unable to save the account. Please retry.')).mockResolvedValue(undefined);
+  render(<ContactFormInner onSave={save} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Nora' } });
+  fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Lim' } });
+  fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'nora@example.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create new account' }));
+  const organization = screen.getByRole('heading', { name: 'Organization' }).closest('section')!;
+  fireEvent.change(within(organization).getByLabelText('Company Name *'), { target: { value: 'Nora Company' } });
+  fireEvent.change(within(organization).getByLabelText('Full Address'), { target: { value: 'Company office\nMakati' } });
+  const additional = screen.getByRole('heading', { name: 'Additional Information' }).closest('section')!;
+  fireEvent.change(within(additional).getByLabelText('Full Address'), { target: { value: 'Personal address' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
+  await screen.findByText('Unable to save the account. Please retry.');
+  expect((within(organization).getByLabelText('Company Name *') as HTMLInputElement).value).toBe('Nora Company');
+  expect((screen.getByLabelText('First Name *') as HTMLInputElement).value).toBe('Nora');
+  fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[0][0]).toEqual(save.mock.calls[1][0]);
+  expect(save.mock.calls[1][0]).toMatchObject({ address: 'Personal address', newAccount: { name: 'Nora Company', address: 'Company office\nMakati' } });
+  expect(save.mock.calls[1][0]).not.toHaveProperty('accountId');
+  expect(save.mock.calls[1][0]).not.toHaveProperty('companyName');
+});
+
 it.each([false, true])('creates with the required section order and saves Account, Product, Status and Agent (saved layout: %s)', async savedLayout => {
   if (savedLayout) {
     fixtures.layout = defaultFieldLayout('contacts');
@@ -70,7 +94,7 @@ it.each([false, true])('creates with the required section order and saves Accoun
   fireEvent.change(screen.getByLabelText('First Name *'), { target: { value: 'Nora' } });
   fireEvent.change(screen.getByLabelText('Last Name *'), { target: { value: 'Lim' } });
   fireEvent.change(screen.getByLabelText('Email *'), { target: { value: 'nora@example.test' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Link existing Account' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Link existing account' }));
   fireEvent.change(screen.getByLabelText('Account'), { target: { value: 'account-1' } });
   fireEvent.change(screen.getByLabelText('Product Interest'), { target: { value: 'CCTV' } });
   fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'Hot' } });

@@ -33,9 +33,22 @@ export const WorkflowActionSchema = z.object({
   type: z.enum(['create_task', 'send_email', 'send_sms', 'assign_owner', 'update_field', 'create_notification', 'move_deal_stage', 'send_campaign']),
   enabled: z.boolean().optional(),
   config: z.record(z.unknown()),
-}).strict();
+}).strict().transform(action => {
+  if (action.type !== 'send_email') return action;
+  const { senderUserId: _deprecated, ...config } = action.config;
+  return { ...action, config };
+});
 export type WorkflowAction = z.infer<typeof WorkflowActionSchema>;
 export type WorkflowActionType = WorkflowAction['type'];
+const optionalWorkflowReference = z.preprocess(value => value === '' ? undefined : value, z.string().uuid().optional());
+export const WorkflowTaskAssociationSchema = z.object({
+  targetMode: z.preprocess(value => value === '' ? undefined : value, z.enum(['triggering_deal', 'single_match', 'all_matching']).optional()),
+  pipelineId: optionalWorkflowReference,
+  currentStageId: optionalWorkflowReference,
+  productInterestId: optionalWorkflowReference,
+  dealId: optionalWorkflowReference,
+});
+export type WorkflowTaskAssociation = z.infer<typeof WorkflowTaskAssociationSchema>;
 export const WORKFLOW_ASSIGNMENT_METHODS = {
   round_robin: 'Round-robin',
 } as const;
@@ -89,6 +102,10 @@ export function normalizeWorkflowAssignment(action: WorkflowAction): WorkflowAct
 }
 /** Adapt saved retired methods on read; new API input still uses the strict target schema. */
 export function normalizeSavedWorkflowAssignment(action: WorkflowAction): WorkflowAction {
+  if (action.type === 'send_email') {
+    const { senderUserId: _deprecated, ...config } = action.config;
+    return { ...action, config };
+  }
   if (!['create_task', 'assign_owner'].includes(action.type)) return action;
   const normalized = normalizeWorkflowAssignment(action);
   const target = normalized.config.assignmentTarget;
@@ -116,7 +133,6 @@ export interface WorkflowOptions {
   taskAssignees?: Array<{id:string;name:string}>;
   roles?: WorkflowAssignmentPoolOption[];
   groups?: WorkflowAssignmentPoolOption[];
-  senders?: Array<{id:string;name:string}>;
   pipelines: Array<{id:string;name:string;stages:Array<{id:string;name:string;order?:number;isDefault?:boolean;isWon?:boolean;isLost?:boolean;requiredFields?:string[]}>}>;
   templates: Array<{id:string;name:string}>;
   campaigns: Array<{id:string;name:string}>;
@@ -171,11 +187,15 @@ export type WorkflowTestInput = z.infer<typeof WorkflowTestInputSchema>;
 export interface WorkflowTaskPreview {
   title: string; description?: string | null; priority: 'Low' | 'Medium' | 'High'; status: 'pending';
   dueDate: string; assignedUserId: string; dealIds: string[];
+  taskCount?: 1; dealCount?: number; deals?: Array<{ id: string; title: string }>; associationSummary?: string;
+}
+export interface WorkflowEmailPreview {
+  senderName: string; senderEmail: string; recipient: string; subject: string; body: string; warnings: string[];
 }
 export interface WorkflowTestResult {
   trigger: { matched: boolean; type: string; requiresEvent?: boolean; stageHistoryId?: string; eventId?: string; reason?: string };
   conditions: { passed: number; total: number; matched: boolean };
-  actions: Array<{ type: string; valid: boolean; message: string; status?: 'ready' | 'skipped' | 'failed'; taskPreview?: WorkflowTaskPreview; assignment?: { resolvedUserId: string; resolvedUserName: string; candidateCount: number; strategy?: string; reason?: string; workload?: number; capacityLimit?: number } }>;
+  actions: Array<{ type: string; valid: boolean; message: string; status?: 'ready' | 'skipped' | 'failed'; taskPreview?: WorkflowTaskPreview; emailPreview?: WorkflowEmailPreview; warnings?: string[]; assignment?: { resolvedUserId: string; resolvedUserName: string; candidateCount: number; strategy?: string; reason?: string; workload?: number; capacityLimit?: number } }>;
   valid: boolean;
 }
 export interface WorkflowNameAvailability { available: boolean; suggestedName?: string }

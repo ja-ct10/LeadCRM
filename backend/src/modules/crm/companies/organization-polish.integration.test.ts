@@ -11,12 +11,12 @@ import { crmActor } from '../access/crm-record-access.service';
 import * as merges from '../merge/merge.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const disposable = url.hostname === '127.0.0.1' && url.pathname === '/leadcrm_crm_polish_test';
+const disposable = url.hostname === '127.0.0.1' && /^\/leadcrm_crm_polish_test(?:_\d+)?$/.test(url.pathname);
 describe.skipIf(!disposable)('Atomic organization creation over authenticated HTTP', () => {
   let tenantId: string, adminId: string, adminToken: string, staffToken: string, server: Server, base: string, roleId: string, productId: string;
   const scope = <T>(run: () => T) => tenantContext.run({ tenantId }, run);
   const person = () => ({ firstName: 'Person', lastName: 'Polish', email: `${randomUUID()}@example.test`, status: 'Warm', requestId: randomUUID() });
-  const company = () => ({ requestId: randomUUID(), name: `Company ${randomUUID()}`, industry: 'Technology', size: '11-50', website: 'https://company.test' });
+  const company = () => ({ requestId: randomUUID(), name: `Company ${randomUUID()}`, industry: 'Technology', size: '11-50', website: 'https://company.test', address: '42 Main Street\nMakati, Philippines' });
   async function call(path: string, method: string, body: unknown, token = adminToken) {
     const response = await fetch(base + path, { method, headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     return { status: response.status, body: await response.json() };
@@ -40,6 +40,8 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     const newAccount = company();
     expect(NewAccountSchema.safeParse(newAccount).success).toBe(true);
     expect(NewAccountSchema.safeParse({ ...newAccount, website: 'bad' }).success).toBe(false);
+    expect(NewAccountSchema.safeParse({ ...newAccount, address: 'a'.repeat(2001) }).success).toBe(false);
+    expect(NewAccountSchema.safeParse({ ...newAccount, address: 'Bad\u0000address' }).success).toBe(false);
     expect(CreateLeadSchema.safeParse({ ...person(), accountId: randomUUID(), newAccount }).success).toBe(false);
     expect(CreateClientContactSchema.safeParse({ ...person(), accountId: randomUUID(), newAccount }).success).toBe(false);
   });
@@ -52,6 +54,8 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     expect([200, 201]).toContain(retry.status); expect(retry.body.data.id).toBe(first.body.data.id);
     expect(first.body.data.account).toMatchObject({ name: input.newAccount.name, industry: 'Technology', size: '11-50', website: 'https://company.test' });
     expect(await scope(() => prisma.account.count({ where: { tenantId, name: input.newAccount.name } }))).toBe(1);
+    expect((await scope(() => prisma.account.findFirstOrThrow({ where: { tenantId, id: first.body.data.accountId } }))).address).toBe(input.newAccount.address);
+    expect(first.body.data.address || '').toBe('');
     const deals = await scope(() => prisma.deal.findMany({ where: { tenantId, accountId: first.body.data.accountId } }));
     expect(deals).toHaveLength(1); expect(Number(deals[0].value)).toBe(2500);
     const updated = { newAccount: company() };
@@ -61,6 +65,34 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     expect(replayEdit.status, JSON.stringify(replayEdit.body)).toBe(200);
     expect(replayEdit.body.data.accountId).toBe(edit.body.data.accountId);
     expect(await scope(() => prisma.account.count({ where: { tenantId, name: updated.newAccount.name } }))).toBe(1);
+  });
+
+  it.each(['leads', 'contacts'])('deduplicates concurrent %s submissions with one linked Account', async module => {
+    const input = { ...person(), newAccount: company() };
+    const responses = await Promise.all(Array.from({ length: 3 }, () => call(`/crm/${module}`, 'POST', input)));
+    expect(responses.every(response => [200, 201, 409].includes(response.status)), JSON.stringify(responses)).toBe(true);
+    const successes = responses.filter(response => response.status < 300);
+    expect(successes.length).toBeGreaterThan(0);
+    expect(new Set(successes.map(response => response.body.data.id)).size).toBe(1);
+    const retry = await call(`/crm/${module}`, 'POST', input);
+    expect(retry.body.data.id).toBe(successes[0].body.data.id);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: input.newAccount.name } }))).toBe(1);
+    expect(await scope(() => prisma.accountCreationReceipt.count({ where: { tenantId, requestId: input.newAccount.requestId } }))).toBe(1);
+  });
+
+  it.each(['leads', 'contacts'])('links an existing Account to %s using only accountId and preserves the link on retry', async module => {
+    const account = await scope(() => prisma.account.create({ data: { tenantId, name: `Selected Account ${randomUUID()}` } }));
+    const input = { ...person(), accountId: account.id };
+    const receiptCount = await scope(() => prisma.accountCreationReceipt.count({ where: { tenantId } }));
+    const created = await call(`/crm/${module}`, 'POST', input);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const retry = await call(`/crm/${module}`, 'POST', input);
+    expect(retry.body.data.id).toBe(created.body.data.id);
+    const where = { id: created.body.data.id, tenantId };
+    const saved = module === 'leads' ? await scope(() => prisma.lead.findUniqueOrThrow({ where })) : await scope(() => prisma.contact.findUniqueOrThrow({ where }));
+    expect(saved.accountId).toBe(account.id);
+    expect('companyName' in saved ? saved.companyName : saved.company).toBe(account.name);
+    expect(await scope(() => prisma.accountCreationReceipt.count({ where: { tenantId } }))).toBe(receiptCount);
   });
 
   it('rolls back the Account and its receipt if the person save fails', async () => {

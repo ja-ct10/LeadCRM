@@ -1,5 +1,5 @@
 import { resolveDealTargets, relatedDealMoveGuard } from './action-deal-targets';
-import { EmailSubjectSchema, type WorkflowAction } from '@leadcrm/shared';
+import { type WorkflowAction } from '@leadcrm/shared';
 import { renderMessage as render, resolveMessageValues } from './action-message';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -8,8 +8,8 @@ import * as repo from './actions.repository';
 import { actionEntity, validateAction } from './action-validation';
 import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, completeWorkflowAssignment, assignmentOutput } from '../assignment/workflow-assignment.service';
 import { createTask } from '../../operations/tasks/tasks.service';
-import { resolveTaskDealIds } from './action-task-deals';
-import { prepareWorkflowTaskInput } from './action-task-input';
+import { resolveTaskDealIds, workflowTaskAssociationSummary } from './action-task-deals';
+import { prepareWorkflowTaskInput, restoredWorkflowTaskInput } from './action-task-input';
 import { assertCurrentStageEntry, isSupersededStageEntry } from '../workflows/workflow-stage-entry';
 import { sendSms, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { fenceWorkflowLease, isWorkflowLeaseLost, workflowLeaseWrite } from '../workflows/workflow-lease';
@@ -21,7 +21,7 @@ import { moveDealStage, updateDeal } from '../../crm/deals/deals.service';
 import { updateContact as updateLead } from '../../crm/contacts/contacts.service';
 import { updateContact as updateClientProfile } from '../../crm/contacts-v2/contacts-v2.service';
 
-import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
+import { prepareWorkflowEmailInput } from './action-email';
 import prisma from '../../../config/database.config';
 
 export type ActionResult = { success: boolean; skipped?: true; output?: Record<string, unknown>; error?: string };
@@ -30,6 +30,7 @@ export function safeWorkflowError(error: unknown): string {
 }
 export async function dispatchAction(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, actorId: string, execution?: { workflowId: string; actionIndex: number; stepId?: string; stageHistoryId?: string }): Promise<ActionResult> {
   let assignment: Awaited<ReturnType<typeof resolveWorkflowAssignee>> | undefined;
+  let restoredAssignment: Record<string, unknown> = {};
   let knownResult: ActionResult | undefined;
   let smsAttempted = false;
   try {
@@ -38,19 +39,35 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     await validateAction(action, entity, tenantId, context);
     const config = action.config;
     const entityId = String(context[`${entity}.id`]);
+    const savedTaskStep = action.type === 'create_task' && execution?.stepId ? await prisma.workflowExecutionStep.findFirst({
+      where: { id: execution.stepId, tenantId, actionType: 'create_task', execution: { workflowId: execution.workflowId } },
+      select: { resolvedInput: true, output: true },
+    }) : null;
+    const savedTaskInput = savedTaskStep && execution?.stepId ? restoredWorkflowTaskInput(savedTaskStep.resolvedInput, execution.stepId) : undefined;
     assignment = ['create_task', 'assign_owner'].includes(action.type) ? await resolveWorkflowAssignee({
-      tenantId, target: parseAssignment(action), purpose: assignmentPurpose(action),
+      tenantId, target: savedTaskInput ? { type: 'user', id: savedTaskInput.assignedUserId } : parseAssignment(action), purpose: assignmentPurpose(action),
       recordOwnerId: context[`${entity}.assignedUserId`] as string | undefined, entity, entityId, ...execution,
     }) : undefined;
     if (action.type === 'create_task') {
-      const taskInput = await prepareWorkflowTaskInput({ action, entity, tenantId, context, assignedUserId: assignment!.resolvedUserId, requestId: execution?.stepId });
-      if (execution?.stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: { resolvedInput: JSON.parse(JSON.stringify(taskInput)) } }));
+      const previous = savedTaskStep?.output as Record<string, unknown> | null;
+      if (savedTaskInput && previous?.resolvedUserId === savedTaskInput.assignedUserId) {
+        restoredAssignment = Object.fromEntries(['assignmentTargetType', 'assignmentTargetId', 'assignmentTargetName', 'candidateCount', 'strategy', 'reason', 'workload', 'capacityLimit']
+          .flatMap(key => previous[key] !== undefined ? [[key, previous[key]]] : []));
+      }
+      const taskInput = savedTaskInput ?? await prepareWorkflowTaskInput({ action, entity, tenantId, context, assignedUserId: assignment!.resolvedUserId, requestId: execution?.stepId });
+      const assigned = { ...assignmentOutput(assignment!), ...restoredAssignment };
+      if (execution?.stepId && !savedTaskInput) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: {
+        resolvedInput: JSON.parse(JSON.stringify(taskInput)), output: JSON.parse(JSON.stringify(assigned)),
+      } }));
       const task = await createTask(tenantId, actorId, taskInput,
         async client => {
           if (execution?.stageHistoryId) await assertCurrentStageEntry(tenantId, String(context['deal.id']), execution.stageHistoryId, client);
           return resolveTaskDealIds(action, entity, tenantId, context, client);
         });
-      knownResult = { success: true, output: { taskId: task.id, ...assignmentOutput(assignment!) } };
+      const dealIds = task.dealLinks.map(link => link.dealId);
+      const deals = task.dealLinks.map(link => ({ id: link.dealId, title: link.deal.title }));
+      knownResult = { success: true, output: { taskId: task.id, dealIds, deals, taskCount: 1, dealCount: dealIds.length,
+        associationSummary: workflowTaskAssociationSummary(dealIds.length), ...assigned } };
       return knownResult;
     }
     if (action.type === 'send_sms') {
@@ -95,7 +112,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     return knownResult;
   } catch (error) { if (isWorkflowLeaseLost(error)) throw error;
     if (isSupersededStageEntry(error)) return { success: false, skipped: true, output: { reason: error.message } };
-    return { success: false, error: safeWorkflowError(error), ...(error instanceof AppError && error.code === 'GMAIL_OUTCOME_UNKNOWN' || error instanceof SmsSubmissionError && error.outcome === 'unconfirmed' || smsAttempted && (!(error instanceof AppError) || error.statusCode >= 500) ? { output: { outcomeUnknown: true } } : assignment ? { output: assignmentOutput(assignment) } : {}) }; }
+    return { success: false, error: safeWorkflowError(error), ...(error instanceof AppError && error.code === 'GMAIL_OUTCOME_UNKNOWN' || error instanceof SmsSubmissionError && error.outcome === 'unconfirmed' || smsAttempted && (!(error instanceof AppError) || error.statusCode >= 500) ? { output: { outcomeUnknown: true } } : assignment ? { output: { ...assignmentOutput(assignment), ...restoredAssignment } } : {}) }; }
   finally { if (assignment) try { await completeWorkflowAssignment(tenantId, assignment); }
     catch { if (knownResult) knownResult.output = { ...knownResult.output, assignmentCleanupPending: true,
       cleanupWarning: 'The action was saved. Assignment capacity cleanup is pending; its temporary reservation will expire.' }; }
@@ -103,19 +120,11 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
 }
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, stepId?: string): Promise<Record<string, unknown>> {
   const entity = actionEntity(context);
-  const senderId = String(action.config.senderUserId);
-  const [template, sender] = await Promise.all([action.config.templateId ? repo.findTemplate(String(action.config.templateId), tenantId) : Promise.resolve(null), repo.findSender(senderId, tenantId)]);
-  if ((action.config.templateId && !template) || !sender) throw new ValidationError('Reconnect the sender and choose an available email template.');
-  const recipient = String(context[`${entity}.email`]);
-  const subjectTemplate = String(action.config.subject || template?.subject || '');
-  const bodyTemplate = String(action.config.body || template?.content || '');
-  const values = await resolveMessageValues(subjectTemplate + '\n' + bodyTemplate, tenantId, entity, context, senderId);
-  const subject = EmailSubjectSchema.parse(render(subjectTemplate, values, false));
-  const body = sanitizeCampaignHtml(render(bodyTemplate, values));
+  const { senderId, senderEmail, recipient, subject, body, warnings } = await prepareWorkflowEmailInput(action, entity, tenantId, context);
   const messageId = stepId ? `<workflow-${stepId}@leadcrm.local>` : undefined;
   if (stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: stepId, tenantId }, data: { resolvedInput: { version: 1, senderId, recipient, subject, body, messageId } } }));
   const log = await workflowLeaseWrite(async tx => {
-    const log = await repo.createDelivery({ tenantId, fromEmail: sender.email, toEmail: recipient, subject,
+    const log = await repo.createDelivery({ tenantId, fromEmail: senderEmail, toEmail: recipient, subject,
       ...(entity === 'lead' ? { leadId: String(context['lead.id']) } : { contactId: String(context['contact.id']) }) }, tx);
     if (stepId) await tx.workflowExecutionStep.update({ where: { id: stepId, tenantId }, data: { resolvedInput: { version: 1, senderId, recipient, subject, body, messageId, deliveryLogId: log.id } } });
     return log;
@@ -139,6 +148,6 @@ async function deliverEmail(action: WorkflowAction, context: Record<string, unkn
     if (isWorkflowLeaseLost(error)) throw error;
     throw new AppError('Gmail accepted the message, but its receipt could not be saved. Check Gmail before sending again.', 503, 'GMAIL_OUTCOME_UNKNOWN');
   }
-  return { deliveryLogId: log.id, messageId: sent.messageId, status: 'sent' };
+  return { deliveryLogId: log.id, messageId: sent.messageId, status: 'sent', ...(warnings.length ? { warnings } : {}) };
 }
 

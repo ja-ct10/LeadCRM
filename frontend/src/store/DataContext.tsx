@@ -736,7 +736,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
           contact.id,
         );
       } catch (err: unknown) {
-        throw new Error(err instanceof Error ? err.message : 'Failed to create contact');
+        throw err instanceof Error ? err : new Error('Failed to create contact');
       }
       return;
     }
@@ -766,7 +766,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         setContacts((prev) => prev.map((l) => (l.id === id ? contact : l)));
         addAuditLog("Contact Updated", `Updated contact '${contact.contactPerson}'.`, id);
       } catch (err: unknown) {
-        throw new Error(err instanceof Error ? err.message : 'Failed to update contact');
+        throw err instanceof Error ? err : new Error('Failed to update contact');
       }
       return;
     }

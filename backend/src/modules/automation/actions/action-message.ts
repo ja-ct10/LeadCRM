@@ -13,7 +13,7 @@ export async function validateMessageVariables(content: string, entity: Workflow
 }
 
 export async function messageValues(tenantId: string, entity: WorkflowEntity, context: Record<string, unknown>) {
-  if (entity === 'lead' || entity === 'contact') return workflowRecipientValues(tenantId, entity, String(context[`${entity}.id`]), new Set());
+  if (entity === 'lead' || entity === 'contact') return workflowRecipientValues(tenantId, entity, String(context[`${entity}.id`]), new Set(), context);
   const fields = (await campaignVariableFields(tenantId)).filter(field => field.module === WORKFLOW_MODULES[entity]);
   const values: Record<string, string> = Object.create(null);
   for (const field of fields) {
@@ -38,7 +38,7 @@ export async function messageValues(tenantId: string, entity: WorkflowEntity, co
 }
 
 export async function resolveMessageValues(content: string, tenantId: string, entity: WorkflowEntity, context: Record<string, unknown>, senderUserId?: string) {
-  const values = entity === 'lead' || entity === 'contact' ? await workflowRecipientValues(tenantId, entity, String(context[`${entity}.id`]), new Set(campaignVariableKeys(content))) : await messageValues(tenantId, entity, context);
+  const values = entity === 'lead' || entity === 'contact' ? await workflowRecipientValues(tenantId, entity, String(context[`${entity}.id`]), new Set(campaignVariableKeys(content)), context) : await messageValues(tenantId, entity, context);
   if (senderUserId) {
     const [user, sender] = await Promise.all([
       prisma.user.findFirst({ where: { tenantId, id: senderUserId }, select: { firstName: true, lastName: true } }),

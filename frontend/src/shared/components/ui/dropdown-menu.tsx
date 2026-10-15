@@ -94,12 +94,15 @@ export function DropdownMenuTrigger({
 export interface DropdownMenuContentProps extends React.HTMLAttributes<HTMLDivElement> {
   align?: 'start' | 'center' | 'end';
   sideOffset?: number;
+  /** Searchable pickers keep keyboard focus in their controls until selection/Escape. */
+  formContent?: boolean;
 }
 
 export function DropdownMenuContent({
   className,
   align = 'end',
   sideOffset = 4,
+  formContent = false,
   children,
   ...props
 }: DropdownMenuContentProps) {
@@ -121,7 +124,17 @@ export function DropdownMenuContent({
       }
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (formContent && contentRef.current?.contains(e.target as Node) && e.key === 'Tab') {
+        const controls = Array.from(contentRef.current.querySelectorAll<HTMLElement>('input:not(:disabled), button:not(:disabled), select:not(:disabled), textarea:not(:disabled), [href]'));
+        const current = controls.indexOf(document.activeElement as HTMLElement);
+        if (controls.length) {
+          e.preventDefault(); e.stopPropagation();
+          controls[(current + (e.shiftKey ? -1 : 1) + controls.length) % controls.length]?.focus();
+        }
+        return;
+      }
       if (contentRef.current?.contains(e.target as Node) && ['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
+        if (formContent && e.target instanceof HTMLInputElement && ['Home', 'End'].includes(e.key)) return;
         const items = Array.from(contentRef.current.querySelectorAll<HTMLElement>('[role^="menuitem"][aria-disabled="false"]'));
         // Groups such as Product Interest own their checkbox navigation.
         if (!items.length) return;
@@ -141,7 +154,7 @@ export function DropdownMenuContent({
       document.removeEventListener('mousedown', handleClickOutside);
       document.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [open, setOpen, triggerRef]);
+  }, [open, setOpen, triggerRef, formContent]);
 
   React.useEffect(() => {
     if (!open || !mounted) return;
@@ -153,10 +166,10 @@ export function DropdownMenuContent({
       // An async read can enable items after opening. Move focus only while
       // the user is still on the trigger, preserving navigation within the menu.
       if (!menu || document.activeElement !== triggerRef.current) return;
-      menu.querySelector<HTMLElement>('[role^="menuitem"][aria-disabled="false"]')?.focus({ preventScroll: true });
+      menu.querySelector<HTMLElement>(formContent ? 'input:not(:disabled), button:not(:disabled)' : '[role^="menuitem"][aria-disabled="false"]')?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
-  }, [open, mounted, children, triggerRef]);
+  }, [open, mounted, children, triggerRef, formContent]);
   React.useLayoutEffect(() => {
     if (!mounted || !open) return;
     const updatePosition = () => {

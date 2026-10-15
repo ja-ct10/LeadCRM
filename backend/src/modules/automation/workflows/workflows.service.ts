@@ -23,6 +23,8 @@ import { workflowNameKey, suggestWorkflowCopyName } from './workflow-names';
 import { workflowDefinitionChanged } from './workflow-version';
 import { workflowStageEvent, assertCurrentStageEntry, isStageEvent, isSupersededStageEntry } from './workflow-stage-entry';
 import { prepareWorkflowTaskInput } from '../actions/action-task-input';
+import { resolveTaskDeals, workflowTaskAssociationSummary } from '../actions/action-task-deals';
+import { prepareWorkflowEmailInput } from '../actions/action-email';
 
 function sanitizeDraft(draft: WorkflowDraft, previousConditions?: unknown): WorkflowDraft {
   const previous = WorkflowConditionSchema.safeParse(previousConditions);
@@ -190,10 +192,16 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
       const assignment = resolvedAssignment ? assignmentOutput(resolvedAssignment) : undefined;
       const targets = action.type === 'move_deal_stage' ? await resolveDealTargets(action, trigger.entity, tenantId, context) : undefined;
       const taskInput = action.type === 'create_task' ? await prepareWorkflowTaskInput({ action, entity: trigger.entity, tenantId, context, assignedUserId: assignment!.resolvedUserId }) : undefined;
+      const preparedEmail = action.type === 'send_email' ? await prepareWorkflowEmailInput(action, trigger.entity, tenantId, context) : undefined;
+      const emailPreview = preparedEmail ? { senderName: preparedEmail.senderName, senderEmail: preparedEmail.senderEmail, recipient: preparedEmail.recipient, subject: preparedEmail.subject, body: preparedEmail.body, warnings: preparedEmail.warnings } : undefined;
       const taskPreview = taskInput ? { title: taskInput.title, description: taskInput.description, priority: taskInput.priority,
-        status: 'pending' as const, dueDate: taskInput.dueDate, assignedUserId: taskInput.assignedUserId, dealIds: taskInput.dealIds ?? [] } : undefined;
-      actions.push({ type: action.type, valid: true, status: 'ready', ...(assignment ? { assignment } : {}), ...(taskPreview ? { taskPreview } : {}),
-        message: assignment ? `Would assign ${assignment.resolvedUserName} (${assignment.candidateCount} eligible). ${assignment.reason}.${assignment.workload !== undefined ? ` Active workload: ${assignment.workload}${assignment.capacityLimit !== undefined ? ` / ${assignment.capacityLimit}` : ''}.` : ''} No records or assignment state changed.` : targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
+        status: 'pending' as const, dueDate: taskInput.dueDate, assignedUserId: taskInput.assignedUserId, dealIds: taskInput.dealIds ?? [],
+        taskCount: 1 as const, dealCount: taskInput.dealIds!.length, deals: await resolveTaskDeals(action, trigger.entity, tenantId, context),
+        associationSummary: workflowTaskAssociationSummary(taskInput.dealIds!.length) } : undefined;
+      if (taskPreview && JSON.stringify(taskPreview.deals.map(deal => deal.id)) !== JSON.stringify(taskPreview.dealIds))
+        throw new ValidationError('Related deals changed during this check. Run the check again before saving.');
+      actions.push({ type: action.type, valid: true, status: 'ready', ...(assignment ? { assignment } : {}), ...(taskPreview ? { taskPreview } : {}), ...(emailPreview ? { emailPreview, warnings: emailPreview.warnings } : {}),
+        message: assignment ? `${taskPreview ? `${taskPreview.associationSummary} ` : ''}Would assign ${assignment.resolvedUserName} (${assignment.candidateCount} eligible). ${assignment.reason}.${assignment.workload !== undefined ? ` Active workload: ${assignment.workload}${assignment.capacityLimit !== undefined ? ` / ${assignment.capacityLimit}` : ''}.` : ''} No records or assignment state changed.` : targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
           : action.type === 'send_email' ? 'Recipient, sender permissions, mailbox ownership and projected assignment are valid. No email sent.' : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
       if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = assignment!.resolvedUserId;

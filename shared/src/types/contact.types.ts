@@ -27,7 +27,7 @@ export interface Contact {
   productInterest?: string[];
   source?: string;
   assignedUserId?: string;
-  accountId?: string;
+  accountId?: string | null;
   status: string;
   createdAt: string;
   updatedAt?: string;
@@ -67,7 +67,7 @@ export interface CreateContactRequest {
   companyName?: string;
   status?: string;
   source?: string;
-  accountId?: string;
+  accountId?: string | null;
   assignedUserId?: string;
   productInterest?: string[];
   address?: string;

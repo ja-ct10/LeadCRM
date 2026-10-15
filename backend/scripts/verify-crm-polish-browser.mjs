@@ -67,7 +67,7 @@ try {
   const executablePath = [chromium.executablePath(), 'C:/Program Files/Google/Chrome/Application/chrome.exe', 'C:/Program Files (x86)/Microsoft/Edge/Application/msedge.exe'].find(path => existsSync(path));
   assert.ok(executablePath, 'A local Chromium browser is required');
   browser = await chromium.launch({ executablePath, headless: true });
-  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce' });
+  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, reducedMotion: 'reduce', sandboxedFrames: true });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); await page.bringToFront(); page.setDefaultTimeout(25000);
   page.on('pageerror', error => errors.push(error.message));
@@ -75,9 +75,15 @@ try {
     const request = route.request(), url = new URL(request.url()), path = url.pathname.replace('/api/proxy', '');
     const local = apiBase + path + url.search, headers = { ...request.headers(), authorization: `Bearer ${token}` };
     if (path.endsWith('/events') || path === '/crm/record-events') return route.continue({ url: local, headers });
-    const response = await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined });
-    if (response.status() >= 500) errors.push(`${request.method()} ${path} ${response.status()}`);
-    await route.fulfill({ response });
+    try {
+      const response = await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined,
+        maxRetries: request.method() === 'GET' ? 2 : 0 });
+      if (response.status() >= 500) errors.push(`${request.method()} ${path} ${response.status()}`);
+      await route.fulfill({ response });
+    } catch (error) {
+      if (!page.isClosed()) errors.push(`${request.method()} ${path}: ${error.message.split('\n')[0]}`);
+      await route.abort().catch(() => {});
+    }
   });
   async function layout(label, focus) {
     for (const theme of ['Light', 'Dark']) {
@@ -103,7 +109,7 @@ try {
         else await page.getByText(titles[module], { exact: true }).first().click();
       }
       await page.getByRole('heading', { name: titles[module], level: 1, exact: true }).waitFor();
-      await page.getByRole('tab', { name: /Details/ }).click({ force: true });
+      await page.getByRole('tab', { name: /Details/ }).click();
       let focus;
       if (module === 'leads' || module === 'contacts') {
         const group = page.getByRole('button', { name: 'Organization', exact: true }).locator('xpath=ancestor::section[1]'); focus = group;
@@ -114,43 +120,79 @@ try {
         assert.equal(await page.getByRole('button', { name: /Company \/ Organization|Account \/ Company/ }).count(), 0);
       } else if (module === 'deals') {
         const group = page.getByRole('button', { name: 'Relationships', exact: true }).locator('xpath=ancestor::section[1]'); focus = group;
-        for (const [kind, id] of [['leads', lead.id], ['contacts', contact.id], ['accounts', account.id]]) assert.equal(await group.locator(`a[href="/crm/${kind}/${id}"]`).count(), 1);
+        for (const [kind, id] of [['leads', lead.id], ['contacts', contact.id], ['accounts', account.id]]) {
+          await group.locator(`a[href="/crm/${kind}/${id}"]`).waitFor();
+          assert.equal(await group.locator(`a[href="/crm/${kind}/${id}"]`).count(), 1);
+        }
         assert.equal(await page.getByRole('button', { name: 'Lead/Contact', exact: true }).count(), 0);
       } else {
         assert.equal(await page.getByRole('button', { name: 'Notes', exact: true }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Edit Internal Notes' }).count(), 0);
-        await page.getByRole('tab', { name: /Activity/ }).click({ force: true });
+        await page.getByRole('tab', { name: /Activity/ }).click();
         await page.getByText('Preserved historical company note', { exact: true }).first().waitFor();
         await page.getByText('Legacy import · original author unavailable', { exact: true }).first().waitFor();
-        await page.getByRole('tab', { name: /Details/ }).click({ force: true });
+        await page.getByRole('tab', { name: /Details/ }).click();
       }
       pass(`${module} ${surface} content`);
       if (surface === 'panel') await layout(`${module}-${surface}`, focus);
     }
   }
   for (const module of ['leads', 'contacts']) {
+    await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${base}/crm/${module}`);
     await page.getByRole('button', { name: module === 'leads' ? /Create Lead/ : /Create Contact/, exact: true }).click();
     await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
     const form = page.locator('form').filter({ has: page.getByLabel('First Name *') });
-    await form.getByRole('button', { name: 'Create new Account', exact: true }).click();
+    const modes = form.getByRole('group', { name: 'Account options' });
+    assert.deepEqual(await modes.getByRole('button').allTextContents(), ['Link existing account', 'Create new account']);
+    assert.equal(await modes.getByRole('button', { name: 'Link existing account' }).getAttribute('aria-pressed'), 'true');
+    assert.equal(await form.getByLabel('Company Name *').count(), 0);
+    await form.getByRole('button', { name: 'Create new account', exact: true }).click();
     const companyName = `Created from ${module}`;
     await form.getByLabel('First Name *').fill('Created'); await form.getByLabel('Last Name *').fill(module);
     await form.getByLabel('Email *').fill(`created-${module}@example.test`);
     await form.getByLabel('Company Name *').fill(companyName); await form.getByLabel(/^Industry/).selectOption('Technology');
-    await form.getByLabel(/^Size/).selectOption('51-200'); await form.getByLabel('Website', { exact: true }).fill('https://created.test');
+    await form.getByLabel('Company Size', { exact: true }).selectOption('51-200'); await form.getByLabel('Website', { exact: true }).fill('https://created.test');
+    const accountAddress = form.locator('textarea[name="newAccount.address"]');
+    await accountAddress.fill('24 Company Avenue\nManila');
+    await form.getByRole('button', { name: 'Link existing account', exact: true }).click();
+    assert.equal(await form.getByLabel('Company Name *').count(), 0);
+    assert.equal(await form.getByLabel('Website', { exact: true }).count(), 0);
+    await form.getByRole('button', { name: 'Create new account', exact: true }).click();
+    assert.equal(await form.getByLabel('Company Name *').inputValue(), companyName);
+    assert.equal(await accountAddress.inputValue(), '24 Company Avenue\nManila');
     assert.ok((await form.getByLabel('Company Name *').locator('xpath=ancestor::section[1]').innerText()).includes('Organization'));
     await layout(`${module}-form`, form.getByRole('heading', { name: 'Organization', exact: true }));
-    const positions = await form.evaluate(element => Object.fromEntries(['Company Name *', 'Industry', 'Size', 'Website'].map(label => {
+    const positions = await form.evaluate(element => Object.fromEntries(['Company Name *', 'Industry', 'Company Size', 'Website'].map(label => {
       const field = [...element.querySelectorAll('label')].find(item => item.textContent.trim().startsWith(label));
-      const input = field?.querySelector('input,select'); const box = input?.getBoundingClientRect(); return [label, box ? { x: box.x, y: box.y } : null];
+      const input = field?.htmlFor ? document.getElementById(field.htmlFor) : null; const box = input?.getBoundingClientRect(); return [label, box ? { x: box.x, y: box.y } : null];
     })));
-    assert.ok(Math.abs(positions['Company Name *'].y - positions.Industry.y) < 2 && Math.abs(positions.Size.y - positions.Website.y) < 2);
+    assert.ok(Math.abs(positions['Company Name *'].y - positions.Industry.y) < 2 && Math.abs(positions['Company Size'].y - positions.Website.y) < 2);
     await form.getByRole('button', { name: module === 'leads' ? 'Create Lead' : 'Create Contact', exact: true }).click();
     await form.waitFor({ state: 'hidden' });
-    const created = await prisma.account.findFirst({ where: { tenantId, name: companyName } }); assert.ok(created); assert.equal(created.size, '51-200');
+    const created = await prisma.account.findFirst({ where: { tenantId, name: companyName } }); assert.ok(created); assert.equal(created.size, '51-200'); assert.equal(created.address, '24 Company Avenue\nManila');
+    const person = await prisma[module === 'leads' ? 'lead' : 'contact'].findFirst({ where: { tenantId, email: `created-${module}@example.test` } });
+    assert.equal(person.accountId, created.id); assert.notEqual(person.address, created.address);
+    await page.reload(); assert.equal(await prisma.account.count({ where: { tenantId, name: companyName } }), 1);
     pass(`${module} form creates linked Account`);
   }
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${base}/crm/accounts`);
+  await page.getByRole('button', { name: 'Add Account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
+  const accountForm = page.locator('form').filter({ has: page.getByLabel('Account Name *') });
+  await accountForm.getByLabel('Account Name *').fill('Responsive Account');
+  const address = accountForm.getByLabel('Full Address', { exact: true });
+  for (const width of [375, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await address.scrollIntoViewIfNeeded();
+    const box = await address.boundingBox();
+    const grid = await address.locator('xpath=ancestor::div[contains(@class,"grid")][1]').boundingBox();
+    assert.ok(Math.abs(box.width - grid.width) < 3, `Full Address must span the form grid at ${width}px`);
+  }
+  await layout('account-form-address', address);
+  await accountForm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  pass('Account Full Address spans both desktop columns and remains responsive');
   await page.goto(`${base}/automation/workflows`); await page.getByRole('button', { name: 'View runs', exact: true }).first().click();
   const panel = page.getByRole('dialog', { name: 'Workflow details — Polish Workflow' });
   await panel.locator('details > summary').first().click(); await panel.getByText('Definition used in this run · v2', { exact: true }).click();
@@ -158,6 +200,60 @@ try {
   await panel.getByText('Assignment settings', { exact: true }).click(); await panel.getByText('Previous assignee / Sticky assignment', { exact: true }).waitFor();
   assert.equal(await panel.locator('pre').count(), 0); assert.equal(await panel.getByText('Current different task', { exact: true }).count(), 0);
   pass('Workflow displays executed snapshot and historical strategy'); await layout('workflow-panel');
+  // Exercise the changed editor and read-only previews through the real API.
+  const workerRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Workflow Browser Agent', permissions: { create: { module: 'tasks', canView: true } } } });
+  const worker = await prisma.user.create({ data: { tenantId, firstName: 'Task', lastName: 'Agent', email: 'workflow-task-agent@example.test', role: workerRole.name, status: 'ACTIVE', userRoles: { create: { roleId: workerRole.id } } } });
+  await prisma.lead.update({ where: { id: lead.id }, data: { assignedUserId: admin.id } });
+  await prisma.emailAccount.create({ data: { tenantId, userId: admin.id, email: admin.email, accessToken: 'disposable-preview-only', scopes: ['gmail.send'] } });
+  for (let index = 2; index <= 3; index++) await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, title: `Preview Deal ${index}`, leadDeals: { create: { leadId: lead.id } } } });
+  const draft = { name: 'Workflow email and task preview', trigger: 'lead.created', isActive: false, actions: [
+    { type: 'send_email', config: { subject: 'Hello NAME!', body: '<p>Hello {{firstName}}</p>' } },
+    { type: 'create_task', config: { title: 'All related follow-up', assignedUserId: worker.id, targetMode: 'all_matching' } },
+  ] };
+  const draftResponse = await page.request.post(`${apiBase}/automation/workflows`, { headers: { authorization: `Bearer ${token}` }, data: draft });
+  assert.equal(draftResponse.status(), 201, await draftResponse.text());
+  const previewWorkflow = (await draftResponse.json()).data;
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${base}/automation/workflows/${previewWorkflow.id}/edit`);
+  await page.getByRole('button', { name: 'Configure action: 1. Send Email', exact: true }).click();
+  assert.equal(await page.getByLabel('Connected Gmail sender', { exact: true }).count(), 0);
+  const subject = page.getByLabel('Subject (overrides template)', { exact: true });
+  await subject.focus(); await subject.evaluate(element => element.setSelectionRange(6, 10));
+  const insert = page.getByRole('button', { name: 'Insert Variable into Subject (overrides template)', exact: true });
+  await insert.click();
+  const variables = page.getByRole('group', { name: 'Variables for Subject (overrides template)', exact: true });
+  await variables.getByRole('textbox', { name: 'Search variables', exact: true }).fill('First Name');
+  await variables.getByRole('button', { name: /^First Name/ }).click();
+  assert.equal(await subject.inputValue(), 'Hello {{firstName}}!');
+  assert.equal(await subject.evaluate(element => new Promise(done => requestAnimationFrame(() => done(document.activeElement === element && element.selectionStart === 19)))), true);
+  await insert.focus(); await page.keyboard.press('Enter');
+  const search = variables.getByRole('textbox', { name: 'Search variables', exact: true });
+  await search.waitFor(); await search.fill(''); await search.focus(); await page.keyboard.press('Tab');
+  assert.equal(await variables.evaluate(element => element.contains(document.activeElement)), true);
+  assert.equal(await variables.getByText('Sender', { exact: true }).count(), 0);
+  assert.equal(await variables.getByText('Account Name', { exact: true }).count(), 0);
+  await page.keyboard.press('Escape'); assert.equal(await insert.evaluate(element => document.activeElement === element), true);
+  pass('Workflow Insert Variable replaces selection, restores cursor and supports keyboard focus');
+  await page.getByRole('button', { name: 'Save draft', exact: true }).click();
+  await page.getByRole('button', { name: 'Test', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  assert.equal(await page.getByRole('dialog', { name: 'Step configuration', exact: true }).count(), 0);
+  await page.getByLabel('Sample record', { exact: false }).selectOption(lead.id);
+  const countsBefore = await Promise.all([prisma.task.count({ where: { tenantId } }), prisma.emailDeliveryLog.count({ where: { tenantId } }), prisma.workflowExecutionRun.count({ where: { tenantId } })]);
+  await page.getByRole('button', { name: 'Run check', exact: true }).click();
+  await page.getByText('Creates 1 task linked to 3 deals.', { exact: true }).waitFor();
+  await page.getByText(/Subject:.*Hello Polish!/).waitFor();
+  assert.equal(await page.getByTitle('Email message preview 1').getAttribute('sandbox'), '');
+  assert.deepEqual(await Promise.all([prisma.task.count({ where: { tenantId } }), prisma.emailDeliveryLog.count({ where: { tenantId } }), prisma.workflowExecutionRun.count({ where: { tenantId } })]), countsBefore);
+  await layout('workflow-email-task-preview');
+  await page.reload();
+  await page.getByRole('button', { name: 'Configure action: 2. Create Task', exact: true }).click();
+  assert.equal(await page.getByLabel('Associate task with', { exact: true }).inputValue(), 'all_matching');
+  await page.getByRole('button', { name: 'Pipeline filter', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Search pipeline filter', exact: true }).fill('Polish');
+  await page.getByRole('menuitem', { name: 'Polish Pipeline', exact: true }).waitFor();
+  await page.keyboard.press('Escape');
+  pass('Workflow save/refresh retains all-matching mode and Run Check renders email and three-deal preview without writes');
   assert.deepEqual(errors, []); pass('No page or API 5xx errors');
 } catch (error) {
   failure = error; console.error(error);
@@ -165,6 +261,7 @@ try {
   process.exitCode = 1;
 } finally {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: failure ? 'FAIL' : 'PASS', checks, pageErrors: errors, failure: failure?.message }, null, 2));
+  await page?.unrouteAll({ behavior: 'ignoreErrors' }).catch(() => {});
   await browser?.close(); frontend?.kill();
   if (api) await new Promise(done => api.close(done));
   await prisma?.$disconnect(); await socket?.stop(); await new Promise(done => setImmediate(done)); await db.close(); console.log = originalLog; apiLog.end();

@@ -1,4 +1,5 @@
 'use client';
+import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
 import { PageHeader } from '@/shared/components/ui/page-header';
@@ -117,10 +118,8 @@ export default function CampaignsPage() {
   function insertTemplateVariable(token: string) {
     const field = newTemplateType === 'Email' ? templateActiveField.current : 'content';
     const input = field === 'subject' ? templateSubjectRef.current : templateBodyRef.current;
-    const value = newTemplate[field], start = input?.selectionStart ?? value.length, end = input?.selectionEnd ?? start;
-    setNewTemplate(previous => ({ ...previous, [field]: value.slice(0, start) + token + value.slice(end) }));
+    insertVariableAtSelection(input, newTemplate[field], token, value => setNewTemplate(previous => ({ ...previous, [field]: value })));
     setShowVarDropdown(false);
-    requestAnimationFrame(() => { input?.focus(); input?.setSelectionRange(start + token.length, start + token.length); });
   }
   // ── KPI computations (real data, no hardcoded numbers) ─────────────────────
   const activeCampaignCount = metrics.activeCampaigns;

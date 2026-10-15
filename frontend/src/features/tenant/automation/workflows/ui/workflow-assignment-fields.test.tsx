@@ -22,7 +22,7 @@ describe('workflow assignment editor', () => {
     const initial: WorkflowAction = { type: 'create_task', config: { title: 'Follow up' } };
     render(<Editor initial={initial} entity="account" />);
     expect(screen.queryByRole('option', { name: 'Current Record Agent' })).toBeNull();
-    expect(actionIssues(initial, getAvailableActions().find(action => action.type === 'create_task'), 'account', options)).toEqual([expect.stringContaining('Account assignment and product fields are retired')]);
+    expect(actionIssues(initial, getAvailableActions().find(action => action.type === 'create_task'), 'account', options)).toEqual([expect.stringContaining('Account assignment, product fields and internal notes are retired')]);
     fireEvent.change(screen.getByLabelText('Assign to'), { target: { value: 'user' } });
     fireEvent.change(screen.getByLabelText('Assignment user'), { target: { value: userId } });
     expect(JSON.parse(screen.getByTestId('config').textContent!).assignmentTarget).toEqual({ type:'user',id:userId });
