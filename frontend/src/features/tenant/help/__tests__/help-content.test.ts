@@ -50,7 +50,7 @@ describe('Help Center search', () => {
   });
   it('searches category names, keywords, and the article body', () => {
     expect(searchHelp('troubleshooting').some(article => article.category === 'troubleshooting')).toBe(true);
-    expect(searchHelp('tin').some(article => article.id === 'creating-accounts')).toBe(true);
+    expect(searchHelp('full address').some(article => article.id === 'creating-accounts')).toBe(true);
     expect(searchHelp('9123456789').some(article => article.id === 'creating-leads')).toBe(true);
   });
   it('filters results by category and handles empty or unmatched queries', () => {
