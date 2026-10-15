@@ -16,6 +16,7 @@ import { InlineEditRows, type InlineRowDef } from '@/shared/components/crm/inlin
 import { RecordSection } from '@/shared/components/crm/record-section';
 import { RowActionsMenu, type RowActionItem } from '@/shared/components/data-grid/row-actions-menu';
 import { UserAvatar, administrationAvatarUrl } from '@/shared/components/user-avatar';
+import { CheckboxDropdownSelect } from '@/shared/components/ui/checkbox-dropdown-select';
 
 type Draft = { firstName: string; lastName: string; email: string; phone: string; role: string; jobTitle: string };
 type DraftErrors = Partial<Record<keyof Draft | 'groupIds', string>>;
@@ -217,12 +218,12 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
         <section className="space-y-4"><PanelSectionHeading number={2}>Organization</PanelSectionHeading>{input('role', true)}<div className="grid grid-cols-1 sm:grid-cols-2 gap-4">{input('jobTitle')}</div>
           <fieldset disabled={busy || groupsLoading || !canManageGroups || !!groupError} className="space-y-2">
             <legend className="text-xs font-semibold">Groups</legend>
-            {canManageGroups && !groupError ? groupOptions.map(group => <label key={group.id} className="flex items-center gap-2 text-sm">
-              <input type="checkbox" checked={groupIds.includes(group.id)} onChange={event => { setGroupIds(ids => event.target.checked ? [...ids, group.id] : ids.filter(id => id !== group.id)); setErrors(prev => ({ ...prev, groupIds: undefined })); }} />{group.name}
-            </label>) : <p className="text-sm">{saved?.groups?.map(group => group.name).join(', ') || 'No groups assigned'}</p>}
+            {canManageGroups ? <CheckboxDropdownSelect id="user-groupIds" values={groupIds} options={groupOptions.map(group => ({ value: group.id, label: group.name }))}
+              onChange={ids => { setGroupIds(ids); setErrors(prev => ({ ...prev, groupIds: undefined })); }}
+              placeholder="Select groups..." ariaLabel="Groups" disabled={busy || groupsLoading || !!groupError} emptyMessage="No groups have been created." />
+              : <p className="text-sm">{saved?.groups?.map(group => group.name).join(', ') || 'No groups assigned'}</p>}
             {groupError && <p role="alert" className="text-xs text-red-500">{groupError}</p>}
             {canManageGroups && groupsLoading && <p className="text-xs text-slate-500" role="status">Loading available groups…</p>}
-            {canManageGroups && !groupsLoading && !groupError && !groupOptions.length && <p className="text-sm">No groups have been created.</p>}
             {errors.groupIds && <p role="alert" className="text-xs text-red-500">{errors.groupIds}</p>}
             <p className="text-xs text-slate-500">The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.</p>
           </fieldset>

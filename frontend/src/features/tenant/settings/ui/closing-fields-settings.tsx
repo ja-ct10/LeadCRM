@@ -12,6 +12,7 @@ import { panelBodyClass, panelFooterClass, panelInputClass } from '@/shared/comp
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { Button, CreateButton } from '@/shared/components/ui/button';
 import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { ManageFieldGroups } from './manage-field-groups';
 import { SortableFieldLayoutItem } from './sortable-field-layout';
@@ -74,6 +75,7 @@ export function ClosingFieldsSettings() {
   const [module, setModule] = useState<CustomFieldModule>('leads'), [search, setSearch] = useState('');
   const [panel, setPanel] = useState<'new' | CrmFieldCatalogEntry | null>(null), [manageGroups, setManageGroups] = useState(false), [pending, setPending] = useState(false);
   const [optimistic, setOptimistic] = useState<LayoutResponse | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<CrmFieldCatalogEntry | null>(null);
   const saving = useRef(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   const query = useCachedPage<{ definitions: ClosingField[]; layout: FieldLayout }>({ module: 'settings', params: { fieldLayout: module }, revalidateOnInvalidation: true, fetchFn: async signal => {
@@ -89,6 +91,13 @@ export function ClosingFieldsSettings() {
   const filtered = fields.filter(field => matchesSearch(search, field.label, field.technicalKey, field.canonicalTechnicalKey, field.group, field.type, field.kind));
   useEffect(() => { if (!pending && data && optimistic && (data.layout.revision ?? 0) >= (optimistic.layout.revision ?? 0)) setOptimistic(null); }, [data, optimistic, pending]);
   const switchModule = (value: CustomFieldModule) => { if (saving.current) return; setModule(value); setPanel(null); setOptimistic(null); };
+  const deleteField = async () => {
+    if (!canDelete || saving.current || !deleteTarget?.customFieldId) return false;
+    saving.current = true; setPending(true);
+    try { await apiClient.delete(`${endpoint}/${deleteTarget.customFieldId}`); setOptimistic(null); await query.refetch(); toast.success('Field deleted'); }
+    catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to delete field'); }
+    finally { saving.current = false; setPending(false); }
+  };
   const mutateLayout = async (input: FieldLayoutAction): Promise<boolean> => {
     if (saving.current || !ready) return false;
     saving.current = true; setPending(true);
@@ -132,14 +141,14 @@ export function ClosingFieldsSettings() {
           {filtered.filter(field => field.groupId === group.id).map(field => <SortableFieldLayoutItem row key={field.canonicalTechnicalKey ?? field.technicalKey} id={field.canonicalTechnicalKey ?? field.technicalKey} groupId={field.groupId} label={field.label} disabled={!canEdit || pending || !ready || !!term}>
             <td className="p-3 font-medium">{field.label}{!field.active && <span className="block text-muted-foreground">Disabled</span>}</td><td className="p-3">{field.kind}</td><td className="p-3">{field.type}</td><td className="max-w-64 break-all p-3 font-mono">{field.technicalKey}</td><td className="p-3">{field.group}</td><td className="p-3">{field.required ? 'Yes' : 'No'}</td>
             {(['visibleInForm', 'visibleInDetails'] as const).map(key => <td key={key} className="p-3"><input aria-label={`${key === 'visibleInForm' ? 'Show in Forms' : 'Show in Details'}: ${field.label}`} type="checkbox" checked={field[key]} disabled={!canEdit || pending || (key === 'visibleInForm' && field.mandatory)} onChange={event => void mutateLayout({ action: 'field', technicalKey: field.technicalKey, [key]: event.target.checked })} /></td>)}
-            <td className="p-2"><div className="flex items-center gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDelete && field.kind === 'Custom' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label="Delete field" title="Delete field" disabled={pending} onClick={async () => {
-              if (saving.current || !window.confirm(`Delete “${field.label}” from current configuration? Historical values and evidence will be retained.`)) return;
-              saving.current = true; setPending(true); try { await apiClient.delete(`${endpoint}/${field.customFieldId}`); setOptimistic(null); await query.refetch(); toast.success('Field deleted'); } catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to delete field'); } finally { saving.current = false; setPending(false); }
-            }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Delete field</TooltipContent></Tooltip></TooltipProvider>}</div></td>
+            <td className="p-2"><div className="flex items-center gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDelete && field.kind === 'Custom' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label="Delete field" title="Delete field" disabled={pending} onClick={() => { if (!saving.current) setDeleteTarget(field); }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Delete field</TooltipContent></Tooltip></TooltipProvider>}</div></td>
           </SortableFieldLayoutItem>)}
         </SortableContext>)}
       </tbody></table>{!filtered.length && <p className="p-5 text-sm text-muted-foreground">No fields match your search.</p>}</div>
     </DndContext>}
+    <ConfirmActionDialog open={deleteTarget !== null} onOpenChange={open => { if (!open) setDeleteTarget(null); }} title="Delete custom field?"
+      description={`Delete “${deleteTarget?.label ?? ''}” from the current configuration?`} warning="Historical values and evidence will be retained."
+      confirmLabel="Delete field" cancelLabel="Cancel" variant="destructive" isLoading={pending} confirmDisabled={!canDelete} onConfirm={deleteField} />
     <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'new' ? 'Add Field' : 'Edit Field'}>{panel && (panel === 'new' || panel.customFieldId ? <FieldForm key={panel === 'new' ? module : panel.customFieldId} field={panel === 'new' ? undefined : data?.definitions.find(field => field.id === panel.customFieldId)} module={module} initialLayout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} /> : <NativeFieldForm field={panel} layout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} />)}</SlidingDrawer>
     <ManageFieldGroups key={module} open={manageGroups} onOpenChange={setManageGroups} module={module} onModuleChange={switchModule} layout={layout} fields={fields} pending={pending} ready={ready} canEdit={canEdit} canDelete={canDelete} mutate={mutateLayout} reorder={reorderGroups} />
   </div>;
