@@ -18,6 +18,9 @@ export interface ConfirmActionDialogProps {
   warning?: string;
   confirmLabel?: string;
   cancelLabel?: string;
+  secondaryLabel?: string;
+  onSecondary?: () => void | boolean | Promise<void | boolean>;
+  secondaryVariant?: 'default' | 'destructive';
   variant?: ConfirmActionVariant;
   icon?: LucideIcon;
   /** Resolving closes the dialog. Throw an error to keep it open, or return false for a controlled transition. */
@@ -42,24 +45,25 @@ const focusableSelector = 'a[href], button, input, select, textarea, summary, [t
 export function ConfirmActionDialog({
   open, onOpenChange, title, description, items, warning,
   confirmLabel = 'Confirm', cancelLabel = 'Cancel', variant = 'default', icon,
+  secondaryLabel, onSecondary, secondaryVariant = 'default',
   onConfirm, isLoading = false, confirmDisabled = false, children,
 }: ConfirmActionDialogProps): React.ReactElement | null {
   const id = useId();
-  const [internalLoading, setInternalLoading] = useState(false);
+  const [pendingAction, setPendingAction] = useState<'confirm' | 'secondary' | null>(null);
   const [error, setError] = useState('');
   const pending = useRef(false);
   const session = useRef(0);
   const layerRef = useRef<HTMLDivElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
-  const loading = internalLoading || isLoading;
+  const loading = pendingAction !== null || isLoading;
   const latest = useRef({ loading, onOpenChange });
   latest.current = { loading, onOpenChange };
 
   useEffect(() => {
     session.current++;
     setError('');
-    setInternalLoading(false);
+    setPendingAction(null);
     pending.current = false;
     if (!open) return;
     const previousFocus = document.activeElement as HTMLElement | null;
@@ -114,22 +118,25 @@ export function ConfirmActionDialog({
   const handleCancel = () => {
     if (!pending.current && !loading) onOpenChange(false);
   };
-  const handleConfirm = async () => {
-    if (pending.current || loading || confirmDisabled) return;
-    const inputs = dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea');
-    if (inputs && Array.from(inputs).some(input => !input.reportValidity())) return;
+  const handleAction = async (action: 'confirm' | 'secondary') => {
+    const callback = action === 'confirm' ? onConfirm : onSecondary;
+    if (pending.current || loading || !callback || (action === 'confirm' && confirmDisabled)) return;
+    if (action === 'confirm') {
+      const inputs = dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea');
+      if (inputs && Array.from(inputs).some(input => !input.reportValidity())) return;
+    }
     pending.current = true;
     const started = session.current;
-    setInternalLoading(true);
+    setPendingAction(action);
     setError('');
     try {
-      const result = await onConfirm();
+      const result = await callback();
       if (session.current === started && result !== false) onOpenChange(false);
     } catch (failure) {
       if ((failure as { status?: number })?.status === 403) showCrmMutationError(failure, 'Unable to complete this action.');
       if (session.current === started) setError(failure instanceof Error && failure.message ? failure.message : 'Unable to complete this action. Please try again.');
     } finally {
-      if (session.current === started) { pending.current = false; setInternalLoading(false); }
+      if (session.current === started) { pending.current = false; setPendingAction(null); }
     }
   };
 
@@ -160,8 +167,11 @@ export function ConfirmActionDialog({
         </div>
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-100 bg-slate-50/50 px-4 py-3 dark:border-white/[0.05] dark:bg-white/[0.02] sm:px-5">
           <button ref={cancelRef} type="button" onClick={handleCancel} disabled={loading} className={cn('min-h-9 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/5', focusClass)}>{cancelLabel}</button>
-          <button type="button" onClick={() => void handleConfirm()} disabled={loading || confirmDisabled} className={cn('flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, style.button)}>
-            {loading && <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}{confirmLabel}
+          {secondaryLabel && onSecondary && <button type="button" onClick={() => void handleAction('secondary')} disabled={loading} className={cn('flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, variants[secondaryVariant].button)}>
+            {pendingAction === 'secondary' && <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}{secondaryLabel}
+          </button>}
+          <button type="button" onClick={() => void handleAction('confirm')} disabled={loading || confirmDisabled} className={cn('flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, style.button)}>
+            {loading && pendingAction !== 'secondary' && <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}{confirmLabel}
           </button>
         </footer>
       </div>

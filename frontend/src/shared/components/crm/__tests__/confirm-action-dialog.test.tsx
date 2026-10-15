@@ -15,6 +15,58 @@ const open = () => { const trigger = screen.getByRole('button', { name: 'Open co
 const deferred = () => { let resolve!: () => void; let reject!: (error: Error) => void; const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; };
 
 describe('canonical confirmation behavior', () => {
+  it('renders a secondary action only with both a label and callback, between Cancel and Confirm', () => {
+    const action = vi.fn(), secondary = vi.fn();
+    const { rerender } = render(<Harness title="Continue?" onConfirm={action} secondaryLabel="Discard" />); open();
+    expect(screen.queryByRole('button', { name: 'Discard' })).toBeNull();
+    rerender(<Harness title="Continue?" onConfirm={action} onSecondary={secondary} />);
+    expect(within(screen.getByRole('alertdialog')).getAllByRole('button').map(button => button.textContent)).toEqual(['', 'Cancel', 'Confirm']);
+    rerender(<Harness title="Continue?" onConfirm={action} secondaryLabel="Discard" onSecondary={secondary} />);
+    expect(screen.getByRole('button', { name: 'Discard' }).className).toContain('bg-primary');
+    rerender(<Harness title="Continue?" onConfirm={action} secondaryLabel="Discard" onSecondary={secondary} secondaryVariant="destructive" />);
+    expect(screen.getByRole('button', { name: 'Discard' }).className).toContain('bg-red-600');
+    expect(within(screen.getByRole('alertdialog')).getAllByRole('button').map(button => button.textContent)).toEqual(['', 'Cancel', 'Discard', 'Confirm']);
+  });
+
+  it('allows a secondary action with invalid child inputs and a disabled primary action', async () => {
+    const action = vi.fn(), secondary = vi.fn();
+    render(<Harness title="Continue?" onConfirm={action} confirmDisabled secondaryLabel="Discard" onSecondary={secondary}><input aria-label="Required value" required /></Harness>); open();
+    expect((screen.getByRole('textbox') as HTMLInputElement).checkValidity()).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(secondary).toHaveBeenCalledTimes(1); expect(action).not.toHaveBeenCalled();
+  });
+
+  it('locks both actions and dismissal while a secondary request is pending and shows its progress', async () => {
+    const request = deferred(), action = vi.fn(), secondary = vi.fn(() => request.promise);
+    render(<Harness title="Continue?" onConfirm={action} secondaryLabel="Discard" onSecondary={secondary}><input aria-label="Value" /></Harness>); open();
+    const discard = screen.getByRole('button', { name: 'Discard' }), confirm = screen.getByRole('button', { name: 'Confirm' });
+    fireEvent.click(discard); fireEvent.click(discard); fireEvent.click(confirm);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' })); fireEvent.click(screen.getByRole('button', { name: 'Close confirmation' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    fireEvent.click(document.querySelector('[data-confirm-action-layer] > [aria-hidden]')!);
+    expect(screen.getByRole('alertdialog').getAttribute('aria-busy')).toBe('true');
+    for (const button of within(screen.getByRole('alertdialog')).getAllByRole('button')) expect(button).toHaveProperty('disabled', true);
+    expect(screen.getByRole('textbox').matches(':disabled')).toBe(true);
+    expect(discard.querySelector('.animate-spin')).toBeTruthy(); expect(confirm.querySelector('.animate-spin')).toBeNull();
+    expect(secondary).toHaveBeenCalledTimes(1); expect(action).not.toHaveBeenCalled();
+    await act(async () => request.resolve());
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('retains secondary errors for retry and supports a controlled false result', async () => {
+    const secondary = vi.fn().mockRejectedValueOnce(new Error('Discard failed')).mockResolvedValueOnce(false).mockResolvedValueOnce(undefined);
+    render(<Harness title="Continue?" onConfirm={vi.fn()} secondaryLabel="Discard" onSecondary={secondary} />); open();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect((await screen.findByRole('alert')).textContent).toBe('Discard failed');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Discard' })).toHaveProperty('disabled', false));
+    expect(screen.queryByRole('alert')).toBeNull(); expect(screen.getByRole('alertdialog')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(secondary).toHaveBeenCalledTimes(3);
+  });
+
   it.each(['Cancel', 'Close confirmation', 'Escape', 'backdrop'])('dismisses with %s without running the action and restores focus', async method => {
     const action = vi.fn();
     render(<Harness title="Archive?" description="Keep the history." onConfirm={action} />);
@@ -126,10 +178,10 @@ describe('canonical confirmation behavior', () => {
     expect(second.hasAttribute('aria-describedby')).toBe(false);
   });
 
-  it('ignores completion of a dismissed session after another confirmation opens', async () => {
+  it.each(['confirm', 'secondary'] as const)('ignores %s completion of a dismissed session after another confirmation opens', async action => {
     const request = deferred(), change = vi.fn();
-    const { rerender } = render(<ConfirmActionDialog open title="First" onOpenChange={change} onConfirm={() => request.promise} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    const { rerender } = render(<ConfirmActionDialog open title="First" onOpenChange={change} onConfirm={() => request.promise} secondaryLabel="Discard" onSecondary={() => request.promise} />);
+    fireEvent.click(screen.getByRole('button', { name: action === 'confirm' ? 'Confirm' : 'Discard' }));
     rerender(<ConfirmActionDialog open={false} title="First" onOpenChange={change} onConfirm={() => request.promise} />);
     rerender(<ConfirmActionDialog open title="Second" onOpenChange={change} onConfirm={vi.fn()} />);
     await act(async () => request.resolve()); expect(change).not.toHaveBeenCalled();
