@@ -143,25 +143,48 @@ it('offers deletion only for Custom definitions and submits the immutable ID aft
   render(<ClosingFieldsSettings />);
   expect(within(screen.getByText('First Name').closest('tr')!).queryByRole('button', { name: 'Delete field' })).toBeNull();
   fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete field' }));
-  await waitFor(() => expect(mocks.delete).toHaveBeenCalledWith(`/administration/closing-requirements/${budget.id}`));
-  expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Historical values and evidence will be retained'));
+  const dialog = within(screen.getByRole('alertdialog', { name: 'Delete custom field?' }));
+  expect(dialog.getByText(`Delete “${budget.name}” from the current configuration?`)).toBeTruthy();
+  expect(dialog.getByText('Historical values and evidence will be retained.')).toBeTruthy();
+  expect(mocks.delete).not.toHaveBeenCalled();
+  fireEvent.click(dialog.getByRole('button', { name: 'Delete field' }));
+  await waitFor(() => expect(mocks.delete).toHaveBeenCalledExactlyOnceWith(`/administration/closing-requirements/${budget.id}`));
+  expect(confirm).not.toHaveBeenCalled();
   await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Field deleted'));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(mocks.refetch).toHaveBeenCalledTimes(1);
   fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'deals' } });
   for (const field of DEFAULT_CLOSING_FIELDS) expect(within(screen.getByText(field.name).closest('tr')!).queryByRole('button', { name: 'Delete field' })).toBeNull();
 });
 
 it('reports actionable dependency errors without treating a failed deletion as success', async () => {
-  vi.spyOn(window, 'confirm').mockReturnValue(true);
   mocks.delete.mockRejectedValueOnce(new Error('Referenced by Workflow: Budget routing'));
   render(<ClosingFieldsSettings />);
   fireEvent.click(within(customRow()).getByRole('button', { name: 'Delete field' }));
+  fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete field' }));
   await waitFor(() => expect(mocks.error).toHaveBeenCalledWith('Referenced by Workflow: Budget routing'));
   expect(mocks.success).not.toHaveBeenCalled(); expect(mocks.refetch).not.toHaveBeenCalled();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   expect(screen.getByText(budget.name)).toBeTruthy();
 });
 
-it('cancels deletion and disables both row actions while a confirmed deletion is pending', async () => {
-  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+it.each(['Cancel', 'Close confirmation', 'Escape', 'backdrop'])('dismisses field deletion with %s without changing configuration', method => {
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+  render(<ClosingFieldsSettings />);
+  const remove = within(customRow()).getByRole('button', { name: 'Delete field' });
+  remove.focus(); fireEvent.click(remove);
+  if (method === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
+  else if (method === 'backdrop') fireEvent.click(document.querySelector('[data-confirm-action-layer] > [aria-hidden]')!);
+  else fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: method }));
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(document.activeElement).toBe(remove);
+  expect(mocks.delete).not.toHaveBeenCalled();
+  expect(mocks.refetch).not.toHaveBeenCalled();
+  expect(mocks.success).not.toHaveBeenCalled();
+  expect(confirm).not.toHaveBeenCalled();
+});
+
+it('disables row and confirmation actions while a confirmed deletion is pending', async () => {
   let resolve!: (value: unknown) => void;
   mocks.delete.mockReturnValueOnce(new Promise(done => { resolve = done; }));
   render(<ClosingFieldsSettings />);
@@ -170,13 +193,19 @@ it('cancels deletion and disables both row actions while a confirmed deletion is
   expect(remove.textContent).toBe('');
   fireEvent.click(remove);
   expect(mocks.delete).not.toHaveBeenCalled();
-  confirm.mockReturnValue(true);
-  fireEvent.click(remove);
+  const dialog = within(screen.getByRole('alertdialog'));
+  const confirm = dialog.getByRole('button', { name: 'Delete field' });
+  fireEvent.click(confirm); fireEvent.click(confirm);
   expect(remove.disabled).toBe(true);
-  expect((within(customRow()).getByRole('button', { name: 'Edit Project Budget' }) as HTMLButtonElement).disabled).toBe(true);
+  expect((within(customRow()).getByRole('button', { name: 'Edit Project Budget', hidden: true }) as HTMLButtonElement).disabled).toBe(true);
+  expect(dialog.getByRole('button', { name: 'Cancel' })).toHaveProperty('disabled', true);
+  expect(dialog.getByRole('button', { name: 'Close confirmation' })).toHaveProperty('disabled', true);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(screen.getByRole('alertdialog')).toBeTruthy();
   fireEvent.click(remove);
   expect(mocks.delete).toHaveBeenCalledTimes(1);
   resolve({});
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   await waitFor(() => expect(remove.disabled).toBe(false));
   expect(mocks.success).toHaveBeenCalledWith('Field deleted');
 });
