@@ -69,7 +69,7 @@ async function browserCheck(label, script, directory, env) {
   const blocked = code && existsSync(log) && unavailableRuntime(readFileSync(log, 'utf8'));
   const status = reportPath && complete ? 'PASS' : blocked ? 'BLOCKED' : 'FAIL';
   records.push({ label, suiteId: relative(root, script).replaceAll('\\', '/'), status, exitCode: code, ...counts,
-    failedAssertions: status === 'PASS' ? [] : [{ name: label, messages: [String(result.failure ?? result.error ?? 'Browser acceptance failed; see report and command log.')] }],
+    failedAssertions: status === 'PASS' ? [] : [{ name: label, messages: [browserFailureDiagnostics(result, code)] }],
     database: env.DATABASE_URL || script.endsWith('verify-notifications-browser.mjs') ? 'Fresh native PostgreSQL' : 'Fresh PGlite fixture',
     report: reportPath ? relative(root, reportPath).replaceAll('\\', '/') : null,
     ...(!existingReport || !counts.executed ? { reason: 'Required browser assertions/report missing; exit zero alone cannot pass.' } : {}) });

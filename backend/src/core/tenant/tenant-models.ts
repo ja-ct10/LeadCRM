@@ -12,7 +12,7 @@ tenantModels.add('MailboxThreadAssociation');
 tenantModels.add('ClosingFieldDefinition');
 tenantModels.add('CustomFieldValue');
 tenantModels.add('ProductInterest');
-for (const model of ['Lead', 'Contact', 'Account']) tenantChildren[model + 'ProductInterest'] = { relation: model.toLowerCase(), model };
+for (const model of ['Lead', 'Contact']) tenantChildren[model + 'ProductInterest'] = { relation: model.toLowerCase(), model };
 
 tenantModels.add('DealCreationReceipt');
 tenantModels.add('SmsWebhookReceipt');
