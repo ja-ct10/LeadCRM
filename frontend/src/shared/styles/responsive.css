@@ -4,7 +4,7 @@
 }
 
 .pwa-install-banner {
-  --pwa-banner-background: #EBF2FE;
+  --pwa-banner-background: linear-gradient(100deg, #EDF5FF 0%, #E7F1FF 55%, #D5E6FF 100%);
   --pwa-banner-border: #BDD3F3;
   --pwa-banner-foreground: #18202B;
   --pwa-banner-action: #1E64EF;
@@ -20,7 +20,7 @@
   color: var(--pwa-banner-foreground);
 }
 .theme-dark .pwa-install-banner {
-  --pwa-banner-background: #161D2A;
+  --pwa-banner-background: linear-gradient(100deg, #161D2A 0%, #152640 100%);
   --pwa-banner-border: #303E55;
   --pwa-banner-foreground: #F0F2F4;
   --pwa-banner-action: #4384FF;
@@ -33,15 +33,38 @@
   align-items: center;
   min-width: 0;
   gap: 8px;
-  padding: 4px 12px;
+  padding: 10px 12px;
 }
+.pwa-install-banner__branding {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+.pwa-install-banner__icon {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid #DCE6F2;
+  border-radius: 12px;
+  background: #FFFFFF;
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.08);
+}
+.pwa-install-banner__icon img { display: block; width: 28px; height: 28px; object-fit: contain; }
 .pwa-install-banner__message {
   flex: 1;
   min-width: 0;
+}
+.pwa-install-banner__title {
   margin: 0;
   font-size: 13px;
-  font-weight: 500;
-  line-height: 1.5;
+  font-weight: 600;
+  line-height: 18px;
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .pwa-install-banner__actions { display: flex; flex-shrink: 0; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -60,20 +83,25 @@
   padding: 6px 12px;
   background: var(--pwa-banner-action);
   color: var(--pwa-banner-action-foreground);
+  box-shadow: 0 2px 5px rgb(30 100 239 / 0.18);
   font-size: 13px;
   font-weight: 600;
   line-height: 1.5;
 }
 .pwa-install-banner__install:hover { filter: brightness(0.95); }
-.pwa-install-banner__dismiss { display: grid; flex-shrink: 0; width: 44px; place-items: center; color: var(--pwa-banner-dismiss); }
+.pwa-install-banner__dismiss { display: grid; flex-shrink: 0; width: 44px; place-items: center; background: transparent; color: var(--pwa-banner-dismiss); }
 .pwa-install-banner__dismiss:hover { background: var(--pwa-banner-dismiss-hover); }
 .pwa-install-banner__install:focus-visible, .pwa-install-banner__dismiss:focus-visible {
   outline: 2px solid var(--pwa-banner-foreground);
   outline-offset: 2px;
 }
 @media (width >= 640px) {
-  .pwa-install-banner__content { flex-direction: row; align-items: center; gap: 16px; padding-inline: 20px; }
-  .pwa-install-banner__message { font-size: 14px; }
+  .pwa-install-banner__content { gap: 16px; padding: 12px 20px; }
+  .pwa-install-banner__icon { flex-basis: 44px; width: 44px; height: 44px; }
+  .pwa-install-banner__title { font-size: 14px; line-height: 20px; }
+}
+@media (width <= 360px) {
+  .pwa-install-banner__title { white-space: normal; }
 }
 
 .crm-shell { height: var(--app-viewport-height); min-height: 0; }
