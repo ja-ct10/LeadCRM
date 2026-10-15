@@ -83,7 +83,7 @@ try {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${base}/crm/${module}/${records[module].other.id}`);
       await page.getByRole('tab', { name: /^Details/ }).click();
-      await page.getByText(module === 'accounts' ? 'Account Name' : 'Assigned Agent', { exact: true }).first().waitFor();
+      await page.getByText(module === 'accounts' ? /^Account Name\s*\*?$/ : 'Assigned Agent', { exact: true }).first().waitFor();
       await page.waitForFunction(() => !document.querySelector('[aria-label="Loading lead"], [aria-label="Loading contact"], [aria-label="Loading account"], [aria-label="Loading deal"]'));
       const editors = await page.getByRole('button', { name: /^Edit (First name|Account name|Deal title|Title|Assigned Agent)$/i }).count();
       if (module === 'accounts') {
