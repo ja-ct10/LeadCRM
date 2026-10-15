@@ -138,7 +138,12 @@ export function PwaInstallProvider({ children }: { children: React.ReactNode }) 
       <section ref={bannerRef} data-pwa-banner role="region" aria-label="Install LeadCRM" inert={overlayActive}
         className="pwa-install-banner">
       <div className="pwa-install-banner__content">
-        <p className="pwa-install-banner__message">Get the LeadCRM app!</p>
+        <div className="pwa-install-banner__branding">
+          <span className="pwa-install-banner__icon" aria-hidden="true"><img src="/leadcrm_logo.png" alt="" width={28} height={28} /></span>
+          <div className="pwa-install-banner__message">
+            <p className="pwa-install-banner__title">Get the LeadCRM app!</p>
+          </div>
+        </div>
         <div className="pwa-install-banner__actions">
           <button type="button" aria-label="Install LeadCRM app" onClick={() => void install()}
             className="pwa-install-banner__install">
