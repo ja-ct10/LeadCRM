@@ -51,3 +51,4 @@ export * from './contracts/custom-field-identity';
 export * from './contracts/crm-record-access';
 export * from './contracts/condition-operators';
 export * from './contracts/account-retirement';
+export * from './contracts/organization';

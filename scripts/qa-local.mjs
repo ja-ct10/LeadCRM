@@ -101,6 +101,7 @@ async function vitest(label, workspace, args, env = {}, expectedFile, database) 
   if (status !== 'PASS') { console.error('[qa] Failed suite:', label, 'Report:', relative(root, report), JSON.stringify(assertions.filter(test => test.status === 'failed').map(test => ({ name: test.fullName, messages: test.failureMessages })), null, 2)); const error = new Error(`${label}: failed, missing or skipped required tests`); error.qaRecorded = true; throw error; }
 }
 function databaseFor(file) {
+  if (file.includes('organization-polish.integration')) return 'leadcrm_crm_polish_test';
   if (file.includes('/gmail/')) return 'leadcrm_mailbox_test_1';
   if (file.includes('/workflows/') || file.includes('/tasks/')) return 'leadcrm_workflow_test_1';
   if (file.includes('/campaigns/') || file.includes('contact-relations') || file.includes('/groups/')) return 'leadcrm_campaign_test_1';

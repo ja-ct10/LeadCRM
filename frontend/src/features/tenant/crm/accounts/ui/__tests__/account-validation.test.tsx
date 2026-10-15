@@ -11,7 +11,7 @@ import { AccountFormInner } from '../account-form';
 afterEach(cleanup);
 it.each([false, true])('submits an Account without obsolete fields (edit=%s)', async edit => {
   const save = vi.fn();
-  render(<AccountFormInner initialData={edit ? { id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', internalNotes: 'Historical note' } : undefined} onSave={save} onCancel={vi.fn()} />);
+  render(<AccountFormInner initialData={edit ? { id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z' } : undefined} onSave={save} onCancel={vi.fn()} />);
   if (!edit) {
     expect(screen.queryByText('Assigned Agent')).toBeNull();
     expect(screen.queryByText('Products & Interests')).toBeNull();
@@ -31,17 +31,19 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   for (const field of ['city', 'province', 'country']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
   for (const label of ['City', 'Province', 'Country']) expect(screen.queryByLabelText(label)).toBeNull();
   for (const field of ['assignedUserId', 'productInterests', 'activeProducts', 'taxId', 'customerType', 'customerSince']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
-  if (edit) expect(save.mock.calls[0][0]).toMatchObject({ internalNotes: 'Historical note' });
-  else for (const field of ['notes', 'internalNotes', 'activeProducts']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
+  for (const field of ['notes', 'internalNotes', 'activeProducts']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
 });
 
-it('keeps existing Notes and international address data when editing', async () => {
+it('keeps international address data and omits legacy note inputs when editing', async () => {
   const save = vi.fn();
-  render(<AccountFormInner initialData={{ id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes', internalNotes: 'Private notes' }} onSave={save} onCancel={vi.fn()} />);
-  expect((screen.getByLabelText('Notes') as HTMLTextAreaElement).value).toBe('Historical notes');
+  render(<AccountFormInner initialData={{ id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes' }} onSave={save} onCancel={vi.fn()} />);
+  expect(screen.queryByLabelText('Notes')).toBeNull();
+  expect(screen.queryByLabelText('Internal Notes')).toBeNull();
   expect((screen.getByLabelText('Full Address') as HTMLTextAreaElement).value).toBe('42 Queen Street\nToronto, Ontario, Canada');
   fireEvent.submit(screen.getByLabelText(/Account Name/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalled());
-  expect(save.mock.calls[0][0]).toMatchObject({ address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes', internalNotes: 'Private notes' });
+  expect(save.mock.calls[0][0]).toMatchObject({ address: '42 Queen Street\nToronto, Ontario, Canada' });
+  expect(save.mock.calls[0][0]).not.toHaveProperty('notes');
+  expect(save.mock.calls[0][0]).not.toHaveProperty('internalNotes');
   for (const field of ['city', 'province', 'country']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
 });

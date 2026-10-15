@@ -20,6 +20,7 @@ export async function getActivity(id: string, tenantId: string) {
 }
 
 export async function createActivity(tenantId: string, createdById: string, dto: CreateActivityDto) {
+  if (dto.metadata?.legacyAccountNote) throw new AppError('Legacy note provenance is managed by migrations.', 403);
   if (dto.taskId || dto.type === 'task' || dto.metadata?.taskEvent) throw new AppError('Task history is recorded by Task operations.', 403);
   // Can add specific logic here later, like validation or side-effects based on activity type
   return salesTransaction(async tx => {
@@ -33,6 +34,7 @@ export async function updateActivity(id: string, tenantId: string, dto: UpdateAc
     const current = await tx.activity.findFirst({ where: { id, tenantId } });
     if (!current) throw new AppError('Activity not found', 404);
     assertMutableActivity(current);
+    if (dto.metadata?.legacyAccountNote) throw new AppError('Legacy note provenance is managed by migrations.', 403);
     if (dto.taskId || dto.type === 'task' || dto.metadata?.taskEvent) throw new AppError('Task history is recorded by Task operations.', 403);
     await authorizeLinks(tx, current);
     await authorizeLinks(tx, dto);
@@ -59,6 +61,7 @@ export async function deleteActivity(id: string, tenantId: string) {
 }
 
 function assertMutableActivity(record: { taskId: string | null; type: string; metadata: Prisma.JsonValue | null }) {
+  if ((record.metadata as { legacyAccountNote?: unknown } | null)?.legacyAccountNote) throw new AppError('Imported legacy notes preserve the original text. Add a new note instead.', 403);
   if (record.type === 'email') throw new AppError('Email history is managed through Inbox operations.', 403);
   if (record.taskId || record.type === 'task' || (record.metadata as { taskEvent?: unknown } | null)?.taskEvent) throw new AppError('Task lifecycle history cannot be changed or deleted.', 403);
 }

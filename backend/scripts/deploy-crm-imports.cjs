@@ -23,6 +23,7 @@ const accountAddressExpansion = '20261201000000_accounts_full_address';
 const accountAddressRetirement = '20261202000000_retire_account_address_columns';
 const accountFieldPreservation = '20261207000000_account_field_preservation';
 const accountFieldRetirement = '20261208000000_retire_account_fields';
+const accountNotesRetirement = '20261210000000_retire_account_internal_notes';
 const relationshipRetirement = '20261102000000_retire_relationship_compatibility';
 const legacyTables = ['Lead', 'Contact', 'Account', 'Deal'].flatMap(module => [`${module}Import`, `${module}ImportResult`]);
 
@@ -63,7 +64,7 @@ function deploymentPlan(records, localNames) {
   const target = deploymentTarget(records, localNames);
   // CRM column retirement retains its separate verification gate. Other reviewed
   // transitions below can require a coordinated application release.
-  const deferred = [crmRetirement, leadRetirement, contactRetirement, contactJobTitleRetirement, accountAddressRetirement, accountFieldRetirement].filter(name => localNames.includes(name)
+  const deferred = [crmRetirement, leadRetirement, contactRetirement, contactJobTitleRetirement, accountAddressRetirement, accountFieldRetirement, accountNotesRetirement].filter(name => localNames.includes(name)
     && !records.some(row => row.migration_name === name && finished(row)));
   if (target !== relationshipExpansion) return { through: target, exclude: deferred };
   const independent = [
@@ -129,6 +130,7 @@ function deploymentPlan(records, localNames) {
     // Assignment snapshots use existing JSON only; no history or schema rewrite.
     '20261206000000_assignment_notification_context',
     accountFieldPreservation, accountFieldRetirement,
+    '20261209000000_account_notes_preservation', '20261209010000_account_creation_receipts', accountNotesRetirement,
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

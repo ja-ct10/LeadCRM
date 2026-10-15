@@ -1,4 +1,5 @@
 import { salesContext } from '../leads/sales-context';
+import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
 import { saveRecordValues } from '../closing-requirements/custom-field-values.repository';
@@ -39,7 +40,7 @@ const CONTACT_FILTER_FIELDS: FilterFields = {
 // ── Shared include shape ───────────────────────────────────────────────────
 const CONTACT_INCLUDE = {
   assignedUser: { select: { id: true, firstName: true, lastName: true } },
-  account:      { select: { id: true, name: true } },
+  account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
 } as const;
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
@@ -151,7 +152,11 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
       await assertClosedStatus(tx, tenantId, { contactId: id });
       await finalizeContactLifecycle(tx, tenantId, id, actorId);
     }
-    const { customFieldValues, productInterestIds: _productIds, ...data } = dto;
+    const { customFieldValues, productInterestIds: _productIds, newAccount, ...data } = dto;
+    if (newAccount) {
+      const account = await createLinkedAccount(tx, tenantId, newAccount, actorId);
+      data.accountId = account.id; data.company = account.name;
+    }
     await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({
       where:   { id, tenantId } as never,

@@ -1,4 +1,11 @@
 import * as repo from './contacts.repository';
+import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
+import prisma from '../../../config/database.config';
+import { salesContext } from '../leads/sales-context';
+
+async function presentLead<T extends { account?: unknown }>(tenantId: string, lead: T) {
+  return { ...lead, account: await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId) ? lead.account : null };
+}
 import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -11,32 +18,36 @@ import { normalizeCrmStatus } from '@leadcrm/shared';
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
-  return { ...paginate(result.data, result.total, { page: result.page, limit: result.limit }), facets: result.facets };
+  const canReadAccount = await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId);
+  const data = result.data.map(lead => ({ ...lead, account: canReadAccount ? lead.account : null }));
+  return { ...paginate(data, result.total, { page: result.page, limit: result.limit }), facets: result.facets };
 }
 
 export async function getContactById(id: string, tenantId: string) {
   const contact = await repo.findContactById(id, tenantId);
   if (!contact) throw new NotFoundError('Lead');
-  return contact;
+  return presentLead(tenantId, contact);
 }
 
 export async function createContact(tenantId: string, userId: string, dto: CreateContactDto) {
   dto = CreateContactSchema.parse(dto);
-  const contact = await repo.createContact(tenantId, dto, userId);
+  const created = await repo.createContact(tenantId, dto, userId);
+  const contact = (await repo.findContactById(created.id, tenantId))!;
 
   // The Lead transaction captures its assignment in NotificationEvent.
 
-  return contact;
+  return presentLead(tenantId, contact);
 }
 
 export async function updateContact(
   id: string, tenantId: string, userId: string, dto: UpdateContactDto,
 ) {
   dto = UpdateContactSchema.parse(dto);
-  return repo.updateContact(id, tenantId, dto, userId, undefined, async (before, contact, changes) => {
+  const updated = await repo.updateContact(id, tenantId, dto, userId, undefined, async (before, contact, changes) => {
     if (changes.changedFields.length) await fireLeadUpdated({ tenantId, actorId: userId, record: contact, changedFields: changes.changedFields, changes });
     if (contact.status !== before.status) await fireLeadStatusChanged({ tenantId, actorId: userId, lead: contact, prevStatus: before.status });
   });
+  return presentLead(tenantId, updated);
 }
 
 export async function archiveContact(id: string, tenantId: string, userId: string) {

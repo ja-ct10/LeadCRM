@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { createLinkedAccount } from '../companies/organization-creation';
 import type { Prisma } from '@prisma/client';
 import { CrmStatusSchema } from '@leadcrm/shared';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
@@ -27,7 +28,7 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   const receipt = await tx.contactCreationReceipt.findUnique({ where: { tenantId_requestId: { tenantId, requestId } } });
   if (receipt) {
     if (receipt.actorId !== actorId || receipt.requestHash !== requestHash) throw new ConflictError('This Contact request ID belongs to different input. Use a new request ID.');
-    const contact = await tx.contact.findFirst({ where: { tenantId, id: receipt.contactId, isArchived: false, deletedAt: null }, include: { assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true } } } });
+    const contact = await tx.contact.findFirst({ where: { tenantId, id: receipt.contactId, isArchived: false, deletedAt: null }, include: { assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true } } } });
     if (!contact) throw new NotFoundError('Contact');
     return { contact, replayed: true };
   }
@@ -40,11 +41,15 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   const products = await tx.productInterest.findMany({ where: { tenantId, id: { in: relations.productLinks.create.map(link => link.productInterestId) }, active: true } });
   const data = { ...intent };
   normalizeProductOther(data, products.map(product => product.name));
-  const { customFieldValues, productInterestIds: _ids, productInterests: _names, assignedUserId: _assignee, ...fields } = data;
+  const { customFieldValues, productInterestIds: _ids, productInterests: _names, assignedUserId: _assignee, newAccount, ...fields } = data;
+  if (newAccount) {
+    const account = await createLinkedAccount(tx, tenantId, newAccount, actorId);
+    fields.accountId = account.id; fields.company = account.name;
+  }
   const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId as string | null | undefined, ['contacts', 'deals']);
   const contact = await runCrmAutomaticCreation(tx, 'contacts', agent?.id ?? null, () => tx.contact.create({
     data: { ...fields, ...relations, tenantId, status: status.toUpperCase(), assignedUserId: agent?.id ?? null } as Prisma.ContactUncheckedCreateInput,
-    include: { assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true } } },
+    include: { assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true } } },
   }));
   await saveRecordValues(tx, tenantId, 'contacts', contact.id, customFieldValues, actorId);
   await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'contact.created', entityType: 'Contact', entityId: contact.id } });

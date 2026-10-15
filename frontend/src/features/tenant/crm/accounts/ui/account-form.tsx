@@ -64,8 +64,6 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     website: initialData?.website || '',
     tags: initialData?.tags || [],
     address: initialData?.address || '',
-    notes: initialData?.notes || '',
-    internalNotes: initialData?.internalNotes || '',
   }), [initialData]);
 
   const schema = isEdit ? UpdateAccountSchema : CreateAccountSchema;
@@ -102,7 +100,6 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       website: data.website || undefined,
       tags: data.tags && data.tags.length > 0 ? data.tags : undefined,
       address: data.address || undefined,
-      ...(isEdit ? { notes: data.notes || undefined, internalNotes: data.internalNotes || undefined } : {}),
 
     };
 
@@ -218,36 +215,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           <CustomFieldGroup form={customFields} group="Address" />
         </div>
 
-        {/* Section 5: Notes */}
-        {isEdit && <div className="space-y-4">
-          <SectionHeader num={5} title="Notes" />
-
-          <FieldWrap fieldKey="notes" label="Notes" htmlFor={`${fieldId}-notes`} error={errors.notes?.message}>
-            <textarea
-              {...register('notes')}
-              id={`${fieldId}-notes`}
-              aria-invalid={!!errors.notes}
-              aria-describedby={errors.notes ? `${fieldId}-notes-error` : undefined}
-              rows={3}
-              className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.notes ? inputErrorCls : ''}`}
-              placeholder="General notes about this account..."
-            />
-          </FieldWrap>
-
-          {isEdit && <FieldWrap fieldKey="internalNotes" label="Internal Notes" htmlFor={`${fieldId}-internalNotes`} error={errors.internalNotes?.message}>
-            <textarea
-              {...register('internalNotes')}
-              id={`${fieldId}-internalNotes`}
-              aria-invalid={!!errors.internalNotes}
-              aria-describedby={errors.internalNotes ? `${fieldId}-internalNotes-error` : undefined}
-              rows={3}
-              className={`w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:ring-2 focus:ring-primary/20 focus:border-primary outline-none transition-all resize-none ${errors.internalNotes ? inputErrorCls : ''}`}
-              placeholder="Internal-only notes (not visible to the client)..."
-            />
-          </FieldWrap>}
-          <CustomFieldGroup form={customFields} group="Notes" />
-        </div>}
-        <CustomFieldExtraGroups form={customFields} startNumber={isEdit ? 6 : 5} />
+        <CustomFieldExtraGroups form={customFields} startNumber={4} />
         </ConfiguredFormLayout>
       </div>
 

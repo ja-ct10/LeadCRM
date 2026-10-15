@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLOSED_WON_GROUP_ID, DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, isClosedWonField, isSystemClosingField, type ClosingField } from '@leadcrm/shared';
+import { CLOSED_WON_GROUP_ID, DEFAULT_CLOSING_FIELDS, upgradeAssignmentLayout, defaultFieldLayout, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, isClosedWonField, isSystemClosingField, type ClosingField } from '@leadcrm/shared';
 
 const state = vi.hoisted(() => ({ definitions: [] as Array<{ tenantId: string; id: string; definition: unknown }>, preferences: [] as Array<{ tenantId: string; module: string; key: string; value: unknown }>, values: [] as Array<{ fieldId: string; value: unknown }>, workflows: [] as unknown[], forms: [] as unknown[], audiences: [] as unknown[], templates: [] as unknown[], campaigns: [] as unknown[], audits: [] as unknown[] }));
 const tx = vi.hoisted(() => ({
@@ -198,4 +198,14 @@ it('protects saved readable references from deletion and rejects stale field edi
   await expect(deleteField('tenant', 'actor', field.id)).rejects.toThrow('Readable budget');
   await saveField('tenant', 'actor', { name: 'Budget revised', expectedVersion: field.version }, field.id);
   await expect(saveField('tenant', 'actor', { name: 'Stale label', expectedVersion: field.version }, field.id)).rejects.toThrow('changed');
+});
+
+
+it.each(['leads', 'contacts'] as const)('moves the old %s company placement without losing label or visibility', module => {
+  const key = module === 'leads' ? 'companyName' : 'company';
+  const layout = defaultFieldLayout(module);
+  layout.fields[key] = { label: 'Corporate name', groupId: `${module}:section:0`, order: 8, visibleInForm: false, visibleInDetails: true };
+  expect(upgradeAssignmentLayout(layout).fields[key]).toEqual({ ...layout.fields[key], groupId: `${module}:section:2` });
+  layout.fields[key].groupId = 'custom-group';
+  expect(upgradeAssignmentLayout(layout).fields[key].groupId).toBe('custom-group');
 });

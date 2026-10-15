@@ -2,7 +2,8 @@
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
-import { CreateLeadSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
+import { LeadFieldsSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
+import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
@@ -38,13 +39,13 @@ const LeadFormSchema = z.object({
   lastName: LeadNameSchema,
   email: CrmEmailSchema,
   phone: z.string().optional(),
-  companyName: CreateLeadSchema.shape.companyName,
+  companyName: LeadFieldsSchema.shape.companyName,
   status: LeadStatusSchema,
   source: OptionalLeadSourceSchema.optional(),
   accountId: z.string().optional(),
   assignedUserId: z.string().optional(),
-  productInterest: CreateLeadSchema.shape.productInterest,
-  address: CreateLeadSchema.shape.address,
+  productInterest: LeadFieldsSchema.shape.productInterest,
+  address: LeadFieldsSchema.shape.address,
 });
 
 type LeadFormData = z.infer<typeof LeadFormSchema>;
@@ -73,6 +74,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const actionAllowed = useHasPermission(initialData ? 'leads.edit' : 'leads.create');
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('leads', initialData?.id);
+  const organization = useOrganizationForm(initialData);
   const { users } = useData();
   const isEdit = !!initialData;
   const requestId = useRef<string | undefined>(undefined);
@@ -84,6 +86,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     formState: { errors, isSubmitting },
     reset,
     setFocus,
+    setValue,
     control,
     watch,
   } = useForm<LeadFormData>({
@@ -103,6 +106,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       address: '',
     },
   });
+
+  useEffect(() => {
+    setValue('companyName', organization.fields.companyName);
+    setValue('accountId', organization.mode === 'existing' ? organization.accountId : '');
+  }, [organization.fields.companyName, organization.mode, organization.accountId, setValue]);
 
   // Product interest state (for custom dropdown UX)
   const [selectedProducts, setSelectedProducts] = useState<string[]>([]);
@@ -175,7 +183,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const onFormSubmit = async (data: LeadFormData): Promise<void> => {
     if (!canSubmit) return;
     setPhoneTouched(true);
-    if (validatePhMobile(phoneLocal) || !customFields.validate()) return;
+    if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
     // Build phone in E.164 format from local 10-digit number
     const fullPhone = phoneLocal ? toE164(phoneLocal) : '';
 
@@ -191,10 +199,11 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       lastName: data.lastName,
       email: data.email || undefined,
       phone: fullPhone,
-      companyName: data.companyName?.trim() ?? '',
+      companyName: organization.payload().companyName,
+      newAccount: organization.payload().newAccount,
       status: data.status || 'Warm',
       ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
-      accountId: data.accountId || (isEdit ? '' : undefined),
+      accountId: organization.payload().accountId || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
       address: data.address?.trim() ?? '',
@@ -264,16 +273,6 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </FieldWrap>
           </div>
-          <FieldWrap fieldKey="companyName" htmlFor={`${fieldId}-companyName`} error={errors.companyName?.message} label="Company Name">
-            <input
-              {...register('companyName')} maxLength={2000}
-              id={`${fieldId}-companyName`}
-              aria-invalid={!!errors.companyName}
-              aria-describedby={errors.companyName ? `${fieldId}-companyName-error` : undefined}
-              className={inputCls}
-              placeholder="Enter company name"
-            />
-          </FieldWrap>
           <CustomFieldGroup form={customFields} group="Basic Information" />
         </div>
 
@@ -317,21 +316,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         {/* Section 3: Organization */}
         <div className="space-y-4">
           <SectionHeader num={3} title="Organization" />
-          <FieldWrap fieldKey="accountId" label="Account">
-            <Controller
-              name="accountId"
-              control={control}
-              render={({ field }) => (
-                <EntityCombobox
-                  entityType="accounts"
-                  value={field.value || null}
-                  onChange={(id) => field.onChange(id || '')}
-                  placeholder="Search accounts..."
-                  error={errors.accountId?.message}
-                />
-              )}
-            />
-          </FieldWrap>
+          <div data-crm-field-key="companyName" data-crm-secondary-field-key="accountId" className="sm:col-span-2"><OrganizationFields draft={organization} companyLabel={customFields.layout?.fields.companyName?.label ?? 'Company Name'} showCompany={customFields.layout?.fields.companyName?.visibleInForm !== false} showAccount={customFields.layout?.fields.accountId?.visibleInForm !== false} /></div>
           <CustomFieldGroup form={customFields} group="Organization" />
         </div>
 

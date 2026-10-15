@@ -371,6 +371,7 @@ model TenantGroupMember {
 // ORGANIZATION
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Account {
+  creationReceipts AccountCreationReceipt[]
   customFieldValues CustomFieldValue[]
   id               String    @id @default(uuid())
   tenantId         String
@@ -379,7 +380,6 @@ model Account {
   size             String? // "1-10" | "11-50" | "51-200" | "200+"
   website          String?
   notes            String?   @db.Text
-  internalNotes    String?   @db.Text
   tags             String[] @default([])
   address          String?
   isArchived       Boolean   @default(false)
@@ -808,7 +808,7 @@ model Task {
 model Activity {
   id          String   @id @default(uuid())
   tenantId    String
-  createdById String
+  createdById String?
   type        String // call|meeting|email|sms|note|task|workflow|stage_change|deal_action|file_upload
   title       String
   description String?
@@ -823,7 +823,7 @@ model Activity {
   createdAt   DateTime @default(now())
 
   tenant       Tenant   @relation(fields: [tenantId], references: [id])
-  createdBy    User     @relation(fields: [createdById], references: [id])
+  createdBy    User?    @relation(fields: [createdById], references: [id], onDelete: Restrict)
   lead         Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   contact      Contact? @relation(fields: [contactId], references: [id], onDelete: Cascade)
   deal         Deal?    @relation(fields: [dealId], references: [id], onDelete: Cascade)
@@ -1890,6 +1890,18 @@ model DealCreationReceipt {
   createdAt DateTime @default(now())
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   @@id([tenantId, idempotencyKey])
+}
+
+model AccountCreationReceipt {
+  tenantId String
+  requestId String
+  actorId String
+  requestHash String
+  accountId String
+  createdAt DateTime @default(now())
+  account Account @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  @@id([tenantId, requestId])
+  @@index([accountId, tenantId])
 }
 
 model ContactCreationReceipt {

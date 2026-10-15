@@ -21,6 +21,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
 
   return {
     customFieldValues: data.customFieldValues,
+    newAccount: data.newAccount,
     requestId: data.requestId,
     firstName,
     lastName,
@@ -46,6 +47,7 @@ export function toBackendCreateContact(data: Record<string, any>): Record<string
 export function toBackendUpdateContact(data: Record<string, any>): Record<string, any> {
   const result: Record<string, any> = {};
   if (data.customFieldValues !== undefined) result.customFieldValues = data.customFieldValues;
+  if (data.newAccount !== undefined) result.newAccount = data.newAccount;
 
   if (data.firstName !== undefined) result.firstName = data.firstName;
   if (data.lastName !== undefined) result.lastName = data.lastName;

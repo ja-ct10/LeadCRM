@@ -28,7 +28,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
     lead.accountId
       ? prisma.account.findFirst({
           where: { id: lead.accountId, tenantId },
-          select: { id: true, name: true, industry: true, website: true },
+          select: { id: true, name: true, industry: true, size: true, website: true },
         })
       : null,
     // Deals via junction
@@ -92,7 +92,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     companyAccountId
       ? prisma.account.findFirst({
           where: { id: companyAccountId, tenantId },
-          select: { id: true, name: true, industry: true, website: true },
+          select: { id: true, name: true, industry: true, size: true, website: true },
         })
       : null,
     // Deals via junction
@@ -191,7 +191,7 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     deal.accountId
       ? prisma.account.findFirst({
           where: { id: deal.accountId, tenantId },
-          select: { id: true, name: true, industry: true, website: true },
+          select: { id: true, name: true, industry: true, size: true, website: true },
         })
       : null,
     // Leads via junction

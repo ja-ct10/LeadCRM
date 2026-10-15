@@ -6,8 +6,9 @@ Active Products. Account actions require their existing module permissions in
 the authenticated tenant. Assignment on Leads, Contacts, Deals and Tasks remains
 governed by its existing rules.
 
-The shared catalog retains the stable Basic Information, Address and Notes group
-IDs. Custom definitions from retired sections move to Additional Information;
+The shared catalog retains the stable Basic Information and Address group IDs.
+The later [CRM polish release](crm-polish.md) consolidates the historical Notes
+group into Activity and moves its custom fields to Additional Information. Custom definitions from retired sections move to Additional Information;
 their IDs, values, required flags and visibility remain intact. Saved layouts and
 table preferences cannot restore retired native fields. Old Account field input
 and import mappings are rejected rather than silently treated as a successful edit.

@@ -54,7 +54,7 @@ describe('Account field retirement', () => {
     expect(CreateCompanySchema.parse({ name: 'Company', address: '42 Street', country: 'Philippines' }).address).toBe('42 Street');
     expect(getCrmFieldCatalog('accounts').map(field => field.technicalKey)).not.toContain('assignedUserId');
     expect(getCrmFieldCatalog('accounts').some(field => field.type === 'products')).toBe(false);
-    expect(defaultFieldLayout('accounts').groups.find(group=>group.label==='Notes')?.id).toBe('accounts:section:4');
+    expect(defaultFieldLayout('accounts').groups.find(group=>group.label==='Notes')).toBeUndefined();
   });
   it('removes ownership only for Accounts while retaining tenant and role boundaries', () => {
     const policy = { userId: 'sales', tenantId: 'tenant', assignmentRestricted: true, clientAdmin: false };
@@ -95,7 +95,9 @@ describe('Account field retirement', () => {
     expect(layout.fields.custom_note.order).toBe(0);
     const originalLayout = (await db.query<{payload:{value: typeof layout}}>(`SELECT payload FROM crm_history.account_retired_configuration WHERE source_type='TenantPreference' AND source_id='retirement-layout' ORDER BY id LIMIT 1`)).rows[0].payload.value;
     expect(upgradeAccountFieldLayout(originalLayout).fields).toEqual(layout.fields);
-    expect(upgradeAccountFieldLayout(layout)).toEqual(layout);
+    const currentLayout = upgradeAccountFieldLayout(layout);
+    expect(currentLayout.groups.some(group => group.id === 'accounts:section:4')).toBe(false);
+    expect(upgradeAccountFieldLayout(currentLayout)).toEqual(currentLayout);
     await db.exec('SELECT crm_history.reconcile_account_fields(); SELECT crm_history.reconcile_account_fields();');
     expect((await db.query<{value:typeof layout}>(`SELECT value FROM "TenantPreference" WHERE id='retirement-layout'`)).rows[0].value).toEqual(layout);
     expect((await db.query<{definition:{groupId:string;required:boolean}}>(`SELECT definition FROM "ClosingFieldDefinition" WHERE id='retirement-custom'`)).rows[0].definition).toMatchObject({groupId:'accounts:additional-information',required:true});

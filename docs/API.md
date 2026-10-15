@@ -135,6 +135,13 @@ avatar reference in `User.avatarUrl`. The storage directory must not be publicly
 
 ## CRM Endpoints (`/api/v1/crm/`)
 
+Lead and Contact create/update requests accept optional `newAccount` for atomic
+company creation and linking, including Account custom fields and a retry identity.
+It is mutually exclusive with a nonempty `accountId` and requires Accounts View and
+Create permissions. Nested Account details are returned only with Accounts View.
+Account `internalNotes` input is retired; legacy notes are preserved in Activity.
+See [CRM polish contracts and rollout](crm-polish.md).
+
 All require an authenticated session and completed per-user onboarding. Deal account filtering uses canonical `accountId`; the compatibility `organizationId` alias must agree when both are supplied.
 
 For Lead, Contact, and Account archive/restore endpoints, permissions, archived

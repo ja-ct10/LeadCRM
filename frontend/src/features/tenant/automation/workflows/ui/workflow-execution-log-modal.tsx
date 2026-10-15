@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
-import type { Workflow, WorkflowExecutionRun } from '@leadcrm/shared';
+import type { Workflow, WorkflowExecutionRun, WorkflowOptions } from '@leadcrm/shared';
+import { WorkflowDefinitionSummary, emptySnapshotOptions } from './workflow-definition-summary';
 import { WORKFLOW_TRIGGERS, WORKFLOW_ASSIGNMENT_METHODS } from '@leadcrm/shared';
 import { workflowActionLabel } from '../services/workflow-editor';
 import { workflowsApi } from '@/shared/services/workflows.api';
@@ -120,7 +121,16 @@ function runStatusClass(status: string) {
 }
 
 export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0, onLoadingChange }: { workflowId: string; layout?: 'inline' | 'panel'; refreshVersion?: number; onLoadingChange?: (loading: boolean) => void }) {
-  const { userCan } = useAuth();
+  const { userCan, user, tenant } = useAuth();
+  const optionScope = JSON.stringify([tenant?.id, user?.id, ...['users', 'roles', 'groups', 'products', 'leads', 'contacts', 'accounts', 'deals', 'campaigns', 'templates'].map(module => userCan(module, 'canView'))]);
+  const [optionState, setOptionState] = useState<{ scope: string; value: WorkflowOptions }>({ scope: '', value: emptySnapshotOptions });
+  const options = optionState.scope === optionScope ? optionState.value : emptySnapshotOptions;
+  useEffect(() => {
+    let cancelled = false;
+    // Reference labels are optional; run history remains usable without builder access.
+    Promise.resolve().then(() => workflowsApi.options()).then(response => { if (!cancelled) setOptionState({ scope: optionScope, value: response.data }); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [workflowId, optionScope]);
   const [runs, setRuns] = useState<WorkflowExecutionRun[]>([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -198,7 +208,7 @@ export function WorkflowRuns({ workflowId, layout = 'inline', refreshVersion = 0
                 {run.errorMessage && <p role="alert" className="text-sm text-rose-700 dark:text-rose-300">{run.errorMessage}</p>}
                 {run.definitionSnapshot ? <details className="min-w-0 text-sm">
                   <summary className="cursor-pointer rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-600">Definition used in this run{run.workflowVersion != null ? ` · v${run.workflowVersion}` : ''}</summary>
-                  <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-slate-50 p-3 text-xs dark:bg-slate-800">{JSON.stringify(run.definitionSnapshot, null, 2)}</pre>
+                  <WorkflowDefinitionSummary definition={run.definitionSnapshot} options={options} />
                 </details> : <p className="text-xs text-muted-foreground">Definition snapshot unavailable for this older run.</p>}
                 <ol className="space-y-2">
                   {run.steps.map((step) => (

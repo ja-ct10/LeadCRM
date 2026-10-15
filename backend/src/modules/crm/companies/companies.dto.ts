@@ -16,12 +16,11 @@ const CompanyFieldsSchema = z.object({
   province:       recordText().optional(),
   country:        recordText().optional(),
   notes:          recordText().optional(),
-  internalNotes:  recordText().optional(),
 });
 
 const rejectRetired = z.unknown().superRefine((value, context) => {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return;
-  for (const field of RETIRED_ACCOUNT_FIELDS) if (Object.prototype.hasOwnProperty.call(value, field)) context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'Account assignment and product fields are retired.' });
+  for (const field of RETIRED_ACCOUNT_FIELDS) if (Object.prototype.hasOwnProperty.call(value, field)) context.addIssue({ code: z.ZodIssueCode.custom, path: [field], message: 'Account assignment, product fields and internal notes are retired.' });
 });
 
 // Accept legacy split-address input, but persist only the consolidated address.

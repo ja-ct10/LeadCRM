@@ -87,7 +87,6 @@ export const CompanyProfileTabs = ({
   // Interactive local states for persistence
   const [timelineEvents, setTimelineEvents] = useState<any[]>([]);
   const [companyNotes, setCompanyNotes] = useState(selectedOrg.notes || '');
-  const [internalNotes, setInternalNotes] = useState(selectedOrg.internalNotes || '');
   
   // Simulated communications state
   const [emailSubject, setEmailSubject] = useState('');
@@ -118,7 +117,6 @@ export const CompanyProfileTabs = ({
   // Load activities of this company
   useEffect(() => {
     setCompanyNotes(selectedOrg.notes || '');
-    setInternalNotes(selectedOrg.internalNotes || '');
 
     // Reset cascades
     setCascadeWeb(selectedOrg.website !== 'N/A' ? selectedOrg.website : '');
@@ -163,7 +161,7 @@ export const CompanyProfileTabs = ({
   };
 
   const handleSaveNotes = () => {
-    updateOrganization(selectedOrg.id, { notes: companyNotes, internalNotes: internalNotes });
+    updateOrganization(selectedOrg.id, { notes: companyNotes });
     toast.success('Successfully updated corporate records!');
     addActivityLog(`Modified central organization internal dossiers.`, 'note');
   };
@@ -486,16 +484,7 @@ export const CompanyProfileTabs = ({
                 />
               </div>
 
-              <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">Enterprise Internal Audits (Confidential)</label>
-                <textarea 
-                  rows={4} 
-                  value={internalNotes} 
-                  onChange={e => setInternalNotes(e.target.value)}
-                  className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/5 rounded-xl p-3 text-xs text-amber-600 dark:text-amber-400 focus:outline-none focus:border-gray-300 dark:focus:border-white/10 transition-all font-mono"
-                  placeholder="Confidential comments, compliance audits, discount tiers..."
-                />
-              </div>
+
 
               <div className="flex justify-end pt-2">
                 <button 

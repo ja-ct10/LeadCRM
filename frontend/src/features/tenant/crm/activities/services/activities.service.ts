@@ -26,7 +26,7 @@ export interface ActivityRecord {
     firstName: string;
     lastName:  string;
     email:     string;
-  };
+  } | null;
 }
 
 // ─── Query params ─────────────────────────────────────────────────────────────

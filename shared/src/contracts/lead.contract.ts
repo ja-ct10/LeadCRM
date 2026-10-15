@@ -3,6 +3,7 @@ import { cleanText, AdministrationPhoneSchema } from '../validation/administrati
 import { CrmEmailSchema } from '../validation/crm-email';
 import { LeadStatusSchema, LeadSourceSchema } from './record-experience';
 import { CustomFieldValuesSchema } from './closing-requirements';
+import { NewAccountSchema, exclusiveAccountInput } from './organization';
 
 export const LeadNameSchema = cleanText(100).pipe(z.string().min(1, 'Name is required'));
 export const LeadPhoneSchema = z.union([z.literal(''), AdministrationPhoneSchema]);
@@ -16,14 +17,18 @@ const fields = {
   status: LeadStatusSchema,
   source: OptionalLeadSourceSchema.optional(),
   accountId: z.string().uuid().nullable().optional(),
+  newAccount: NewAccountSchema.optional(),
   assignedUserId: z.string().uuid().nullable().optional(),
   productInterest: z.array(z.string().uuid()).max(100).optional(),
   address: z.string().refine(value => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(value), 'Control characters are not allowed.').transform(value => value.trim()).pipe(z.string().max(2000)).optional(),
   customFieldValues: CustomFieldValuesSchema.optional(),
 };
 /** The manual Lead API accepts only the final form fields and a retry receipt. */
-export const CreateLeadSchema = z.object({ ...fields, status: LeadStatusSchema.default('Warm'), requestId: z.string().uuid().optional() }).strict();
-export const UpdateLeadSchema = z.object(fields).partial().strict();
+export const LeadFieldsSchema = z.object(fields).strict();
+export const CreateLeadSchema = LeadFieldsSchema.extend({ status: LeadStatusSchema.default('Warm'), requestId: z.string().uuid().optional() })
+  .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
+export const UpdateLeadSchema = LeadFieldsSchema.partial()
+  .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 export type CreateLeadInput = z.infer<typeof CreateLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof UpdateLeadSchema>;
 

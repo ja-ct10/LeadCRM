@@ -15,7 +15,6 @@ export const CreateAccountSchema = z.object({
   tags: z.array(z.string()).default([]),
   address: z.string().optional(),
   notes: z.string().optional(),
-  internalNotes: z.string().optional(),
 });
 
 export const UpdateAccountSchema = CreateAccountSchema.partial();
