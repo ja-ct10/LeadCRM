@@ -71,10 +71,6 @@ export function CamxianBrandPanel({ onNavigate }: { onNavigate: (path: string) =
             </div>
           </motion.section>
         </div>
-        <motion.div {...entrance(7)} className="hidden max-w-sm border-t border-white/20 pt-5 lg:block">
-          <p className="text-sm font-semibold">LeadCRM <span className="font-normal text-blue-100">/ Internal CRM Workspace</span></p>
-          <p className="mt-2 text-xs leading-relaxed text-blue-100">Camxian Technologies’ centralized workspace for leads, customers, pipelines, and workflows.</p>
-        </motion.div>
       </div>
     </aside>
   );
