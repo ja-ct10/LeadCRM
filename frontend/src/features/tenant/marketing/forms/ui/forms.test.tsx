@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ClosingFieldInputSchema, defaultContactForm, getCrmFieldCatalog, withProductOptions } from '@leadcrm/shared';
 import { FormBuilderPage } from './form-builder-page';
 import PublicFormPage from './public-form-page';
@@ -40,6 +40,99 @@ const form = { ...defaultContactForm(), fields: withProductOptions(defaultContac
 beforeEach(() => { vi.resetAllMocks(); permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
+  const unloadPrevented = () => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; };
+
+  it('leaves immediately when clean without saving or opening a confirmation', () => {
+    const back = vi.fn(); render(<FormBuilderPage form={form} onBack={back} onFormUpdate={vi.fn()} />);
+    expect(unloadPrevented()).toBe(false);
+    fireEvent.click(screen.getByLabelText('Back to Forms'));
+    expect(back).toHaveBeenCalledTimes(1); expect(service.updateForm).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it.each(['Keep editing', 'Close confirmation', 'Escape', 'backdrop'])('preserves edits and unload protection after dismissing with %s', method => {
+    const back = vi.fn(); render(<FormBuilderPage form={form} onBack={back} onFormUpdate={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Unsaved title' } });
+    fireEvent.click(screen.getByLabelText('Back to Forms'));
+    const dialog = screen.getByRole('alertdialog', { name: 'Unsaved changes' });
+    expect(within(dialog).getByText('You have unsaved changes. Save your changes before leaving, or discard them.')).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Discard changes' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Save changes' })).toBeTruthy();
+    expect(screen.queryByText('Save or discard your edits before leaving.')).toBeNull();
+    if (method === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
+    else if (method === 'backdrop') fireEvent.click(document.querySelector('[data-confirm-action-layer] > [aria-hidden]')!);
+    else fireEvent.click(within(dialog).getByRole('button', { name: method }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(screen.getByLabelText('Form name')).toHaveProperty('value', 'Unsaved title');
+    expect(unloadPrevented()).toBe(true); expect(back).not.toHaveBeenCalled(); expect(service.updateForm).not.toHaveBeenCalled();
+  });
+
+  it('discards even invalid edits, clears unload protection and leaves without saving', async () => {
+    const back = vi.fn(); render(<FormBuilderPage form={form} onBack={back} onFormUpdate={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: '' } });
+    expect(unloadPrevented()).toBe(true); fireEvent.click(screen.getByLabelText('Back to Forms'));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Discard changes' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(back).toHaveBeenCalledTimes(1); expect(service.updateForm).not.toHaveBeenCalled(); expect(service.publishForm).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Form name')).toHaveProperty('value', form.name); expect(unloadPrevented()).toBe(false);
+  });
+
+  it('saves the draft once before leaving and blocks duplicate actions or dismissal while pending', async () => {
+    let resolve!: (saved: typeof form) => void;
+    vi.mocked(service.updateForm).mockReturnValue(new Promise(done => { resolve = done; }));
+    const back = vi.fn(), updated = vi.fn(); render(<FormBuilderPage form={form} onBack={back} onFormUpdate={updated} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Saved title' } });
+    fireEvent.click(screen.getByLabelText('Back to Forms'));
+    const dialog = screen.getByRole('alertdialog'), save = within(dialog).getByRole('button', { name: 'Save changes' });
+    fireEvent.click(save); fireEvent.click(save);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard changes' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(back).not.toHaveBeenCalled(); expect(service.updateForm).toHaveBeenCalledTimes(1);
+    expect(service.updateForm).toHaveBeenCalledWith(form.id, expect.objectContaining({ name: 'Saved title', revision: form.revision }));
+    for (const button of within(dialog).getAllByRole('button')) expect(button).toHaveProperty('disabled', true);
+    expect(screen.getByLabelText('Back to Forms')).toHaveProperty('disabled', true); expect(unloadPrevented()).toBe(true);
+    await act(async () => resolve({ ...form, name: 'Saved title', revision: 1 }));
+    expect(back).toHaveBeenCalledTimes(1); expect(updated).toHaveBeenCalledWith(expect.objectContaining({ name: 'Saved title', revision: 1 }));
+    expect(updated.mock.invocationCallOrder[0]).toBeLessThan(back.mock.invocationCallOrder[0]);
+    expect(service.publishForm).not.toHaveBeenCalled(); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(unloadPrevented()).toBe(false);
+  });
+
+  it.each(['validation', 'request'])('returns to the builder after a %s failure, retaining edits and the inline error', async failure => {
+    vi.mocked(service.updateForm).mockRejectedValue(new Error('Save failed'));
+    const back = vi.fn(); render(<FormBuilderPage form={form} onBack={back} onFormUpdate={vi.fn()} />);
+    const name = failure === 'validation' ? '   ' : 'Unsaved title';
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: name } }); fireEvent.click(screen.getByLabelText('Back to Forms'));
+    fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(screen.getByRole('alert').textContent).toContain(failure === 'validation' ? 'Form name is required.' : 'Save failed');
+    expect(screen.getByLabelText('Form name')).toHaveProperty('value', name); expect(back).not.toHaveBeenCalled();
+    expect(service.updateForm).toHaveBeenCalledTimes(failure === 'validation' ? 0 : 1); expect(service.publishForm).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+  });
+
+  it('disables saving after edit permission is lost while retaining the discard choice', async () => {
+    const back = vi.fn(), updated = vi.fn();
+    const { rerender } = render(<FormBuilderPage form={form} onBack={back} onFormUpdate={updated} />);
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Unsaved title' } });
+    permissions.edit = false; rerender(<FormBuilderPage form={form} onBack={back} onFormUpdate={updated} />);
+    fireEvent.click(screen.getByLabelText('Back to Forms'));
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getByRole('button', { name: 'Save changes' })).toHaveProperty('disabled', true);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save changes' })); expect(service.updateForm).not.toHaveBeenCalled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Discard changes' }));
+    await waitFor(() => expect(back).toHaveBeenCalledTimes(1));
+  });
+
+  it('keeps the shared menu and decorative action icons with existing disabled states', () => {
+    permissions.publish = false;
+    render(<FormBuilderPage form={{ ...form, status: 'published' }} onBack={vi.fn()} onFormUpdate={vi.fn()} />);
+    fireEvent.click(screen.getByLabelText('More actions'));
+    const menu = screen.getByRole('menu'), discard = within(menu).getByRole('menuitem', { name: 'Discard changes' }), unpublish = within(menu).getByRole('menuitem', { name: 'Unpublish' });
+    expect(menu.closest('[data-theme-portal]')?.parentElement).toBe(document.body);
+    expect(discard.querySelector('svg.lucide-rotate-ccw[aria-hidden="true"][width="14"]')).toBeTruthy();
+    expect(unpublish.querySelector('svg.lucide-eye-off[aria-hidden="true"][width="14"]')).toBeTruthy();
+    expect(discard).toHaveProperty('disabled', true); expect(unpublish).toHaveProperty('disabled', true);
+  });
+
   it('shows the required name indicator and retains all fields after whitespace name validation', async () => {
     render(<FormBuilderPage form={form} onBack={() => {}} onFormUpdate={() => {}} />);
     const name = screen.getByLabelText('Form name') as HTMLInputElement;

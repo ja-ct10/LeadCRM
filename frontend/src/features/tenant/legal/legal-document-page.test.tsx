@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, within } from '@testing-library/react';
 import LegalDocumentPage, { legalMetadata } from './legal-document-page';
 import { privacyPolicy, termsOfService, LEGAL_ORGANIZATION } from './legal-documents';
 import PublicSupportPage from './public-support-page';
@@ -17,8 +17,15 @@ describe('public legal documents without an authentication provider', () => {
     expect(container.textContent).not.toMatch(/\[To be confirmed\]|Camxian Technologies Development Team|dpo@|privacy@leadcrm|8888|GDPR/);
     expect(legalMetadata(document).alternates?.canonical).toBe(`https://lead-crm.tech${document.path}`);
     expect(screen.getByRole('complementary', { name: 'Document review status' })).toBeTruthy();
+    const footer = within(screen.getByRole('contentinfo'));
+    expect(footer.getByRole('link', { name: 'LeadCRM' }).getAttribute('href')).toBe('/login');
+    expect(footer.getByText('A centralized CRM platform for Camxian Technologies, designed to manage leads, customers, sales pipelines, and automated workflows.')).toBeTruthy();
+    expect(footer.getByRole('link', { name: LEGAL_ORGANIZATION.supportEmail }).getAttribute('href')).toBe(`mailto:${LEGAL_ORGANIZATION.supportEmail}`);
+    expect(footer.getByText('© 2026 LeadCRM. All rights reserved.')).toBeTruthy();
+    expect(footer.queryByText(LEGAL_ORGANIZATION.attribution)).toBeNull();
+    expect(footer.queryByText(LEGAL_ORGANIZATION.address)).toBeNull();
     for (const [label, href] of [['Privacy Policy', '/privacy-policy'], ['Terms of Service', '/terms-of-service'], ['Help Center', '/help']]) {
-      expect(screen.getByRole('link', { name: label }).getAttribute('href')).toBe(href);
+      expect(footer.getByRole('link', { name: label }).getAttribute('href')).toBe(href);
     }
   });
   it('preserves the IP agreement boundary and requires expressly permitted maintenance', () => {
