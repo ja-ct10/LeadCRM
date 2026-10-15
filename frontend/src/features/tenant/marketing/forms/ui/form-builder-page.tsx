@@ -4,7 +4,9 @@ import { useWorkspacePanel } from '@/shared/lib/overlay-state';
 import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 import { withProductOptions } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { ArrowLeft, EyeOff, Plus, RotateCcw } from 'lucide-react';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
@@ -28,6 +30,7 @@ function makeField(field: PaletteField): FormField {
 export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormRecord; onBack: () => void; onFormUpdate: (form: FormRecord) => void }) {
   const { products } = useProductInterests();
   const { userCan } = useAuth();
+  const router = useRouter();
   const canEdit = userCan('forms', 'canEdit');
   const canPublish = userCan('forms', 'canPublish');
   const [local, setLocal] = useState<FormRecord>({ ...form, design: { ...DEFAULT_DESIGN, ...form.design }, settings: { ...DEFAULT_SETTINGS, ...form.settings } });
@@ -35,7 +38,10 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
   const [panel, setPanel] = useState<'Fields' | 'Design'>('Fields');
   const [dirty, setDirty] = useState(false), [saving, setSaving] = useState(false), [error, setError] = useState('');
   const [tools, setTools] = useState(false);
-  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [exit, setExit] = useState<NavigationAction | null>(null);
+  const leaving = useRef(false), exitPending = useRef(false);
+  const guardState = useRef({ dirty, saving });
+  guardState.current = { dirty, saving };
   const [dragLabel, setDragLabel] = useState('');
   const [nameInvalid, setNameInvalid] = useState(false);
   const catalog = useCachedPage({ module: 'settings', params: { leadFormFields: true }, revalidateOnInvalidation: true, fetchFn: getLeadFormFieldCatalog });
@@ -45,10 +51,35 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
   useEffect(() => {
     if (!dirty) return;
-    const guard = (e: BeforeUnloadEvent) => { e.preventDefault(); };
+    const guard = (e: BeforeUnloadEvent) => { if (!leaving.current) e.preventDefault(); };
     window.addEventListener('beforeunload', guard); return () => window.removeEventListener('beforeunload', guard);
   }, [dirty]);
-  function change(patch: Partial<FormRecord>) { if (saving || !canEdit) return; setLocal(current => ({ ...current, ...patch })); setDirty(true); setError(''); }
+  useEffect(() => {
+    const navigation = (event: Event) => {
+      if (leaving.current || (!guardState.current.dirty && !guardState.current.saving)) return;
+      event.preventDefault();
+      if (guardState.current.saving || exitPending.current) return;
+      exitPending.current = true;
+      setExit(() => (event as NavigationIntentEvent).detail.navigate);
+    };
+    // Like Workflow Builder, intercept links before Next can render the destination.
+    const link = (event: MouseEvent) => {
+      if (leaving.current || (!guardState.current.dirty && !guardState.current.saving) || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return;
+      const destination = new URL(anchor.href), current = window.location;
+      if (destination.origin !== current.origin || (destination.pathname === current.pathname && destination.search === current.search)) return;
+      event.preventDefault(); event.stopPropagation();
+      requestNavigation(() => router.push(destination.pathname + destination.search + destination.hash));
+    };
+    window.addEventListener(NAVIGATION_INTENT_EVENT, navigation);
+    window.document.addEventListener('click', link, true);
+    return () => {
+      window.removeEventListener(NAVIGATION_INTENT_EVENT, navigation);
+      window.document.removeEventListener('click', link, true);
+    };
+  }, [router]);
+  function change(patch: Partial<FormRecord>) { if (saving || !canEdit) return; leaving.current = false; setLocal(current => ({ ...current, ...patch })); setDirty(true); setError(''); }
   function add(field: PaletteField, at = local.fields.length) {
     if (local.fields.some(input => field.customFieldId ? input.customFieldId === field.customFieldId : !!field.mapToField && input.mapToField === field.mapToField)) return;
     const fields = [...local.fields]; fields.splice(at, 0, makeField(field)); change({ fields });
@@ -97,7 +128,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
   return <DndContext sensors={sensors} onDragStart={event => setDragLabel(event.active.data.current?.field?.label ?? local.fields.find(field => field.id === event.active.id)?.label ?? '')} onDragCancel={() => setDragLabel('')} onDragEnd={drag}>
     <div className="min-w-0 flex flex-col">
       <header className="flex items-center gap-2 border-b py-3">
-        <button aria-label="Back to Forms" disabled={saving} onClick={() => { if (dirty) { setConfirmLeave(true); return; } onBack(); }} className="shrink-0 p-2"><ArrowLeft size={16} /></button>
+        <button aria-label="Back to Forms" disabled={saving} onClick={() => requestNavigation(onBack)} className="shrink-0 p-2"><ArrowLeft size={16} /></button>
         <h1 className="min-w-0 flex-1 truncate text-sm font-semibold">{local.name}</h1>
         <span className="text-[9px] uppercase rounded bg-muted text-muted-foreground px-1">{local.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</span>
         <button disabled={saving || !canPublish} onClick={() => void save(true)} className="bg-primary text-white rounded p-2 text-xs disabled:opacity-50">Publish</button>
@@ -128,11 +159,10 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
         <div className={panelHeaderClass + " pr-20 sm:pr-20"}><h2 className={panelTitleClass}>Form tools</h2><p className="text-xs text-slate-500">Tap a field to add it to your form.</p></div>
         <div className="overflow-y-auto min-h-0">{tools && panelContent}</div>
       </DialogContent></Dialog>
-      <ConfirmActionDialog open={confirmLeave} onOpenChange={setConfirmLeave} title="Unsaved changes"
-        description="You have unsaved changes. Save your changes before leaving, or discard them."
-        cancelLabel="Keep editing" secondaryLabel="Discard changes" secondaryVariant="destructive" confirmLabel="Save changes"
-        onSecondary={() => { discard(); onBack(); }} onConfirm={async () => { if (await save()) onBack(); }}
-        isLoading={saving} confirmDisabled={!canEdit} />
+      <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
+        title="Discard unsaved changes?" description="Your unsaved form changes will be lost."
+        variant="warning" cancelLabel="Keep editing" confirmLabel="Discard changes" isLoading={saving}
+        onConfirm={() => { leaving.current = true; discard(); return exit?.(); }} />
     </div>
     <DragOverlay>{dragLabel && <div className="rounded border bg-card px-4 py-3 text-sm shadow">{dragLabel}</div>}</DragOverlay>
   </DndContext>;

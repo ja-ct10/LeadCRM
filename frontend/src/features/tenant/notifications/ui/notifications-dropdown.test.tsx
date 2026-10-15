@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import NotificationsDropdown from './notifications-dropdown';
+import { NAVIGATION_INTENT_EVENT, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 
 const mocks = vi.hoisted(() => ({
   markAsRead: vi.fn(), markAllAsRead: vi.fn(), destination: vi.fn(), push: vi.fn(), refresh: vi.fn(),
@@ -106,4 +107,21 @@ it('preserves mark-all and unread navigation, and avoids navigation when marking
   mocks.markAsRead.mockClear(); open();
   fireEvent.click(screen.getByRole('button', { name: /Workflow Failed 1/ }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); expect(mocks.markAsRead).not.toHaveBeenCalled();
+});
+
+it.each(['notification', 'footer'])('defers %s navigation and read-state actions until discard is confirmed', async target => {
+  mocks.destination.mockResolvedValue('/automation/workflows?workflowId=workflow-7');
+  render(<App />); open(); let pending: NavigationAction | undefined;
+  const guard = (event: Event) => { event.preventDefault(); pending = (event as NavigationIntentEvent).detail.navigate; };
+  window.addEventListener(NAVIGATION_INTENT_EVENT, guard);
+  try {
+    const click = () => fireEvent.click(screen.getByRole('button', { name: target === 'footer' ? 'View All Notifications' : /Workflow Failed 0/ }));
+    click(); expect(mocks.markAsRead).not.toHaveBeenCalled(); expect(mocks.destination).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Notifications' })).toBeTruthy(); pending = undefined; click();
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Outside' }));
+    window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); await act(async () => pending?.());
+    expect(mocks.push).toHaveBeenCalledOnce(); expect(mocks.push).toHaveBeenCalledWith(target === 'footer' ? '/notifications' : '/automation/workflows?workflowId=workflow-7');
+    if (target === 'notification') expect(mocks.markAsRead).toHaveBeenCalledWith('0');
+    else expect(mocks.markAsRead).not.toHaveBeenCalled();
+  } finally { window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); }
 });

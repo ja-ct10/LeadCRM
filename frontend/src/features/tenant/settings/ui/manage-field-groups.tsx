@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
@@ -15,6 +15,7 @@ export function ManageFieldGroups({ open, onOpenChange, module, onModuleChange, 
   layout: FieldLayout; fields: CrmFieldCatalogEntry[]; pending: boolean; ready: boolean; canEdit: boolean; canDelete: boolean;
   mutate: (action: FieldLayoutAction) => Promise<boolean>; reorder: (ids: string[]) => Promise<void>;
 }) {
+  const newGroupNameId = useId();
   const [name, setName] = useState('');
   const [editing, setEditing] = useState<string | null>(null), [label, setLabel] = useState('');
   const [deleting, setDeleting] = useState<string | null>(null), [destination, setDestination] = useState('');
@@ -34,15 +35,19 @@ export function ManageFieldGroups({ open, onOpenChange, module, onModuleChange, 
         <label className="mt-5 flex shrink-0 items-center gap-4 text-sm text-muted-foreground">Module
           <select aria-label="Field groups module" className={panelInputClass + ' max-w-60'} value={module} disabled={pending} onChange={event => { setName(''); setEditing(null); setDeleting(null); onModuleChange(event.target.value as CustomFieldModule); }}>{CUSTOM_FIELD_MODULES.map(value => <option key={value} value={value}>{CUSTOM_FIELD_MODULE_LABELS[value]}</option>)}</select>
         </label>
-        {canEdit && <form className="my-5 flex shrink-0 gap-2 border-b border-border pb-5" onSubmit={async event => { event.preventDefault(); if (busy || !name.trim()) return; if (await mutate({ action: 'add', label: name, expectedRevision: layout.revision ?? 0 })) setName(''); }}>
-          <input aria-label="New group name" placeholder="New group name" maxLength={100} className={panelInputClass + ' min-w-0 flex-1'} value={name} disabled={pending} onChange={event => setName(event.target.value)} />
-          <Button className="h-10 shrink-0" disabled={busy || !name.trim()}><Plus aria-hidden="true" />Add</Button>
+        {canEdit && <form className="my-5 shrink-0 space-y-2 border-b border-border pb-5" onSubmit={async event => { event.preventDefault(); if (busy || !name.trim()) return; if (await mutate({ action: 'add', label: name, expectedRevision: layout.revision ?? 0 })) setName(''); }}>
+          <label htmlFor={newGroupNameId} className="block text-sm">Add a new group name</label>
+          <div className="flex gap-2">
+            <input id={newGroupNameId} placeholder="New group name" maxLength={100} className={panelInputClass + ' min-w-0 flex-1'} value={name} disabled={pending} onChange={event => setName(event.target.value)} />
+            <Button className="h-10 shrink-0" disabled={busy || !name.trim()}><Plus aria-hidden="true" />Add</Button>
+          </div>
         </form>}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1">
           {!ready ? <p role="status" className="py-5 text-sm text-muted-foreground">Loading field groups…</p> : <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={event => void onDragEnd(event)}>
             <SortableContext items={groups.map(group => group.id)} strategy={verticalListSortingStrategy}>
               <div className="space-y-3">{groups.map(group => {
                 const fieldCount = fields.filter(field => field.groupId === group.id).length;
+                const containsSystemFields = fields.some(field => field.groupId === group.id && field.kind === 'System');
                 return <SortableFieldLayoutItem key={group.id} id={group.id} label={`${group.label} group`} disabled={!canEdit || busy || editing !== null}>
                   <div className="min-w-0 flex-1 pt-2">
                     {editing === group.id ? <form className="space-y-2" onSubmit={async event => { event.preventDefault(); if (await mutate({ action: 'rename', groupId: group.id, label, expectedRevision: layout.revision ?? 0 })) setEditing(null); }}>
@@ -50,10 +55,11 @@ export function ManageFieldGroups({ open, onOpenChange, module, onModuleChange, 
                       <div className="flex gap-2"><Button size="sm" disabled={busy || !label.trim()}>Save</Button><Button size="sm" type="button" variant="outline" disabled={pending} onClick={() => setEditing(null)}>Cancel</Button></div>
                     </form> : <p className="break-words text-sm font-medium">{group.label}</p>}
                     <p className="mt-2 text-xs text-muted-foreground">{fieldCount} {fieldCount === 1 ? 'field' : 'fields'}{group.protected ? ' · Protected closing evidence' : ''}</p>
+                    {containsSystemFields && <p className="mt-1 text-xs text-muted-foreground">Contains system fields and cannot be deleted.</p>}
                   </div>
                   <div className="flex shrink-0 gap-1">
                     {canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Rename ${group.label}`} disabled={busy} onClick={() => { setEditing(group.id); setLabel(group.label); }}><Pencil aria-hidden="true" /></Button>}
-                    {canDelete && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Delete ${group.label} group`} title={group.protected ? 'Protected closing evidence cannot be deleted' : groups.length === 1 ? 'Keep at least one group' : `Delete ${group.label} group`} disabled={busy || group.protected || groups.length === 1} onClick={() => { setDeleting(group.id); setDestination(''); }}><Trash2 aria-hidden="true" /></Button>}
+                    {canDelete && !containsSystemFields && <Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label={`Delete ${group.label} group`} title={group.protected ? 'Protected closing evidence cannot be deleted' : groups.length === 1 ? 'Keep at least one group' : `Delete ${group.label} group`} disabled={busy || group.protected || groups.length === 1} onClick={() => { setDeleting(group.id); setDestination(''); }}><Trash2 aria-hidden="true" /></Button>}
                   </div>
                 </SortableFieldLayoutItem>;
               })}</div>
