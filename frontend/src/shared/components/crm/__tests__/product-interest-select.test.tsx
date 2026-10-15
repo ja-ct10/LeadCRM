@@ -42,3 +42,47 @@ it('supports arrow-key focus and preserves unavailable historical selections', (
   expect(document.activeElement).toBe(screen.getByRole('checkbox', { name: 'CCTV' }));
   expect((screen.getByRole('checkbox', { name: 'Historical product' }) as HTMLInputElement).checked).toBe(true);
 });
+
+it('preserves the single-product radio selector and existing trigger accessibility', () => {
+  const change = vi.fn();
+  function Form() {
+    const [values, setValues] = useState(['a']);
+    return <ProductInterestSelect id="deal-product" ariaLabel="Deal product" products={products} values={values} single onChange={next => { change(next); setValues(next); }} />;
+  }
+  render(<Form />);
+  const trigger = screen.getByRole('button', { name: 'Deal product' });
+  expect(trigger.id).toBe('deal-product');
+  expect(trigger.textContent).toBe('Network');
+  fireEvent.click(trigger);
+  expect(screen.getByRole('group', { name: 'Product interests' })).toBeTruthy();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  fireEvent.click(screen.getByRole('radio', { name: 'CCTV' }));
+  expect(change).toHaveBeenLastCalledWith(['b']);
+  expect(screen.getByRole('radio', { name: 'Network' })).toHaveProperty('checked', false);
+  expect(screen.getByRole('radio', { name: 'CCTV' })).toHaveProperty('checked', true);
+  expect(trigger.textContent).toBe('CCTV');
+});
+
+it.each([
+  ['id', 'Unavailable product'],
+  ['name', 'Retired product'],
+] as const)('retains the %s-mode historical fallback without a supplied label', (mode, label) => {
+  render(<ProductInterestSelect products={[]} values={['Retired product']} valueMode={mode} onChange={vi.fn()} />);
+  const trigger = screen.getByRole('button', { name: 'Product Interest' });
+  expect(trigger.textContent).toBe(label);
+  fireEvent.click(trigger);
+  expect(screen.getByRole('checkbox', { name: label })).toHaveProperty('checked', true);
+});
+
+it('retains the Product Interest placeholder, empty message and disabled state', () => {
+  const { rerender } = render(<ProductInterestSelect products={[]} values={[]} onChange={vi.fn()} />);
+  const trigger = screen.getByRole('button', { name: 'Product Interest' });
+  expect(trigger.textContent).toBe('Select product interests…');
+  fireEvent.click(trigger);
+  expect(screen.getByText('No configured Product Interests.')).toBeTruthy();
+  fireEvent.keyDown(document, { key: 'Escape' });
+  rerender(<ProductInterestSelect products={products} values={[]} onChange={vi.fn()} disabled />);
+  expect(trigger).toHaveProperty('disabled', true);
+  fireEvent.click(trigger);
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});

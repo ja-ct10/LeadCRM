@@ -15,6 +15,14 @@ const renderPanel = (saved?: User, props: Partial<React.ComponentProps<typeof Us
 beforeEach(() => { vi.resetAllMocks(); mocks.denied.clear(); mocks.actor.role = 'User'; mocks.getGroups.mockResolvedValue({ data: [{ id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Sales', members: [] }] }); });
 afterEach(cleanup);
 const change = (label: string, value: string) => fireEvent.change(screen.getByLabelText(label, { exact: false }), { target: { value } });
+const groupChoices = [
+  { id: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', name: 'Sales', members: [] },
+  { id: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb', name: 'IT', members: [] },
+  { id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc', name: 'Operations', members: [] },
+];
+const fillNewUser = () => {
+  change('First Name', 'New'); change('Last Name', 'Staff'); change('Email', 'new@camxian.com'); change('Phone', '9171234567'); change('Role', 'Sales');
+};
 
 it('renders red required markers and one accessible error below each invalid control', () => {
   renderPanel();
@@ -241,6 +249,95 @@ it('does not let delegated staff approve an external email', async () => {
   expect(screen.getByText('Only Client Admin users can approve an external staff email.')).toBeTruthy();
   expect(mocks.create).not.toHaveBeenCalled();
 });
+it('selects multiple New User Groups in a dropdown and submits their IDs through the existing create service', async () => {
+  mocks.actor.role = 'Client Admin'; mocks.getGroups.mockResolvedValue({ data: groupChoices });
+  renderPanel(); fillNewUser();
+  const trigger = screen.getByRole('button', { name: 'Groups' });
+  await waitFor(() => expect(trigger).toHaveProperty('disabled', false));
+  expect(trigger.textContent).toBe('Select groups...');
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.getByText('The same memberships are used by workflow assignment. Manage available groups in Team Management → Groups.')).toBeTruthy();
+  fireEvent.click(trigger);
+  for (const group of groupChoices) expect(screen.getByRole('checkbox', { name: group.name })).toBeTruthy();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Sales' }));
+  expect(trigger.textContent).toBe('Sales');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'IT' }));
+  expect(trigger.textContent).toBe('2 selected');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Operations' }));
+  expect(trigger.textContent).toBe('3 selected');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Operations' }));
+  expect(trigger.textContent).toBe('2 selected');
+  fireEvent.keyDown(screen.getByRole('checkbox', { name: 'IT' }), { key: 'Escape' });
+  expect(screen.getByRole('dialog', { name: 'New User' })).toBeTruthy();
+  expect(document.activeElement).toBe(trigger);
+  fireEvent.click(trigger);
+  expect(screen.getByRole('checkbox', { name: 'Sales' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'IT' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'Operations' })).toHaveProperty('checked', false);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  mocks.create.mockResolvedValue({ data: user });
+  fireEvent.click(screen.getByRole('button', { name: 'Create User' }));
+  expect(trigger).toHaveProperty('disabled', true);
+  await waitFor(() => expect(mocks.create).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ groupIds: [groupChoices[0].id, groupChoices[1].id] })));
+  expect(mocks.getGroups).toHaveBeenCalledTimes(1);
+});
+
+it('clears only the New User Group validation error when selection changes', async () => {
+  mocks.actor.role = 'Client Admin'; renderPanel(); fillNewUser();
+  const trigger = screen.getByRole('button', { name: 'Groups' });
+  await waitFor(() => expect(trigger).toHaveProperty('disabled', false));
+  mocks.create.mockRejectedValueOnce(Object.assign(new Error('Invalid input'), { fieldErrors: { groupIds: ['Choose an available group.'], jobTitle: ['Try another title.'] } }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create User' }));
+  await screen.findByText('Choose an available group.');
+  fireEvent.click(trigger); fireEvent.click(screen.getByRole('checkbox', { name: 'Sales' }));
+  expect(screen.queryByText('Choose an available group.')).toBeNull();
+  expect(screen.getByText('Try another title.')).toBeTruthy();
+});
+
+it('preserves New User Groups loading and error messages and disables the selector until recovery', async () => {
+  mocks.actor.role = 'Client Admin';
+  let reject!: (error: Error) => void;
+  mocks.getGroups.mockReturnValueOnce(new Promise((_, fail) => { reject = fail; }));
+  renderPanel();
+  const trigger = screen.getByRole('button', { name: 'Groups' });
+  expect(screen.getByRole('status').textContent).toBe('Loading available groups…');
+  expect(trigger).toHaveProperty('disabled', true);
+  fireEvent.click(trigger); expect(screen.queryByRole('checkbox')).toBeNull();
+  reject(new Error('Unavailable'));
+  expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Groups could not load. Manage memberships in the Groups tab.');
+  expect(screen.queryByRole('status')).toBeNull();
+  expect(trigger).toHaveProperty('disabled', true);
+  expect(mocks.create).not.toHaveBeenCalled();
+  fireEvent(window, new Event('leadcrm:groups-changed'));
+  await waitFor(() => expect(trigger).toHaveProperty('disabled', false));
+  expect(screen.queryByRole('alert')).toBeNull();
+  fireEvent.click(trigger);
+  expect(screen.getByRole('checkbox', { name: 'Sales' })).toBeTruthy();
+});
+
+it('shows the New User empty Groups message inside the dropdown', async () => {
+  mocks.actor.role = 'Client Admin'; mocks.getGroups.mockResolvedValue({ data: [] }); renderPanel();
+  const trigger = screen.getByRole('button', { name: 'Groups' });
+  await waitFor(() => expect(trigger).toHaveProperty('disabled', false));
+  expect(screen.queryByText('No groups have been created.')).toBeNull();
+  fireEvent.click(trigger);
+  expect(screen.getByText('No groups have been created.')).toBeTruthy();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+});
+
+it.each([
+  { role: 'User', canEdit: true, denied: false },
+  { role: 'Client Admin', canEdit: false, denied: false },
+  { role: 'Client Admin', canEdit: true, denied: true },
+])('preserves New User Group restrictions for %j', props => {
+  mocks.actor.role = props.role; if (props.denied) mocks.denied.add('groups.canEdit');
+  renderPanel(undefined, { canEdit: props.canEdit });
+  expect(screen.queryByRole('button', { name: 'Groups' })).toBeNull();
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.getByText('No groups assigned')).toBeTruthy();
+  expect(mocks.getGroups).not.toHaveBeenCalled();
+});
+
 it('admin edits existing Groups while ordinary staff cannot grant themselves membership', async () => {
   mocks.actor.role = 'Client Admin'; renderPanel(user); fireEvent.click(screen.getByRole('button', { name: 'Edit Groups' }));
   fireEvent.click(await screen.findByRole('checkbox', { name: 'Sales' }));
