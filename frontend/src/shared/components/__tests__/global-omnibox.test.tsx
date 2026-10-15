@@ -1,5 +1,6 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { NAVIGATION_INTENT_EVENT, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({ leads: vi.fn(), contacts: vi.fn(), accounts: vi.fn(), deals: vi.fn(), push: vi.fn(), permissions: ['leads', 'contacts', 'accounts', 'deals'] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
@@ -27,6 +28,21 @@ async function search() {
   await screen.findByText('Johnny Sins');
   return input as HTMLInputElement;
 }
+it('defers result selection and its UI changes until the original destination is confirmed', async () => {
+  const selected = vi.fn(); render(<GlobalOmnibox onResultSelect={selected} />); const input = await search();
+  let pending: NavigationAction | undefined;
+  const guard = (event: Event) => { event.preventDefault(); pending = (event as NavigationIntentEvent).detail.navigate; };
+  window.addEventListener(NAVIGATION_INTENT_EVENT, guard);
+  try {
+    fireEvent.click(screen.getByText('Johnny Sins'));
+    expect(mocks.push).not.toHaveBeenCalled(); expect(selected).not.toHaveBeenCalled(); expect(input.value).toBe('johnny');
+    pending = undefined; expect(screen.getByText('Johnny Sins')).toBeTruthy();
+    fireEvent.click(screen.getByText('Johnny Sins'));
+    window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); await act(async () => pending?.());
+    expect(mocks.push).toHaveBeenCalledOnce(); expect(mocks.push).toHaveBeenCalledWith('/crm/leads?highlight=lead-id');
+    expect(selected).toHaveBeenCalledOnce(); expect(input.value).toBe('');
+  } finally { window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); }
+});
 it.each([['Johnny Sins', 'leads', 'lead-id'], ['May Ann Tiron', 'contacts', 'contact-id'], ['Jact account', 'accounts', 'account-id'], ['Johnny deal', 'deals', 'deal-id']])('selects %s, clears and blurs the input, closes results and navigates by ID', async (name, module, id) => {
   const onResultSelect = vi.fn(); render(<GlobalOmnibox onResultSelect={onResultSelect} />);
   const input = await search();

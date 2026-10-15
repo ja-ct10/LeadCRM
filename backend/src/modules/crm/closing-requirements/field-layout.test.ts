@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { CLOSED_WON_GROUP_ID, DEFAULT_CLOSING_FIELDS, upgradeAssignmentLayout, defaultFieldLayout, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, isClosedWonField, isSystemClosingField, type ClosingField } from '@leadcrm/shared';
+import { CLOSED_WON_GROUP_ID, CUSTOM_FIELD_MODULES, DEFAULT_CLOSING_FIELDS, upgradeAssignmentLayout, defaultFieldLayout, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, isClosedWonField, isSystemClosingField, type ClosingField } from '@leadcrm/shared';
 
 const state = vi.hoisted(() => ({ definitions: [] as Array<{ tenantId: string; id: string; definition: unknown }>, preferences: [] as Array<{ tenantId: string; module: string; key: string; value: unknown }>, values: [] as Array<{ fieldId: string; value: unknown }>, workflows: [] as unknown[], forms: [] as unknown[], audiences: [] as unknown[], templates: [] as unknown[], campaigns: [] as unknown[], audits: [] as unknown[] }));
 const tx = vi.hoisted(() => ({
@@ -78,12 +78,53 @@ describe('field configuration identity and preservation', () => {
     await expect(updateFieldLayout('tenant', 'actor', 'deals', { action: 'field', technicalKey: `customFieldValues.${original.id}`, groupId: defaultFieldLayout('deals').groups[0].id })).rejects.toThrow('closing evidence');
   });
   it('deletes ordinary sections only through an explicit same-module move and preserves field/value identities', async () => {
-    const field = await createField(), before = await getFieldLayout('tenant', 'leads'), groupId = before.layout.groups[0].id;
+    const added = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'add', label: 'Custom-only section' });
+    const group = added.layout.groups.find(group => group.label === 'Custom-only section')!, groupId = group.id;
+    const field = await createField({ groupId, group: group.label }), before = await getFieldLayout('tenant', 'leads');
+    state.values.push({ fieldId: field.id, value: 42 });
     await expect(updateFieldLayout('tenant', 'actor', 'leads', { action: 'delete', groupId })).rejects.toThrow('Choose another');
     const moved = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'delete', groupId, moveToGroupId: before.layout.groups[1].id });
     expect(moved.layout.groups.some(group => group.id === groupId)).toBe(false);
     expect(moved.fields.find(item => item.customFieldId === field.id)?.groupId).toBe(before.layout.groups[1].id);
+    expect(state.values).toEqual([{ fieldId: field.id, value: 42 }]);
     await expect(updateFieldLayout('tenant', 'actor', 'leads', { action: 'add', label: ' status & INTEREST ' })).rejects.toThrow('unique');
+  });
+  it.each(CUSTOM_FIELD_MODULES)('rejects deleting System-containing %s groups before any relocation or configuration write', async module => {
+    const before = await getFieldLayout('tenant', module), groupId = before.layout.groups[0].id;
+    const snapshot = structuredClone(state);
+    vi.clearAllMocks();
+    for (const moveToGroupId of [undefined, before.layout.groups[1].id]) {
+      await expect(updateFieldLayout('tenant', 'actor', module, { action: 'delete', groupId, ...(moveToGroupId ? { moveToGroupId } : {}), expectedRevision: before.layout.revision ?? 0 })).rejects.toMatchObject({ name: 'ValidationError', statusCode: 400, message: 'Groups containing system fields cannot be deleted.' });
+    }
+    expect(state).toEqual(snapshot);
+    expect(tx.tenantPreference.update).not.toHaveBeenCalled();
+    expect(tx.closingFieldDefinition.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+  it('protects mixed user-created groups after a System field moves there, retaining rename, reorder and presentation editing', async () => {
+    const added = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'add', label: 'Mixed section' });
+    const group = added.layout.groups.find(group => group.label === 'Mixed section')!;
+    const custom = await createField({ groupId: group.id, group: group.label });
+    state.values.push({ fieldId: custom.id, value: 0 });
+    await updateFieldLayout('tenant', 'actor', 'leads', { action: 'field', technicalKey: 'email', groupId: group.id, label: 'Work email', visibleInDetails: false });
+    await updateFieldLayout('tenant', 'actor', 'leads', { action: 'rename', groupId: group.id, label: 'Renamed mixed section' });
+    await updateFieldLayout('tenant', 'actor', 'leads', { action: 'moveGroup', groupId: group.id, direction: 'up' });
+    const before = await getFieldLayout('tenant', 'leads');
+    expect(before.fields.find(field => field.technicalKey === 'email')).toMatchObject({ kind: 'System', groupId: group.id, label: 'Work email', visibleInDetails: false });
+    expect(before.layout.groups.find(item => item.id === group.id)?.label).toBe('Renamed mixed section');
+    const snapshot = structuredClone(state);
+    vi.clearAllMocks();
+    await expect(updateFieldLayout('tenant', 'actor', 'leads', { action: 'delete', groupId: group.id, moveToGroupId: before.layout.groups[0].id })).rejects.toThrow('Groups containing system fields cannot be deleted.');
+    expect(state).toEqual(snapshot);
+    expect(tx.tenantPreference.update).not.toHaveBeenCalled();
+    expect(tx.closingFieldDefinition.update).not.toHaveBeenCalled();
+    expect(tx.auditLog.create).not.toHaveBeenCalled();
+  });
+  it('still deletes empty custom-only groups without a relocation destination', async () => {
+    const added = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'add', label: 'Empty custom section' });
+    const groupId = added.layout.groups.find(group => group.label === 'Empty custom section')!.id;
+    const saved = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'delete', groupId });
+    expect(saved.layout.groups.some(group => group.id === groupId)).toBe(false);
   });
   it('blocks saved dependencies and used option removal, then retires unreferenced custom fields without purging evidence', async () => {
     const field = await createField({ type: 'Dropdown', options: ['Gold', 'Silver'] });

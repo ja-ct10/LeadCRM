@@ -19,6 +19,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
 
 export function UserProfileDropdown(): React.ReactElement {
   const { user, tenant, logout } = useAuth();
@@ -115,8 +116,7 @@ export function UserProfileDropdown(): React.ReactElement {
   };
 
   const handleMenuClick = (path: string): void => {
-    setIsOpen(false);
-    navigate(path);
+    requestNavigation(() => { setIsOpen(false); navigate(path); });
   };
 
   // User Details
@@ -222,7 +222,7 @@ export function UserProfileDropdown(): React.ReactElement {
 
               <button
                 role="menuitem"
-                onClick={() => { setIsOpen(false); router.push('/settings?tab=appearance'); }}
+                onClick={() => requestNavigation(() => { setIsOpen(false); router.push('/settings?tab=appearance'); })}
                 className="w-full flex items-center justify-between px-3.5 py-2 text-[12.5px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-white transition-colors cursor-pointer group"
               >
                 <span className="flex items-center gap-2.5">
@@ -253,7 +253,7 @@ export function UserProfileDropdown(): React.ReactElement {
             <div className="pt-1 pb-0.5">
               <button
                 role="menuitem"
-                onClick={handleLogout}
+                onClick={() => requestNavigation(handleLogout)}
                 className="w-full flex items-center gap-2.5 px-3.5 py-2 text-[12.5px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-red-50 dark:hover:bg-red-950/40 hover:text-red-600 dark:hover:text-red-400 transition-colors cursor-pointer group"
               >
                 <LogOut size={14} className="text-slate-400 dark:text-slate-500 group-hover:text-red-600 dark:group-hover:text-red-400 transition-colors" />

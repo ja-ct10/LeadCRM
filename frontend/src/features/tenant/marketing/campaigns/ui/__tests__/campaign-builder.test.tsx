@@ -50,6 +50,272 @@ function fill() {
   fireEvent.change(screen.getByLabelText(/Subject Line/), { target: { value: 'Hello {{first_name}}' } });
   fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Hi {{first_name}}' } });
 }
+function unloadPrevented() {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+const existingDraft = { id: 'saved-id', name: 'Saved campaign', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'LEADS' };
+
+describe('campaign unsaved navigation', () => {
+  it.each(['empty', 'template', 'edit'])('leaves a clean %s campaign immediately', mode => {
+    const back = vi.fn();
+    render(<CampaignBuilder onBack={back} initialCampaign={mode === 'edit' ? existingDraft as never : undefined}
+      initialType={mode === 'template' ? 'SMS' : undefined} initialContent={mode === 'template' ? 'Template body' : undefined} initialSubject={mode === 'template' ? 'Template subject' : undefined} />);
+    expect(unloadPrevented()).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+    expect(back).toHaveBeenCalledOnce(); expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.update).not.toHaveBeenCalled();
+  });
+
+  describe.each(['create', 'edit'])('%s baseline', mode => {
+    it.each(['name', 'type', 'audience', 'subject', 'body'])('tracks %s changes and becomes clean when reverted', field => {
+      const back = vi.fn();
+      render(<CampaignBuilder onBack={back} initialCampaign={mode === 'edit' ? existingDraft as never : undefined} />);
+      const label = { name: /Campaign Name/, audience: /Target Audience/, subject: /Subject Line/, body: /Body/ };
+      let revert: () => void;
+      if (field === 'type') {
+        fireEvent.click(screen.getByRole('button', { name: 'SMS' }));
+        revert = () => fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+      } else {
+        const input = screen.getByLabelText(label[field as keyof typeof label]) as HTMLInputElement;
+        const previous = input.value;
+        fireEvent.change(input, { target: { value: field === 'audience' ? 'CONTACTS' : 'Changed value' } });
+        revert = () => fireEvent.change(input, { target: { value: previous } });
+      }
+      expect(unloadPrevented()).toBe(true); expect(screen.queryByRole('alertdialog')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+      expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy(); expect(back).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      revert(); expect(unloadPrevented()).toBe(false);
+      fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+      expect(back).toHaveBeenCalledOnce(); expect(screen.queryByRole('alertdialog')).toBeNull();
+    });
+
+    it('resets the baseline after Save Draft and guards new edits', async () => {
+      const back = vi.fn(() => { expect(unloadPrevented()).toBe(false); });
+      render(<CampaignBuilder onBack={back} initialCampaign={mode === 'edit' ? existingDraft as never : undefined} />); fill();
+      const body = 'Product details:\nhttps://example.test/products';
+      fireEvent.change(screen.getByLabelText(/Body/), { target: { value: body } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
+      await waitFor(() => expect(back).toHaveBeenCalledOnce());
+      expect(mode === 'edit' ? campaignsApi.update : campaignsApi.create).toHaveBeenCalledOnce();
+      expect(screen.getByLabelText(/Body/)).toHaveProperty('value', body);
+      expect(unloadPrevented()).toBe(false); expect(screen.queryByRole('alertdialog')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' })); expect(back).toHaveBeenCalledTimes(2);
+      fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Edited again' } });
+      expect(unloadPrevented()).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+      expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy(); expect(back).toHaveBeenCalledTimes(2);
+    });
+
+    it('keeps values, errors and unload protection when Save Draft fails', async () => {
+      vi.mocked(mode === 'edit' ? campaignsApi.update : campaignsApi.create).mockRejectedValueOnce(Object.assign(new Error('Save failed'), { fieldErrors: { name: ['Campaign name unavailable'] } }));
+      const back = vi.fn();
+      render(<CampaignBuilder onBack={back} initialCampaign={mode === 'edit' ? existingDraft as never : undefined} />); fill();
+      fireEvent.click(screen.getByRole('button', { name: 'Save Draft' })); await screen.findByText('Campaign name unavailable');
+      expect(back).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' })); fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      expect(screen.getByLabelText(/Campaign Name/)).toHaveProperty('value', 'September Campaign');
+      expect(screen.getByLabelText(/Body/)).toHaveProperty('value', 'Hi {{first_name}}');
+      expect(screen.getByText('Campaign name unavailable')).toBeTruthy(); expect(unloadPrevented()).toBe(true);
+    });
+  });
+
+  it.each(['Keep editing', 'Close confirmation', 'Escape', 'backdrop'])('preserves all edits and cancels Back on %s', method => {
+    const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+    const dialog = screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' });
+    expect(within(dialog).getByText('Your unsaved campaign changes will be lost.')).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Discard changes' }).className).toContain('bg-orange-700');
+    expect(within(dialog).queryByRole('button', { name: 'Save changes' })).toBeNull();
+    if (method === 'Escape') fireEvent.keyDown(document, { key: 'Escape' });
+    else if (method === 'backdrop') fireEvent.click(document.querySelector('[data-confirm-action-layer] > [aria-hidden]')!);
+    else fireEvent.click(within(dialog).getByRole('button', { name: method }));
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(back).not.toHaveBeenCalled();
+    expect(screen.getByLabelText(/Campaign Name/)).toHaveProperty('value', 'September Campaign');
+    expect(screen.getByLabelText(/Target Audience/)).toHaveProperty('value', 'LEADS');
+    expect(screen.getByLabelText(/Subject Line/)).toHaveProperty('value', 'Hello {{first_name}}');
+    expect(screen.getByLabelText(/Body/)).toHaveProperty('value', 'Hi {{first_name}}');
+    expect(unloadPrevented()).toBe(true); expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.update).not.toHaveBeenCalled();
+  });
+
+  it('abandons edits and executes Back once without a native unload warning', () => {
+    const back = vi.fn(() => { expect(unloadPrevented()).toBe(false); });
+    render(<CampaignBuilder onBack={back} />); fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+    const discard = screen.getByRole('button', { name: 'Discard changes' }); fireEvent.click(discard); fireEvent.click(discard);
+    expect(back).toHaveBeenCalledOnce(); expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('campaign module navigation', () => {
+  beforeEach(() => { window.history.replaceState(null, '', '/marketing/campaigns'); });
+  afterEach(() => { window.history.replaceState(null, '', '/'); });
+  it.each([
+    ['Dashboard', '/dashboard'], ['Leads', '/crm/leads'], ['Contacts', '/crm/contacts'], ['Accounts', '/crm/accounts'],
+    ['Deals', '/crm/pipeline'], ['Tasks', '/operations/taskboard'], ['Campaigns', '/marketing/campaigns'],
+    ['Workflows', '/automation/workflows'], ['Settings', '/settings'],
+  ])('defers %s navigation and resumes the selected destination once', (label, destination) => {
+    const navigate = vi.fn(), back = vi.fn();
+    render(<><nav aria-label="Workspace"><button aria-label={label} onClick={() => { expect(unloadPrevented()).toBe(false); navigate(destination); }}><span>{label}</span></button></nav><CampaignBuilder onBack={back} /></>);
+    fill();
+    const module = within(screen.getByRole('navigation', { name: 'Workspace' })).getByText(label);
+    fireEvent.click(module);
+    expect(navigate).not.toHaveBeenCalled(); expect(back).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    expect(navigate).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+    expect(screen.getByLabelText(/Campaign Name/)).toHaveProperty('value', 'September Campaign');
+    fireEvent.click(module);
+    const discard = screen.getByRole('button', { name: 'Discard changes' }); fireEvent.click(discard); fireEvent.click(discard);
+    expect(navigate).toHaveBeenCalledExactlyOnceWith(destination);
+    expect(back).toHaveBeenCalledTimes(label === 'Campaigns' ? 1 : 0);
+    expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.update).not.toHaveBeenCalled();
+  });
+
+  it('allows clean module navigation and returns a clean Campaigns entry to its list', () => {
+    const navigate = vi.fn(), back = vi.fn();
+    render(<><nav aria-label="Workspace"><button aria-label="Leads" onClick={() => navigate('/crm/leads')}>Leads</button><button aria-label="Campaigns" onClick={() => navigate('/marketing/campaigns')}>Campaigns</button></nav><CampaignBuilder onBack={back} /></>);
+    fireEvent.click(screen.getByRole('button', { name: 'Leads' }));
+    expect(navigate).toHaveBeenLastCalledWith('/crm/leads'); expect(back).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Campaigns' }));
+    expect(navigate).toHaveBeenLastCalledWith('/marketing/campaigns'); expect(back).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it.each([false, true])('navigates from the dedicated Create route without also invoking Back (dirty=%s)', dirty => {
+    window.history.replaceState(null, '', '/campaigns/create');
+    const navigate = vi.fn(), back = vi.fn();
+    render(<><nav aria-label="Workspace"><button aria-label="Campaigns" onClick={() => navigate('/marketing/campaigns')}>Campaigns</button></nav><CampaignBuilder onBack={back} /></>);
+    if (dirty) fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Campaigns' }));
+    if (dirty) {
+      expect(navigate).not.toHaveBeenCalled();
+      fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    }
+    expect(navigate).toHaveBeenCalledExactlyOnceWith('/marketing/campaigns'); expect(back).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+
+  it('resumes internal links including query/hash and clears canceled destinations', () => {
+    const clicked = vi.fn((event: React.MouseEvent) => event.preventDefault()), back = vi.fn();
+    render(<><a href="/crm/contacts?highlight=contact-1#details" onClick={clicked}>Contact destination</a><CampaignBuilder onBack={back} /></>); fill();
+    const link = screen.getByRole('link', { name: 'Contact destination' });
+    fireEvent.click(link); expect(clicked).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' })); fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(back).toHaveBeenCalledOnce(); expect(clicked).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'More edits' } });
+    fireEvent.click(link); fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(clicked).toHaveBeenCalledOnce(); expect(link.getAttribute('href')).toBe('/crm/contacts?highlight=contact-1#details');
+  });
+
+  it('keeps the first pending destination until confirmation', () => {
+    const first = vi.fn(), second = vi.fn();
+    render(<><nav aria-label="Workspace"><button onClick={first}>First destination</button><button onClick={second}>Second destination</button></nav><CampaignBuilder onBack={vi.fn()} /></>); fill();
+    fireEvent.click(screen.getByText('First destination')); fireEvent.click(screen.getByText('Second destination'));
+    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    expect(first).toHaveBeenCalledOnce(); expect(second).not.toHaveBeenCalled();
+  });
+
+  it.each(['new tab', 'download', 'same page', 'external', 'ctrl', 'meta', 'shift', 'alt', 'middle'])('does not intercept %s links while dirty', kind => {
+    const clicked = vi.fn((event: React.MouseEvent) => event.preventDefault());
+    render(<><a href={kind === 'same page' ? '#section' : kind === 'external' ? 'https://example.test' : '/crm/contacts'} target={kind === 'new tab' ? '_blank' : undefined} download={kind === 'download' || undefined} onClick={clicked}>Destination</a><CampaignBuilder onBack={vi.fn()} /></>); fill();
+    fireEvent.click(screen.getByText('Destination'), { ctrlKey: kind === 'ctrl', metaKey: kind === 'meta', shiftKey: kind === 'shift', altKey: kind === 'alt', button: kind === 'middle' ? 1 : 0 });
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(clicked).toHaveBeenCalledOnce(); expect(unloadPrevented()).toBe(true);
+  });
+
+  it('guards browser history only while dirty and removes all guards on unmount', () => {
+    const navigation = new EventTarget();
+    Object.defineProperty(window, 'navigation', { configurable: true, value: navigation });
+    try {
+      const clicked = vi.fn();
+      render(<nav aria-label="Workspace"><button onClick={clicked}>Destination</button></nav>);
+      const builder = render(<CampaignBuilder onBack={vi.fn()} />);
+      const traverse = (navigationType = 'traverse') => {
+        const event = new Event('navigate', { cancelable: true });
+        Object.assign(event, { navigationType, destination: { url: 'http://localhost/dashboard' } });
+        act(() => { navigation.dispatchEvent(event); }); return event;
+      };
+      expect(traverse().defaultPrevented).toBe(false); expect(unloadPrevented()).toBe(false);
+      fill(); expect(traverse('replace').defaultPrevented).toBe(false); expect(traverse().defaultPrevented).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' })); expect(unloadPrevented()).toBe(true);
+      builder.unmount(); expect(traverse().defaultPrevented).toBe(false); expect(unloadPrevented()).toBe(false);
+      fireEvent.click(screen.getByText('Destination')); expect(clicked).toHaveBeenCalledOnce();
+    } finally { Reflect.deleteProperty(window, 'navigation'); }
+  });
+});
+
+describe('campaign guard interactions', () => {
+  it('keeps invalid drafts dirty without resetting values', () => {
+    render(<CampaignBuilder onBack={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Unsaved body' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
+    expect(campaignsApi.create).not.toHaveBeenCalled(); expect(screen.getByRole('alert').textContent).toMatch(/required/);
+    expect(unloadPrevented()).toBe(true); expect(screen.getByLabelText(/Body/)).toHaveProperty('value', 'Unsaved body');
+  });
+
+  it('reopens a saved draft clean and guards later edits', async () => {
+    const back = vi.fn(), builder = render(<CampaignBuilder onBack={back} />); fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Save Draft' })); await waitFor(() => expect(back).toHaveBeenCalledOnce());
+    builder.unmount();
+    const saved = vi.mocked(campaignsApi.create).mock.calls[0][0];
+    render(<CampaignBuilder onBack={back} initialCampaign={{ ...saved, id: 'saved-id', type: 'Email', status: 'Draft' } as never} />);
+    expect(unloadPrevented()).toBe(false);
+    fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'New body' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' }));
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
+  });
+
+  it('keeps preview, picker, send-menu, schedule and audience-panel visibility clean', async () => {
+    const back = vi.fn(); render(<CampaignBuilder onBack={back} initialCampaign={existingDraft as never} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Desktop preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Mobile preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Hide live preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show live preview' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    await schedulePicker(); fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Schedule Send' })).toBeNull());
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Create New/ })); });
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create Target Audience' })).getByRole('button', { name: 'Cancel' }));
+    expect(unloadPrevented()).toBe(false); expect(screen.queryByRole('alertdialog')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' })); expect(back).toHaveBeenCalledOnce();
+  });
+
+  it('allows type, audience, variable, preview, Send and Schedule interactions while dirty', async () => {
+    const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
+    fireEvent.click(screen.getByRole('button', { name: 'SMS' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'CONTACTS' } });
+    fireEvent.click(await screen.findByRole('button', { name: '{{firstName}}' }));
+    expect(screen.getByLabelText(/Body/)).toHaveProperty('value', expect.stringContaining('{{firstName}}'));
+    fireEvent.click(screen.getByRole('button', { name: 'Desktop preview' }));
+    await schedulePicker(); fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Schedule Send' })).toBeNull());
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: /Create New/ })); });
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Create Target Audience' })).getByRole('button', { name: 'Cancel' }));
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: audience.id } });
+    await act(async () => { fireEvent.click(screen.getByRole('button', { name: 'Edit saved audience' })); });
+    fireEvent.click(within(screen.getByRole('dialog', { name: 'Edit Target Audience' })).getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(back).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+  });
+
+  it.each(['Email', 'SMS'])('allows successful %s sending to leave without confirmation or an unload warning', async type => {
+    const back = vi.fn(() => { expect(unloadPrevented()).toBe(false); });
+    render(<CampaignBuilder onBack={back} initialType={type} />);
+    fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Send campaign' } });
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+    if (type === 'Email') fireEvent.change(screen.getByLabelText(/Subject Line/), { target: { value: 'Subject' } });
+    fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'Message' } });
+    expect(unloadPrevented()).toBe(true); sendNow();
+    await waitFor(() => expect(back).toHaveBeenCalledOnce());
+    expect(campaignsApi.send).toHaveBeenCalledExactlyOnceWith('saved-id'); expect(screen.queryByRole('alertdialog')).toBeNull();
+  });
+});
+
 describe('campaign composer', () => {
   it.each([
     ['Email', 'create'], ['Email', 'edit'], ['SMS', 'create'], ['SMS', 'edit'],
@@ -215,6 +481,7 @@ describe('campaign composer', () => {
     const back = vi.fn(); render(<CampaignBuilder onBack={back} />); fill();
     sendNow();
     expect(await screen.findByText('Daily allowance reached.')).toBeTruthy(); expect(back).not.toHaveBeenCalled();
+    expect(unloadPrevented()).toBe(true); expect(screen.queryByRole('alertdialog')).toBeNull();
     expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('Hi {{first_name}}');
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
     await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('saved-id', expect.any(Object)));
@@ -228,6 +495,7 @@ describe('campaign composer', () => {
     await screen.findByRole('option', { name: 'New audience' });
     expect((screen.getByLabelText(/Target Audience/) as HTMLSelectElement).value).toBe(audience.id);
     expect(audiencesApi.create).toHaveBeenCalledWith({ name: 'New audience', source: 'LEADS', matchMode: 'AND', conditions: [] });
+    expect(screen.queryByRole('alertdialog')).toBeNull(); await waitFor(() => expect(unloadPrevented()).toBe(true));
   });
   it('inserts variables at Subject and Body selections and exposes the same chips as draggable text', async () => {
     render(<CampaignBuilder onBack={vi.fn()} />); fill();
@@ -263,7 +531,7 @@ describe('campaign composer', () => {
   });
   it('schedules once using an explicit Manila date converted to UTC and does not call Send Now', async () => {
     frozenManilaAfternoon();
-    const onBack = vi.fn(); render(<CampaignBuilder onBack={onBack} />); fill();
+    const onBack = vi.fn(() => { expect(unloadPrevented()).toBe(false); }); render(<CampaignBuilder onBack={onBack} />); fill();
     const picker = await schedulePicker();
     fireEvent.click(within(picker).getByRole('button', { name: '12' }));
     fireEvent.change(screen.getByLabelText('Schedule hour'), { target: { value: '3' } });
@@ -271,6 +539,7 @@ describe('campaign composer', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Done' }));
     await waitFor(() => expect(campaignsApi.schedule).toHaveBeenCalledWith('saved-id', '2026-10-12T07:59:00.000Z'));
     expect(campaignsApi.send).not.toHaveBeenCalled(); expect(onBack).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('alertdialog')).toBeNull();
   });
   it('cancels an unclaimed saved schedule before editing, with Send Now and draft inputs disabled', async () => {
     render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'saved-id', name: 'Scheduled', type: 'Email', status: 'scheduled', subject: 'Hi', body: 'Hello', audienceSource: 'LEADS', scheduledFor: '2099-10-11T02:30:00.000Z' } as never} />);

@@ -71,6 +71,7 @@ export async function updateFieldLayout(tenantId: string, actorId: string, modul
     if (action.action === 'delete') {
       if (group!.id === CLOSED_WON_GROUP_ID || group!.protected) throw new ValidationError('Closing evidence is a protected section and cannot be deleted.');
       const contained = catalog.filter(field => field.groupId === group!.id);
+      if (contained.some(field => field.kind === 'System')) throw new ValidationError('Groups containing system fields cannot be deleted.');
       const target = layout.groups.find(group => group.id === action.moveToGroupId && group.id !== action.groupId && group.id !== CLOSED_WON_GROUP_ID && !group.protected);
       if (contained.length && !target) throw new ValidationError('Choose another section in this module to move the fields before deleting this group.');
       if (layout.groups.length === 1) throw new ValidationError('Keep at least one field group.');
