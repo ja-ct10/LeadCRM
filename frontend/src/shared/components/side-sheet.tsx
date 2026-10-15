@@ -1,4 +1,5 @@
 ﻿'use client';
+import { responsiveTypography } from '@/shared/styles/typography';
 import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { ReactNode, useId, useRef } from 'react';
@@ -49,7 +50,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
             <div className={panelHeaderClass + " flex items-center justify-between gap-3"}>
               <div className="min-w-0">
                 <h2 id={titleId} className={panelTitleClass}>{title}</h2>
-                {subtitle && <p className="text-sm text-muted-foreground mt-1">{subtitle}</p>}
+                {subtitle && <p className={`${responsiveTypography.body} text-muted-foreground mt-1`}>{subtitle}</p>}
               </div>
               <ModalCloseButton onClose={onClose} ariaLabel="Close sheet" size={20} className={panelCloseClass + " grid place-items-center"} />
             </div>

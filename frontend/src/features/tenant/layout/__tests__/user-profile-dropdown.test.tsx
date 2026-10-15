@@ -2,6 +2,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { UserProfileDropdown } from '../user-profile-dropdown';
+import { NAVIGATION_INTENT_EVENT, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 
 const mocks = vi.hoisted(() => ({ navigate: vi.fn(), push: vi.fn(), logout: vi.fn(), success: vi.fn(), error: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
@@ -76,4 +77,22 @@ it('preserves account, workspace, appearance, help and logout actions', async ()
   open(); fireEvent.click(screen.getByRole('menuitem', { name: 'Log out' }));
   await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Signed out successfully'));
   expect(mocks.logout).toHaveBeenCalledOnce(); expect(screen.queryByRole('menu')).toBeNull();
+});
+
+it.each(['My Account', 'Appearance', 'Log out'])('defers %s until the stored navigation action is confirmed', async label => {
+  render(<App />); open(); let pending: NavigationAction | undefined;
+  const guard = (event: Event) => { event.preventDefault(); pending = (event as NavigationIntentEvent).detail.navigate; };
+  window.addEventListener(NAVIGATION_INTENT_EVENT, guard);
+  try {
+    fireEvent.click(screen.getByRole('menuitem', { name: label }));
+    expect(mocks.navigate).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled(); expect(mocks.logout).not.toHaveBeenCalled();
+    expect(screen.getByRole('menu')).toBeTruthy(); pending = undefined;
+    fireEvent.click(screen.getByRole('menuitem', { name: label }));
+    // The originating dropdown can unmount while confirmation is displayed.
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'Outside' })); expect(screen.queryByRole('menu')).toBeNull();
+    window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); await act(async () => pending?.());
+    if (label === 'My Account') expect(mocks.navigate).toHaveBeenCalledWith('settings');
+    else if (label === 'Appearance') expect(mocks.push).toHaveBeenCalledWith('/settings?tab=appearance');
+    else expect(mocks.logout).toHaveBeenCalledOnce();
+  } finally { window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); }
 });

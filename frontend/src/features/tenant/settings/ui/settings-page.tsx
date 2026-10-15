@@ -21,7 +21,8 @@ import {
   Monitor,
   Archive,
   User,
-  Zap,
+  SlidersHorizontal,
+  Package,
   Check,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -36,6 +37,7 @@ import { TeamManagement } from './team-management';
 import { RolesPermissions } from './roles-permissions';
 import { useMediaQuery } from '@/shared/hooks/use-media-query';
 import { useWorkspacePanel } from '@/shared/lib/overlay-state';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
 
 type SettingsTab =
   | 'profile'
@@ -74,8 +76,8 @@ const NAV_GROUPS: NavGroup[] = [
   {
     label: 'CUSTOMIZATION',
     items: [
-      { id: 'custom-fields', label: 'Customize Fields', icon: Zap },
-      { id: 'products', label: 'Products', icon: Zap },
+      { id: 'custom-fields', label: 'Customize Fields', icon: SlidersHorizontal },
+      { id: 'products', label: 'Products', icon: Package },
       { id: 'archived', label: 'Archived Data', icon: Archive },
     ],
   },
@@ -102,6 +104,10 @@ export default function SettingsPage(): React.ReactElement {
   const searchParams = useSearchParams();
   const router = useRouter();
   const tabFromUrl = searchParams?.get('tab') ?? null;
+  const selectTab = (tab: SettingsTab) => {
+    if (tab === activeTab) return;
+    requestNavigation(() => { setActiveTab(tab); setIsFormBuilderActive(false); setIsRolesViewActive(false); });
+  };
 
   // Dispatch breadcrumb event to topbar when settings tab changes
   useEffect(() => {
@@ -171,7 +177,7 @@ export default function SettingsPage(): React.ReactElement {
           <select
             id="settings-mobile-nav"
             value={activeTab}
-            onChange={(e) => { setActiveTab(e.target.value as SettingsTab); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+            onChange={(e) => selectTab(e.target.value as SettingsTab)}
             className="w-full bg-muted border border-border text-foreground rounded-lg pl-3 pr-9 py-2.5 text-sm font-medium focus:outline-none focus:border-primary transition-colors appearance-none"
           >
             {visibleNavGroups.map((group) => (
@@ -202,7 +208,7 @@ export default function SettingsPage(): React.ReactElement {
                     return (
                       <button
                         key={item.id}
-                        onClick={() => { setActiveTab(item.id); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+                        onClick={() => selectTab(item.id)}
                         className={cn(
                           'w-full flex items-center justify-between px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left',
                           isActive
@@ -225,7 +231,7 @@ export default function SettingsPage(): React.ReactElement {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => { setActiveTab(item.id); setIsFormBuilderActive(false); setIsRolesViewActive(false); }}
+                      onClick={() => selectTab(item.id)}
                       className={cn(
                         'w-full flex items-center gap-2.5 px-4 py-1.5 text-xs font-medium transition-colors cursor-pointer text-left',
                         isActive

@@ -1,5 +1,6 @@
 'use client';
 
+import { responsiveTypography } from '@/shared/styles/typography';
 import * as React from 'react';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
@@ -200,7 +201,7 @@ export function DialogDescription({
 }: React.HTMLAttributes<HTMLParagraphElement>) {
   return (
     <p
-      className={cn('text-sm text-muted-foreground', className)}
+      className={cn(responsiveTypography.body, 'text-muted-foreground', className)}
       {...props}
     />
   );

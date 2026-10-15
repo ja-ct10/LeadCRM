@@ -1,3 +1,4 @@
+import { responsiveTypography } from '@/shared/styles/typography';
 import type { ReactNode } from 'react';
 
 // Presentation only: callers retain their existing dialog and form behavior.
@@ -8,7 +9,7 @@ export const panelSurfaceClass =
 export const panelHeaderClass =
   'shrink-0 border-b border-border bg-muted/50 px-4 py-5 sm:px-6';
 export const panelTitleClass =
-  'text-xl font-bold tracking-tight text-foreground [overflow-wrap:anywhere]';
+  responsiveTypography.title + ' font-bold tracking-tight text-foreground [overflow-wrap:anywhere]';
 export const panelBodyClass =
   'min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain px-4 py-5 sm:px-6';
 export const panelFooterClass =
@@ -23,10 +24,10 @@ export const panelPrimaryButtonClass =
   'h-[42px] rounded-xl px-6 shadow-lg shadow-primary/20';
 export const panelCloseClass =
   'h-11 w-11 shrink-0 rounded-xl text-muted-foreground hover:bg-accent hover:text-foreground focus-visible:ring-ring';
-export const panelPrimaryActionClass = panelPrimaryButtonClass +
-  ' inline-flex items-center justify-center gap-2 bg-primary text-sm font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
-export const panelSecondaryActionClass = panelSecondaryButtonClass +
-  ' inline-flex items-center justify-center gap-2 border text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+export const panelPrimaryActionClass = responsiveTypography.control + ' ' + panelPrimaryButtonClass +
+  ' inline-flex items-center justify-center gap-2 bg-primary font-semibold text-white transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
+export const panelSecondaryActionClass = responsiveTypography.control + ' ' + panelSecondaryButtonClass +
+  ' inline-flex items-center justify-center gap-2 border font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50';
 
 export function PanelSectionHeading({ number, children }: { number: number; children: ReactNode }) {
   return (

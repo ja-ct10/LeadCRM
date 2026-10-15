@@ -214,6 +214,7 @@ export function TaskEditor({
           <h2 id={heading} className={panelTitleClass}>
             {creating ? "Create deal" : task ? "Task details" : "Create task"}
           </h2>
+          {!task && !creating && <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-medium">Complete the task details below.</p>}
         </header>
         {unavailable ? (
           <div className={panelBodyClass + ' space-y-4'}>

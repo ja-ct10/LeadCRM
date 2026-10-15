@@ -1,4 +1,5 @@
 'use client';
+import { responsiveTypography } from '@/shared/styles/typography';
 import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 
 import React, { ReactNode, useId, useRef } from 'react';
@@ -76,7 +77,7 @@ export function SlidingDrawer({
                     <div className="h-6" />
                   )}
                   {subtitle && (
-                    <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-medium">
+                    <p className={`${responsiveTypography.body} text-slate-500 mt-1 dark:text-slate-400 font-medium`}>
                       {subtitle}
                     </p>
                   )}

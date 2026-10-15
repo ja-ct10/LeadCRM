@@ -91,6 +91,8 @@ it('validates money and persists only trimmed names and numeric amounts through 
   render(<ProductsPage />);
   await screen.findByRole('grid');
   fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
+  expect(screen.getByRole('heading', { name: 'New Product' })).toBeTruthy();
+  expect(screen.getByText('Complete the product details below.')).toBeTruthy();
   fireEvent.change(screen.getByRole('textbox', { name: 'Product Name' }), { target: { value: '  Biometrics  ' } });
   fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '-5' } });
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
@@ -151,6 +153,7 @@ it('requires confirmation before archiving a product and clears bulk selection a
 async function editProduct() {
   fireEvent.click(await screen.findByRole('button', { name: 'Row actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit' }));
+  expect(screen.queryByText('Complete the product details below.')).toBeNull();
   fireEvent.change(screen.getByLabelText('Deal Value (PHP)'), { target: { value: '7000.25' } });
 }
 it('shows a skeleton then applies the committed response and toasts only after success', async () => {
@@ -190,6 +193,7 @@ it('keeps Product metadata visible while loading the historical Closed Won table
   expect(screen.getByRole('status', { name: 'Loading Closed Won' }).querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Product Record')).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Product details' })).toBeTruthy();
+  expect(screen.queryByText('Complete the product details below.')).toBeNull();
   resolve({ data: [{ id: 'won', title: 'Real won deal', value: 45000, currency: 'PHP', customers: ['Saved Customer'], company: 'Company', assignedAgent: 'Agent', closedAt: '2026-09-30' }], meta: { total: 1 } });
   expect(await screen.findByText('Saved Customer')).toBeTruthy();
   expect(screen.queryByText('Real won deal')).toBeNull();
