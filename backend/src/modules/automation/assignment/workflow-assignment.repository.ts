@@ -4,8 +4,9 @@ import { eligibleAssignedAgents, hasAssignedAgentAccess, crmAssignmentRequiremen
 
 type Client = Prisma.TransactionClient;
 export async function assignmentCandidates(client: Client, tenantId: string, purpose: WorkflowAssignmentPurpose, entity?: WorkflowEntity) {
+  if (purpose === 'crm_owner' && entity === 'account') return [];
   if (purpose === 'crm_owner') return eligibleAssignedAgents(client, tenantId, entity
-    ? crmAssignmentRequirements(entity === 'lead' ? 'leads' : entity === 'contact' ? 'contacts' : entity === 'account' ? 'accounts' : 'deals')
+    ? crmAssignmentRequirements(entity === 'lead' ? 'leads' : entity === 'contact' ? 'contacts' : 'deals')
     : [...crmAssignmentRequirements('leads'), ...crmAssignmentRequirements('deals')]);
   return eligibleAssignedAgents(client, tenantId, TASK_ASSIGNEE_REQUIREMENTS);
 }
@@ -24,7 +25,7 @@ export async function assignmentPool(client: Client, tenantId: string, target: E
 export async function assignmentOptions(client: Client, tenantId: string, access = { users: false, roles: false, groups: false }) {
   const [owners, assignees, roles, groups] = await Promise.all([
     eligibleAssignedAgents(client, tenantId, []).then(users => users.filter(user =>
-      (['leads', 'contacts', 'accounts', 'deals'] as const).some(module => hasAssignedAgentAccess(user, tenantId, crmAssignmentRequirements(module))))),
+      (['leads', 'contacts', 'deals'] as const).some(module => hasAssignedAgentAccess(user, tenantId, crmAssignmentRequirements(module))))),
     assignmentCandidates(client, tenantId, 'task_assignee'),
     access.roles ? client.roleDefinition.findMany({ where: { tenantId, isArchived: false }, orderBy: [{ name: 'asc' }, { id: 'asc' }],
       select: { id: true, name: true, userRoles: { where: { tenantId, user: { tenantId } }, select: { userId: true } } } }) : [],
@@ -57,7 +58,6 @@ export async function assignmentWorkloads(client: Client, tenantId: string, ids:
   const rows = purpose === 'task_assignee' ? await client.task.groupBy({ ...common, where: { ...where, status: { in: ['pending', 'in_progress', 'in-progress', 'blocked'] } } })
     : entity === 'lead' ? await client.lead.groupBy({ ...common, where: { ...where, convertedAt: null } })
     : entity === 'contact' ? await client.contact.groupBy({ ...common, where })
-    : entity === 'account' ? await client.account.groupBy({ ...common, where })
     : entity === 'deal' ? await client.deal.groupBy({ ...common, where: { ...where, stage: { tenantId, isWon: false, isLost: false } } }) : [];
   return new Map(rows.flatMap(row => row.assignedUserId ? [[row.assignedUserId, row._count._all] as const] : []));
 }

@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const runName = process.env.RECORD_PLAN_BROWSER_RUN_NAME || '';
@@ -50,7 +50,7 @@ try {
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', website: 'https://example.test', assignedUserId: admin.id } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', website: 'https://example.test',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
   const source = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Converted', lastName: 'Source', email: 'source@example.test', accountId: account.id, assignedUserId: admin.id, contactId: contact.id, convertedAt: new Date() } });
@@ -93,8 +93,7 @@ try {
   assert.ok(ready, 'Built Next server did not become ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(auth) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    await isolateBrowserContext(context);
+    const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
     await context.addInitScript(() => {
       const NativeEventSource = window.EventSource;
       window.__recordPlanStreams = {};

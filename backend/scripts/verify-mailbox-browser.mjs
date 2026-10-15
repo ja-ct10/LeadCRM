@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.MAILBOX_VERIFY_OUTPUT ? resolve(process.env.MAILBOX_VERIFY_OUTPUT) : resolve(root, 'data/outputs/mailbox-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
@@ -100,8 +100,7 @@ try {
   assert.equal(warmedInbox.status, 200, 'The local Inbox route must be available before browser assertions');
   await warmedInbox.arrayBuffer();
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   page.on('requestfailed', request => { if (!request.url().includes('/events') && request.failure()?.errorText !== 'net::ERR_ABORTED') transportErrors.push({ url: request.url(), error: request.failure()?.errorText }); });
@@ -193,8 +192,7 @@ try {
   await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   await page.reload(); await page.getByText(seed[0].subject, { exact: true }).waitFor();
   secondBrowser = await chromium.launch({ channel: 'chrome', headless: true });
-  const secondContext = await secondBrowser.newContext({ storageState: await context.storageState(), viewport: { width: 1440, height: 900 } });
-  await isolateBrowserContext(secondContext);
+  const secondContext = await createAcceptanceContext(secondBrowser, { storageState: await context.storageState(), viewport: { width: 1440, height: 900 } });
   const second = await secondContext.newPage(); second.setDefaultNavigationTimeout(120000); await second.goto(base + '/inbox', { waitUntil: 'domcontentloaded' }); await second.getByText(seed[0].subject, { exact: true }).waitFor();
   const events = [];
   for (const [index, target] of [page, second].entries()) {

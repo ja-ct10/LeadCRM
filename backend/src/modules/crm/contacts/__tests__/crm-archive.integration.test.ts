@@ -35,7 +35,7 @@ async function call(path: string, method = 'GET', cookie = adminCookie, body?: u
 async function create(module: Module, tenant = tenantId) {
   if (module === 'leads') return db.lead.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Lead', status: 'Qualified', productInterest: [] } });
   if (module === 'contacts') return db.contact.create({ data: { tenantId: tenant, firstName: 'Archived', lastName: 'Contact', status: 'HOT', productInterests: [] } });
-  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account', tags: [], productInterests: [], activeProducts: [] } });
+  return db.account.create({ data: { tenantId: tenant, name: 'Archived Account', tags: [],   } });
 }
 
 beforeAll(async () => {
@@ -93,14 +93,14 @@ describe.sequential('Product recovery through the existing Settings archive API'
     const pipeline = await db.pipeline.create({ data: { tenantId: actor.tenantId, name: 'Historical product pipeline' } });
     const stage = await db.stage.create({ data: { tenantId: actor.tenantId, pipelineId: pipeline.id, name: 'Won', order: 1, isWon: true } });
     const lead = await db.lead.create({ data: { tenantId: actor.tenantId, firstName: 'Historical', lastName: 'Lead', productsNormalized: true, productLinks: { create: { productInterestId: product.id, position: 0 } } } });
-    const account = await db.account.create({ data: { tenantId: actor.tenantId, name: 'Historical Account', productsNormalized: true, productLinks: { create: { productInterestId: product.id, position: 0, activeProduct: true } } } });
+    const account = await db.account.create({ data: { tenantId: actor.tenantId, name: 'Historical Account',   } });
     const contact = await db.contact.create({ data: { tenantId: actor.tenantId, firstName: 'Historical', lastName: 'Contact', accountId: account.id, productsNormalized: true, productLinks: { create: { productInterestId: product.id, position: 0, activeProduct: true } } } });
     const deal = await db.deal.create({ data: { tenantId: actor.tenantId, title: 'Original product price', pipelineId: pipeline.id, stageId: stage.id, accountId: account.id, productInterestId: product.id, productsNormalized: true, value: 3210.75, currency: 'PHP', leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } } } });
     const history = () => Promise.all([
       db.deal.findUniqueOrThrow({ where: { id: deal.id }, include: { leadDeals: true, contactDeals: true } }),
       db.leadProductInterest.findMany({ where: { leadId: lead.id } }),
       db.contactProductInterest.findMany({ where: { contactId: contact.id } }),
-      db.accountProductInterest.findMany({ where: { accountId: account.id } }),
+      db.account.findUniqueOrThrow({ where: { id: account.id } }),
     ]);
     const before = await history();
     expect((await actor.request('archived-data?type=Product')).body.meta.total).toBe(0);

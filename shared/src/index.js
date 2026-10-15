@@ -58,3 +58,4 @@ __exportStar(require("./contracts/campaign-fields"), exports);
 __exportStar(require("./contracts/custom-field-identity"), exports);
 __exportStar(require("./contracts/crm-record-access"), exports);
 __exportStar(require("./contracts/condition-operators"), exports);
+__exportStar(require("./contracts/account-retirement"), exports);

@@ -54,8 +54,6 @@ interface AccountsDataGridProps {
   selectedIds: Set<string>;
   /** Selection change callback */
   onSelectionChange: (ids: Set<string>) => void;
-  /** Lookup: get owner name */
-  getOwnerName: (userId?: string) => string;
   /** RBAC: can user edit */
   canEdit?: boolean;
   /** RBAC: can user archive */
@@ -87,7 +85,6 @@ export function AccountsDataGrid({
   onRowClick,
   selectedIds,
   onSelectionChange,
-  getOwnerName,
   canEdit = false,
   canArchive = false,
   onEdit,
@@ -98,7 +95,7 @@ export function AccountsDataGrid({
   viewMode = 'clip',
   highlightRowId,
 }: AccountsDataGridProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('accounts');
   // ─── Cell Renderers ────────────────────────────────────────────────────
 
   const cellRenderers: CellRendererMap<Account> = useMemo(() => ({
@@ -147,11 +144,6 @@ export function AccountsDataGrid({
       </p>
     ),
 
-    assignedUserId: (_value: unknown, row: Account) => (
-      <p className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {row.assignedUser ? `${row.assignedUser.firstName} ${row.assignedUser.lastName}`.trim() : getOwnerName(row.assignedUserId)}
-      </p>
-    ),
 
     website: (_value: unknown, row: Account) => renderLink(row.website ?? null),
 
@@ -162,7 +154,7 @@ export function AccountsDataGrid({
     ),
 
     createdAt: (_value: unknown, row: Account) => renderDate(row.createdAt),
-  }), [getOwnerName, viewMode]);
+  }), [viewMode]);
 
   // ─── Column Configuration ──────────────────────────────────────────────
 
@@ -179,7 +171,6 @@ export function AccountsDataGrid({
       industry: 160,
       size: 140,
       address: 280,
-      assignedUserId: 160,
       website: 180,
       tags: 160,
       createdAt: 140,

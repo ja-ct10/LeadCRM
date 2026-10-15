@@ -1,4 +1,4 @@
-import { isolateBrowserContext, responsiveMatrix } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real production UI + authenticated Express API against a fresh, migration-replayed
 // in-memory database. No existing tenant, provider, or deployment is contacted.
 // Build first; set PLAYWRIGHT_MODULE to an installed Playwright package.
@@ -63,7 +63,7 @@ try {
   const target = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Lead',order:0,isDefault:true}});
   const required = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Review',order:1,requiredFields:['industry']}});
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account', assignedUserId: agents[0].id } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Contact', email: 'contact@example.test', accountId: account.id, assignedUserId: admin.id, productInterests: [] } });
   const fixtures = {};
@@ -84,9 +84,7 @@ try {
   assert.ok(ready, 'Next server did not become ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(auth, options = {}) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, ...options });
-
-    await isolateBrowserContext(context);
+    const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, ...options });
     await context.addInitScript(() => {
       const NativeEventSource = window.EventSource;
       window.__recordPlanStreams = {};

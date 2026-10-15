@@ -1,4 +1,4 @@
-import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Real UI, authenticated local API and disposable SQL; no provider submissions.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -47,9 +47,7 @@ try {
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {

@@ -1,9 +1,20 @@
 import { findTrigger, getWorkflowConditionFields, customFieldTechnicalKey, resolveCustomFieldReference, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
-import { normalizeWorkflowReferences, WorkflowActionSchema, normalizeSavedWorkflowAssignment } from '@leadcrm/shared';
+import { normalizeWorkflowReferences, WorkflowActionSchema, normalizeSavedWorkflowAssignment, retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 
 export const workflowCustomFields = (tenantId: string, db: import('@prisma/client').Prisma.TransactionClient = prisma) => readConfiguredFields(db, tenantId);
+/** Resolve only the template content actually used by each email action. Definitions remain unchanged. */
+export async function accountWorkflowRetirementReferences(draft: { trigger: string; conditions?: unknown; actions?: unknown }, tenantId: string, db: import('@prisma/client').Prisma.TransactionClient = prisma) {
+  const actions = Array.isArray(draft.actions) ? draft.actions : [];
+  const ids = actions.flatMap(action => action?.type === 'send_email' && typeof action.config?.templateId === 'string' ? [action.config.templateId] : []);
+  if (!ids.length) return retiredAccountWorkflowReferences(draft);
+  const templates = await db.template.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, subject: true, content: true } });
+  return retiredAccountWorkflowReferences({ ...draft, actions: actions.map(action => {
+    const template = action?.type === 'send_email' && templates.find(template => template.id === action.config?.templateId);
+    return template ? { ...action, config: { ...action.config, subject: action.config.subject || template.subject, body: action.config.body || template.content } } : action;
+  }) });
+}
 export async function supportedChangedFields(entity: WorkflowEntity, fields: unknown, tenantId: string): Promise<string[]> {
   if (!Array.isArray(fields)) return [];
   const definitions = await workflowCustomFields(tenantId);
@@ -27,7 +38,8 @@ export async function conditionFields(draft: WorkflowDraft, tenantId: string) {
   });
 }
 /** Read adapter only. The next explicit save persists deterministic mappings; history is untouched. */
-export async function compatibleWorkflow<T extends Pick<WorkflowDraft, 'trigger'> & { conditions?: unknown; actions?: unknown }>(draft: T, tenantId: string): Promise<T> {
+export async function compatibleWorkflow<T extends Pick<WorkflowDraft, 'trigger'> & { conditions?: unknown; actions?: unknown; isActive?: boolean; status?: string }>(draft: T, tenantId: string): Promise<T> {
+  if ((await accountWorkflowRetirementReferences(draft, tenantId)).length) return { ...draft, isActive: false, status: draft.status === 'DRAFT' && !draft.isActive ? 'DRAFT' : 'PAUSED', repairReason: ACCOUNT_RETIREMENT_REASON };
   const products = /productInterest|activeProduct/.test(JSON.stringify([draft.conditions, draft.actions]))
     ? await prisma.productInterest.findMany({ where: { tenantId }, select: { id: true, name: true } }) : [];
   const references = normalizeWorkflowReferences(draft, products);

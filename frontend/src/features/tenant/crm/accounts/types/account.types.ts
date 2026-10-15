@@ -9,13 +9,9 @@ export interface Account {
   email?: string;
   phone?: string;
   address?: string;
-  assignedUserId?: string;
-  assignedUser?: { id: string; firstName: string; lastName: string };
   tags?: string[];
   notes?: string;
   internalNotes?: string;
-  productInterests?: string[];
-  activeProducts?: string[];
   createdAt: string;
   isArchived?: boolean;
 }

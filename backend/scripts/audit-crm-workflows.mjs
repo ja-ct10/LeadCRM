@@ -94,7 +94,7 @@ if (process.argv.includes('--live')) {
         row.productionUsage = (await query(`SELECT count(*)::int AS total,count(*) FILTER (WHERE ${c} IS NULL)::int AS "null",count(*) FILTER (WHERE ${c} IS NOT NULL)::int AS "nonNull",count(*) FILTER (WHERE ${empty})::int AS "${isArray ? 'emptyArray' : 'emptyString'}",count(*) FILTER (WHERE ${nonempty})::int AS "nonEmpty",count(*) FILTER (WHERE "isArchived" AND ${nonempty})::int AS "archivedNonEmpty" FROM ${quote(row.module)}`))[0];
       }
       report.rowCounts = {};
-      for (const table of ['Lead','Contact','Account','Deal','LeadProductInterest','ContactProductInterest','AccountProductInterest','LeadDeal','ContactDeal','CustomFieldValue','Workflow','WorkflowExecutionRun','WorkflowExecutionStep','WorkflowTriggerRecord']) report.rowCounts[table] = (await query(`SELECT count(*)::int AS n FROM ${quote(table)}`))[0].n;
+      for (const table of ['Lead','Contact','Account','Deal','LeadProductInterest','ContactProductInterest','LeadDeal','ContactDeal','CustomFieldValue','Workflow','WorkflowExecutionRun','WorkflowExecutionStep','WorkflowTriggerRecord']) report.rowCounts[table] = (await query(`SELECT count(*)::int AS n FROM ${quote(table)}`))[0].n;
       report.products = [];
       for (const module of ['Lead','Contact','Account']) {
         const field = module === 'Lead' ? 'productInterest' : 'productInterests', link = `${module}ProductInterest`, fk = `${module.toLowerCase()}Id`;

@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { accountWorkflowRetirementReferences } from './workflow-fields';
+import { ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -29,6 +31,10 @@ export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, param
   const recordName = String(eventContext[`${trigger.entity}.title`] ?? eventContext[`${trigger.entity}.name`] ??
     `${eventContext[`${trigger.entity}.firstName`] ?? ''} ${eventContext[`${trigger.entity}.lastName`] ?? ''}`).trim().slice(0, 255);
   for (const workflow of workflows) {
+    if ((await accountWorkflowRetirementReferences(workflow, params.tenantId, tx)).length) {
+      await tx.workflow.update({ where: { id: workflow.id, tenantId: params.tenantId }, data: { isActive: false, status: 'PAUSED', version: { increment: 1 } } });
+      continue;
+    }
     if (ancestry.includes(workflow.id)) continue;
     const triggerId = randomUUID();
     // PostgreSQL uniqueness errors abort transactions: use ON CONFLICT, never catch-and-continue.
@@ -57,6 +63,11 @@ export async function dispatchQueuedWorkflows() {
     const context = item.dispatchContext as { version?: number; actorId?: string; activatedById?: string; ancestry?: string[]; context?: Record<string, unknown>; eventContext?: Record<string, unknown> };
     try {
       const workflow = await prisma.workflow.findFirst({ where: { id: item.workflowId, tenantId: item.tenantId } });
+      if (workflow && (await accountWorkflowRetirementReferences(workflow, item.tenantId)).length) {
+        await prisma.workflow.updateMany({ where: { id: workflow.id, tenantId: item.tenantId, version: workflow.version, isActive: true }, data: { isActive: false, status: 'PAUSED', version: { increment: 1 } } });
+        await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: 'queued' }, data: { status: 'skipped', completedAt: new Date(), errorMessage: ACCOUNT_RETIREMENT_REASON, leaseId: null, leaseUntil: null } });
+        return;
+      }
       if (context.version !== 1 || !workflow || !workflow.isActive || workflow.isArchived || workflow.status !== 'ACTIVE' || workflow.version !== item.workflowVersion || workflow.activatedById !== context.activatedById) {
         await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: 'queued' }, data: { status: 'skipped', completedAt: new Date(), errorMessage: 'The saved workflow authorization or definition changed after this event.', leaseId: null, leaseUntil: null } });
         return;

@@ -33,17 +33,17 @@ it('merges, archives and records the audit in the same transaction', async () =>
   expect(mocks.db.auditLog.create).toHaveBeenCalledWith({ data: expect.objectContaining({ action: 'account.merged', entityId: 'primary', tenantId: 'tenant' }) });
   expect(mocks.transaction).toHaveBeenCalledOnce();
 });
-it('rejects an unavailable secondary owner before relationship reassignment', async () => {
+it('rejects retired Account ownership before relationship reassignment', async () => {
   mocks.db.account.findFirst.mockImplementation(({ where }: any) => Promise.resolve({ id: where.id, assignedUserId: where.id === 'primary' ? 'current' : 'inactive' }));
   mocks.validateOwner.mockRejectedValue(new Error('Assigned Agent is inactive'));
-  await expect(execute({ ...input, fieldResolutions: { assignedUserId: 'secondary' } })).rejects.toThrow('Assigned Agent is inactive');
-  expect(mocks.validateOwner).toHaveBeenCalledWith(mocks.db, 'tenant', 'inactive', ['accounts']);
+  await expect(execute({ ...input, fieldResolutions: { assignedUserId: 'secondary' } })).rejects.toThrow('Unsupported merge fields');
+  expect(mocks.validateOwner).not.toHaveBeenCalled();
   expect(mocks.reassign).not.toHaveBeenCalled(); expect(mocks.db.account.update).not.toHaveBeenCalled();
 });
 
-it('clears an optional owner selected from an unassigned secondary Account', async () => {
+it('rejects retired Account products without changing either record', async () => {
   mocks.db.account.findFirst.mockImplementation(({ where }: any) => Promise.resolve({ id: where.id, name: where.id, assignedUserId: where.id === 'primary' ? 'current' : null }));
-  await execute({ ...input, fieldResolutions: { assignedUserId: 'secondary' } });
-  expect(mocks.db.account.update).toHaveBeenCalledWith({ where: { id: 'primary', tenantId: 'tenant' }, data: { assignedUserId: null } });
+  await expect(execute({ ...input, fieldResolutions: { productInterests: 'secondary' } })).rejects.toThrow('Unsupported merge fields');
+  expect(mocks.db.account.update).not.toHaveBeenCalled();
   expect(mocks.validateOwner).not.toHaveBeenCalled();
 });

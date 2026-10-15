@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-ui-polish')));
@@ -17,7 +17,7 @@ const base = 'http://localhost:3025';
 Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base, BREVO_API_KEY: '', BREVO_SMS_SENDER: '' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
-Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
+Module._resolveFilename = function (request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
 const { chromium } = require(process.env.PLAYWRIGHT_MODULE || process.argv[2] || 'playwright');
 const shared = require('@leadcrm/shared');
 const prisma = require('../dist/backend/src/config/database.config.js').default;
@@ -38,8 +38,12 @@ try {
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Polish', lastName: 'Tester', email: 'polish-preview@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const { token } = await issueAuthSession(admin), scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   const taskRole = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Polish task agents', permissions: { create: { module: 'tasks', canView: true } } } });
-  const taskAgent = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Polish', lastName: 'Agent', email: 'polish-agent@camxian.com', role: taskRole.name,
-    userRoles: { create: { roleId: taskRole.id } } } });
+  const taskAgent = await prisma.user.create({
+    data: {
+      tenantId: tenant.id, firstName: 'Polish', lastName: 'Agent', email: 'polish-agent@camxian.com', role: taskRole.name,
+      userRoles: { create: { roleId: taskRole.id } }
+    }
+  });
   const pipeline = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
   const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id } });
   const instant = new Date('2026-10-10T10:39:48Z');
@@ -66,10 +70,9 @@ try {
   const log = createWriteStream(resolve(output, 'frontend.log'));
   frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3025', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
-  for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch { } await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'America/New_York' });
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, timezoneId: 'America/New_York' });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {
@@ -93,7 +96,7 @@ try {
       if (failOptions) return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Acceptance: options unavailable' } }) });
     }
     try { const response = await page.request.fetch(localUrl, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 }); await route.fulfill({ response }); }
-    catch (error) { if (!closing) transportErrors.push(`${request.method()} ${path}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); }
+    catch (error) { if (!closing) transportErrors.push(`${request.method()} ${path}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => { }); }
   });
   async function responsive(label, target = page.locator('body')) {
     for await (const { theme, width } of responsiveMatrix(page)) {
@@ -387,7 +390,7 @@ try {
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'PASS', checks, pageErrors, transportErrors }, null, 2));
   console.log(`Browser acceptance passed: ${checks.length} checks. Output: ${output}`);
 } catch (error) {
-  if (page) { await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {}); writeFileSync(resolve(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')); }
+  if (page) { await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => { }); writeFileSync(resolve(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')); }
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'FAIL', checks, pageErrors, transportErrors, error: String(error) }, null, 2)); throw error;
 } finally {
   closing = true; contactsGate?.resolve(); optionsGate?.resolve();

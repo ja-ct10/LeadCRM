@@ -9,6 +9,15 @@ const { sourceIdentity } = require('./qa-source-identity.cjs');
 const { acceptanceRuns, cleanPhaseEnvironment, cleanPhaseEvidence } = require('./qa-clean-evidence.cjs');
 const root = resolve(__dirname, '..');
 const child = code => spawnSync(process.execPath, ['-e', code], { cwd: root, env: qaEnvironment(root), encoding: 'utf8', windowsHide: true });
+
+test('Routed browser fixtures block service workers before installing network isolation', async () => {
+  const { createAcceptanceContext } = await import('../backend/scripts/verify-browser-matrix.mjs');
+  const calls = [];
+  const context = { route: async (pattern, handler) => { calls.push(pattern); await handler({ request: () => ({ url: () => 'https://provider.example/private' }), abort: reason => calls.push(reason) }); } };
+  const browser = { newContext: async options => { calls.push(options); return context; } };
+  assert.equal(await createAcceptanceContext(browser, { viewport: { width: 320, height: 900 }, serviceWorkers: 'allow' }), context);
+  assert.deepEqual(calls, [{ viewport: { width: 320, height: 900 }, serviceWorkers: 'block' }, '**/*', 'blockedbyclient']);
+});
 test('Source provenance survives committing deleted paths and detects changed content', () => {
   const directory = qaEnvironment(root).TEMP, fs = require('node:fs');
   const snapshot = resolve(directory, '.qa-source-snapshot.json');

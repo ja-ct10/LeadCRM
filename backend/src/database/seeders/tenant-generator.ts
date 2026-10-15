@@ -159,7 +159,7 @@ export async function generateTenants(count: number = 10) {
           size:          faker.helpers.arrayElement(['1-10', '11-50', '51-200', '200+']),
           website:       faker.internet.url(),
           address:       [faker.location.streetAddress(), faker.location.city(), faker.location.country()].join(', '),
-          assignedUserId: faker.helpers.arrayElement(salesReps).id,
+
           createdAt:     randomDatePast(12),
         },
       });

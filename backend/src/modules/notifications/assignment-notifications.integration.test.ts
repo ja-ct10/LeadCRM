@@ -11,7 +11,7 @@ import { dispatchTenantNotifications } from './notification-events.service';
 import { presentAssignmentActivities } from './assignment-presentation';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
-const modules = ['Lead', 'Contact', 'Account', 'Deal', 'Task'] as const;
+const modules = ['Lead', 'Contact', 'Deal', 'Task'] as const;
 type Module = typeof modules[number];
 describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms_test_2')('Assignment names on disposable PostgreSQL and authenticated HTTP', () => {
   let tenantId: string, roleId: string, adminId: string, nextId: string, adminToken: string, nextToken: string;
@@ -32,13 +32,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const scope = { tenantId, assignedUserId: owner };
     if (module === 'Lead') return prisma.lead.create({ data: { ...scope, firstName: 'Record', lastName: 'Lead', email: randomUUID() + '@example.test', createdById: adminId } });
     if (module === 'Contact') return prisma.contact.create({ data: { ...scope, firstName: 'Record', lastName: 'Contact', email: randomUUID() + '@example.test' } });
-    if (module === 'Account') return prisma.account.create({ data: { ...scope, name: 'Record Account' } });
     if (module === 'Deal') return prisma.deal.create({ data: { ...scope, title: 'Record Deal', pipelineId, stageId } });
     const deal = await prisma.deal.create({ data: { tenantId, assignedUserId: nextId, title: 'Task context', pipelineId, stageId } });
     return prisma.task.create({ data: { ...scope, title: 'Record Task', dueDate: new Date(Date.now() + 7 * 86400000), assignedById: adminId, createdById: adminId,
       dealLinks: { create: { dealId: deal.id, position: 0 } } } });
   };
-  const path = (module: Module, id: string) => module === 'Task' ? '/operations/tasks/' + id : '/crm/' + ({ Lead: 'leads', Contact: 'contacts', Account: 'accounts', Deal: 'deals' } as const)[module] + '/' + id;
+  const path = (module: Module, id: string) => module === 'Task' ? '/operations/tasks/' + id : '/crm/' + ({ Lead: 'leads', Contact: 'contacts', Deal: 'deals' } as const)[module] + '/' + id;
   const history = (module: Module, id: string) => prisma.activity.findMany({ where: { tenantId, [`${module.toLowerCase()}Id`]: id } });
 
   beforeAll(async () => {
@@ -53,6 +52,22 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await prisma.$disconnect(); });
+
+  it('rejects Account assignment, preserves historical activity and emits no assignment on edit or deactivation', async () => {
+    const old = await newUser('Previous');
+    const account = await prisma.account.create({ data: { tenantId, name: 'Shared Account' } });
+    const activity = await prisma.activity.create({ data: { tenantId, accountId: account.id, createdById: adminId,
+      type: 'assignment', title: 'Historical Account assignment', metadata: { newAssignedUserId: old.id } } });
+    const rejected = await request('/crm/accounts/' + account.id, 'PUT', { assignedUserId: nextId });
+    expect(rejected.status).toBe(400);
+    expect(rejected.body.error).toContain('retired');
+    expect((await request('/crm/accounts/' + account.id, 'PUT', { name: 'Updated shared Account' }, nextToken)).status).toBe(200);
+    expect((await request('/administration/users/' + old.id + '/deactivate', 'POST', { replacementAgentId: nextId })).status).toBe(200);
+    await drain();
+    expect(await events(account.id)).toHaveLength(0);
+    expect(await notices(account.id)).toHaveLength(0);
+    expect(await prisma.activity.findUnique({ where: { id: activity.id } })).toEqual(activity);
+  });
 
   it.each(modules)('persists the replacement, previous agent, deactivation reason and distinct actor for %s', async module => {
     const old = await newUser('Previous'), row = await record(module, old.id);

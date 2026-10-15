@@ -1,7 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { ValidationError } from '../../../shared/errors/http-error';
 
-type Kind = 'lead' | 'contact' | 'account';
+type Kind = 'lead' | 'contact';
 type Selection = { ids?: string[]; names?: string[]; activeNames?: string[]; activeIds?: string[] };
 type Previous = { id?: string; productInterest?: string[]; productInterestIds?: string[]; productInterests?: string[]; activeProducts?: string[]; productLinks?: Array<{ productInterestId: string; activeProduct: boolean }> };
 
@@ -15,9 +15,8 @@ export async function productRelationData(tx: Prisma.TransactionClient, kind: Ki
   const catalog = await tx.productInterest.findMany({ where: { tenantId } });
   const previousNames = [...(previous?.productInterest ?? previous?.productInterests ?? []), ...(kind === 'contact' ? [] : previous?.activeProducts ?? [])];
   const priorLinks = !previous?.id ? [] : kind === 'lead'
-    ? await tx.leadProductInterest.findMany({ where: { tenantId, leadId: previous.id } }) : kind === 'contact'
-    ? await tx.contactProductInterest.findMany({ where: { tenantId, contactId: previous.id } })
-    : await tx.accountProductInterest.findMany({ where: { tenantId, accountId: previous.id } });
+    ? await tx.leadProductInterest.findMany({ where: { tenantId, leadId: previous.id } })
+    : await tx.contactProductInterest.findMany({ where: { tenantId, contactId: previous.id } });
   const previousIds = [...(previous?.productInterestIds ?? []), ...priorLinks.map(link => link.productInterestId), ...(previous?.productLinks ?? []).map(link => link.productInterestId)];
   const ids = selection.ids;
   const names = selection.names ?? previous?.productInterest ?? previous?.productInterests ?? [];
@@ -63,8 +62,7 @@ export async function productRelationData(tx: Prisma.TransactionClient, kind: Ki
     productsNormalized: normalized,
     ...(kind === 'lead'
       ? { productInterest: normalized ? [] : interestNames, productInterestIds: normalized ? [] : links.map(p => p.productInterestId) }
-      : kind === 'contact' ? { productInterests: normalized ? [] : interestNames }
-      : { productInterests: normalized ? [] : interestNames, activeProducts: normalized ? [] : active }),
+      : { productInterests: normalized ? [] : interestNames }),
     productLinks: {
       ...(updating ? { deleteMany: {} } : {}),
       // Composite parent relations supply tenantId; Prisma excludes inherited FKs here.

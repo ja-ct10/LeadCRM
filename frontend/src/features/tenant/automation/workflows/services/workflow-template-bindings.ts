@@ -26,7 +26,7 @@ export const WORKFLOW_TEMPLATE_DESCRIPTORS: WorkflowTemplateDescriptor[] = [
   { id: 'hot-lead-related-deal-routing', index: 23, trigger: 'lead.status_changed', setup: 'related-deal-routing' },
   { id: 'hot-contact-related-deal-routing', index: 24, trigger: 'contact.status_changed', setup: 'related-deal-routing' },
   { id: 'selected-stage-entry-follow-up', index: 25, trigger: 'deal.stage_changed', setup: 'stage-entry' },
-  { id: 'ownerless-account-routing', index: 26, trigger: 'account.updated', setup: 'none' },
+  { id: 'account-update-follow-up', index: 26, trigger: 'account.updated', setup: 'none' },
 ];
 
 export function workflowTemplateDescriptor(identity: number | string | undefined): WorkflowTemplateDescriptor | undefined {

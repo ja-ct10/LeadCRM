@@ -11,17 +11,17 @@ import { ConflictError, ForbiddenError, NotFoundError } from '../../../shared/er
 type Tx = Prisma.TransactionClient;
 export function ownershipWhere(tenantId: string, userId: string) {
   const active = { tenantId, assignedUserId: userId, isArchived: false, deletedAt: null };
-  return { leads: { ...active, convertedAt: null }, contacts: active, accounts: active, deals: active,
+  return { leads: { ...active, convertedAt: null }, contacts: active, deals: active,
     tasks: { tenantId, assignedUserId: userId, isArchived: false, status: { notIn: ['completed', 'cancelled'] } } };
 }
 export async function ownershipImpact(tx: Tx, tenantId: string, userId: string): Promise<DeactivationImpact> {
   const where = ownershipWhere(tenantId, userId);
-  const [leads, contacts, accounts, deals, tasks] = await Promise.all([
+  const [leads, contacts, deals, tasks] = await Promise.all([
     tx.lead.count({ where: where.leads }), tx.contact.count({ where: where.contacts }),
-    tx.account.count({ where: where.accounts }), tx.deal.count({ where: where.deals }),
+    tx.deal.count({ where: where.deals }),
     tx.task.count({ where: where.tasks }),
   ]);
-  return { userId, counts: { leads, contacts, accounts, deals, tasks }, total: leads + contacts + accounts + deals + tasks };
+  return { userId, counts: { leads, contacts, accounts: 0, deals, tasks }, total: leads + contacts + deals + tasks };
 }
 async function requireTarget(tx: Tx, tenantId: string, id: string, actorId: string) {
   if (id === actorId) throw new ForbiddenError('Cannot deactivate your own account');
@@ -54,7 +54,7 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
     if (impact.total && !replacementAgentId) throw new ConflictError('Choose an Assigned Agent before deactivating this user.');
     let replacement: Awaited<ReturnType<typeof assertEligibleAssignedAgent>> | undefined;
     if (replacementAgentId) {
-      const modules = (['leads', 'contacts', 'accounts', 'deals'] as const).filter(module => impact.counts[module] > 0);
+      const modules = (['leads', 'contacts', 'deals'] as const).filter(module => impact.counts[module] > 0);
       const requirements = [...modules.flatMap(crmAssignmentRequirements), ...(impact.counts.tasks ? TASK_ASSIGNEE_REQUIREMENTS : [])];
       replacement = await assertEligibleAssignedAgent(tx, tenantId, replacementAgentId, requirements)
         .catch(() => { throw new ConflictError('Choose an active eligible agent with access to every transferred CRM module and unfinished Tasks.'); });
@@ -65,7 +65,7 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
       assignedName: assignmentUserName(replacement) ?? null, actorName: assignmentUserName(actor) ?? null, reason: 'user_deactivation' };
     const content = formatAssignmentChange(assignment);
     const where = ownershipWhere(tenantId, id);
-    const transfer = async (kind: 'lead' | 'contact' | 'account' | 'deal', filter: typeof where.contacts) => {
+    const transfer = async (kind: 'lead' | 'contact' | 'deal', filter: typeof where.contacts) => {
       if (!replacementAgentId) return;
       // IDs only, bounded keyset batches; all batches remain in the same transaction.
       const model = tx[kind] as typeof tx.lead;
@@ -87,7 +87,6 @@ export async function deactivateUser(id: string, tenantId: string, actorId: stri
     await withAssignmentReason(tx, 'user_deactivation', async () => {
       await transfer('lead', where.leads);
       await transfer('contact', where.contacts);
-      await transfer('account', where.accounts);
       await transfer('deal', where.deals);
       if (replacementAgentId) {
         let cursor: string | undefined;

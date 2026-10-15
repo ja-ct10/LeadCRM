@@ -1,5 +1,5 @@
 // Real local API, worker, native PostgreSQL and browser; no application database or providers.
-import { isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -41,7 +41,7 @@ try {
   await prisma.userRole.create({ data: { tenantId, userId: denied.id, roleId: deniedRole.id } });
   const adminToken = (await issueAuthSession(admin)).token, staffToken = (await issueAuthSession(agent)).token, deniedToken = (await issueAuthSession(denied)).token;
   let browserToken = adminToken, slowPermissions = false;
-  const account = await prisma.account.create({ data: { tenantId, name: 'Integrity Account', assignedUserId: agent.id } });
+  const account = await prisma.account.create({ data: { tenantId, name: 'Integrity Account',  } });
   const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Integrity', lastName: 'Lead', assignedUserId: agent.id, status: 'Warm' } });
   const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Integrity', lastName: 'Contact', assignedUserId: agent.id } });
   const product = await prisma.productInterest.create({ data: { tenantId, name: 'Integrity Product', dealValue: 15000 } });
@@ -63,8 +63,7 @@ try {
   for (let attempt = 0; attempt < 100; attempt++) { try { if ((await fetch(base + '/login')).ok) { ready = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }
   assert.ok(ready, 'Local frontend did not start.');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ timezoneId: 'America/New_York', viewport: { width: 1440, height: 900 } });
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser, { timezoneId: 'America/New_York', viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: adminToken, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);
   page.on('pageerror', error => errors.push(error.message));

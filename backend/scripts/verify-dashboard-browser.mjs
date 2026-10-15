@@ -1,4 +1,4 @@
-import { isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Real cookies, Next proxy (including streamed SSE), Express and disposable SQL.
 // Requires backend and frontend production builds; pass an installed Playwright package as argv[2].
 import { PGlite } from '@electric-sql/pglite';
@@ -89,9 +89,7 @@ try {
   gateway.listen(3032); await new Promise(done=>gateway.once('listening',done));
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(token) {
-    const context = await browser.newContext({ ignoreHTTPSErrors:true, hasTouch:uiPolish, viewport: { width: 1440, height: 1000 } });
-
-    await isolateBrowserContext(context);
+    const context = await createAcceptanceContext(browser, { ignoreHTTPSErrors:true, hasTouch:uiPolish, viewport: { width: 1440, height: 1000 } });
     await context.addInitScript(() => {
       const Native = window.EventSource; window.__dashboardEvents = [];
       window.EventSource = class extends Native {

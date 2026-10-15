@@ -75,11 +75,13 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   });
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await prisma.$disconnect(); });
 
-  it('routes all five assignments solely to the current assignee, regardless of View All', async () => {
-    const records = [await lead(), await contact(), await prisma.account.create({ data: { tenantId, name: 'Camxian', assignedUserId: agentId } }), await deal(),
+  it('routes supported assignments solely to the current assignee and emits no Account assignment', async () => {
+    const account = await prisma.account.create({ data: { tenantId, name: 'Camxian' } });
+    const records = [await lead(), await contact(), await deal(),
       await prisma.task.create({ data: { tenantId, title: 'Follow up', assignedUserId: agentId, dueDate: new Date(Date.now() + 4 * 86400000) } })];
     await processEvents();
     for (const row of records) expect(await recipients(row.id)).toEqual([agentId]);
+    expect(await recipients(account.id)).toEqual([]);
     expect((await rows(records[0].id))[0]).toMatchObject({ title: 'Lead Assigned to You', body: 'Josh Tiron has been assigned to you.' });
   });
   it('allows custom staff assignments and blocks missing View, inactive and admin ordinary assignments', async () => {

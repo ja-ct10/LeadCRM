@@ -7,7 +7,7 @@
     "build": "prisma generate && tsc && node -e \"require('fs').copyFileSync('start.js','dist/start.js')\"",
     "start": "node dist/start.js",
     "start:notifications": "node dist/start.js --notifications-worker",
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && npm run typecheck:tests",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
@@ -44,7 +44,11 @@
     "db:accounts:verify": "node scripts/deploy-account-address-retirement.cjs --verify",
     "db:accounts:retire": "node scripts/deploy-account-address-retirement.cjs --retire",
     "test:accounts:migration": "node scripts/test-accounts-full-address.mjs",
-    "test:accounts:rollout": "node --test scripts/deploy-account-address-retirement.test.cjs"
+    "test:accounts:rollout": "node --test scripts/deploy-account-address-retirement.test.cjs",
+    "typecheck:tests": "tsc --noEmit --project tsconfig.tests.json",
+    "db:accounts:fields:status": "node scripts/deploy-account-fields-retirement.cjs --status",
+    "db:accounts:fields:verify": "node scripts/deploy-account-fields-retirement.cjs --verify",
+    "db:accounts:fields:retire": "node scripts/deploy-account-fields-retirement.cjs --retire"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

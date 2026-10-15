@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2023", "DOM"],
+    "noEmit": true,
+    "incremental": false
+  },
+  "include": [
+    "src/integrations/gmail/mailbox.integration.test.ts",
+    "src/modules/crm/imports/imports.integration.test.ts",
+    "src/modules/crm/companies/account-retirement*.test.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

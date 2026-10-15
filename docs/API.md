@@ -175,8 +175,7 @@ For field catalog/layout/group APIs and dependency-checked custom retirement, se
 Type, Customer Since, or Tax ID as account input fields. The account schemas strip
 unknown keys before persistence. The retired fields are absent from Prisma,
 database columns, and Account responses after the forward cleanup migration.
-The account create/edit UI always submits `country: "Philippines"`; unrelated API
-and import country behavior is unchanged.
+Accounts no longer expose Assigned Agent, Product Interest, Active Products, or their ID/legacy-name aliases. Supplying these retired fields to create/update or Account import mapping returns 400. Accounts use tenant-scoped module permissions; ownership restrictions continue for Leads, Contacts and Deals. Account linked records, notes and full-address behavior remain supported. See [Account retirement](accounts-field-retirement.md).
 
 ### Deals / Pipeline
 
@@ -193,7 +192,7 @@ Workflow update actions cannot change these snapshot fields; existing steps are
 preserved for review but cannot be activated or executed. Price/Product conditions
 remain available.
 
-Lead, Contact and Account Product display arrays keep their existing response
+Lead and Contact Product display arrays keep their existing response
 shape but are derived from normalized ProductInterest junctions. The internal
 normalization marker is not exposed by ordinary record responses. Unresolved
 legacy rows retain their original arrays until reconciled. Renames are reflected

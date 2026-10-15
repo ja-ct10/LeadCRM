@@ -7,7 +7,7 @@ import { USE_MOCK_DATA } from '@/lib/config';
 import { useCachedPage } from './use-cached-page';
 
 /** Assignment policy is resolved from all current server roles, separately from action grants. */
-export function useCrmRecordAccess() {
+export function useCrmRecordAccess(module?: string) {
   const { user, tenant } = useAuth();
   const query = useCachedPage<CrmRecordAccessPolicy>({ module: 'crm-record-access', params: {},
     disabled: USE_MOCK_DATA, revalidateOnInvalidation: true, intervalMs: 30000, pauseWhenHidden: true,
@@ -17,6 +17,6 @@ export function useCrmRecordAccess() {
     assignmentRestricted: /^sales(?:[\s_-]*(?:rep|representative|agent|staff|manager))?$/i.test(user.role.trim()),
   } : query.data?.userId === user?.id && query.data?.tenantId === tenant?.id ? query.data : undefined, [user, tenant, query.data]);
   const canMutate = useCallback((record: { tenantId?: unknown; assignedUserId?: unknown } | undefined) =>
-    hasCrmRecordAssignmentAccess(policy, record), [policy]);
+    hasCrmRecordAssignmentAccess(policy, record, module), [policy, module]);
   return { canMutate, canReassign: !!policy && !policy.assignmentRestricted, policy };
 }

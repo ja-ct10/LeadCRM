@@ -42,7 +42,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     taskOwner = await prisma.user.create({ data: { tenantId, role: 'Task staff', email: `task-${randomUUID()}@camxian.com`, firstName: 'Task', lastName: 'Staff',
       userRoles: { create: { roleId: taskRole.id } } } });
     await scope(async () => {
-      account = await prisma.account.create({ data: { tenantId, name: 'Workflow account', assignedUserId: actor.id, tags: [], activeProducts: [], productInterests: [] } });
+      account = await prisma.account.create({ data: { tenantId, name: 'Workflow account',  tags: [],   } });
       lead = await prisma.lead.create({ data: { tenantId, firstName: 'Lead', lastName: 'Test', email: 'lead@example.test', phone: '+639171234567', assignedUserId: actor.id, productInterest: [] } });
       contact = await prisma.contact.create({ data: { tenantId, firstName: 'Contact', lastName: 'Test', email: 'contact@example.test', phone: '+639181234567', accountId: account.id, assignedUserId: actor.id, productInterests: [] } });
       others = await prisma.productInterest.create({ data: { tenantId, name: 'Others', dealValue: 0 } });
@@ -82,9 +82,9 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     expect(copy.status).toBe('DRAFT'); expect(copy.isActive).toBe(false); expect(await runs(copy.id)).toHaveLength(0);
   });
 
-  it.each(['contact', 'account'] as const)('uses normalized Product IDs for %s conditions and updates across rename', async entity => {
-    const record = entity === 'contact' ? contact : account;
-    const edit = (patch: any) => scope(() => entity === 'contact' ? updateContact(record.id, tenantId, patch, actor.id) : updateCompany(record.id, tenantId, actor.id, patch));
+  it('uses normalized Product IDs for Contact conditions and updates across rename', async () => {
+    const entity = 'contact' as const, record = contact;
+    const edit = (patch: any) => scope(() => updateContact(record.id, tenantId, patch, actor.id));
     await edit({ productInterestIds: [] });
     const product = await prisma.productInterest.create({ data: { tenantId, name: `Product ${randomUUID()}`, dealValue: 100 } });
     const workflow = await create({ trigger: `${entity}.updated`, conditions: { operator: 'AND', conditions: [{ field: `${entity}.productInterestIds`, operator: 'is_empty', value: null }] }, actions: [{ type: 'update_field', config: { field: 'productInterestIds', value: [product.id] } }] });
@@ -99,6 +99,17 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     await edit({ address: randomUUID() });
     expect((await runs(clear.id))[0].status).toBe('completed');
     expect((await scope(() => entityContext(entity, record.id, tenantId)))![`${entity}.productInterestIds`]).toEqual([]);
+  });
+
+  it('rejects retired Account product updates and workflow references', async () => {
+    for (const field of ['productInterestIds', 'activeProductIds']) {
+      await expect(scope(() => updateCompany(account.id, tenantId, actor.id, { [field]: [] }))).rejects.toThrow(/retired/i);
+      await expect(create({ trigger: 'account.updated', conditions: { operator: 'AND', conditions: [{ field: `account.${field}`, operator: 'is_empty', value: null }] } })).rejects.toThrow(/retired/i);
+      await expect(create({ trigger: 'account.updated', actions: [{ type: 'update_field', config: { field, clear: true } }] })).rejects.toThrow(/retired/i);
+    }
+    const context = await scope(() => entityContext('account', account.id, tenantId));
+    expect(context).not.toHaveProperty('account.productInterestIds');
+    expect(context).not.toHaveProperty('account.activeProductIds');
   });
 
   it('evaluates canonical previous/new status and rejects stale or no-op status events', async () => {

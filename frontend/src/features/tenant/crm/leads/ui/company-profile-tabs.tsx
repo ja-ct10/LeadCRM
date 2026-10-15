@@ -374,14 +374,6 @@ export const CompanyProfileTabs = ({
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedOrg.industry}</span>
                     </div>
                     <div>
-                      <span className="text-slate-400 text-[10px] block">Product Interests</span>
-                      <span className="font-semibold text-slate-800 dark:text-slate-200">
-                        {selectedOrg.productInterests && selectedOrg.productInterests.length > 0
-                          ? selectedOrg.productInterests.join(', ') 
-                          : '—'}
-                      </span>
-                    </div>
-                    <div>
                       <span className="text-slate-400 text-[10px] block">Account Size Bracket</span>
                       <span className="font-semibold text-slate-800 dark:text-slate-200">{selectedOrg.size}</span>
                     </div>

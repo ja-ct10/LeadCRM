@@ -1,5 +1,5 @@
-import { compatibleWorkflow } from './workflow-fields';
-import { retiredContactReferences } from '@leadcrm/shared';
+import { compatibleWorkflow, accountWorkflowRetirementReferences } from './workflow-fields';
+import { retiredContactReferences, retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { WorkflowDraftSchema, WorkflowValidationSchema, WorkflowConditionSchema, missingWorkflowConditionValues, normalizeWorkflowAssignment, type WorkflowDraft, type WorkflowTestResult } from '@leadcrm/shared';
 import { assignmentPurpose, parseAssignment, resolveWorkflowAssignee, assignmentOutput } from '../assignment/workflow-assignment.service';
@@ -50,7 +50,7 @@ export async function getOptions(tenantId: string, userId: string) {
 export async function getWorkflows(tenantId: string, query: Record<string, unknown>) {
   requireScope(tenantId);
   const result = await repo.listWorkflows(tenantId, query);
-  return paginate(result.rows, result.total, result);
+  return paginate(await Promise.all(result.rows.map(row => compatibleWorkflow(row, tenantId))), result.total, result);
 }
 export async function getWorkflowById(id: string, tenantId: string) {
   requireScope(tenantId);
@@ -81,6 +81,7 @@ function parseDraft(value: unknown): WorkflowDraft {
 export async function createWorkflow(tenantId: string, userId: string, dto: unknown) {
   requireScope(tenantId);
   const draft = parseDraft(dto);
+  if ((await accountWorkflowRetirementReferences(draft, tenantId)).length) throw new ValidationError(ACCOUNT_RETIREMENT_REASON);
   if (retiredContactReferences([draft.conditions, draft.actions], findTrigger(draft.trigger)?.entity).length) throw new ValidationError('Retired Contact fields cannot be used in a new Workflow. Choose supported fields.');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
@@ -106,11 +107,20 @@ export async function updateWorkflow(id: string, tenantId: string, userId: strin
   const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: existing.isActive, ...updates.data });
   const oldReferences = new Set(retiredContactReferences([existing.conditions, existing.actions], findTrigger(existing.trigger)?.entity));
+  const oldAccountReferences = new Set(await accountWorkflowRetirementReferences(existing, tenantId));
+  const accountReferences = await accountWorkflowRetirementReferences(draft, tenantId);
+  if ((draft.isActive && accountReferences.length) || accountReferences.some(field => !oldAccountReferences.has(field))) throw new ValidationError(ACCOUNT_RETIREMENT_REASON);
   if (retiredContactReferences([draft.conditions, draft.actions], findTrigger(draft.trigger)?.entity).some(field => !oldReferences.has(field))) throw new ValidationError('Retired Contact fields cannot be added to a Workflow. Repair the saved references.');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
   if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
-  await validateConditionReferences(draft, tenantId);
-  if (!draft.isActive) for (const action of draft.actions) await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
+  const validationDraft = !draft.isActive && accountReferences.length ? { ...draft, actions: [], conditions: draft.conditions && { ...draft.conditions,
+    conditions: draft.conditions.conditions.filter(rule => !retiredAccountWorkflowReferences({ trigger: draft.trigger, conditions: { conditions: [rule] } }).length),
+  } } : draft;
+  await validateConditionReferences(validationDraft, tenantId);
+  if (!draft.isActive) for (const action of draft.actions) {
+    if ((await accountWorkflowRetirementReferences({ trigger: draft.trigger, actions: [action] }, tenantId)).length) continue;
+    await validateAction(action, findTrigger(draft.trigger)!.entity, tenantId, undefined, true);
+  }
   if (draft.isActive) { await validateWorkflow(draft, tenantId, existing.status !== 'DRAFT' ? existing.conditions : undefined); await assertWorkflowPermissions(draft, tenantId, userId); }
   const sanitized = sanitizeDraft(draft, existing.status !== 'DRAFT' ? existing.conditions : undefined);
   const workflow = await repo.updateWorkflow(id, tenantId, { ...sanitized, status: draft.isActive ? 'ACTIVE' : existing.isActive || existing.status === 'PAUSED' ? 'PAUSED' : 'DRAFT', ...(draft.isActive ? { activatedById: userId } : {}) }, workflowDefinitionChanged(existing, sanitized));

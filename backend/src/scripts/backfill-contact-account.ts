@@ -54,25 +54,21 @@ interface ReportRow {
 
 /** Fields Account and Organization share — used to carry data when creating a new Account. */
 function accountDataFromOrganization(org: {
-  tenantId: string; assignedUserId: string | null; name: string; industry: string | null;
+  tenantId: string; name: string; industry: string | null;
   size: string | null; website: string | null; tags: string[];
   address: string | null; city: string | null; province: string | null; country: string | null;
-  activeProducts: string[];
-  internalNotes: string | null; notes: string | null; productInterests: string[];
+  internalNotes: string | null; notes: string | null;
 }) {
   return {
     tenantId:         org.tenantId,
-    assignedUserId:   org.assignedUserId,
     name:             org.name,
     industry:         org.industry,
     size:             org.size,
     website:          org.website,
     tags:             org.tags,
     address:          consolidateAccountAddress(org),
-    activeProducts:   org.activeProducts,
     internalNotes:    org.internalNotes,
     notes:            org.notes,
-    productInterests: org.productInterests,
   };
 }
 

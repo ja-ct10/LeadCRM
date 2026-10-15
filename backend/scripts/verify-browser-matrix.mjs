@@ -1,4 +1,10 @@
 export const acceptanceWidths = [320, 375, 390, 430, 768, 1024, 1440, 1920];
+/** Routed fixtures own API traffic; service workers must not bypass those routes. */
+export async function createAcceptanceContext(browser, options = {}) {
+  const context = await browser.newContext({ ...options, serviceWorkers: 'block' });
+  await isolateBrowserContext(context);
+  return context;
+}
 export async function setAcceptanceTheme(page, mode, { allowUnscoped = false } = {}) {
   await page.evaluate(mode => {
     localStorage.setItem('app_theme', mode);

@@ -88,8 +88,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     const matches = (await tx.account.findMany({ where: { tenantId, name: { contains: name.split(' ')[0], mode: 'insensitive' } } }))
       .filter(row => companyIdentity(row.name) === companyIdentity(name));
     if (matches.length > 1 || matches[0]?.isArchived || matches[0]?.deletedAt) throw conflict();
-    accountId = matches[0]?.id ?? (await tx.account.create({ data: { tenantId, name, assignedUserId: lead.assignedUserId,
-      tags: [], ...await productRelationData(tx, 'account', tenantId, initialInterests, lead) } })).id;
+    accountId = matches[0]?.id ?? (await tx.account.create({ data: { tenantId, name, tags: [] } })).id;
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
   if (accountId && deals.some(deal => deal.accountId && deal.accountId !== accountId)) throw conflict();

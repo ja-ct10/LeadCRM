@@ -9,7 +9,8 @@ export interface CrmRecordAccessPolicy {
 export function hasCrmRecordAssignmentAccess(
   policy: CrmRecordAccessPolicy | undefined,
   record: { tenantId?: unknown; assignedUserId?: unknown } | undefined,
+  module?: string,
 ): boolean {
   if (!policy || !record || record.tenantId !== policy.tenantId) return false;
-  return policy.clientAdmin || !policy.assignmentRestricted || record.assignedUserId === policy.userId;
+  return module === 'accounts' || policy.clientAdmin || !policy.assignmentRestricted || record.assignedUserId === policy.userId;
 }

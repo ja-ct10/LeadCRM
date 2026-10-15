@@ -5,14 +5,10 @@ import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
-import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
-import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 import React, { useMemo, useRef } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useData } from '@/store/DataContext';
-import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
 import {
@@ -54,13 +50,10 @@ interface AccountFormInnerProps {
 // ─── Form Component ────────────────────────────────────────────────────────
 
 export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormInnerProps): React.ReactElement {
-  const recordAccess = useCrmRecordAccess();
+  const recordAccess = useCrmRecordAccess('accounts');
   const actionAllowed = useHasPermission(initialData ? 'accounts.edit' : 'accounts.create');
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('accounts', initialData?.id);
-  const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
-  const PRODUCTS = productRecords.map(p => p.name);
-  const { users } = useData();
   const isEdit = !!initialData;
 
   // Map initialData to form values matching CreateCompanySchema
@@ -71,11 +64,8 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     website: initialData?.website || '',
     tags: initialData?.tags || [],
     address: initialData?.address || '',
-    assignedUserId: initialData?.assignedUserId || '',
     notes: initialData?.notes || '',
     internalNotes: initialData?.internalNotes || '',
-    productInterests: initialData?.productInterests || [],
-    activeProducts: initialData?.activeProducts || [],
   }), [initialData]);
 
   const schema = isEdit ? UpdateAccountSchema : CreateAccountSchema;
@@ -99,8 +89,6 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
   useScrollToError({ errors, formRef, setFocus });
 
 
-  const selectedProducts = watch('productInterests') || [];
-  const selectedActiveProducts = watch('activeProducts') || [];
 
   const onSubmit = (data: AccountFormValues): void => {
     if (!canSubmit) return;
@@ -114,31 +102,11 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       website: data.website || undefined,
       tags: data.tags && data.tags.length > 0 ? data.tags : undefined,
       address: data.address || undefined,
-      assignedUserId: data.assignedUserId || undefined,
-      ...(isEdit ? { notes: data.notes || undefined, internalNotes: data.internalNotes || undefined, activeProducts: data.activeProducts } : {}),
-      productInterests: data.productInterests ?? [],
+      ...(isEdit ? { notes: data.notes || undefined, internalNotes: data.internalNotes || undefined } : {}),
 
     };
 
     onSave(payload);
-  };
-
-  // Active products management
-  const toggleActiveProduct = (product: string): void => {
-    const current = selectedActiveProducts;
-    if (current.includes(product)) {
-      setValue('activeProducts', current.filter((p) => p !== product), { shouldValidate: true });
-    } else {
-      setValue('activeProducts', [...current, product], { shouldValidate: true });
-    }
-  };
-
-  const removeActiveProduct = (product: string): void => {
-    setValue(
-      'activeProducts',
-      selectedActiveProducts.filter((p) => p !== product),
-      { shouldValidate: true },
-    );
   };
 
   // Style classes
@@ -248,93 +216,6 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
           </FieldWrap>
 
           <CustomFieldGroup form={customFields} group="Address" />
-        </div>
-
-        {/* Section 3: Relationships */}
-        <div className="space-y-4">
-          <SectionHeader num={3} title="Relationships" />
-
-          {/* Assigned User */}
-          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent" htmlFor={`${fieldId}-assignedUserId`} error={errors.assignedUserId?.message}>
-            <div className="relative">
-              <select
-                {...register('assignedUserId')} disabled={!recordAccess.policy || (!!initialData && !recordAccess.canReassign)}
-                id={`${fieldId}-assignedUserId`}
-                aria-invalid={!!errors.assignedUserId}
-                aria-describedby={errors.assignedUserId ? `${fieldId}-assignedUserId-error` : undefined}
-                className={`${selectCls} ${errors.assignedUserId ? inputErrorCls : ''}`}
-              >
-                <option value="">{isEdit ? 'Unassigned' : 'Assign automatically'}</option>
-                {getAssignableAgents(recordAccess.policy?.assignmentRestricted ? users.filter(user => user.id === recordAccess.policy?.userId) : users, ['accounts']).map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.firstName} {u.lastName}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-            </div>
-          </FieldWrap>
-          <CustomFieldGroup form={customFields} group="Relationships" />
-        </div>
-
-        {/* Section 4: Products & Interests */}
-        <div className="space-y-4">
-          <SectionHeader num={4} title="Products & Interests" />
-
-          {/* Product Interests (multi-select chips) */}
-          <FieldWrap fieldKey="productInterestIds" label="Product Interest">
-<ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterests', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
-{productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
-</FieldWrap>
-
-          {/* Active Products (multi-select chips) */}
-          {isEdit && <FieldWrap fieldKey="activeProductIds" label="Active Products">
-            <div className="space-y-2">
-              {/* Selected chips */}
-              {selectedActiveProducts.length > 0 && (
-                <div className="flex flex-wrap gap-1.5">
-                  {selectedActiveProducts.map((product) => (
-                    <span
-                      key={product}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-medium bg-green-50 dark:bg-green-500/10 text-green-700 dark:text-green-300 rounded-md border border-green-200 dark:border-green-500/20"
-                    >
-                      {product}
-                      <button
-                        type="button"
-                        onClick={() => removeActiveProduct(product)}
-                        className="ml-0.5 text-green-400 hover:text-green-600 dark:hover:text-green-200 rounded-sm p-0.5 transition-colors"
-                        aria-label={`Remove ${product}`}
-                      >
-                        <X size={12} />
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              )}
-
-              {/* Product dropdown */}
-              <div className="relative">
-                <select
-                  className={selectCls}
-                  value=""
-                  onChange={(e) => {
-                    if (e.target.value) {
-                      toggleActiveProduct(e.target.value);
-                    }
-                  }}
-                >
-                  <option value="">Add an active product...</option>
-                  {PRODUCTS.filter((p) => !selectedActiveProducts.includes(p)).map((product) => (
-                    <option key={product} value={product}>
-                      {product}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
-              </div>
-            </div>
-          </FieldWrap>}
-          <CustomFieldGroup form={customFields} group="Products & Interests" />
         </div>
 
         {/* Section 5: Notes */}

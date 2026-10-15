@@ -13,12 +13,12 @@ it('keeps supported writes and Product Interest catalogs, with Account Active Pr
     expect(fields).toContain('productInterestIds');
     for (const key of [...RETIRED_CONTACT_FIELDS,'activeProductIds']) expect(fields).not.toContain(key);
   }
-  expect(getCrmFieldCatalog('accounts').map(f=>f.technicalKey)).toContain('activeProductIds');
+  expect(getCrmFieldCatalog('accounts').map(f=>f.technicalKey)).not.toContain('activeProductIds');
   const all = (['leads','contacts','accounts','deals'] as const).flatMap(module=>getCrmFieldCatalog(module));
   const contactTokens = campaignApprovedVariableKeys(campaignFieldsForSource(all,'CONTACTS'));
   expect(contactTokens.has('activeProductIds')).toBe(false);
-  expect(contactTokens.has('account.activeProductIds')).toBe(true);
-  expect(campaignApprovedVariableKeys(campaignFieldsForSource(all,'LEADS')).has('activeProductIds')).toBe(true);
+  expect(contactTokens.has('account.activeProductIds')).toBe(false);
+  expect(campaignApprovedVariableKeys(campaignFieldsForSource(all,'LEADS')).has('activeProductIds')).toBe(false);
 });
 it('retains historical selectors unchanged and blocks Contact activation before execution', () => {
   const conditions = { operator: 'AND' as const, conditions: [{ field: 'contact.activeProducts', operator: 'is_empty' as const, value: null }] };

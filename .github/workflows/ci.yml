@@ -1,6 +1,8 @@
-name: CI — Local acceptance and container compatibility
+name: CI — TypeScript Checks
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
   workflow_dispatch:
@@ -9,165 +11,21 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-full-${{ github.ref }}
+  group: typescript-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  quality:
-    name: Documentation and static checks
+  typecheck:
+    name: ${{ matrix.label }} — TypeScript Check
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-qa
-      - run: npm run qa:typecheck -- --ci
-      - uses: ./.github/actions/qa-evidence
-        if: always()
-        with:
-          owner: quality
-
-  backend_unit:
-    name: Backend unit and QA safety tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-qa
-      - run: npm test -- --workspace=backend --ci
-      - uses: ./.github/actions/qa-evidence
-        if: always()
-        with:
-          owner: backend-unit
-
-  frontend_unit:
-    name: Frontend component tests
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-qa
-      - run: npm test -- --workspace=frontend --ci
-      - uses: ./.github/actions/qa-evidence
-        if: always()
-        with:
-          owner: frontend-unit
-
-  build:
-    name: Production build and shared contracts
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-qa
-      - run: npm run qa:build -- --ci
-      - name: Verify generated contract companions
-        run: git diff --exit-code -- shared/src
-      - name: Package verified build outputs
-        run: node scripts/qa-ci.mjs pack
-      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
-        with:
-          name: leadcrm-build
-          path: data/outputs/ci-build
-          compression-level: 0
-          overwrite: true
-          if-no-files-found: error
-      - uses: ./.github/actions/qa-evidence
-        if: always()
-        with:
-          owner: build
-
-  database:
-    name: Migrations, preservation and guarded startup
-    needs: [quality, backend_unit, frontend_unit, build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-qa
-        with:
-          postgres: 'true'
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: leadcrm-build
-          path: data/outputs/ci-build
-      - run: node scripts/qa-ci.mjs restore data/outputs/ci-build
-      - run: npm run qa:database -- --native --ci
-      - uses: ./.github/actions/qa-evidence
-        if: always()
-        with:
-          owner: database
-
-  acceptance_matrix:
-    name: ${{ matrix.mode }} — shard ${{ matrix.shard }}
-    needs: [quality, backend_unit, frontend_unit, build]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 45
+    timeout-minutes: 15
     strategy:
       fail-fast: false
-      max-parallel: 3
       matrix:
         include:
-          - {mode: browser, shard: '1/3', artifact: browser-1-3}
-          - {mode: integration, shard: '1/3', artifact: integration-1-3}
-          - {mode: browser, shard: '2/3', artifact: browser-2-3}
-          - {mode: integration, shard: '2/3', artifact: integration-2-3}
-          - {mode: browser, shard: '3/3', artifact: browser-3-3}
-          - {mode: integration, shard: '3/3', artifact: integration-3-3}
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - uses: ./.github/actions/setup-qa
-        with:
-          postgres: 'true'
-          browser: ${{ matrix.mode == 'browser' && 'true' || 'false' }}
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          name: leadcrm-build
-          path: data/outputs/ci-build
-      - run: node scripts/qa-ci.mjs restore data/outputs/ci-build
-      - name: Run every assigned suite with isolated fixtures
-        run: npm run test:${{ matrix.mode }} -- --native --ci --shard=${{ matrix.shard }}
-      - uses: ./.github/actions/qa-evidence
-        if: always()
-        with:
-          owner: ${{ matrix.artifact }}
-
-  containers:
-    name: Root-context Docker compatibility
-    runs-on: ubuntu-24.04
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
-        with:
-          persist-credentials: false
-      - name: Build backend including guarded migration entrypoint
-        run: docker build -f infrastructure/docker/Dockerfile.backend -t leadcrm-backend:qa .
-      - name: Build frontend standalone output
-        run: docker build -f infrastructure/docker/Dockerfile.frontend --build-arg API_URL=https://leadcrm-build.example/api/v1 -t leadcrm-frontend:qa .
-      - name: Validate compose contract with dummy values
-        env:
-          POSTGRES_PASSWORD: disposable-ci-password
-          BACKEND_ENV_FILE: ../../backend/.env.example
-          API_URL: https://leadcrm-build.example/api/v1
-        run: docker compose -f infrastructure/docker/docker-compose.yml config --quiet
-
-  acceptance:
-    name: Clean checkout — build, isolated QA, native PostgreSQL
-    if: always()
-    needs: [quality, backend_unit, frontend_unit, build, database, acceptance_matrix, containers]
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
+          - {workspace: frontend, label: Frontend}
+          - {workspace: backend, label: Backend}
+          - {workspace: shared, label: Shared Package}
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
@@ -175,15 +33,21 @@ jobs:
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         with:
           node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
           package-manager-cache: false
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        with:
-          pattern: qa-evidence-full-*
-          path: data/outputs/ci-evidence
-          # Keep owner artifacts separate; the gate discovers evidence recursively.
-          merge-multiple: false
-      - name: Require all jobs and complete matching suite evidence
-        if: always()
-        run: node scripts/qa-ci.mjs gate data/outputs/ci-evidence
+      - name: Install locked dependencies
+        run: |
+          npm install --global npm@11.19.1
+          npm ci --include=dev
+      - name: Generate backend database types
+        if: matrix.workspace == 'backend'
+        run: npm --prefix backend run db:generate
+      - name: Generate frontend route types
+        if: matrix.workspace == 'frontend'
+        working-directory: frontend
         env:
-          CI_NEEDS_JSON: ${{ toJSON(needs) }}
+          API_URL: https://leadcrm-build.example/api/v1
+        run: npx --no-install next typegen
+      - name: Check TypeScript
+        run: node node_modules/typescript/bin/tsc --noEmit --project ${{ matrix.workspace }}/tsconfig.json

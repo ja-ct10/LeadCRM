@@ -69,6 +69,7 @@ async function browserCheck(label, script, directory, env) {
   const blocked = code && existsSync(log) && unavailableRuntime(readFileSync(log, 'utf8'));
   const status = reportPath && complete ? 'PASS' : blocked ? 'BLOCKED' : 'FAIL';
   records.push({ label, suiteId: relative(root, script).replaceAll('\\', '/'), status, exitCode: code, ...counts,
+    failedAssertions: status === 'PASS' ? [] : [{ name: label, messages: [browserFailureDiagnostics(result, code)] }],
     database: env.DATABASE_URL || script.endsWith('verify-notifications-browser.mjs') ? 'Fresh native PostgreSQL' : 'Fresh PGlite fixture',
     report: reportPath ? relative(root, reportPath).replaceAll('\\', '/') : null,
     ...(!existingReport || !counts.executed ? { reason: 'Required browser assertions/report missing; exit zero alone cannot pass.' } : {}) });
@@ -96,8 +97,8 @@ async function vitest(label, workspace, args, env = {}, expectedFile, database) 
   const windowsSymlink = process.platform === 'win32' && skippedNames.length === 1 && skippedNames[0].includes('refuses symlink directories and objects without touching outside files');
   const allowedConcurrencySkip = !native && label.includes('login-lockout');
   const status = !code && executed > 0 && found && (!skipped || allowedConcurrencySkip || (historyOnly && historicalRehearsal)) ? 'PASS' : (!code && (windowsSymlink || historyOnly) ? 'BLOCKED' : 'FAIL');
-  records.push({ label, ...(expectedFile ? { suiteId: 'backend/' + expectedFile } : {}), status, passed, failed, skipped, skippedNames, ...(selectedNames ? { selectedCasePattern: testNamePattern, excludedByNamePattern: allAssertions.length - assertions.length, limitation: 'Explicitly selected cases only; excluded assertions do not satisfy full-suite acceptance.' } : {}), ...(historyOnly ? { requiredCaseCoveredBy: historicalRehearsal ? 'Populated import History migration and HTTP rehearsal' : null } : {}), ...(windowsSymlink ? { reason: 'Windows lacks file symlink privileges; mandatory POSIX storage boundary test requires Linux CI/container.' } : {}), database, report: relative(root, report).replaceAll('\\', '/') });
-  if (status !== 'PASS') { const error = new Error(`${label}: failed, missing or skipped required tests`); error.qaRecorded = true; throw error; }
+  records.push({ label, ...(expectedFile ? { suiteId: 'backend/' + expectedFile } : {}), status, passed, failed, skipped, skippedNames, failedAssertions: [...assertions.filter(test => test.status === 'failed').map(test => ({ name: test.fullName, messages: test.failureMessages })), ...suites.filter(suite => suite.message).map(suite => ({ name: 'Suite setup/teardown', messages: [suite.message] }))], ...(selectedNames ? { selectedCasePattern: testNamePattern, excludedByNamePattern: allAssertions.length - assertions.length, limitation: 'Explicitly selected cases only; excluded assertions do not satisfy full-suite acceptance.' } : {}), ...(historyOnly ? { requiredCaseCoveredBy: historicalRehearsal ? 'Populated import History migration and HTTP rehearsal' : null } : {}), ...(windowsSymlink ? { reason: 'Windows lacks file symlink privileges; mandatory POSIX storage boundary test requires Linux CI/container.' } : {}), database, report: relative(root, report).replaceAll('\\', '/') });
+  if (status !== 'PASS') { console.error('[qa] Failed suite:', label, 'Report:', relative(root, report), JSON.stringify(assertions.filter(test => test.status === 'failed').map(test => ({ name: test.fullName, messages: test.failureMessages })), null, 2)); const error = new Error(`${label}: failed, missing or skipped required tests`); error.qaRecorded = true; throw error; }
 }
 function databaseFor(file) {
   if (file.includes('/gmail/')) return 'leadcrm_mailbox_test_1';
@@ -122,7 +123,7 @@ async function importHistory(label = 'Populated import History migration and HTT
   const skipped = assertions.length - passed - failed;
   const historical = assertions.some(test => test.fullName.includes('verifies migrated History through deployed APIs') && test.status === 'passed');
   const status = !code && passed > 0 && !failed && !skipped && historical ? 'PASS' : 'FAIL';
-  records.push({ label, suiteId: ci.IMPORT_SUITE, status, passed, failed, skipped, database: `Populated disposable ${native ? 'native PostgreSQL' : 'PGlite'}`, report: relative(root, report).replaceAll('\\', '/') });
+  records.push({ label, suiteId: ci.IMPORT_SUITE, status, passed, failed, skipped, failedAssertions: assertions.filter(test => test.status === 'failed').map(test => ({ name: test.fullName, messages: test.failureMessages })), database: `Populated disposable ${native ? 'native PostgreSQL' : 'PGlite'}`, report: relative(root, report).replaceAll('\\', '/') });
   if (status !== 'PASS') { const error = new Error(`${label}: populated import assertions failed, missing or skipped`); error.qaRecorded = true; throw error; }
 }
 async function integration() {
@@ -177,6 +178,7 @@ async function execute(section) {
     for (const workspace of ['shared', 'backend', 'frontend'].filter(name => !ciPlan.workspace || name === ciPlan.workspace)) {
       await check(`${workspace} TypeScript`, [resolve(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--project', resolve(root, workspace, 'tsconfig.json')]);
     }
+    if (!ciPlan.workspace || ciPlan.workspace === 'backend') await check('backend test TypeScript', [resolve(root, 'node_modules/typescript/bin/tsc'), '--noEmit', '--project', resolve(root, 'backend/tsconfig.tests.json')]);
   } else if (section === 'import-history') {
     await importHistory();
   } else if (section === 'unit') {
@@ -280,7 +282,7 @@ if (process.env.GITHUB_STEP_SUMMARY) {
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, [
     `\n### LeadCRM acceptance: ${report.status}`, '',
     `Mode: ${mode}. Native PostgreSQL: ${native ? 'requested' : 'not requested'}. Source unchanged: ${!sourceChanged}.`, '',
-    '| Check | Result | Passed | Failed | Skipped | Seconds | Fixture |', '| --- | --- | ---: | ---: | ---: | ---: | --- |', ...rows, '',
+    '| Check | Result | Passed | Failed | Skipped | Seconds | Fixture |', '| --- | --- | ---: | ---: | ---: | ---: | --- |', ...rows, '', ...records.flatMap(result => (result.failedAssertions ?? []).map(failure => `- ${cell(result.label)}: ${cell(failure.name)} — ${cell(failure.messages?.join(' ').slice(0, 3000))}; report: ${cell(result.report)}`)), '',
     'A dash means this command reports an exit status rather than individual test counts. Full reports, command logs and browser failure captures are retained in the disposable QA evidence artifact.', '',
     ...(ciInvocation ? [`[Current run and evidence artifacts](https://github.com/${ciInvocation.repository}/actions/runs/${ciInvocation.runId})`, ''] : []),
   ].join('\n'));

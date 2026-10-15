@@ -13,8 +13,11 @@ describe('CSV parsing and active import validation', () => {
     expect(validateRow(accountImportConfig, { name: 'Company', ...patch }, 2).isValid).toBe(false);
   });
   it('normalizes valid rows and allows text beginning with formula characters as data', () => {
-    const row = validateRow(accountImportConfig, { name: ' =Plain data ', productInterest: 'Biometrics' }, 2);
+    const row = validateRow(accountImportConfig, { name: ' =Plain data ' }, 2);
     expect(row.isValid).toBe(true); expect(row.data.name).toBe('=Plain data');
+  });
+  it('rejects retired Account product input', () => {
+    expect(validateRow(accountImportConfig, { name: 'Company', productInterest: 'Biometrics' }, 2).isValid).toBe(false);
   });
   it('registers only the three active importers and rejects the retired module', () => {
     for (const registry of [IMPORT_CONFIGS, importRowSchemas, importRequiredFields]) {

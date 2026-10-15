@@ -9,6 +9,8 @@ import {
   getWorkflowUpdateFields,
   getAvailableActions,
   normalizeSavedWorkflowAssignment,
+  retiredAccountWorkflowReferences,
+  ACCOUNT_RETIREMENT_REASON,
   type ActionDefinition,
   type TriggerDefinition,
   type WorkflowAction,
@@ -314,6 +316,7 @@ export function actionIssues(
   incomplete = false,
 ): string[] {
   incomplete = incomplete || action.enabled === false;
+  if (entity === 'account' && retiredAccountWorkflowReferences({ trigger: 'account.updated', actions: [action] }).length) return incomplete ? [] : [ACCOUNT_RETIREMENT_REASON];
   if (retiredActionLabels[action.type]) return incomplete ? [] : ['This action is retired. Disable or remove it before activating.'];
   if (!definition || !entity || !definition.entities.includes(entity))
     return ['This action is unavailable for the trigger.'];

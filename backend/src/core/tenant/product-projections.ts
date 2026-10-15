@@ -3,7 +3,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 const models = new Map(Prisma.dmmf.datamodel.models.map(model => [model.name, model]));
 const productFields: Record<string, string[]> = {
   Lead: ['productInterest', 'productInterestIds'],
-  Contact: ['productInterests'], Account: ['productInterests', 'activeProducts'],
+  Contact: ['productInterests'],
   Deal: ['productInterests', 'productInterestIds'],
 };
 type Args = Record<string, any>;

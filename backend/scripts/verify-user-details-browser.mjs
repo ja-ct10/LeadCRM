@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { setAcceptanceTheme, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { setAcceptanceTheme, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || resolve(tmpdir(), 'leadcrm-user-details', randomUUID());
@@ -67,8 +67,7 @@ try {
   }
   assert.ok(ready, 'Built frontend started');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, timezoneId: 'Asia/Manila' });
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, timezoneId: 'Asia/Manila' });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(20000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {

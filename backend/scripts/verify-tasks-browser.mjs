@@ -1,4 +1,4 @@
-import { isolateBrowserContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Disposable PostgreSQL and local application only. Screenshots stay outside Git.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -35,7 +35,7 @@ try {
   const { token } = await issueAuthSession(admin);
   const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Tasks QA staff', permissions: { create: { module: 'tasks', canView: true } } } });
   const staff = await prisma.user.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Staff', email: 'tasks-staff@camxian.com', role: role.name, userRoles: { create: { roleId: role.id } } } });
-  const account = await prisma.account.create({ data: { tenantId, name: 'Tasks QA Account', assignedUserId: admin.id } });
+  const account = await prisma.account.create({ data: { tenantId, name: 'Tasks QA Account',  } });
   const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Contact', assignedUserId: admin.id } });
   const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Tasks', lastName: 'Lead', assignedUserId: admin.id, contactId: contact.id, convertedAt: new Date() } });
   const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Tasks QA Pipeline' } });
@@ -60,9 +60,7 @@ try {
   for (let i = 0; i < 100; i++) { try { if ((await fetch(base + '/login')).ok) { ready = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }
   assert.ok(ready, 'Local frontend did not start');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await browser.newContext();
-
-  await isolateBrowserContext(context);
+  const context = await createAcceptanceContext(browser);
   await context.addInitScript(() => localStorage.setItem('app_theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'Dark' : 'Light'));
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000);

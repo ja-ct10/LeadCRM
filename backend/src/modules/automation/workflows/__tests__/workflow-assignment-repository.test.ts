@@ -17,12 +17,14 @@ it('counts canonical in_progress Tasks toward assignment capacity', async () => 
   expect(await assignmentWorkloads(db as never, 'tenant', ['staff'], 'task_assignee')).toEqual(new Map([['staff', 1]]));
 });
 
-it('includes module-specific staff in global owner options while enforcing the triggering module', async () => {
+it('keeps supported module-specific owners and excludes Account-only permissions from ownership', async () => {
   const tenantId = 'tenant';
-  const db = { user: { findMany: vi.fn().mockResolvedValue([{ id: 'account-staff', firstName: 'Account', lastName: 'Staff', tenantId, role: 'Support', status: 'ACTIVE', tenant: { status: 'ACTIVE' }, userRoles: [
-    { tenantId, role: { tenantId, isArchived: false, permissions: [{ tenantId, module: 'accounts', canView: true, canEdit: true }] } },
-  ] }]) } };
-  expect((await assignmentOptions(db as never, tenantId, { users: true, roles: false, groups: false })).users).toEqual([{ id: 'account-staff', name: 'Account Staff' }]);
-  expect((await assignmentCandidates(db as never, tenantId, 'crm_owner', 'account')).map(user => user.id)).toEqual(['account-staff']);
+  const user = (module: string) => ({ id: `${module}-staff`, firstName: module, lastName: 'Staff', tenantId, role: 'Support', status: 'ACTIVE', tenant: { status: 'ACTIVE' }, userRoles: [
+    { tenantId, role: { tenantId, isArchived: false, permissions: [{ tenantId, module, canView: true, canEdit: true }] } },
+  ] });
+  const db = { user: { findMany: vi.fn().mockResolvedValue([user('accounts'), user('contacts')]) } };
+  expect((await assignmentOptions(db as never, tenantId, { users: true, roles: false, groups: false })).users).toEqual([{ id: 'contacts-staff', name: 'contacts Staff' }]);
+  expect(await assignmentCandidates(db as never, tenantId, 'crm_owner', 'account')).toEqual([]);
+  expect((await assignmentCandidates(db as never, tenantId, 'crm_owner', 'contact')).map(user => user.id)).toEqual(['contacts-staff']);
   expect(await assignmentCandidates(db as never, tenantId, 'crm_owner', 'deal')).toEqual([]);
 });

@@ -54,7 +54,7 @@ async function review(module: CrmImportModule, valid: number, duplicate: number,
 beforeEach(() => { vi.resetAllMocks(); window.history.replaceState(null, '', '/crm/leads/import'); mocks.refresh.mockResolvedValue(undefined); });
 afterEach(cleanup);
 
-it('downloads the Accounts template with exactly six headers', async () => {
+it('downloads the Accounts template with exactly five supported headers', async () => {
   const create = vi.fn((_blob: Blob) => 'blob:accounts-template');
   const revoke = vi.fn();
   const originalCreate = URL.createObjectURL, originalRevoke = URL.revokeObjectURL;
@@ -66,7 +66,7 @@ it('downloads the Accounts template with exactly six headers', async () => {
     expect(click.mock.instances[0]).toMatchObject({ download: 'account-import-template.csv' });
     const reader = new FileReader();
     const content = await new Promise(resolve => { reader.onload = () => resolve(reader.result); reader.readAsText(create.mock.calls[0][0]); });
-    expect(content).toBe('Company Name,Product Interest,Industry,Website,Full Address,Company Size\n');
+    expect(content).toBe('Company Name,Industry,Website,Full Address,Company Size\n');
     expect(revoke).toHaveBeenCalledWith('blob:accounts-template');
   } finally { URL.createObjectURL = originalCreate; URL.revokeObjectURL = originalRevoke; click.mockRestore(); }
 });
@@ -77,7 +77,7 @@ it('shows a consolidated legacy Account address without retired mapping destinat
   const view = render(<ImportPage moduleKey="accounts" />);
   fireEvent.change(view.container.querySelector('input[type=file]')!, { target: { files: [new File([csvText], 'old-template.csv')] } });
   await screen.findByRole('heading', { name: 'Map your columns' });
-  expect(screen.getAllByRole('combobox')).toHaveLength(6);
+  expect(screen.getAllByRole('combobox')).toHaveLength(5);
   for (const label of ['City', 'Province / State', 'Country']) expect(screen.queryByRole('combobox', { name: `Map CSV column for ${label}` })).toBeNull();
   expect(screen.getByText('10 Street, Toronto, Ontario, Canada')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }));

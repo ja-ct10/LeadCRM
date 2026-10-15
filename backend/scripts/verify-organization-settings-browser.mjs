@@ -1,4 +1,4 @@
-import { responsiveMatrix, isolateBrowserContext } from './verify-browser-matrix.mjs';
+import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Local production-build acceptance with disposable PostgreSQL; never opens the configured database.
 // Run after npm run build. Pass an installed Playwright package path as the first argument if needed.
 import assert from 'node:assert/strict';
@@ -63,9 +63,8 @@ try {
   assert.ok(ready, 'Production frontend became ready');
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function open(token) {
-    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
+    const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 }, permissions: ['clipboard-read', 'clipboard-write'] });
 
-    await isolateBrowserContext(context);
     await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const page = await context.newPage(); page.setDefaultTimeout(15000);
     page.on('pageerror', error => pageErrors.push(error.message));

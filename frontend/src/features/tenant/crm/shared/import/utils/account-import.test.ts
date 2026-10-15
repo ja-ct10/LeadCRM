@@ -7,10 +7,10 @@ import { validateRow } from './row-validator';
 const input = (csvText: string, mappings: Record<string, number>) => ({ csvText, mappings, fileName: 'accounts.csv', idempotencyKey: crypto.randomUUID() });
 const fields = [...accountImportConfig.requiredFields, ...accountImportConfig.optionalFields];
 describe('Accounts CSV address compatibility', () => {
-  it('has exactly the six supported fields in template order', () => {
-    expect(fields.map(field => field.label)).toEqual(['Company Name', 'Product Interest', 'Industry', 'Website', 'Full Address', 'Company Size']);
+  it('has exactly the five supported fields in template order', () => {
+    expect(fields.map(field => field.label)).toEqual(['Company Name', 'Industry', 'Website', 'Full Address', 'Company Size']);
     expect(fields.filter(field => field.required).map(field => field.key)).toEqual(['name']);
-    expect(fields.map(field => field.key)).toEqual(['name', 'productInterest', 'industry', 'website', 'address', 'size']);
+    expect(fields.map(field => field.key)).toEqual(['name', 'industry', 'website', 'address', 'size']);
   });
   it('automatically preserves the old nine-column template with only canonical mappings', () => {
     const headers = ['Company Name', 'Product Interest', 'Industry', 'Website', 'Full Address', 'City', 'Province / State', 'Country', 'Company Size'];
@@ -20,7 +20,8 @@ describe('Accounts CSV address compatibility', () => {
     const [raw] = mapImportCsv('accounts', input(headers.join(',') + '\nAcme,Biometrics,IT,https://example.test,10 Street,Toronto,Ontario,Canada,1-10', mappings));
     const row = validateRow(accountImportConfig, raw.data, raw.rowNumber);
     expect(row.isValid).toBe(true);
-    expect(row.data).toMatchObject({ address: '10 Street, Toronto, Ontario, Canada', productInterest: 'Biometrics', size: '1-10' });
+    expect(row.data).toMatchObject({ address: '10 Street, Toronto, Ontario, Canada', size: '1-10' });
+    expect(row.data).not.toHaveProperty('productInterest');
     for (const key of ['city', 'province', 'country']) expect(row.data).not.toHaveProperty(key);
   });
   it.each([

@@ -154,7 +154,7 @@ export async function entityContext(entity: WorkflowEntity, id: string, tenantId
   const where = { id, tenantId, isArchived: false };
   const record = entity === 'lead' ? await db.lead.findFirst({ where, include: { productLinks: true } })
     : entity === 'contact' ? await db.contact.findFirst({ where, include: { productLinks: true } })
-    : entity === 'account' ? await db.account.findFirst({ where, include: { productLinks: true } })
+    : entity === 'account' ? await db.account.findFirst({ where })
     : await db.deal.findFirst({ where, include: { stage: true,
       leadDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }] },
       contactDeals: { orderBy: [{ position: 'asc' }, { addedAt: 'asc' }, { id: 'asc' }] },
@@ -175,7 +175,6 @@ export async function entityContext(entity: WorkflowEntity, id: string, tenantId
   if ('doNotContact' in record) context['contact.doNotContact'] = record.doNotContact;
   if ('productLinks' in record) {
     context[entity + '.productInterestIds'] = record.productLinks.filter(link => !('interested' in link) || link.interested).map(link => link.productInterestId).sort();
-    if (entity === 'account') context['account.activeProductIds'] = record.productLinks.filter(link => 'activeProduct' in link && link.activeProduct).map(link => link.productInterestId).sort();
   }
   if ('stage' in record) {
     context['deal.productInterestIds'] = record.productInterestId ? [record.productInterestId] : [];

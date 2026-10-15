@@ -23,16 +23,12 @@ export interface Company {
   website?: string;
   tags?: string[];
   address?: string;
-  assignedUserId?: string;
   notes?: string;
   internalNotes?: string;
-  productInterests?: string[];
-  activeProducts?: string[];
   createdAt: string;
   updatedAt?: string;
 
   // Joined relations (included in list/detail responses)
-  assignedUser?: { id: string; firstName: string; lastName: string };
 }
 
 /**
@@ -46,11 +42,8 @@ export interface CreateCompanyRequest {
   website?: string;
   tags?: string[];
   address?: string;
-  assignedUserId?: string;
   notes?: string;
   internalNotes?: string;
-  productInterests?: string[];
-  activeProducts?: string[];
 }
 
 /**

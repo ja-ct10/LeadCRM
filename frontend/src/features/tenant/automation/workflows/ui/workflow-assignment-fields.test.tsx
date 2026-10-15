@@ -11,13 +11,22 @@ const options: WorkflowOptions = { users: [], taskAssignees: [{ id: userId, name
   roles: [{ id: groupId, name: 'Support', memberCount: 3, eligibleMemberCounts: { task_assignee: 2, crm_owner: 0 } }],
   groups: [{ id: groupId, name: 'Follow-up team', memberCount: 4, eligibleMemberCounts: { task_assignee: 2, crm_owner: 1 }, members: [{ id: userId, name: 'Task specialist', purposes: ['task_assignee'] }] }],
   pipelines: [], templates: [], campaigns: [] };
-function Editor({ initial }: { initial: WorkflowAction }) {
+function Editor({ initial, entity = 'lead' }: { initial: WorkflowAction; entity?: 'lead' | 'account' }) {
   const [action, setAction] = useState(initial);
-  return <><ActionFields action={action} entity="lead" definition={getAvailableActions().find(definition => definition.type === action.type)} options={options} onChange={config => setAction({ ...action, config })} />
+  return <><ActionFields action={action} entity={entity} definition={getAvailableActions().find(definition => definition.type === action.type)} options={options} onChange={config => setAction({ ...action, config })} />
     <output data-testid="config">{JSON.stringify(action.config)}</output></>;
 }
 afterEach(cleanup);
 describe('workflow assignment editor', () => {
+  it('requires an explicit Account task assignee and offers no retired Account owner choice', () => {
+    const initial: WorkflowAction = { type: 'create_task', config: { title: 'Follow up' } };
+    render(<Editor initial={initial} entity="account" />);
+    expect(screen.queryByRole('option', { name: 'Current Record Agent' })).toBeNull();
+    expect(actionIssues(initial, getAvailableActions().find(action => action.type === 'create_task'), 'account', options)).toEqual([expect.stringContaining('Account assignment and product fields are retired')]);
+    fireEvent.change(screen.getByLabelText('Assign to'), { target: { value: 'user' } });
+    fireEvent.change(screen.getByLabelText('Assignment user'), { target: { value: userId } });
+    expect(JSON.parse(screen.getByTestId('config').textContent!).assignmentTarget).toEqual({ type:'user',id:userId });
+  });
   it('offers record owner by default and writes one canonical group target with eligible counts', () => {
     render(<Editor initial={{ type: 'create_task', config: { title: 'Call' } }} />);
     expect((screen.getByLabelText('Assign to') as HTMLSelectElement).value).toBe('record_owner');

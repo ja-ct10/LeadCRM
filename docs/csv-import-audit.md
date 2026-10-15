@@ -1,5 +1,7 @@
 # CSV import audit and verification
 
+> Account update: Account assignment and product fields are retired. Historical product mapping and propagation descriptions below are superseded by [Account field retirement](accounts-field-retirement.md).
+
 > Product update (2026-10-14): Deal CSV import is retired. Active import functionality supports only Leads, Contacts and Accounts. Deal import descriptions, routes, tables and test results below are historical evidence, not supported product functionality. Historical database records and migrations remain preserved. See [Deal import retirement](deal-import-retirement.md).
 
 This records the earlier CSV feature audit. The later [import infrastructure

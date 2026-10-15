@@ -99,7 +99,11 @@ beforeAll(async () => {
   // Isolated fixture release marker. Production requires authenticated release
   // verification through deploy-contact-retirement.cjs before this marker exists.
   await pg.exec(`COMMENT ON TABLE crm_history.contact_retired_values IS 'leadcrm-contact-retirement-compatible-v1:${'a'.repeat(40)}'`);
-  await replayCrmMigrations(pg, undefined, '20261129000000_retire_contact_obsolete_columns');
+  await replayCrmMigrations(pg, '20261208000000_retire_account_fields', '20261129000000_retire_contact_obsolete_columns');
+  // This disposable historical fixture separately authorizes Account retirement.
+  // Production uses deploy-account-fields-retirement.cjs release and backup checks.
+  await pg.exec(`COMMENT ON TABLE crm_history.account_retired_values IS 'leadcrm-accounts-fields-compatible-v1:${'a'.repeat(40)}'`);
+  await replayCrmMigrations(pg, undefined, '20261208000000_retire_account_fields');
   server = (await import('../app')).default.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
   url = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
 }, 180000);

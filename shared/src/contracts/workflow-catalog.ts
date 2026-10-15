@@ -61,10 +61,10 @@ export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: Cl
     { field: 'contactIds', label: 'Contacts', type: 'contacts' }, { field: 'leadIds', label: 'Leads', type: 'leads' },
   ];
   else if (entity === 'account') standard = [text('name', 'Account Name', true, 255), choice('industry', 'Industry', COMPANY_INDUSTRIES),
-    choice('size', 'Size', COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'), assignment, product,
+    choice('size', 'Size', COMPANY_SIZE_OPTIONS), text('website', 'Website'), text('address', 'Full Address'),
     { ...text('notes', 'Notes'), multiline: true },
     // These remain editable in Account Edit; retain their supported automation contract.
-    { ...text('internalNotes', 'Internal Notes'), multiline: true }, { field: 'activeProductIds', label: 'Active Products', type: 'products' },
+    { ...text('internalNotes', 'Internal Notes'), multiline: true },
   ];
   else standard = [text('firstName', 'First Name', true, 100), text('lastName', 'Last Name', true, 100), text('email', 'Email', true, 254), text('phone', 'Phone', false, entity === 'contact' ? 100 : 2000),
     text(entity === 'lead' ? 'companyName' : 'company', 'Company Name'),
@@ -101,7 +101,7 @@ export const findTrigger = (type: string) => WORKFLOW_TRIGGERS.find(trigger => t
 /** Legacy names map only on exact, unique catalog matches. Unresolved selections remain repairable. */
 export function normalizeWorkflowReferences<T extends { trigger: string; conditions?: unknown; actions?: unknown }>(draft: T, products: Array<{ id: string; name: string }>): T {
   const entity = findTrigger(draft.trigger)?.entity;
-  if (!entity) return draft;
+  if (!entity || entity === 'account') return draft;
   const resolveProduct = (value: unknown) => {
     if (typeof value !== 'string') return undefined;
     if (products.some(p => p.id === value)) return value;
@@ -154,7 +154,7 @@ export function getAvailableActions(): ActionDefinition[] {
       recipient: { type: 'select', label: 'Recipient', required: true, options: ['record', 'primary_contact', 'primary_lead'] },
       message: { type: 'string', label: 'SMS message', required: true },
     } },
-    { type: 'assign_owner', label: 'Assign Agent', description: 'Assign the record to an eligible workspace agent.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
+    { type: 'assign_owner', label: 'Assign Agent', description: 'Assign the record to an eligible workspace agent.', entities: ['lead', 'contact', 'deal'], configSchema: {
       userId: { type: 'user', label: 'Agent', required: false },
       assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
     } },

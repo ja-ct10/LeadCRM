@@ -7,7 +7,7 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
   const data = { tenantId: tenant.id, productsNormalized: true };
   const lead = await prisma.lead.create({ data: { ...data, firstName: 'Locator', lastName: 'Lead', createdAt: new Date('2020-01-01') } });
   const contact = await prisma.contact.create({ data: { ...data, firstName: 'Locator', lastName: 'Contact', createdAt: new Date('2020-01-01') } });
-  const account = await prisma.account.create({ data: { ...data, name: 'Locator Account', createdAt: new Date('2020-01-01') } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Locator Account', createdAt: new Date('2020-01-01') } });
   const pipeline = await prisma.pipeline.create({ data: { tenantId: tenant.id, name: 'Locator Pipeline' } });
   const stages = [];
   for (let order = 0; order < 7; order++) stages.push(await prisma.stage.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, name: `Locator Stage ${order}`, order, requiredFields: [] } }));
@@ -37,6 +37,8 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
   ];
   for (const [path, api, label, buttonLabel] of (process.argv.includes('--highlight-only') ? [] : refreshModules)) {
     await page.goto(base + path);
+    // Session restoration and route hydration share the navigation budget.
+    await page.getByRole('textbox', { name: 'Search CRM records', exact: true }).waitFor({ timeout: 120000 });
     const region = page.getByRole('region', { name: label, exact: true });
     await region.getByRole('grid').waitFor();
     const refresh = page.getByRole('button', { name: buttonLabel, exact: true }).last();
@@ -45,13 +47,22 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
     assert.ok(rows > 0, label + ' has existing rows');
     control.holdPath = api;
     await refresh.click();
-    await until(async () => control.pending === 1, label + ' real refresh started');
+    await until(async () => control.pending >= 1, label + ' real refresh started');
     const spinner = region.getByRole('status', { name: 'Refreshing data...' });
     assert.ok(await spinner.isVisible(), label + ' existing spinner is inside the table');
     assert.ok(await region.locator('tbody tr[data-row-id]').first().isVisible());
     assert.equal(await region.getAttribute('aria-busy'), 'true');
-    await refresh.evaluate(element => { element.click(); element.click(); });
-    assert.equal(control.pending, 1, label + ' duplicate refresh is blocked');
+    assert.ok(await refresh.isDisabled(), label + ' disables the control while refresh is pending');
+    const duplicateClicks = await refresh.evaluate(element => {
+      let dispatched = 0;
+      const clicked = () => dispatched++;
+      element.addEventListener('click', clicked);
+      element.click(); element.click();
+      element.removeEventListener('click', clicked);
+      return dispatched;
+    });
+    // Background polling can add reads; it does not represent another button click.
+    assert.equal(duplicateClicks, 0, label + ' duplicate refresh clicks are blocked');
     control.release();
     await until(async () => !await refresh.isDisabled(), label + ' refresh completed');
     assert.equal(await spinner.count(), 0);
@@ -72,7 +83,7 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
     await until(async () => !await refresh.isDisabled(), 'Empty module loading completed');
     control.holdPath = `/crm/${module}`;
     await refresh.click();
-    await until(async () => control.pending === 1, 'Empty module refresh pending');
+    await until(async () => control.pending >= 1, 'Empty module refresh pending');
     const spinner = page.getByRole('status', { name: 'Refreshing data...' });
     assert.ok(await spinner.isVisible());
     assert.equal(await heading.isVisible(), false, 'No empty message during refresh');
@@ -105,7 +116,8 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
         return rect.top >= 0 && rect.top < innerHeight;
       }), 'Selected record was not vertically visible');
       if (target.module === 'deals') {
-        assert.equal(await page.getByLabel('Pipeline', { exact: true }).inputValue(), pipeline.id);
+        assert.equal(await page.getByLabel('Pipeline', { exact: true }).inputValue(), pipeline.name);
+        assert.equal(await page.getByLabel('Pipeline', { exact: true }).evaluate(element => element.readOnly), true);
         await until(async () => await selected.evaluate(element => {
           const card = element.getBoundingClientRect(), stageScroll = element.parentElement.getBoundingClientRect();
           const board = element.closest('[aria-label="Deal pipeline"]');
@@ -180,7 +192,7 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
   await until(async () => !await refresh.isDisabled(), 'Deal loading completed');
   control.holdPath = '/crm/deals';
   await refresh.click();
-  await until(async () => control.pending === 1, 'Deal refresh pending');
+  await until(async () => control.pending >= 1, 'Deal refresh pending');
   assert.ok(await page.getByRole('status', { name: 'Refreshing deals...' }).isVisible());
   assert.ok(await card.isVisible());
   control.release();

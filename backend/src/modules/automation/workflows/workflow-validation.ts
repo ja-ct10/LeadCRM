@@ -8,11 +8,13 @@ import { z } from 'zod';
 import { conditionFields } from './workflow-fields';
 import prisma from '../../../config/database.config';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements } from '../../crm/access/assigned-agent-eligibility';
+import { retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 
 export function validateWorkflowConditions(draft: WorkflowDraft, fields?: WorkflowField[]): void {
   const trigger = findTrigger(draft.trigger);
   if (!trigger) throw new ValidationError('Choose a supported trigger.');
   if (!draft.name.trim()) throw new ValidationError('Enter a workflow name.');
+  if (retiredAccountWorkflowReferences(draft).length) throw new ValidationError(ACCOUNT_RETIREMENT_REASON);
   const retired = retiredContactReferences(draft.conditions, trigger.entity);
   if (retired.length) throw new ValidationError(`Retired Contact field: ${retired.join(', ')}. Repair the Workflow condition before activation.`);
   for (const rule of draft.conditions?.conditions ?? []) {

@@ -1,4 +1,3 @@
-import { productRelationData } from '../leads/product-relations';
 import type { Prisma } from '@prisma/client';
 import { importIdentity, importRowSchemas, normalizeAccountImportRow, splitProductInterests, type CrmImportModule, type ImportReviewRow } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -55,8 +54,10 @@ export async function validateImportRow(tx: Tx, module: CrmImportModule, tenantI
     const handler = importHandlers[module];
     result.errors.push(...await handler.duplicates(tx, tenantId, result.data));
     if (result.errors.length) { result.status = 'duplicate'; return result; }
-    result.products = await resolveImportProducts(tx, tenantId, result.data.productInterest);
-    result.data.productInterest = result.products.map(p => p.name).join('; ');
+    if (module !== 'accounts') {
+      result.products = await resolveImportProducts(tx, tenantId, result.data.productInterest);
+      result.data.productInterest = result.products.map(p => p.name).join('; ');
+    }
     result.isValid = true; result.status = 'valid';
   } catch (error) {
     const errors = importValidationErrors(error);
@@ -122,7 +123,7 @@ async function createAccount(tx: Tx, tenantId: string, _actorId: string, _jobId:
   const d = row.data;
   return (await tx.account.create({ data: { tenantId, name: d.name, industry: d.industry, website: d.website,
     address: normalizeAccountImportRow(d).address, size: d.size || null,
-    ...await productRelationData(tx, 'account', tenantId, { ids: row.products.map(p => p.id) }), tags: [],
+    tags: [],
   } })).id;
 }
 async function personDuplicates(tx: Tx, tenantId: string, data: Record<string, string>) {
