@@ -24,6 +24,7 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   fireEvent.change(screen.getByLabelText(/Account Name/), { target: { value: 'New Account' } });
   const address = screen.getByLabelText('Full Address');
   expect(address.tagName).toBe('TEXTAREA');
+  expect(address.parentElement?.parentElement?.className).toContain('sm:col-span-2');
   fireEvent.change(address, { target: { value: '123 Main Street\nMakati City, Metro Manila, Philippines' } });
   fireEvent.submit(screen.getByLabelText(/Account Name/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalled());
@@ -32,6 +33,24 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   for (const label of ['City', 'Province', 'Country']) expect(screen.queryByLabelText(label)).toBeNull();
   for (const field of ['assignedUserId', 'productInterests', 'activeProducts', 'taxId', 'customerType', 'customerSince']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
   for (const field of ['notes', 'internalNotes', 'activeProducts']) expect(save.mock.calls[0][0]).not.toHaveProperty(field);
+});
+
+it('awaits backend confirmation, retains failed input and exposes field errors for correction', async () => {
+  let reject!: (error: Error) => void;
+  const failure = Object.assign(new Error('The account website is invalid. Enter a complete URL.'), { status: 400, fieldErrors: { website: ['Enter a complete URL.'] } });
+  const save = vi.fn().mockImplementationOnce(() => new Promise((_resolve, rejectRequest) => { reject = rejectRequest; })).mockResolvedValue(undefined);
+  render(<AccountFormInner onSave={save} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText(/Account Name/), { target: { value: 'Keep this draft' } });
+  fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'https://draft.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
+  expect((await screen.findByRole('button', { name: 'Saving...' }) as HTMLButtonElement).disabled).toBe(true);
+  expect(save).toHaveBeenCalledOnce(); reject(failure);
+  await screen.findByText(failure.message);
+  expect((screen.getByLabelText(/Account Name/) as HTMLInputElement).value).toBe('Keep this draft');
+  expect(screen.getByLabelText('Website').getAttribute('aria-invalid')).toBe('true');
+  fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'https://fixed.test' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
 });
 
 it('keeps international address data and omits legacy note inputs when editing', async () => {

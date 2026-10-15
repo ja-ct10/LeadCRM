@@ -1,5 +1,5 @@
 import { validateDealTargets } from './action-deal-targets';
-import { resolveTaskDealIds } from './action-task-deals';
+import { resolveTaskDealIds, validateTaskDealSelection } from './action-task-deals';
 import { z } from 'zod';
 import { workflowMessageEntity, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { validateMessageVariables } from './action-message';
@@ -11,11 +11,7 @@ import prisma from '../../../config/database.config';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import { getAvailableActions } from './actions.service';
 import * as repo from './actions.repository';
-import { sanitizeCampaignHtml } from '../../marketing/campaigns/campaign-content';
-import { mailboxPermissions } from '../../../integrations/gmail/mailbox-sync.service';
-import { assertMailboxCustomerPermission, assertMailboxRecipients } from '../../../integrations/gmail/mailbox-recipient-access';
-import { authorizedMailbox } from '../../../integrations/gmail/mailbox-store';
-import { mailboxAddress, projectMailboxScope } from '../../../integrations/gmail/mailbox-scope';
+import { normalizeWorkflowEmailAction, prepareWorkflowEmailInput, validateWorkflowEmailContent } from './action-email';
 import { retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 
 export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
@@ -24,6 +20,7 @@ export function actionEntity(context: Record<string, unknown>): WorkflowEntity {
   return matches[0];
 }
 export async function validateAction(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>, incomplete = false): Promise<void> {
+  action = normalizeWorkflowEmailAction(action);
   if (retiredAccountWorkflowReferences({ trigger: `${entity}.updated`, actions: [action] }).length) {
     if (incomplete) return;
     throw new ValidationError(ACCOUNT_RETIREMENT_REASON);
@@ -43,6 +40,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   }
   for (const [key, field] of Object.entries(definition.configSchema)) {
     const value = action.config[key];
+    if (action.type === 'send_email' && ['subject', 'body'].includes(key) && typeof value === 'string' && !value.trim()) continue;
     if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) continue;
     if (!incomplete && action.enabled !== false && field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
     if (value === undefined || value === '') continue;
@@ -63,7 +61,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   }
   if (['create_task', 'assign_owner'].includes(action.type)) await validateAssignment(action, entity, tenantId, context, incomplete || action.enabled === false);
   if (action.type === 'create_task') {
-    if (action.config.dealId && (!z.string().uuid().safeParse(action.config.dealId).success || !await prisma.deal.findFirst({ where: { tenantId, id: String(action.config.dealId), isArchived: false, deletedAt: null } }))) throw new ValidationError('Choose an eligible same-workspace Deal ID.');
+    await validateTaskDealSelection(action, entity, tenantId);
     if (context && action.enabled !== false) await resolveTaskDealIds(action, entity, tenantId, context);
   }
   // Disabled steps retain safe configuration and scoped references, but need no delivery readiness.
@@ -89,32 +87,6 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   }
 }
 export async function validateEmail(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>): Promise<void> {
-  const template = action.config.templateId ? await repo.findTemplate(String(action.config.templateId), tenantId) : null;
-  if (action.config.templateId && !template) throw new NotFoundError('Email template');
-  const subject = String(action.config.subject || template?.subject || '');
-  const content = String(action.config.body || template?.content || '');
-  if (!subject.trim() || !sanitizeCampaignHtml(content).trim()) throw new ValidationError('Choose a complete template or enter an email subject and message.');
-  if (!EmailSubjectSchema.safeParse(subject).success) throw new ValidationError('Email subject must be at most 200 characters without line breaks or control characters.');
-  await validateMessageVariables(`${subject} ${content}`, entity, tenantId);
-  const senderUserId = String(action.config.senderUserId);
-  if (!await repo.findSender(senderUserId, tenantId)) throw new ValidationError('Connect the selected sender to Gmail before activating.');
-  if (!context) {
-    const permissions = await mailboxPermissions(tenantId, senderUserId);
-    assertMailboxCustomerPermission(permissions, entity === 'lead', entity === 'contact');
-  }
-  if (context) {
-    if (!z.string().email().safeParse(context[`${entity}.email`]).success) throw new ValidationError('No valid email address found for the triggering record.');
-    if (context[`${entity}.doNotContact`] === true) throw new ValidationError('This Contact is marked Do not contact.');
-    const where = { tenantId, id: String(context[`${entity}.id`]), isArchived: false, deletedAt: null };
-    const record = entity === 'lead' ? await prisma.lead.findFirst({ where: { ...where, convertedAt: null }, select: { id: true } })
-      : await prisma.contact.findFirst({ where, select: { id: true } });
-    if (!record) throw new NotFoundError('Active email recipient');
-    // Run Check projects earlier validated assignments into this context. Live
-    // delivery still rechecks the persisted assignment through Gmail sendEmail.
-    if (context[`${entity}.assignedUserId`] !== senderUserId) throw new ValidationError('The selected sender must be assigned to the email recipient. Add an earlier owner assignment or choose the assigned sender.');
-    const { account, scope, permissions } = await authorizedMailbox(tenantId, senderUserId);
-    const email = mailboxAddress(String(context[`${entity}.email`]))!;
-    const projectedScope = projectMailboxScope(scope, permissions, { type: entity as 'lead' | 'contact', id: record.id, email, assignedUserId: senderUserId });
-    await assertMailboxRecipients(account, projectedScope, permissions, [email], '', { type: entity as 'lead' | 'contact', id: record.id, email });
-  }
+  if (context) await prepareWorkflowEmailInput(action, entity, tenantId, context);
+  else await validateWorkflowEmailContent(action, entity, tenantId);
 }

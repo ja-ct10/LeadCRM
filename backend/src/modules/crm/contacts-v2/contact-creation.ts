@@ -36,12 +36,14 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   await assertContactAccountSelection(tx, tenantId, dto.accountId);
   const status = CrmStatusSchema.parse(dto.status ?? 'Warm');
   if (status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
-  if (dto.accountId && !await tx.account.findFirst({ where: { tenantId, id: String(dto.accountId), isArchived: false, deletedAt: null } })) throw new NotFoundError('Account');
+  const selectedAccount = dto.accountId ? await tx.account.findFirst({ where: { tenantId, id: String(dto.accountId), isArchived: false, deletedAt: null }, select: { name: true } }) : null;
+  if (dto.accountId && !selectedAccount) throw new NotFoundError('Account');
   const relations = await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined });
   const products = await tx.productInterest.findMany({ where: { tenantId, id: { in: relations.productLinks.create.map(link => link.productInterestId) }, active: true } });
   const data = { ...intent };
   normalizeProductOther(data, products.map(product => product.name));
   const { customFieldValues, productInterestIds: _ids, productInterests: _names, assignedUserId: _assignee, newAccount, ...fields } = data;
+  if (selectedAccount) fields.company = selectedAccount.name;
   if (newAccount) {
     const account = await createLinkedAccount(tx, tenantId, newAccount, actorId);
     fields.accountId = account.id; fields.company = account.name;

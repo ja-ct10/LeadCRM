@@ -6,6 +6,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
 import { findTemplate } from './actions.repository';
 import { campaignVariableFields } from '../../marketing/campaigns/audiences.service';
+import { workflowEmailContent } from './action-email-content';
 
 export async function assertAssignmentReferencePermissions(draft: WorkflowDraft, tenantId: string, userId: string) {
   const required: PermissionKey[] = [];
@@ -38,7 +39,8 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
     if (action.enabled === false) continue;
     if (entity && ['create_task', 'send_email', 'send_sms'].includes(action.type)) {
       const template = action.type === 'send_email' && action.config.templateId ? await findTemplate(String(action.config.templateId), tenantId) : null;
-      const content = action.type === 'send_email' ? `${action.config.subject || template?.subject || ''} ${action.config.body || template?.content || ''}`
+      const emailContent = action.type === 'send_email' ? workflowEmailContent(action.config, template) : undefined;
+      const content = emailContent ? `${emailContent.subject} ${emailContent.body}`
         : action.type === 'send_sms' ? String(action.config.message ?? '') : `${action.config.title ?? ''} ${action.config.description ?? ''}`;
       const keys = campaignVariableKeys(content);
       if (keys.length) {

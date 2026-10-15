@@ -417,15 +417,16 @@ async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: 
   const policy = await resolveCrmActor(client, { tenantId, userId });
   const system = authorizedWorkflowScope(tenantId);
   const permitted = (flag: 'canCreate' | 'canEdit' | 'canArchive' | 'canAssign' | 'canComplete') => {
-    if (!system && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', flag)) throw new AppError('Access denied', 403);
+    if (!policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', flag)) throw new AppError('Access denied', 403);
   };
   const fields = Object.keys(dto);
   const actionOnly = before && fields.length > 0 && fields.every(field => field === 'assignedUserId' || field === 'status' && dto.status === 'completed');
   if (!actionOnly) permitted(action);
+  if (system) permitted('canAssign');
   if (dto.assignedUserId !== undefined && dto.assignedUserId !== (before?.assignedUserId ?? userId)) permitted('canAssign');
   if (dto.status === 'completed' && before?.status !== 'completed') permitted('canComplete');
   if (dto.dealId !== undefined || dto.dealIds !== undefined) {
-    if (!system && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'deals', 'canView')) throw new AppError('Access denied', 403);
+    if (!policy.clientAdmin && !hasModulePermission(policy.permissions, 'deals', 'canView')) throw new AppError('Access denied', 403);
     const ids = taskAssociationIds(dto, 'deal');
     const previous = before?.dealLinks.map(row => row.dealId) ?? [];
     // Removing a Deal is an association mutation too; recheck both sides.

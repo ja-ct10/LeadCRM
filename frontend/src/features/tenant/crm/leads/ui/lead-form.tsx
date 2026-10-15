@@ -1,6 +1,7 @@
 'use client';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+import { applyCrmFieldErrors } from '@/shared/utils/crm-mutation-error';
 
 import { LeadFieldsSchema, LEAD_SOURCES, LeadNameSchema, OptionalLeadSourceSchema } from '@leadcrm/shared';
 import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
@@ -78,6 +79,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const { users } = useData();
   const isEdit = !!initialData;
   const requestId = useRef<string | undefined>(undefined);
+  const saving = useRef(false);
   const { products: productRecords, error: productError, loading: productsLoading } = useProductInterests();
 
   const {
@@ -86,6 +88,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
     formState: { errors, isSubmitting },
     reset,
     setFocus,
+    setError,
     setValue,
     control,
     watch,
@@ -181,7 +184,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   }, [initialData, reset]);
 
   const onFormSubmit = async (data: LeadFormData): Promise<void> => {
-    if (!canSubmit) return;
+    if (!canSubmit || saving.current) return;
     setPhoneTouched(true);
     if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
     // Build phone in E.164 format from local 10-digit number
@@ -199,19 +202,22 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       lastName: data.lastName,
       email: data.email || undefined,
       phone: fullPhone,
-      companyName: organization.payload().companyName,
-      newAccount: organization.payload().newAccount,
+      ...organization.payload(),
       status: data.status || 'Warm',
       ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
-      accountId: organization.payload().accountId || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
       address: data.address?.trim() ?? '',
     };
 
     setSubmitError(null);
+    saving.current = true;
     try { await onSave(payload); }
-    catch (error: unknown) { setSubmitError(error instanceof Error ? error.message : 'Unable to save lead. Please try again.'); }
+    catch (error: unknown) {
+      applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
+      organization.applyServerErrors(error);
+      setSubmitError(error instanceof Error ? error.message : 'Unable to save lead. Please try again.');
+    } finally { saving.current = false; }
   };
 
   // Shared field classes
@@ -316,7 +322,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         {/* Section 3: Organization */}
         <div className="space-y-4">
           <SectionHeader num={3} title="Organization" />
-          <div data-crm-field-key="companyName" data-crm-secondary-field-key="accountId" className="sm:col-span-2"><OrganizationFields draft={organization} companyLabel={customFields.layout?.fields.companyName?.label ?? 'Company Name'} showCompany={customFields.layout?.fields.companyName?.visibleInForm !== false} showAccount={customFields.layout?.fields.accountId?.visibleInForm !== false} /></div>
+          <div data-crm-field-key="companyName" data-crm-secondary-field-key="accountId" className="sm:col-span-2"><OrganizationFields draft={organization} disabled={isSubmitting} companyLabel={customFields.layout?.fields.companyName?.label ?? 'Company Name'} showCompany={customFields.layout?.fields.companyName?.visibleInForm !== false} showAccount={customFields.layout?.fields.accountId?.visibleInForm !== false} /></div>
           <CustomFieldGroup form={customFields} group="Organization" />
         </div>
 

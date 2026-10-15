@@ -69,3 +69,19 @@ it('discards an in-flight preview after a user change', async () => {
   expect(screen.queryByText('Follow up')).toBeNull();
   expect(screen.getByRole('button', { name: 'Run check' }).textContent).toBe('Run check');
 });
+it('shows rendered email and named multiple-Deal previews without execution controls', async () => {
+  vi.mocked(workflowsApi.test).mockResolvedValue({ success: true, data: { ...result, actions: [
+    { type: 'send_email', valid: true, message: 'No email sent.', emailPreview: { senderName: 'Ana', senderEmail: 'ana@example.test', recipient: 'lead@example.test', subject: 'Hello Ada', body: '<p>Hello Ada</p><script>bad()</script>', warnings: ['Phone has no value and will be blank.'] } },
+    { ...result.actions[0], taskPreview: { ...result.actions[0].taskPreview!, dealIds: ['one', 'two', 'three'], deals: [{ id: 'one', title: 'First Deal' }, { id: 'two', title: 'Second Deal' }, { id: 'three', title: 'Third Deal' }], associationSummary: 'Creates 1 task linked to 3 deals.' } },
+  ] } });
+  render(<WorkflowTestPanel workflowId="workflow" trigger={trigger} />);
+  await chooseDeal(); fireEvent.click(screen.getByRole('button', { name: 'Run check' }));
+  expect(await screen.findByText('Creates 1 task linked to 3 deals.')).toBeTruthy();
+  expect(screen.getByText('First Deal, Second Deal, Third Deal')).toBeTruthy();
+  expect(screen.getByText('Phone has no value and will be blank.')).toBeTruthy();
+  const frame = screen.getByTitle('Email message preview 1');
+  expect(frame.getAttribute('sandbox')).toBe('');
+  expect(frame.getAttribute('srcdoc')).toContain('Hello Ada');
+  expect(frame.getAttribute('srcdoc')).not.toContain('<script>');
+  expect(screen.queryByRole('button', { name: /send|create task/i })).toBeNull();
+});

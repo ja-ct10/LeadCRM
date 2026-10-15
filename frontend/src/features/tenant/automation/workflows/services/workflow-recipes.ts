@@ -105,7 +105,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     trigger: 'lead.created',
     isActive: false,
     actions: [
-      { type: 'send_email', config: { senderUserId: '', subject: 'Thank you for connecting, {{first_name}}', body: '<p>Hi {{first_name}},</p><p>Thank you for reaching out to our team. We received your details and an account representative will be in touch shortly.</p>' } },
+      { type: 'send_email', config: { subject: 'Thank you for connecting, {{first_name}}', body: '<p>Hi {{first_name}},</p><p>Thank you for reaching out to our team. We received your details and an account representative will be in touch shortly.</p>' } },
       { type: 'create_task', config: { title: 'Confirm welcome email receipt with {{first_name}}', dueDaysFromNow: 2, priority: 'Low' } },
     ],
   },
@@ -165,7 +165,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     trigger: 'contact.created',
     isActive: false,
     actions: [
-      { type: 'send_email', config: { senderUserId: '', subject: 'Welcome to our platform, {{first_name}}!', body: '<p>Hello {{first_name}},</p><p>Welcome! We are excited to partner with {{company}}. Please let us know if you have any questions as you get started.</p>' } },
+      { type: 'send_email', config: { subject: 'Welcome to our platform, {{first_name}}!', body: '<p>Hello {{first_name}},</p><p>Welcome! We are excited to partner with {{company}}. Please let us know if you have any questions as you get started.</p>' } },
       { type: 'create_task', config: { title: 'First 30-day check-in with {{first_name}}', dueDaysFromNow: 30, priority: 'Medium' } },
     ],
   },

@@ -8,6 +8,7 @@ import { validateProductSnapshots, normalizeProductOther } from '../leads/produc
 import { productRelationData } from '../leads/product-relations';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import prisma from '../../../config/database.config';
+import { NotFoundError } from '../../../shared/errors/http-error';
 import { CrmStatusSchema, normalizeCrmStatus } from '@leadcrm/shared';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { assertClosedStatus, cancelOpenDeals, contactStatusValue, finalizeContactLifecycle } from '../engagement.service';
@@ -156,6 +157,10 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     if (newAccount) {
       const account = await createLinkedAccount(tx, tenantId, newAccount, actorId);
       data.accountId = account.id; data.company = account.name;
+    } else if (data.accountId && data.accountId !== current.accountId) {
+      const account = await tx.account.findFirst({ where: { tenantId, id: String(data.accountId), isArchived: false, deletedAt: null }, select: { name: true } });
+      if (!account) throw new NotFoundError('Account');
+      data.company = account.name;
     }
     await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({

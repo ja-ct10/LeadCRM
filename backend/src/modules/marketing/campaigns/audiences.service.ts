@@ -229,13 +229,37 @@ function personalized(row: Record<string, unknown>, fields: CrmFieldCatalogEntry
   return { values: { ...values, ...Object.fromEntries(Object.entries(legacy).filter(([key]) => approved.has(key))) }, unresolved };
 }
 /** Workflows reuse the Campaign catalog and exact tenant-scoped relationship resolver. */
-export async function workflowRecipientValues(tenantId: string, entity: 'lead' | 'contact', id: string, requiredVariables: ReadonlySet<string>) {
+export async function workflowRecipientValues(tenantId: string, entity: 'lead' | 'contact', id: string, requiredVariables: ReadonlySet<string>, context?: Record<string, unknown>) {
   const fields = await campaignFieldsForAudienceSource(tenantId, entity === 'lead' ? 'LEADS' : 'CONTACTS');
   const where = { tenantId, id, isArchived: false, deletedAt: null };
   const row = entity === 'lead' ? await prisma.lead.findFirst({ where, select: { ...leadRecipientProjection, companyName: true } })
     : await prisma.contact.findFirst({ where, select: { ...contactRecipientProjection, company: true, notes: true } });
   if (!row) throw new AppError('The message recipient is unavailable.', 404);
-  const result = personalized(row, fields, tenantId, requiredVariables);
+  // Run Check projects validated earlier actions in memory. Reuse the Campaign
+  // renderer against that projection without writing any record or relationship.
+  const projected: Record<string, unknown> = { ...row };
+  if (context) {
+    const custom = new Map(row.customFieldValues.map(value => [value.fieldId, value.value as unknown]));
+    for (const field of fields.filter(field => field.module === (entity === 'lead' ? 'leads' : 'contacts'))) {
+      const key = `${entity}.${field.canonicalTechnicalKey ?? field.technicalKey}`;
+      const alias = `${entity}.${field.technicalKey}`;
+      const projectedKey = Object.prototype.hasOwnProperty.call(context, key) ? key : alias;
+      if (!Object.prototype.hasOwnProperty.call(context, projectedKey) || context[projectedKey] === undefined) continue;
+      if (field.customFieldId) custom.set(field.customFieldId, context[projectedKey]);
+      else projected[field.technicalKey] = context[projectedKey];
+    }
+    projected.customFieldValues = [...custom].map(([fieldId, value]) => ({ fieldId, value }));
+    if (projected.assignedUserId !== row.assignedUserId) projected.assignedUser = typeof projected.assignedUserId === 'string'
+      ? await prisma.user.findFirst({ where: { tenantId, id: projected.assignedUserId }, select: { firstName: true, lastName: true } }) : null;
+    if (projected.accountId !== row.accountId) projected.account = typeof projected.accountId === 'string'
+      ? await prisma.account.findFirst({ where: { tenantId, id: projected.accountId, isArchived: false, deletedAt: null }, select: relatedAccountProjection }) : null;
+    if (Array.isArray(projected.productInterestIds)) {
+      const ids = projected.productInterestIds.filter((value): value is string => typeof value === 'string');
+      const products = await prisma.productInterest.findMany({ where: { tenantId, id: { in: ids }, active: true }, select: { id: true, name: true } });
+      projected.productLinks = ids.flatMap(id => { const product = products.find(value => value.id === id); return product ? [{ product, interested: true }] : []; });
+    }
+  }
+  const result = personalized(projected, fields, tenantId, requiredVariables);
   if (result.unresolved.length) throw new AppError(`Resolve message variable relationships: ${result.unresolved.join(', ')}. Select one eligible related Deal or repair the Account link.`, 400);
   if (entity === 'lead') result.values.company = result.values.companyName ?? '';
   return result.values;

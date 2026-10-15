@@ -519,6 +519,20 @@ describe.skipIf(!disposable)(
       expect((await call('/operations/tasks', 'POST', { ...payload, title: 'Changed retry' })).status).toBe(409);
     });
 
+    it('deduplicates concurrent creation requests without repeating task history', async () => {
+      const { randomUUID } = await import('node:crypto');
+      const payload = { ...draft('Concurrent idempotent creation'), requestId: randomUUID() };
+      const responses = await Promise.all(Array.from({ length: 3 }, () => call('/operations/tasks', 'POST', payload)));
+      expect(responses.every(response => [200, 201, 409].includes(response.status)), JSON.stringify(responses)).toBe(true);
+      const successes = responses.filter(response => response.status < 300);
+      expect(successes.length).toBeGreaterThan(0);
+      expect(new Set(successes.map(response => response.body.data.id)).size).toBe(1);
+      const retry = await call('/operations/tasks', 'POST', payload);
+      expect(retry.body.data.id).toBe(successes[0].body.data.id);
+      expect(await history(retry.body.data.id)).toHaveLength(2);
+      expect(await prisma.task.count({ where: { tenantId, title: payload.title } })).toBe(1);
+    });
+
     it('derives all CRM Task lists with accurate counts, pagination, conversion context and no duplicates', async () => {
       const related = await newDeal('Related Deal', { accountId: account.id,
         leadDeals: { create: { leadId: lead.id } }, contactDeals: { create: { contactId: contact.id } } });

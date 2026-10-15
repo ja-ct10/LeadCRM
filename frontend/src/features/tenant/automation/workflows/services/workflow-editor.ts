@@ -9,6 +9,7 @@ import {
   getWorkflowUpdateFields,
   getAvailableActions,
   normalizeSavedWorkflowAssignment,
+  WorkflowTaskAssociationSchema,
   retiredAccountWorkflowReferences,
   ACCOUNT_RETIREMENT_REASON,
   type ActionDefinition,
@@ -230,6 +231,7 @@ export function actionSummary(
       return [
         String(config.title || 'Add a task title'),
         `Assigned to ${assignmentSummary(action, options)}`,
+        config.targetMode === 'all_matching' ? 'One task linked to all matching related deals' : config.targetMode === 'triggering_deal' ? 'Linked to the triggering deal' : 'Linked to one matching deal',
         `Due in ${config.dueDaysFromNow === '' || config.dueDaysFromNow == null ? 3 : config.dueDaysFromNow} day(s) · ${config.priority || 'Medium'} priority`,
       ];
     case 'create_notification':
@@ -243,7 +245,7 @@ export function actionSummary(
         config.templateId
           ? `Template: ${referenceName('template', config.templateId, options)}`
           : String(config.subject || 'Add an email template or message'),
-        `Sender: ${(options.senders?.find(sender => sender.id === config.senderUserId)?.name ?? 'choose connected Gmail sender')}`,
+        'Uses the triggering record’s assigned agent’s authorized Gmail connection',
       ];
     case 'send_sms':
       return [String(config.message || 'Add an SMS message'), `To: ${config.recipient === 'primary_contact' ? 'primary contact' : config.recipient === 'primary_lead' ? 'primary lead' : 'triggering record'}`];
@@ -321,6 +323,15 @@ export function actionIssues(
   if (!definition || !entity || !definition.entities.includes(entity))
     return ['This action is unavailable for the trigger.'];
   const issues: string[] = [];
+  if (action.type === 'create_task') {
+    const selection = WorkflowTaskAssociationSchema.safeParse(action.config);
+    if (!selection.success) issues.push('Choose a valid task association mode and available filters.');
+    else {
+      const mode = selection.data.targetMode ?? (entity === 'deal' ? 'triggering_deal' : 'single_match');
+      if (entity === 'deal' && mode !== 'triggering_deal' || entity !== 'deal' && mode === 'triggering_deal' || entity === 'account' && mode === 'all_matching') issues.push('Choose a task association mode supported by this trigger.');
+      if (selection.data.pipelineId && selection.data.currentStageId && !options.pipelines.find(pipeline => pipeline.id === selection.data.pipelineId)?.stages.some(stage => stage.id === selection.data.currentStageId)) issues.push('Choose a stage in the selected pipeline.');
+    }
+  }
   if (['create_task', 'assign_owner'].includes(action.type)) issues.push(...assignmentIssues(action, options, incomplete));
   if (action.type === 'update_field') {
     const field = getWorkflowUpdateFields(entity, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[entity]]).find((entry) => entry.field === action.config.field);
@@ -352,7 +363,7 @@ export function actionIssues(
         issues.push(`${field.label} is required.`);
       continue;
     }
-    const choices = key === 'senderUserId' ? options.senders ?? [] : references(field.type, options);
+    const choices = references(field.type, options);
     if (choices && !choices.some((entry) => entry.id === value))
       issues.push(`${field.label}: choose an available selection.`);
     if (field.options && !field.options.includes(String(value)))

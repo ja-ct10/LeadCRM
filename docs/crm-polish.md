@@ -1,10 +1,13 @@
 # CRM organization, notes and workflow polish
 
-Lead and Contact forms share an Organization block. Company Name and Industry form
-the first row; Size and Website form the second. Company name only preserves a
-person's historical text without creating an Account. Link existing Account shows
-authorized company information read-only. Create new Account saves the company,
-its required custom fields, and the person in one sales transaction.
+Lead and Contact forms share an Organization block with exactly two modes:
+Link existing account and Create new account. Linking shows only an authorized
+searchable Account dropdown; an empty selection remains optional on creation.
+Creating shows the shared Account Name, Industry, Size, Website, Full Address and
+applicable custom fields, and saves Account and person in one sales transaction.
+Account and person addresses remain independent. Standalone Full Address spans
+both desktop columns and returns to one column on smaller screens.
+Unchanged historical company text remains preserved when editing older records.
 
 `POST /crm/leads`, `POST /crm/contacts`, and their corresponding
 `PUT /crm/{module}/:id` routes accept optional `newAccount`:
@@ -17,6 +20,7 @@ its required custom fields, and the person in one sales transaction.
     "industry": "Technology",
     "size": "11-50",
     "website": "https://example.com",
+    "address": "Building 1\nManila",
     "customFieldValues": {}
   }
 }

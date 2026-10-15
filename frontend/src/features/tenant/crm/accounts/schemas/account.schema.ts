@@ -3,17 +3,13 @@ import { z } from 'zod';
 // ── Zod schemas mirroring backend CreateCompanySchema / UpdateCompanySchema ──
 // Backend route POST /crm/accounts validates against CreateCompanySchema from companies.dto.ts.
 
-import { COMPANY_SIZE_OPTIONS } from '@leadcrm/shared';
+import { AccountFieldsSchema } from '@leadcrm/shared';
 export { COMPANY_SIZE_OPTIONS } from '@leadcrm/shared';
 
 
-export const CreateAccountSchema = z.object({
-  name: z.string().trim().min(1, 'Account name is required').max(255, 'Max 255 characters'),
-  industry: z.string().optional(),
-  size: z.enum(COMPANY_SIZE_OPTIONS).optional().or(z.literal('')),
-  website: z.string().url('Must be a valid URL').optional().or(z.literal('')),
+export const CreateAccountSchema = AccountFieldsSchema.extend({
+  size: AccountFieldsSchema.shape.size.or(z.literal('')),
   tags: z.array(z.string()).default([]),
-  address: z.string().optional(),
   notes: z.string().optional(),
 });
 

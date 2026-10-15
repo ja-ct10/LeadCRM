@@ -60,7 +60,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const actions = [{ type:'send_email',config:{templateId:template.id,senderUserId:owner.id} }];
     const saved = await prisma.workflow.create({ data: { tenantId, name:`Template repair ${randomUUID()}`,trigger:'contact.updated',actions,isActive:false,status:'PAUSED' } });
     const read = await call(`/automation/workflows/${saved.id}`);
-    expect(read.body.data.repairReason).toContain('Account assignment and product fields are retired');
+    expect(read.body.data.repairReason).toContain('Account assignment, product fields and internal notes are retired');
     expect(read.body.data.actions).toEqual(actions);
     expect((await call(`/automation/workflows/${saved.id}`, 'PUT', { isActive:true })).status).toBe(400);
     expect((await call(`/automation/workflows/${saved.id}`, 'PUT', { description:'Template repair in progress' })).status).toBe(200);
@@ -76,10 +76,10 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const read = await call(`/automation/workflows/${saved.id}`);
     expect(read.status).toBe(200);
     expect(read.body.data).toMatchObject({ isActive: false, status: 'PAUSED', conditions, actions });
-    expect(read.body.data.repairReason).toContain('Account assignment and product fields are retired');
+    expect(read.body.data.repairReason).toContain('Account assignment, product fields and internal notes are retired');
     const activate = await call(`/automation/workflows/${saved.id}`, 'PUT', { isActive: true });
     expect(activate.status).toBe(400);
-    expect(activate.body.error).toContain('Account assignment and product fields are retired');
+    expect(activate.body.error).toContain('Account assignment, product fields and internal notes are retired');
     expect((await prisma.workflow.findUniqueOrThrow({ where: { id: saved.id } })).actions).toEqual(actions);
     const draft = { name: `Invalid Account ${randomUUID()}`, trigger: 'account.updated', conditions, actions, isActive: false };
     expect((await call('/automation/workflows', 'POST', draft)).status).toBe(400);
@@ -150,7 +150,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   }, 30000);
   beforeEach(async () => {
     await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } });
-    vi.mocked(sendEmail).mockReset().mockResolvedValue({ messageId: `provider-message-${tenantId}`, threadId: `provider-thread-${tenantId}` });
+    vi.mocked(sendEmail).mockReset().mockImplementation(async () => ({ messageId: `provider-message-${randomUUID()}`, threadId: `provider-thread-${randomUUID()}` }));
     vi.mocked(sendMail).mockReset().mockImplementation(async () => ({ messageId: randomUUID(), submitted: true }));
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
@@ -386,7 +386,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(history.steps[1].output).toBeNull();
     await expect(scope(() => workflows.updateWorkflow(workflow.id, tenantId, actor.id, {
       actions: [{ type: 'send_email', enabled: true, config: {} }],
-    }))).rejects.toThrow('Connected Gmail sender is required');
+    }))).rejects.toThrow('Choose a complete template or enter an email subject and message');
   });
   it('fires Lead status changes through the real update route only when the status changes', async () => {
     const workflow = await create([{ type: 'create_task', config: { title: 'Warm status follow-up', assignedUserId: owner.id } }], {
@@ -419,7 +419,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(await runs(changedWorkflow.id)).toHaveLength(1);
     const [failedCreation] = await runs(createdWorkflow.id);
     expect(failedCreation.status).toBe('failed');
-    expect(failedCreation.errorMessage).toContain('eligible Deal');
+    expect(failedCreation.errorMessage).toContain('No related deals match');
     expect(await prisma.task.count({ where: { tenantId, title: 'Profile created' } })).toBe(0);
     expect(await prisma.task.count({ where: { ...taskContextWhere('contact', id!, tenantId), title: 'Contact warmed' } })).toBe(1);
   });
@@ -570,14 +570,14 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const fireRecord = () => scope(() => fireWorkflowTrigger({ tenantId, actorId: actor.id, eventId: randomUUID(), entityType: entity, entityId: record.id, triggerType: trigger, context: entity === 'account' ? { 'event.changedFields': ['name'] } : {} }));
     const workflow = await create([{ type: 'create_task', config: { title, assignedUserId: owner.id } }], { trigger });
     await fireRecord();
-    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('eligible Deal') });
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('No related deals match') });
     expect(await prisma.task.count({ where: { tenantId, title } })).toBe(0);
     const first = await relatedDeal(entity, record.id);
     await fireRecord();
     expect((await runs(workflow.id))[0].status).toBe('completed');
     const second = await relatedDeal(entity, record.id);
     await fireRecord();
-    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('Multiple related Deals') });
+    expect((await runs(workflow.id))[0]).toMatchObject({ status: 'failed', errorMessage: expect.stringContaining('2 related deals match') });
     expect(await prisma.task.count({ where: { tenantId, title } })).toBe(1);
     await scope(() => workflows.updateWorkflow(workflow.id, tenantId, actor.id, { actions: [{ type: 'create_task', config: { title, assignedUserId: owner.id, dealId: second.id } }] }));
     await fireRecord();
@@ -664,7 +664,8 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       { type: 'create_task', config: { title: 'After email', dealId: deal.id, assignedUserId: owner.id } }]);
     await fire(); expect((await runs(workflow.id))[0].status).toBe('completed');
     expect(sendEmail).toHaveBeenCalledWith(tenantId, actor.id, lead.email, 'Hello Ada', '<p>Welcome Ada</p>', undefined, undefined, undefined, expect.objectContaining({ messageId: expect.stringMatching(/^<workflow-.+@leadcrm\.local>$/) }));
-    expect(await prisma.emailDeliveryLog.count({ where: { tenantId, gmailMessageId: `provider-message-${tenantId}`, status: 'sent' } })).toBe(1);
+    const receipt = await vi.mocked(sendEmail).mock.results[0].value;
+    expect(await prisma.emailDeliveryLog.count({ where: { tenantId, gmailMessageId: receipt.messageId, status: 'sent' } })).toBe(1);
     vi.mocked(sendEmail).mockRejectedValueOnce(new Error('Provider credential detail must not leak'));
     await fire(); const [failed] = await runs(workflow.id);
     expect(failed.status).toBe('failed'); expect(failed.errorMessage).not.toContain('credential detail');
@@ -673,9 +674,61 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(await prisma.emailDeliveryLog.count({ where: { tenantId, status: 'failed' } })).toBe(1);
     expect(await prisma.task.count({ where: { tenantId, title: 'After email' } })).toBe(1);
   });
+  it('previews projected email values and whitespace template fallback without sending or changing records', async () => {
+    const sample = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Before', lastName: 'Preview', email: `${randomUUID()}@example.test`, assignedUserId: actor.id } }));
+    const workflow = await create([
+      { type: 'update_field', config: { field: 'firstName', value: 'After' } },
+      { type: 'send_email', config: { templateId: template.id, subject: '  ', body: ' ' } },
+    ], { isActive: false });
+    const check = await scope(() => workflows.testWorkflow(workflow.id, tenantId, sample.id));
+    expect(check).toMatchObject({ valid: true, actions: [{ valid: true }, { emailPreview: {
+      senderEmail: actor.email, recipient: sample.email, subject: 'Hello After', body: '<p>Welcome After</p>', warnings: [],
+    } }] });
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: sample.id } })).firstName).toBe('Before');
+    expect(sendEmail).not.toHaveBeenCalled(); expect(await runs(workflow.id)).toHaveLength(0);
+    await scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true));
+    await fire('lead', sample);
+    expect(sendEmail).toHaveBeenCalledWith(tenantId, actor.id, sample.email, 'Hello After', '<p>Welcome After</p>', undefined, undefined, undefined, expect.anything());
+  });
+  it('keeps missing-value warnings in preview and execution history without exposing delivery evidence', async () => {
+    const sample = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Missing', lastName: 'Value', email: `${randomUUID()}@example.test`, assignedUserId: actor.id } }));
+    const workflow = await create([{ type: 'send_email', config: { subject: 'Hello {{firstName}}', body: '<p>Call {{phone}}</p>' } }]);
+    const check = await scope(() => workflows.testWorkflow(workflow.id, tenantId, sample.id));
+    expect(check.actions[0].emailPreview?.warnings).toEqual([expect.stringContaining('{{phone}}')]);
+    expect(sendEmail).not.toHaveBeenCalled();
+    await fire('lead', sample);
+    const [run] = await runs(workflow.id);
+    expect(run.steps[0].output).toEqual({ warnings: [expect.stringContaining('{{phone}}')] });
+    expect(run.steps[0]).not.toHaveProperty('resolvedInput');
+  });
+  it('preserves successful email and failed Task evidence when the same event is delivered again', async () => {
+    const sample = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Partial', lastName: 'Run', email: `${randomUUID()}@example.test`, assignedUserId: actor.id } }));
+    await relatedDeal('lead', sample.id);
+    const workflow = await create([{ type: 'send_email', config: { templateId: template.id } },
+      { type: 'create_task', config: { title: 'Ambiguous after email', assignedUserId: owner.id } }]);
+    vi.mocked(sendEmail).mockImplementationOnce(async () => {
+      await relatedDeal('lead', sample.id); await relatedDeal('lead', sample.id);
+      return { messageId: `partial-${randomUUID()}`, threadId: `partial-thread-${randomUUID()}` };
+    });
+    const event = { tenantId, actorId: actor.id, eventId: randomUUID(), entityType: 'lead', entityId: sample.id, triggerType: 'lead.created', context: {} };
+    await scope(() => fireWorkflowTrigger(event));
+    const first = await runs(workflow.id);
+    expect(first).toHaveLength(1); expect(first[0].status).toBe('failed');
+    expect(first[0].steps.map(step => step.status)).toEqual(['success', 'failed']);
+    expect(first[0].steps[1].error).toContain('3');
+    await scope(() => fireWorkflowTrigger(event)); await dispatchQueuedWorkflows(); await dispatchQueuedWorkflows();
+    expect(sendEmail).toHaveBeenCalledOnce(); expect(await runs(workflow.id)).toEqual(first);
+    expect(await prisma.task.count({ where: { tenantId, title: 'Ambiguous after email' } })).toBe(0);
+    expect(await prisma.emailDeliveryLog.count({ where: { tenantId, leadId: sample.id, status: 'sent' } })).toBe(1);
+  });
   it('requires valid ownership, connected sender, required stage fields and a lost reason', async () => {
     await expect(create([{ type: 'assign_owner', config: { userId: outsider.id } }])).rejects.toThrow();
-    await expect(create([{ type: 'send_email', config: { templateId: template.id, senderUserId: originalOwner.id } }])).rejects.toThrow(/Connect/);
+    const automatic = await create([{ type: 'send_email', config: { templateId: template.id, senderUserId: originalOwner.id } }]);
+    expect(automatic.actions).toEqual([{ type: 'send_email', config: { templateId: template.id } }]);
+    await prisma.lead.update({ where: { id: lead.id }, data: { assignedUserId: originalOwner.id } });
+    const disconnected = await scope(() => workflows.testWorkflow(automatic.id, tenantId, lead.id));
+    expect(disconnected.valid).toBe(false); expect(disconnected.actions[0].message).toContain('connect their work Gmail');
+    await prisma.lead.update({ where: { id: lead.id }, data: { assignedUserId: actor.id } });
     await expect(create([{ type: 'move_deal_stage', config: { stageId: lost.id } }], { trigger: 'deal.created' })).rejects.toThrow(/reason/);
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: required.id } }], { trigger: 'deal.created' });
     const dry = await scope(() => workflows.testWorkflow(workflow.id, tenantId, deal.id));
@@ -835,18 +888,19 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     await dispatchQueuedWorkflows(); expect(sendEmail).not.toHaveBeenCalled();
     expect(await prisma.activity.count({ where: { tenantId, title: `Workflow: ${workflow.name}` } })).toBe(0);
   });
-  it('checks the Gmail sender assignment and projects an earlier owner assignment without changing the record', async () => {
+  it('automatically uses the assigned Gmail sender and projects an earlier owner assignment without changing the record', async () => {
     const sample = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Mail', lastName: 'Scope', email: 'scope-check@example.test', assignedUserId: actor.id } }));
     const role = await prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales' } });
     await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId: owner.id, provider: 'gmail' } }, create: { tenantId, userId: owner.id, email: owner.email, accessToken: 'disposable-fixture', scopes: ['gmail.send'] }, update: { isActive: true } });
     try {
       const emailAction: WorkflowAction = { type: 'send_email', config: { templateId: template.id, senderUserId: owner.id } };
       const blocked = await create([emailAction], { isActive: false });
-      const mismatch = await scope(() => workflows.testWorkflow(blocked.id, tenantId, sample.id));
-      expect(mismatch.valid).toBe(false); expect(mismatch.actions[0].message).toContain('must be assigned');
+      const assigned = await scope(() => workflows.testWorkflow(blocked.id, tenantId, sample.id));
+      expect(assigned.valid).toBe(true); expect(assigned.actions[0].emailPreview?.senderEmail).toBe(actor.email);
       const projected = await create([{ type: 'assign_owner', config: { userId: owner.id } }, emailAction], { isActive: false });
       const success = await scope(() => workflows.testWorkflow(projected.id, tenantId, sample.id));
       expect(success.valid).toBe(true); expect(success.actions[1].message).toContain('projected assignment');
+      expect(success.actions[1].emailPreview?.senderEmail).toBe(owner.email);
       expect((await prisma.lead.findUniqueOrThrow({ where: { id: sample.id } })).assignedUserId).toBe(actor.id);
       expect(sendEmail).not.toHaveBeenCalled();
       await prisma.lead.update({ where: { id: sample.id }, data: { assignedUserId: owner.id } });

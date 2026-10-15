@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RETIRED_WORKFLOW_ACTIONS = exports.findTrigger = exports.WORKFLOW_TRIGGERS = exports.WORKFLOW_MESSAGE_VARIABLES = exports.WORKFLOW_MODULES = void 0;
 exports.workflowMessageEntity = workflowMessageEntity;
 exports.getWorkflowMessageVariables = getWorkflowMessageVariables;
+exports.getWorkflowEmailVariableChoices = getWorkflowEmailVariableChoices;
 exports.workflowMessageVariableKeys = workflowMessageVariableKeys;
 exports.workflowMessageVariableError = workflowMessageVariableError;
 exports.getWorkflowCustomFields = getWorkflowCustomFields;
@@ -37,6 +38,14 @@ function getWorkflowMessageVariables(entity, layout, definitions = []) {
     const catalog = messageCatalog(entity, definitions, layout);
     return [...new Map(catalog.map(field => [field.technicalKey, { token: field.technicalKey, label: field.label }])).values(),
         { token: 'sender_name', label: 'Sender Name' }, { token: 'sender_email', label: 'Sender Email' }];
+}
+/** New email insertion is limited to fields owned by the triggering person. */
+function getWorkflowEmailVariableChoices(entity, layout, definitions = []) {
+    if (entity !== 'lead' && entity !== 'contact')
+        return [];
+    const source = entity === 'lead' ? 'LEADS' : 'CONTACTS';
+    return (0, campaign_fields_1.campaignVariableChoices)((0, campaign_fields_1.campaignFields)(source, definitions, layout), source, { forInsertion: true })
+        .filter(choice => choice.category !== 'Sender' && choice.personalizationAvailable);
 }
 function workflowMessageVariableKeys(entity, definitions = [], layout) {
     const keys = (0, campaign_fields_1.campaignApprovedVariableKeys)(messageCatalog(entity, definitions, layout));
@@ -156,7 +165,11 @@ exports.RETIRED_WORKFLOW_ACTIONS = ['send_campaign', 'create_notification'];
 function getAvailableActions() {
     return [
         { type: 'create_task', label: 'Create Task', description: 'Create a linked follow-up task.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
-                dealId: { type: 'string', label: 'Deal ID (required when several related Deals exist)', required: false },
+                targetMode: { type: 'select', label: 'Associate task with', required: false, options: ['triggering_deal', 'single_match', 'all_matching'] },
+                pipelineId: { type: 'pipeline', label: 'Pipeline filter', required: false },
+                currentStageId: { type: 'stage', label: 'Stage filter', required: false },
+                productInterestId: { type: 'products', label: 'Product filter', required: false },
+                dealId: { type: 'deal', label: 'Specific deal (optional)', required: false },
                 title: { type: 'string', label: 'Task title', required: true }, description: { type: 'string', label: 'Description', required: false },
                 assignedUserId: { type: 'user', label: 'Assign to (defaults to assigned agent)', required: false },
                 assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
@@ -164,7 +177,7 @@ function getAvailableActions() {
             } },
         { type: 'send_email', label: 'Send Email', description: 'Send a template through a connected Gmail account.', entities: ['lead', 'contact'], configSchema: {
                 templateId: { type: 'template', label: 'Email template (optional with subject and message)', required: false },
-                subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false }, senderUserId: { type: 'user', label: 'Connected Gmail sender', required: true },
+                subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false },
             } },
         { type: 'send_sms', label: 'Send SMS', description: 'Send a message to the record or its explicitly selected primary relationship.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
                 recipient: { type: 'select', label: 'Recipient', required: true, options: ['record', 'primary_contact', 'primary_lead'] },

@@ -1,5 +1,5 @@
 'use client';
-import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
+import { applyCrmFieldErrors, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
@@ -116,6 +116,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     setValue,
     watch,
     setFocus,
+    setError,
   } = useForm<CreateContactFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RHF v7.82 + resolvers v5.4 type mismatch
     resolver: zodResolver(schema) as never,
@@ -146,8 +147,9 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const selectedProducts = watch('productInterest') || [];
 
   const [saveError, setSaveError] = useState('');
+  const saving = useRef(false);
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
-    if (!canSubmit) return;
+    if (!canSubmit || saving.current) return;
     if (!customFields.validate() || !organization.validate()) return;
     setSaveError('');
     // contactsV2Api translates the display aliases to Contact API columns.
@@ -157,8 +159,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       lastName: data.lastName || undefined,
       email: data.email || undefined,
       phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
-      companyName: organization.payload().companyName,
-      newAccount: organization.payload().newAccount,
+      ...organization.payload(),
       ...(isEdit ? { notes: data.notes || '' } : {}),
       status: data.status || 'Warm',
       leadSource: data.source || (isEdit ? '' : undefined),
@@ -167,12 +168,16 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       address: data.address || (isEdit ? '' : undefined),
     };
 
-    // Pass accountId through directly — adapter maps it correctly
-    (cleaned as Record<string, unknown>).accountId = organization.payload().accountId;
     if (isEdit && !data.assignedUserId) (cleaned as Record<string, unknown>).assignedUserId = null;
 
+    saving.current = true;
     try { await onSave(cleaned); }
-    catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Unable to save Contact.'); setSaveError(error instanceof Error ? error.message : 'Unable to save Contact. Please try again.'); }
+    catch (error) {
+      applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
+      organization.applyServerErrors(error);
+      showCrmMutationError(error, 'Unable to save Contact.');
+      setSaveError(error instanceof Error ? error.message : 'Unable to save Contact. Please try again.');
+    } finally { saving.current = false; }
   };
 
   // Style classes
@@ -280,7 +285,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           <SectionHeader num={3} title="Organization" />
 
           {/* Account (organization) selector */}
-          <div data-crm-field-key="company" data-crm-secondary-field-key="accountId" className="sm:col-span-2"><OrganizationFields draft={organization} companyLabel={customFields.layout?.fields.company?.label ?? 'Company Name'} showCompany={customFields.layout?.fields.company?.visibleInForm !== false} showAccount={configuredFields.layout?.fields.accountId?.visibleInForm !== false} /></div>
+          <div data-crm-field-key="company" data-crm-secondary-field-key="accountId" className="sm:col-span-2"><OrganizationFields draft={organization} disabled={isSubmitting} companyLabel={customFields.layout?.fields.company?.label ?? 'Company Name'} showCompany={customFields.layout?.fields.company?.visibleInForm !== false} showAccount={configuredFields.layout?.fields.accountId?.visibleInForm !== false} /></div>
 
           <CustomFieldGroup form={customFields} group="Organization" />
         </div>

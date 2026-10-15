@@ -1,5 +1,4 @@
 'use client';
-import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 
 /**
  * useAccounts — route-scoped, server-paginated hook for the Accounts page.
@@ -105,7 +104,7 @@ export function useAccounts(params?: UseAccountsParams) {
       }
       setIsFormOpen(false);
     } catch (err) {
-      showCrmMutationError(err, 'Unable to create Account.');
+      throw err;
     }
   }, [tenant, refetch]);
 
@@ -126,7 +125,7 @@ export function useAccounts(params?: UseAccountsParams) {
       setIsFormOpen(false);
       setEditTarget(null);
     } catch (err) {
-      showCrmMutationError(err, 'Unable to update Account.');
+      throw err;
     }
   }, [tenant, refetch]);
 

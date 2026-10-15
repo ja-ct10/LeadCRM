@@ -144,6 +144,10 @@ export async function createContact(
     if (!existing && newAccount) {
       const account = await createLinkedAccount(tx, tenantId, newAccount, createdById);
       fields.accountId = account.id; fields.companyName = account.name;
+    } else if (!existing && fields.accountId) {
+      const account = await tx.account.findFirst({ where: { tenantId, id: fields.accountId, isArchived: false, deletedAt: null }, select: { name: true } });
+      if (!account) throw new NotFoundError('Active Account');
+      fields.companyName = account.name;
     }
     const lead = await createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
       ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById);
@@ -178,6 +182,10 @@ export async function updateContact(
       if (dto.newAccount) {
         const account = await createLinkedAccount(tx, tenantId, dto.newAccount, updatedById);
         data.accountId = account.id; data.companyName = account.name;
+      } else if (dto.accountId && dto.accountId !== current.accountId) {
+        const account = await tx.account.findFirst({ where: { tenantId, id: dto.accountId, isArchived: false, deletedAt: null }, select: { name: true } });
+        if (!account) throw new NotFoundError('Active Account');
+        data.companyName = account.name;
       }
       const previousCustom = dto.customFieldValues === undefined ? undefined : await readRecordValues(tx, tenantId, 'leads', id);
       await saveRecordValues(tx, tenantId, 'leads', id, dto.customFieldValues, updatedById);

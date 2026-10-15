@@ -2,6 +2,7 @@ import { findTrigger, getWorkflowConditionFields, customFieldTechnicalKey, resol
 import prisma from '../../../config/database.config';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
 import { normalizeWorkflowReferences, WorkflowActionSchema, normalizeSavedWorkflowAssignment, retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
+import { workflowEmailContent } from '../actions/action-email-content';
 
 export const workflowCustomFields = (tenantId: string, db: import('@prisma/client').Prisma.TransactionClient = prisma) => readConfiguredFields(db, tenantId);
 /** Resolve only the template content actually used by each email action. Definitions remain unchanged. */
@@ -12,7 +13,7 @@ export async function accountWorkflowRetirementReferences(draft: { trigger: stri
   const templates = await db.template.findMany({ where: { tenantId, id: { in: ids } }, select: { id: true, subject: true, content: true } });
   return retiredAccountWorkflowReferences({ ...draft, actions: actions.map(action => {
     const template = action?.type === 'send_email' && templates.find(template => template.id === action.config?.templateId);
-    return template ? { ...action, config: { ...action.config, subject: action.config.subject || template.subject, body: action.config.body || template.content } } : action;
+    return template ? { ...action, config: { ...action.config, ...workflowEmailContent(action.config, template) } } : action;
   }) });
 }
 export async function supportedChangedFields(entity: WorkflowEntity, fields: unknown, tenantId: string): Promise<string[]> {

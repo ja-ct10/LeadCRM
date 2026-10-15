@@ -305,11 +305,11 @@ export default function AccountsPage(): React.ReactElement {
     setDrawerTab('overview');
   }, []);
 
-  const handleSubmit = (data: any) => {
+  const handleSubmit = async (data: any) => {
     if (editTarget) {
-      handleUpdate(editTarget.id, data);
+      await handleUpdate(editTarget.id, data);
     } else {
-      handleCreate(data);
+      await handleCreate(data);
     }
   };
 
