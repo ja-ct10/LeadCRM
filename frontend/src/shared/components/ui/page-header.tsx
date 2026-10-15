@@ -1,5 +1,6 @@
 'use client';
 
+import { responsiveTypography } from '@/shared/styles/typography';
 import React, { ReactNode } from 'react';
 import { BackButton, BackButtonProps } from './back-button';
 import { cn } from '@/lib/utils';
@@ -38,13 +39,13 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         )}
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2.5">
-            <h1 className={cn('text-xl font-bold leading-7 tracking-tight text-slate-900 dark:text-white [overflow-wrap:anywhere]', titleClassName)}>
+            <h1 className={cn(responsiveTypography.title, 'font-bold leading-7 tracking-tight text-slate-900 dark:text-white [overflow-wrap:anywhere]', titleClassName)}>
               {title}
             </h1>
             {badge}
           </div>
           {subtitle && !actionsInlineWithTitle && (
-            <p className="mt-0.5 text-sm font-normal leading-5 text-slate-500 dark:text-slate-400">
+            <p className={cn(responsiveTypography.body, "mt-0.5 font-normal leading-5 text-slate-500 dark:text-slate-400")}>
               {subtitle}
             </p>
           )}
@@ -56,7 +57,7 @@ export const PageHeader: React.FC<PageHeaderProps> = ({
         </div>
       )}
       {subtitle && actionsInlineWithTitle && (
-        <p className="col-span-2 text-sm font-normal leading-5 text-slate-500 dark:text-slate-400">
+        <p className={cn(responsiveTypography.body, "col-span-2 font-normal leading-5 text-slate-500 dark:text-slate-400")}>
           {subtitle}
         </p>
       )}

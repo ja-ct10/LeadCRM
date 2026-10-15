@@ -1,5 +1,6 @@
 'use client';
 
+import { responsiveTypography } from '@/shared/styles/typography';
 import { useId, useState } from 'react';
 import { Pencil, Plus, Trash2 } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
@@ -36,7 +37,7 @@ export function ManageFieldGroups({ open, onOpenChange, module, onModuleChange, 
           <select aria-label="Field groups module" className={panelInputClass + ' max-w-60'} value={module} disabled={pending} onChange={event => { setName(''); setEditing(null); setDeleting(null); onModuleChange(event.target.value as CustomFieldModule); }}>{CUSTOM_FIELD_MODULES.map(value => <option key={value} value={value}>{CUSTOM_FIELD_MODULE_LABELS[value]}</option>)}</select>
         </label>
         {canEdit && <form className="my-5 shrink-0 space-y-2 border-b border-border pb-5" onSubmit={async event => { event.preventDefault(); if (busy || !name.trim()) return; if (await mutate({ action: 'add', label: name, expectedRevision: layout.revision ?? 0 })) setName(''); }}>
-          <label htmlFor={newGroupNameId} className="block text-sm">Add a new group name</label>
+          <label htmlFor={newGroupNameId} className={`block ${responsiveTypography.control}`}>Add a new group name</label>
           <div className="flex gap-2">
             <input id={newGroupNameId} placeholder="New group name" maxLength={100} className={panelInputClass + ' min-w-0 flex-1'} value={name} disabled={pending} onChange={event => setName(event.target.value)} />
             <Button className="h-10 shrink-0" disabled={busy || !name.trim()}><Plus aria-hidden="true" />Add</Button>
@@ -53,7 +54,7 @@ export function ManageFieldGroups({ open, onOpenChange, module, onModuleChange, 
                     {editing === group.id ? <form className="space-y-2" onSubmit={async event => { event.preventDefault(); if (await mutate({ action: 'rename', groupId: group.id, label, expectedRevision: layout.revision ?? 0 })) setEditing(null); }}>
                       <input autoFocus aria-label={`Group label: ${group.label}`} maxLength={100} className={panelInputClass} value={label} onChange={event => setLabel(event.target.value)} disabled={pending} />
                       <div className="flex gap-2"><Button size="sm" disabled={busy || !label.trim()}>Save</Button><Button size="sm" type="button" variant="outline" disabled={pending} onClick={() => setEditing(null)}>Cancel</Button></div>
-                    </form> : <p className="break-words text-sm font-medium">{group.label}</p>}
+                    </form> : <p className={`break-words font-medium ${responsiveTypography.control}`}>{group.label}</p>}
                     <p className="mt-2 text-xs text-muted-foreground">{fieldCount} {fieldCount === 1 ? 'field' : 'fields'}{group.protected ? ' · Protected closing evidence' : ''}</p>
                     {containsSystemFields && <p className="mt-1 text-xs text-muted-foreground">Contains system fields and cannot be deleted.</p>}
                   </div>
