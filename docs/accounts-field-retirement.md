@@ -40,6 +40,8 @@ Use the backend commands `db:accounts:fields:status`,
 Status and verify do not write database data. Provide:
 
 - `DATABASE_URL` and `CRM_ACCOUNT_FIELDS_EXPECT_DATABASE` naming that exact database.
+  If `DIRECT_URL` is configured, it must name the same database. Verification and
+  migration use that direct connection together.
 - `CRM_ACCOUNT_FIELDS_VERIFY_API` ending in `/api/v1`, a Client Admin bearer token
   in `CRM_ACCOUNT_FIELDS_VERIFY_TOKEN`, and `CRM_ACCOUNT_FIELDS_VERIFY_FRONTEND`.
 - `CRM_ACCOUNT_FIELDS_VERIFY_COMMIT`: the full serving release SHA.

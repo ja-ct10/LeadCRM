@@ -42,8 +42,10 @@ async function verifyRelease(env, fetcher = fetch) {
 async function run(db, mode, env=process.env, dependencies={}) {
   if(!['--status','--verify','--retire'].includes(mode))fail('ACCOUNT_FIELDS_INVALID_MODE');
   const expected=env.CRM_ACCOUNT_FIELDS_EXPECT_DATABASE;
-  let database;try{database=decodeURIComponent(new URL(env.DATABASE_URL).pathname.slice(1));}catch{fail('ACCOUNT_FIELDS_DATABASE_REQUIRED');}
-  if(!expected || expected!==database)fail('ACCOUNT_FIELDS_DATABASE_MISMATCH');
+  for (const connection of [env.DATABASE_URL, env.DIRECT_URL || env.DATABASE_URL]) {
+    let database;try{database=decodeURIComponent(new URL(connection).pathname.slice(1));}catch{fail('ACCOUNT_FIELDS_DATABASE_REQUIRED');}
+    if(!expected || expected!==database)fail('ACCOUNT_FIELDS_DATABASE_MISMATCH');
+  }
   if(mode==='--status')return status(db);
   if(mode==='--retire')cutoverApproval(env);
   const sha=await verifyRelease(env,dependencies.fetcher);
@@ -68,6 +70,6 @@ async function run(db, mode, env=process.env, dependencies={}) {
 module.exports={run,status,cutoverApproval,verifyRelease,preservation,retirement};
 if(require.main===module){
   require('dotenv').config({quiet:true});
-  const {PrismaClient}=require('@prisma/client');const db=new PrismaClient();
+  const {PrismaClient}=require('@prisma/client');const db=new PrismaClient({datasources:{db:{url:process.env.DIRECT_URL||process.env.DATABASE_URL}}});
   run(db,process.argv[2]).then(report=>console.log(JSON.stringify(report,null,2))).catch(error=>{console.error('[account-fields-retirement]',error.code??error.name);process.exitCode=1;}).finally(()=>db.$disconnect());
 }

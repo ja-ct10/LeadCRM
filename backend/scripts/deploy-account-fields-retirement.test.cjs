@@ -12,6 +12,7 @@ test('Account field cutover requires every exact-release attestation before any 
     await assert.rejects(run(new Proxy({},{get(){throw Error('Database must not be accessed');}}),'--retire',missing),/ACCOUNT_FIELDS_CUTOVER_APPROVAL_REQUIRED/);
   }
   await assert.rejects(run({},'--status',{...env,CRM_ACCOUNT_FIELDS_EXPECT_DATABASE:'other'}),/DATABASE_MISMATCH/);
+  await assert.rejects(run({},'--status',{...env,DIRECT_URL:'postgresql://fixture@127.0.0.1/other'}),/DATABASE_MISMATCH/);
 });
 test('release verification checks both serving revisions and rejects exposed retired fields',async()=>{
   assert.equal(await verifyRelease(env,healthy),sha);
