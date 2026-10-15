@@ -284,7 +284,8 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
       users: { ...common, firstName: 'Search Target Fresh', lastName: 'Acceptance', role: 'Sales', status: 'ACTIVE', email: 'fresh-total@camxian.com', mustChangePassword: false, onboardingCompletedAt: new Date() },
     };
     await prisma[module.model].create({ data: freshRecord[module.id] });
-    const count = () => reads.filter(read => read.path === module.api && read.method === 'GET' && new URLSearchParams(read.query).get('search') === module.search).length;
+    // Users refreshes its directory and applies the search locally.
+    const count = () => reads.filter(read => read.path === module.api && read.method === 'GET' && new URLSearchParams(read.query).get('search') === (module.id === 'users' ? null : module.search)).length;
     const calls = count();
     control.holdPath = module.api;
     await refresh.click();
