@@ -63,8 +63,6 @@
   font-size: 13px;
   font-weight: 600;
   line-height: 18px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 .pwa-install-banner__actions { display: flex; flex-shrink: 0; min-width: 0; align-items: center; justify-content: flex-end; gap: 8px; }
@@ -101,7 +99,11 @@
   .pwa-install-banner__title { font-size: 14px; line-height: 20px; }
 }
 @media (width <= 360px) {
-  .pwa-install-banner__title { white-space: normal; }
+  .pwa-install-banner__content { gap: 0; padding-inline: 4px; }
+  .pwa-install-banner__branding { gap: 2px; }
+  .pwa-install-banner__title { font-size: 12px; }
+  .pwa-install-banner__actions { gap: 2px; }
+  .pwa-install-banner__install { gap: 4px; padding-inline: 6px; }
 }
 
 .crm-shell { height: var(--app-viewport-height); min-height: 0; }

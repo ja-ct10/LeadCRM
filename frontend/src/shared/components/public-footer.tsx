@@ -9,7 +9,7 @@ export function PublicFooter() {
           <div className="min-w-0">
             <a href="/login" className="inline-flex items-center gap-3 rounded-lg text-xl font-bold text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 dark:text-white">
               <span className="flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-white"><img src="/leadcrm_logo.png" alt="" width={28} height={28} className="size-7 object-contain" /></span>
-              LeadCRM
+              <span>Lead<span className="text-blue-600 dark:text-blue-400">CRM</span></span>
             </a>
             <p className="mt-4 max-w-xl text-sm leading-7">A centralized CRM platform for Camxian Technologies, designed to manage leads, customers, sales pipelines, and automated workflows.</p>
             <p className="mt-5 flex items-start gap-2 text-sm leading-6">
