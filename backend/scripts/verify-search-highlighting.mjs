@@ -7,7 +7,7 @@ export async function verifySearchHighlighting({ page, prisma, tenant, foreignTe
   const data = { tenantId: tenant.id, productsNormalized: true };
   const lead = await prisma.lead.create({ data: { ...data, firstName: 'Locator', lastName: 'Lead', createdAt: new Date('2020-01-01') } });
   const contact = await prisma.contact.create({ data: { ...data, firstName: 'Locator', lastName: 'Contact', createdAt: new Date('2020-01-01') } });
-  const account = await prisma.account.create({ data: { ...data, name: 'Locator Account', createdAt: new Date('2020-01-01') } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Locator Account', createdAt: new Date('2020-01-01') } });
   const pipeline = await prisma.pipeline.create({ data: { tenantId: tenant.id, name: 'Locator Pipeline' } });
   const stages = [];
   for (let order = 0; order < 7; order++) stages.push(await prisma.stage.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, name: `Locator Stage ${order}`, order, requiredFields: [] } }));
