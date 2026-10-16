@@ -7,7 +7,7 @@ export function validateEnvironment(env: NodeJS.ProcessEnv = process.env): void 
   for (const key of ['DATABASE_URL', 'JWT_SECRET']) {
     if (!env[key]?.trim()) throw new Error(`Missing required environment variable: ${key}`);
   }
-  if (env.GMAIL_SYNC_INTERVAL_SECONDS && !z.coerce.number().int().min(60).max(3600).safeParse(env.GMAIL_SYNC_INTERVAL_SECONDS).success) throw new Error('GMAIL_SYNC_INTERVAL_SECONDS must be an integer from 60 to 3600.');
+  if (env.GMAIL_SYNC_INTERVAL_SECONDS && !z.coerce.number().int().min(10).max(3600).safeParse(env.GMAIL_SYNC_INTERVAL_SECONDS).success) throw new Error('GMAIL_SYNC_INTERVAL_SECONDS must be an integer from 10 to 3600.');
   if (env.NODE_ENV !== 'production') return;
 
   if (!env.BREVO_API_KEY?.startsWith('xkeysib-') || env.BREVO_API_KEY.trim().length <= 20) {

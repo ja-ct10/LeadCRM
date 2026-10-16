@@ -54,8 +54,8 @@ export async function initiateGmailConnect(): Promise<void> {
 /**
  * Checks whether the current user has a connected Gmail account.
  */
-export async function getGmailStatus(): Promise<GmailConnectionStatus> {
-  return apiClient.get<GmailConnectionStatus>('/integrations/gmail/status');
+export async function getGmailStatus(signal?: AbortSignal): Promise<GmailConnectionStatus> {
+  return apiClient.get<GmailConnectionStatus>('/integrations/gmail/status', { signal });
 }
 
 /**

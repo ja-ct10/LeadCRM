@@ -1,5 +1,5 @@
 import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
-import { EmailAccount, Prisma } from '@prisma/client';
+import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
@@ -12,6 +12,24 @@ import { mailboxPermissions } from './mailbox-sync.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean }
 type Tx = Prisma.TransactionClient;
+
+/** Persist provider history independently of permission to edit CRM engagement. */
+async function persistEmailActivity(tx: Tx, account: EmailAccount, stored: MailboxMessage) {
+  const link = stored.contactId ? { contactId: stored.contactId } : stored.leadId ? { leadId: stored.leadId } : undefined;
+  if (!link || stored.tenantId !== account.tenantId || stored.accountId !== account.id ||
+    !['inbound', 'outbound'].includes(stored.direction) || stored.labels.some(label => ['DRAFT', 'SPAM', 'TRASH', 'DELETED'].includes(label))) return;
+  const hash = createHash('sha256').update([account.tenantId, link.leadId ?? link.contactId, stored.rfcMessageId || `${account.id}:${stored.providerMessageId}`, stored.direction].join(':')).digest('hex');
+  // Later metadata may supply a previously missing RFC ID. Keep the original Activity identity.
+  const existing = await tx.activity.findFirst({ where: { tenantId: account.tenantId, type: 'email', mailboxMessageId: stored.id }, select: { id: true } });
+  const activityId = existing?.id ?? `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
+  const dealId = stored.dealId && await tx.deal.findFirst({ where: { id: stored.dealId, tenantId: account.tenantId }, select: { id: true } }) ? stored.dealId : undefined;
+  await tx.activity.upsert({ where: { id: activityId }, update: {}, create: { id: activityId, tenantId: account.tenantId, ...link,
+    mailboxMessageId: stored.id, dealId, createdById: account.userId, type: 'email',
+    title: `${stored.direction === 'inbound' ? 'Received' : 'Sent'} email: ${stored.subject}`.slice(0, 500), createdAt: stored.sentAt,
+    metadata: { mailboxMessageId: stored.id, providerMessageId: stored.providerMessageId, threadId: stored.threadId, mailboxOwnerId: account.userId, direction: stored.direction } } });
+  // A deterministic collision from another mailbox must never transfer its history.
+  if (dealId) await tx.activity.updateMany({ where: { id: activityId, tenantId: account.tenantId, type: 'email', mailboxMessageId: stored.id, dealId: null }, data: { dealId } });
+}
 
 async function matchCustomer(tx: Tx, tenantId: string, userId: string, email: string, permissions: MailboxPermissions): Promise<CustomerLink | undefined> {
   // contains narrows legacy whitespace data; equality after normalization is mandatory.
@@ -103,12 +121,10 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         return;
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
-        await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
+        const stored = await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
-        if (existing.dealId && await tx.deal.findFirst({ where: { id: existing.dealId, tenantId: account.tenantId }, select: { id: true } })) {
-          await tx.activity.updateMany({ where: { tenantId: account.tenantId, type: 'email', mailboxMessageId: existing.id, dealId: null }, data: { dealId: existing.dealId } });
-        }
+        await persistEmailActivity(tx, account, stored);
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
@@ -133,14 +149,8 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         leadId: link?.leadId ?? null, contactId: link?.contactId ?? null, dealId, meaningful: genuineReply,
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data }) : await tx.mailboxMessage.create({ data: { ...data, tenantId: account.tenantId } });
+      await persistEmailActivity(tx, account, stored);
       if (email.labels.includes('DRAFT') || !link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) return;
-      const hash = createHash('sha256').update([account.tenantId, link.leadId ?? link.contactId, email.rfcMessageId || `${account.id}:${email.id}`, direction].join(':')).digest('hex');
-      const activityId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
-      await tx.activity.upsert({ where: { id: activityId }, update: {}, create: { id: activityId, tenantId: account.tenantId, ...link,
-        mailboxMessageId: stored.id, dealId,
-        createdById: account.userId, type: 'email', title: `${direction === 'inbound' ? 'Received' : 'Sent'} email: ${email.subject}`.slice(0, 500), createdAt: sentAt,
-        metadata: { mailboxMessageId: stored.id, providerMessageId: email.id, threadId: email.threadId, mailboxOwnerId: account.userId, direction } } });
-      if (dealId) await tx.activity.updateMany({ where: { id: activityId, tenantId: account.tenantId, type: 'email', mailboxMessageId: stored.id, dealId: null }, data: { dealId } });
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
       const change = await evaluateCustomer(tx, account, link, permissions, now, !existing && genuineReply);
       // Workflow trigger enqueueing shares the CRM transaction through salesContext.

@@ -1,5 +1,5 @@
 import { Prisma } from '@prisma/client';
-import { mailboxProviderQueries, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
+import { mailboxProviderQueries, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
 import { authorizedMailbox, mailboxChanged, storedEmail } from './mailbox-store';
 import { runScheduledMailboxEmails } from './scheduled-mailbox.service';
 import { randomUUID } from 'node:crypto';
@@ -115,8 +115,8 @@ function reconciliationQueries(scope: Awaited<ReturnType<typeof resolveMailboxSc
 }
 
 export function mailboxSyncIntervalMs() {
-  const seconds = Number(process.env.GMAIL_SYNC_INTERVAL_SECONDS ?? 60);
-  return (Number.isInteger(seconds) && seconds >= 60 && seconds <= 3600 ? seconds : 60) * 1000;
+  const seconds = Number(process.env.GMAIL_SYNC_INTERVAL_SECONDS ?? 10);
+  return (Number.isInteger(seconds) && seconds >= 10 && seconds <= 3600 ? seconds : 10) * 1000;
 }
 
 /** All entry points share this DB lease and durable continuation. Reads never start sync. */
@@ -213,9 +213,8 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
           // Hydrate legacy authorization metadata without rewriting an already verified historical body.
           const existing = await prisma.mailboxMessage.findUnique({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: id } }, select: { id: true, engagementRuleVersion: true, labels: true } });
           if (existing && existing.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !email.labels.includes('DRAFT')) {
-            await prisma.mailboxMessage.update({ where: { id: existing.id }, data: { fromAddress: mailboxAddress(email.from)!,
-              recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ?? null,
-              authorizationParticipants: mailboxParticipants(email)!, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, labels: email.labels } });
+            // Ingestion preserves the stored body and also repairs a missing Activity.
+            await ingestMailboxMessages(account, [email], currentPermissions);
             processed++;
             await checkpoint({}); examined++; continue;
           }
@@ -248,7 +247,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
     await checkpoint({ syncError: null, syncRetryAt: null, syncFailureCount: 0, syncPausedAt: null, mailboxVersion: { increment: 1 },
       ...(batch.ids.length ? { syncBatch: JSON.parse(JSON.stringify(batch)) } : {
         syncBatch: Prisma.DbNull, syncPageToken: batch.nextPage ?? null, syncQueryIndex: batch.nextIndex,
-        ...(!hasMore ? { syncCursor: batch.historyId, syncBaselineHistoryId: null, syncQueryIndex: 0, lastSyncAt: new Date() } : {}),
+        ...(!hasMore ? { syncCursor: batch.historyId, syncBaselineHistoryId: null, syncQueryIndex: 0, lastSyncAt: started } : {}),
       }) });
     if (!hasMore) {
       // Requests arriving during processing remain pending for the next pass.

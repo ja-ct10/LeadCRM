@@ -105,3 +105,10 @@ it('withholds the note editor when assignment is denied despite Edit permission'
   render(<RecordTimelineTab canEditRecord={false} activities={[]} module="leads" recordId="record" />);
   expect(screen.queryByLabelText('Note')).toBeNull();
 });
+
+it('shows mailbox failure without a contradictory empty email history message', () => {
+  render(<RecordTimelineTab activities={[]} module="leads" recordId="record" error="Connect your work Gmail account first." />);
+  fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
+  expect(screen.getByRole('alert').textContent).toContain('Connect your work Gmail');
+  expect(screen.queryByText('No activities match your filter.')).toBeNull();
+});

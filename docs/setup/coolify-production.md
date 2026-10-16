@@ -82,7 +82,7 @@ and do not prevent the rest of the CRM from starting.
 | GMAIL_CLIENT_ID | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | OAuth client identity, Gmail required | Development client or approved shared client | Preserve Render client |
 | GMAIL_CLIENT_SECRET | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | Secret, Gmail required | Development credentials | Preserve Render credential |
 | GMAIL_REDIRECT_URI | backend/src/config/mail.config.ts; integrations/gmail/gmail.oauth.ts | Public URL, Gmail required | Local backend callback registered in Google | Verified API `/api/v1/integrations/gmail/callback`; register exact URI in Google |
-| GMAIL_SYNC_INTERVAL_SECONDS | backend/src/integrations/gmail/mailbox-sync.service.ts; config/validate-env.ts | Number, optional; integer 60–3600 | Default 60 | Default 60; one leased incremental sync per mailbox, independent of browser tabs |
+| GMAIL_SYNC_INTERVAL_SECONDS | backend/src/integrations/gmail/mailbox-sync.service.ts; config/validate-env.ts | Number, optional; integer 10–3600 | Default 10 | Default 10; one leased incremental sync per mailbox, independent of browser tabs |
 | GMAIL_TEST_MAILBOX_OVERRIDE | backend/src/config/mail.config.ts; integrations/gmail/mailbox-ownership.ts | Private JSON, optional | Exact temporary mailbox exception only | Ignored in production; only the registered email can connect |
 | GMAIL_SYSTEM_SENDER_USER_ID | backend/src/integrations/gmail/gmail.service.ts | Private account identifier, feature required for system sender | Existing connected account if used | Same stored production account |
 | GMAIL_SYSTEM_SENDER_GMAIL_EMAIL | backend/src/integrations/gmail/gmail.service.ts | Legacy system sender identity, optional | Actual connected sender when used; display name Camxian Technologies | Preserve the authorized mailbox identity; no invented default |
@@ -130,7 +130,7 @@ subscription, service account, IAM grant, push endpoint, or `users.watch` is nee
 Do not configure `GMAIL_PUBSUB_*` variables. See the
 [Inbox implementation and acceptance report](../inbox-redesign-report.md).
 
-Set `GMAIL_SYNC_INTERVAL_SECONDS=60` in backend runtime configuration. Every ten
+Set `GMAIL_SYNC_INTERVAL_SECONDS=10` in backend runtime configuration for the default cadence. Existing explicit values such as `60` remain effective until changed. Every ten
 seconds the persistent backend worker discovers due work; an individual mailbox
 with completed history waits at least the configured interval. Continuation pages,
 new connections, assignment changes and explicit Sync now requests can run sooner.
