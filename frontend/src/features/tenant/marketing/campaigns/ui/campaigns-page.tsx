@@ -101,20 +101,24 @@ export default function CampaignsPage() {
   const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', content: '', category: 'Marketing' });
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
-  const [templateSource, setTemplateSource] = useState<'LEADS' | 'CONTACTS'>('LEADS');
   const templateCatalog = useCampaignVariableFields(isTemplateModalOpen || !!previewTemplate);
-  const templateFields = templateCatalog.fields.filter(field => field.module === (templateSource === 'LEADS' ? 'leads' : 'contacts'));
   const templateEmailSettings = useCachedPage<CampaignEmailSettings>({ module: 'settings', params: { campaignSender: 'EMAIL' }, disabled: !(isTemplateModalOpen && newTemplateType === 'Email' || previewTemplate?.type === 'Email'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.emailSettings()).data });
   const templateSmsSettings = useCachedPage<CampaignSmsSettings>({ module: 'settings', params: { campaignSender: 'SMS' }, disabled: !(isTemplateModalOpen && newTemplateType === 'SMS' || previewTemplate?.type === 'SMS'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.smsSettings()).data });
   const templateSubjectRef = useRef<HTMLInputElement>(null), templateBodyRef = useRef<HTMLTextAreaElement>(null);
   const templateActiveField = useRef<'subject' | 'content'>('content');
-  const templateChoices = campaignVariableChoices(templateCatalog.fields, templateSource, { forInsertion: true });
+  // Templates have no audience source; retain choices approved for either module.
+  const contactTemplateChoices = new Map(campaignVariableChoices(templateCatalog.fields, 'CONTACTS', { forInsertion: true }).map(choice => [choice.id, choice]));
+  const templateChoices = campaignVariableChoices(templateCatalog.fields, 'LEADS', { forInsertion: true }).map(choice => {
+    const contactChoice = contactTemplateChoices.get(choice.id);
+    if (choice.personalizationAvailable || !contactChoice) return choice;
+    return contactChoice.personalizationAvailable || choice.origins.every(origin => origin.module === 'contacts') ? contactChoice : choice;
+  });
   const [showVarDropdown, setShowVarDropdown] = useState(false);
 
 
   useEffect(() => { setShowBuilder(false); setEditingCampaign(undefined); setSelectedCampaignForReport(null); setIsTemplateModalOpen(false); setPreviewTemplate(null); setNewTemplate({ name: '', subject: '', content: '', category: 'Marketing' }); }, [user?.tenantId]);
 
-  const getPreviewText = (text: string) => renderEmailVariables(text, { ...campaignSampleValues(templateFields), firstName: 'John', lastName: 'Doe', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: (previewTemplate?.type === 'SMS' ? templateSmsSettings.data?.organizationName : templateEmailSettings.data?.senderName) || 'Configured sender unavailable', sender_email: (previewTemplate?.type === 'SMS' ? templateSmsSettings.data?.organizationEmail : templateEmailSettings.data?.senderEmail) || 'Sender email unavailable', contact_number: '+639123456789', status: 'HOT' });
+  const getPreviewText = (text: string) => renderEmailVariables(text, { ...campaignSampleValues(templateCatalog.fields), firstName: 'John', lastName: 'Doe', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', sender_name: (previewTemplate?.type === 'SMS' ? templateSmsSettings.data?.organizationName : templateEmailSettings.data?.senderName) || 'Configured sender unavailable', sender_email: (previewTemplate?.type === 'SMS' ? templateSmsSettings.data?.organizationEmail : templateEmailSettings.data?.senderEmail) || 'Sender email unavailable', contact_number: '+639123456789', status: 'HOT' });
   function insertTemplateVariable(token: string) {
     const field = newTemplateType === 'Email' ? templateActiveField.current : 'content';
     const input = field === 'subject' ? templateSubjectRef.current : templateBodyRef.current;
@@ -607,7 +611,6 @@ export default function CampaignsPage() {
               <FieldError message={templateErrors.subject} />
             </div>
           )}
-          <label className={panelLabelClass}>Field filter<select aria-label="Template field source" className={panelInputClass} value={templateSource} onChange={event => setTemplateSource(event.target.value as 'LEADS' | 'CONTACTS')}><option value="LEADS">Lead fields</option><option value="CONTACTS">Contact fields</option></select></label>
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
               <label htmlFor="template-content" className={panelLabelClass}>Message Content <span className="text-red-500">*</span></label>
