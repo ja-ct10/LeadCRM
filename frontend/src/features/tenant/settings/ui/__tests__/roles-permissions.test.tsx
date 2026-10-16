@@ -17,6 +17,11 @@ let holdCrm = false;
 let rolesPending: Promise<void> | undefined;
 const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   const path = url.split('?')[0];
+  if (path.endsWith('/archive') && options?.method === 'PATCH') {
+    if (pending) await pending;
+    if (failure) return { ok: false, status: 409, json: async () => ({ error: failure }) };
+    return { ok: true, json: async () => ({ success: true }) };
+  }
   if (holdCrm && path.endsWith('/crm/accounts')) return new Promise<never>(() => {});
   if (path.endsWith('/administration/permissions')) return { ok: true, json: async () => ({ data: PERMISSION_MODULES }) };
   if (path.endsWith('/administration/roles')) {
@@ -38,6 +43,57 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
 async function open() { const view = mount(); const button = await screen.findByRole('button', { name: 'Create Custom Role' }); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button); return view; }
 const posts = () => fetcher.mock.calls.filter(([url, options]) => url.endsWith('/administration/roles') && options?.method === 'POST');
+const deletes = () => fetcher.mock.calls.filter(([url, options]) => url.endsWith('/archive') && options?.method === 'PATCH');
+const customRole = (userCount = 0) => ({ id: 'staff-role', name: 'Staff', tenantId: 'tenant-a', isSystemRole: false, isArchived: false, userCount, permissions: [] });
+async function openDelete(userCount = 0) {
+  savedRoles.push(customRole(userCount)); mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for Staff' }));
+  expect(screen.queryByRole('menuitem', { name: 'Archive Role' })).toBeNull();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Role' }));
+  return screen.getByRole('alertdialog');
+}
+
+it.each([1, 5])('uses the server count to block deletion of a role assigned to %s users without a PATCH', async count => {
+  const dialog = await openDelete(count);
+  expect(within(dialog).getByText('Role cannot be deleted')).toBeTruthy();
+  expect(within(dialog).getByText(`This role is currently assigned to ${count} user(s). Reassign them to another role before deleting this role.`)).toBeTruthy();
+  expect(within(dialog).getByText('Users must have another role assigned before this role can be deleted.')).toBeTruthy();
+  expect(within(dialog).queryByRole('button', { name: 'Delete Role' })).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
+  expect(deletes()).toHaveLength(0);
+  expect(screen.getByText('Staff')).toBeTruthy();
+});
+
+it('confirms an unassigned role with its name and keeps it active on Cancel', async () => {
+  const dialog = await openDelete();
+  expect(within(dialog).getByText('Delete role?')).toBeTruthy();
+  expect(within(dialog).getByText('Delete "Staff"? The role will be removed from active use.')).toBeTruthy();
+  expect(within(dialog).getByText('This role will no longer be available for assignment after deletion.')).toBeTruthy();
+  expect(within(dialog).getByRole('button', { name: 'Delete Role' }).className).toContain('bg-red-600');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(deletes()).toHaveLength(0); expect(screen.getByText('Staff')).toBeTruthy();
+});
+
+it('submits deletion exactly once while pending, closes on success and removes the role', async () => {
+  const dialog = await openDelete();
+  let finish!: () => void; pending = new Promise(resolve => { finish = resolve; });
+  const button = within(dialog).getByRole('button', { name: 'Delete Role' });
+  fireEvent.click(button); fireEvent.click(button);
+  expect(button).toHaveProperty('disabled', true); expect(deletes()).toHaveLength(1);
+  expect(mocks.success).not.toHaveBeenCalled();
+  await act(async () => finish());
+  await waitFor(() => expect(screen.queryByText('Staff')).toBeNull());
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Role deleted');
+});
+
+it('retains the role and displays a backend conflict when assignment counts become stale', async () => {
+  const dialog = await openDelete();
+  failure = 'Role has 1 assigned user(s). Reassign users to another role before deleting.';
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Role' }));
+  expect((await screen.findByRole('alert')).textContent).toBe(failure);
+  expect(screen.getByText('Staff')).toBeTruthy(); expect(mocks.success).not.toHaveBeenCalled();
+});
 it.each(['canCreate', 'canEdit'])('closes an open editor when %s is revoked without sending a mutation', async action => {
   savedRoles.push({ id: 'staff-role', name: 'Staff', tenantId: 'tenant-a', isSystemRole: false, isArchived: false, permissions: [] });
   const view = mount();
@@ -54,14 +110,14 @@ it.each(['canCreate', 'canEdit'])('closes an open editor when %s is revoked with
   fireEvent.submit(oldForm);
   expect(fetcher.mock.calls.filter(([, options]) => ['POST', 'PUT', 'PATCH', 'DELETE'].includes(options?.method ?? ''))).toHaveLength(0);
 });
-it('dismisses an archive confirmation when Archive is revoked and denies the section without View', async () => {
+it('dismisses a deletion confirmation when Archive is revoked and denies the section without View', async () => {
   savedRoles.push({ id: 'staff-role', name: 'Staff', tenantId: 'tenant-a', isSystemRole: false, isArchived: false, permissions: [] });
   const view = mount(); await screen.findByText('Staff');
   fireEvent.click(screen.getByRole('button', { name: 'Actions for Staff' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Archive Role' }));
-  expect(screen.getByText('Archive Role?')).toBeTruthy();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Delete Role' }));
+  expect(screen.getByText('Delete role?')).toBeTruthy();
   mocks.denied = ['roles.canArchive']; view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
-  expect(screen.queryByText('Archive Role?')).toBeNull();
+  expect(screen.queryByText('Delete role?')).toBeNull();
   mocks.denied = ['roles.canView']; view.rerender(<DataProvider><RolesPermissions /></DataProvider>);
   expect(screen.getByRole('alert').textContent).toContain('permission');
   expect(screen.queryByText('Staff')).toBeNull();
@@ -114,7 +170,7 @@ it('keeps protected actions visible and disabled without navigation or requests'
   mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Actions for Client Admin' }));
   const callsBefore = fetcher.mock.calls.length;
-  for (const name of ['Edit Permissions', 'Archive Role']) {
+  for (const name of ['Edit Permissions', 'Delete Role']) {
     const action = screen.getByRole('menuitem', { name });
     expect(action.getAttribute('aria-disabled')).toBe('true');
     fireEvent.click(action);
@@ -122,7 +178,7 @@ it('keeps protected actions visible and disabled without navigation or requests'
     fireEvent.keyDown(action, { key: ' ' });
   }
   expect(screen.queryByText('Edit Role')).toBeNull();
-  expect(screen.queryByText('Archive Role?')).toBeNull();
+  expect(screen.queryByText('Delete role?')).toBeNull();
   expect(fetcher.mock.calls.length).toBe(callsBefore);
   expect(screen.getByRole('menuitem', { name: 'Duplicate Role' }).getAttribute('aria-disabled')).toBe('false');
   expect(screen.queryByText('perms')).toBeNull();

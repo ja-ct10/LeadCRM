@@ -566,7 +566,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                       className="w-4 h-4 shrink-0 rounded border-gray-300 dark:border-white/8 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 transition-colors"
                     />
                     <span className={`${responsiveTypography.body} whitespace-nowrap text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-300 transition-colors`}>
-                      Remember password
+                      Remember me
                     </span>
                   </label>
                   <button

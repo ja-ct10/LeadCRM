@@ -92,7 +92,7 @@ export function RoleCard({ role, canEdit, canArchive, onEdit, onArchive, onViewD
             className="flex items-center gap-1 text-[11px] px-2 py-1 rounded-md text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
           >
             <Trash2 size={11} />
-            Archive
+            Delete Role
           </button>
         </div>
       )}

@@ -15,6 +15,17 @@ const open = () => { const trigger = screen.getByRole('button', { name: 'Open co
 const deferred = () => { let resolve!: () => void; let reject!: (error: Error) => void; const promise = new Promise<void>((done, fail) => { resolve = done; reject = fail; }); return { promise, resolve, reject }; };
 
 describe('canonical confirmation behavior', () => {
+  it('supports a close-only warning without any confirmation action', () => {
+    const action = vi.fn();
+    render(<Harness title="Role cannot be deleted" variant="warning" hideConfirm cancelLabel="Close" onConfirm={action} />);
+    open();
+    const dialog = screen.getByRole('alertdialog');
+    expect(within(dialog).getAllByRole('button').map(button => button.textContent)).toEqual(['', 'Close']);
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('alertdialog')).toBeNull();
+    expect(action).not.toHaveBeenCalled();
+  });
   it.each(['Cancel', 'Close confirmation', 'Escape', 'backdrop'])('dismisses with %s without running the action and restores focus', async method => {
     const action = vi.fn();
     render(<Harness title="Archive?" description="Keep the history." onConfirm={action} />);

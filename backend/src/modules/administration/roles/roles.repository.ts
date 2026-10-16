@@ -2,6 +2,7 @@ import { PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS, type PermissionFlags, type 
 import { ForbiddenError, NotFoundError, ConflictError } from '../../../shared/errors/http-error';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
+import { tenantContext } from '../../../core/tenant/tenant-context';
 import { requireEmployeeAccount } from '../../../core/auth/account-access';
 import { isSalesRoleName } from '../../crm/access/crm-record-access.service';
 
@@ -137,10 +138,16 @@ async function replacePermissions(tx: Prisma.TransactionClient, roleId: string, 
 }
 
 export async function archiveRole(id: string, tenantId: string) {
-  const existing = await prisma.roleDefinition.findFirst({ where: { id, tenantId } });
-  if (!existing) return null;
-  if (existing.isSystemRole) return null;
-  return prisma.roleDefinition.update({ where: { id }, data: { isArchived: true } });
+  return prisma.$transaction(async tx => {
+    // Only this fixed, parameterized lock leaves automatic tenant scoping.
+    await tenantContext.exit(async () => await tx.$queryRaw`SELECT "id" FROM "RoleDefinition" WHERE "id" = ${id} AND "tenantId" = ${tenantId} FOR UPDATE`);
+    const role = await tx.roleDefinition.findFirst({ where: { id, tenantId, isArchived: false } });
+    if (!role) throw new NotFoundError('Role');
+    if (role.isSystemRole) throw new ForbiddenError('System roles cannot be deleted');
+    const count = await tx.userRole.count({ where: { roleId: id, tenantId } });
+    if (count > 0) throw new ConflictError(`Role has ${count} assigned user(s). Reassign users to another role before deleting.`);
+    return tx.roleDefinition.update({ where: { id, tenantId, isArchived: false }, data: { isArchived: true } });
+  }, { isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted });
 }
 
 // ── User–Role junction ────────────────────────────────────────────────────
@@ -223,6 +230,8 @@ export type { Prisma };
 export async function replaceUserRole(
   tx: Prisma.TransactionClient, userId: string, tenantId: string, roleName: string,
 ): Promise<void> {
+  // Shared with deletion's exclusive lock; recheck active state after any wait.
+  await tenantContext.exit(async () => await tx.$queryRaw`SELECT "id" FROM "RoleDefinition" WHERE "tenantId" = ${tenantId} AND "name" = ${roleName} FOR SHARE`);
   const [user, role] = await Promise.all([
     tx.user.findFirst({ where: { id: userId, tenantId } }),
     tx.roleDefinition.findFirst({ where: { tenantId, name: roleName, isArchived: false } }),
