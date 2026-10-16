@@ -135,6 +135,8 @@ function deploymentPlan(records, localNames) {
     '20261211000000_normalize_default_campaign_template_variables',
     // Existing Activity/Message relationships only; no schema or identity changes.
     '20261212000000_mailbox_activity_deals',
+    // Trigger-only permission correction; history access and retirements stay gated.
+    '20261213000000_account_note_trigger_permissions',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
