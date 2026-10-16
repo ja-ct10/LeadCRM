@@ -23,7 +23,7 @@ The [Task editor](../../frontend/src/features/tenant/operations/tasks/ui/task-ed
 - Fixtures use supported workflow triggers, eligible owners, structured workflow snapshots, protected native groups, scoped labels and actual confirmation behavior. Fixture repair is recorded separately from an application fix.
 - Native database removal retries temporary filesystem locks after guarded shutdown. A failed removal remains retryable. Cleanup errors are recorded and remaining browser suites continue; running clusters are never deleted.
 - Touch tests pause edge scrolling before measuring and can steer back after an overshoot. They still require real auto-scroll and database persistence. Transport failures remain visible, and failure reports are written before screenshot cleanup.
-- Mailbox-activity acceptance verifies scheduled message/Activity persistence in SQL before applying its separate UI deadline. The worker still discovers mail naturally; the fixture does not force a browser refresh or bypass the scheduler.
+- Mailbox-activity acceptance uses the existing native PostgreSQL runtime for concurrent worker/SSE/authorization flows, after the single-connection PGlite bridge became unreachable during a longer run. It verifies scheduled message/Activity persistence in SQL before applying its separate UI deadline. The worker still discovers mail naturally; the fixture does not force a browser refresh or bypass the scheduler.
 - Run resource-intensive browser groups with enough available memory. Preserve failed/aborted reports separately from final reruns. Revalidate changed fixtures and their dependencies instead of silently treating earlier results as final.
 
 ## Repeatable acceptance
