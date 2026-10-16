@@ -1,5 +1,7 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { toast } from 'sonner';
 import {
   DndContext,
@@ -106,6 +108,7 @@ export default function WorkflowBuilder({
   onPause,
   onClose,
 }: Props) {
+  const router = useRouter();
   const [history, setHistory] = useState<History>(() => ({
     present: editorDocument(initial),
     past: [],
@@ -132,14 +135,14 @@ export default function WorkflowBuilder({
     [message, setMessage] = useState(''),
     [busy, setBusy] = useState(false);
   const [changeTrigger, setChangeTrigger] = useState<string | null>(null),
-    [exit, setExit] = useState<(() => void) | null>(null);
+    [exit, setExit] = useState<NavigationAction | null>(null);
   const [confirmActivation, setConfirmActivation] = useState(false);
   const [templateDetached, setTemplateDetached] = useState(false);
   const operation = useRef(false),
     focusOrigin = useRef<HTMLElement | null>(null),
-    leaving = useRef(false);
+    leaving = useRef(false),
+    exitPending = useRef(false);
   const inspectorRef = useRef<HTMLDivElement>(null);
-  const editorRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (wide && selected)
       inspectorRef.current
@@ -152,6 +155,9 @@ export default function WorkflowBuilder({
   const template = !templateDetached ? workflowTemplateDescriptor(templateIdentity ?? templateIndex) : undefined;
   const linkedTemplate = template?.trigger === draft.trigger && template.setup !== 'none' ? template : undefined;
   const dirty = JSON.stringify(toDraft(draft)) !== JSON.stringify(saved);
+  const guardState = useRef({ dirty, readOnly });
+  guardState.current = { dirty, readOnly };
+  useEffect(() => { leaving.current = false; }, [draft]);
   const locked = !!readOnly || busy;
   const nameIssue = workflowNameIssue(draft.name, existingWorkflows, savedId) ||
     (nameCheck?.name === draft.name && nameCheck.available === false ? 'A workflow with this name already exists. Choose another name.' : '');
@@ -195,33 +201,25 @@ export default function WorkflowBuilder({
         event.returnValue = '';
       }
     };
-    const link = (event: MouseEvent) => {
-      if (leaving.current) return;
-      // Next's router can render before pushState fires. Guard navigation controls
-      // at capture time, then replay the user's click only after confirmation.
-      const control = (event.target as HTMLElement).closest?.(
-        'nav button, [role="navigation"] button, [role="menuitem"]',
-      );
-      if (control instanceof HTMLElement && !editorRef.current?.contains(control)) {
-        event.preventDefault();
-        event.stopPropagation();
-        setExit(() => () => control.click());
-        return;
-      }
-      const anchor = (event.target as HTMLElement).closest?.('a[href]');
-      if (
-        !(anchor instanceof HTMLAnchorElement) ||
-        anchor.target === '_blank' ||
-        event.ctrlKey ||
-        event.metaKey ||
-        event.shiftKey ||
-        event.button !== 0 ||
-        anchor.href === window.location.href
-      )
-        return;
+    window.addEventListener('beforeunload', unload);
+    return () => window.removeEventListener('beforeunload', unload);
+  }, [dirty, readOnly]);
+  useEffect(() => {
+    const intent = (event: Event) => {
+      if (leaving.current || !guardState.current.dirty || guardState.current.readOnly) return;
       event.preventDefault();
-      event.stopPropagation();
-      setExit(() => () => window.location.assign(anchor.href));
+      if (exitPending.current) return;
+      exitPending.current = true;
+      setExit(() => (event as NavigationIntentEvent).detail.navigate);
+    };
+    const link = (event: MouseEvent) => {
+      if (leaving.current || !guardState.current.dirty || guardState.current.readOnly || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const anchor = event.target instanceof Element ? event.target.closest('a[href]') : null;
+      if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return;
+      const destination = new URL(anchor.href), current = window.location;
+      if (destination.origin !== current.origin || (destination.pathname === current.pathname && destination.search === current.search)) return;
+      event.preventDefault(); event.stopPropagation();
+      requestNavigation(() => router.push(destination.pathname + destination.search + destination.hash));
     };
     // Guard browser history before popstate; first-save URL replacement is allowed.
     const navigation = (window as unknown as { navigation?: EventTarget })
@@ -233,6 +231,7 @@ export default function WorkflowBuilder({
       };
       if (
         leaving.current ||
+        !guardState.current.dirty || guardState.current.readOnly ||
         !entry.cancelable ||
         entry.navigationType !== 'traverse' ||
         !entry.destination ||
@@ -241,17 +240,17 @@ export default function WorkflowBuilder({
         return;
       entry.preventDefault();
       const url = entry.destination.url;
-      setExit(() => () => window.location.assign(url));
+      requestNavigation(() => window.location.assign(url));
     };
-    window.addEventListener('beforeunload', unload);
+    window.addEventListener(NAVIGATION_INTENT_EVENT, intent);
     window.document.addEventListener('click', link, true);
     navigation?.addEventListener('navigate', traverse);
     return () => {
-      window.removeEventListener('beforeunload', unload);
+      window.removeEventListener(NAVIGATION_INTENT_EVENT, intent);
       window.document.removeEventListener('click', link, true);
       navigation?.removeEventListener('navigate', traverse);
     };
-  }, [dirty, readOnly]);
+  }, [router]);
   const commit = useCallback((next: EditorDocument) => {
     setHistory((previous) =>
       JSON.stringify(previous.present) === JSON.stringify(next)
@@ -710,7 +709,6 @@ export default function WorkflowBuilder({
   );
   return (
     <div
-      ref={editorRef}
       className="flex min-w-0 flex-col bg-[var(--background)] text-[var(--text-primary)]"
       style={{ height: 'calc(100dvh - 80px)', minHeight: 640 }}
     >
@@ -722,9 +720,7 @@ export default function WorkflowBuilder({
               size="sm"
               aria-label="Back to workflows"
               disabled={busy}
-              onClick={() =>
-                dirty && !readOnly ? setExit(() => onClose) : onClose()
-              }
+              onClick={() => requestNavigation(onClose)}
             >
               <ArrowLeft size={18} />
             </Button>
@@ -1043,10 +1039,10 @@ export default function WorkflowBuilder({
         warning="Review recipients, assigned agents, and field changes before activating. Already dispatched actions cannot be recalled."
         variant="success" confirmLabel="Confirm activation" cancelLabel="Keep editing" isLoading={busy}
         confirmDisabled={readOnly || !canActivate} onConfirm={() => submit(true, false, true)} />
-      <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) setExit(null); }}
+      <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
         title="Discard unsaved changes?" description="Your last saved workflow will be kept."
         variant="warning" confirmLabel="Discard changes" cancelLabel="Keep editing"
-        onConfirm={() => { leaving.current = true; setSaved(toDraft(draft)); exit?.(); }} />
+        onConfirm={() => { const navigate = exit; if (!navigate || leaving.current) return; leaving.current = true; exitPending.current = false; setSaved(toDraft(draft)); return navigate(); }} />
     </div>
   );
 }

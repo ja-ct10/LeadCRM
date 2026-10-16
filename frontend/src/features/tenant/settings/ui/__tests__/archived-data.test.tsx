@@ -4,6 +4,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ArchivedData } from '../archived-data';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import type { ArchivedRecord } from '@leadcrm/shared';
+import { ARCHIVE_TYPES } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
 const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), tenantId: 'tenant-a', canRestore: true }));
@@ -43,14 +44,28 @@ afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 const confirm = () => fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /^Restore/ }));
 const writes = () => request.mock.calls.filter(([, options]) => options.method === 'PATCH');
 
+it.each(ARCHIVE_TYPES)('filters %s and returns to all supported records through the shared tabs', async type => {
+  rows = ARCHIVE_TYPES.map(kind => ({ type: kind, id: kind.toLowerCase(), name: `Saved ${kind}`, detail: '', archivedAt: null, canRestore: true }));
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('button', { name: type }));
+  await waitFor(() => expect(within(screen.getByRole('grid')).getAllByRole('button', { name: 'Restore' })).toHaveLength(1));
+  expect(screen.getByRole('button', { name: type, pressed: true })).toBeTruthy();
+  expect(request.mock.calls.some(([url]) => new URL(url, 'http://localhost').searchParams.get('type') === type)).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'All' }));
+  await waitFor(() => expect(within(screen.getByRole('grid')).getAllByRole('button', { name: 'Restore' })).toHaveLength(ARCHIVE_TYPES.length));
+});
+
 it('uses the shared grid, actual timestamp and one scrolling filter row', async () => {
   render(<ArchivedData />);
   expect(screen.getByRole('status').querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Archived Data Recovery')).toBeTruthy();
   const filters = screen.getByRole('group', { name: 'Archived record types' });
-  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow', 'Role']);
+  expect(within(filters).getAllByRole('button').map(button => button.textContent)).toEqual(['All', 'Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow']);
   expect(filters.className).toContain('overflow-x-auto');
   expect(filters.className).toContain('flex-nowrap');
+  expect(filters.className).toContain('border-b');
+  expect(within(filters).getByRole('button', { name: 'All', pressed: true }).querySelector('[aria-hidden]')?.className).toContain('bg-primary');
+  expect(within(filters).queryByRole('button', { name: 'Role' })).toBeNull();
   await screen.findByText('Saved Lead');
   expect(screen.getByRole('grid')).toBeTruthy();
   expect(screen.getAllByRole('checkbox')).toHaveLength(4);
@@ -59,7 +74,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
 });
 
 it.each([
-  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['Product', 'administration/archived-data/Product'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'], ['Campaign', 'administration/archived-data/Campaign'], ['Workflow', 'administration/archived-data/Workflow'], ['Role', 'administration/archived-data/Role'],
+  ['Lead', 'crm/leads'], ['Contact', 'crm/contacts'], ['Account', 'crm/accounts'], ['Deal', 'crm/deals'], ['Product', 'administration/archived-data/Product'], ['User', 'administration/users'], ['Task', 'administration/archived-data/Task'], ['Campaign', 'administration/archived-data/Campaign'], ['Workflow', 'administration/archived-data/Workflow'],
 ])('confirms %s restoration using its configured endpoint', async (label, route) => {
   rows = [{ ...rows[0], id: label.toLowerCase() + '-id', type: label as ArchivedRecord['type'], name: 'Saved ' + label }];
   render(<ArchivedData />); await screen.findByText('Saved ' + label);

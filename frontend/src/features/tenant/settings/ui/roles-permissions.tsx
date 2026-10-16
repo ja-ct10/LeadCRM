@@ -1,5 +1,5 @@
 'use client';
-import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { RoleDeletionDialog } from '@/features/tenant/administration/roles/ui/role-deletion-dialog';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 
@@ -365,14 +365,14 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
   };
 
   const handleDeleteConfirm = async (id: string) => {
-    if (!canView || !canArchive) throw new Error('You do not have permission to archive roles.');
+    if (!canView || !canArchive) throw new Error('You do not have permission to delete roles.');
     try {
-      await deleteRole(id); toast.success('Role archived'); setDeleteConfirmId(null);
+      await deleteRole(id); toast.success('Role deleted'); setDeleteConfirmId(null);
       if (view === 'edit' && selectedRole?.id === id) goList();
-    } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to archive role.'); }
+    } catch (error) { throw new Error(error instanceof Error ? error.message : 'Unable to delete role.'); }
   };
 
-  useEffect(() => { setView('list'); setSelectedRole(null); onViewActiveChange?.(false); }, [tenant?.id]);
+  useEffect(() => { setView('list'); setSelectedRole(null); setDeleteConfirmId(null); onViewActiveChange?.(false); }, [tenant?.id]);
   useEffect(() => {
     if (!canView || view === 'edit' && !canEdit || view === 'new' && !canCreate) {
       setView('list'); setSelectedRole(null); onViewActiveChange?.(false);
@@ -447,7 +447,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         {!rolesError && !visibleRoles.length && <p className="py-8 text-center text-sm text-slate-500">No roles yet.</p>}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {visibleRoles.map((role, index) => {
-            const roleUserCount = users.filter((u) => !u.isArchived && u.role === role.name).length;
+            const roleUserCount = role.userCount;
             const enabledCount = role.isSystemRole && role.name === 'Client Admin' ? permissions.length : role.permissions?.length ?? 0;
             const isDropdownOpen = openDropdownId === role.id;
             
@@ -511,7 +511,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem disabled={role.isSystemRole || !canArchive} destructive onSelect={() => setDeleteConfirmId(role.id)}>
-                          <Trash2 size={14} /> Archive Role
+                          <Trash2 size={14} /> Delete Role
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -545,16 +545,11 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         </>}
       </div>
 
-      <ConfirmActionDialog
-        open={!!deleteConfirmId}
+      <RoleDeletionDialog
+        role={visibleRoles.find(role => role.id === deleteConfirmId) ?? null}
+        canDelete={canView && canArchive}
         onOpenChange={open => { if (!open) setDeleteConfirmId(null); }}
-        title="Archive Role?"
-        description="Archive this custom role? Reassign its users first. Archived roles can be recovered from Archived Data."
-        variant="destructive"
-        icon={Trash2}
-        confirmLabel="Archive Role"
-        confirmDisabled={!canArchive || roles.some(role => role.id === deleteConfirmId && role.isSystemRole)}
-        onConfirm={async () => { if (deleteConfirmId) await handleDeleteConfirm(deleteConfirmId); }}
+        onDelete={handleDeleteConfirm}
       />
     </div>
   );

@@ -24,6 +24,8 @@ export interface ConfirmActionDialogProps {
   onConfirm: () => void | boolean | Promise<void | boolean>;
   isLoading?: boolean;
   confirmDisabled?: boolean;
+  /** Informational warning dialogs expose dismissal only. */
+  hideConfirm?: boolean;
   children?: React.ReactNode;
 }
 
@@ -42,7 +44,7 @@ const focusableSelector = 'a[href], button, input, select, textarea, summary, [t
 export function ConfirmActionDialog({
   open, onOpenChange, title, description, items, warning,
   confirmLabel = 'Confirm', cancelLabel = 'Cancel', variant = 'default', icon,
-  onConfirm, isLoading = false, confirmDisabled = false, children,
+  onConfirm, isLoading = false, confirmDisabled = false, hideConfirm = false, children,
 }: ConfirmActionDialogProps): React.ReactElement | null {
   const id = useId();
   const [internalLoading, setInternalLoading] = useState(false);
@@ -115,7 +117,7 @@ export function ConfirmActionDialog({
     if (!pending.current && !loading) onOpenChange(false);
   };
   const handleConfirm = async () => {
-    if (pending.current || loading || confirmDisabled) return;
+    if (pending.current || loading || confirmDisabled || hideConfirm) return;
     const inputs = dialogRef.current?.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>('input, select, textarea');
     if (inputs && Array.from(inputs).some(input => !input.reportValidity())) return;
     pending.current = true;
@@ -160,9 +162,9 @@ export function ConfirmActionDialog({
         </div>
         <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-100 bg-slate-50/50 px-4 py-3 dark:border-white/[0.05] dark:bg-white/[0.02] sm:px-5">
           <button ref={cancelRef} type="button" onClick={handleCancel} disabled={loading} className={cn('min-h-9 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/5', focusClass)}>{cancelLabel}</button>
-          <button type="button" onClick={() => void handleConfirm()} disabled={loading || confirmDisabled} className={cn('flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, style.button)}>
+          {!hideConfirm && <button type="button" onClick={() => void handleConfirm()} disabled={loading || confirmDisabled} className={cn('flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, style.button)}>
             {loading && <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}{confirmLabel}
-          </button>
+          </button>}
         </footer>
       </div>
     </div>}</ThemedPortal>;

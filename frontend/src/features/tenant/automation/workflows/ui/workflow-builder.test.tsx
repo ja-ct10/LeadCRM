@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from '@testing-library/react';
 import {
   WORKFLOW_TRIGGERS,
@@ -20,10 +21,16 @@ import { resolveWorkflowTemplate } from '../services/workflow-stage-templates';
 import { toast } from 'sonner';
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 import { workflowsApi } from '@/shared/services/workflows.api';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
+import { useLayout } from '@/features/tenant/layout/use-layout';
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => routing, usePathname: () => window.location.pathname }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ usePermissions: () => ['*'] }));
 vi.mock('@/shared/services/workflows.api', () => ({
   workflowsApi: { validate: vi.fn() },
 }));
 beforeEach(() => {
+  window.history.replaceState(null, '', '/automation/workflows/new');
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
     value: vi
@@ -40,6 +47,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.clearAllMocks();
+  window.history.replaceState(null, '', '/');
 });
 const initial: WorkflowDraft = {
   name: 'Deal follow-up',
@@ -63,7 +71,7 @@ function setup(
 ) {
   const save = options.save ?? vi.fn().mockResolvedValue(undefined),
     close = vi.fn();
-  render(
+  const view = render(
     <WorkflowBuilder
       initial={options.initial ?? structuredClone(initial)}
       triggers={WORKFLOW_TRIGGERS}
@@ -74,9 +82,22 @@ function setup(
       onClose={close}
     />,
   );
-  return { save, close };
+  return { save, close, view };
 }
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
+function unloadPrevented() {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+}
+function editTask(title = 'Unsaved task') {
+  fireEvent.click(button(/Configure action: 1. Create Task/));
+  fireEvent.change(screen.getByLabelText('Task title'), { target: { value: title } });
+}
+function ModuleNavigation({ label, module }: { label: string; module: string }) {
+  const { navigate } = useLayout();
+  return <nav aria-label="Modules"><button onClick={() => requestNavigation(() => navigate(module))}>{label}</button></nav>;
+}
 describe('visual workflow editor', () => {
   it('edits a configured stage template, saves an inactive draft and preserves custom actions across option refresh', async () => {
     const save = vi.fn().mockResolvedValue(undefined);
@@ -345,9 +366,19 @@ describe('visual workflow editor', () => {
       screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' }),
     ).toBeTruthy();
     fireEvent.click(button('Keep editing'));
+    expect(screen.getByLabelText('Task title')).toHaveProperty('value', 'New title');
+    expect(unloadPrevented()).toBe(true);
     fireEvent.click(button('Save draft'));
-    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    await screen.findByText('Draft saved. This workflow is inactive.');
+    expect(save).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
+    expect(unloadPrevented()).toBe(false);
+    const navigate = vi.fn(); act(() => requestNavigation(navigate)); expect(navigate).toHaveBeenCalledOnce();
+    fireEvent.click(button('Back to workflows')); expect(close).toHaveBeenCalledOnce();
+    editTask('Edited after saving');
+    act(() => requestNavigation(navigate)); expect(navigate).toHaveBeenCalledOnce();
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
+    expect(unloadPrevented()).toBe(true);
   });
   it('keeps read-only configuration inspectable and omits mutations', () => {
     setup({ readOnly: true });
@@ -360,21 +391,121 @@ describe('visual workflow editor', () => {
       screen.queryByRole('button', { name: 'Remove action 1' }),
     ).toBeNull();
   });
-  it('guards sidebar clicks before router rendering and replays only confirmed navigation', () => {
-    const navigate = vi.fn();
-    render(<nav><button onClick={navigate}>Sidebar destination</button></nav>);
-    setup();
-    fireEvent.click(button(/Configure action: 1. Create Task/));
-    fireEvent.change(screen.getByLabelText('Task title'), {
-      target: { value: 'Unsaved task' },
+  describe.each([false, true])('module navigation (dirty=%s)', dirty => {
+    it.each([
+      ['Dashboard', 'dashboard', '/dashboard'], ['Leads', 'leads', '/crm/leads'], ['Contacts', 'contacts', '/crm/contacts'], ['Accounts', 'accounts', '/crm/accounts'],
+      ['Deals', 'pipeline', '/crm/pipeline'], ['Deal records', 'deals', '/crm/deals'], ['Tasks', 'tasks', '/operations/taskboard'], ['Campaigns', 'campaigns', '/marketing/campaigns'],
+      ['Workflows', 'workflows', '/automation/workflows'], ['Settings', 'settings', '/settings'], ['Team settings', 'settings-users', '/settings?tab=users'],
+      ['Profile settings', 'profile-settings', '/settings/profile'], ['Forms', 'forms', '/marketing/forms'], ['Help', 'help', '/help'], ['Inbox', 'inbox', '/inbox'],
+    ])('resumes the exact %s destination once', async (label, module, destination) => {
+      render(<ModuleNavigation label={label} module={module} />);
+      const { save, close } = setup();
+      if (dirty) editTask();
+      fireEvent.click(button(label));
+      if (dirty) {
+        const dialog = screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' });
+        expect(within(dialog).getByText('Your last saved workflow will be kept.')).toBeTruthy();
+        expect(within(dialog).queryByRole('button', { name: 'Save changes' })).toBeNull();
+        expect(routing.push).not.toHaveBeenCalled();
+        fireEvent.click(button('Keep editing'));
+        expect(screen.getByLabelText('Task title')).toHaveProperty('value', 'Unsaved task');
+        expect(routing.push).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+        fireEvent.click(button(label));
+        const discard = button('Discard changes'); fireEvent.click(discard); fireEvent.click(discard);
+      }
+      await waitFor(() => expect(routing.push).toHaveBeenCalledExactlyOnceWith(destination));
+      expect(save).not.toHaveBeenCalled(); expect(close).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(false);
+      await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
     });
-    fireEvent.click(button('Sidebar destination'));
-    expect(navigate).not.toHaveBeenCalled();
+  });
+  it('allows clean Back immediately', () => {
+    const { close } = setup(); fireEvent.click(button('Back to workflows'));
+    expect(close).toHaveBeenCalledOnce(); expect(screen.queryByRole('alertdialog')).toBeNull(); expect(unloadPrevented()).toBe(false);
+  });
+  it.each(['Keep editing', 'Close confirmation', 'Escape', 'backdrop'])('preserves dirty edits when Back is canceled with %s', method => {
+    const { close, save } = setup(); editTask(); fireEvent.click(button('Back to workflows'));
+    if (method === 'Escape') fireEvent.keyDown(window.document, { key: 'Escape' });
+    else if (method === 'backdrop') fireEvent.click(window.document.querySelector('[data-confirm-action-layer] > [aria-hidden]')!);
+    else fireEvent.click(button(method));
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(close).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Task title')).toHaveProperty('value', 'Unsaved task'); expect(unloadPrevented()).toBe(true);
+  });
+  it('discards Back once without saving and rearms protection after another edit', async () => {
+    const { close, save } = setup(); editTask(); fireEvent.click(button('Back to workflows'));
+    const discard = button('Discard changes'); fireEvent.click(discard); fireEvent.click(discard);
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(close).toHaveBeenCalledOnce(); expect(save).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(false);
+    editTask('Another edit');
+    fireEvent.click(button('Back to workflows'));
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy(); expect(close).toHaveBeenCalledOnce(); expect(unloadPrevented()).toBe(true);
+  });
+  it('captures internal links with query/hash and clears canceled destinations', async () => {
+    const clicked = vi.fn((event: React.MouseEvent) => event.preventDefault());
+    render(<header><a href="/crm/contacts?highlight=contact-1#details" onClick={clicked}>Contact destination</a></header>);
+    const { close } = setup(); editTask();
+    fireEvent.click(screen.getByText('Contact destination')); expect(clicked).not.toHaveBeenCalled(); expect(routing.push).not.toHaveBeenCalled();
+    fireEvent.click(button('Keep editing')); fireEvent.click(button('Back to workflows')); fireEvent.click(button('Discard changes'));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(close).toHaveBeenCalledOnce(); expect(routing.push).not.toHaveBeenCalled();
+    editTask('More edits'); fireEvent.click(screen.getByText('Contact destination')); fireEvent.click(button('Discard changes'));
+    await waitFor(() => expect(routing.push).toHaveBeenCalledExactlyOnceWith('/crm/contacts?highlight=contact-1#details'));
+    expect(clicked).not.toHaveBeenCalled();
+  });
+  it('retains the first pending header destination until confirmation', async () => {
+    const first = vi.fn(), second = vi.fn();
+    render(<header><button onClick={() => requestNavigation(first)}>First destination</button><button onClick={() => requestNavigation(second)}>Second destination</button></header>);
+    setup(); editTask();
+    fireEvent.click(button('First destination')); fireEvent.click(button('Second destination')); fireEvent.click(button('Discard changes'));
+    await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+    expect(first).toHaveBeenCalledOnce(); expect(second).not.toHaveBeenCalled();
+  });
+  it.each(['new tab', 'named target', 'download', 'same page', 'exact current', 'external', 'ctrl', 'meta', 'shift', 'alt', 'middle'])('does not intercept %s links while dirty', kind => {
+    const clicked = vi.fn((event: React.MouseEvent) => event.preventDefault());
+    render(<a href={kind === 'same page' ? '#section' : kind === 'exact current' ? window.location.href : kind === 'external' ? 'https://example.test' : '/crm/contacts'} target={kind === 'new tab' ? '_blank' : kind === 'named target' ? 'other-window' : undefined} download={kind === 'download' || undefined} onClick={clicked}>Destination</a>);
+    setup(); editTask();
+    fireEvent.click(screen.getByText('Destination'), { ctrlKey: kind === 'ctrl', metaKey: kind === 'meta', shiftKey: kind === 'shift', altKey: kind === 'alt', button: kind === 'middle' ? 1 : 0 });
+    expect(screen.queryByRole('alertdialog')).toBeNull(); expect(clicked).toHaveBeenCalledOnce(); expect(unloadPrevented()).toBe(true);
+  });
+  it('keeps failed drafts dirty and protected', async () => {
+    const { close } = setup({ save: vi.fn().mockRejectedValue(new Error('Save failed')) }); editTask();
+    fireEvent.click(button('Save draft')); await screen.findByText('Save failed');
+    expect(screen.getByLabelText('Task title')).toHaveProperty('value', 'Unsaved task'); expect(unloadPrevented()).toBe(true);
+    fireEvent.click(button('Back to workflows')); expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
+  });
+  it('allows dirty editor tabs, inspector controls, menus, undo/redo, validation and activation controls', async () => {
+    const menuAction = vi.fn(); render(<div role="menu"><button role="menuitem" onClick={menuAction}>Editor menu action</button></div>);
+    const { close, save } = setup(); editTask();
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Editor menu action' })); expect(menuAction).toHaveBeenCalledOnce();
+    for (const name of ['Activity', 'Builder', 'Workflow details', 'Undo', 'Redo']) {
+      fireEvent.click(button(name)); expect(screen.queryByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeNull();
+    }
+    fireEvent.click(button(/Configure trigger:/));
+    fireEvent.click(button(/Configure condition:/));
+    fireEvent.change(screen.getByLabelText('Condition 1 value'), { target: { value: '2000' } });
+    fireEvent.click(button('Add condition'));
+    expect(screen.queryByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeNull();
+    fireEvent.click(button('Remove condition 2'));
+    fireEvent.click(button(/Configure action: 1. Create Task/));
+    fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Another title' } });
+    fireEvent.click(button('Duplicate action 1')); fireEvent.click(button('Undo'));
+    expect(button('Test')).toHaveProperty('disabled', true); fireEvent.click(button('Test'));
+    vi.mocked(workflowsApi.validate).mockResolvedValue({ success: true, data: { valid: true, message: 'Configuration valid. No actions executed.' } });
+    fireEvent.click(button('Validate'));
+    await screen.findByText('Configuration valid. No actions executed.');
+    expect(workflowsApi.validate).toHaveBeenCalledOnce();
+    fireEvent.click(button('Save and activate'));
+    expect(screen.getByRole('alertdialog', { name: 'Activate workflow?' })).toBeTruthy();
     fireEvent.click(button('Keep editing'));
-    expect(navigate).not.toHaveBeenCalled();
-    fireEvent.click(button('Sidebar destination'));
-    fireEvent.click(button('Discard changes'));
-    expect(navigate).toHaveBeenCalledOnce();
+    expect(screen.queryByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeNull();
+    expect(close).not.toHaveBeenCalled(); expect(save).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+  });
+  it('removes intent, link and unload guards when unmounted', () => {
+    const clicked = vi.fn((event: React.MouseEvent) => event.preventDefault());
+    render(<a href="/help" onClick={clicked}>Help destination</a>);
+    const { view } = setup(); editTask(); view.unmount();
+    const navigate = vi.fn(); requestNavigation(navigate); fireEvent.click(screen.getByText('Help destination'));
+    expect(navigate).toHaveBeenCalledOnce(); expect(clicked).toHaveBeenCalledOnce(); expect(unloadPrevented()).toBe(false);
   });
   it('guards browser history while allowing the first-save URL replacement', () => {
     const navigation = new EventTarget();

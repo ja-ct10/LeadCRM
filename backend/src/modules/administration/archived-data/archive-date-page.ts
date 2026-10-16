@@ -16,10 +16,9 @@ const definitions: Record<ArchiveType, { table: string; name: string; detail: st
   Task: { table: 'Task', name: `r."title"`, detail: `''::text`, search: ['title'] },
   Campaign: { table: 'Campaign', name: `r."name"`, detail: `''::text`, search: ['name'] },
   Workflow: { table: 'Workflow', name: `r."name"`, detail: `''::text`, search: ['name'] },
-  Role: { table: 'RoleDefinition', name: `r."name"`, detail: `''::text`, search: ['name'] },
 };
 
-export type ArchiveDateRow = { type: ArchiveType; id: string; name: string; detail: string; archivedAt: Date | null; isSystemRole: boolean };
+export type ArchiveDateRow = { type: ArchiveType; id: string; name: string; detail: string; archivedAt: Date | null };
 
 /** Sort the default archive view in PostgreSQL and hydrate only its requested page. */
 export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[], query: { search?: string; page: number; limit: number; sortOrder?: 'asc' | 'desc' }): Promise<ArchiveDateRow[]> {
@@ -31,14 +30,13 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
     const search = terms.map(term => Prisma.sql`(${Prisma.join(definition.search.map(field =>
       Prisma.sql`${Prisma.raw(`r."${field}"`)} ILIKE ${`%${term.replace(/[\\%_]/g, '\\$&')}%`}`), ' OR ')})`);
     const archiveCondition = type === 'User' ? Prisma.sql`r."status" = 'INACTIVE'` : type === 'Product' ? Prisma.sql`r."active" = false` : Prisma.sql`r."isArchived" = true`;
-    const entityCondition = type === 'Role' ? Prisma.sql`a."entityType" IN ('Role', 'RoleDefinition')` : Prisma.sql`a."entityType" = ${type}`;
+    const entityCondition = Prisma.sql`a."entityType" = ${type}`;
     const auditAction = type === 'User'
       ? Prisma.sql`(a."action" LIKE '%.archived' OR a."action" = 'user.deactivated_with_reassignment' OR (a."action" = 'user.updated' AND a."changeset"->'after'->>'status' = 'INACTIVE'))`
       : Prisma.sql`a."action" LIKE '%.archived'`;
     return Prisma.sql`SELECT ${type}::text AS "type", r."id", ${Prisma.raw(definition.name)} AS "name",
       ${Prisma.raw(definition.detail)} AS "detail",
-      ${type === 'Product' ? Prisma.sql`r."updatedAt"` : definition.deletedAt ? Prisma.sql`coalesce(r."deletedAt", history."createdAt")` : Prisma.sql`history."createdAt"`} AS "archivedAt",
-      ${type === 'Role' ? Prisma.sql`r."isSystemRole"` : Prisma.sql`false`} AS "isSystemRole"
+      ${type === 'Product' ? Prisma.sql`r."updatedAt"` : definition.deletedAt ? Prisma.sql`coalesce(r."deletedAt", history."createdAt")` : Prisma.sql`history."createdAt"`} AS "archivedAt"
       FROM ${Prisma.raw(`"${definition.table}"`)} r
       ${type === 'Product' ? Prisma.empty : Prisma.sql`LEFT JOIN LATERAL (SELECT a."createdAt" FROM "AuditLog" a
         WHERE a."tenantId" = ${tenantId} AND a."entityId" = r."id" AND ${entityCondition} AND ${auditAction}

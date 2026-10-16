@@ -36,7 +36,7 @@ const titles: Record<NotificationType, string> = {
   user_created: 'New Team Member', user_status_changed: 'Team Member Account Status Changed', mailbox_disconnected: 'Gmail Disconnected',
   mailbox_sync_failed: 'Persistent Gmail sync failure', form_processing_failed: 'Form processing failed',
   record_archived: 'Record archived', record_restored: 'Record restored',
-  website_lead: 'New Website Lead', role_created: 'Role Created', role_archived: 'Role Archived',
+  website_lead: 'New Website Lead', role_created: 'Role Created', role_archived: 'Role Deleted',
   role_permissions_changed: 'Role Permissions Updated', user_role_changed: 'User Role Updated',
 };
 
@@ -107,7 +107,7 @@ async function presentation(event: NotificationEvent, facts: Facts) {
   else if (type === 'user_status_changed') {
     const status = facts.status === 'ACTIVE' ? 'Reactivated' : 'Deactivated'; title = `User ${status}`; body = `${name}'s account was ${status.toLowerCase()}.`;
   } else if (type === 'role_created') body = `${name} was created with access permissions.`;
-  else if (type === 'role_archived') body = `${name} was archived.`;
+  else if (type === 'role_archived') body = `"${name}" was deleted.`;
   else if (type === 'role_permissions_changed') body = `${name} permissions were updated.`;
   else if (type === 'user_role_changed') body = `${name}'s role assignment was updated.`;
   return { title, body };

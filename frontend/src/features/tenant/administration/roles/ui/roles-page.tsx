@@ -1,8 +1,7 @@
 'use client';
 
-import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
-import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
-import React, { useState } from 'react';
+import { RoleDeletionDialog } from './role-deletion-dialog';
+import React, { useEffect, useState } from 'react';
 import { Plus, Search, RefreshCw, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
@@ -22,7 +21,8 @@ type Tab = 'roles' | 'permissions';
 export default function RolesPage(): React.ReactElement {
   const canManage = useHasPermission('roles.edit'), canCreate = useHasPermission('roles.create'), canArchive = useHasPermission('roles.archive');
   const [activeTab, setActiveTab] = useState<Tab>('roles');
-  const { confirm, dialogProps } = useConfirmDialog();
+  const [deleteRoleId, setDeleteRoleId] = useState<string | null>(null);
+  useEffect(() => { if (!canArchive) setDeleteRoleId(null); }, [canArchive]);
 
   const {
     isLoading, error,
@@ -37,16 +37,7 @@ export default function RolesPage(): React.ReactElement {
 
   const onArchive = (role: RoleListItem) => {
     if (!canArchive || role.isSystemRole) return;
-    confirm({
-      title: 'Archive Role?',
-      description: `Archive "${role.name}"? Reassign its users first. Archived roles can be recovered from Archived Data.`,
-      confirmLabel: 'Archive Role',
-      variant: 'destructive',
-      onConfirm: async () => {
-        await handleArchive(role.id);
-        toast.success(`Role "${role.name}" archived`);
-      },
-    });
+    setDeleteRoleId(role.id);
   };
 
   const tabs: Array<{ id: Tab; label: string }> = [
@@ -148,7 +139,9 @@ export default function RolesPage(): React.ReactElement {
         </div>
       )}
 
-      <ConfirmActionDialog {...dialogProps} />
+      <RoleDeletionDialog role={filteredRoles.find(role => role.id === deleteRoleId) ?? null} canDelete={canArchive}
+        onOpenChange={open => { if (!open) setDeleteRoleId(null); }}
+        onDelete={async id => { await handleArchive(id); toast.success('Role deleted'); setDeleteRoleId(null); }} />
 
       {/* Permissions reference tab */}
       {activeTab === 'permissions' && <PermissionsTab />}

@@ -1,7 +1,7 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 vi.mock('../../../../config/database.config', () => ({ default: {} }));
 import { replaceUserRole } from '../roles.repository';
-const tx = { user: { findFirst: vi.fn(), update: vi.fn() }, roleDefinition: { findFirst: vi.fn() }, userRole: { deleteMany: vi.fn(), upsert: vi.fn() } };
+const tx = { $queryRaw: vi.fn(), user: { findFirst: vi.fn(), update: vi.fn() }, roleDefinition: { findFirst: vi.fn() }, userRole: { deleteMany: vi.fn(), upsert: vi.fn() } };
 beforeEach(() => { vi.resetAllMocks(); tx.user.findFirst.mockResolvedValue({ id: 'u', role: 'Sales', email: 'staff@camxian.com' }); tx.roleDefinition.findFirst.mockResolvedValue({ id: 'sales-role', name: 'Sales' }); });
 it('keeps the User role and permission assignment synchronized within the caller transaction', async () => {
   await replaceUserRole(tx as never, 'u', 'tenant', 'Sales');

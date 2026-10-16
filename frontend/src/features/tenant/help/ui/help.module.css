@@ -85,4 +85,5 @@
 .footer { padding: 24px 0; font-size: .8125rem; color: var(--text-secondary); line-height: 1.7; }
 @media (max-width: 1000px) { .categories { grid-template-columns: repeat(2, minmax(0, 1fr)); } .articleLayout { grid-template-columns: minmax(0, 1fr); gap: 0; } .toc { display: none; } .mobileToc { display: block; margin: 24px 0 0; border: 1px solid var(--border); border-radius: 8px; padding: 12px; font-size: .875rem; } .mobileToc summary { cursor: pointer; font-weight: 600; } }
 @media (max-width: 540px) { .categories, .popular { grid-template-columns: minmax(0, 1fr); } .hero { padding: 22px 18px; border-radius: 14px; } .category { padding: 20px; } .article { padding: 22px 16px; } .section { margin: 26px 0; } .searchHint { line-height: 1.6; } }
+@media (width < 640px) { .searchBox input { font-size: max(1rem, 16px); } }
 @media (prefers-reduced-motion: reduce) { .category { transition: none; } }

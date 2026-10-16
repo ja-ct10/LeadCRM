@@ -7,9 +7,13 @@ import { audiencesApi } from '@/shared/services/audiences.api';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { toast } from 'sonner';
 import { clearPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
+import { useLayout } from '@/features/tenant/layout/use-layout';
 const access = vi.hoisted(() => ({ denied: new Set<string>() }));
+const routing = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => routing, usePathname: () => window.location.pathname }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'builder-user', tenantId: 'builder-tenant', role: 'Client Admin' }, tenant: { id: 'builder-tenant' }, isLoading: false }) }));
-vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => !access.denied.has(key), usePermissions: () => ['*'] }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { variableFields: vi.fn(), create: vi.fn(), update: vi.fn(), send: vi.fn(), get: vi.fn(), smsSettings: vi.fn(), emailSettings: vi.fn(), schedule: vi.fn(), cancelSchedule: vi.fn() } }));
 vi.mock('@/shared/services/audiences.api', () => ({ audiencesApi: { fields: vi.fn(), companies: vi.fn(async () => ({ data: [] })), list: vi.fn(), preview: vi.fn(), create: vi.fn() } }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), warning: vi.fn(), error: vi.fn(), info: vi.fn() } }));
@@ -56,6 +60,10 @@ function unloadPrevented() {
   return event.defaultPrevented;
 }
 const existingDraft = { id: 'saved-id', name: 'Saved campaign', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'LEADS' };
+function ModuleNavigation({ label, module, onNavigated }: { label: string; module: string; onNavigated?: () => void }) {
+  const { navigate } = useLayout();
+  return <nav aria-label="Workspace"><button aria-label={label} onClick={() => requestNavigation(() => { navigate(module); onNavigated?.(); })}><span>{label}</span></button></nav>;
+}
 
 describe('campaign unsaved navigation', () => {
   it.each(['empty', 'template', 'edit'])('leaves a clean %s campaign immediately', mode => {
@@ -102,6 +110,7 @@ describe('campaign unsaved navigation', () => {
       expect(mode === 'edit' ? campaignsApi.update : campaignsApi.create).toHaveBeenCalledOnce();
       expect(screen.getByLabelText(/Body/)).toHaveProperty('value', body);
       expect(unloadPrevented()).toBe(false); expect(screen.queryByRole('alertdialog')).toBeNull();
+      const navigate = vi.fn(); act(() => requestNavigation(navigate)); expect(navigate).toHaveBeenCalledOnce();
       fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' })); expect(back).toHaveBeenCalledTimes(2);
       fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Edited again' } });
       expect(unloadPrevented()).toBe(true);
@@ -154,48 +163,49 @@ describe('campaign module navigation', () => {
   beforeEach(() => { window.history.replaceState(null, '', '/marketing/campaigns'); });
   afterEach(() => { window.history.replaceState(null, '', '/'); });
   it.each([
-    ['Dashboard', '/dashboard'], ['Leads', '/crm/leads'], ['Contacts', '/crm/contacts'], ['Accounts', '/crm/accounts'],
-    ['Deals', '/crm/pipeline'], ['Tasks', '/operations/taskboard'], ['Campaigns', '/marketing/campaigns'],
-    ['Workflows', '/automation/workflows'], ['Settings', '/settings'],
-  ])('defers %s navigation and resumes the selected destination once', (label, destination) => {
-    const navigate = vi.fn(), back = vi.fn();
-    render(<><nav aria-label="Workspace"><button aria-label={label} onClick={() => { expect(unloadPrevented()).toBe(false); navigate(destination); }}><span>{label}</span></button></nav><CampaignBuilder onBack={back} /></>);
+    ['Dashboard', 'dashboard', '/dashboard'], ['Leads', 'leads', '/crm/leads'], ['Contacts', 'contacts', '/crm/contacts'], ['Accounts', 'accounts', '/crm/accounts'],
+    ['Deals', 'pipeline', '/crm/pipeline'], ['Deal records', 'deals', '/crm/deals'], ['Tasks', 'tasks', '/operations/taskboard'], ['Campaigns', 'campaigns', '/marketing/campaigns'],
+    ['Workflows', 'workflows', '/automation/workflows'], ['Settings', 'settings', '/settings'], ['Team settings', 'settings-users', '/settings?tab=users'],
+    ['Profile settings', 'profile-settings', '/settings/profile'], ['Forms', 'forms', '/marketing/forms'], ['Help', 'help', '/help'], ['Inbox', 'inbox', '/inbox'],
+  ])('defers %s navigation and resumes the selected destination once', (label, module, destination) => {
+    const closeSidebar = vi.fn(() => { expect(unloadPrevented()).toBe(false); }), back = vi.fn();
+    render(<><ModuleNavigation label={label} module={module} onNavigated={closeSidebar} /><CampaignBuilder onBack={back} /></>);
     fill();
-    const module = within(screen.getByRole('navigation', { name: 'Workspace' })).getByText(label);
-    fireEvent.click(module);
-    expect(navigate).not.toHaveBeenCalled(); expect(back).not.toHaveBeenCalled();
+    const moduleButton = within(screen.getByRole('navigation', { name: 'Workspace' })).getByText(label);
+    fireEvent.click(moduleButton);
+    expect(routing.push).not.toHaveBeenCalled(); expect(closeSidebar).not.toHaveBeenCalled(); expect(back).not.toHaveBeenCalled();
     expect(screen.getByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
-    expect(navigate).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
+    expect(routing.push).not.toHaveBeenCalled(); expect(closeSidebar).not.toHaveBeenCalled(); expect(unloadPrevented()).toBe(true);
     expect(screen.getByLabelText(/Campaign Name/)).toHaveProperty('value', 'September Campaign');
-    fireEvent.click(module);
+    fireEvent.click(moduleButton);
     const discard = screen.getByRole('button', { name: 'Discard changes' }); fireEvent.click(discard); fireEvent.click(discard);
-    expect(navigate).toHaveBeenCalledExactlyOnceWith(destination);
+    expect(routing.push).toHaveBeenCalledExactlyOnceWith(destination); expect(closeSidebar).toHaveBeenCalledOnce();
     expect(back).toHaveBeenCalledTimes(label === 'Campaigns' ? 1 : 0);
     expect(campaignsApi.create).not.toHaveBeenCalled(); expect(campaignsApi.update).not.toHaveBeenCalled();
   });
 
   it('allows clean module navigation and returns a clean Campaigns entry to its list', () => {
-    const navigate = vi.fn(), back = vi.fn();
-    render(<><nav aria-label="Workspace"><button aria-label="Leads" onClick={() => navigate('/crm/leads')}>Leads</button><button aria-label="Campaigns" onClick={() => navigate('/marketing/campaigns')}>Campaigns</button></nav><CampaignBuilder onBack={back} /></>);
+    const back = vi.fn(), closeSidebar = vi.fn();
+    render(<><ModuleNavigation label="Leads" module="leads" /><ModuleNavigation label="Campaigns" module="campaigns" onNavigated={closeSidebar} /><CampaignBuilder onBack={back} /></>);
     fireEvent.click(screen.getByRole('button', { name: 'Leads' }));
-    expect(navigate).toHaveBeenLastCalledWith('/crm/leads'); expect(back).not.toHaveBeenCalled();
+    expect(routing.push).toHaveBeenLastCalledWith('/crm/leads'); expect(back).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Campaigns' }));
-    expect(navigate).toHaveBeenLastCalledWith('/marketing/campaigns'); expect(back).toHaveBeenCalledOnce();
+    expect(routing.push).toHaveBeenLastCalledWith('/marketing/campaigns'); expect(back).toHaveBeenCalledOnce(); expect(closeSidebar).toHaveBeenCalledOnce();
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
   it.each([false, true])('navigates from the dedicated Create route without also invoking Back (dirty=%s)', dirty => {
     window.history.replaceState(null, '', '/campaigns/create');
-    const navigate = vi.fn(), back = vi.fn();
-    render(<><nav aria-label="Workspace"><button aria-label="Campaigns" onClick={() => navigate('/marketing/campaigns')}>Campaigns</button></nav><CampaignBuilder onBack={back} /></>);
+    const back = vi.fn();
+    render(<><ModuleNavigation label="Campaigns" module="campaigns" /><CampaignBuilder onBack={back} /></>);
     if (dirty) fill();
     fireEvent.click(screen.getByRole('button', { name: 'Campaigns' }));
     if (dirty) {
-      expect(navigate).not.toHaveBeenCalled();
+      expect(routing.push).not.toHaveBeenCalled();
       fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
     }
-    expect(navigate).toHaveBeenCalledExactlyOnceWith('/marketing/campaigns'); expect(back).not.toHaveBeenCalled();
+    expect(routing.push).toHaveBeenCalledExactlyOnceWith('/marketing/campaigns'); expect(back).not.toHaveBeenCalled();
     expect(screen.queryByRole('alertdialog')).toBeNull();
   });
 
@@ -207,22 +217,23 @@ describe('campaign module navigation', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
     fireEvent.click(screen.getByRole('button', { name: 'Back to campaigns' })); fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
     expect(back).toHaveBeenCalledOnce(); expect(clicked).not.toHaveBeenCalled();
+    expect(routing.push).not.toHaveBeenCalled();
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'More edits' } });
     fireEvent.click(link); fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
-    expect(clicked).toHaveBeenCalledOnce(); expect(link.getAttribute('href')).toBe('/crm/contacts?highlight=contact-1#details');
+    expect(clicked).not.toHaveBeenCalled(); expect(routing.push).toHaveBeenCalledExactlyOnceWith('/crm/contacts?highlight=contact-1#details');
   });
 
   it('keeps the first pending destination until confirmation', () => {
     const first = vi.fn(), second = vi.fn();
-    render(<><nav aria-label="Workspace"><button onClick={first}>First destination</button><button onClick={second}>Second destination</button></nav><CampaignBuilder onBack={vi.fn()} /></>); fill();
+    render(<><header><button onClick={() => requestNavigation(first)}>First destination</button><button onClick={() => requestNavigation(second)}>Second destination</button></header><CampaignBuilder onBack={vi.fn()} /></>); fill();
     fireEvent.click(screen.getByText('First destination')); fireEvent.click(screen.getByText('Second destination'));
     fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
     expect(first).toHaveBeenCalledOnce(); expect(second).not.toHaveBeenCalled();
   });
 
-  it.each(['new tab', 'download', 'same page', 'external', 'ctrl', 'meta', 'shift', 'alt', 'middle'])('does not intercept %s links while dirty', kind => {
+  it.each(['new tab', 'named target', 'download', 'same page', 'exact current', 'external', 'ctrl', 'meta', 'shift', 'alt', 'middle'])('does not intercept %s links while dirty', kind => {
     const clicked = vi.fn((event: React.MouseEvent) => event.preventDefault());
-    render(<><a href={kind === 'same page' ? '#section' : kind === 'external' ? 'https://example.test' : '/crm/contacts'} target={kind === 'new tab' ? '_blank' : undefined} download={kind === 'download' || undefined} onClick={clicked}>Destination</a><CampaignBuilder onBack={vi.fn()} /></>); fill();
+    render(<><a href={kind === 'same page' ? '#section' : kind === 'exact current' ? window.location.href : kind === 'external' ? 'https://example.test' : '/crm/contacts'} target={kind === 'new tab' ? '_blank' : kind === 'named target' ? 'other-window' : undefined} download={kind === 'download' || undefined} onClick={clicked}>Destination</a><CampaignBuilder onBack={vi.fn()} /></>); fill();
     fireEvent.click(screen.getByText('Destination'), { ctrlKey: kind === 'ctrl', metaKey: kind === 'meta', shiftKey: kind === 'shift', altKey: kind === 'alt', button: kind === 'middle' ? 1 : 0 });
     expect(screen.queryByRole('alertdialog')).toBeNull(); expect(clicked).toHaveBeenCalledOnce(); expect(unloadPrevented()).toBe(true);
   });
@@ -232,7 +243,7 @@ describe('campaign module navigation', () => {
     Object.defineProperty(window, 'navigation', { configurable: true, value: navigation });
     try {
       const clicked = vi.fn();
-      render(<nav aria-label="Workspace"><button onClick={clicked}>Destination</button></nav>);
+      render(<nav aria-label="Workspace"><button onClick={() => requestNavigation(clicked)}>Destination</button></nav>);
       const builder = render(<CampaignBuilder onBack={vi.fn()} />);
       const traverse = (navigationType = 'traverse') => {
         const event = new Event('navigate', { cancelable: true });

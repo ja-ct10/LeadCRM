@@ -1,7 +1,9 @@
 'use client';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
 import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -63,6 +65,7 @@ export function CampaignBuilder({
 
 }: CampaignBuilderProps) {
   const { tenant, user } = useAuth();
+  const router = useRouter();
 
   const maySend = useHasPermission('campaigns.send') && canSend;
   const canCreate = useHasPermission('campaigns.create'), canEdit = useHasPermission('campaigns.edit');
@@ -82,16 +85,11 @@ export function CampaignBuilder({
   const draftSnapshot = JSON.stringify({ campaignName, campaignType, targetAudience, emailSubject, messageContent });
   const [savedSnapshot, setSavedSnapshot] = useState(draftSnapshot);
   const dirty = draftSnapshot !== savedSnapshot;
-  const [exit, setExit] = useState<(() => void) | null>(null);
+  const [exit, setExit] = useState<NavigationAction | null>(null);
   const leaving = useRef(false), exitPending = useRef(false);
-  const editorRef = useRef<HTMLDivElement>(null);
+  const guardState = useRef({ dirty });
+  guardState.current = { dirty };
   useEffect(() => { leaving.current = false; }, [draftSnapshot]);
-  const requestLeave = useCallback((navigate: () => void) => {
-    if (leaving.current || !dirty) { leaving.current = true; navigate(); return; }
-    if (exitPending.current) return;
-    exitPending.current = true;
-    setExit(() => navigate);
-  }, [dirty]);
   function leaveBuilder() {
     leaving.current = true; exitPending.current = false; setExit(null); onBack();
   }
@@ -105,41 +103,46 @@ export function CampaignBuilder({
     return () => window.removeEventListener('beforeunload', unload);
   }, [dirty]);
   useEffect(() => {
+    const intent = (event: Event) => {
+      if (leaving.current || !guardState.current.dirty) return;
+      event.preventDefault();
+      if (exitPending.current) return;
+      exitPending.current = true;
+      setExit(() => (event as NavigationIntentEvent).detail.navigate);
+    };
     const link = (event: MouseEvent) => {
       if (leaving.current || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
       const target = event.target instanceof Element ? event.target : null;
-      if (!target || editorRef.current?.contains(target)) return;
-      // Capture the actual module buttons before Next renders. Campaign menus
-      // live in portals, so treating every menuitem as navigation would block Send.
-      const control = target.closest('nav[aria-label="Workspace"] button');
-      if (control instanceof HTMLButtonElement && !control.disabled) {
-        const campaigns = control.getAttribute('aria-label') === 'Campaigns' && ['/campaigns', '/marketing/campaigns'].includes(window.location.pathname);
-        if (!dirty && !campaigns) return;
+      if (!target) return;
+      // The inline builder shares the list URL. Preserve this button's list exit
+      // before replaying the sidebar action, including its mobile close behavior.
+      const control = target.closest('nav[aria-label="Workspace"] button[aria-label="Campaigns"]');
+      if (control instanceof HTMLButtonElement && !control.disabled && ['/campaigns', '/marketing/campaigns'].includes(window.location.pathname)) {
         event.preventDefault(); event.stopPropagation();
-        requestLeave(() => { if (campaigns) onBack(); control.click(); });
+        requestNavigation(() => { leaving.current = true; onBack(); control.click(); });
         return;
       }
+      if (!guardState.current.dirty) return;
       const anchor = target.closest('a[href]');
       if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return;
       const destination = new URL(anchor.href), current = window.location;
-      if (destination.origin !== current.origin) return;
-      const campaigns = destination.pathname === current.pathname && ['/campaigns', '/marketing/campaigns'].includes(destination.pathname) && destination.search === current.search && !destination.hash;
-      if (!campaigns && (!dirty || (destination.pathname === current.pathname && destination.search === current.search))) return;
+      if (destination.origin !== current.origin || (destination.pathname === current.pathname && destination.search === current.search)) return;
       event.preventDefault(); event.stopPropagation();
-      requestLeave(() => { if (campaigns) onBack(); anchor.click(); });
+      requestNavigation(() => router.push(destination.pathname + destination.search + destination.hash));
     };
     const navigation = (window as unknown as { navigation?: EventTarget }).navigation;
     const traverse = (event: Event) => {
       const entry = event as Event & { navigationType?: string; destination?: { url: string } };
-      if (!dirty || leaving.current || !entry.cancelable || entry.navigationType !== 'traverse' || !entry.destination || entry.destination.url === window.location.href) return;
+      if (!guardState.current.dirty || leaving.current || !entry.cancelable || entry.navigationType !== 'traverse' || !entry.destination || entry.destination.url === window.location.href) return;
       event.preventDefault();
       const url = entry.destination.url;
-      requestLeave(() => window.location.assign(url));
+      requestNavigation(() => window.location.assign(url));
     };
+    window.addEventListener(NAVIGATION_INTENT_EVENT, intent);
     document.addEventListener('click', link, true);
     navigation?.addEventListener('navigate', traverse);
-    return () => { document.removeEventListener('click', link, true); navigation?.removeEventListener('navigate', traverse); };
-  }, [dirty, requestLeave, onBack]);
+    return () => { window.removeEventListener(NAVIGATION_INTENT_EVENT, intent); document.removeEventListener('click', link, true); navigation?.removeEventListener('navigate', traverse); };
+  }, [router, onBack]);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('mobile');
   const [showPreview, setShowPreview] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
@@ -417,11 +420,11 @@ export function CampaignBuilder({
   );
 
   return (
-    <div ref={editorRef} className="w-full min-w-0 h-full flex flex-col">
+    <div className="w-full min-w-0 h-full flex flex-col">
       {/* Top Bar */}
       <div className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <button disabled={isSending} onClick={() => requestLeave(onBack)} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <button disabled={isSending} onClick={() => requestNavigation(onBack)} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <ArrowLeft size={18} />
           </button>
           <div>
@@ -579,7 +582,7 @@ export function CampaignBuilder({
       <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
         title="Discard unsaved changes?" description="Your unsaved campaign changes will be lost."
         variant="warning" cancelLabel="Keep editing" confirmLabel="Discard changes"
-        onConfirm={() => { const navigate = exit; if (!navigate || leaving.current) return; leaving.current = true; exitPending.current = false; setSavedSnapshot(draftSnapshot); setExit(null); navigate(); }} />
+        onConfirm={() => { const navigate = exit; if (!navigate || leaving.current) return; leaving.current = true; exitPending.current = false; setSavedSnapshot(draftSnapshot); setExit(null); return navigate(); }} />
     </div>
   );
 }

@@ -86,21 +86,12 @@ export async function updateRole(id: string, tenantId: string, userId: string, d
 }
 
 export async function archiveRole(id: string, tenantId: string, userId: string) {
-  const role = await repo.findRoleById(id, tenantId);
-  if (!role) throw new NotFoundError('Role');
-  if (role.isSystemRole) throw new ForbiddenError('System roles cannot be deleted');
-
-  // Prevent archiving if users are still assigned
-  const activeCount = await repo.countActiveUserRoles(id, tenantId);
-  if (activeCount > 0) {
-    throw new ConflictError(`Role has ${activeCount} assigned user${activeCount > 1 ? 's' : ''}. Reassign users before archiving.`);
-  }
-
-  await repo.archiveRole(id, tenantId);
+  const role = await repo.archiveRole(id, tenantId);
 
   await writeAuditLog({
     tenantId, userId,
-    action: 'role.archived', entityType: 'RoleDefinition', entityId: id,
+    action: 'role.deleted', entityType: 'RoleDefinition', entityId: id,
+    before: { name: role.name, isArchived: false }, after: { name: role.name, isArchived: true },
   });
 }
 
