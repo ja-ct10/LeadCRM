@@ -212,7 +212,7 @@ try {
   const specialist = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Ana', lastName: 'Specialist', email: 'workflow-specialist@camxian.com', role: taskRole.name,
     userRoles: { create: { roleId: taskRole.id } } } });
   const pool = await prisma.tenantGroup.create({ data: { tenantId: tenant.id, name: 'Customer Follow-up and Technical Support Team', members: { create: [{ userId: specialist.id }, { userId: admin.id }] } } });
-  const assignment = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: 'Assignment browser acceptance', trigger: 'lead.created', isActive: false,
+  const assignment = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: 'Assignment browser acceptance', trigger: 'deal.created', isActive: false,
     actions: [{ type: 'create_task', config: { title: 'Follow up with lead' } }] }));
   await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
   await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
@@ -233,7 +233,7 @@ try {
   assert.deepEqual(assignedDraft.actions[0].config.assignmentTarget, { type: 'group', id: pool.id, strategy: 'round_robin' });
   assert.equal(assignedDraft.version, 2);
   await page.getByRole('button', { name: 'Test', exact: true }).click();
-  await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+  await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
   assert.equal(await prisma.tenantPreference.count({ where: { tenantId: tenant.id, module: 'workflow-assignment' } }), 0);
@@ -242,7 +242,7 @@ try {
 
   await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
   const { fireWorkflowTrigger } = require('../dist/backend/src/modules/automation/workflows/workflow.engine.js');
-  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
+  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: records.deal.id, triggerType: 'deal.created', context: {} }));
   await scope(() => workflows.updateWorkflow(assignment.id, tenant.id, admin.id, { actions: [{ type: 'create_task', config: { title: 'Revised follow-up', assignmentTarget: { type: 'group', id: pool.id, strategy: 'round_robin' } } }] }));
   await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
@@ -285,11 +285,11 @@ try {
     await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
     assert.equal(await page.getByLabel('Assignment method', { exact: true }).inputValue(), 'round_robin');
     await page.getByRole('button', { name: 'Test', exact: true }).click();
-    await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+    await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
     await page.getByRole('button', { name: 'Run check', exact: true }).click();
     await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
     await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
-    await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
+    await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: records.deal.id, triggerType: 'deal.created', context: {} }));
     const history = await scope(() => workflows.getWorkflowExecutions(assignment.id, tenant.id));
     assert.equal(history[0].status, 'completed');
     assert.equal(history[0].steps[0].output.strategy, 'round_robin');
@@ -301,7 +301,7 @@ try {
   await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
   await page.getByText('2 members · 0 eligible', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Test', exact: true }).click();
-  await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+  await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('no active members eligible', { exact: false }).waitFor();
   await assert.rejects(scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true)), /no active members/);

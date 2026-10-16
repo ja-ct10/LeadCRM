@@ -317,9 +317,16 @@ try {
   assert.ok(csv.ok()); assert.match(csv.headers()['content-type'],/text\/csv/);
   record('Dashboard export button removed; shared reporting CSV endpoint remains authorized');
   let failing = true;
-  await page.route('**/api/proxy/reporting/dashboard?*', route => failing ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,error:{message:'Acceptance database unavailable'}})}) : route.continue());
+  await page.route('**/api/proxy/reporting/dashboard?*', async route => {
+    if (failing && await page.evaluate(() => window.__dashboardRetryClicked === true)) failing = false;
+    return failing ? route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,error:{message:'Acceptance database unavailable'}})}) : route.continue();
+  });
   await page.getByRole('button',{name:'Sync Metrics',exact:true}).click(); await page.getByRole('alert').filter({hasText:'Acceptance database unavailable'}).waitFor();
-  assert.equal(await value(page,'Total Revenue'),'₱2,800.00'); failing=false; await page.getByRole('button',{name:'Retry',exact:true}).click();
+  assert.equal(await value(page,'Total Revenue'),'₱2,800.00');
+  // Background reconciliation must keep failing until the actual Retry click.
+  // Releasing it earlier can remove the button before Playwright can click it.
+  await page.getByRole('button',{name:'Retry',exact:true}).evaluate(button => button.addEventListener('click', () => { window.__dashboardRetryClicked = true; }, { once: true }));
+  await page.getByRole('button',{name:'Retry',exact:true}).click();
   await until(async () => await page.getByRole('alert').filter({hasText:'Acceptance database unavailable'}).count() === 0,'Error recovery'); record('Backend failure retains labeled stale data and Retry recovers');
   await wait(5000); // Let verification toasts expire before visual inspection.
   for (const theme of ['light','dark']) {

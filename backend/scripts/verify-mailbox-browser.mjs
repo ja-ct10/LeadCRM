@@ -9,12 +9,12 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptanceGateway, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.MAILBOX_VERIFY_OUTPUT ? resolve(process.env.MAILBOX_VERIFY_OUTPUT) : resolve(root, 'data/outputs/mailbox-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = `http://localhost:${await acceptancePort()}`;
+const gateway = await acceptanceGateway(output), base = gateway.base;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, GMAIL_SYNC_INTERVAL_SECONDS: '60' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -92,15 +92,16 @@ try {
   assert.equal(initialList.status, 200);
   assert.equal(await prisma.mailboxMessage.count({ where: { accountId: account.id } }), seed.length, 'Every authorized synthetic seed must persist before browser acceptance');
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(gateway.internalBase).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 90; attempt++) { try { if ((await realFetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   // Compile the cold development route before starting browser navigation timing.
   const warmedInbox = await realFetch(base + '/inbox', { signal: AbortSignal.timeout(180000) });
   assert.equal(warmedInbox.status, 200, 'The local Inbox route must be available before browser assertions');
   await warmedInbox.arrayBuffer();
+  await gateway.start();
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
+  const context = await createAcceptanceContext(browser, { ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   page.on('requestfailed', request => { if (!request.url().includes('/events') && request.failure()?.errorText !== 'net::ERR_ABORTED') transportErrors.push({ url: request.url(), error: request.failure()?.errorText }); });
@@ -192,7 +193,7 @@ try {
   await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   await page.reload(); await page.getByText(seed[0].subject, { exact: true }).waitFor();
   secondBrowser = await chromium.launch({ channel: 'chrome', headless: true });
-  const secondContext = await createAcceptanceContext(secondBrowser, { storageState: await context.storageState(), viewport: { width: 1440, height: 900 } });
+  const secondContext = await createAcceptanceContext(secondBrowser, { ignoreHTTPSErrors: true, storageState: await context.storageState(), viewport: { width: 1440, height: 900 } });
   const second = await secondContext.newPage(); second.setDefaultNavigationTimeout(120000); await second.goto(base + '/inbox', { waitUntil: 'domcontentloaded' }); await second.getByText(seed[0].subject, { exact: true }).waitFor();
   const events = [];
   for (const [index, target] of [page, second].entries()) {
@@ -230,5 +231,6 @@ try {
 } finally {
   await stopWorker?.(); await secondBrowser?.close(); await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
+  await gateway.close();
   globalThis.fetch = realFetch; await prisma.$disconnect(); await socket.stop(); await db.close();
 }

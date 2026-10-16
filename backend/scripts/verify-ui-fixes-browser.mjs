@@ -179,7 +179,8 @@ try {
   await group.selectOption({ label: 'Basic Information' });
   assert.equal(await group.locator('option', { hasText: 'Closed Won Requirements' }).count(), 0);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
-  await page.getByLabel('Module', { exact: true }).selectOption('deals'); await page.getByRole('button', { name: 'Add Field', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Add Field', exact: true }).waitFor({ state: 'hidden' });
+  await page.getByRole('main').getByLabel('Module', { exact: true }).selectOption('deals'); await page.getByRole('button', { name: 'Add Field', exact: true }).click();
   await page.getByLabel('Module', { exact: true }).last().selectOption('deals');
   await group.selectOption({ label: 'Closed Won Requirements' }); record('Module-aware group dropdown and explicit creation module');
   await context.clearCookies();

@@ -98,8 +98,11 @@ try {
     const control = scope.getByLabel(label, { exact: true });
     if (type === 'Dropdown') await control.selectOption(raw); else await control.fill(raw);
     const row = control.locator('xpath=ancestor::dd');
-    const response = page.waitForResponse(response => response.request().method() === 'PUT' && /\/crm\/(leads|contacts|accounts|deals)\/[^/]+$/.test(new URL(response.url()).pathname));
-    await row.getByRole('button', { name: 'Save', exact: true }).click(); assert.equal((await response).status(), 200);
+    const [response] = await Promise.all([
+      page.waitForResponse(response => response.request().method() === 'PUT' && /\/crm\/(leads|contacts|accounts|deals)\/[^/]+$/.test(new URL(response.url()).pathname)),
+      row.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
+    assert.equal(response.status(), 200, await response.text());
     await scope.getByRole('button', { name: `Edit ${label}`, exact: true }).waitFor();
   }
   const expected = { Text: 'Saved text', 'Long Text': 'First line\nSecond line', Number: 0, Date: '2026-10-11', Dropdown: 'Gold' };
@@ -212,7 +215,7 @@ try {
   // Transient read errors retain both the loaded value and the open draft.
   await page.getByRole('button', { name: 'Edit Test Text', exact: true }).click(); await page.getByLabel('Test Text', { exact: true }).fill('Retry draft');
   await page.route(`**/api/proxy/crm/leads/${lead.id}/custom-fields`, route => route.fulfill({ status: 503, json: { error: 'Refresh unavailable' } }));
-  await edit('Test Number', '9', 'Number');
+  await call(`/crm/leads/${lead.id}`, 'PUT', { firstName: 'System refreshed' });
   await page.getByRole('button', { name: 'Retry custom fields', exact: true }).waitFor();
   assert.equal(await page.getByLabel('Test Text', { exact: true }).inputValue(), 'Retry draft');
   await page.unroute(`**/api/proxy/crm/leads/${lead.id}/custom-fields`); await page.getByRole('button', { name: 'Retry custom fields', exact: true }).click();

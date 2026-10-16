@@ -22,6 +22,27 @@ test('Browser fixtures allocate an available loopback port independently of an a
   } finally { await new Promise((done, fail) => server.close(error => error ? fail(error) : done())); }
 });
 
+test('Local TLS acceptance preserves the public Host and HTTPS ingress for the real proxy', async () => {
+  const { acceptanceGateway } = await import('../backend/scripts/verify-browser-matrix.mjs');
+  const gateway = await acceptanceGateway(qaEnvironment(root).TMP);
+  const upstream = require('node:http').createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ host: request.headers.host, protocol: request.headers['x-forwarded-proto'], path: request.url }));
+  });
+  await new Promise((done, fail) => { upstream.once('error', fail); upstream.listen(Number(new URL(gateway.internalBase).port), '127.0.0.1', done); });
+  try {
+    await gateway.start();
+    const value = await new Promise((done, fail) => {
+      // Trust only this freshly generated loopback fixture certificate.
+      const request = require('node:https').get(gateway.base + '/health', { rejectUnauthorized: false }, response => {
+        let body = ''; response.on('data', data => { body += data; }); response.on('end', () => done(JSON.parse(body))); response.on('error', fail);
+      });
+      request.on('error', fail);
+    });
+    assert.deepEqual(value, { host: new URL(gateway.base).host, protocol: 'https', path: '/health' });
+  } finally { await gateway.close(); upstream.closeAllConnections(); await new Promise(done => upstream.close(done)); }
+});
+
 test('Routed browser fixtures block service workers before installing network isolation', async () => {
   const { createAcceptanceContext } = await import('../backend/scripts/verify-browser-matrix.mjs');
   const calls = [];

@@ -256,7 +256,7 @@ try {
     await page.keyboard.press('Escape');
   }
   record('All eight Light/Dark viewport layouts, trimmed column search and keyboard Escape work');
-  if (!process.argv.includes('--search-table-only')) await verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output });
+  if (!process.argv.includes('--search-table-only')) await verifyTableControls({ page, base, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output });
   await verifySearchHighlighting({ page, prisma, tenant, foreignTenant, admin, call, until, record, control, output });
   assert.deepEqual(errors, []);
   writeFileSync(resolve(output, 'results.json'), JSON.stringify({ status: 'passed', environment: 'Local production build + disposable PGlite SQL; background SSE paused to isolate manual refresh', checks, errors }, null, 2));

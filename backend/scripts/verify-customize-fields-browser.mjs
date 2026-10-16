@@ -1,4 +1,4 @@
-import { acceptancePort, createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
+import { acceptanceGateway, createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real UI + authenticated HTTP + disposable SQL. No configured database or providers.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -16,7 +16,7 @@ const output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.CUSTOM_FIELDS_
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = `http://localhost:${await acceptancePort()}`;
+const gateway = await acceptanceGateway(output), base = gateway.base;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_customize_fields_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, BREVO_API_KEY: '' });
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
@@ -41,11 +41,12 @@ try {
     const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(gateway.internalBase).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
-  for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(gateway.internalBase + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  await gateway.start();
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
+  const context = await createAcceptanceContext(browser, { ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => errors.push(error.message));
   const settings = async () => { await page.goto(base + '/settings?tab=custom-fields'); await page.getByRole('heading', { name: 'Customize Fields', exact: true }).waitFor(); await page.getByRole('button', { name: 'Edit Age', exact: true }).waitFor(); };
@@ -200,5 +201,6 @@ try {
   writeFileSync(resolve(output, 'report.json'), JSON.stringify({ checks, pageErrors: errors, failure: String(error) }, null, 2)); throw error;
 } finally {
   await browser?.close(); if (frontend) frontend.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
+  await gateway.close();
   await prisma.$disconnect(); await socket.stop(); await db.close();
 }

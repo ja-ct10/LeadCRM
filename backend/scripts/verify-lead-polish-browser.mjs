@@ -29,7 +29,7 @@ const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session
 let api, frontend, browser, page, closing = false;
 const checks = [], pageErrors = [], transportErrors = [];
 try {
-  const tenant = await prisma.tenant.create({ data: { name: 'Lead Polish Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
+  const tenant = await prisma.tenant.create({ data: { name: 'Lead Polish Acceptance', slug: randomUUID(), status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Custom', lastName: 'Tester', email: 'custom-preview@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   const { token } = await issueAuthSession(admin);
   await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Acceptance', dealValue: 25000 } });
@@ -107,6 +107,7 @@ try {
   assert.equal(await form.getByLabel('Description', { exact: true }).count(), 0);
   assert.equal(await form.getByLabel('Website', { exact: true }).count(), 0);
   const selector = form.getByLabel('Assigned Agent', { exact: true });
+  await selector.locator(`option[value="${replacement.id}"]`).waitFor({ state: 'attached' });
   const options = await selector.locator('option').evaluateAll(rows => rows.map(row => row.value));
   assert.deepEqual(new Set(options), new Set(['',departing.id,replacement.id]));
   await form.getByLabel('First Name *', { exact: true }).fill('Browser');
@@ -118,8 +119,9 @@ try {
   await form.getByRole('button', { name: 'Create Lead', exact: true }).click();
   assert.equal(await prisma.lead.count({ where: { email: 'browser-lead@example.test' } }), 0);
   await phone.fill('9123456789');
-  await form.getByLabel('Company Name', { exact: true }).fill('Browser Company');
-  await form.getByLabel('Full Address', { exact: true }).fill('First line\nSecond line');
+  await form.getByRole('button', { name: 'Create new account', exact: true }).click();
+  await form.getByLabel('Company Name *', { exact: true }).fill('Browser Company');
+  await form.getByLabel('Full Address', { exact: true }).last().fill('First line\nSecond line');
   await responsive('lead-create', form);
   await form.getByRole('button', { name: 'Create Lead', exact: true }).click();
   await page.getByText('Browser Acceptance', { exact: true }).first().waitFor();

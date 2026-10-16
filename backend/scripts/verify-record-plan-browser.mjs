@@ -66,8 +66,10 @@ try {
     const group = layout.layout.groups.find(item => item.label === 'Project plan');
     const key = module === 'accounts' ? 'website' : module === 'deals' ? 'priority' : 'email';
     const label = module === 'accounts' ? 'Public website' : module === 'deals' ? 'Project priority' : 'Work email';
-    await assert.rejects(scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, groupId: group.id })), /fixed section/);
-    await scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, label }));
+    if (module === 'leads' || module === 'contacts') {
+      await assert.rejects(scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, groupId: group.id })), /fixed section/);
+      await scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, label }));
+    } else await scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, label, groupId: group.id }));
     fields[module] = await scope(() => saveField(tenant.id, admin.id, { module, group: group.label, groupId: group.id, name: 'Project budget', type: 'Number', required: false }));
     await prisma.customFieldValue.create({ data: { tenantId: tenant.id, module, fieldId: fields[module].id, [linkKeys[module]]: records[module].id, value: 0 } });
     await prisma.activity.createMany({ data: [

@@ -300,8 +300,8 @@ try {
   const contactsArea = page.locator('[aria-label="Contacts table area"]');
   const contactsRegion = contactsArea.getByRole('region', { name: 'Contacts data grid', exact: true });
   const contactsSpinner = contactsRegion.getByRole('status', { name: 'Refreshing data...', exact: true });
-  await page.getByRole('button', { name: 'My Contacts', exact: true }).click();
-  await page.waitForURL(url => url.searchParams.get('tab') === 'my');
+  assert.equal(await page.getByRole('button', { name: 'My Contacts', exact: true }).count(), 0, 'Client Admin does not have a personal assignment view');
+  await page.getByRole('button', { name: 'All Contacts', exact: true }).click();
   await page.getByPlaceholder('Search contacts...').fill('Polish');
   await page.waitForURL(url => url.searchParams.get('search') === 'Polish');
   await contactsGrid.getByRole('button', { name: 'Column options for First Name', exact: true }).click();
@@ -342,7 +342,7 @@ try {
     assert.ok(loader && loader.width > 0 && loader.height > 0 && loader.left >= table.left - 1 && loader.right <= table.right + 1 && loader.top >= table.top - 1 && loader.bottom <= table.bottom + 1, JSON.stringify(dimensions));
     assert.ok(Math.abs(loader.left + loader.width / 2 - table.left - table.width / 2) < 1.5 && Math.abs(loader.top + loader.height / 2 - table.top - table.height / 2) < 1.5, JSON.stringify(dimensions));
     assert.equal(await page.getByPlaceholder('Search contacts...').inputValue(), 'Polish');
-    assert.equal(new URL(page.url()).searchParams.get('tab'), 'my');
+    assert.ok([null, 'all'].includes(new URL(page.url()).searchParams.get('tab')));
     assert.equal(await page.getByRole('button', { name: 'Refresh', exact: true }).isDisabled(), true);
     await page.getByRole('button', { name: 'Refresh', exact: true }).evaluate(button => { button.click(); button.click(); });
     assert.equal(heldContactRequests, beforeRequests + 1);
