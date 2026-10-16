@@ -201,13 +201,22 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
   const email = text(person?.email);
   const phone = text(person?.phone);
-  const emailChipAction = personChipActions || module === 'deals';
   const personInboxAction = module === 'leads' || module === 'contacts';
+  const emailChipAction = personInboxAction || module === 'deals';
+  const ownsRecordMailbox = !!user?.id && record.assignedUserId === user.id;
   // The API projects canonical Product relations into these ID/name arrays.
   const dealProductIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const dealProductNames = record.productInterests as string[] | undefined;
   const dealProductName = text(object(record.productInterestRecord)?.name) || (record.productInterestRecord !== null && dealProductIds.length === 1 && dealProductNames?.length === 1 ? dealProductNames[0] : '');
   const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined) : null;
+  const composeDisabled = !composeHref && (!personInboxAction || ownsRecordMailbox);
+  const openRecordEmail = () => {
+    if (personInboxAction && !ownsRecordMailbox) {
+      toast.error(`You cannot email this ${module === 'leads' ? 'lead' : 'contact'} because it is not assigned to you.`);
+      return;
+    }
+    if (composeHref) router.push(composeHref);
+  };
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || (module === 'leads' ? text(record.jobTitle) : '') || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
@@ -333,22 +342,22 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           <div className={cn('ml-[52px] flex min-w-0 max-w-[calc(100%-52px)] items-center gap-1.5 [&>div]:min-w-0 @min-[400px]:ml-0', onClose ? '@min-[400px]:pr-11' : '@min-[400px]:pr-9')}>
             {manageMenu}
             {module !== 'accounts' && <TooltipProvider><Tooltip>
-              <TooltipTrigger asChild><span tabIndex={personInboxAction && !composeHref ? 0 : undefined}>
+              <TooltipTrigger asChild><span tabIndex={personInboxAction && composeDisabled ? 0 : undefined}>
                 <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open messages"
-                  title={personInboxAction && !composeHref ? 'No valid email address available.' : 'Open messages'}
-                  disabled={personInboxAction && !composeHref}
-                  onClick={() => { if (personInboxAction) { if (composeHref) router.push(composeHref); } else router.push('/inbox'); }}>
+                  title={personInboxAction && composeDisabled ? 'No valid email address available.' : 'Open messages'}
+                  disabled={personInboxAction && composeDisabled}
+                  onClick={() => { if (personInboxAction) openRecordEmail(); else router.push('/inbox'); }}>
                   <Inbox size={16} />
                 </Button>
               </span></TooltipTrigger>
-              <TooltipContent>{personInboxAction && !composeHref ? 'No valid email address available.' : 'Open messages'}</TooltipContent>
+              <TooltipContent>{personInboxAction && composeDisabled ? 'No valid email address available.' : 'Open messages'}</TooltipContent>
             </Tooltip></TooltipProvider>}
             {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </div>
         </div>
         <RecordQuickInfo items={[
-          { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
+          { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: openRecordEmail, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: composeDisabled } : { href: email ? `mailto:${email}` : undefined }) },
           { value: phone, icon: Phone, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
           ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
           ...(module === 'accounts' ? [] : [{ value: owner, icon: User, label: 'Agent: ' }]),
