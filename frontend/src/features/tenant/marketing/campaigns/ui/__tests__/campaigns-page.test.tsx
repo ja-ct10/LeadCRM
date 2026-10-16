@@ -147,8 +147,11 @@ it.each(['Email', 'SMS'] as const)('searches and inserts approved Lead/Contact f
     fireEvent.click(screen.getByText(`{{${key}}}`).closest('button')!);
     expect(content.value).toBe(`Hello {{${key}}}!`);
     expect(screen.queryByLabelText('Search variables')).toBeNull();
-    await waitFor(() => expect(document.activeElement).toBe(content));
-    expect(content.selectionStart).toBe(6 + `{{${key}}}`.length);
+    await waitFor(() => {
+      expect(document.activeElement).toBe(content);
+      expect(content.selectionStart).toBe(6 + `{{${key}}}`.length);
+      expect(content.selectionEnd).toBe(content.selectionStart);
+    });
   }
 });
 
