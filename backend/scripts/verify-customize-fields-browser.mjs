@@ -1,4 +1,4 @@
-import { createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real UI + authenticated HTTP + disposable SQL. No configured database or providers.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -130,9 +130,30 @@ try {
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.getByRole('button', { name: 'Edit Age', exact: true }).click();
   await page.getByLabel('Display label', { exact: true }).fill('Customer Age');
+  assert.equal(await page.getByLabel('Module', { exact: true }).last().isDisabled(), true);
+  assert.equal(await page.getByLabel('Technical Variable Key', { exact: true }).inputValue(), 'customFieldValues.age');
+  assert.equal(await page.getByLabel('Technical Variable Key', { exact: true }).evaluate(input => input.readOnly), true);
   await page.getByRole('button', { name: 'Save field', exact: true }).click(); await page.getByRole('button', { name: 'Edit Customer Age', exact: true }).waitFor();
   assert.equal((await call('/administration/closing-requirements')).find(field => field.id === ageId).technicalAlias, 'age'); checks.push('Field rename retains alias and canonical ID');
-  await page.getByRole('button', { name: 'Add Field', exact: true }).click(); await page.getByLabel('Display label', { exact: true }).fill('Favorite Number');
+  await page.getByRole('button', { name: 'Add Field', exact: true }).click();
+  assert.equal(await page.getByLabel('Module', { exact: true }).last().inputValue(), '');
+  await page.getByRole('button', { name: 'Save field', exact: true }).click();
+  await page.getByText('Module name is required.', { exact: true }).waitFor();
+  await page.getByLabel('Module', { exact: true }).last().selectOption('leads');
+  await page.getByLabel('Display label', { exact: true }).fill('Favorite Number');
+  assert.equal(await page.getByLabel('Technical Variable Key', { exact: true }).inputValue(), 'customFieldValues.favorite-number');
+  for await (const { theme, width } of responsiveMatrix(page)) {
+    const controls = ['Module', 'Display label', 'Type', 'Technical Variable Key', 'Group'];
+    let previousY = -1;
+    for (const label of controls) {
+      const input = label === 'Type' ? page.getByRole('combobox', { name: /^Type/ }) : page.getByLabel(label, { exact: true }).last();
+      const box = await input.boundingBox();
+      assert.ok(box && box.x >= 0 && box.x + box.width <= width + 1 && box.y > previousY, `${label} fits and retains order at ${width}/${theme}`);
+      previousY = box.y;
+    }
+    await page.screenshot({ path: resolve(output, `add-field-${theme}-${width}.png`) });
+    checks.push(`Add Field module/key layout ${width}/${theme}`);
+  }
   await page.getByRole('combobox', { name: /^Type/ }).selectOption('Number'); await page.getByRole('button', { name: 'Save field', exact: true }).click(); await page.getByRole('button', { name: 'Edit Favorite Number', exact: true }).waitFor();
   const favorite = (await call('/administration/closing-requirements')).find(field => field.name === 'Favorite Number'); assert.equal(favorite.technicalAlias, 'favorite-number'); checks.push('Browser field creation stores a readable alias');
   await page.getByRole('button', { name: 'Manage Field Groups', exact: true }).click();

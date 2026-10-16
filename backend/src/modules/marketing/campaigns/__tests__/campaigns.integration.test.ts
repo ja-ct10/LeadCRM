@@ -21,7 +21,7 @@ vi.mock('express-rate-limit', async importOriginal => {
 });
 import { sendSms, SmsSubmissionError } from '../../../../shared/services/sms.service';
 import { processTextBeeEvent } from '../textbee-webhook';
-import { seedCampaignTemplates } from '../../templates/default-templates';
+import { DEFAULT_CAMXIAN_TEMPLATES, seedCampaignTemplates } from '../../templates/default-templates';
 import { previewAudience, campaignVariableFields } from '../audiences.service';
 import { CUSTOM_FIELD_MODULES, campaignVariableChoices, defaultFieldLayout, type CrmFieldCatalogEntry } from '@leadcrm/shared';
 import { sendMail, EmailSubmissionError } from '../../../../shared/services/email.service';
@@ -696,11 +696,22 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   it('seeds six persisted sample templates idempotently while preserving edited and archived templates', async () => {
     const first = await seedCampaignTemplates(prisma, tenantId);
     expect(first).toBe(6);
+    const defaults = await prisma.template.findMany({ where: { tenantId, name: { in: DEFAULT_CAMXIAN_TEMPLATES.map(template => template.name) } } });
+    for (const template of defaults) {
+      const expected = DEFAULT_CAMXIAN_TEMPLATES.find(sample => sample.name === template.name)!;
+      expect(template.content).toBe(expected.content);
+      expect(template.content).toContain('{{firstName}}');
+      expect(`${template.subject ?? ''} ${template.content}`).not.toMatch(/{{(?:first_name|company_name)}}/);
+    }
     const sample = await prisma.template.findFirstOrThrow({ where: { tenantId, name: 'Inquiry Received' } });
-    await prisma.template.update({ where: { id: sample.id }, data: { content: 'User edited', isArchived: true } });
+    const legacyContent = 'Hi {{first_name}}, following up with {{company_name}}. {{sender_name}} {{sender_email}}';
+    await prisma.template.update({ where: { id: sample.id }, data: { content: legacyContent, isArchived: true } });
+    const email = await prisma.template.findFirstOrThrow({ where: { tenantId, name: 'Lead Inquiry Acknowledgment' } });
+    await prisma.template.update({ where: { id: email.id }, data: { subject: 'Saved {{first_name}}', content: legacyContent } });
     expect(await seedCampaignTemplates(prisma, tenantId)).toBe(0);
     expect(await seedCampaignTemplates(prisma, tenantId)).toBe(0);
-    expect((await prisma.template.findUniqueOrThrow({ where: { id: sample.id } }))).toMatchObject({ content: 'User edited', isArchived: true });
+    expect((await prisma.template.findUniqueOrThrow({ where: { id: sample.id } }))).toMatchObject({ content: legacyContent, isArchived: true });
+    expect((await prisma.template.findUniqueOrThrow({ where: { id: email.id } }))).toMatchObject({ subject: 'Saved {{first_name}}', content: legacyContent });
     expect(await prisma.template.count({ where: { tenantId, category: 'Sales' } })).toBe(6);
   });
 
@@ -1148,6 +1159,29 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await expect(scheduleCampaign(invalid.id, tenantId, userId, { scheduledFor: new Date(Date.now() + 60000).toISOString() })).rejects.toThrow('variables');
       await expect(sendCampaign(invalid.id, tenantId, userId)).rejects.toThrow('variables');
       expect((await getCampaignById(invalid.id, tenantId)).status).toBe('DRAFT');
+    });
+  });
+
+  it.each([['EMAIL', 'LEADS'], ['EMAIL', 'CONTACTS'], ['SMS', 'LEADS'], ['SMS', 'CONTACTS']] as const)('renders canonical and saved legacy company/name tokens for %s/%s without rewriting content', async (type, source) => {
+    await scoped(async () => {
+      const email = `${randomUUID()}@example.test`, company = 'Canonical Company';
+      const person = source === 'LEADS'
+        ? await prisma.lead.create({ data: { tenantId, firstName: 'Canonical', lastName: 'Lead', email, phone: '+639181234567', companyName: company } })
+        : await prisma.contact.create({ data: { tenantId, firstName: 'Canonical', lastName: 'Contact', email, phone: '+639181234567', company } });
+      try {
+        const audience = await createAudience(tenantId, { name: randomUUID(), source, conditions: [{ field: 'email', operator: 'equals', value: email }] });
+        const companyKey = source === 'LEADS' ? 'companyName' : 'company';
+        const body = `Hi {{firstName}} / {{first_name}} at {{${companyKey}}} / {{company_name}}.`;
+        const campaign = await createCampaign(tenantId, userId, { name: randomUUID(), type, targetAudienceId: audience.id, subject: type === 'EMAIL' ? 'Hello {{firstName}} / {{first_name}}' : undefined, body });
+        await sendCampaign(campaign.id, tenantId, userId);
+        const expected = 'Hi Canonical / Canonical at Canonical Company / Canonical Company.';
+        if (type === 'EMAIL') expect(sendMail).toHaveBeenLastCalledWith(expect.objectContaining({ subject: 'Hello Canonical / Canonical', html: expect.stringContaining(expected) }));
+        else expect(vi.mocked(sendSms).mock.calls.at(-1)?.[1]).toContain(expected);
+        expect((await getCampaignById(campaign.id, tenantId)).body).toBe(body);
+      } finally {
+        if (source === 'LEADS') await prisma.lead.delete({ where: { id: person.id } });
+        else await prisma.contact.delete({ where: { id: person.id } });
+      }
     });
   });
 

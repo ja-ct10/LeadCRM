@@ -208,6 +208,17 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const dealProductNames = record.productInterests as string[] | undefined;
   const dealProductName = text(object(record.productInterestRecord)?.name) || (record.productInterestRecord !== null && dealProductIds.length === 1 && dealProductNames?.length === 1 ? dealProductNames[0] : '');
   const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined) : null;
+  const openDealEmail = () => {
+    if (!user?.id || record.assignedUserId !== user.id) {
+      toast.error('You cannot email this deal because it is not assigned to you.');
+      return;
+    }
+    if (!composeHref) {
+      toast.error('No valid email address available.');
+      return;
+    }
+    router.push(composeHref);
+  };
   const subtitle = module === 'deals' ? `₱${Number(record.value ?? 0).toLocaleString()} · ${text(object(record.pipeline)?.name)}` : module === 'accounts' ? text(record.industry) || text(record.website) : company || (module === 'leads' ? text(record.jobTitle) : '') || location;
   const rawStatus = text(module === 'deals' ? object(record.stage)?.name : module === 'accounts' ? '' : record.status);
   const status = module === 'leads' || module === 'contacts' ? normalizeCrmStatus(rawStatus) : rawStatus;
@@ -337,7 +348,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
                 <Button variant="outline" size="icon" className="h-9 w-9 shrink-0" aria-label="Open messages"
                   title={personInboxAction && !composeHref ? 'No valid email address available.' : 'Open messages'}
                   disabled={personInboxAction && !composeHref}
-                  onClick={() => { if (personInboxAction) { if (composeHref) router.push(composeHref); } else router.push('/inbox'); }}>
+                  onClick={module === 'deals' ? openDealEmail : () => { if (personInboxAction) { if (composeHref) router.push(composeHref); } else router.push('/inbox'); }}>
                   <Inbox size={16} />
                 </Button>
               </span></TooltipTrigger>
@@ -348,7 +359,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
           </div>
         </div>
         <RecordQuickInfo items={[
-          { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: () => { if (composeHref) router.push(composeHref); }, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
+          { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: module === 'deals' ? openDealEmail : () => { if (composeHref) router.push(composeHref); }, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: module !== 'deals' && !composeHref } : { href: email ? `mailto:${email}` : undefined }) },
           { value: phone, icon: Phone, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },
           ...(module === 'deals' ? [{ value: personName(person), icon: User }, { value: company, icon: Building }] : []),
           ...(module === 'accounts' ? [] : [{ value: owner, icon: User, label: 'Agent: ' }]),

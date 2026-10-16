@@ -4,7 +4,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent, type CollisionDetection } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Pencil, Plus, Settings, Trash2 } from 'lucide-react';
-import { customFieldTechnicalKey, CLOSING_FIELD_TYPES, ClosingFieldInputSchema, CUSTOM_FIELD_MODULES, CUSTOM_FIELD_MODULE_LABELS, CLOSED_WON_GROUP_ID, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, normalizeCustomField, type CustomFieldModule, type ClosingField, type ClosingFieldInput, type FieldLayout, type CrmFieldCatalogEntry, type FieldLayoutAction } from '@leadcrm/shared';
+import { customFieldAliasBase, customFieldTechnicalKey, CLOSING_FIELD_TYPES, ClosingFieldInputSchema, CUSTOM_FIELD_MODULES, CUSTOM_FIELD_MODULE_LABELS, CLOSED_WON_GROUP_ID, defaultFieldLayout, getCrmFieldCatalog, isClosedWonField, normalizeCustomField, type CustomFieldModule, type ClosingField, type ClosingFieldInput, type FieldLayout, type CrmFieldCatalogEntry, type FieldLayoutAction } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -23,26 +23,52 @@ import { matchesSearch } from '@/shared/utils/search';
 
 const endpoint = '/administration/closing-requirements';
 type LayoutResponse = { layout: FieldLayout; fields: CrmFieldCatalogEntry[] };
-type FieldDraft = Omit<ClosingFieldInput, 'appliesTo'>;
-const empty = (module: CustomFieldModule, layout: FieldLayout): FieldDraft => ({ name: '', type: 'Text', module, group: layout.groups[0].label, groupId: layout.groups[0].id, visibleInForm: true, visibleInDetails: true, order: 0, required: false, active: true, options: [], description: '' });
+type FieldDraft = Omit<ClosingFieldInput, 'appliesTo' | 'module'> & { module: CustomFieldModule | '' };
+const empty = (): FieldDraft => ({ name: '', type: 'Text', module: '', group: '', visibleInForm: true, visibleInDetails: true, order: 0, required: false, active: true, options: [], description: '' });
 
-function FieldForm({ field, module, initialLayout, onSaved, onClose }: { field?: ClosingField; module: CustomFieldModule; initialLayout: FieldLayout; onSaved: () => void; onClose: () => void }) {
-  const groupId = useId(), newGroupNameId = useId();
+function FieldForm({ field, initialLayout, onSaved, onClose }: { field?: ClosingField; initialLayout: FieldLayout; onSaved: () => void; onClose: () => void }) {
+  const groupId = useId(), newGroupNameId = useId(), moduleErrorId = useId(), technicalKeyNoteId = useId();
   const canDisable = useHasPermission('custom_fields.disable');
+  const moduleInput = useRef<HTMLSelectElement>(null);
   const nameInput = useRef<HTMLInputElement>(null);
   const nameErrorId = useId();
-  const [nameError, setNameError] = useState('');
-  const [layout, setLayout] = useState(initialLayout);
-  const [form, setForm] = useState<FieldDraft>(() => field ? { name: field.name, type: field.type, module: field.module, group: field.group, groupId: field.groupId ?? layout.groups.find(group => group.label === field.group)?.id, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, order: field.order, required: field.required, active: field.active, options: [...field.options], description: field.description } : empty(module, layout));
+  const [nameError, setNameError] = useState(''), [moduleError, setModuleError] = useState('');
+  const [layout, setLayout] = useState<FieldLayout | undefined>(field ? initialLayout : undefined);
+  const [layoutLoading, setLayoutLoading] = useState(false), [layoutError, setLayoutError] = useState(''), [layoutAttempt, setLayoutAttempt] = useState(0);
+  const [form, setForm] = useState<FieldDraft>(() => field ? { name: field.name, type: field.type, module: field.module, group: field.group, groupId: field.groupId ?? initialLayout.groups.find(group => group.label === field.group)?.id, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, order: field.order, required: field.required, active: field.active, options: [...field.options], description: field.description } : empty());
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [addingGroup, setAddingGroup] = useState(false), [groupName, setGroupName] = useState('');
+  useEffect(() => {
+    if (field || !form.module) return;
+    const controller = new AbortController();
+    const module = form.module;
+    setLayoutLoading(true); setLayoutError('');
+    void (async () => {
+      try {
+        const result = (await apiClient.get<{ data: LayoutResponse }>(`${endpoint}/layout/${module}`, { signal: controller.signal })).data;
+        if (controller.signal.aborted) return;
+        setLayout(result.layout);
+        const group = result.layout.groups[0];
+        setForm(previous => ({ ...previous, groupId: group?.id, group: group?.label ?? '' }));
+      } catch (failure) {
+        if (!controller.signal.aborted) setLayoutError(failure instanceof Error ? failure.message : 'Unable to load field groups.');
+      } finally { if (!controller.signal.aborted) setLayoutLoading(false); }
+    })();
+    return () => controller.abort();
+  }, [field, form.module, layoutAttempt]);
+  const moduleReady = !!form.module && layout?.module === form.module && !layoutLoading && !layoutError;
+  const aliasBase = customFieldAliasBase(form.name);
+  const technicalKey = field ? customFieldTechnicalKey(field) : aliasBase ? customFieldTechnicalKey({ id: '', technicalAlias: aliasBase }) : '';
   const update = <K extends keyof FieldDraft>(key: K, value: FieldDraft[K]) => setForm(previous => ({ ...previous, [key]: value }));
   const addGroup = async () => {
-    if (busy || !groupName.trim()) return; setBusy(true); setError('');
-    try { const result = (await apiClient.patch<{ data: LayoutResponse }>(`${endpoint}/layout/${module}`, { action: 'add', label: groupName, expectedRevision: layout.revision ?? 0 })).data; const added = result.layout.groups.find(group => !layout.groups.some(previous => previous.id === group.id))!; setLayout(result.layout); setForm(previous => ({ ...previous, groupId: added.id, group: added.label })); setAddingGroup(false); setGroupName(''); }
+    if (busy || !moduleReady || !layout || !groupName.trim()) return; setBusy(true); setError('');
+    try { const result = (await apiClient.patch<{ data: LayoutResponse }>(`${endpoint}/layout/${form.module}`, { action: 'add', label: groupName, expectedRevision: layout.revision ?? 0 })).data; const added = result.layout.groups.find(group => !layout.groups.some(previous => previous.id === group.id))!; setLayout(result.layout); setForm(previous => ({ ...previous, groupId: added.id, group: added.label })); setAddingGroup(false); setGroupName(''); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to add group.'); } finally { setBusy(false); }
   };
   return <form className="flex h-full min-h-0 flex-col" noValidate onSubmit={async event => {
-    event.preventDefault(); if (busy) return; const parsed = ClosingFieldInputSchema.safeParse(form);
+    event.preventDefault(); if (busy) return;
+    if (!form.module) { setModuleError('Module name is required.'); moduleInput.current?.focus(); return; }
+    if (!moduleReady || !layout) return;
+    const parsed = ClosingFieldInputSchema.safeParse(form);
     if (!parsed.success) {
       const nameIssues = parsed.error.issues.filter(issue => issue.path[0] === 'name');
       setNameError(nameIssues.map(issue => issue.message).join(' '));
@@ -56,17 +82,29 @@ function FieldForm({ field, module, initialLayout, onSaved, onClose }: { field?:
   }}>
     <div className={panelBodyClass + ' space-y-5'}>
       <div className="space-y-1">
-        <label className={`block space-y-1 ${responsiveTypography.control}`}>Display label<span aria-hidden="true" className="ml-1 text-red-500">*</span><input ref={nameInput} aria-label="Display label" autoFocus required maxLength={100} aria-invalid={nameError ? true : undefined} aria-describedby={nameError ? nameErrorId : undefined} className={panelInputClass} value={form.name} onChange={event => { update('name', event.target.value); if (nameError) setNameError(''); }} /></label>
+        <label className={`block space-y-1 ${responsiveTypography.control}`}>Module<span aria-hidden="true" className="ml-1 text-red-500">*</span><select ref={moduleInput} aria-label="Module" autoFocus={!field} required disabled={!!field || busy} aria-invalid={moduleError ? true : undefined} aria-describedby={moduleError ? moduleErrorId : undefined} className={panelInputClass} value={form.module} onChange={event => {
+          setForm(previous => ({ ...previous, module: event.target.value as FieldDraft['module'], group: '', groupId: undefined }));
+          setLayout(undefined); setModuleError(''); setLayoutError(''); setError(''); setAddingGroup(false); setGroupName('');
+        }}><option value="">Select module...</option>{CUSTOM_FIELD_MODULES.map(module => <option key={module} value={module}>{CUSTOM_FIELD_MODULE_LABELS[module]}</option>)}</select></label>
+        {moduleError && <p id={moduleErrorId} role="alert" className="text-sm text-destructive">{moduleError}</p>}
+      </div>
+      <div className="space-y-1">
+        <label className={`block space-y-1 ${responsiveTypography.control}`}>Display label<span aria-hidden="true" className="ml-1 text-red-500">*</span><input ref={nameInput} aria-label="Display label" autoFocus={!!field} required maxLength={100} aria-invalid={nameError ? true : undefined} aria-describedby={nameError ? nameErrorId : undefined} className={panelInputClass} value={form.name} onChange={event => { update('name', event.target.value); if (nameError) setNameError(''); }} /></label>
         {nameError && <p id={nameErrorId} role="alert" className="text-sm text-destructive">{nameError}</p>}
       </div>
       <label className={`block space-y-1 ${responsiveTypography.control}`}>Type<select disabled={!!field} className={panelInputClass} value={form.type} onChange={event => update('type', event.target.value as FieldDraft['type'])}>{CLOSING_FIELD_TYPES.map(type => <option key={type}>{type}</option>)}</select></label>
-      <p className="text-xs text-muted-foreground">Module: {CUSTOM_FIELD_MODULE_LABELS[module]}{field ? ` · Technical key: ${customFieldTechnicalKey(field)}` : ''}. Type, module and technical key stay fixed after creation.</p>
+      <div className="space-y-1">
+        <label className={`block space-y-1 ${responsiveTypography.control}`}>Technical Variable Key<input readOnly className={panelInputClass} value={technicalKey} aria-describedby={technicalKeyNoteId} /></label>
+        <p id={technicalKeyNoteId} className="text-xs text-muted-foreground">Technical variable key is generated automatically and cannot be changed after creation.</p>
+      </div>
       <div className="space-y-2">
         <label htmlFor={groupId} className={`block ${responsiveTypography.control}`}>Group</label>
         <div className="flex items-center gap-2">
-          <select id={groupId} required className={panelInputClass + ' flex-1'} value={form.groupId ?? ''} disabled={!!field && isClosedWonField(field)} onChange={event => { const group = layout.groups.find(group => group.id === event.target.value)!; setForm(previous => ({ ...previous, groupId: group.id, group: group.label })); }}>{layout.groups.filter(group => !field || (group.id === CLOSED_WON_GROUP_ID) === isClosedWonField(field)).map(group => <option key={group.id} value={group.id}>{group.label}</option>)}</select>
-          <Button type="button" className="h-[42px] shrink-0" disabled={busy} onClick={() => setAddingGroup(true)}><Plus aria-hidden="true" />Add</Button>
+          <select id={groupId} required className={panelInputClass + ' flex-1'} value={form.groupId ?? ''} disabled={busy || !moduleReady || !!field && isClosedWonField(field)} onChange={event => { const group = layout!.groups.find(group => group.id === event.target.value)!; setForm(previous => ({ ...previous, groupId: group.id, group: group.label })); }}>{(layout?.groups ?? []).filter(group => !field || (group.id === CLOSED_WON_GROUP_ID) === isClosedWonField(field)).map(group => <option key={group.id} value={group.id}>{group.label}</option>)}</select>
+          <Button type="button" className="h-[42px] shrink-0" disabled={busy || !moduleReady} onClick={() => setAddingGroup(true)}><Plus aria-hidden="true" />Add</Button>
         </div>
+        {layoutLoading && form.module && <p role="status" className="text-xs text-muted-foreground">Loading field groups…</p>}
+        {layoutError && <p role="alert" className="text-sm text-destructive">{layoutError} <Button type="button" variant="ghost" onClick={() => setLayoutAttempt(previous => previous + 1)}>Retry</Button></p>}
         {addingGroup && <div className="space-y-2">
           <label htmlFor={newGroupNameId} className={`block ${responsiveTypography.control}`}>Add a new group name</label>
           <div className="flex flex-wrap items-center gap-2">
@@ -79,12 +117,12 @@ function FieldForm({ field, module, initialLayout, onSaved, onClose }: { field?:
       <label className={`flex min-h-10 items-center justify-between gap-3 ${responsiveTypography.control}`}>Required<input type="checkbox" checked={form.required} onChange={event => update('required', event.target.checked)} /></label>
       <label className={`flex min-h-10 items-center justify-between gap-3 ${responsiveTypography.control}`}>Show in Forms<input type="checkbox" checked={form.visibleInForm} onChange={event => update('visibleInForm', event.target.checked)} /></label>
       <label className={`flex min-h-10 items-center justify-between gap-3 ${responsiveTypography.control}`}>Show in Details<input type="checkbox" checked={form.visibleInDetails} onChange={event => update('visibleInDetails', event.target.checked)} /></label>
-      {isClosedWonField(form) && <p className="text-xs text-muted-foreground">Required closing evidence stays enforced in the closing dialog regardless of Details visibility.</p>}
+      {form.module && isClosedWonField({ ...form, module: form.module }) && <p className="text-xs text-muted-foreground">Required closing evidence stays enforced in the closing dialog regardless of Details visibility.</p>}
       {field && <label className={`flex min-h-10 items-center justify-between gap-3 ${responsiveTypography.control}`}>Enabled<input type="checkbox" disabled={!canDisable} checked={form.active} onChange={event => update('active', event.target.checked)} /></label>}
       <label className={`block space-y-1 ${responsiveTypography.control}`}>Description<textarea maxLength={1000} className={panelInputClass} rows={3} value={form.description} onChange={event => update('description', event.target.value)} /></label>
       {form.type === 'Dropdown' && <label className={`block space-y-1 ${responsiveTypography.control}`}>Options, one per line<textarea className={panelInputClass} rows={5} value={form.options.join('\n')} onChange={event => update('options', event.target.value.split('\n'))} /></label>}
       {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
-    </div><div className={panelFooterClass + ' justify-end'}><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy}>{busy ? 'Saving…' : 'Save field'}</Button></div>
+    </div><div className={panelFooterClass + ' justify-end'}><Button type="button" variant="outline" disabled={busy} onClick={onClose}>Cancel</Button><Button disabled={busy || !!form.module && !moduleReady}>{busy ? 'Saving…' : 'Save field'}</Button></div>
   </form>;
 }
 
@@ -177,7 +215,7 @@ export function ClosingFieldsSettings() {
     <ConfirmActionDialog open={deleteTarget !== null} onOpenChange={open => { if (!open) setDeleteTarget(null); }} title="Delete custom field?"
       description={`Delete “${deleteTarget?.label ?? ''}” from the current configuration?`} warning="Historical values and evidence will be retained."
       confirmLabel="Delete field" cancelLabel="Cancel" variant="destructive" isLoading={pending} confirmDisabled={!canDelete} onConfirm={deleteField} />
-    <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'new' ? 'Add Field' : 'Edit Field'} subtitle={panel === 'new' ? 'Complete the field details below.' : undefined}>{panel && (panel === 'new' || panel.customFieldId ? <FieldForm key={panel === 'new' ? module : panel.customFieldId} field={panel === 'new' ? undefined : data?.definitions.find(field => field.id === panel.customFieldId)} module={module} initialLayout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} /> : <NativeFieldForm field={panel} layout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} />)}</SlidingDrawer>
+    <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'new' ? 'Add Field' : 'Edit Field'} subtitle={panel === 'new' ? 'Complete the field details below.' : undefined}>{panel && (panel === 'new' || panel.customFieldId ? <FieldForm key={panel === 'new' ? module : panel.customFieldId} field={panel === 'new' ? undefined : data?.definitions.find(field => field.id === panel.customFieldId)} initialLayout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} /> : <NativeFieldForm field={panel} layout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} />)}</SlidingDrawer>
     <ManageFieldGroups key={module} open={manageGroups} onOpenChange={setManageGroups} module={module} onModuleChange={switchModule} layout={layout} fields={fields} pending={pending} ready={ready} canEdit={canEdit} canDelete={canDelete} mutate={mutateLayout} reorder={reorderGroups} />
   </div>;
 }
