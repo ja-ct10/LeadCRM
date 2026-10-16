@@ -37,7 +37,7 @@ it('bounds reconnection and reports successful reconnects without polling', () =
   const subscriber = listen();
   streams[0].dispatchEvent(new Event('error'));
   expect(streams[0].close).toHaveBeenCalledOnce(); expect(subscriber.onError).toHaveBeenCalledOnce();
-  vi.advanceTimersByTime(59_999); expect(streams).toHaveLength(1);
+  vi.advanceTimersByTime(4_999); expect(streams).toHaveLength(1);
   vi.advanceTimersByTime(1); expect(streams).toHaveLength(2);
   streams[1].dispatchEvent(new Event('open')); expect(subscriber.onOpen).toHaveBeenCalledOnce();
   vi.advanceTimersByTime(180_000); expect(streams).toHaveLength(2);

@@ -5,13 +5,14 @@ import { useRecordActivities, type ActivityModule, type TimelineActivity } from 
 
 const mocks = vi.hoisted(() => ({
   auth: { tenant: { id: 'tenant-a' }, user: { id: 'user-a', role: 'Sales', tenantId: 'tenant-a' }, isLoading: false, authError: null as string | null },
-  permission: true, mockMode: false, getAll: vi.fn(),
+  permission: true, mockMode: false, getAll: vi.fn(), status: vi.fn(),
 }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => mocks.auth }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [] }) }));
 vi.mock('@/lib/config', () => ({ get USE_MOCK_DATA() { return mocks.mockMode; } }));
 vi.mock('../use-permissions', () => ({ useHasPermission: () => mocks.permission }));
 vi.mock('@/features/tenant/crm/activities/services/activities.service', () => ({ activitiesService: { getAll: mocks.getAll } }));
+vi.mock('@/features/tenant/inbox/services/gmail.service', () => ({ getGmailStatus: mocks.status }));
 
 const streams: FakeSource[] = [];
 class FakeSource extends EventTarget {
@@ -30,6 +31,7 @@ beforeEach(() => {
   mocks.permission = true; mocks.mockMode = false;
   vi.stubGlobal('EventSource', FakeSource);
   mocks.getAll.mockResolvedValue(response([note]));
+  mocks.status.mockResolvedValue({ isConnected: true });
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
@@ -57,13 +59,42 @@ it('shares reads and transport, then removes the last listener on unmount', asyn
   const first = renderHook(() => useRecordActivities('leads', 'record'));
   const second = renderHook(() => useRecordActivities('leads', 'record'));
   await waitFor(() => expect(second.result.current.total).toBe(1));
-  expect(mocks.getAll).toHaveBeenCalledOnce(); expect(streams).toHaveLength(1);
+  expect(mocks.getAll).toHaveBeenCalledOnce(); expect(mocks.status).toHaveBeenCalledOnce(); expect(streams).toHaveLength(1);
   first.unmount(); expect(streams[0].close).not.toHaveBeenCalled();
   mocks.getAll.mockResolvedValue(response([note, email('Sent')])); changed();
   await waitFor(() => expect(second.result.current.total).toBe(2));
   second.unmount(); expect(streams[0].close).toHaveBeenCalledOnce();
   const calls = mocks.getAll.mock.calls.length; changed();
   await new Promise(resolve => setTimeout(resolve, 10)); expect(mocks.getAll).toHaveBeenCalledTimes(calls);
+});
+
+it('refreshes mailbox errors through the same cache without hiding permitted notes', async () => {
+  const hook = renderHook(() => useRecordActivities('leads', 'record'));
+  await waitFor(() => expect(hook.result.current.total).toBe(1));
+  mocks.status.mockResolvedValue({ isConnected: false, syncError: 'Mailbox ownership does not match, or temporary test access expired.' });
+  changed();
+  await waitFor(() => expect(hook.result.current.error).toContain('Mailbox ownership'));
+  expect(hook.result.current.activities).toEqual([note]);
+  mocks.status.mockResolvedValue({ isConnected: true, syncError: 'Email updates paused after repeated failures.' });
+  changed();
+  await waitFor(() => expect(hook.result.current.error).toContain('paused'));
+  mocks.status.mockResolvedValue({ isConnected: true, syncError: null });
+  changed();
+  await waitFor(() => expect(hook.result.current.error).toBeFalsy());
+});
+
+it('does not query Gmail status for Notes readers or expose the previous identity status', async () => {
+  const noteReader = renderHook(() => useRecordActivities('leads', 'record', true, undefined, { type: 'note' }));
+  await waitFor(() => expect(noteReader.result.current.total).toBe(1));
+  expect(mocks.status).not.toHaveBeenCalled(); noteReader.unmount();
+  mocks.status.mockResolvedValue({ isConnected: false });
+  const hook = renderHook(() => useRecordActivities('leads', 'record'));
+  await waitFor(() => expect(hook.result.current.error).toBe('Connect your work Gmail account first.'));
+  const pending = deferred<{ isConnected: boolean }>(); mocks.status.mockReturnValue(pending.promise);
+  mocks.auth.user = { ...mocks.auth.user, id: 'user-b' }; hook.rerender();
+  expect(hook.result.current.error).toBeFalsy();
+  await act(async () => pending.resolve({ isConnected: true }));
+  await waitFor(() => expect(hook.result.current.error).toBeFalsy());
 });
 
 it('clears access-revoked rows, total and pagination immediately while hidden and rejects old responses', async () => {

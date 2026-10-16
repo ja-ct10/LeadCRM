@@ -24,9 +24,9 @@ it('requires an HTTPS callback but no Pub/Sub configuration for production Gmail
   expect(() => validateEnvironment(gmail)).not.toThrow();
   expect(() => validateEnvironment({ ...gmail, GMAIL_REDIRECT_URI: 'http://localhost:4000/api/v1/integrations/gmail/callback' })).toThrow('GMAIL_REDIRECT_URI');
 });
-it.each(['0', '5', '59', '3601', 'NaN', '60.5'])('rejects unsafe Gmail sync interval %s', GMAIL_SYNC_INTERVAL_SECONDS => {
+it.each(['0', '5', '9', '3601', 'NaN', '10.5'])('rejects unsafe Gmail sync interval %s', GMAIL_SYNC_INTERVAL_SECONDS => {
   expect(() => validateEnvironment({ ...production, GMAIL_SYNC_INTERVAL_SECONDS })).toThrow('GMAIL_SYNC_INTERVAL_SECONDS');
 });
-it.each(['60', '300', '3600'])('accepts bounded Gmail sync interval %s', GMAIL_SYNC_INTERVAL_SECONDS => {
+it.each(['10', '59', '60', '300', '3600'])('accepts bounded Gmail sync interval %s', GMAIL_SYNC_INTERVAL_SECONDS => {
   expect(() => validateEnvironment({ ...production, GMAIL_SYNC_INTERVAL_SECONDS })).not.toThrow();
 });

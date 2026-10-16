@@ -246,7 +246,7 @@ describe('Persisted scoped Inbox', () => {
     expect(streams).toHaveLength(1);
     streams[0].dispatchEvent(new Event('error')); await flush();
     expect(streams[0].close).toHaveBeenCalledOnce();
-    await advance(59_999); expect(streams).toHaveLength(1);
+    await advance(4_999); expect(streams).toHaveLength(1);
     await advance(1); expect(streams).toHaveLength(2);
     streams[1].dispatchEvent(new Event('mailbox-change')); await advance(250);
     expect(mocks.list).toHaveBeenCalledTimes(2);
@@ -261,7 +261,7 @@ describe('Persisted scoped Inbox', () => {
     streams[0].dispatchEvent(new Event('error')); await flush();
     fireEvent.click(screen.getByLabelText('Filter emails')); fireEvent.click(screen.getByText('Sent')); await flush();
     expect(streams).toHaveLength(1);
-    await advance(59_999); expect(streams).toHaveLength(1);
+    await advance(4_999); expect(streams).toHaveLength(1);
     await advance(1); expect(streams).toHaveLength(2);
   });
   it('honors an API cooldown across refresh, sync and realtime connections', async () => {

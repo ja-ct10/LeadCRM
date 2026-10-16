@@ -243,7 +243,7 @@ export function RecordTimelineTab({ activities, module, recordId, onActivityCrea
       <div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Search activities" placeholder="Search titles, descriptions or current agent names…" value={searchTerm} onChange={event => changeFilters(filter, event.target.value)} className="h-9 pl-8 text-xs" /></div>
       {loading && !allActivities.length && <div role="status" aria-label="Loading activity history"><DataLoadingSkeleton rowCount={3} columnCount={1} /></div>}
       {entries.map(entry => <React.Fragment key={entry.id}>{entry.content}</React.Fragment>)}
-      {!loading && !entries.length && <p className="py-6 text-center text-sm text-muted-foreground">{filter === 'All' && !searchTerm ? 'No activity recorded for this record.' : 'No activities match your filter.'}</p>}
+      {!loading && !error && !entries.length && <p className="py-6 text-center text-sm text-muted-foreground">{filter === 'All' && !searchTerm ? 'No activity recorded for this record.' : 'No activities match your filter.'}</p>}
       {hasMore && <Button variant="ghost" size="sm" onClick={onLoadMore} disabled={loading}>Load older activity</Button>}
     </section>
   </div>;

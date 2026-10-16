@@ -5,7 +5,7 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 import { CrmRecordPanel, CrmRecordView } from './crm-record-view';
 import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false, status: { isConnected: true, syncError: null as string | null } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'owner', role: 'Sales', tenantId: 'tenant' }, isLoading: false, authError: null }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [], pipelines: [], deals: [], contacts: [], organizations: [] }) }));
@@ -39,7 +39,8 @@ const email = (direction: 'inbound' | 'outbound'): TimelineActivity => ({
 let rows: TimelineActivity[];
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.edit = false; streams.length = 0; rows = [note]; vi.stubGlobal('EventSource', FakeSource);
-  mocks.get.mockImplementation(async (path: string) => path.endsWith('/files') ? { data: [] } : { data: {
+  mocks.status = { isConnected: true, syncError: null };
+  mocks.get.mockImplementation(async (path: string) => path === '/integrations/gmail/status' ? mocks.status : path.endsWith('/files') ? { data: [] } : { data: {
     id: 'record', firstName: 'Customer', lastName: 'Test', email: 'customer@example.test', title: 'Customer Deal', status: 'Warm', assignedUserId: 'owner',
     createdAt: note.createdAt, stage: { name: 'Lead' }, productInterests: [], leadDeals: [], contactDeals: [],
   } });
@@ -47,6 +48,26 @@ beforeEach(() => {
     const data = rows.filter(row => !type || row.type === type);
     return { data, total: data.length, nextCursor: null };
   });
+});
+
+it.each(['leads', 'contacts', 'deals'] as const)('reports mailbox failures in an open %s timeline and recovers through SSE', async module => {
+  render(<CrmRecordView module={module} id="record" />);
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
+  const timeline = screen.getByRole('region', { name: 'Activity Timeline' });
+  fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity0'));
+  for (const failure of ['Mailbox ownership does not match, or temporary test access expired.', 'Email updates paused after repeated failures.', 'Connect your work Gmail account first.']) {
+    mocks.status = { isConnected: false, syncError: failure };
+    act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+    await waitFor(() => expect(within(timeline).getByRole('alert').textContent).toBe(failure));
+    expect(within(timeline).queryByText('No activities match your filter.')).toBeNull();
+  }
+  mocks.status = { isConnected: true, syncError: null }; rows.push(email('inbound'));
+  act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+  await waitFor(() => expect(within(timeline).getByText('Persisted inbound body')).toBeTruthy());
+  expect(within(timeline).queryByRole('alert')).toBeNull();
+  expect(screen.getByRole('region', { name: 'Activity Timeline' })).toBe(timeline);
+  expect(screen.getByRole('button', { name: 'Emails' }).getAttribute('aria-pressed')).toBe('true');
 });
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 

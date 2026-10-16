@@ -6,6 +6,7 @@ import { USE_MOCK_DATA } from '@/lib/config';
 import { useEffect, useRef, useState } from 'react';
 import { getPageCache, getPageCacheGeneration, invalidatePageCache, requestPageCache } from '@/shared/cache/page-cache';
 import { subscribeMailboxEvents } from '@/shared/services/mailbox-events';
+import { getGmailStatus, type GmailConnectionStatus } from '@/features/tenant/inbox/services/gmail.service';
 import { activitiesService, type ActivityRecord } from '@/features/tenant/crm/activities/services/activities.service';
 import { useCachedPage } from './use-cached-page';
 import { useHasPermission } from './use-permissions';
@@ -35,6 +36,8 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
   const [pagination, setPagination] = useState({ identity, count: 1 });
   const pageCount = pagination.identity === identity ? pagination.count : 1;
   const canViewActivities = useHasPermission(`${module}.view`);
+  const canViewLeads = useHasPermission('leads.view');
+  const canViewContacts = useHasPermission('contacts.view');
   const canRead = enabled && canViewActivities && !isLoading && !authError;
   useEffect(() => {
     scopeRetry.current = false;
@@ -93,6 +96,15 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       return { data: [...rows.values()], total, nextCursor };
     },
   });
+  const mailboxStatus = useCachedPage<GmailConnectionStatus>({
+    module: 'activities',
+    params: { purpose: 'gmail-status', authorizationRevision },
+    revalidateOnInvalidation: true,
+    disabled: USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || module === 'accounts' ||
+      !tenant?.id || !user?.id || !(canViewLeads || canViewContacts) || !!filters.type && !filters.type.split(',').includes('email'),
+    fetchFn: getGmailStatus,
+  });
+  const mailboxError = mailboxStatus.data?.syncError || (mailboxStatus.data?.isConnected === false ? 'Connect your work Gmail account first.' : mailboxStatus.error);
   const relatedType = module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact';
   const loaded = useRef<{ identity: string; page?: ActivityPage }>({ identity });
   const unavailable = [401,403,404,409].includes(result.errorStatus ?? 0);
@@ -108,6 +120,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const mockFiltered = mockActivities.filter(activity => (!filters.type || filters.type.split(',').includes(activity.type)) && matchesSearch(filters.search ?? '', activity.title, activity.description, activity.createdBy?.firstName, activity.createdBy?.lastName));
   return { ...result,
+    error: result.error || mailboxError,
     data: unavailable ? undefined : result.data,
     isInitialLoad: result.isInitialLoad && !page,
     activities: !canRead ? [] : USE_MOCK_DATA ? mockFiltered : providedActivities ?? page?.data ?? [],

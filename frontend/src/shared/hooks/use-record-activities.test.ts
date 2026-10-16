@@ -52,7 +52,7 @@ it('fetches the older server cursor when loading more instead of revealing a loc
   act(() => result.current.loadMore());
   mocks.getAll.mockResolvedValueOnce({ data: [{ id: 'newer' }], total: 2, nextCursor: 'older-cursor' }).mockResolvedValueOnce({ data: [{ id: 'older' }], total: 2, nextCursor: null });
   // No tenant in this isolated hook stub, so prior pages are deliberately uncached.
-  const page = await mocks.cache.mock.calls.at(-1)![0].fetchFn(new AbortController().signal);
+  const page = await mocks.cache.mock.calls.filter(([options]) => options.params.id).at(-1)![0].fetchFn(new AbortController().signal);
   expect(mocks.getAll.mock.calls.some(([params]) => params.cursor === 'older-cursor')).toBe(true);
   expect(page.data.map((row: { id: string }) => row.id)).toEqual(['newer','older']);
 });

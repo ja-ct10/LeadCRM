@@ -17,7 +17,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { consumeRecordEmailCompose } from '../services/compose-navigation';
 import type { MailboxListOptions } from '@leadcrm/shared';
-import { subscribeMailboxEvents, type MailboxSubscription } from '@/shared/services/mailbox-events';
+import { subscribeMailboxEvents, MAILBOX_RECONNECT_DELAY_MS, type MailboxSubscription } from '@/shared/services/mailbox-events';
 
 const FILTERS = [{ id: 'all', label: 'All emails' }, { id: 'unread', label: 'Unread only' }, { id: 'sent', label: 'Sent' }, { id: 'scheduled', label: 'Scheduled' }, { id: 'drafts', label: 'Drafts only' }] as const;
 const SORTS = [{ id: 'newest', label: 'Newest first' }, { id: 'oldest', label: 'Oldest first' }, { id: 'unread', label: 'Unread first' }] as const;
@@ -294,12 +294,15 @@ function InboxMailbox(): React.ReactElement {
         onError: () => {
           events?.close();
           events = null;
-          reconnectAfterRef.current = Date.now() + 60_000;
-          reconnect = setTimeout(() => { refresh(); connect(); }, 60_000);
+          reconnectAfterRef.current = Date.now() + MAILBOX_RECONNECT_DELAY_MS;
+          reconnect = setTimeout(() => { refresh(); connect(); }, MAILBOX_RECONNECT_DELAY_MS);
         },
       });
     };
     connect();
+    if (!events && Date.now() < reconnectAfterRef.current) {
+      reconnect = setTimeout(() => { refresh(); connect(); }, reconnectAfterRef.current - Date.now());
+    }
     // Retry even intentional server expiry, but never in a rapid reconnect loop.
     // Persisted fallback reads never start a Gmail provider synchronization.
     const poll = window.setInterval(() => { if (!events) { refresh(); connect(); } }, 60_000);

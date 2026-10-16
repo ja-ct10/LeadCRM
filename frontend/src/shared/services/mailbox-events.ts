@@ -8,6 +8,7 @@ interface MailboxListeners {
 }
 
 export interface MailboxSubscription { close: () => void }
+export const MAILBOX_RECONNECT_DELAY_MS = 5_000;
 
 interface MailboxObserver {
   listeners: Set<MailboxListeners>;
@@ -37,7 +38,7 @@ export function subscribeMailboxEvents(tenantId: string, userId: string, listene
         disconnect = undefined;
         [...listeners].forEach(item => item.onError?.());
         // Bound retries, including the server's intentional connection expiry.
-        if (listeners.size) reconnect = setTimeout(connect, 60_000);
+        if (listeners.size) reconnect = setTimeout(connect, MAILBOX_RECONNECT_DELAY_MS);
       };
       source.addEventListener('mailbox-change', changed);
       source.addEventListener('mailbox-access-changed', accessChanged);

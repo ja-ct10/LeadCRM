@@ -46,7 +46,7 @@ After deployment configuration, apply the additive migration with the existing d
 npm --prefix backend run db:deploy
 ```
 
-Then build/start the frontend and backend using the existing [architecture](ARCHITECTURE.md). The persistent backend starts the mailbox scheduler at startup, checks its queue every ten seconds, and honors `GMAIL_SYNC_INTERVAL_SECONDS` for each mailbox. Database leases prevent duplicate work. The browser consumes authenticated SSE and persisted data; it does not poll Gmail. **Sync now** requests backend work.
+Then build/start the frontend and backend using the existing [architecture](ARCHITECTURE.md). The persistent backend starts the mailbox scheduler at startup, checks its queue every ten seconds, and honors `GMAIL_SYNC_INTERVAL_SECONDS` for each mailbox (default 10; valid range 10–3600). Existing explicit 60-second overrides remain effective until changed. Database leases prevent duplicate work. The browser consumes authenticated SSE and persisted data; it does not poll Gmail. **Sync now** requests backend work.
 
 The existing Gmail scopes are retained: `gmail.readonly`, `gmail.send`, `gmail.modify`, and `userinfo.email`. Consent must include `gmail.modify` and offline access. Google consent-screen approval and Workspace administrator policies remain external configuration requirements.
 

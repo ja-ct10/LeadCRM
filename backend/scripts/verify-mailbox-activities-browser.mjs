@@ -1,5 +1,5 @@
 // Real UI/API/mailbox SSE against a disposable migration-replayed database.
-// Provider-shaped messages enter the real ingestion service; no real mail is sent.
+// Two Sales agents use mocked Gmail send/History and the existing worker; no real mail is sent.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { spawn } from 'node:child_process';
@@ -23,7 +23,7 @@ const port = Number(process.env.MAILBOX_ACTIVITIES_BROWSER_PORT || 3037), base =
 for (const key of Object.keys(process.env)) if (/^(BREVO|TEXTBEE|SMTP|GMAIL|GOOGLE_CLIENT|GOOGLE_REFRESH)/.test(key)) delete process.env[key];
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_activities_browser?connection_limit=1&statement_cache_size=0`,
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base,
-  GMAIL_CLIENT_ID: 'isolated-client', GMAIL_CLIENT_SECRET: 'isolated-secret', GMAIL_REDIRECT_URI: base + '/callback' });
+  GMAIL_CLIENT_ID: 'isolated-client', GMAIL_CLIENT_SECRET: 'isolated-secret', GMAIL_REDIRECT_URI: base + '/callback', GMAIL_SYNC_INTERVAL_SECONDS: '10' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function (request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
@@ -34,31 +34,60 @@ const { tenantContext } = require('../dist/backend/src/core/tenant/tenant-contex
 const { salesPipeline, salesTransaction } = require('../dist/backend/src/modules/crm/leads/lead-automation.service.js');
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
 const { encryptToken } = require('../dist/backend/src/core/encryption/crypto.service.js');
-const { ingestMailboxMessages } = require('../dist/backend/src/integrations/gmail/mailbox-ingestion.service.js');
-const { mailboxChanged } = require('../dist/backend/src/integrations/gmail/mailbox-store.js');
-const { associateMailboxDeal } = require('../dist/backend/src/integrations/gmail/mailbox-sync.service.js');
+const { associateMailboxDeal, startMailboxScheduler, syncMailbox, mailboxPermissions } = require('../dist/backend/src/integrations/gmail/mailbox-sync.service.js');
+const { resolveMailboxScope } = require('../dist/backend/src/integrations/gmail/mailbox-scope.js');
 const checks = [], pageErrors = [], transportErrors = [], serverErrors = [], providerRequests = [];
+const gmailBoxes = new Map(), gmailReads = [];
 const originalFetch = globalThis.fetch;
 globalThis.fetch = (input, options) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
+  if (url.hostname === 'gmail.googleapis.com') {
+    const box = gmailBoxes.get(new Headers(options?.headers).get('authorization'));
+    assert.ok(box, 'Gmail must use this agent account token');
+    if (options?.method === 'POST') {
+      const raw = Buffer.from(JSON.parse(options.body).raw, 'base64url').toString();
+      const message = { id: randomUUID(), threadId: randomUUID(), from: box.email, to: [raw.match(/To: ([^\r\n]+)/)[1]], subject: 'Customer email conversation',
+        body: raw.split('\r\n\r\n').slice(1).join('\r\n\r\n'), rfcMessageId: raw.match(/Message-ID: ([^\r\n]+)/)[1], labels: ['SENT'], date: new Date(Date.now() - 1000).toISOString() };
+      message.snippet = message.body; message.revision = ++box.revision; box.messages.set(message.id, message);
+      return Promise.resolve(Response.json({ id: message.id, threadId: message.threadId }));
+    }
+    gmailReads.push({ userId: box.userId, path: url.pathname, time: Date.now() });
+    if (url.pathname.endsWith('/profile')) return Promise.resolve(Response.json({ historyId: String(box.revision) }));
+    if (url.pathname.endsWith('/history')) return Promise.resolve(Response.json({ historyId: String(box.revision), history: [{ messagesAdded: [...box.messages.values()].filter(message => message.revision > Number(url.searchParams.get('startHistoryId'))).map(message => ({ message: { id: message.id } })) }] }));
+    if (url.pathname.endsWith('/drafts')) return Promise.resolve(Response.json({ drafts: [] }));
+    if (url.pathname.endsWith('/messages')) return Promise.resolve(Response.json({ messages: [...box.messages.values()].map(message => ({ id: message.id })) }));
+    const message = box.messages.get(url.pathname.split('/').at(-1)); assert.ok(message, 'Exact Gmail message must exist in its owner mailbox');
+    return Promise.resolve(Response.json({ id: message.id, threadId: message.threadId, labelIds: message.labels, snippet: message.snippet, internalDate: String(Date.parse(message.date)),
+      payload: { mimeType: 'text/html', body: { data: Buffer.from(message.body).toString('base64url') }, headers: [{ name: 'From', value: message.from }, { name: 'To', value: message.to.join(', ') }, { name: 'Subject', value: message.subject }, { name: 'Message-ID', value: message.rfcMessageId }] } }));
+  }
   if (!['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)) { providerRequests.push(url.origin); throw new Error('External network is disabled in mailbox Activity acceptance'); }
   return originalFetch(input, options);
 };
-let api, frontend, browser, page, apiBase, closing = false;
+let api, frontend, browser, page, apiBase, stopWorker, closing = false;
 const record = (label, detail = {}) => { checks.push({ label, ...detail }); console.log(`PASS ${label}`); };
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Mailbox Activity Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
-  const owner = await prisma.user.create({ data: { tenantId: tenant.id, email: 'mailbox-activity@camxian.com', firstName: 'Mailbox', lastName: 'Owner', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
-  const token = (await issueAuthSession(owner)).token;
-  const account = await prisma.emailAccount.create({ data: { tenantId: tenant.id, userId: owner.id, email: owner.email, provider: 'gmail', accessToken: encryptToken('fixture-only'), scopes: ['https://www.googleapis.com/auth/gmail.modify'], tokenExpiresAt: new Date(Date.now() + 3600000), connectedAt: new Date() } });
+  const role = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Sales', crmAssignmentRestricted: true } });
+  await prisma.rolePermission.createMany({ data: ['leads', 'contacts', 'deals', 'accounts', 'tasks'].map(module => ({ tenantId: tenant.id, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
+  const agents = [];
+  for (const name of ['B', 'A']) {
+    const user = await prisma.user.create({ data: { tenantId: tenant.id, email: `mailbox-activity-${name}@camxian.com`, firstName: name, lastName: 'Sales', role: 'Sales', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.userRole.create({ data: { tenantId: tenant.id, roleId: role.id, userId: user.id } });
+    const access = 'fixture-' + user.id;
+    const account = await prisma.emailAccount.create({ data: { tenantId: tenant.id, userId: user.id, email: user.email, provider: 'gmail', accessToken: encryptToken(access), scopes: ['https://www.googleapis.com/auth/gmail.modify'], tokenExpiresAt: new Date(Date.now() + 3600000), connectedAt: new Date() } });
+    gmailBoxes.set('Bearer ' + access, { email: user.email, userId: user.id, revision: 1, messages: new Map() });
+    agents.push({ owner: user, account, box: gmailBoxes.get('Bearer ' + access), leadIds: [] });
+  }
+  let owner, account, token, box;
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
-  const permissions = { leadsView: true, leadsEdit: true, contactsView: true, contactsEdit: true, dealsView: true, dealsEdit: true };
   let fixtureNumber = 0;
   async function fixture(module, ambiguous = false) {
     const suffix = ++fixtureNumber;
-    const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: `Realtime Lead ${suffix}`, lastName: 'Customer', email: `lead-${suffix}@example.test`, assignedUserId: owner.id, status: 'Hot', productInterest: [] } });
-    const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: `Realtime Contact ${suffix}`, lastName: 'Customer', email: `contact-${suffix}@example.test`, assignedUserId: owner.id, status: 'HOT', productInterests: [] } });
+    // Established engagement isolates email counts from separate legitimate status-change Activities.
+    const engagement = { lastCustomerReplyAt: new Date(Date.now() - 2000), engagementEvaluatedAt: new Date(Date.now() - 2000) };
+    const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: `Realtime Lead ${suffix}`, lastName: 'Customer', email: `lead-${suffix}@example.test`, assignedUserId: owner.id, status: 'Hot', productInterest: [], ...engagement } });
+    const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: `Realtime Contact ${suffix}`, lastName: 'Customer', email: `contact-${suffix}@example.test`, assignedUserId: owner.id, status: 'HOT', productInterests: [], ...engagement } });
     const createDeal = title => prisma.deal.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, stageId: initial.id, title, assignedUserId: owner.id, ownerId: owner.id, value: 0, productInterests: [], tags: [],
       leadDeals: { create: { leadId: lead.id } }, contactDeals: { create: { contactId: contact.id } } } });
     const deal = await createDeal(`Realtime Deal ${suffix}`);
@@ -66,6 +95,8 @@ try {
     const selected = module === 'leads' ? lead : module === 'contacts' ? contact : deal;
     const recordKey = module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'dealId';
     await prisma.activity.create({ data: { tenantId: tenant.id, [recordKey]: selected.id, createdById: owner.id, type: 'note', title: 'Persisted baseline note' } });
+    await scope(async () => prisma.emailAccount.update({ where: { id: account.id }, data: { syncScopeHash: (await resolveMailboxScope(account, await mailboxPermissions(tenant.id, owner.id))).hash,
+      syncCursor: String(box.revision), lastSyncAt: new Date(Date.now() - 10000) } }));
     return { module, selected, recordKey, lead, contact, deal, email: module === 'contacts' ? contact.email : lead.email, thread: randomUUID() };
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
@@ -139,32 +170,52 @@ try {
       return evidence;
     } };
   }
-  async function ingest(f, direction) {
+  async function ingest(f, direction, scheduledDiscovery = true) {
     const body = `Persisted ${direction} ${f.thread}`;
+    if (direction === 'outbound') {
+      const response = await originalFetch(apiBase + '/integrations/gmail/send', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+        body: JSON.stringify({ requestId: randomUUID(), to: f.email, subject: 'Customer email conversation', body }) });
+      const sent = await response.json(); assert.equal(response.status, 200, JSON.stringify(sent)); f.thread = sent.threadId;
+      const stored = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, providerMessageId: sent.messageId } });
+      assert.equal(stored.tenantId, tenant.id);
+      assert.equal((await prisma.activity.findFirstOrThrow({ where: { mailboxMessageId: stored.id, type: 'email' } })).createdById, owner.id);
+      return body;
+    }
     const message = { id: randomUUID(), threadId: f.thread, from: direction === 'outbound' ? owner.email : f.email, to: [direction === 'outbound' ? f.email : owner.email],
       subject: 'Customer email conversation', body, snippet: body, date: new Date(Date.now() - 1000).toISOString(), isRead: true,
       labels: [direction === 'outbound' ? 'SENT' : 'INBOX'], rfcMessageId: `<${randomUUID()}@example.test>` };
-    await scope(() => ingestMailboxMessages(account, [message], permissions));
-    await mailboxChanged(account.id);
+    message.revision = ++box.revision; box.messages.set(message.id, message);
+    if (!scheduledDiscovery) await scope(() => syncMailbox(tenant.id, owner.id, 'worker'));
     return body;
   }
   async function badge(tab, total) {
     await tab.waitForFunction(expected => document.querySelector('[role="tab"][aria-selected="true"]')?.textContent === `Activity${expected}`, total);
   }
+  for (const agent of agents) {
+    ({ owner, account, box } = agent);
+    token = (await issueAuthSession(owner)).token;
   for (const module of ['leads', 'contacts', 'deals']) for (const surface of ['panel', 'page']) for (const filter of ['All', 'Emails']) {
     const f = await fixture(module), view = await open(f, surface, filter);
+    agent.leadIds.push(f.lead.id);
+    stopWorker = startMailboxScheduler();
     for (const [index, direction] of ['outbound', 'inbound'].entries()) {
+      const observedAt = Date.now();
       const body = await ingest(f, direction);
       await view.timeline.getByText(body, { exact: true }).waitFor();
       await badge(view.tab, index + (filter === 'All' ? 2 : 1));
       assert.equal(await view.timeline.getByText(body, { exact: true }).count(), 1);
       const evidence = await view.assertUntouched(); assert.ok(evidence.changes > index);
-      record(`${module} ${surface} ${filter}: ${direction} email and badge update without interaction`, { evidence });
+      record(`Agent ${owner.firstName}: ${module} ${surface} ${filter}: ${direction} email and badge update without interaction`, { evidence, visibilityMs: Date.now() - observedAt });
+      if (owner.firstName === 'B') assert.equal(await prisma.session.count({ where: { userId: agents[1].owner.id } }), 0, 'B cannot depend on A being signed in');
     }
-    await view.tab.screenshot({ path: resolve(output, `${module}-${surface}-${filter.toLowerCase()}.png`) });
+    stopWorker(); stopWorker = undefined;
+    for (let attempt = 0; attempt < 100 && await prisma.emailAccount.count({ where: { tenantId: tenant.id, syncLeaseId: { not: null } } }); attempt++) await new Promise(done => setTimeout(done, 100));
+    assert.equal(await prisma.emailAccount.count({ where: { tenantId: tenant.id, syncLeaseId: { not: null } } }), 0);
+    await view.tab.screenshot({ path: resolve(output, `${owner.firstName}-${module}-${surface}-${filter.toLowerCase()}.png`) });
     await view.close();
   }
-  const associated = await fixture('deals', true), body = await ingest(associated, 'inbound');
+  }
+  const associated = await fixture('deals', true), body = await ingest(associated, 'inbound', false);
   const view = await open(associated, 'panel', 'Emails');
   const original = await prisma.activity.findFirstOrThrow({ where: { tenantId: tenant.id, leadId: associated.lead.id, type: 'email' } });
   assert.equal(original.dealId, null);
@@ -181,8 +232,19 @@ try {
   const revoked = await view.assertUntouched(); assert.ok(revoked.access > 0);
   record('Mailbox access change removes revoked Deal email and badge without interaction', { evidence: revoked });
   await view.close();
+  for (const agent of agents) {
+    const session = (await issueAuthSession(agent.owner)).token;
+    const response = await originalFetch(apiBase + '/crm/activities?type=email&limit=100', { headers: { authorization: `Bearer ${session}` } });
+    assert.equal(response.status, 200); const own = await response.json();
+    assert.ok(own.total > 0); assert.ok(own.data.every(activity => activity.metadata.email.accountId === agent.account.id && activity.createdBy.id === agent.owner.id));
+    const other = agents.find(item => item !== agent);
+    const denied = await originalFetch(apiBase + '/crm/activities?type=email&leadId=' + other.leadIds[0], { headers: { authorization: `Bearer ${session}` } });
+    assert.ok([200, 403, 404].includes(denied.status)); assert.deepEqual((await denied.json()).data ?? [], []);
+  }
+  record('Both Sales agents read only their own mailbox Activities; the other assigned Lead remains inaccessible');
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []); assert.deepEqual(serverErrors, []); assert.deepEqual(providerRequests, []);
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, serverErrors, providerRequests }, null, 2));
+  assert.ok(gmailReads.some(read => read.userId === agents[0].owner.id)); assert.ok(gmailReads.some(read => read.userId === agents[1].owner.id));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, serverErrors, providerRequests, gmailReads }, null, 2));
   console.log(`Mailbox Activity browser acceptance passed: ${checks.length} checks. Evidence: ${output}`);
 } catch (error) {
   process.exitCode = 1;
@@ -191,6 +253,7 @@ try {
   throw error;
 } finally {
   closing = true;
+  stopWorker?.();
   const shutdown = setTimeout(() => process.exit(process.exitCode ?? 0), 20000); shutdown.unref();
   await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }

@@ -4,7 +4,7 @@ import { z } from 'zod';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox, mailboxChanged } from './mailbox-store';
-import { sendEmail, saveDraft, deleteDraft, assertDraftAccess, getValidAccessToken } from './gmail.service';
+import { sendEmail, saveDraft, deleteDraft, assertDraftAccess, getValidAccessToken, ingestConfirmedMailboxSend } from './gmail.service';
 import { authorizeMailboxOperation, normalizedRecipients, reserveMailboxOperation, markMailboxOperationAttempt, finishMailboxOperation, failMailboxOperation } from './mailbox-operations';
 import { recoverMailboxProviderResult, persistRecoveredDraft, requestMailboxIngestion } from './mailbox-recovery';
 import { readGmailJson } from './gmail-read';
@@ -22,6 +22,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
   const claim = await reserveMailboxOperation(account, data.requestId, 'send', intent, context);
   if (claim.terminal) {
     if (claim.receipt.status !== 'sent' || !claim.receipt.providerMessageId || !claim.receipt.providerThreadId) throw new AppError('This operation is not a completed send.', 409);
+    await ingestConfirmedMailboxSend(account, claim.receipt.providerMessageId, context);
     await authorizeMailboxOperation(account, context);
     return { messageId: claim.receipt.providerMessageId, threadId: claim.receipt.providerThreadId };
   }
@@ -32,6 +33,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
       : await sendEmail(tenantId, userId, recipients, data.subject, data.body, source.replyToMessageId, data.draftId, source.forwardSourceMessageId,
         { messageId: claim.receipt.rfcMessageId!, receiptId: claim.receipt.id, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     await finishMailboxOperation(claim, { status: 'sent', providerMessageId: result.messageId, providerThreadId: result.threadId });
+    if (claim.recover) await ingestConfirmedMailboxSend(account, result.messageId, context);
     await requestMailboxIngestion(account).catch(() => undefined);
     // Do not disclose a recovered result after a reassignment that occurred during provider I/O.
     await authorizeMailboxOperation(account, context);

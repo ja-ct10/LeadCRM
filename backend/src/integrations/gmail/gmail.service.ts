@@ -1,4 +1,5 @@
 import prisma from '../../config/database.config';
+import type { EmailAccount } from '@prisma/client';
 import { refreshAccessToken, getUserInfo } from './gmail.oauth';
 import { GmailEmail, GmailThread } from './gmail.types';
 import { encryptToken, decryptToken } from '../../core/encryption/crypto.service';
@@ -7,14 +8,14 @@ import { normalizeEmail } from './engagement-rules';
 import { readAuthUser } from '../../core/auth/auth-user';
 import { isMailboxOwner } from './mailbox-ownership';
 import { authorizedMailbox, listStoredMailbox, mailboxChanged } from './mailbox-store';
-import { assertStoredMessages, mailboxAddress, messageInScope, MAILBOX_METADATA_HEADERS, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
+import { assertStoredMessages, mailboxAddress, messageInScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { assertMailboxRecipients } from './mailbox-recipient-access';
 import { ingestMailboxMessages } from './mailbox-ingestion.service';
 import { MailboxListOptions } from '@leadcrm/shared';
 import { readGmailJson, writeGmailJson } from './gmail-read';
 import type { MailboxUnreadCount } from '@leadcrm/shared';
 import { countUnreadConversations } from './mailbox-conversations';
-import { authorizeMailboxOperation } from './mailbox-operations';
+import { authorizeMailboxOperation, type MailboxOperationContext } from './mailbox-operations';
 
 
 
@@ -218,6 +219,31 @@ export const fetchEmails = (tenantId: string, userId: string, options: MailboxLi
 export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
   return parseGmailMessage(await readGmailJson<GmailApiMessage>(accessToken, 'messages/' + encodeURIComponent(messageId) + '?format=full'));
 }
+
+/** A provider-confirmed send is never repeated because local history is delayed. */
+export async function ingestConfirmedMailboxSend(account: EmailAccount, messageId: string, context: MailboxOperationContext) {
+  try {
+    let current = await authorizeMailboxOperation(account, context);
+    const persisted = await prisma.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(current.account, current.scope),
+      { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true } });
+    if (persisted) return;
+    const token = await getValidAccessToken(account.tenantId, account.userId);
+    const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(messageId)}?format=metadata&${MAILBOX_METADATA_HEADERS}`));
+    current = await authorizeMailboxOperation(account, context);
+    if (!messageInScope(metadata, account.email, current.scope) || metadata.labels.some(label => ['DRAFT', 'SPAM', 'TRASH', 'DELETED'].includes(label))) {
+      throw new AppError('Sent message access changed during ingestion.', 409, 'MAILBOX_SCOPE_CHANGED');
+    }
+    await ingestMailboxMessages(current.account, [await fetchMessageDetail(token, messageId)], current.permissions);
+    await mailboxChanged(account.id);
+  } catch (error) {
+    const where = { id: account.id, tenantId: account.tenantId, userId: account.userId, isActive: true };
+    await prisma.$transaction([
+      prisma.emailAccount.updateMany({ where, data: { syncRequestedAt: new Date(), mailboxVersion: { increment: 1 } } }),
+      prisma.emailAccount.updateMany({ where: { ...where, syncError: null }, data: { syncError: 'Email was sent. Its activity is delayed while Gmail synchronization recovers.' } }),
+    ]).catch(() => undefined);
+    console.warn('[mailbox-send-ingestion]', { accountId: account.id, category: error instanceof AppError ? error.code ?? 'INGESTION_FAILED' : 'INGESTION_FAILED' });
+  }
+}
 export async function sendEmail(tenantId: string, userId: string, to: string | string[], subject: string, body: string, replyToMessageId?: string, draftId?: string, forwardSourceMessageId?: string, operation: { messageId?: string; receiptId?: string; beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ messageId: string; threadId: string }> {
   const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
   if (replyToMessageId) await assertStoredMessages(account, scope, [replyToMessageId], true);
@@ -239,15 +265,10 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   if (![result.id, result.threadId].every(value => typeof value === 'string' && /^[a-zA-Z0-9_-]{1,200}$/.test(value))) throw new AppError('Gmail returned an incomplete delivery receipt. Retry only this operation to verify it.', 503, 'GMAIL_OUTCOME_UNKNOWN');
   try {
     if (savedDraft) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id, draftId: savedDraft.draftId }, data: { labels: ['DELETED'] } });
-    const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(accessToken, `messages/${encodeURIComponent(result.id)}?format=metadata&${MAILBOX_METADATA_HEADERS}`));
-    const current = await authorizeMailboxOperation(account, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId });
-    if (messageInScope(metadata, account.email, current.scope) && !metadata.labels.some(label => ['SPAM', 'TRASH'].includes(label))) {
-      await ingestMailboxMessages(account, [await fetchMessageDetail(accessToken, result.id)], current.permissions);
-    }
-    await mailboxChanged(account.id);
   } catch {
-    await prisma.emailAccount.updateMany({ where: { id: account.id }, data: { syncRequestedAt: new Date() } }).catch(() => undefined);
+    await prisma.emailAccount.updateMany({ where: { id: account.id, tenantId, userId, isActive: true }, data: { syncRequestedAt: new Date() } }).catch(() => undefined);
   }
+  await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId });
   return { messageId: result.id, threadId: result.threadId };
 }
 export async function getConnectionStatus(
@@ -264,7 +285,7 @@ export async function getConnectionStatus(
 
   const user = await readAuthUser(userId, tenantId);
   if (!isMailboxOwner({ userId, tenantId, email: user.email }, account.email)) {
-    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null };
+    return { isConnected: false, email: null, connectedAt: null, lastSyncAt: null, syncError: 'Mailbox ownership does not match, or temporary test access expired.' };
   }
 
   return {
