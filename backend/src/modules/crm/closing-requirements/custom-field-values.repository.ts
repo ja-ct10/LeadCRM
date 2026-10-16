@@ -48,7 +48,7 @@ export async function saveRecordValues(tx: Tx, tenantId: string, module: CustomF
   await requireCustomFieldRecord(tx, tenantId, module, recordId, true);
   const fields = (await readFields(tx, tenantId)).filter(field => field.module === module && !isClosedWonField(field));
   const patch = canonicalFieldValues(module, CustomFieldValuesSchema.parse(input ?? {}), fields);
-  const editable = fields.filter(field => field.active && field.visibleInForm);
+  const editable = fields.filter(field => field.active && (field.visibleInForm || field.visibleInDetails));
   if (Object.keys(patch).some(id => !editable.some(field => field.id === id))) throw new ValidationError('Choose an active, visible custom field belonging to this module.');
   const previous = await readRecordValues(tx, tenantId, module, recordId);
   const normalized: ClosingValues = Object.fromEntries(Object.entries(patch).map(([id, value]) => [id, typeof value === 'string' ? value.trim() || null : value]));

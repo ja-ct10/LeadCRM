@@ -30,7 +30,7 @@ vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLe
 import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-record-view';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { toast } from 'sonner';
-import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog, type CustomFieldState } from '@leadcrm/shared';
 vi.mock('../inline-deal-form', () => ({ InlineDealForm: ({ onSubmit, onCancel }: { onSubmit: (values: object) => Promise<void>; onCancel: () => void }) => <form aria-label="New related Deal" onSubmit={event => { event.preventDefault(); void onSubmit({ title: 'Created deal', productInterestIds: ['product'], pipelineId: 'sales', stageId: 'lead', priority: 'MEDIUM', expectedCloseDate: '2026-10-20', customFieldValues: { evidence: 'Kept' } }); }}><button>Create Deal</button><button type="button" onClick={onCancel}>Cancel Deal</button></form> }));
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 
@@ -264,6 +264,69 @@ it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>
 });
 
 afterEach(cleanup);
+
+function dealDetailsOnlyField(visibleInDetails = true) {
+  const layout = defaultFieldLayout('deals');
+  layout.groups.push({ id: 'cancellation-details', label: 'Cancellation Details', order: layout.groups.length });
+  const data: CustomFieldState = {
+    fields: [{ id: 'reason-id', name: 'Cancellation Reason', module: 'deals', group: 'Cancellation Details', groupId: 'cancellation-details', type: 'Long Text', active: true, required: false, visibleInForm: false, visibleInDetails, options: [], description: '', order: 0, version: 1 }],
+    values: {}, files: [], layout,
+  };
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one/custom-fields' ? { data } : path === '/crm/deals/field-layout' ? { data: { layout, fields: getCrmFieldCatalog('deals', data.fields, layout) } } : original(path));
+  mocks.put.mockImplementation(async (_path: string, patch: { customFieldValues: Record<string, string> }) => {
+    data.values = { ...data.values, ...patch.customFieldValues };
+    return { success: true };
+  });
+  return data;
+}
+
+it.each(['panel', 'page'] as const)('edits a Deal field visible only in Details in the %s without reloading', async surface => {
+  const data = dealDetailsOnlyField();
+  mocks.permissions = ['deals.view', 'deals.edit'];
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} /> : <CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { level: 1 });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  const row = await screen.findByText('Cancellation Reason');
+  expect(row.textContent).toBe('Cancellation Reason');
+  expect(screen.queryByText(/Hidden in forms/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Cancellation Reason' }));
+  const input = screen.getByRole('textbox', { name: 'Cancellation Reason' });
+  expect(input.tagName).toBe('TEXTAREA');
+  const saved = 'Customer changed plans\nRequested cancellation';
+  fireEvent.change(input, { target: { value: saved } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(screen.queryByRole('textbox', { name: 'Cancellation Reason' })).toBeNull());
+  expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/crm/deals/one', { customFieldValues: { 'reason-id': saved } });
+  expect(screen.getByRole('button', { name: 'Edit Cancellation Reason' }).textContent).toBe(saved);
+  expect(data.values['reason-id']).toBe(saved);
+  fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByRole('button', { name: 'Edit Cancellation Reason' }).textContent).toBe(saved);
+});
+
+it.each((['panel', 'page'] as const).flatMap(surface => ['permission', 'record access'].map(denied => ({ surface, denied }))))('keeps a Details-only Deal field read only in the $surface without $denied', async ({ surface, denied }) => {
+  const data = dealDetailsOnlyField(); data.values['reason-id'] = 'Saved history';
+  mocks.permissions = denied === 'permission' ? ['deals.view'] : ['deals.view', 'deals.edit'];
+  mocks.canMutate = denied !== 'record access';
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} /> : <CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByText('Cancellation Reason');
+  const value = screen.getByText('Saved history').closest('button') as HTMLButtonElement;
+  expect(value.disabled).toBe(true); fireEvent.click(value);
+  expect(screen.queryByRole('textbox', { name: 'Cancellation Reason' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Edit Cancellation Reason' })).toBeNull();
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+
+it.each(['panel', 'page'] as const)('hides a Deal custom field from the %s when Show in Details is off', async surface => {
+  const data = dealDetailsOnlyField(false); data.values['reason-id'] = 'Saved history';
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} /> : <CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await waitFor(() => expect(mocks.get).toHaveBeenCalledWith('/crm/deals/one/custom-fields', expect.anything()));
+  expect(screen.queryByText('Cancellation Reason')).toBeNull(); expect(screen.queryByText('Saved history')).toBeNull();
+  expect(data.values['reason-id']).toBe('Saved history');
+});
 
 it.each((['leads', 'contacts', 'accounts', 'deals'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('uses the assigned record agent on $module $surface', async ({ module, surface }) => {
   const original = mocks.get.getMockImplementation()!;
