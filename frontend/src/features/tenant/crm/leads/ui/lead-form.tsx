@@ -21,6 +21,7 @@ import { Lead } from '@/store/types';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useData } from '@/store/DataContext';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
+import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 import { useDuplicateCheck } from '@/shared/hooks/use-duplicate-check';
 import { DuplicateWarning } from '@/shared/components/crm/duplicate-warning';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
@@ -80,12 +81,13 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const isEdit = !!initialData;
   const requestId = useRef<string | undefined>(undefined);
   const saving = useRef(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { products: productRecords, error: productError, loading: productsLoading } = useProductInterests();
 
   const {
     register,
     handleSubmit,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting: isValidatingSubmission, isDirty },
     reset,
     setFocus,
     setError,
@@ -109,6 +111,8 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       address: '',
     },
   });
+  const isSubmitting = isValidatingSubmission || isSaving;
+  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty || organization.dirty, busy: isSubmitting || customFields.uploadCount > 0 });
 
   useEffect(() => {
     setValue('companyName', organization.fields.companyName);
@@ -181,7 +185,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
         address: '',
       });
     }
-  }, [initialData, reset]);
+  }, [initialData?.id, reset]); // Refreshes of the same record must not overwrite an unfinished draft.
 
   const onFormSubmit = async (data: LeadFormData): Promise<void> => {
     if (!canSubmit || saving.current) return;
@@ -212,12 +216,13 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
 
     setSubmitError(null);
     saving.current = true;
+    setIsSaving(true);
     try { await onSave(payload); }
     catch (error: unknown) {
       applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
       organization.applyServerErrors(error);
       setSubmitError(error instanceof Error ? error.message : 'Unable to save lead. Please try again.');
-    } finally { saving.current = false; }
+    } finally { saving.current = false; setIsSaving(false); }
   };
 
   // Shared field classes
@@ -226,7 +231,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const errorInputCls = '!border-red-500 focus:!ring-red-500/20';
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit(onFormSubmit)} className="flex flex-col h-full" noValidate>
+    <form ref={formRef} onSubmit={event => { if (saving.current) event.preventDefault(); else void handleSubmit(onFormSubmit)(event); }} className="flex flex-col h-full" noValidate>
       {/* Scrollable Body */}
       <div className="flex-1 overflow-y-auto px-6 py-5 space-y-6">
 
@@ -274,7 +279,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             <FieldWrap fieldKey="phone" label="Phone">
               <PhilippinePhoneInput
                 value={phoneLocal}
-                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); }}
+                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); setValue('phone', v ? toE164(v) : '', { shouldDirty: true }); }}
                 error={phoneTouched ? validatePhMobile(phoneLocal) : null}
               />
             </FieldWrap>
@@ -312,7 +317,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
-<ProductInterestSelect products={productRecords} values={selectedProducts} onChange={setSelectedProducts} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
+<ProductInterestSelect products={productRecords} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
 {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
 </FieldWrap>
           </div>
@@ -400,7 +405,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       <div className="shrink-0 px-6 py-4 border-t border-gray-200 dark:border-white/[0.06] bg-white dark:bg-slate-900 flex items-center justify-end gap-3">
         <button
           type="button"
-          onClick={onCancel}
+          onClick={requestClose ?? onCancel}
           disabled={isSubmitting}
           className="px-5 py-2.5 text-sm font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-white/[0.05] hover:bg-slate-200 dark:hover:bg-white/[0.08] border border-gray-200 dark:border-white/[0.08] rounded-xl transition-colors"
         >

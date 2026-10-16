@@ -10,7 +10,7 @@ import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || resolve(tmpdir(), `leadcrm-mailbox-activities-${Date.now()}`);
@@ -19,7 +19,7 @@ const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
-const port = Number(process.env.MAILBOX_ACTIVITIES_BROWSER_PORT || 3037), base = `http://localhost:${port}`;
+const port = Number(process.env.MAILBOX_ACTIVITIES_BROWSER_PORT || await acceptancePort()), base = `http://localhost:${port}`;
 for (const key of Object.keys(process.env)) if (/^(BREVO|TEXTBEE|SMTP|GMAIL|GOOGLE_CLIENT|GOOGLE_REFRESH)/.test(key)) delete process.env[key];
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_activities_browser?connection_limit=1&statement_cache_size=0`,
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base,
@@ -208,7 +208,7 @@ try {
       record(`Agent ${owner.firstName}: ${module} ${surface} ${filter}: ${direction} email and badge update without interaction`, { evidence, visibilityMs: Date.now() - observedAt });
       if (owner.firstName === 'B') assert.equal(await prisma.session.count({ where: { userId: agents[1].owner.id } }), 0, 'B cannot depend on A being signed in');
     }
-    stopWorker(); stopWorker = undefined;
+    await stopWorker(); stopWorker = undefined;
     for (let attempt = 0; attempt < 100 && await prisma.emailAccount.count({ where: { tenantId: tenant.id, syncLeaseId: { not: null } } }); attempt++) await new Promise(done => setTimeout(done, 100));
     assert.equal(await prisma.emailAccount.count({ where: { tenantId: tenant.id, syncLeaseId: { not: null } } }), 0);
     await view.tab.screenshot({ path: resolve(output, `${owner.firstName}-${module}-${surface}-${filter.toLowerCase()}.png`) });
@@ -253,7 +253,7 @@ try {
   throw error;
 } finally {
   closing = true;
-  stopWorker?.();
+  await stopWorker?.();
   const shutdown = setTimeout(() => process.exit(process.exitCode ?? 0), 20000); shutdown.unref();
   await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }

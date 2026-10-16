@@ -6,6 +6,7 @@ import React, { useState, useCallback, useRef } from 'react';
 import type { ConvertLeadInput } from '@leadcrm/shared';
 import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
+import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { useData } from '@/store/DataContext';
 import { apiClient } from '@/lib/api/client';
@@ -44,6 +45,13 @@ type Step = 1 | 2 | 3 | 4 | 5;
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertLeadDialogProps): React.ReactElement {
+  const leadName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Unnamed Lead';
+  return <SlidingDrawer isOpen={isOpen} onClose={onClose} title="Convert Lead" subtitle={leadName}>
+    <ConvertLeadForm key={lead.id} onClose={onClose} lead={lead} onSuccess={onSuccess} />
+  </SlidingDrawer>;
+}
+
+function ConvertLeadForm({ onClose, lead, onSuccess }: Omit<ConvertLeadDialogProps, 'isOpen'>): React.ReactElement {
   const { refreshContacts, refreshOrganizations, refreshDeals } = useData();
   const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -58,6 +66,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
     contactId: '',
 
   });
+  const requestClose = usePanelDraft({ dirty: step > 1 || organization.dirty || form.contactMode !== 'create' || !!form.contactId, busy: isSubmitting });
 
   const leadName = `${lead.firstName || ''} ${lead.lastName || ''}`.trim() || 'Unnamed Lead';
 
@@ -243,12 +252,6 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   ];
 
   return (
-    <SlidingDrawer
-      isOpen={isOpen}
-      onClose={() => { if (!submitting.current) onClose(); }}
-      title="Convert Lead"
-      subtitle={leadName}
-    >
       <div className="flex h-full min-h-0 flex-col">
         {/* Step Progress */}
         <div className="shrink-0 px-4 sm:px-6 pt-4 pb-2">
@@ -283,7 +286,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
         <div className={panelFooterClass + " justify-between"}>
           <button
             type="button"
-            onClick={step === 1 ? onClose : goBack}
+            onClick={step === 1 ? requestClose ?? onClose : goBack}
             disabled={isSubmitting}
             className={panelSecondaryActionClass}
           >
@@ -316,7 +319,6 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
           )}
         </div>
       </div>
-    </SlidingDrawer>
   );
 }
 

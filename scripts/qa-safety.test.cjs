@@ -10,6 +10,18 @@ const { acceptanceRuns, cleanPhaseEnvironment, cleanPhaseEvidence } = require('.
 const root = resolve(__dirname, '..');
 const child = code => spawnSync(process.execPath, ['-e', code], { cwd: root, env: qaEnvironment(root), encoding: 'utf8', windowsHide: true });
 
+test('Browser fixtures allocate an available loopback port independently of an active fixture', async () => {
+  const { acceptancePort } = await import('../backend/scripts/verify-browser-matrix.mjs');
+  const server = require('node:net').createServer();
+  const first = await acceptancePort();
+  await new Promise((done, fail) => { server.once('error', fail); server.listen(first, '127.0.0.1', done); });
+  try {
+    const second = await acceptancePort();
+    assert.notEqual(second, first);
+    assert.ok(Number.isInteger(second) && second > 0 && second <= 65535);
+  } finally { await new Promise((done, fail) => server.close(error => error ? fail(error) : done())); }
+});
+
 test('Routed browser fixtures block service workers before installing network isolation', async () => {
   const { createAcceptanceContext } = await import('../backend/scripts/verify-browser-matrix.mjs');
   const calls = [];

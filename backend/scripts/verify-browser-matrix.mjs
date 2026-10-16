@@ -1,3 +1,14 @@
+import { createServer } from 'node:net';
+
+/** Each local fixture owns its frontend port, including when shards share a checkout. */
+export async function acceptancePort() {
+  const probe = createServer();
+  await new Promise((done, fail) => { probe.once('error', fail); probe.listen(0, '127.0.0.1', done); });
+  const port = probe.address().port;
+  await new Promise((done, fail) => probe.close(error => error ? fail(error) : done()));
+  return port;
+}
+
 export const acceptanceWidths = [320, 375, 390, 430, 768, 1024, 1440, 1920];
 /** Routed fixtures own API traffic; service workers must not bypass those routes. */
 export async function createAcceptanceContext(browser, options = {}) {

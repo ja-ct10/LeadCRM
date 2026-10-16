@@ -47,7 +47,7 @@ function startSessionPurgeScheduler(): void {
   console.log('[session-purge] Session cleanup scheduler started (runs every 24h).');
 }
 
-let stopMailbox: (() => void) | undefined;
+let stopMailbox: (() => Promise<void>) | undefined;
 let stopNotifications: (() => Promise<void>) | undefined;
 let stopCampaignSchedule: (() => Promise<void>) | undefined;
 let stopCampaignRecovery: (() => Promise<void>) | undefined;
@@ -69,13 +69,13 @@ const server = app.listen(PORT, () => {
 
 
 });
-server.on('close', () => { stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); void stopSmsReconciliation?.(); void stopCampaignSchedule?.(); void stopWorkflows?.(); });
+server.on('close', () => { void stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); void stopSmsReconciliation?.(); void stopCampaignSchedule?.(); void stopWorkflows?.(); });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
-  stopMailbox?.();
+  const mailbox = stopMailbox?.();
   const schedules = stopCampaignSchedule?.();
   const drain = drainCampaignSubmissions();
   const workflows = stopWorkflows?.();
-  server.close(() => { void Promise.allSettled([schedules, drain, workflows, stopNotifications?.(), stopCampaignRecovery?.(), stopSmsReconciliation?.()]).finally(() => process.exit(0)); });
+  server.close(() => { void Promise.allSettled([mailbox, schedules, drain, workflows, stopNotifications?.(), stopCampaignRecovery?.(), stopSmsReconciliation?.()]).finally(() => process.exit(0)); });
   // Interrupted mailbox pages and scheduled claims resume from durable leases.
   setTimeout(() => process.exit(0), 30000).unref();
 });

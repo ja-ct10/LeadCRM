@@ -1,4 +1,4 @@
-import { createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Invoked only by the disposable PostgreSQL runner. No configured tenant/database.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -26,7 +26,7 @@ const runtimeLog = createWriteStream(resolve(output, 'backend.log'));
 const originalLog = console.log;
 console.error = (...args) => runtimeLog.write(args.map(value => typeof value === 'string' ? value : JSON.stringify(value)).join(' ') + '\n');
 console.log = (...args) => runtimeLog.write(args.map(value => typeof value === 'string' ? value : JSON.stringify(value)).join(' ') + '\n');
-const port = 3019, base = `http://localhost:${port}`;
+const port = await acceptancePort(), base = `http://localhost:${port}`;
 let api, frontend, browser, failurePage;
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'CRM RBAC Browser QA', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
@@ -54,7 +54,7 @@ try {
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const apiBase = `http://127.0.0.1:${api.address().port}/api/v1`;
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', String(port), '-H', '127.0.0.1'], {
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', String(port), '-H', '127.0.0.1'], {
     cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'],
     env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' },
   });

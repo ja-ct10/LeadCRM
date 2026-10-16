@@ -20,6 +20,7 @@ import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { AssignedAgentSelect } from '@/shared/components/crm/assigned-agent-select';
 import { useScrollToError } from '@/shared/hooks/use-scroll-to-error';
+import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 import { toast } from 'sonner';
 import { PhilippinePhoneInput } from '@/shared/components/philippine-phone-input';
 import { toE164, validatePhMobile, normalizePhInput } from '@/shared/utils/ph-phone';
@@ -72,6 +73,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
   const isEdit = !!initialData;
+  const [isSaving, setIsSaving] = useState(false);
 
   // New Contacts use the requested section order without rewriting saved layouts.
   const configuredFields = useMemo(() => {
@@ -112,7 +114,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     register,
     handleSubmit,
     control,
-    formState: { errors, isSubmitting },
+    formState: { errors, isSubmitting: isValidatingSubmission, isDirty },
     setValue,
     watch,
     setFocus,
@@ -123,6 +125,8 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     defaultValues,
     mode: 'onBlur',
   });
+  const isSubmitting = isValidatingSubmission || isSaving;
+  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty || organization.dirty, busy: isSubmitting || customFields.uploadCount > 0 });
 
   useEffect(() => {
     setValue('companyName', organization.fields.companyName);
@@ -150,7 +154,8 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const saving = useRef(false);
   const onSubmit = async (data: CreateContactFormValues | UpdateContactFormValues): Promise<void> => {
     if (!canSubmit || saving.current) return;
-    if (!customFields.validate() || !organization.validate()) return;
+    setPhoneTouched(true);
+    if (validatePhMobile(phoneLocal) || !customFields.validate() || !organization.validate()) return;
     setSaveError('');
     // contactsV2Api translates the display aliases to Contact API columns.
     const cleaned: Partial<Contact> = {
@@ -171,13 +176,14 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
     if (isEdit && !data.assignedUserId) (cleaned as Record<string, unknown>).assignedUserId = null;
 
     saving.current = true;
+    setIsSaving(true);
     try { await onSave(cleaned); }
     catch (error) {
       applyCrmFieldErrors(error, setError, ['firstName', 'lastName', 'email', 'phone', 'status', 'source', 'assignedUserId', 'address']);
       organization.applyServerErrors(error);
       showCrmMutationError(error, 'Unable to save Contact.');
       setSaveError(error instanceof Error ? error.message : 'Unable to save Contact. Please try again.');
-    } finally { saving.current = false; }
+    } finally { saving.current = false; setIsSaving(false); }
   };
 
   // Style classes
@@ -186,7 +192,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const selectCls = panelInputClass + ' appearance-none pr-8 cursor-pointer';
 
   return (
-    <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="flex h-full min-h-0 flex-col" noValidate>
+    <form ref={formRef} onSubmit={event => { if (saving.current) event.preventDefault(); else void handleSubmit(onSubmit)(event); }} className="flex h-full min-h-0 flex-col" noValidate>
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
         {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
@@ -238,7 +244,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             <FieldWrap fieldKey="phone" label="Phone">
               <PhilippinePhoneInput
                 value={phoneLocal}
-                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); }}
+                onChange={(v) => { setPhoneLocal(v); setPhoneTouched(true); setValue('phone', v ? toE164(v) : '', { shouldDirty: true }); }}
                 error={phoneTouched ? validatePhMobile(phoneLocal) : null}
               />
             </FieldWrap>
@@ -273,7 +279,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             </FieldWrap>
 
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
-              <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true })} disabled={productsLoading || !!productError} />
+              <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true, shouldDirty: true })} disabled={productsLoading || !!productError} />
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
             </FieldWrap>
           </div>
@@ -365,7 +371,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       <div className={panelFooterClass + " justify-end"}>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={requestClose ?? onCancel}
           className={panelSecondaryActionClass}
         >
           Cancel

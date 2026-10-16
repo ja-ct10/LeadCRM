@@ -9,12 +9,12 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/workflow-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'http://localhost:3021';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_workflow_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 process.env.ALLOWED_ORIGINS = base;
@@ -47,13 +47,13 @@ try {
   await prisma.leadDeal.create({ data: { tenantId: tenant.id, leadId: records.lead.id, dealId: records.deal.id } });
   const definitions = {}, saved = {};
   for (const [entity, module] of Object.entries({ lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' })) {
-    definitions[entity] = await scope(() => saveField(tenant.id, admin.id, { module, group: entity === 'account' ? 'Notes' : entity === 'deal' ? 'Additional Details' : 'Additional Information', name: 'Site Access', type: 'Dropdown', required: false, options: ['Standard', 'Restricted'] }));
+    definitions[entity] = await scope(() => saveField(tenant.id, admin.id, { module, group: entity === 'deal' ? 'Additional Details' : 'Additional Information', name: 'Site Access', type: 'Dropdown', required: false, options: ['Standard', 'Restricted'] }));
     saved[entity] = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: entity + ' acceptance', trigger: entity + '.updated', isActive: entity === 'lead', conditions: { operator: 'AND', conditions: [{ field: entity + '.customFieldValues.' + definitions[entity].id, operator: 'is_empty', value: null }] }, actions: [{ type: 'update_field', config: { field: 'customFieldValues.' + definitions[entity].id, value: 'Standard' } }] }));
     if (entity === 'lead') await scope(() => workflows.toggleWorkflow(saved[entity].id, tenant.id, admin.id, false));
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3021', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });

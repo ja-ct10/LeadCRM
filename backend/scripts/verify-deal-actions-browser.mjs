@@ -1,4 +1,4 @@
-import { createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real production UI + authenticated Express API against a fresh, migration-replayed
 // in-memory database. No existing tenant, provider, or deployment is contacted.
 // Build first; set PLAYWRIGHT_MODULE to an installed Playwright package.
@@ -24,7 +24,7 @@ const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
-const port = Number(process.env.DEAL_ACTIONS_BROWSER_PORT || 3034);
+const port = Number(process.env.DEAL_ACTIONS_BROWSER_PORT || await acceptancePort());
 const base = `http://localhost:${port}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_record_plan_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
@@ -253,6 +253,7 @@ try {
   await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:'Qualified',exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Action Deal',exact:true}).waitFor({timeout:12000});
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  await observer.getByRole('alertdialog',{name:'Discard unsaved changes?',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
   await action('Lost Action','Add a task',observer);
   const pendingTask=observer.getByRole('dialog');
   await pendingTask.getByLabel(/^Title/).fill('Keep this unfinished task');
@@ -263,7 +264,9 @@ try {
   await observer.getByRole('region',{name:'Deal pipeline',exact:true}).getByRole('heading',{name:contacted.name,exact:true}).locator('xpath=ancestor::div[4]').getByRole('button',{name:'Actions for Lost Action',exact:true}).waitFor({timeout:12000});
   assert.equal(await pendingTask.getByLabel(/^Title/).inputValue(),'Keep this unfinished task');
   assert.equal(await prisma.task.count({where:{tenantId:tenant.id,title:'Keep this unfinished task'}}),0);
-  await pendingTask.getByRole('button',{name:'Close',exact:true}).click();await pendingTask.waitFor({state:'hidden'});
+  await pendingTask.getByRole('button',{name:'Close',exact:true}).click();
+  await observer.getByRole('alertdialog',{name:'Discard unsaved changes?',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
+  await pendingTask.waitFor({state:'hidden'});
   record('Second-session stage synchronization preserves an unsaved Task draft without creating a record');
   await action('Action Deal','Edit deal',observer);await observer.getByRole('dialog').getByLabel('Title',{exact:false}).fill('Keep this unfinished edit');
   record('Single Sales Pipeline stage selection commits once and second-session sync preserves the open edit draft');
@@ -283,6 +286,7 @@ try {
   await until(async()=>{const d=await stored('Action Deal');return d.title==='Action Deal Updated'&&d.assignedUserId===agents[60].id&&d.address==='123 Test Street';},'Edit did not persist');
   assert.equal(await observer.getByRole('dialog').getByLabel('Title',{exact:false}).inputValue(),'Keep this unfinished edit');
   await observer.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+  await observer.getByRole('alertdialog',{name:'Discard unsaved changes?',exact:true}).getByRole('button',{name:'Discard changes',exact:true}).click();
   await observer.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({timeout:12000});
   closingContexts.add(observer.context()); await observer.context().close();
   record('Edit correct Deal, complete 61-agent directory, portal selection and second-session sync preserves draft');

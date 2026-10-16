@@ -3,7 +3,7 @@
   "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "node --watch --require ts-node/register/transpile-only src/server.ts",
     "build": "prisma generate && tsc && node -e \"require('fs').copyFileSync('start.js','dist/start.js')\"",
     "start": "node dist/start.js",
     "start:notifications": "node dist/start.js --notifications-worker",
@@ -92,7 +92,6 @@
     "fast-check": "^4.9.0",
     "prisma": "^5.22.0",
     "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
     "vitest": "^4.1.10"
   }
 }

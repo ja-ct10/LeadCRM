@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { coordinateRelease, trustedCandidate, configuration, productionIO, http } from './deploy-coolify.mjs';
 
 const commit = 'a'.repeat(40), old = 'b'.repeat(40);
@@ -183,7 +183,13 @@ test('environment rejects shared tokens, duplicate database targets and untruste
   for (const url of ['http://coolify.example', 'https://token@coolify.example', 'https://coolify.example/path', 'https://coolify.example?token=private']) assert.throws(() => configuration({ ...env, COOLIFY_URL: url }), /INVALID_RELEASE_ORIGIN/);
 });
 test('workflow serializes production without cancellation and provides no PR deployment credentials', () => {
-  const workflow = readFileSync(new URL('../.github/workflows/deploy-production.yml', import.meta.url), 'utf8');
+  const path = new URL('../.github/workflows/deploy-production.yml', import.meta.url);
+  if (!existsSync(path)) {
+    const ci = readFileSync(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8');
+    assert.doesNotMatch(ci, /COOLIFY_|DATABASE_URL|DIRECT_URL|environment: production|deploy-coolify\.mjs|pull_request_target:/);
+    return; // Manual deployment mode has no Actions release workflow or credentials.
+  }
+  const workflow = readFileSync(path, 'utf8');
   assert.match(workflow, /workflow_run:/); assert.doesNotMatch(workflow, /pull_request_target:|workflow_dispatch:/);
   assert.match(workflow, /cancel-in-progress: false/); assert.match(workflow, /environment: production/);
   assert.match(workflow, /event == 'push'/); assert.match(workflow, /head_repository\.id == github\.repository_id/);

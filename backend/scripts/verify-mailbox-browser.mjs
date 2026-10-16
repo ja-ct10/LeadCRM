@@ -9,12 +9,12 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.MAILBOX_VERIFY_OUTPUT ? resolve(process.env.MAILBOX_VERIFY_OUTPUT) : resolve(root, 'data/outputs/mailbox-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'http://localhost:3018';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, GMAIL_SYNC_INTERVAL_SECONDS: '60' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -92,7 +92,7 @@ try {
   assert.equal(initialList.status, 200);
   assert.equal(await prisma.mailboxMessage.count({ where: { accountId: account.id } }), seed.length, 'Every authorized synthetic seed must persist before browser acceptance');
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3018', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 90; attempt++) { try { if ((await realFetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   // Compile the cold development route before starting browser navigation timing.
@@ -216,7 +216,7 @@ try {
   assert.equal(await page.getByText(unrelated.subject).count(), 0); assert.equal(await prisma.mailboxMessage.count({ where: { providerMessageId: relevant.id } }), 1);
   assert.equal(calls.filter(call => call.path === 'history').length, 1); assert.equal(browserSyncs, 0);
   checks.push({ label: 'server incremental Gmail check through real API, worker, database, proxy and two SSE tabs', elapsedMs: Date.now() - start, providerHistoryCalls: 1, browserSyncs });
-  stopWorker(); stopWorker = undefined;
+  await stopWorker(); stopWorker = undefined;
   await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Scheduled', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   await prisma.scheduledMailboxEmail.update({ where: { id: scheduled.id }, data: { scheduledAt: new Date(Date.now() - 1000) } });
   await runScheduledMailboxEmails(); await runScheduledMailboxEmails(); assert.equal(sends, 1); assert.equal((await prisma.scheduledMailboxEmail.findUniqueOrThrow({ where: { id: scheduled.id } })).status, 'sent');
@@ -228,7 +228,7 @@ try {
   assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local development server' }, null, 2));
   console.log(JSON.stringify({ passed: checks.length, output, sends, browserSyncs }));
 } finally {
-  stopWorker?.(); await secondBrowser?.close(); await browser?.close(); frontend?.kill();
+  await stopWorker?.(); await secondBrowser?.close(); await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
   globalThis.fetch = realFetch; await prisma.$disconnect(); await socket.stop(); await db.close();
 }

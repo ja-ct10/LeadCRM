@@ -1,5 +1,5 @@
 // Real local API, worker, native PostgreSQL and browser; no application database or providers.
-import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
 import { randomUUID, randomBytes } from 'node:crypto';
@@ -14,7 +14,7 @@ mkdirSync(output, { recursive: true });
 const database = new URL(process.env.DATABASE_URL);
 assert.equal(database.hostname, '127.0.0.1');
 assert.equal(database.pathname, '/leadcrm_forms_test_2');
-const base = 'http://localhost:3027';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, ALLOWED_ORIGINS: base, DIRECT_URL: process.env.DATABASE_URL });
 const require = createRequire(import.meta.url);
 const Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -57,7 +57,7 @@ try {
   }
   const deal = (await call('/crm/deals', 'POST', { title: 'Integrity Deal', pipelineId: pipeline.id, stageId: stages.Lead.id, productInterestId: product.id, assignedUserId: agent.id, accountId: account.id, leadIds: [lead.id], contactIds: [contact.id] }, 201)).data;
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3027', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   let ready = false;
   for (let attempt = 0; attempt < 100; attempt++) { try { if ((await fetch(base + '/login')).ok) { ready = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }

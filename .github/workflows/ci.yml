@@ -51,3 +51,37 @@ jobs:
         run: npx --no-install next typegen
       - name: Check TypeScript
         run: node node_modules/typescript/bin/tsc --noEmit --project ${{ matrix.workspace }}/tsconfig.json
+
+  unit:
+    name: ${{ matrix.label }} — Unit Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {workspace: frontend, label: Frontend}
+          - {workspace: backend, label: Backend}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: package-lock.json
+          package-manager-cache: false
+      - name: Install locked dependencies
+        run: |
+          npm install --global npm@11.19.1
+          npm ci --include=dev
+      - name: Generate database and shared types
+        run: |
+          npm --prefix backend run db:generate
+          npm --prefix shared run build
+      - name: Run existing isolated unit and component checks
+        run: npm test -- --workspace=${{ matrix.workspace }}
+      - name: Verify development watcher
+        if: matrix.workspace == 'backend'
+        run: node --test backend/scripts/verify-dev-watcher.test.cjs

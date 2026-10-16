@@ -14,6 +14,7 @@ vi.mock('./deal-contacts-field', () => ({ DealContactsField: () => null }));
 vi.mock('./deal-leads-field', () => ({ DealLeadsField: () => null }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => null }));
 import { DealForm } from './deal-form';
+import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 afterEach(cleanup);
 beforeEach(() => { fixture.data = { fields: [], values: {}, files: [] }; });
 it.each((['create', 'edit'] as const).flatMap(mode => [false, true].flatMap(visibleInForm => [false, true].map(visibleInDetails => ({ mode, visibleInForm, visibleInDetails })))))('$mode Deal uses Forms=$visibleInForm independently of Details=$visibleInDetails', ({ mode, visibleInForm, visibleInDetails }) => {
@@ -48,4 +49,31 @@ it('does not send a catalog repricing or manual value when editing a historical 
   expect(screen.queryByLabelText('Deal Value')).toBeNull();
   fireEvent.submit(screen.getByLabelText(/Title/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ value: undefined })));
+});
+
+it('protects a changed Deal and blocks closing and duplicate saves until the request finishes', async () => {
+  let fail!: (error: Error) => void;
+  const save = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; })).mockResolvedValue(undefined);
+  const close = vi.fn();
+  render(<SlidingDrawer isOpen onClose={close} title="Edit Deal"><DealForm mode="edit" initialData={{ title: 'History', productInterestId: product.id }} onSubmit={save} onCancel={close} /></SlidingDrawer>);
+  fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Unsaved Deal' } });
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Update Deal' }) as HTMLButtonElement).disabled).toBe(false));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  await screen.findByRole('alertdialog', { name: 'Discard unsaved changes?' });
+  fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  const form = screen.getByLabelText(/Title/).closest('form')!;
+  fireEvent.submit(form);
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  fireEvent.submit(form);
+  fireEvent.keyDown(document, { key: 'Escape' });
+  fireEvent.click(screen.getByRole('button', { name: 'Close drawer' }));
+  await waitFor(() => expect((screen.getByRole('button', { name: 'Saving...' }) as HTMLButtonElement).disabled).toBe(true));
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  fail(new Error('Controlled Deal failure'));
+  await screen.findByText('Controlled Deal failure');
+  expect(screen.getByLabelText(/Title/)).toHaveProperty('value', 'Unsaved Deal');
+  fireEvent.submit(form);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
 });

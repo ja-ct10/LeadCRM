@@ -199,7 +199,7 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
       expect(reads.every(read => read.userId === b.id)).toBe(true);
       const status = await call(a, '/integrations/gmail/status');
       expect(status.body).toMatchObject({ isConnected: false, syncError: 'Mailbox ownership does not match, or temporary test access expired.' });
-    } finally { stop(); }
+    } finally { await stop(); }
   });
 
   it('changes assignment scope without Gmail reconnection and hides the former agent history', async () => {

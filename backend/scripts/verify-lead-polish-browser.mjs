@@ -1,4 +1,4 @@
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Browser acceptance against a disposable DB and locally built application.
 // Usage: set PLAYWRIGHT_MODULE to an installed Playwright package, then run.
 import { PGlite } from '@electric-sql/pglite';
@@ -14,7 +14,7 @@ const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'http://localhost:3019';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_custom_fields_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 process.env.ALLOWED_ORIGINS = base;
@@ -35,7 +35,8 @@ try {
   await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Acceptance', dealValue: 25000 } });
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount', internalNotes: 'Historical note',  } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount' } });
+  await prisma.activity.create({ data: { tenantId: tenant.id, accountId: account.id, type: 'note', title: 'Legacy Internal Notes', description: 'Historical note', metadata: { legacyAccountNote: 'v1', sourceField: 'internalNotes', originalAuthorUnknown: true } } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'QALead', lastName: 'Tester', email: 'lead@example.test', companyName: ' McDonalds ' } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'QAContact', lastName: 'Tester', email: 'contact@example.test', company: 'McDonalds' } });
   const pipeline = await prisma.pipeline.findFirstOrThrow({ where: { tenantId: tenant.id }, include: { stages: true } });
@@ -55,7 +56,7 @@ try {
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3019', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });

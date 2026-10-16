@@ -1,4 +1,4 @@
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Local production-build acceptance with disposable PostgreSQL; never opens the configured database.
 // Run after npm run build. Pass an installed Playwright package path as the first argument if needed.
 import assert from 'node:assert/strict';
@@ -14,7 +14,7 @@ import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/organization-settings-browser'));
 mkdirSync(output, { recursive: true });
-const base = 'http://localhost:3023';
+const base = `http://localhost:${await acceptancePort()}`;
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
 Object.assign(process.env, {
@@ -49,7 +49,7 @@ try {
   const deniedToken = await createUser('No Settings', 'denied');
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3023', '-H', '127.0.0.1'], {
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], {
     cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' },
   });

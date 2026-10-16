@@ -1,4 +1,4 @@
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Browser acceptance against a disposable DB and locally built application.
 // Usage: set PLAYWRIGHT_MODULE to an installed Playwright package, then run.
 import { spawn } from 'node:child_process';
@@ -11,7 +11,7 @@ const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM
 mkdirSync(output, { recursive: true });
 const database = new URL(process.env.DATABASE_URL);
 assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
-const base = 'http://localhost:3017';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 process.env.ALLOWED_ORIGINS = base;
@@ -35,7 +35,8 @@ try {
   await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'CCTV Acceptance', dealValue: 25000 } });
   const scope = run => tenantContext.run({ tenantId: tenant.id }, run);
   await scope(() => salesTransaction(tx => salesPipeline(tx, tenant.id)));
-  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount', internalNotes: 'Historical note',  } });
+  const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'QAAccount' } });
+  const historicalNote = await prisma.activity.create({ data: { tenantId: tenant.id, accountId: account.id, type: 'note', title: 'Legacy Internal Notes', description: 'Historical note', metadata: { legacyAccountNote: 'v1', sourceField: 'internalNotes', originalAuthorUnknown: true } } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'QALead', lastName: 'Tester', email: 'lead@example.test', companyName: ' McDonalds ' } });
   const contact = await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'QAContact', lastName: 'Tester', email: 'contact@example.test', company: 'McDonalds' } });
   const pipeline = await prisma.pipeline.findFirstOrThrow({ where: { tenantId: tenant.id }, include: { stages: true } });
@@ -45,7 +46,7 @@ try {
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -110,7 +111,7 @@ try {
   await responsive('account-create', accountForm);
   await accountForm.getByLabel('Account Name *').fill('NewQA Account'); await accountForm.locator('button[type="submit"]').click();
   await page.getByText('NewQA Account', { exact: true }).first().waitFor();
-  assert.equal((await prisma.account.findUniqueOrThrow({ where: { id: account.id } })).internalNotes, 'Historical note'); record('Account creation and historical notes preserved');
+  assert.equal((await prisma.activity.findUniqueOrThrow({ where: { id: historicalNote.id } })).description, 'Historical note'); record('Account creation preserves migrated historical notes');
   for (const [module, name] of [['leads', 'QALead'], ['contacts', 'QAContact'], ['accounts', 'QAAccount'], ['deals', 'QADeal']]) {
     await navigate(`/crm/${module}`); await page.getByText(module === 'leads' ? `${name} Tester` : name, { exact: true }).first().click();
     const scroll = page.locator('[data-record-scroll]'); await scroll.waitFor();

@@ -7,7 +7,6 @@ import { ConvertLeadDialog } from './convert-lead-dialog';
 const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), data: { fields: [], values: {}, files: [] } as CustomFieldState }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { post: mocks.post } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshContacts: mocks.refresh, refreshOrganizations: mocks.refresh, refreshDeals: mocks.refresh }) }));
-vi.mock('@/shared/components/sliding-drawer', () => ({ SlidingDrawer: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <div /> }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
@@ -47,4 +46,30 @@ it('keeps required Account custom values through wizard steps and retains them a
   expect(first.newAccount.customFieldValues).toEqual({ context: 'Required context retained' });
   expect(mocks.post.mock.calls[1][1]).toEqual(first);
   await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+});
+
+it('protects conversion progress and prevents closing or duplicate requests during conversion', async () => {
+  let fail!: (error: Error) => void;
+  mocks.post.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; })).mockResolvedValue({ data: {} });
+  const close = vi.fn();
+  render(<ConvertLeadDialog isOpen onClose={close} lead={{ id: 'lead', firstName: 'Ada', lastName: 'Lead', status: 'Warm' } as Lead} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  await screen.findByRole('alertdialog', { name: 'Discard unsaved changes?' });
+  fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  for (let step = 2; step <= 4; step++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Close drawer' }));
+  fireEvent.keyDown(document, { key: 'Escape' });
+  expect(close).not.toHaveBeenCalled();
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  fail(new Error('Controlled conversion failure'));
+  await screen.findByText('Controlled conversion failure');
+  fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
+  await waitFor(() => expect(close).toHaveBeenCalledOnce());
+  expect(mocks.post).toHaveBeenCalledTimes(2);
+  expect(mocks.post.mock.calls[1][1]).toEqual(mocks.post.mock.calls[0][1]);
 });

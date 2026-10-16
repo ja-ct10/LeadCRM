@@ -6,14 +6,14 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-ui-polish')));
 mkdirSync(output, { recursive: true });
 const database = new URL(process.env.DATABASE_URL);
 assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
-const base = 'http://localhost:3025';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base, BREVO_API_KEY: '', BREVO_SMS_SENDER: '' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -53,9 +53,9 @@ try {
   for (let i = 1; i <= 30; i++) await prisma.contact.create({ data: { tenantId: tenant.id, firstName: `Polish ${String(i).padStart(2, '0')}`, lastName: 'Contact', status: 'WARM', assignedUserId: admin.id } });
   for (const [name, createdAt] of [['Polish Task', instant], ['Polish Older Task', new Date('2026-01-01T00:00:00Z')]]) await prisma.task.create({ data: { tenantId: tenant.id, title: name, assignedUserId: admin.id, dueDate: new Date('2027-01-01T00:00:00Z'), createdAt } });
   for (const [name, createdAt] of [['Polish Campaign', instant], ['Polish Older Campaign', new Date('2026-01-01T00:00:00Z')]]) await prisma.campaign.create({ data: { tenantId: tenant.id, name, type: 'EMAIL', status: 'DRAFT', createdAt } });
-  const draft = { name: 'Polish Active', trigger: 'lead.updated', isActive: true, conditions: { operator: 'OR', conditions: ['Fixture', 'Middle', 'Last'].map(value => ({ field: 'lead.firstName', operator: 'equals', value })) }, actions: [{ type: 'create_task', config: { title: 'History task', assignedUserId: taskAgent.id } }] };
+  const draft = { name: 'Polish Active', trigger: 'deal.updated', isActive: true, conditions: { operator: 'OR', conditions: ['Polish Deal', 'Middle', 'Last'].map(value => ({ field: 'deal.title', operator: 'equals', value })) }, actions: [{ type: 'create_task', config: { title: 'History task', assignedUserId: taskAgent.id } }] };
   const active = await scope(() => workflows.createWorkflow(tenant.id, admin.id, draft));
-  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: lead.id, triggerType: 'lead.updated', context: { 'event.changedFields': ['address'] } }));
+  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: deal.id, triggerType: 'deal.updated', context: { 'event.changedFields': ['address'] } }));
   const execution = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { workflowId: active.id } });
   assert.equal(execution.status, 'completed');
   await prisma.workflowExecutionRun.update({ where: { id: execution.id }, data: { startedAt: new Date('2026-10-08T13:50:48Z'), completedAt: new Date('2026-10-08T13:50:49Z') } });
@@ -68,7 +68,7 @@ try {
   const prefs = await fetch(apiBase + '/preferences/columns/tasks', { method: 'PUT', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' }, body: JSON.stringify({ columns: shared.TASK_COLUMN_DEFINITIONS.map(column => ({ id: column.id, visible: column.defaultVisible || column.id === 'createdAt', order: column.defaultOrder })) }) });
   assert.equal(prefs.status, 200);
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3025', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch { } await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -255,7 +255,7 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Done', exact: true }).evaluate(el => el.style.backgroundColor), 'var(--primary)');
   const library = page.getByRole('region', { name: 'Builder library', exact: true });
   let originalCardStyle;
-  for (const [category, label] of [['Triggers', 'Lead Updated'], ['Conditions', 'First Name'], ['Actions', 'Create Task']]) {
+  for (const [category, label] of [['Triggers', 'Deal Updated'], ['Conditions', 'Title'], ['Actions', 'Create Task']]) {
     await library.getByRole('button', { name: category, exact: true }).click();
     const cardStyle = await library.getByRole('button', { name: `Add ${label}`, exact: true }).evaluate(el => ({
       background: getComputedStyle(el).backgroundColor,

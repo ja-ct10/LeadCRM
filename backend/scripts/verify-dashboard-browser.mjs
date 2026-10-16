@@ -1,4 +1,4 @@
-import { createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Real cookies, Next proxy (including streamed SSE), Express and disposable SQL.
 // Requires backend and frontend production builds; pass an installed Playwright package as argv[2].
 import { PGlite } from '@electric-sql/pglite';
@@ -20,7 +20,7 @@ const clockOnly = process.argv.includes('--clock-only');
 mkdirSync(output, { recursive: true });
 const pg = await PGlite.create(); await replayCrmMigrations(pg);
 const socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'https://localhost:3032', internalBase = 'http://127.0.0.1:3031';
+const base = `https://localhost:${await acceptancePort()}`, internalBase = `http://127.0.0.1:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/dashboard_acceptance?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -75,7 +75,7 @@ try {
     const result = await response.json(); assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3031', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: `http://127.0.0.1:${port}/api/v1`, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(internalBase).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: `http://127.0.0.1:${port}/api/v1`, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   await until(async () => { try { return (await fetch(internalBase + '/login')).ok; } catch { return false; } }, 'Next ready', 90000);
   gateway = createHttpsServer({key:readFileSync(key),cert:readFileSync(cert)},(request,response)=>{
@@ -86,7 +86,7 @@ try {
     upstream.on('error',()=>{if(!response.headersSent) response.writeHead(502); response.end();});
     response.on('close',()=>upstream.destroy()); request.pipe(upstream);
   });
-  gateway.listen(3032); await new Promise(done=>gateway.once('listening',done));
+  gateway.listen(Number(new URL(base).port)); await new Promise(done=>gateway.once('listening',done));
   browser = await chromium.launch({ channel: 'chrome', headless: true });
   async function session(token) {
     const context = await createAcceptanceContext(browser, { ignoreHTTPSErrors:true, hasTouch:uiPolish, viewport: { width: 1440, height: 1000 } });

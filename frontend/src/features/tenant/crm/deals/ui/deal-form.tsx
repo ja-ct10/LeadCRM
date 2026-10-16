@@ -6,6 +6,7 @@ import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from 
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
+import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 
 
 import React, { useEffect, useRef, useMemo, useState } from 'react';
@@ -117,6 +118,7 @@ export function DealForm({
   const canCreate = useHasPermission('deals.create');
   const canEdit = useHasPermission('deals.edit');
   const isCreateMode = mode === 'create';
+  const [isSaving, setIsSaving] = useState(false);
   const recordAccess = useCrmRecordAccess();
   const hasPermission = isCreateMode ? canCreate : canEdit && recordAccess.canMutate(initialData);
 
@@ -166,7 +168,7 @@ export function DealForm({
     control,
     watch,
     setValue,
-    formState: { errors, isValid, isSubmitting },
+    formState: { errors, isValid, isSubmitting: isValidatingSubmission, isDirty },
     setFocus,
   } = useForm<CreateDealFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RHF v7.82 + resolvers v5.4 type mismatch with optional number
@@ -174,6 +176,8 @@ export function DealForm({
     defaultValues: defaultValues as never,
     mode: 'onChange',
   });
+  const isSubmitting = isValidatingSubmission || isSaving;
+  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty, busy: isSubmitting || isLoading || customFields.uploadCount > 0 });
 
   const [submitError, setSubmitError] = useState('');
   const submitting = useRef(false);
@@ -235,9 +239,10 @@ export function DealForm({
     };
     if (submitting.current) return;
     submitting.current = true; setSubmitError('');
+    setIsSaving(true);
     try { await onSubmit(cleaned as DealFormData); }
     catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
-    finally { submitting.current = false; }
+    finally { submitting.current = false; setIsSaving(false); }
   };
 
   // ── Shared styling ────────────────────────────────────────────────────
@@ -250,7 +255,7 @@ export function DealForm({
   return (
     <form
       ref={formRef}
-      onSubmit={handleSubmit(onFormSubmit)}
+      onSubmit={event => { if (submitting.current) event.preventDefault(); else void handleSubmit(onFormSubmit)(event); }}
       className="flex h-full min-h-0 flex-col"
       noValidate
     >
@@ -421,7 +426,8 @@ export function DealForm({
       <div className={panelFooterClass + " justify-end"}>
         <button
           type="button"
-          onClick={onCancel}
+          onClick={requestClose ?? onCancel}
+          disabled={isSubmitting || isLoading || customFields.uploadCount > 0}
           className={panelSecondaryActionClass}
         >
           Cancel

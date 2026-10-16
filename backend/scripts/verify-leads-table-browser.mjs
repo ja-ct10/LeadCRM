@@ -1,4 +1,4 @@
-import { acceptanceWidths, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { acceptancePort, acceptanceWidths, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Production frontend + real HTTP/auth/SQL against a disposable in-memory database.
 // Requires compiled backend/frontend and an installed Playwright package.
 import { PGlite } from '@electric-sql/pglite';
@@ -21,7 +21,7 @@ const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
-const base = 'http://localhost:3027';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, {
   NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_polish_test?connection_limit=1&statement_cache_size=0`,
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base,
@@ -107,7 +107,7 @@ try {
   record('Legacy preference retirement, fixed Name, widths and sequential order resolve through real HTTP');
 
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3027', '-H', '127.0.0.1'], {
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], {
     cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' },
   });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);

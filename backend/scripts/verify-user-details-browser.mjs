@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { setAcceptanceTheme, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, setAcceptanceTheme, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || resolve(tmpdir(), 'leadcrm-user-details', randomUUID());
@@ -23,7 +23,7 @@ try {
   await replayCrmMigrations(pg);
   socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 });
   await socket.start();
-  const port = Number(process.env.USER_DETAILS_BROWSER_PORT || 3047), base = `http://localhost:${port}`;
+  const port = Number(process.env.USER_DETAILS_BROWSER_PORT || await acceptancePort()), base = `http://localhost:${port}`;
   Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_user_details_browser?connection_limit=1&statement_cache_size=0`,
     JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
   process.env.DIRECT_URL = process.env.DATABASE_URL;

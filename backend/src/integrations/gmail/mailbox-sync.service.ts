@@ -287,6 +287,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
 
 export function startMailboxScheduler() {
   let running = false, sending = false, stopped = false;
+  let syncJob: Promise<void> | undefined, sendJob: Promise<void> | undefined;
   const sendDue = async () => {
     if (sending || stopped) return;
     sending = true;
@@ -306,9 +307,13 @@ export function startMailboxScheduler() {
     } catch { console.warn('[mailbox-sync] Worker iteration unavailable; persisted jobs will resume.'); }
     finally { running = false; }
   };
-  void run(); void sendDue();
-  const timer = setInterval(() => { void run(); void sendDue(); }, 10000);
+  const tick = () => {
+    if (!running && !stopped) syncJob = run();
+    if (!sending && !stopped) sendJob = sendDue();
+  };
+  tick();
+  const timer = setInterval(tick, 10000);
   timer.unref();
   console.info('[mailbox-worker]', { queueCheckMs: 10000, mailboxConcurrency: 3, gmailSyncIntervalMs: mailboxSyncIntervalMs() });
-  return () => { stopped = true; clearInterval(timer); };
+  return async () => { stopped = true; clearInterval(timer); await Promise.all([syncJob, sendJob]); };
 }

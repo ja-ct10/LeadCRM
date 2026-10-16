@@ -10,7 +10,7 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const runName = process.env.RECORD_PLAN_BROWSER_RUN_NAME || '';
@@ -24,7 +24,7 @@ const db = await PGlite.create();
 await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
 await socket.start();
-const port = Number(process.env.RECORD_PLAN_BROWSER_PORT || 3033);
+const port = Number(process.env.RECORD_PLAN_BROWSER_PORT || await acceptancePort());
 const base = `http://localhost:${port}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_record_plan_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
@@ -66,7 +66,8 @@ try {
     const group = layout.layout.groups.find(item => item.label === 'Project plan');
     const key = module === 'accounts' ? 'website' : module === 'deals' ? 'priority' : 'email';
     const label = module === 'accounts' ? 'Public website' : module === 'deals' ? 'Project priority' : 'Work email';
-    await scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, label, groupId: group.id }));
+    await assert.rejects(scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, groupId: group.id })), /fixed section/);
+    await scope(() => updateFieldLayout(tenant.id, admin.id, module, { action: 'field', technicalKey: key, label }));
     fields[module] = await scope(() => saveField(tenant.id, admin.id, { module, group: group.label, groupId: group.id, name: 'Project budget', type: 'Number', required: false }));
     await prisma.customFieldValue.create({ data: { tenantId: tenant.id, module, fieldId: fields[module].id, [linkKeys[module]]: records[module].id, value: 0 } });
     await prisma.activity.createMany({ data: [
@@ -195,7 +196,7 @@ try {
     await page.getByRole('tab', { name: /^Details/ }).click();
     const group = page.getByRole('button', { name: 'Project plan', exact: true }).locator('xpath=ancestor::section[1]');
     await group.getByText('Project budget', { exact: true }).waitFor();
-    await group.getByText(module === 'accounts' ? /^Public website(?: \*)?$/ : module === 'deals' ? /^Project priority(?: \*)?$/ : /^Work email(?: \*)?$/).waitFor();
+    await page.getByText(module === 'accounts' ? /^Public website(?: \*)?$/ : module === 'deals' ? /^Project priority(?: \*)?$/ : /^Work email(?: \*)?$/).waitFor();
     if (module === 'leads' || module === 'contacts') await page.getByText(module === 'leads' ? 'lead@example.test' : 'contact@example.test', { exact: true }).first().waitFor();
     if (module === 'accounts') await page.getByText('https://example.test', { exact: true }).first().waitFor();
     if (module === 'deals') await page.getByText(titles.deals, { exact: true }).first().waitFor();
@@ -206,7 +207,7 @@ try {
       await page.getByRole('button', { name: 'Account', exact: true }).waitFor();
       await page.getByText('Acceptance Lead', { exact: true }).first().waitFor(); await page.getByText('Acceptance Contact', { exact: true }).first().waitFor();
     }
-    record(`${module}-${mode} sections, independent filters, Inbox policy, mixed field group`);
+    record(`${module}-${mode} custom sections, fixed native sections, independent filters and Inbox policy`);
     await responsive(`${module}-${mode}-details`, group);
   }
   await open('leads', 'page');
