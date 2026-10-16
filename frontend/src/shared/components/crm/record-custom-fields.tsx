@@ -150,9 +150,9 @@ export function RecordCustomFieldInlineRow({ details, fieldId, canEdit }: { deta
   const value = details.query.data.values[field.id];
   const files = [...details.query.data.files, ...uploads];
   const file = files.find(file => file.id === value);
-  const editable = canEdit && field.active && !field.deletedAt && field.visibleInForm;
+  const editable = canEdit && field.active && !field.deletedAt;
   return <InlineEditRows canEdit={editable} rows={[{
-    technicalKey: field.id, label: `${field.name}${field.deletedAt ? ' · Retired' : !field.active ? ' · Disabled' : !field.visibleInForm ? ' · Hidden in forms' : ''}`,
+    technicalKey: field.id, label: `${field.name}${field.deletedAt ? ' · Retired' : !field.active ? ' · Disabled' : ''}`,
     value, apiField: field.id, required: field.required, alwaysVisible: true, preserveWhitespace: true,
     validate: raw => closingValueError(field, inlineValue(field, raw)), editorDisabled: uploading || !!details.query.error, editorError: uploadError,
     renderValue: () => <span className="whitespace-pre-wrap [overflow-wrap:anywhere]">{value == null || value === '' ? '—' : field.type === 'File Upload' ? file?.name ?? 'File unavailable' : String(value)}</span>,

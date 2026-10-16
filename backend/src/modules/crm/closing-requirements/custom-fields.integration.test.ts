@@ -348,6 +348,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
   it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('authorizes %s inline partial updates by record permission, preserving other values and identities', async module => {
     const count = await field(module, 'Inline Count', { type: 'Number' });
     const note = await field(module, 'Inline Note');
+    const reason = await field(module, 'Cancellation Reason', { type: 'Long Text', visibleInForm: false, visibleInDetails: true });
     let id: string;
     if (module === 'deals') {
       const product = await prisma.productInterest.create({ data: { tenantId, name: 'Inline product', dealValue: 100 } });
@@ -370,7 +371,23 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_custo
     const reader = await userFor('Configuration editor', false, true);
     expect((await call(`/crm/${module}/${id}/custom-fields`, 'GET', undefined, reader)).status).toBe(200);
     expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [count.id]: 3 } }, reader)).status).toBe(403);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [reason.id]: 'Denied' } }, reader)).status).toBe(403);
     const editor = await userFor('Record editor', true, false);
+    const savedReason = 'Customer cancelled\nNo longer needed';
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [reason.id]: savedReason } }, editor)).status).toBe(200);
+    const detailsOnly = (await call(`/crm/${module}/${id}/custom-fields`, 'GET', undefined, editor)).body.data;
+    expect(detailsOnly.fields.find((field: ClosingField) => field.id === reason.id)).toMatchObject({ active: true, visibleInForm: false, visibleInDetails: true });
+    expect(detailsOnly.values).toMatchObject({ [reason.id]: savedReason, [count.id]: 1, [note.id]: 'Keep' });
+    const storedReason = await prisma.customFieldValue.findFirstOrThrow({ where: { tenantId, module, fieldId: reason.id } });
+    expect(storedReason.value).toBe(savedReason);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [reason.id]: 'x'.repeat(10001) } }, editor)).status).toBe(400);
+    expect((await call(`/administration/closing-requirements/${reason.id}`, 'PATCH', { visibleInDetails: false })).status).toBe(200);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [reason.id]: 'Hidden everywhere' } }, editor)).status).toBe(400);
+    expect((await call(`/administration/closing-requirements/${reason.id}`, 'PATCH', { visibleInDetails: true, active: false })).status).toBe(200);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [reason.id]: 'Disabled' } }, editor)).status).toBe(400);
+    expect((await call(`/administration/closing-requirements/${reason.id}`, 'DELETE')).status).toBe(200);
+    expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [reason.id]: 'Retired' } }, editor)).status).toBe(400);
+    expect((await prisma.customFieldValue.findUniqueOrThrow({ where: { id: storedReason.id } })).value).toBe(savedReason);
     expect((await call(`/crm/${module}/${id}`, 'PUT', { customFieldValues: { [count.id]: 0 } }, editor)).status).toBe(200);
     let state = (await call(`/crm/${module}/${id}/custom-fields`)).body.data;
     expect(state.values[count.id]).toBe(0); expect(state.values[note.id]).toBe('Keep');

@@ -1,18 +1,27 @@
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'agent', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: false } }) }));
 import React from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { CustomFieldState } from '@leadcrm/shared';
+const fixture = vi.hoisted(() => ({ data: { fields: [], values: {}, files: [] } as CustomFieldState }));
 const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV', dealValue: 5000 };
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: [{ id: 'pipeline', name: 'Sales Pipeline', stages: [{ id: 'stage', name: 'Lead' }] }] }) }));
 vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [product, { id: 'e47c3b8e-0b85-4f11-b9a6-2aafdd587fe5', name: 'Biometrics', dealValue: 15000 }], loading: false, error: '' }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
-vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: { fields: [], values: {}, files: [] }, error: null, isInitialLoad: false }) }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: fixture.data, error: null, isInitialLoad: false }) }));
 vi.mock('./deal-account-field', () => ({ DealAccountField: () => null }));
 vi.mock('./deal-contacts-field', () => ({ DealContactsField: () => null }));
 vi.mock('./deal-leads-field', () => ({ DealLeadsField: () => null }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => null }));
 import { DealForm } from './deal-form';
 afterEach(cleanup);
+beforeEach(() => { fixture.data = { fields: [], values: {}, files: [] }; });
+it.each((['create', 'edit'] as const).flatMap(mode => [false, true].flatMap(visibleInForm => [false, true].map(visibleInDetails => ({ mode, visibleInForm, visibleInDetails })))))('$mode Deal uses Forms=$visibleInForm independently of Details=$visibleInDetails', ({ mode, visibleInForm, visibleInDetails }) => {
+  fixture.data.fields = [{ id: 'cancellation-reason', name: 'Cancellation Reason', module: 'deals', group: 'Additional Details', type: 'Long Text', required: false, active: true, visibleInForm, visibleInDetails, options: [], description: '', order: 0, version: 1 }];
+  render(<DealForm mode={mode} initialData={mode === 'edit' ? { id: 'deal', title: 'History', productInterestId: product.id } : undefined} preselect={{ pipelineId: 'pipeline', stageId: 'stage' }} onSubmit={vi.fn()} onCancel={() => {}} />);
+  if (visibleInForm) expect(screen.getByLabelText('Cancellation Reason').tagName).toBe('TEXTAREA');
+  else expect(screen.queryByLabelText('Cancellation Reason')).toBeNull();
+});
 it('requires a catalog product and submits its ID array without a manual value', async () => {
   const save = vi.fn().mockResolvedValue(undefined);
   render(<DealForm mode="create" preselect={{ pipelineId: 'pipeline', stageId: 'stage' }} onSubmit={save} onCancel={() => {}} />);

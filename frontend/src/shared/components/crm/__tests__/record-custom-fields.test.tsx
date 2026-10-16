@@ -49,7 +49,31 @@ it('loads existing values, submits only edits and omits hidden, disabled and for
 it('retains hidden and disabled values in grouped details', () => {
   fixture.data = { fields: [field('accounts', { visibleInForm: false }), field('accounts', { id: 'other', name: 'Old note', active: false, type: 'Text' })], values: { field: 12, other: 'History' }, files: [] };
   render(<RecordCustomFieldDetails module="accounts" recordId="account" />);
-  expect(screen.getByText('12')).toBeTruthy(); expect(screen.getByText('History')).toBeTruthy(); expect(screen.getByText(/Hidden in forms/)).toBeTruthy(); expect(screen.getByText(/Disabled/)).toBeTruthy();
+  expect(screen.getByText('12')).toBeTruthy(); expect(screen.getByText('History')).toBeTruthy(); expect(screen.queryByText(/Hidden in forms/)).toBeNull(); expect(screen.getByText(/Disabled/)).toBeTruthy();
+});
+it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('edits a %s field visible only in Details through the existing Long Text control', async module => {
+  fixture.data = { fields: [field(module, { name: 'Cancellation Reason', type: 'Long Text', required: false, visibleInForm: false, visibleInDetails: true })], values: { unrelated: 'Keep' }, files: [] };
+  const form = render(<Form module={module} save={vi.fn()} />);
+  expect(screen.queryByLabelText('Cancellation Reason')).toBeNull();
+  form.unmount();
+
+  const details = render(<RecordCustomFieldDetails module={module} recordId="record" canEdit />);
+  expect(screen.getByText('Cancellation Reason').textContent).toBe('Cancellation Reason');
+  expect(screen.queryByText(/Hidden in forms/)).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Cancellation Reason' }));
+  const input = screen.getByLabelText('Cancellation Reason') as HTMLTextAreaElement;
+  expect(input.tagName).toBe('TEXTAREA'); expect(input.value).toBe('');
+  const saved = 'Customer cancelled\nNo longer needed';
+  fireEvent.change(input, { target: { value: saved } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+  await waitFor(() => expect(screen.queryByLabelText('Cancellation Reason')).toBeNull());
+  expect(api.put).toHaveBeenCalledExactlyOnceWith(`/crm/${module}/record`, { customFieldValues: { field: saved } });
+  expect(screen.getByRole('button', { name: 'Edit Cancellation Reason' }).textContent).toBe(saved);
+  expect(fixture.data.values).toEqual({ unrelated: 'Keep', field: saved });
+
+  details.rerender(<RecordCustomFieldDetails module={module} recordId="record" />);
+  expect(screen.queryByRole('button', { name: 'Edit Cancellation Reason' })).toBeNull();
+  expect(screen.getByText(/Customer cancelled/).textContent).toBe(saved);
 });
 it('keeps a failed definition load from submitting an incomplete record', () => {
   fixture.error = 'Unable to load custom fields'; const save = vi.fn(); render(<Form module="leads" save={save} />);
@@ -235,12 +259,16 @@ it('rejects empty and oversized uploads before making a request', async () => {
   expect((await screen.findByRole('alert')).textContent).toContain('10 MB');
   expect(api.upload).not.toHaveBeenCalled(); expect(api.put).not.toHaveBeenCalled();
 });
-it('shows only historical disabled/retired values and keeps hidden-in-forms values read only', () => {
+it('keeps historical disabled/retired values read only while allowing fields visible only in Details', () => {
   fixture.data = { fields: [field('leads', { active: false }), field('leads', { id: 'retired', name: 'Retired', deletedAt: '2026-10-10', active: false }), field('leads', { id: 'empty-retired', name: 'Empty retired', deletedAt: '2026-10-10', active: false }), field('leads', { id: 'hidden-form', name: 'Hidden form', visibleInForm: false }), field('leads', { id: 'hidden-details', name: 'Hidden details', visibleInDetails: false })], values: { field: 2, retired: 3, 'hidden-form': 4, 'hidden-details': 5 }, files: [] };
   render(<RecordCustomFieldDetails module="leads" recordId="record" canEdit />);
   expect(screen.getByText('2')).toBeTruthy(); expect(screen.getByText('3')).toBeTruthy(); expect(screen.getByText('4')).toBeTruthy();
   expect(screen.queryByText('5')).toBeNull(); expect(screen.queryByText('Empty retired')).toBeNull();
-  expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull();
+  expect(screen.getAllByRole('button', { name: /^Edit/ })).toHaveLength(1);
+  expect(screen.getByRole('button', { name: 'Edit Hidden form' })).toBeTruthy();
+  expect(screen.getByText('Project Budget · Disabled')).toBeTruthy();
+  expect(screen.getByText('Retired · Retired')).toBeTruthy();
+  expect(screen.queryByText(/Hidden in forms/)).toBeNull();
 });
 it('excludes protected Deal evidence even with edit permission', () => {
   fixture.data.fields = [field('deals', { group: 'Closed Won Requirements', groupId: 'deals:closing-evidence' }), field('deals', { id: 'ordinary', name: 'Ordinary', required: false })];
