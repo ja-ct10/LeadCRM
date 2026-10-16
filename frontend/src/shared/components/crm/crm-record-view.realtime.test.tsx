@@ -1,0 +1,102 @@
+import React from 'react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { clearPageCache } from '@/shared/cache/page-cache';
+import { CrmRecordPanel, CrmRecordView } from './crm-record-view';
+import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
+
+const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false }));
+vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'owner', role: 'Sales', tenantId: 'tenant' }, isLoading: false, authError: null }) }));
+vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [], pipelines: [], deals: [], contacts: [], organizations: [] }) }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (key: string) => key.endsWith('.view') || mocks.edit }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.edit, canReassign: false }) }));
+vi.mock('@/shared/hooks/use-record-relationships', () => ({ useRecordRelationships: () => ({ data: undefined }) }));
+vi.mock('@/shared/hooks/use-field-layout', async () => {
+  const { defaultFieldLayout } = await import('@leadcrm/shared');
+  return { useFieldLayout: (module: Parameters<typeof defaultFieldLayout>[0]) => ({ layout: defaultFieldLayout(module) }) };
+});
+vi.mock('./record-custom-fields', () => ({ useRecordCustomFieldDetails: () => ({ fields: [], query: { error: null } }), RecordCustomFieldInlineRow: () => null }));
+vi.mock('./deal-closing-requirements', () => ({ DealClosingRequirements: () => null }));
+vi.mock('./record-files-tab', () => ({ RecordFilesTab: () => null }));
+vi.mock('./inline-deal-form', () => ({ InlineDealForm: () => null }));
+vi.mock('./deal-card-menu', () => ({ DealCardMenu: () => null }));
+vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: () => null }));
+vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLeadDialog: () => null }));
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.navigate, replace: mocks.navigate, back: mocks.navigate }) }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get } }));
+vi.mock('@/features/tenant/crm/activities/services/activities.service', () => ({ activitiesService: { getAll: mocks.getAll } }));
+
+const streams: FakeSource[] = [];
+class FakeSource extends EventTarget { close = vi.fn(); constructor() { super(); streams.push(this); } }
+const note: TimelineActivity = { id: 'note', type: 'note', title: 'Existing note', createdAt: '2026-10-01T01:00:00Z' };
+const email = (direction: 'inbound' | 'outbound'): TimelineActivity => ({
+  id: direction, type: 'email', title: `${direction === 'inbound' ? 'Received' : 'Sent'} email: Customer thread`, createdAt: '2026-10-02T01:00:00Z',
+  metadata: { email: { id: direction, providerMessageId: direction, threadId: 'thread', accountId: 'mailbox', direction,
+    from: direction === 'inbound' ? 'customer@example.test' : 'owner@camxian.com', to: [direction === 'inbound' ? 'owner@camxian.com' : 'customer@example.test'],
+    subject: 'Customer thread', sentAt: '2026-10-02T01:00:00Z', body: `Persisted ${direction} body` } },
+});
+let rows: TimelineActivity[];
+beforeEach(() => {
+  clearPageCache(); vi.clearAllMocks(); mocks.edit = false; streams.length = 0; rows = [note]; vi.stubGlobal('EventSource', FakeSource);
+  mocks.get.mockImplementation(async (path: string) => path.endsWith('/files') ? { data: [] } : { data: {
+    id: 'record', firstName: 'Customer', lastName: 'Test', email: 'customer@example.test', title: 'Customer Deal', status: 'Warm', assignedUserId: 'owner',
+    createdAt: note.createdAt, stage: { name: 'Lead' }, productInterests: [], leadDeals: [], contactDeals: [],
+  } });
+  mocks.getAll.mockImplementation(async ({ type }: { type?: string }) => {
+    const data = rows.filter(row => !type || row.type === type);
+    return { data, total: data.length, nextCursor: null };
+  });
+});
+afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
+
+const cases = (['leads', 'contacts', 'deals'] as const).flatMap(module => (['panel', 'page'] as const).flatMap(surface => (['All', 'Emails'] as const).map(filter => ({ module, surface, filter }))));
+it.each(cases)('keeps the $module $surface mounted on $filter while sent and received Activities update rows and badge', async ({ module, surface, filter }) => {
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="record" open onOpenChange={mocks.close} /> : <CrmRecordView module={module} id="record" />);
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
+  if (filter === 'Emails') {
+    fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
+    await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity0'));
+  }
+  const timeline = screen.getByRole('region', { name: 'Activity Timeline' });
+  const badge = screen.getByRole('tab', { name: /^Activity/ });
+  expect(streams).toHaveLength(1);
+  for (const [index, direction] of (['outbound', 'inbound'] as const).entries()) {
+    rows = [...rows, email(direction)];
+    act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+    await waitFor(() => expect(within(timeline).getByText(`Persisted ${direction} body`)).toBeTruthy());
+    await waitFor(() => expect(badge.textContent).toBe(`Activity${index + (filter === 'All' ? 2 : 1)}`));
+    expect(within(timeline).getByText(direction === 'inbound' ? 'Received' : 'Sent')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Activity Timeline' })).toBe(timeline);
+    expect(screen.getByRole('tab', { name: /^Activity/ })).toBe(badge);
+    expect(badge.getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('button', { name: filter }).getAttribute('aria-pressed')).toBe('true');
+  }
+  act(() => { streams[0].dispatchEvent(new Event('mailbox-change')); streams[0].dispatchEvent(new Event('mailbox-change')); });
+  await waitFor(() => expect(within(timeline).getAllByText('Persisted inbound body')).toHaveLength(1));
+  expect(mocks.get.mock.calls.filter(([path]) => path === `/crm/${module}/record`)).toHaveLength(1);
+  expect(mocks.navigate).not.toHaveBeenCalled(); expect(mocks.close).not.toHaveBeenCalled();
+});
+
+it('clears revoked email immediately while preserving the selected Emails filter and an unfinished note', async () => {
+  mocks.edit = true; rows.push(email('outbound'));
+  render(<CrmRecordView module="leads" id="record" />);
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity2'));
+  fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
+  fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Keep my unfinished note' } });
+  let release!: () => void;
+  const waiting = new Promise<void>(done => { release = done; });
+  mocks.getAll.mockImplementation(async ({ type }: { type?: string }) => {
+    await waiting;
+    const data = [note].filter(row => !type || row.type === type);
+    return { data, total: data.length, nextCursor: null };
+  });
+  act(() => streams[0].dispatchEvent(new Event('mailbox-access-changed')));
+  expect(screen.queryByText('Persisted outbound body')).toBeNull();
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Keep my unfinished note');
+  expect(screen.getByRole('button', { name: 'Emails' }).getAttribute('aria-pressed')).toBe('true');
+  await act(async () => release());
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity0'));
+  expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Keep my unfinished note');
+});

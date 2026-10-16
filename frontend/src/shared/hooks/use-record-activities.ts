@@ -3,8 +3,9 @@
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { useRef, useState } from 'react';
-import { getPageCache, getPageCacheGeneration, requestPageCache } from '@/shared/cache/page-cache';
+import { useEffect, useRef, useState } from 'react';
+import { getPageCache, getPageCacheGeneration, invalidatePageCache, requestPageCache } from '@/shared/cache/page-cache';
+import { subscribeMailboxEvents } from '@/shared/services/mailbox-events';
 import { activitiesService, type ActivityRecord } from '@/features/tenant/crm/activities/services/activities.service';
 import { useCachedPage } from './use-cached-page';
 import { useHasPermission } from './use-permissions';
@@ -16,18 +17,50 @@ export const activityReadKey = { leads: 'leadId', contacts: 'contactId', account
 interface ActivityPage { data: TimelineActivity[]; total: number; nextCursor?: string | null }
 export interface RecordActivityFilters { type?: string; search?: string }
 
+// Shared reads must reset every mounted reader after a mid-query scope conflict.
+// This registry carries no Activity data; ordinary refreshes use the page cache.
+const accessResets = new Set<{ scope: string; reset: () => void }>();
+
 /** One contextual reader, using the existing tenant/user cache. */
 export function useRecordActivities(module: ActivityModule, id: string | undefined, enabled = true, providedActivities?: TimelineActivity[], filters: RecordActivityFilters = {}) {
   const { activities = [], users = [] } = useData();
   const { user, tenant, isLoading, authError } = useAuth();
-  const identity = JSON.stringify([user?.id, user?.role, tenant?.id, getPageCacheGeneration(), module, id, filters.type, filters.search]);
+  const [authorizationRevision, setAuthorizationRevision] = useState(0);
+  const scopeRetry = useRef(false);
+  const generation = getPageCacheGeneration();
+  const scopeIdentity = JSON.stringify([user?.id, user?.role, tenant?.id, generation]);
+  const identity = JSON.stringify([user?.id, user?.role, tenant?.id, generation, authorizationRevision, module, id, filters.type, filters.search]);
+  const currentIdentity = useRef(identity);
+  currentIdentity.current = identity;
   const [pagination, setPagination] = useState({ identity, count: 1 });
   const pageCount = pagination.identity === identity ? pagination.count : 1;
   const canViewActivities = useHasPermission(`${module}.view`);
   const canRead = enabled && canViewActivities && !isLoading && !authError;
+  useEffect(() => {
+    scopeRetry.current = false;
+    if (USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || !tenant?.id || !user?.id) return;
+    const accessReset = { scope: scopeIdentity, reset: () => {
+      scopeRetry.current = true;
+      setAuthorizationRevision(value => value + 1);
+    } };
+    accessResets.add(accessReset);
+    const refresh = () => {
+      scopeRetry.current = false;
+      invalidatePageCache('activities', tenant.id);
+    };
+    const subscription = module !== 'accounts' ? subscribeMailboxEvents(tenant.id, user.id, {
+      onChange: refresh,
+      onOpen: refresh,
+      onAccessChanged: () => {
+        refresh();
+        setAuthorizationRevision(value => value + 1);
+      },
+    }) : undefined;
+    return () => { accessResets.delete(accessReset); subscription?.close(); };
+  }, [canRead, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity]);
   const result = useCachedPage<ActivityPage>({
     module: 'activities',
-    params: { recordModule: module, id, ...filters, pageCount },
+    params: { recordModule: module, id, ...filters, pageCount, authorizationRevision },
     revalidateOnInvalidation: true,
     disabled: USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined,
     fetchFn: async signal => {
@@ -35,10 +68,23 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       const rows = new Map<string, TimelineActivity>();
       let total = 0, nextCursor: string | null | undefined;
       for (let page = 0; page < pageCount; page++) {
-        const params = { query: { recordModule: module, id, ...filters, cursor }, userId: user?.id, role: user?.role };
+        const params = { query: { recordModule: module, id, ...filters, cursor, authorizationRevision }, userId: user?.id, role: user?.role };
         const cached = getPageCache<ActivityPage>('activities', tenant?.id ?? '', params);
         const response = cached && !cached.isStale ? cached.data : await requestPageCache<ActivityPage>('activities', tenant?.id ?? '', params,
-          requestSignal => activitiesService.getAll({ [activityReadKey[module]]: id, ...filters, cursor, limit: 20 }, requestSignal), signal);
+          async requestSignal => {
+            try {
+              return await activitiesService.getAll({ [activityReadKey[module]]: id, ...filters, cursor, limit: 20 }, requestSignal);
+            } catch (error) {
+              const failure = error as { status?: number; code?: string };
+              if (!requestSignal.aborted && currentIdentity.current === identity && failure.status === 409 && failure.code === 'MAILBOX_SCOPE_CHANGED' && !scopeRetry.current) {
+                // The new cache key starts the retry; do not also queue reads of
+                // the obsolete key while React is applying the access reset.
+                invalidatePageCache('activities', tenant?.id ?? '', false);
+                accessResets.forEach(subscriber => { if (subscriber.scope === scopeIdentity) subscriber.reset(); });
+              }
+              throw error;
+            }
+          }, signal);
         response.data.forEach(activity => rows.set(activity.id, activity));
         total = response.total; nextCursor = response.nextCursor;
         if (!nextCursor) break;
@@ -49,9 +95,10 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
   });
   const relatedType = module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact';
   const loaded = useRef<{ identity: string; page?: ActivityPage }>({ identity });
-  if (loaded.current.identity !== identity || !canRead || [401,403,404].includes(result.errorStatus ?? 0)) loaded.current = { identity };
-  if (canRead && result.data) loaded.current.page = result.data;
-  const page = result.data ?? loaded.current.page;
+  const unavailable = [401,403,404,409].includes(result.errorStatus ?? 0);
+  if (loaded.current.identity !== identity || !canRead || unavailable) loaded.current = { identity };
+  if (canRead && !unavailable && result.data) loaded.current.page = result.data;
+  const page = unavailable ? undefined : result.data ?? loaded.current.page;
   const mockActivities: TimelineActivity[] = activities
     .filter(activity => activity.tenantId === user?.tenantId && activity.relatedToId === id && activity.relatedToType === relatedType)
     .map(activity => {
@@ -61,6 +108,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const mockFiltered = mockActivities.filter(activity => (!filters.type || filters.type.split(',').includes(activity.type)) && matchesSearch(filters.search ?? '', activity.title, activity.description, activity.createdBy?.firstName, activity.createdBy?.lastName));
   return { ...result,
+    data: unavailable ? undefined : result.data,
     isInitialLoad: result.isInitialLoad && !page,
     activities: !canRead ? [] : USE_MOCK_DATA ? mockFiltered : providedActivities ?? page?.data ?? [],
     total: page?.total,

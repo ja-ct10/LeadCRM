@@ -106,6 +106,9 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
+        if (existing.dealId && await tx.deal.findFirst({ where: { id: existing.dealId, tenantId: account.tenantId }, select: { id: true } })) {
+          await tx.activity.updateMany({ where: { tenantId: account.tenantId, type: 'email', mailboxMessageId: existing.id, dealId: null }, data: { dealId: existing.dealId } });
+        }
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
@@ -118,7 +121,8 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const association = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId: email.threadId } } });
       const explicitIds = association?.dealId ? [association.dealId] : existing?.dealId ? [existing.dealId] : [...new Set(prior.map(row => row.dealId).filter((id): id is string => !!id))];
       const deals = link && permissions.dealsView ? await tx.deal.findMany({ where: { ...customerDealWhere(account.tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true } }) : [];
-      const dealId = explicitIds.length === 1 ? explicitIds[0] : !explicitIds.length && deals.length === 1 ? deals[0].id : undefined;
+      const candidateDealId = explicitIds.length === 1 ? explicitIds[0] : !explicitIds.length && deals.length === 1 ? deals[0].id : undefined;
+      const dealId = candidateDealId && link && await tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id: candidateDealId }, select: { id: true } }) ? candidateDealId : undefined;
       const genuineReply = direction === 'inbound' && !email.automated && !FIXED_MAILBOX_SENDERS.includes(from) && !email.labels.includes('DRAFT');
       const data = { ...key, threadId: email.threadId, direction, from: email.from, recipients: email.to, subject: email.subject,
         ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
@@ -133,9 +137,10 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const hash = createHash('sha256').update([account.tenantId, link.leadId ?? link.contactId, email.rfcMessageId || `${account.id}:${email.id}`, direction].join(':')).digest('hex');
       const activityId = `${hash.slice(0, 8)}-${hash.slice(8, 12)}-${hash.slice(12, 16)}-${hash.slice(16, 20)}-${hash.slice(20, 32)}`;
       await tx.activity.upsert({ where: { id: activityId }, update: {}, create: { id: activityId, tenantId: account.tenantId, ...link,
-        mailboxMessageId: stored.id,
+        mailboxMessageId: stored.id, dealId,
         createdById: account.userId, type: 'email', title: `${direction === 'inbound' ? 'Received' : 'Sent'} email: ${email.subject}`.slice(0, 500), createdAt: sentAt,
         metadata: { mailboxMessageId: stored.id, providerMessageId: email.id, threadId: email.threadId, mailboxOwnerId: account.userId, direction } } });
+      if (dealId) await tx.activity.updateMany({ where: { id: activityId, tenantId: account.tenantId, type: 'email', mailboxMessageId: stored.id, dealId: null }, data: { dealId } });
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
       const change = await evaluateCustomer(tx, account, link, permissions, now, !existing && genuineReply);
       // Workflow trigger enqueueing shares the CRM transaction through salesContext.

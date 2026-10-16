@@ -100,6 +100,9 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await read(c.lead.id)).status).toBe('Hot'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     const activity = await prisma.activity.findFirstOrThrow({ where: { leadId: c.lead.id, type: 'email', createdAt: new Date(inbound.date) } });
     expect(activity.metadata).toMatchObject({ direction: 'inbound', providerMessageId: inbound.id });
+    expect(activity.dealId).toBe(c.deals[0].id);
+    const timeline = await call(`/crm/activities?dealId=${c.deals[0].id}&type=email`);
+    expect(timeline.status).toBe(200); expect(timeline.body.data.map((row: { id: string }) => row.id)).toContain(activity.id);
   });
   it('reply wording does not qualify or close a Deal', async () => {
     const c = await customer();
@@ -130,6 +133,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: outbound.id } } })).leadId).toBe(c.lead.id);
     expect((await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).status).toBe('CLOSED');
     expect(await prisma.activity.count({ where: { contactId: contact.id, type: 'email' } })).toBe(1);
+    expect(await prisma.activity.findFirst({ where: { contactId: contact.id, type: 'email' } })).toMatchObject({ dealId: c.deals[1].id, mailboxMessageId: stored.id });
     expect(await stageOf(c.deals[0].id)).toBe('Lead');
     expect(await stageOf(c.deals[1].id)).toBe('Lead');
   });
@@ -154,8 +158,18 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const c = await customer(2);
     await ingest([message(c.thread, c.email, 'inbound', 'Please send a quotation.', 5)]);
     expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
+    const original = await prisma.activity.findFirstOrThrow({ where: { tenantId, leadId: c.lead.id, type: 'email' } });
+    expect(original.dealId).toBeNull();
     await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[1].id));
+    expect(await prisma.activity.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({ dealId: c.deals[1].id, leadId: c.lead.id, mailboxMessageId: original.mailboxMessageId });
+    // Same-association retries reconcile partially repaired historical rows too.
+    await prisma.activity.update({ where: { id: original.id }, data: { dealId: null } });
+    await prisma.mailboxMessage.update({ where: { id: original.mailboxMessageId! }, data: { dealId: null, needsDealAssociation: true } });
     await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[1].id));
+    expect(await prisma.activity.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({ dealId: c.deals[1].id, leadId: c.lead.id });
+    const timeline = await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`);
+    expect(timeline.status).toBe(200); expect(timeline.body.data.map((row: { id: string }) => row.id)).toEqual([original.id]);
+    expect((await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`, 'GET', undefined, otherStaff)).body.data).toEqual([]);
     expect(await prisma.activity.count({ where: { tenantId, dealId: c.deals[1].id, title: 'Email conversation associated with this Deal' } })).toBe(1);
     const associated = await call(`/integrations/gmail/threads/${c.thread}`);
     expect(associated.body.emails[0].dealId).toBe(c.deals[1].id);
@@ -165,6 +179,33 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     await ingest([message(c.thread, c.email, 'inbound', 'We want to proceed with the product.', 2)]);
     expect(await stageOf(c.deals[0].id)).toBe('Lead'); expect(await stageOf(c.deals[1].id)).toBe('Lead');
     await expect(scope(() => associateMailboxDeal(otherTenant, userId, c.thread, c.deals[0].id))).rejects.toBeDefined();
+  });
+  it('reassociates existing thread Activities without duplicating or removing their Lead link, and revokes Deal email visibility after reassignment', async () => {
+    const c = await customer(2), incoming = message(c.thread, c.email, 'inbound', 'Customer response');
+    await ingest([incoming]);
+    const original = await prisma.activity.findFirstOrThrow({ where: { tenantId, leadId: c.lead.id, type: 'email' } });
+    await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[0].id));
+    const revision = (await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).mailboxVersion;
+    await scope(() => associateMailboxDeal(tenantId, userId, c.thread, c.deals[1].id));
+    expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } })).mailboxVersion).toBeGreaterThan(revision);
+    expect(await prisma.activity.findUniqueOrThrow({ where: { id: original.id } })).toMatchObject({ dealId: c.deals[1].id, leadId: c.lead.id, createdAt: original.createdAt, metadata: original.metadata });
+    expect(await prisma.activity.count({ where: { mailboxMessageId: original.mailboxMessageId, type: 'email' } })).toBe(1);
+    expect((await call(`/crm/activities?dealId=${c.deals[0].id}&type=email`)).body.data).toEqual([]);
+    const next = await prisma.user.findFirstOrThrow({ where: { tenantId, email: 'other-mail@camxian.com' } });
+    await prisma.lead.update({ where: { id: c.lead.id }, data: { assignedUserId: next.id } });
+    expect((await call(`/crm/activities?dealId=${c.deals[1].id}&type=email`)).body.data).toEqual([]);
+    expect(await prisma.activity.count({ where: { id: original.id } })).toBe(1);
+  });
+  it('repairs a missing Deal link during ingestion replay without changing email identity or content', async () => {
+    const c = await customer(), outgoing = message(c.thread, c.email, 'outbound', 'Preserved sent email');
+    await ingest([outgoing]);
+    const original = await prisma.activity.findFirstOrThrow({ where: { tenantId, leadId: c.lead.id, type: 'email' } });
+    expect(original.dealId).toBe(c.deals[0].id);
+    await prisma.activity.update({ where: { id: original.id }, data: { dealId: null } });
+    await ingest([{ ...outgoing, body: 'A replay must not rewrite the body' }]); await ingest([outgoing]);
+    expect(await prisma.activity.findUniqueOrThrow({ where: { id: original.id } })).toEqual(original);
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { id: original.mailboxMessageId! } })).body).toBe('Preserved sent email');
+    expect(await prisma.activity.count({ where: { leadId: c.lead.id, type: 'email' } })).toBe(1);
   });
   it('cancellation wording is still a reply and cannot cancel the customer or Deal', async () => {
     const c = await customer();

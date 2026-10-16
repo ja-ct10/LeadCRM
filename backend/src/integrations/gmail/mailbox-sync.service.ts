@@ -94,6 +94,10 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     if (!deal) throw new AppError('Select an open Deal belonging to the linked CRM record.', 400);
     const key = { accountId: account.id, threadId };
     const previous = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: key } });
+    const threadWhere = { AND: [scopedMessagesWhere(account, currentScope), { threadId }] };
+    await tx.mailboxMessage.updateMany({ where: threadWhere, data: { dealId, needsDealAssociation: false } });
+    await tx.activity.updateMany({ where: { tenantId, type: 'email', mailboxMessage: { is: threadWhere },
+      OR: [{ dealId: null }, { dealId: { not: dealId } }] }, data: { dealId } });
     if (previous?.dealId === dealId) return;
     const value = { dealId, linkedAt: new Date() };
     await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });

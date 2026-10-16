@@ -17,6 +17,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { toast } from 'sonner';
 import { consumeRecordEmailCompose } from '../services/compose-navigation';
 import type { MailboxListOptions } from '@leadcrm/shared';
+import { subscribeMailboxEvents, type MailboxSubscription } from '@/shared/services/mailbox-events';
 
 const FILTERS = [{ id: 'all', label: 'All emails' }, { id: 'unread', label: 'Unread only' }, { id: 'sent', label: 'Sent' }, { id: 'scheduled', label: 'Scheduled' }, { id: 'drafts', label: 'Drafts only' }] as const;
 const SORTS = [{ id: 'newest', label: 'Newest first' }, { id: 'oldest', label: 'Oldest first' }, { id: 'unread', label: 'Unread first' }] as const;
@@ -275,26 +276,27 @@ function InboxMailbox(): React.ReactElement {
     document.addEventListener('visibilitychange', visible);
     // The connection may fail (404 during a partial deployment, or 429).
     // Do not let EventSource's automatic 3-second retry loop hammer the API.
-    let events: EventSource | null = null;
+    let events: MailboxSubscription | null = null;
     let reconnect: ReturnType<typeof setTimeout> | undefined;
     const connect = () => {
       if (!active || events || document.visibilityState === 'hidden' || Date.now() < cooldownRef.current || Date.now() < reconnectAfterRef.current || typeof EventSource === 'undefined') return;
-      events = new EventSource('/api/proxy/integrations/gmail/events');
-      events.addEventListener('mailbox-change', refresh);
-      events.addEventListener('mailbox-access-changed', () => {
-        if (!active) return;
-        if (timer) clearTimeout(timer);
-        invalidateMailbox();
-        // Revocation handling never waits for visibility, pagination or a refresh cooldown.
-        void loadEmails(undefined, 1, true);
-        const generation = authorizationGeneration.current;
-        void getGmailStatus().then(status => { if (active && generation === authorizationGeneration.current) setConnectionStatus(status); }).catch(() => undefined);
-      });
-      events.addEventListener('error', () => {
-        events?.close();
-        events = null;
-        reconnectAfterRef.current = Date.now() + 60_000;
-        reconnect = setTimeout(() => { refresh(); connect(); }, 60_000);
+      events = subscribeMailboxEvents(tenant?.id ?? '', user?.id ?? '', {
+        onChange: refresh,
+        onAccessChanged: () => {
+          if (!active) return;
+          if (timer) clearTimeout(timer);
+          invalidateMailbox();
+          // Revocation handling never waits for visibility, pagination or a refresh cooldown.
+          void loadEmails(undefined, 1, true);
+          const generation = authorizationGeneration.current;
+          void getGmailStatus().then(status => { if (active && generation === authorizationGeneration.current) setConnectionStatus(status); }).catch(() => undefined);
+        },
+        onError: () => {
+          events?.close();
+          events = null;
+          reconnectAfterRef.current = Date.now() + 60_000;
+          reconnect = setTimeout(() => { refresh(); connect(); }, 60_000);
+        },
       });
     };
     connect();
@@ -309,7 +311,7 @@ function InboxMailbox(): React.ReactElement {
       clearTimeout(reconnect);
       document.removeEventListener('visibilitychange', visible);
     };
-  }, [connectionStatus?.isConnected, loadEmails, apiCooldownUntil, applyApiCooldown, invalidateMailbox]);
+  }, [connectionStatus?.isConnected, loadEmails, apiCooldownUntil, applyApiCooldown, invalidateMailbox, tenant?.id, user?.id]);
 
   useEffect(() => {
     if (!apiCooldownUntil) return;
