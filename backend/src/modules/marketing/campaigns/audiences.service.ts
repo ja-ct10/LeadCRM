@@ -10,6 +10,7 @@ import { readConfiguredFields } from '../../crm/closing-requirements/closing-req
 import { normalizeSmsPhone } from '../../../shared/services/sms.service';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, campaignPersonalizationAvailable, campaignApprovedVariableKeys } from '@leadcrm/shared';
 import { retiredContactReferences } from '@leadcrm/shared';
+import { mayReadContactAccount, presentContactAccount } from '../../crm/contacts-v2/contact-account-access';
 
 export function campaignScope(tenantId: string) {
   const context = tenantContext.getStore();
@@ -19,12 +20,13 @@ export function campaignScope(tenantId: string) {
 
 /** CRM scalar fields used by audience matching; never a paginated UI cache. */
 async function companyValues(tenantId: string, source: AudienceInput['source'], db: Prisma.TransactionClient = prisma) {
+  const permitted = await mayReadContactAccount(db, tenantId);
   const where = { ...campaignScope(tenantId), isArchived: false, deletedAt: null };
   const [leads, contacts] = await Promise.all([
-    source === 'CONTACTS' ? [] : db.lead.findMany({ where, distinct: ['companyName'], select: { companyName: true } }),
-    source === 'LEADS' ? [] : db.contact.findMany({ where, distinct: ['company', 'accountId'], select: { company: true, account: { select: { name: true } } } }),
+    source === 'CONTACTS' ? [] : db.lead.findMany({ where, distinct: ['companyName', 'companyFromAccount'], select: { companyName: true, companyFromAccount: true } }),
+    source === 'LEADS' ? [] : db.contact.findMany({ where, distinct: ['company', 'accountId', 'companyFromAccount'], select: { company: true, companyFromAccount: true, account: { select: { name: true } } } }),
   ]);
-  return [...leads.map(row => row.companyName), ...contacts.map(row => row.account?.name || row.company)].filter((value): value is string => !!value?.trim());
+  return [...leads.map(row => !permitted && row.companyFromAccount ? null : row.companyName), ...contacts.map(row => permitted ? row.account?.name || row.company : row.companyFromAccount ? null : row.company)].filter((value): value is string => !!value?.trim());
 }
 export async function audienceCompanies(tenantId: string, input: unknown) {
   const source = AudienceSourceSchema.parse(input);
@@ -77,6 +79,7 @@ async function readDefinition(tenantId: string, source: string, rows: { field: s
 }
 export async function validateAudienceReferences(tenantId: string, dto: AudienceInput, db: Prisma.TransactionClient = prisma) {
   const fields = await audienceFields(tenantId, dto.source, db);
+  const canReadAccount = await mayReadContactAccount(db, tenantId);
   const retired = retiredContactReferences(dto.conditions, dto.source === 'CONTACTS' ? 'contact' : 'lead');
   if (retired.length) throw new AppError(`Retired Contact field: ${retired.join(', ')}. Repair the saved audience before reuse.`, 400);
   for (const condition of dto.conditions) {
@@ -84,6 +87,7 @@ export async function validateAudienceReferences(tenantId: string, dto: Audience
     if (error) throw new AppError(error, 400);
     if (['any', 'is_empty', 'is_not_empty'].includes(condition.operator)) continue;
     const field = campaignConditionField(condition.field, fields)!;
+    if (field.reference === 'account' && !canReadAccount) throw new AppError('Accounts View permission is required to select an Account.', 403);
     if (field.type === 'products') await resolveProducts(db, tenantId, condition.value as string[]);
     if (field.reference === 'user') await assertEligibleAssignedAgent(db, tenantId, String(condition.value), crmAssignmentRequirements(dto.source === 'LEADS' ? 'leads' : 'contacts'));
     if (field.reference === 'account' && !await db.account.findFirst({ where: { tenantId, id: String(condition.value), isArchived: false, deletedAt: null }, select: { id: true } })) throw new AppError('Select an available Account in this tenant.', 400);
@@ -143,7 +147,7 @@ function scalarPredicate(condition: AudienceCondition, date = false, insensitive
   return { [comparison]: operator === 'not_contains' ? { contains: value, ...(insensitive ? { mode: 'insensitive' } : {}) } : value, ...(insensitive ? { mode: 'insensitive' } : {}) };
 }
 /** Only keys approved by the module catalog enter a Prisma predicate. */
-export function conditionsFor(input: AudienceInput, lead: boolean, _companies?: string[], catalog = campaignFields(lead ? 'LEADS' : 'CONTACTS')): Prisma.LeadWhereInput[] | Prisma.ContactWhereInput[] {
+export function conditionsFor(input: AudienceInput, lead: boolean, _companies?: string[], catalog = campaignFields(lead ? 'LEADS' : 'CONTACTS'), canReadAccount = true): Prisma.LeadWhereInput[] | Prisma.ContactWhereInput[] {
   return input.conditions.map(condition => {
     const error = campaignConditionError(condition, catalog);
     if (error) throw new AppError(error, 400);
@@ -176,20 +180,21 @@ export function conditionsFor(input: AudienceInput, lead: boolean, _companies?: 
     let scalar = scalarPredicate({ ...condition, value }, field.type === 'date', ['text', 'longText'].includes(field.type) || key === 'status' && lead);
     const company = key === (lead ? 'companyName' : 'company');
     if (company && typeof condition.value === 'string' && ['equals', 'not_equals'].includes(condition.operator) && _companies) scalar = { [condition.operator === 'equals' ? 'in' : 'notIn']: [...new Set([condition.value, ..._companies.filter(company => company.trim().toLowerCase() === String(condition.value).trim().toLowerCase())])], mode: 'insensitive' };
-    if (company && !lead) return { OR: [{ account: { is: { name: scalar } } }, { account: { is: null }, company: scalar }, { account: { is: { name: '' } }, company: scalar }] };
+    if (company && lead && !canReadAccount) return { companyFromAccount: false, companyName: scalar };
+    if (company && !lead) return canReadAccount ? { OR: [{ account: { is: { name: scalar } } }, { account: { is: null }, company: scalar }, { account: { is: { name: '' } }, company: scalar }] } : { companyFromAccount: false, company: scalar };
     if (['is_empty', 'is_not_empty'].includes(condition.operator) && ['text', 'longText', 'dropdown'].includes(field.type)) return condition.operator === 'is_empty' ? { OR: [{ [key]: null }, { [key]: '' }] } : { AND: [{ [key]: { not: null } }, { [key]: { not: '' } }] };
     return { [key]: scalar };
   }) as Prisma.LeadWhereInput[] | Prisma.ContactWhereInput[];
 }
-export function audiencePredicate(input: AudienceInput, lead: boolean, fields?: CrmFieldCatalogEntry[], companies?: string[]) {
-  const conditions = conditionsFor(input, lead, companies, fields);
+export function audiencePredicate(input: AudienceInput, lead: boolean, fields?: CrmFieldCatalogEntry[], companies?: string[], canReadAccount = true) {
+  const conditions = conditionsFor(input, lead, companies, fields, canReadAccount);
   return conditions.length ? { [input.matchMode]: conditions } : {};
 }
 const relatedAccountProjection = { id: true, tenantId: true, name: true, industry: true, size: true, website: true, address: true, isArchived: true, deletedAt: true, customFieldValues: { where: { module: 'accounts' }, select: { fieldId: true, value: true } } } as const;
 const relatedDealProjection = { id: true, tenantId: true, title: true, value: true, pipelineId: true, stageId: true, priority: true, expectedCloseDate: true, assignedUserId: true, accountId: true, leadSource: true, industry: true, address: true, productInterestIds: true, isArchived: true, deletedAt: true, createdAt: true, pipeline: { select: { name: true } }, stage: { select: { name: true, isWon: true, isLost: true } }, organization: { select: { id: true, tenantId: true, name: true, isArchived: true, deletedAt: true } }, assignedUser: { select: { firstName: true, lastName: true } }, productInterestRecord: { select: { name: true } }, customFieldValues: { where: { module: 'deals' }, select: { fieldId: true, value: true } } } as const;
 const recipientProjectionBase = { id: true, email: true, firstName: true, lastName: true, phone: true, status: true, source: true, address: true, createdAt: true, assignedUserId: true, accountId: true, assignedUser: { select: { firstName: true, lastName: true } }, account: { select: relatedAccountProjection }, customFieldValues: { select: { fieldId: true, value: true } }, productLinks: { orderBy: [{ position: 'asc' }, { productInterestId: 'asc' }] as Prisma.LeadProductInterestOrderByWithRelationInput[], select: { productInterestId: true, product: { select: { name: true } } } }, isArchived: true, deletedAt: true } as const;
-const leadRecipientProjection = { ...recipientProjectionBase, leadDeals: { orderBy: [{ position: 'asc' }, { id: 'asc' }] as Prisma.LeadDealOrderByWithRelationInput[], select: { deal: { select: relatedDealProjection } } } } as const;
-const contactRecipientProjection = { ...recipientProjectionBase, contactDeals: { orderBy: [{ position: 'asc' }, { id: 'asc' }] as Prisma.ContactDealOrderByWithRelationInput[], select: { deal: { select: relatedDealProjection } } } } as const;
+const leadRecipientProjection = { ...recipientProjectionBase, companyFromAccount: true, leadDeals: { orderBy: [{ position: 'asc' }, { id: 'asc' }] as Prisma.LeadDealOrderByWithRelationInput[], select: { deal: { select: relatedDealProjection } } } } as const;
+const contactRecipientProjection = { ...recipientProjectionBase, companyFromAccount: true, contactDeals: { orderBy: [{ position: 'asc' }, { id: 'asc' }] as Prisma.ContactDealOrderByWithRelationInput[], select: { deal: { select: relatedDealProjection } } } } as const;
 type RequiredCampaignVariables = ReadonlySet<string> | undefined;
 function personalized(row: Record<string, unknown>, fields: CrmFieldCatalogEntry[], tenantId: string, requiredVariables?: RequiredCampaignVariables): { values: EmailVariables; unresolved: string[] } {
   const values: EmailVariables = {};
@@ -300,6 +305,7 @@ async function visitBatches<T extends { id: string }>(read: (cursor?: string) =>
 
 export async function resolveAudience(tenantId: string, input: unknown, db: Prisma.TransactionClient = prisma, channel: 'EMAIL' | 'SMS' = 'EMAIL', page?: { page: number; limit: number }, requiredVariables?: RequiredCampaignVariables) {
   const dto = AudiencePreviewSchema.parse(input), scope = campaignScope(tenantId);
+  const canReadAccount = await mayReadContactAccount(db, tenantId);
   const fields = await validateAudienceReferences(tenantId, dto, db);
   const campaignFields = await campaignFieldsForAudienceSource(tenantId, dto.source, db);
   const companyKey = dto.source === 'LEADS' ? 'companyName' : 'company';
@@ -328,8 +334,8 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   if (dto.source !== 'LEADS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.contact.findMany({ where: { ...scope, ...audiencePredicate(dto, false, fields, companies), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...contactRecipientProjection, customFieldValues: { ...contactRecipientProjection.customFieldValues, where: { tenantId, module: 'contacts' } }, company: true, notes: true, doNotContact: true, productLinks: { ...contactRecipientProjection.productLinks, select: { ...contactRecipientProjection.productLinks.select, interested: true, activeProduct: true } } } });
-      for (const c of rows) { const resolved = personalized(c, campaignFields, tenantId, requiredVariables); retain({ contactId: c.id, email: c.email, phone: c.phone, reason: c.doNotContact ? (channel === 'SMS' ? 'DO_NOT_CONTACT' : 'UNSUBSCRIBED') : c.isArchived || c.deletedAt || c.status === 'CANCELLED' ? 'INACTIVE' : null, personalization: resolved.values, unresolvedVariables: resolved.unresolved }); }
+      const rows = await db.contact.findMany({ where: { ...scope, ...audiencePredicate(dto, false, fields, companies, canReadAccount), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...contactRecipientProjection, customFieldValues: { ...contactRecipientProjection.customFieldValues, where: { tenantId, module: 'contacts' } }, company: true, notes: true, doNotContact: true, productLinks: { ...contactRecipientProjection.productLinks, select: { ...contactRecipientProjection.productLinks.select, interested: true, activeProduct: true } } } });
+      for (const c of rows) { const resolved = personalized(presentContactAccount(c, canReadAccount), campaignFields, tenantId, requiredVariables); retain({ contactId: c.id, email: c.email, phone: c.phone, reason: c.doNotContact ? (channel === 'SMS' ? 'DO_NOT_CONTACT' : 'UNSUBSCRIBED') : c.isArchived || c.deletedAt || c.status === 'CANCELLED' ? 'INACTIVE' : null, personalization: resolved.values, unresolvedVariables: resolved.unresolved }); }
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;
     }
@@ -337,8 +343,8 @@ export async function resolveAudience(tenantId: string, input: unknown, db: Pris
   if (dto.source !== 'CONTACTS') {
     let cursor: string | undefined;
     for (;;) {
-      const rows = await db.lead.findMany({ where: { ...scope, ...audiencePredicate(dto, true, fields, companies), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...leadRecipientProjection, customFieldValues: { ...leadRecipientProjection.customFieldValues, where: { tenantId, module: 'leads' } }, companyName: true, convertedAt: true } });
-      for (const l of rows) { const resolved = personalized(l, campaignFields, tenantId, requiredVariables); retain({ leadId: l.id, email: l.email, phone: l.phone, reason: l.isArchived || l.deletedAt || l.convertedAt || ['archived', 'converted', 'cancelled'].includes(l.status.toLowerCase()) ? 'INACTIVE' : null, personalization: resolved.values, unresolvedVariables: resolved.unresolved }); }
+      const rows = await db.lead.findMany({ where: { ...scope, ...audiencePredicate(dto, true, fields, companies, canReadAccount), ...(cursor ? { id: { gt: cursor } } : {}) }, take: 250, orderBy: { id: 'asc' }, select: { ...leadRecipientProjection, customFieldValues: { ...leadRecipientProjection.customFieldValues, where: { tenantId, module: 'leads' } }, companyName: true, convertedAt: true } });
+      for (const l of rows) { const resolved = personalized(presentContactAccount(l, canReadAccount), campaignFields, tenantId, requiredVariables); retain({ leadId: l.id, email: l.email, phone: l.phone, reason: l.isArchived || l.deletedAt || l.convertedAt || ['archived', 'converted', 'cancelled'].includes(l.status.toLowerCase()) ? 'INACTIVE' : null, personalization: resolved.values, unresolvedVariables: resolved.unresolved }); }
       if (rows.length < 250) break;
       cursor = rows[rows.length - 1].id;
     }

@@ -1,5 +1,6 @@
 "use client";
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { usePanelCloseGuard } from '@/shared/hooks/use-panel-close-guard';
 import { ManilaDateTimePicker } from "@/shared/components/ui/manila-date-time-picker";
 import { taskRecordHref, taskRecordOptions } from "../task-relations";
 import { useCallback, useEffect, useId, useRef, useState } from "react";
@@ -51,12 +52,14 @@ export { TaskSelector, taskInputClass } from "./task-selector";
 
 export function TaskEditor({
   task: initialTask,
+  taskId,
   links = {},
   readOnly = false,
   preserveContextLinks = false,
   onClose,
 }: {
   task?: TaskRecord;
+  taskId?: string;
   links?: TaskLinks;
   readOnly?: boolean;
   preserveContextLinks?: boolean;
@@ -72,10 +75,11 @@ export function TaskEditor({
   const canRead = useHasPermission('tasks.view');
   const readableRecords = { lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'),
     deal: useHasPermission('deals.view'), account: useHasPermission('accounts.view') };
-  const detail = useCachedPage<TaskRecord>({ module: 'tasks', params: { recordId: initialTask?.id },
-    disabled: USE_MOCK_DATA || !initialTask || !canRead, revalidateOnInvalidation: true,
-    fetchFn: async signal => (await tasksApi.get(initialTask!.id, signal)).data });
-  const task = initialTask ? detail.data ?? initialTask : undefined;
+  const recordId = initialTask?.id ?? taskId;
+  const detail = useCachedPage<TaskRecord>({ module: 'tasks', params: { recordId },
+    disabled: USE_MOCK_DATA || !recordId || !canRead, revalidateOnInvalidation: true,
+    fetchFn: async signal => (await tasksApi.get(recordId!, signal)).data });
+  const task = recordId ? detail.data ?? initialTask : undefined;
   const [baseline, setBaseline] = useState(task);
   const canCreateDeals = useHasPermission("deals.create");
   const editable = !readOnly && !task?.isArchived && (task ? canEdit : canCreate);
@@ -89,6 +93,7 @@ export function TaskEditor({
     ),
   );
   const [dueDraft, setDueDraft] = useState<string | null>(null);
+  const initialDueDate = useRef(dueDate);
   const dueTrigger = useRef<HTMLButtonElement>(null);
   const closeDuePicker = () => { setDueDraft(null); dueTrigger.current?.focus({ preventScroll: true }); };
   const [assignedUserId, setOwner] = useState(
@@ -103,14 +108,16 @@ export function TaskEditor({
     [error, setError] = useState(""),
     [confirmArchive, setConfirmArchive] = useState(false);
   const [saveConflict, setSaveConflict] = useState(false);
-  const dirty = !!baseline && (title !== baseline.title || description !== baseline.description || status !== baseline.status ||
+  const dirty = baseline ? (title !== baseline.title || description !== baseline.description || status !== baseline.status ||
     priority !== (baseline.priority ?? 'Medium') || dueDate !== manilaLocalDateTime(baseline.dueDate) ||
-    assignedUserId !== baseline.assignedUserId || JSON.stringify(dealIds) !== JSON.stringify(taskAssociationIds(baseline, 'deal')));
+    assignedUserId !== baseline.assignedUserId || JSON.stringify(dealIds) !== JSON.stringify(taskAssociationIds(baseline, 'deal')))
+    : !!(title || description || assignedUserId || status !== 'pending' || priority !== 'Medium' || dueDate !== initialDueDate.current || JSON.stringify(dealIds) !== JSON.stringify(taskAssociationIds(links, 'deal')));
+  const closeGuard = usePanelCloseGuard(onClose, { dirty: editable && dirty, busy });
   const changed = !!baseline && !!detail.data && (baseline.updatedAt !== detail.data.updatedAt ||
     !baseline.updatedAt && JSON.stringify(baseline) !== JSON.stringify(detail.data));
   const conflict = saveConflict || dirty && changed;
-  const unavailable = !!initialTask && (!canRead || [401, 403, 404].includes(detail.errorStatus ?? 0));
-  const detailReady = !initialTask || USE_MOCK_DATA || !!detail.data;
+  const unavailable = !!recordId && (!canRead || [401, 403, 404].includes(detail.errorStatus ?? 0));
+  const detailReady = !recordId || USE_MOCK_DATA || !!detail.data;
   const resetDraft = useCallback((saved: TaskRecord) => {
     setBaseline(saved); setTitle(saved.title); setDescription(saved.description); setStatus(saved.status);
     setPriority(saved.priority ?? 'Medium'); setDueDate(manilaLocalDateTime(saved.dueDate));
@@ -118,8 +125,8 @@ export function TaskEditor({
     setDueDraft(null); setCreatedLabels([]); setSaveConflict(false); setError('');
   }, []);
   useEffect(() => {
-    if (initialTask && detail.data && !dirty && !busy && !saveConflict) resetDraft(detail.data);
-  }, [initialTask, detail.data, dirty, busy, saveConflict, resetDraft]);
+    if (recordId && detail.data && !dirty && !busy && !saveConflict) resetDraft(detail.data);
+  }, [recordId, detail.data, dirty, busy, saveConflict, resetDraft]);
   const heading = useId();
   const save = async () => {
     if (busy || !editable || !detailReady || unavailable || conflict) return;
@@ -190,7 +197,7 @@ export function TaskEditor({
       onOpenChange={(open) => {
         if (!open && !busy) {
           if (creating) setCreating(null);
-          else onClose();
+          else closeGuard.requestClose();
         }
       }}
     >
@@ -205,16 +212,16 @@ export function TaskEditor({
             event.stopPropagation();
             if (!busy) {
               if (creating) setCreating(null);
-              else onClose();
+              else closeGuard.requestClose();
             }
           }
         }}
       >
         <header className={panelHeaderClass + " pr-16 sm:pr-20"}>
           <h2 id={heading} className={panelTitleClass}>
-            {creating ? "Create deal" : task ? "Task details" : "Create task"}
+            {creating ? "Create deal" : recordId ? "Task details" : "Create task"}
           </h2>
-          {!task && !creating && <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-medium">Complete the task details below.</p>}
+          {!recordId && !creating && <p className="text-sm text-slate-500 mt-1 dark:text-slate-400 font-medium">Complete the task details below.</p>}
         </header>
         {unavailable ? (
           <div className={panelBodyClass + ' space-y-4'}>
@@ -436,7 +443,7 @@ export function TaskEditor({
                   variant="outline"
                   className={panelSecondaryButtonClass}
                   disabled={busy}
-                  onClick={onClose}
+                  onClick={closeGuard.requestClose}
                 >
                   Close
                 </Button>
@@ -454,6 +461,7 @@ export function TaskEditor({
           variant="destructive" confirmLabel="Archive" isLoading={busy}
           confirmDisabled={!canArchive || readOnly || !!task?.isArchived || unavailable || !detailReady} onConfirm={archive} />
       </SheetContent>
+      {closeGuard.confirmation}
     </Sheet>
   );
 }

@@ -19,7 +19,7 @@ describe.skipIf(!disposable)('Contact Account metadata privacy on authenticated 
     tenantId = (await prisma.tenant.create({ data: { name: 'Contact Account privacy', slug: randomUUID(), status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Contact intake only' } });
     roleId = role.id;
-    await prisma.rolePermission.create({ data: { tenantId, roleId, module: 'contacts', canView: true, canCreate: true, canEdit: true } });
+    await prisma.rolePermission.createMany({ data: ['contacts', 'leads'].map(module => ({ tenantId, roleId, module, canView: true, canCreate: true, canEdit: true })) });
     const actor = await prisma.user.create({ data: { tenantId, firstName: 'Intake', lastName: 'Employee', email: `${randomUUID()}@camxian.com`, role: role.name,
       mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date(), userRoles: { create: { roleId } } } });
     token = (await issueAuthSession(actor)).token;
@@ -44,7 +44,12 @@ describe.skipIf(!disposable)('Contact Account metadata privacy on authenticated 
     const created = await request('/crm/contacts', 'POST', input);
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
-    expect(created.body.data.account).toEqual({ id: account.id, name: secret });
+    expect(created.body.data.account).toMatchObject({ id: account.id, name: secret });
+    expect(created.body.data.company).toBe(secret);
+    expect(created.body.data).not.toHaveProperty('companyFromAccount');
+    const lead = await request('/crm/leads', 'POST', { requestId: randomUUID(), firstName: 'Linked', lastName: 'Lead', email: `${randomUUID()}@example.test`, accountId: account.id });
+    expect(lead.status, JSON.stringify(lead.body)).toBe(201);
+    expect(lead.body.data.companyName).toBe(secret);
     const allowedSearch = await request(`/crm/contacts?search=${encodeURIComponent(secret)}`);
     expect(allowedSearch.status).toBe(200); expect(allowedSearch.body.data.some((row: { id: string }) => row.id === id)).toBe(true);
     await prisma.rolePermission.delete({ where: { id: accountsGrant.id } });
@@ -52,8 +57,35 @@ describe.skipIf(!disposable)('Contact Account metadata privacy on authenticated 
 
     const detail = await request(`/crm/contacts/${id}`);
     expect(detail.status).toBe(200);
-    expect(detail.body.data).toMatchObject({ id, accountId: account.id, company: input.company, firstName: input.firstName });
+    expect(detail.body.data).toMatchObject({ id, accountId: account.id, company: null, firstName: input.firstName });
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id } })).toMatchObject({ company: secret, companyFromAccount: true });
+    const leadDetail = await request(`/crm/leads/${lead.body.data.id}`);
+    expect(leadDetail.status).toBe(200); expect(leadDetail.body.data.companyName).toBeNull();
+    expect(leadDetail.body.data).not.toHaveProperty('companyFromAccount');
+    expect((await request(`/crm/leads?search=${encodeURIComponent(secret)}`)).body.meta.total).toBe(0);
+    const converted = await request(`/crm/leads/${lead.body.data.id}/convert`, 'POST', { skipAccountCreation: true });
+    expect(converted.status, JSON.stringify(converted.body)).toBe(403);
+    expect(await prisma.lead.findUniqueOrThrow({ where: { id: lead.body.data.id } })).toMatchObject({ convertedAt: null, contactId: null });
+    expect(await prisma.contact.count({ where: { tenantId, email: lead.body.data.email } })).toBe(0);
     expect.soft(detail.body.data.account).toBeNull();
+    await prisma.rolePermission.createMany({ data: ['campaigns', 'deals'].map(module => ({ tenantId, roleId, module, canView: true })) });
+    const companies = await request('/marketing/audiences/companies?source=CONTACTS');
+    expect(companies.status, JSON.stringify(companies.body)).toBe(200);
+    expect(companies.body.data).not.toContain(secret);
+    const preview = await request('/marketing/audiences/preview', 'POST', { source: 'CONTACTS', conditions: [{ field: 'company', operator: 'equals', value: secret }] });
+    expect(preview.status, JSON.stringify(preview.body)).toBe(200);
+    expect(JSON.stringify(preview.body)).not.toContain(secret);
+    const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Private Account relationships' } });
+    const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Open', order: 0, requiredFields: [] } });
+    const deal = await prisma.deal.create({ data: { tenantId, title: 'Public opportunity', pipelineId: pipeline.id, stageId: stage.id, accountId: account.id,
+      productInterests: [], tags: [] } });
+    await prisma.contactDeal.create({ data: { tenantId, contactId: id, dealId: deal.id } });
+    const dealDetail = await request(`/crm/deals/${deal.id}`);
+    expect(dealDetail.status, JSON.stringify(dealDetail.body)).toBe(200);
+    expect(dealDetail.body.data.organization).toBeNull();
+    expect(dealDetail.body.data.contact.company).toBeNull();
+    expect(JSON.stringify(dealDetail.body)).not.toContain(secret);
+    expect((await request(`/crm/deals?search=${encodeURIComponent(secret)}`)).body.meta.total).toBe(0);
     const listed = await request(`/crm/contacts?search=${encodeURIComponent(input.firstName)}`);
     expect(listed.status).toBe(200); expect(listed.body.data).toHaveLength(1);
     expect(listed.body.data[0].accountId).toBe(account.id);
@@ -67,7 +99,7 @@ describe.skipIf(!disposable)('Contact Account metadata privacy on authenticated 
     expect.soft(replay.body.data.account).toBeNull();
     const edit = await request(`/crm/contacts/${id}`, 'PUT', { notes: 'Unrelated edit remains permitted', accountId: account.id });
     expect(edit.status, JSON.stringify(edit.body)).toBe(200);
-    expect(edit.body.data).toMatchObject({ id, accountId: account.id, notes: 'Unrelated edit remains permitted', company: input.company });
+    expect(edit.body.data).toMatchObject({ id, accountId: account.id, notes: 'Unrelated edit remains permitted', company: null });
     expect.soft(edit.body.data.account).toBeNull();
     const changed = await request(`/crm/contacts/${id}`, 'PUT', { accountId: replacement.id, notes: 'Must roll back with rejected association' });
     expect.soft(changed.status, JSON.stringify(changed.body)).toBe(403);
@@ -76,11 +108,17 @@ describe.skipIf(!disposable)('Contact Account metadata privacy on authenticated 
     expect(unlinked.status, JSON.stringify(unlinked.body)).toBe(200);
     expect((await prisma.contact.findUniqueOrThrow({ where: { id } })).accountId).toBeNull();
     expect(unlinked.body.data.account).toBeNull();
+    expect(unlinked.body.data.company).toBeNull();
+    expect((await request(`/crm/contacts?search=${encodeURIComponent(secret)}`)).body.meta.total).toBe(0);
+    const independent = await request('/crm/contacts', 'POST', { ...input, requestId: randomUUID(), email: `${randomUUID()}@example.test`, accountId: undefined });
+    expect(independent.status, JSON.stringify(independent.body)).toBe(201);
+    expect(independent.body.data.company).toBe(input.company);
+    expect((await request(`/crm/contacts?search=${encodeURIComponent(input.company)}`)).body.data.some((row: { id: string }) => row.id === independent.body.data.id)).toBe(true);
 
     await prisma.rolePermission.create({ data: { tenantId, roleId, module: 'accounts', canView: true } });
     const authorizedChange = await request(`/crm/contacts/${id}`, 'PUT', { accountId: replacement.id });
     expect(authorizedChange.status, JSON.stringify(authorizedChange.body)).toBe(200);
-    expect(authorizedChange.body.data.account).toEqual({ id: replacement.id, name: replacement.name });
+    expect(authorizedChange.body.data.account).toMatchObject({ id: replacement.id, name: replacement.name });
     expect((await request(`/crm/contacts/${id}`, 'PUT', { accountId: null })).status).toBe(200);
   });
 });

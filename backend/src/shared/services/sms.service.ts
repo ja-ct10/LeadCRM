@@ -53,11 +53,25 @@ export async function getSmsDeviceId(): Promise<string> {
   return device._id;
 }
 const providerDate = z.string().datetime({ offset: true }).optional().nullable();
+/** Persist our own explanations, never arbitrary provider content or credentials. */
+export function smsProviderDiagnostic(errorCode: unknown, errorMessage: unknown) {
+  const code = typeof errorCode === 'string' && /^\d{1,5}$/.test(errorCode) ? errorCode : null;
+  const message = typeof errorMessage === 'string' ? errorMessage.slice(0, 2000).toLowerCase() : '';
+  const explanations: Array<[RegExp, string]> = [
+    [/timeout|timed out|no response from device/, 'No status response from the Android device. Check its connection, battery restrictions and TextBee app.'],
+    [/no cellular service|no service|signal/, 'The Android device has no cellular service. Check its SIM and signal.'],
+    [/permission/, 'SMS permission is unavailable on the Android device. Check TextBee app permissions.'],
+    [/quota|allowance|limit exceeded/, 'The provider or device allowance was reached. Check the TextBee plan and Android SMS limits.'],
+    [/offline|not connected|push.*fail/, 'The Android gateway could not be reached. Check its connection and TextBee app.'],
+  ];
+  return { code, message: explanations.find(([pattern]) => pattern.test(message))?.[1] ?? (code ? `Android reported SMS error ${code}. Check the device and provider history.` : null) };
+}
 export async function getSmsBatch(deviceId: string, batchId: string) {
   if (!/^[a-f\d]{24}$/i.test(deviceId) || !/^[a-f\d]{24}$/i.test(batchId)) throw new ValidationError('Invalid SMS provider identity.');
   const message = z.object({ _id: z.string().min(1), device: z.object({ _id: z.string() }), smsBatch: z.string().optional(), recipient: z.string(), status: z.string().default('unknown'),
     requestedAt: providerDate, dispatchedAt: providerDate, pushReceivedAt: providerDate, sendAttemptedAt: providerDate,
-    sentAt: providerDate, deliveredAt: providerDate, failedAt: providerDate, updatedAt: providerDate });
+    sentAt: providerDate, deliveredAt: providerDate, failedAt: providerDate, updatedAt: providerDate,
+    errorCode: z.unknown().optional(), errorMessage: z.unknown().optional() });
   // Strip message content and other provider fields at this boundary.
   return z.object({ data: z.object({ batch: z.object({ _id: z.string(), recipientCount: z.number().int() }), messages: z.array(message) }) })
     .parse(await textBeeRead(`/gateway/devices/${deviceId}/sms-batch/${batchId}`)).data;

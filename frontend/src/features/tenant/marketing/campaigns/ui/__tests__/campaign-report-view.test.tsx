@@ -28,6 +28,14 @@ const select = (label: string) => {
 };
 const rows = () => within(screen.getAllByRole('grid')[0]).getAllByRole('row').slice(1);
 describe('campaign report', () => {
+  it('shows unconfirmed SMS as Needs review with an actionable diagnostic and an Unknown filter', async () => {
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'Sms', status: 'sending', reviewRequired: true,
+      recipients: [{ ...recipients[0], deliveryStatus: 'Unknown', failureReason: 'TEXTBEE_UNKNOWN_STATE', failureDetail: 'No status response from the Android device.' }] } } as never);
+    mount(); await screen.findByText('No status response from the Android device.');
+    expect(screen.getAllByText('Needs review').length).toBeGreaterThan(0);
+    expect(screen.getByText(/No uncertain message is automatically resent/)).toBeTruthy();
+    select('Unknown'); expect(rows()).toHaveLength(1);
+  });
   it('explains interrupted submissions without claiming uncertain recipients were retried', async () => {
     vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, status: 'INTERRUPTED', submissionInterruptedAt: '2026-10-09T01:00:00Z' } } as never);
     mount(); await screen.findByText('Doris Testing');

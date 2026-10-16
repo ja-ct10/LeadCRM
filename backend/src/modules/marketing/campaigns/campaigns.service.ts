@@ -69,11 +69,12 @@ export async function getCampaignReport(id: string, tenantId: string) {
         : recipientDeliveryFailed(recipient) ? (campaign.type === 'EMAIL' && recipient.bouncedAt ? 'Bounced' : 'Failed')
         : (campaign.type === 'SMS' ? smsDelivered(recipient) : recipient.deliveredAt) ? 'Delivered'
         : (campaign.type === 'SMS' ? smsSent(recipient) : recipient.sentAt && (recipient.submittedAt || confirmedSentIds.has(recipient.messageId))) ? 'Sent'
-        : campaign.type === 'SMS' && (recipient.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(recipient.failureReason ?? '')) ? 'Pending'
+        : campaign.type === 'SMS' && (recipient.status === 'unknown' || smsReviewReasons.includes(recipient.failureReason ?? '')) ? 'Unknown'
         : recipient.submittedAt || (campaign.type === 'EMAIL' && recipient.sentAt) ? 'Submitted' : 'Pending',
       opened: campaign.type !== 'SMS' && (!!recipient.openedAt || openingRecipients.has((recipient.email ?? '').toLowerCase())),
       clicked: campaign.type !== 'SMS' && (!!recipient.clickedAt || clickingRecipients.has((recipient.email ?? '').toLowerCase())),
       lastActivity: last ? new Date(last).toISOString() : null, failureReason: recipient.failureReason,
+      ...(campaign.type === 'SMS' ? { failureDetail: recipient.providerErrorMessage ?? smsReviewExplanation(recipient.failureReason) } : {}),
     };
   });
   const eligible = campaignContacts.filter(row => row.status !== 'excluded');
@@ -102,6 +103,7 @@ export async function getCampaignReport(id: string, tenantId: string) {
   // Historical receipts still prove which recipients clicked each destination,
   // even when repeatable event totals cannot be reconstructed.
   return { ...campaign, recipients, topLinks, sendResult: campaignSendResult(campaign),
+    reviewRequired: campaign.type === 'SMS' && campaignContacts.some(smsNeedsReview),
     ...(campaign.type === 'SMS' ? { smsDelivery: smsCampaignSummary(campaignContacts) } : {}),
     deliveredCount,
     bouncedCount: recipients.filter(row => row.deliveryStatus === 'Bounced').length,
@@ -126,7 +128,8 @@ export async function getCampaigns(tenantId: string, query: Record<string, unkno
     prisma.campaign.findMany({ where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : (page - 1) * limit, take: limit, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], include: { targetAudience: { select: { name: true } } } }),
     prisma.campaign.count({ where }),
   ]);
-  return paginate(orderPage(data, ids), total, { page, limit });
+  const reviews = await smsReviewCampaignIds(tenantId, data.filter(row => row.type === 'SMS').map(row => row.id));
+  return paginate(orderPage(data.map(row => ({ ...row, reviewRequired: reviews.has(row.id) })), ids), total, { page, limit });
 }
 export async function getCampaignById(id: string, tenantId: string) {
   const c = await prisma.campaign.findFirst({ where: { id, ...campaignScope(tenantId) } });
@@ -136,7 +139,25 @@ export async function getCampaignById(id: string, tenantId: string) {
     prisma.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
     prisma.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
   ]);
-  return { ...c, deliveredCount, bouncedCount, sendResult: campaignSendResult(c) };
+  const reviews = await smsReviewCampaignIds(tenantId, c.type === 'SMS' ? [id] : []);
+  return { ...c, deliveredCount, bouncedCount, sendResult: campaignSendResult(c), reviewRequired: reviews.has(id) };
+}
+const smsReviewReasons = ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE', 'SMS_VERIFICATION_EXPIRED'];
+const smsNeedsReview = (row: { status: string; failureReason: string | null }) => !['delivered', 'failed', 'excluded'].includes(row.status)
+  && (row.status === 'unknown' || smsReviewReasons.includes(row.failureReason ?? ''));
+function smsReviewExplanation(reason: string | null) {
+  if (reason === 'SMS_VERIFICATION_EXPIRED') return 'No final provider result within 30 days. Automatic verification has stopped. Review TextBee history before sending again.';
+  if (reason === 'PROVIDER_SUBMISSION_UNCONFIRMED') return 'Provider acceptance was not confirmed. Review TextBee history before sending again; this message has not been retried.';
+  if (reason === 'TEXTBEE_UNKNOWN_STATE') return 'The provider could not confirm the outcome. Review the Android device and TextBee history.';
+  if (reason === 'TEXTBEE_FAILED') return 'The provider reported a failed SMS. Check the Android device, SIM and TextBee history.';
+  return null;
+}
+async function smsReviewCampaignIds(tenantId: string, campaignIds: string[]) {
+  if (!campaignIds.length) return new Set<string>();
+  const rows = await prisma.campaignContact.findMany({ where: { tenantId, campaignId: { in: campaignIds },
+    status: { notIn: ['delivered', 'failed', 'excluded'] }, OR: [{ status: 'unknown' }, { failureReason: { in: smsReviewReasons } }] },
+    distinct: ['campaignId'], select: { campaignId: true } });
+  return new Set(rows.map(row => row.campaignId));
 }
 function campaignSendResult(campaign: { id: string; recipientCount: number; sentCount: number; failedCount: number; status: CampaignStatus; submissionFinishedAt: Date | null; submissionInterruptedAt?: Date | null }): CampaignSendResult {
   return { campaignId: campaign.id, eligibleRecipients: campaign.recipientCount, submittedRecipients: campaign.sentCount, failedRecipients: campaign.failedCount, status: campaign.status, submissionComplete: !!campaign.submissionFinishedAt, ...(campaign.submissionInterruptedAt ? { submissionInterrupted: true } : {}) };

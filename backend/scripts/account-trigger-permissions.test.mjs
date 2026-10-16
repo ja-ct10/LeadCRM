@@ -18,7 +18,6 @@ const migrationOwner = 'account_test_migrator';
 const runtimeRole = 'account_test_app';
 
 test('Account HTTP creation with separate migration and runtime roles', { timeout: 180000 }, async t => {
-  if (process.platform === 'win32' && !process.env.POSTGRES_TEST_BIN) process.env.POSTGRES_TEST_BIN = 'C:/Program Files/PostgreSQL/17/bin';
   const cluster = await notificationTestPostgres();
   let owner, runtime, server;
   try {
@@ -86,7 +85,7 @@ test('Account HTTP creation with separate migration and runtime roles', { timeou
       assert.equal(await runtime.auditLog.count({ where: { tenantId: tenant.id, action: 'account.created' } }), 0);
     });
 
-    await t.test('guarded db:deploy applies only the correction and retains the private history boundary', async () => {
+    await t.test('guarded db:deploy applies reviewed corrections and retains the private history boundary', async () => {
       const before = await owner.$queryRawUnsafe('SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name');
       const child = spawn(process.execPath, ['scripts/deploy-crm-imports.cjs', '--deploy'], { cwd: join(root, 'backend'), env, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] });
       let output = '';
@@ -94,7 +93,8 @@ test('Account HTTP creation with separate migration and runtime roles', { timeou
       const code = await new Promise((done, fail) => { child.on('exit', done); child.on('error', fail); });
       assert.equal(code, 0, output);
       const after = await owner.$queryRawUnsafe('SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL AND rolled_back_at IS NULL ORDER BY migration_name');
-      assert.deepEqual(after.filter(row => !before.some(prior => prior.migration_name === row.migration_name)), [{ migration_name: correction }]);
+      const reviewed = names.filter(name => name >= correction && !plan.exclude.includes(name));
+      assert.deepEqual(after.filter(row => !before.some(prior => prior.migration_name === row.migration_name)), reviewed.map(migration_name => ({ migration_name })));
       const [trigger] = await owner.$queryRawUnsafe(`SELECT p.prosecdef, p.proconfig, r.rolname AS owner,
         has_function_privilege('${runtimeRole}',p.oid,'EXECUTE') AS runtime_execute
         FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace JOIN pg_roles r ON r.oid=p.proowner

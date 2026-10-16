@@ -13,11 +13,12 @@ import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/s
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { applyCrmFieldErrors, showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { CreateAccountSchema, UpdateAccountSchema, type AccountFormValues } from '../schemas/account.schema';
-import type { Account } from '../types/account.types';
+import type { Account, AccountMutationInput } from '../types/account.types';
+import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 
 interface AccountFormInnerProps {
   initialData?: Account | null;
-  onSave: (data: Partial<Account>) => void | Promise<void>;
+  onSave: (data: AccountMutationInput) => void | Promise<void>;
   onCancel: () => void;
 }
 interface AccountFormSheetProps extends Omit<AccountFormInnerProps, 'onCancel'> {
@@ -35,21 +36,24 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     name: initialData?.name || '', industry: initialData?.industry || '', size: (initialData?.size as AccountFormValues['size']) || '',
     website: initialData?.website || '', tags: initialData?.tags || [], address: initialData?.address || '',
   }), [initialData]);
-  const { register, handleSubmit, formState: { errors, isSubmitting }, setFocus, setError } = useForm<AccountFormValues>({
+  const { register, handleSubmit, formState: { errors, isSubmitting, isDirty }, setFocus, setError } = useForm<AccountFormValues>({
     resolver: zodResolver(isEdit ? UpdateAccountSchema : CreateAccountSchema) as never, defaultValues, mode: 'onBlur',
   });
   const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
   const saving = useRef(false);
+  const requestId = useRef<string | undefined>(undefined);
   const [saveError, setSaveError] = useState('');
+  const requestClose = usePanelDraft({ dirty: isDirty || !!customFields.dirty, busy: isSubmitting || customFields.uploadCount > 0 });
   useScrollToError({ errors, formRef, setFocus });
 
   const onSubmit = async (data: AccountFormValues): Promise<void> => {
     if (!canSubmit || saving.current || !customFields.validate()) return;
     saving.current = true; setSaveError('');
     try {
-      await onSave({ customFieldValues: customFields.payload(), name: data.name,
-        industry: data.industry || (isEdit ? '' : undefined), size: data.size || undefined,
+      if (!isEdit) requestId.current ??= crypto.randomUUID();
+      await onSave({ ...(!isEdit ? { requestId: requestId.current } : {}), customFieldValues: customFields.payload(), name: data.name,
+        industry: data.industry || (isEdit ? '' : undefined), size: data.size || (isEdit ? null : undefined),
         website: data.website || (isEdit ? '' : undefined), tags: data.tags?.length ? data.tags : undefined,
         address: data.address || (isEdit ? '' : undefined) });
     } catch (error) {
@@ -71,7 +75,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       </ConfiguredFormLayout>
     </div>
     <div className={`${panelFooterClass} justify-end`}>
-      <button type="button" onClick={onCancel} className={panelSecondaryActionClass} disabled={isSubmitting}>Cancel</button>
+      <button type="button" onClick={requestClose ?? onCancel} className={panelSecondaryActionClass} disabled={isSubmitting}>Cancel</button>
       <button type="submit" disabled={!canSubmit || customFields.blocked || isSubmitting} className="h-[42px] rounded-xl bg-primary px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-primary/25 transition-all hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50">
         {isSubmitting ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Account'}
       </button>
@@ -86,7 +90,7 @@ export function AccountFormSheet({ initialData, isOpen, onClose, onSave }: Accou
 }
 
 export default function AccountForm({ initial, onSubmit, onCancel }: {
-  initial?: Account | null; onSubmit: (data: Partial<Account>) => void | Promise<void>; onCancel: () => void;
+  initial?: Account | null; onSubmit: (data: AccountMutationInput) => void | Promise<void>; onCancel: () => void;
 }): React.ReactElement {
   return <AccountFormInner initialData={initial} onSave={onSubmit} onCancel={onCancel} />;
 }

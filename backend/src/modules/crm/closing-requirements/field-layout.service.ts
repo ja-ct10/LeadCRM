@@ -84,8 +84,11 @@ export async function updateFieldLayout(tenantId: string, actorId: string, modul
     if (action.action === 'field') {
       const field = catalog.find(field => field.technicalKey === action.technicalKey || field.canonicalTechnicalKey === action.technicalKey);
       if (!field) throw new ValidationError('Choose a supported field in this module.');
-      const target = action.groupId ? layout.groups.find(group => group.id === action.groupId) : layout.groups.find(group => group.id === field.groupId);
+      const canonical = (module === 'leads' || module === 'contacts') && !field.customFieldId
+        ? CRM_SYSTEM_FIELDS[module].find(entry => entry.technicalKey === field.technicalKey) : undefined;
+      const target = layout.groups.find(group => group.id === (action.groupId ?? canonical?.groupId ?? field.groupId));
       if (!target) throw new ValidationError('Choose a section in this module.');
+      if (canonical && target.id !== canonical.groupId) throw new ValidationError('This system field uses a fixed section. Custom fields can move between sections.');
       if ((field.groupId === CLOSED_WON_GROUP_ID) !== (target.id === CLOSED_WON_GROUP_ID)) throw new ValidationError('Fields cannot move into or out of closing evidence.');
       if (field.mandatory && action.visibleInForm === false) throw new ValidationError(`${field.label} is mandatory and cannot be hidden from its form.`);
       if (field.customFieldId) {

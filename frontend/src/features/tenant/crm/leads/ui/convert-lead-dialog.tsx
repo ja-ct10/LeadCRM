@@ -2,7 +2,9 @@
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
+import type { ConvertLeadInput } from '@leadcrm/shared';
+import { OrganizationFields, useOrganizationForm } from '@/shared/components/crm/organization-fields';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { useData } from '@/store/DataContext';
@@ -31,10 +33,6 @@ interface ConvertLeadDialogProps {
 }
 
 interface ConvertFormState {
-  // Account
-  accountMode: 'create' | 'existing';
-  accountName: string;
-  accountId: string;
   // Contact
   contactMode: 'create' | 'existing';
   contactId: string;
@@ -49,11 +47,13 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   const { refreshContacts, refreshOrganizations, refreshDeals } = useData();
   const [step, setStep] = useState<Step>(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitting = useRef(false);
+  const [saveError, setSaveError] = useState('');
+  const organization = useOrganizationForm(lead, {
+    initialMode: !(lead.accountId || lead.organizationId) && lead.companyName?.trim() ? 'new' : 'existing',
+  });
 
   const [form, setForm] = useState<ConvertFormState>({
-    accountMode: 'create',
-    accountName: lead.companyName || '',
-    accountId: lead.accountId || lead.organizationId || '',
     contactMode: 'create',
     contactId: '',
 
@@ -65,7 +65,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   const canGoNext = useCallback((): boolean => {
     switch (step) {
       case 1: return true; // Review step is always valid
-      case 2: return form.accountMode === 'create' || !!form.accountId;
+      case 2: return true; // Shared Account controls validate on navigation.
       case 3: return form.contactMode === 'existing' ? !!form.contactId : true;
       case 4: return true;
       case 5: return true;
@@ -73,26 +73,26 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
     }
   }, [step, form]);
 
-  const goNext = (): void => { if (canGoNext() && step < 5) setStep((s) => (s + 1) as Step); };
+  const goNext = (): void => {
+    if (step === 2 && !organization.validate()) return;
+    if (canGoNext() && step < 5) setStep((s) => (s + 1) as Step);
+  };
   const goBack = (): void => { if (step > 1) setStep((s) => (s - 1) as Step); };
 
   // ── Submit ────────────────────────────────────────────────────────────────
   const handleConvert = async (): Promise<void> => {
+    if (submitting.current) return;
+    if (!organization.validate()) { setStep(2); return; }
+    submitting.current = true;
+    setSaveError('');
     setIsSubmitting(true);
     try {
-      const payload: Record<string, unknown> = {};
-
-      // Account
-      if (form.accountMode === 'existing' && form.accountId) {
-        payload.accountId = form.accountId;
-      } else {
-        payload.accountName = form.accountName;
-      }
-
-      payload.createContact = true;
+      const payload: ConvertLeadInput = { createContact: true, createDeal: false };
+      const account = organization.payload();
+      if (account.newAccount) payload.newAccount = account.newAccount;
+      else if (account.accountId) payload.accountId = account.accountId;
+      else payload.skipAccountCreation = true;
       if (form.contactMode === 'existing' && form.contactId) payload.contactId = form.contactId;
-      payload.createDeal = false;
-      if (!payload.accountName) delete payload.accountName;
 
       await apiClient.post(`/crm/leads/${lead.id}/convert`, payload);
 
@@ -109,8 +109,11 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       onClose();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to convert lead';
+      organization.applyServerErrors(err);
+      setSaveError(message);
       showCrmMutationError(err, message);
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -120,7 +123,6 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   const radioCls = 'w-full text-left px-4 py-3 rounded-xl border transition-all text-sm';
   const radioActiveCls = 'border-primary bg-blue-50 dark:bg-primary/10 text-blue-700 dark:text-blue-300';
   const radioInactiveCls = 'border-gray-200 dark:border-white/[0.08] text-slate-700 dark:text-slate-300 hover:border-blue-300 dark:hover:border-primary/30';
-  const inputCls = 'w-full bg-white dark:bg-white/[0.04] border border-gray-200 dark:border-white/[0.08] rounded-xl px-3.5 py-2.5 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all';
 
   // ── Step Renderers ─────────────────────────────────────────────────────────
 
@@ -146,37 +148,8 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
       <h3 className="text-base font-semibold text-slate-900 dark:text-white flex items-center gap-2">
         <Building size={18} className="text-blue-500" /> Account
       </h3>
-      <p className="text-sm text-slate-500 dark:text-slate-400">Create a new account or link to an existing one.</p>
-      <div className="space-y-2">
-        <button type="button" onClick={() => setForm((f) => ({ ...f, accountMode: 'create' }))} className={cn(radioCls, form.accountMode === 'create' ? radioActiveCls : radioInactiveCls)}>
-          Create new account
-        </button>
-        <button type="button" onClick={() => setForm((f) => ({ ...f, accountMode: 'existing' }))} className={cn(radioCls, form.accountMode === 'existing' ? radioActiveCls : radioInactiveCls)}>
-          Use existing account
-        </button>
-      </div>
-      {form.accountMode === 'create' && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Account Name</label>
-          <input
-            value={form.accountName}
-            onChange={(e) => setForm((f) => ({ ...f, accountName: e.target.value }))}
-            className={inputCls}
-            placeholder="Enter account name"
-          />
-        </div>
-      )}
-      {form.accountMode === 'existing' && (
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Select Account</label>
-          <EntityCombobox
-            entityType="accounts"
-            value={form.accountId || null}
-            onChange={(id) => setForm((f) => ({ ...f, accountId: id || '' }))}
-            placeholder="Search accounts..."
-          />
-        </div>
-      )}
+      <p className="text-sm text-slate-500 dark:text-slate-400">Create or link an account. Leave the existing-account selection empty to retain current relationships without creating an account.</p>
+      <OrganizationFields draft={organization} companyLabel="Account Name" disabled={isSubmitting} />
     </div>
   );
 
@@ -238,7 +211,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
         <div className="flex items-start gap-2 text-sm">
           <Check size={16} className="text-blue-500 mt-0.5 shrink-0" />
           <span className="text-slate-700 dark:text-slate-300">
-            Account: {!form.accountName.trim() && form.accountMode === 'create' ? 'Keep existing account, or none' : form.accountMode === 'create' ? `Create "${form.accountName}"` : 'Link to existing account'}
+            Account: {organization.mode === 'new' ? `Create or match "${organization.fields.companyName}"` : organization.accountId ? 'Link to selected account' : 'Retain existing relationships without creating an account'}
           </span>
         </div>
         {(
@@ -272,7 +245,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
   return (
     <SlidingDrawer
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => { if (!submitting.current) onClose(); }}
       title="Convert Lead"
       subtitle={leadName}
     >
@@ -298,8 +271,9 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
 
         {/* Step Content */}
         <div className={panelBodyClass}>
+          {saveError && <p role="alert" className="mb-4 text-sm text-destructive">{saveError}</p>}
           {step === 1 && renderStep1()}
-          {step === 2 && renderStep2()}
+          <div hidden={step !== 2}>{renderStep2()}</div>
           {step === 3 && renderStep3()}
           {step === 4 && renderStep4()}
           {step === 5 && renderStep5()}
@@ -310,6 +284,7 @@ export function ConvertLeadDialog({ isOpen, onClose, lead, onSuccess }: ConvertL
           <button
             type="button"
             onClick={step === 1 ? onClose : goBack}
+            disabled={isSubmitting}
             className={panelSecondaryActionClass}
           >
             {step === 1 ? 'Cancel' : <><ChevronLeft size={14} /> Back</>}

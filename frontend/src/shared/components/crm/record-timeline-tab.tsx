@@ -59,6 +59,7 @@ export interface RecordTimelineTabProps {
   hasMore?: boolean;
   onLoadMore?: () => void;
   onFiltersChange?: (filters: RecordActivityFilters) => void;
+  onRetry?: () => void;
 }
 
 const ACTIVITY_FILTERS = ['All', 'Emails', 'Tasks', 'Status'] as const;
@@ -192,7 +193,7 @@ function TimelineEntry({ activity, compact = false }: TimelineEntryProps): React
 
 // ─── Main Component ──────────────────────────────────────────────────────────
 
-export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange, focusNote, canEditRecord = false }: RecordTimelineTabProps): React.ReactElement {
+export function RecordTimelineTab({ activities, module, recordId, onActivityCreated, loading = false, error, compact = false, tasks, notes: providedNotes, notesLoading, notesError, hasMoreNotes, onLoadMoreNotes, hasMore, onLoadMore, onFiltersChange, onRetry, focusNote, canEditRecord = false }: RecordTimelineTabProps): React.ReactElement {
   const canEdit = useHasPermission(`${module}.edit` as import('@leadcrm/shared').PermissionKey) && canEditRecord;
   const { user, tenant } = useAuth();
   const editorIdentity = JSON.stringify([tenant?.id, user?.id, user?.role, module, recordId]);
@@ -238,7 +239,7 @@ export function RecordTimelineTab({ activities, module, recordId, onActivityCrea
     {tasks ?? <section aria-label="Tasks"><h3 className={heading}>Tasks</h3></section>}
     <section aria-label="Activity Timeline" className="space-y-3">
       <h3 className={heading}>Activity Timeline</h3>
-      {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
+      {error && <div className="space-y-2"><p role="alert" className="text-sm text-destructive">{error}</p>{onRetry && <Button variant="outline" size="sm" disabled={loading} onClick={onRetry}>Retry activities</Button>}</div>}
       <div className="flex flex-wrap gap-1">{ACTIVITY_FILTERS.map(value => <button key={value} type="button" aria-pressed={filter === value} onClick={() => changeFilters(value, searchTerm)} className={cn('min-h-8 rounded-full border border-border px-3 py-1.5 text-xs focus-visible:ring-2 focus-visible:ring-ring', filter === value ? 'bg-primary text-primary-foreground' : 'hover:bg-accent')}>{value}</button>)}</div>
       <div className="relative"><Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" /><Input aria-label="Search activities" placeholder="Search titles, descriptions or current agent names…" value={searchTerm} onChange={event => changeFilters(filter, event.target.value)} className="h-9 pl-8 text-xs" /></div>
       {loading && !allActivities.length && <div role="status" aria-label="Loading activity history"><DataLoadingSkeleton rowCount={3} columnCount={1} /></div>}

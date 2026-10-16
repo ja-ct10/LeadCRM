@@ -51,6 +51,18 @@ it('awaits backend confirmation, retains failed input and exposes field errors f
   fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'https://fixed.test' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Account' }));
   await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  expect(save.mock.calls[0][0].requestId).toMatch(/^[a-f\d-]{36}$/i);
+  expect(save.mock.calls[1][0].requestId).toBe(save.mock.calls[0][0].requestId);
+});
+
+it('sends an explicit clear when an existing Company Size is emptied', async () => {
+  const save = vi.fn().mockResolvedValue(undefined);
+  render(<AccountFormInner initialData={{ id: 'account', tenantId: 'tenant', name: 'Account', size: '11-50', createdAt: '2026-09-24T00:00:00Z' }} onSave={save} onCancel={vi.fn()} />);
+  fireEvent.change(screen.getByLabelText('Company Size'), { target: { value: '' } });
+  fireEvent.submit(screen.getByLabelText(/Account Name/).closest('form')!);
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0]).toMatchObject({ name: 'Account', size: null });
+  expect(save.mock.calls[0][0]).not.toHaveProperty('requestId');
 });
 
 it('keeps international address data and omits legacy note inputs when editing', async () => {

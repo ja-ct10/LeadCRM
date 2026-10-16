@@ -5,7 +5,7 @@ import type { TaskRecord } from '@leadcrm/shared';
 import TaskBoard from '../ui/task-board';
 
 const mocks = vi.hoisted(() => ({
-  canCreate: true,
+  canCreate: true, mockData: true, searchParams: '',
   data: {
     tasks: [] as TaskRecord[], meta: { total: 0 }, summary: { active: 0, overdue: 0, completed: 0 },
     loading: false, refreshing: false, error: undefined as string | undefined,
@@ -13,9 +13,9 @@ const mocks = vi.hoisted(() => ({
   },
   columnsLoading: false, query: vi.fn(), users: [],
 }));
-vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams() }));
+vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(mocks.searchParams) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: true }));
+vi.mock('@/lib/config', () => ({ get USE_MOCK_DATA() { return mocks.mockData; } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: mocks.users, updateTask: vi.fn(), bulkTasks: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => permission === 'tasks.create' ? mocks.canCreate : true }));
 vi.mock('@/shared/hooks/use-table-preferences', () => ({ useTablePreferences: () => ({ sort: { field: 'createdAt', direction: 'desc' }, setSort: vi.fn() }) }));
@@ -24,14 +24,14 @@ vi.mock('@/shared/hooks/use-field-layout', () => ({ useConfiguredColumnDefinitio
 vi.mock('../use-tasks', () => ({ useTasks: (query: unknown) => { mocks.query(query); return mocks.data; } }));
 vi.mock('../use-task-columns', () => ({ useTaskColumns: () => ({ columns: [], loading: mocks.columnsLoading, resetWidths: vi.fn() }) }));
 vi.mock('../ui/task-editor', () => ({
-  TaskEditor: ({ task, onClose }: any) => <div role="dialog" aria-label={task ? 'Existing Task panel' : 'Create Task panel'}><button onClick={onClose}>Close panel</button></div>,
+  TaskEditor: ({ task, taskId, onClose }: any) => <div role="dialog" aria-label={task || taskId ? 'Existing Task panel' : 'Create Task panel'} data-task-id={task?.id ?? taskId}><button onClick={onClose}>Close panel</button></div>,
   TaskSelector: () => null,
 }));
 vi.mock('@/shared/components/manage-columns-drawer', () => ({ ManageColumnsDrawer: () => null }));
 
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.canCreate = true; mocks.columnsLoading = false;
-  Object.assign(mocks.data, { tasks: [], meta: { total: 0 }, loading: false, refreshing: false, error: undefined, canRead: true });
+  vi.clearAllMocks(); mocks.canCreate = true; mocks.columnsLoading = false; mocks.mockData = true; mocks.searchParams = '';
+  Object.assign(mocks.data, { tasks: [], meta: { total: 0 }, loading: false, refreshing: false, error: undefined, canRead: true, identity: 'tenant:agent' });
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
   HTMLElement.prototype.scrollIntoView = vi.fn();
@@ -44,6 +44,19 @@ function expectNoTable() {
   expect(document.querySelector('[role="region"] .overflow-auto')).toBeNull();
   expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
 }
+
+it('opens an ID-only destination after the scope reset and permission readiness, and respects closing it', () => {
+  mocks.mockData = false; mocks.searchParams = 'taskId=linked-task'; mocks.data.canRead = false;
+  const { rerender } = render(<TaskBoard />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+  mocks.data.canRead = true; mocks.data.identity = 'tenant:authorized-agent';
+  rerender(<TaskBoard />);
+  expect(screen.getByRole('dialog', { name: 'Existing Task panel' }).getAttribute('data-task-id')).toBe('linked-task');
+  fireEvent.click(screen.getByRole('button', { name: 'Close panel' }));
+  mocks.data.refreshing = true;
+  rerender(<TaskBoard />);
+  expect(screen.queryByRole('dialog')).toBeNull();
+});
 
 it('reuses the card with the Tasks icon and opens the same create panel as the header', () => {
   render(<TaskBoard />);

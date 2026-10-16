@@ -57,6 +57,16 @@ export async function resolveCrmActor(db: Tx, actor: Actor): Promise<CrmRecordAc
     assignmentRestricted: !clientAdmin && (isSalesRoleName(user.role) || user.userRoles.some(link => link.role.crmAssignmentRestricted || isSalesRoleName(link.role.name))) };
 }
 
+/** Related metadata must retain the source module's View boundary. */
+export async function mayReadCrmModule(db: Tx, tenantId: string, module: CrmModule): Promise<boolean> {
+  const actor = crmActor.getStore();
+  if (!actor) return true;
+  if (actor.tenantId !== tenantId) throw new AppError('Access denied', 403);
+  if (authorizedWorkflowScope(tenantId)) return true;
+  const policy = await resolveCrmActor(db, actor);
+  return policy.clientAdmin || hasModulePermission(policy.permissions, module, 'canView');
+}
+
 function deny(module: CrmModule): never {
   throw new AppError(`You can only edit ${labels[module]} assigned to you.`, 403, 'CRM_ASSIGNMENT_REQUIRED');
 }

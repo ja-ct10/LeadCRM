@@ -109,7 +109,7 @@ try {
   await page.getByText('Recorded transition checked against current state. No execution or Task was created.').waitFor();
   assert.equal(await prisma.task.count({ where: { tenantId } }), 0);
   assert.equal(await prisma.workflowExecutionRun.count({ where: { tenantId } }), 0);
-  assert.ok(await page.getByText('Deal IDs:', { exact: true }).count());
+  assert.ok(await page.getByText('Deals:', { exact: true }).count());
   passed('Historical stage preview resolves Task fields without Task, run or assignment writes');
   await page.goto(base + '/automation/workflows');
   const activated = page.waitForResponse(response => response.request().method() === 'PATCH' && response.url().endsWith(`/workflows/${workflow.id}/toggle`));
@@ -173,6 +173,79 @@ try {
     passed(`Task details, related links and history fit ${theme} ${width}px`);
   }
   await page.setViewportSize({ width: 1440, height: 900 });
+  // Observe every DOM mutation from hard navigation until permission resolution.
+  await details.getByRole('button', { name: 'Close', exact: true }).click();
+  await page.goto(base + '/operations/taskboard');
+  await page.getByRole('checkbox', { name: `Select record ${task.id}`, exact: true }).check();
+  await page.getByRole('button', { name: 'Assign', exact: true }).click();
+  let assign = page.getByRole('dialog', { name: 'Assign tasks', exact: true });
+  await assign.getByRole('button', { name: 'Assigned Agent *', exact: true }).click();
+  await assign.getByRole('checkbox', { name: /^Ana Integrity/ }).check();
+  await page.keyboard.press('Escape');
+  for (const width of [375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 800 });
+    const bounds = await assign.boundingBox();
+    assert.ok(bounds.x >= -1 && bounds.x + bounds.width <= width + 1 && bounds.y >= -1 && bounds.height <= 801);
+    const action = await assign.getByRole('button', { name: 'Confirm assignment' }).boundingBox();
+    assert.ok(action.y >= 0 && action.y + action.height <= 801);
+    await assign.getByRole('button', { name: 'Confirm assignment' }).click({ trial: true });
+    await page.screenshot({ path: resolve(output, `task-assign-${width}.png`) });
+    passed(`Task Assign side panel and primary action fit ${width}px`);
+  }
+  await assign.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('alertdialog', { name: 'Discard unsaved changes?' }).waitFor();
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  assert.ok((await assign.innerText()).includes('Ana Integrity'));
+  await assign.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
+  await assign.waitFor({ state: 'hidden' });
+  assert.equal((await call(`/operations/tasks/${task.id}`)).data.assignedUserId, replacement.id);
+  await page.getByRole('button', { name: 'Assign', exact: true }).click();
+  assign = page.getByRole('dialog', { name: 'Assign tasks', exact: true });
+  await assign.getByRole('button', { name: 'Assigned Agent *', exact: true }).click();
+  await assign.getByRole('checkbox', { name: /^Ana Integrity/ }).check();
+  await page.keyboard.press('Escape');
+  await page.route('**/api/proxy/operations/tasks/bulk', route => route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Temporary assignment verification failure.' }) }), { times: 1 });
+  await assign.getByRole('button', { name: 'Confirm assignment' }).click();
+  await assign.getByRole('alert').filter({ hasText: 'Temporary assignment verification failure' }).waitFor();
+  assert.ok((await assign.innerText()).includes('Ana Integrity'));
+  await assign.getByRole('button', { name: 'Confirm assignment' }).click();
+  await assign.waitFor({ state: 'hidden' });
+  await page.reload();
+  await page.getByRole('button', { name: 'Clean server refresh', exact: true }).waitFor();
+  assert.equal((await call(`/operations/tasks/${task.id}`)).data.assignedUserId, agent.id);
+  passed('Task Assign cancel writes nothing; failed request preserves input; retry and refresh show the saved assignee');
+
+  await page.goto(base + '/crm/accounts');
+  await page.getByRole('button', { name: 'Add Account', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
+  const accountForm = page.locator('form').filter({ has: page.getByLabel('Account Name *', { exact: true }) });
+  const accountName = `Functional acceptance ${randomUUID()}`;
+  await accountForm.getByLabel('Account Name *', { exact: true }).fill(accountName);
+  await accountForm.getByLabel('Company Size', { exact: true }).selectOption('11-50');
+  await page.keyboard.press('Escape');
+  await page.getByRole('alertdialog', { name: 'Discard unsaved changes?' }).waitFor();
+  await page.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  assert.equal(await accountForm.getByLabel('Account Name *', { exact: true }).inputValue(), accountName);
+  let failedCreationId;
+  await page.route('**/api/proxy/crm/accounts', route => {
+    failedCreationId = route.request().postDataJSON().requestId;
+    return route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Temporary Account verification failure.' }) });
+  }, { times: 1 });
+  await accountForm.getByRole('button', { name: 'Create Account', exact: true }).click();
+  await accountForm.getByRole('alert').filter({ hasText: 'Temporary Account verification failure' }).waitFor();
+  assert.equal(await accountForm.getByLabel('Account Name *', { exact: true }).inputValue(), accountName);
+  const retry = page.waitForRequest(request => request.method() === 'POST' && new URL(request.url()).pathname === '/api/proxy/crm/accounts');
+  await accountForm.getByRole('button', { name: 'Create Account', exact: true }).click();
+  assert.equal((await retry).postDataJSON().requestId, failedCreationId);
+  await accountForm.waitFor({ state: 'hidden' });
+  await page.getByText('Account created.', { exact: true }).waitFor();
+  await page.reload();
+  const savedAccount = await prisma.account.findFirstOrThrow({ where: { tenantId, name: accountName } });
+  assert.equal(savedAccount.size, '11-50');
+  assert.equal(await prisma.account.count({ where: { tenantId, name: accountName } }), 1);
+  passed('Account Escape preserves draft; failed creation keeps input and retry identity; success persists once after refresh');
+
   // Observe every DOM mutation from hard navigation until permission resolution.
   await context.addInitScript(() => {
     window.__integrityPermissionFrames = [];

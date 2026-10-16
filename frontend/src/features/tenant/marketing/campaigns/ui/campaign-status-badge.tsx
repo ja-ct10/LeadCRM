@@ -11,11 +11,13 @@ const statuses: Record<string, { label: string; variant: BadgeProps['variant'] }
   FAILED: { label: 'Failed', variant: 'destructive' },
 };
 
-export function formatCampaignStatus(status: string) {
+export function formatCampaignStatus(status: string, reviewRequired = false) {
+  if (reviewRequired) return 'Needs review';
   return statuses[status.toUpperCase()]?.label ?? 'â€”';
 }
 
-export function CampaignStatusBadge({ status }: { status: string }) {
+export function CampaignStatusBadge({ status, reviewRequired = false }: { status: string; reviewRequired?: boolean }) {
+  if (reviewRequired) return <Badge variant="warning">Needs review</Badge>;
   if (!status || !statuses[status.toUpperCase()]) return <span title="No confirmed delivery outcome">â€”</span>;
   return <Badge variant={statuses[status.toUpperCase()].variant}>{formatCampaignStatus(status)}</Badge>;
 }

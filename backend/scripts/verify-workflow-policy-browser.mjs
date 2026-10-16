@@ -14,7 +14,7 @@ const environment = qaEnvironment(root);
 for (const name of Object.keys(process.env)) if (!(name in environment)) delete process.env[name];
 Object.assign(process.env, environment);
 require('../../scripts/qa-network-guard.cjs');
-const output = resolve(root, 'data/outputs/workflow-policy-tests/browser');
+const output = resolve(process.env.LEADCRM_BROWSER_OUTPUT || resolve(root, 'data/outputs/workflow-policy-tests/browser'));
 mkdirSync(output, { recursive: true });
 let pg, prisma, api, frontend, browser, log, failure, currentPage, closing = false;
 const checks = [], pageErrors = [], serverErrors = [];

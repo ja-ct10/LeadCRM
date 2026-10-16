@@ -11,7 +11,7 @@ import { reconcileSmsStatuses } from '../sms-status-reconciliation';
 import { getSmsBatch, sendSms } from '../../../../shared/services/sms.service';
 import { interruptCampaignSubmission } from '../campaign-submission-recovery';
 import { smsCampaignSummary } from '../sms-campaign-outcomes';
-import { getCampaignReport } from '../campaigns.service';
+import { getCampaignReport, getCampaignById, getCampaigns } from '../campaigns.service';
 
 vi.mock('../../../../shared/services/sms.service', async original => ({ ...await original<object>(), sendSms: vi.fn(), getSmsBatch: vi.fn() }));
 vi.mock('../../../notifications/notification-events.service', async original => ({ ...await original<object>(), requestNotificationDispatch: vi.fn() }));
@@ -118,6 +118,53 @@ describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () 
     expect((await outbox(failed.campaign.id)).map(n => n.type)).toEqual(['sms_campaign_failed']);
     expect((await outbox(unknown.campaign.id)).map(n => n.type)).toEqual(['sms_campaign_unconfirmed']);
     expect((await prisma.campaign.findUniqueOrThrow({ where: { id: unknown.campaign.id } })).status).toBe('SENDING');
+  });
+
+  it('shows unknown provider diagnostics consistently without retaining private message content', async () => {
+    const { campaign, rows: [row] } = await submitted(); await due(row);
+    vi.mocked(getSmsBatch).mockResolvedValue({ ...lookup(row, 'unknown'), messages: [{ ...lookup(row, 'unknown').messages[0],
+      errorCode: '4', errorMessage: 'Status update timeout - no response from device after dispatch. private-message-and-key' }] } as never);
+    await reconcileSmsStatuses();
+    const saved = await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } });
+    expect(saved).toMatchObject({ status: 'unknown', providerErrorCode: '4' });
+    expect(saved.providerErrorMessage).toContain('No status response from the Android device');
+    expect(saved.providerErrorMessage).not.toContain('private-message-and-key');
+    const report = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(report.reviewRequired).toBe(true);
+    expect(report.recipients[0]).toMatchObject({ deliveryStatus: 'Unknown', failureDetail: saved.providerErrorMessage });
+    expect((await scope(() => getCampaignById(campaign.id, tenantId))).reviewRequired).toBe(true);
+    expect((await scope(() => getCampaigns(tenantId, { search: campaign.name }))).data.find(item => item.id === campaign.id)?.reviewRequired).toBe(true);
+    await processTextBeeEvent(event(row, 'delivered'));
+    const resolved = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(resolved.reviewRequired).toBe(false);
+    expect(resolved.recipients[0]).toMatchObject({ deliveryStatus: 'Delivered', failureDetail: null });
+    expect(sendSms).not.toHaveBeenCalled();
+  });
+
+  it('makes expired pending batches actionable, preserves Sent and accepts late delivery evidence without resending', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    const sent = await submitted();
+    await processTextBeeEvent(event(sent.rows[0], 'sent'));
+    const old = new Date(Date.now() - 31 * 86400000);
+    await prisma.campaignContact.updateMany({ where: { id: { in: [row.id, sent.rows[0].id] } }, data: { submittedAt: old, nextSmsCheckAt: new Date(0) } });
+    await Promise.all([reconcileSmsStatuses(), reconcileSmsStatuses()]);
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ status: 'unknown', failureReason: 'SMS_VERIFICATION_EXPIRED', nextSmsCheckAt: null });
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: sent.rows[0].id } })).toMatchObject({ status: 'sent', nextSmsCheckAt: null });
+    const report = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(report.reviewRequired).toBe(true); expect(report.recipients[0].failureDetail).toContain('30 days');
+    expect((await scope(() => getCampaignReport(sent.campaign.id, tenantId))).reviewRequired).toBe(false);
+    expect(getSmsBatch).not.toHaveBeenCalled(); expect(sendSms).not.toHaveBeenCalled();
+    await processTextBeeEvent(event(row, 'delivered'));
+    expect((await scope(() => getCampaignReport(campaign.id, tenantId))).reviewRequired).toBe(false);
+  });
+
+  it('flags an unconfirmed submission without a batch identity for review without polling or resending it', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await prisma.campaignContact.update({ where: { id: row.id }, data: { messageId: null, submittedAt: null, status: 'pending', failureReason: 'PROVIDER_SUBMISSION_UNCONFIRMED', nextSmsCheckAt: null } });
+    const report = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(report.reviewRequired).toBe(true); expect(report.recipients[0].deliveryStatus).toBe('Unknown');
+    expect(report.recipients[0].failureDetail).toContain('Provider acceptance was not confirmed');
+    await reconcileSmsStatuses(); expect(getSmsBatch).not.toHaveBeenCalled(); expect(sendSms).not.toHaveBeenCalled();
   });
 
   it('serializes concurrent duplicate callbacks on native PostgreSQL without duplicate metrics or events', async () => {

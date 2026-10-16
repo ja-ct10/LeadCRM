@@ -7,6 +7,7 @@ import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
 import { AnimatePresence, motion } from 'motion/react';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
+import { PanelCloseContext, usePanelCloseGuard } from '@/shared/hooks/use-panel-close-guard';
 
 interface SideSheetProps {
   isOpen: boolean;
@@ -21,7 +22,8 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
   const panelRef = useRef<HTMLDivElement>(null);
   const owner = useId();
   const titleId = useId();
-  useModalInteraction({ open: isOpen, panelRef, owner, onClose });
+  const guard = usePanelCloseGuard(onClose);
+  useModalInteraction({ open: isOpen, panelRef, owner, onClose: guard.requestClose });
 
   const content = (
     <AnimatePresence>
@@ -31,7 +33,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={guard.requestClose}
             className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-200"
           />
           <motion.div
@@ -52,7 +54,7 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
                 <h2 id={titleId} className={panelTitleClass}>{title}</h2>
                 {subtitle && <p className={`${responsiveTypography.body} text-muted-foreground mt-1`}>{subtitle}</p>}
               </div>
-              <ModalCloseButton onClose={onClose} ariaLabel="Close sheet" size={20} className={panelCloseClass + " grid place-items-center"} />
+              <ModalCloseButton onClose={guard.requestClose} ariaLabel="Close sheet" size={20} className={panelCloseClass + " grid place-items-center"} />
             </div>
 
             {/* Body Container */}
@@ -66,5 +68,5 @@ export function SideSheet({ isOpen, onClose, title, subtitle, children, width = 
   );
 
   if (typeof window === 'undefined') return null;
-  return <OverlayOwnerContext.Provider value={owner}><ThemedPortal>{content}</ThemedPortal></OverlayOwnerContext.Provider>;
+  return <PanelCloseContext.Provider value={guard.context}><OverlayOwnerContext.Provider value={owner}><ThemedPortal>{content}{isOpen && guard.confirmation}</ThemedPortal></OverlayOwnerContext.Provider></PanelCloseContext.Provider>;
 }

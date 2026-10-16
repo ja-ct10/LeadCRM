@@ -1,3 +1,4 @@
+import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
 import { salesContext } from '../leads/sales-context';
 import { participantOrder, withDealParticipants } from './deal-participants';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
@@ -19,6 +20,7 @@ import { buildSearchClauses } from '../../../shared/helpers/search';
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 
 export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
+  const canReadAccount = await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId);
   const { page, limit } = params;
   const skip = (page - 1) * limit;
   if (params.accountId && params.organizationId && params.accountId !== params.organizationId) {
@@ -38,7 +40,7 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     ...(params.contactId      ? { contactDeals: { some: { contactId: params.contactId } } } : {}),
     ...(params.leadId         ? { leadDeals: { some: { leadId: params.leadId } } }          : {}),
     AND: buildSearchClauses(params.search, ['title', 'leadSource', 'industry'], contains => [
-      { organization: { name: contains } }, { stage: { name: contains } },
+      ...(canReadAccount ? [{ organization: { name: contains } }] : []), { stage: { name: contains } },
       ...(['LOW', 'MEDIUM', 'HIGH'].includes(contains.contains.toUpperCase()) ? [{ priority: contains.contains.toUpperCase() }] : []),
     ]),
     ...(params.dateFrom || params.dateTo ? {

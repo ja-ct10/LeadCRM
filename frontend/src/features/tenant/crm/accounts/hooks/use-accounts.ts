@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useModuleData } from '@/shared/hooks/use-module-data';
 import { toFrontendOrg } from '@/lib/api/adapters/organization.adapter';
 import { invalidatePageCache } from '@/shared/cache/page-cache';
@@ -18,8 +19,7 @@ import { accountsService } from '../services/accounts.service';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { useAuth } from '@/store/AuthContext';
 import { uuid } from '@/lib/utils';
-import type { Account, AccountFilters } from '../types/account.types';
-import type { AccountFormValues } from '../schemas/account.schema';
+import type { Account, AccountFilters, AccountMutationInput } from '../types/account.types';
 import type { SortPreference } from '@/shared/services/table-preferences.api';
 import type { FilterCondition } from '@leadcrm/shared';
 
@@ -44,7 +44,7 @@ const EMPTY_FILTERS: AccountFilters = {
 export function useAccounts(params?: UseAccountsParams) {
   const { tenant } = useAuth();
 
-  const { data, meta, isInitialLoad, isRefreshing, error, refetch } = useModuleData({
+  const { data, meta, facets, isInitialLoad, isRefreshing, error, refetch } = useModuleData({
     moduleId: 'accounts',
     page: params?.page ?? 1,
     pageSize: params?.pageSize ?? 100,
@@ -83,14 +83,15 @@ export function useAccounts(params?: UseAccountsParams) {
     await refetch();
   }, [refetch]);
 
-  const handleCreate = useCallback(async (formData: AccountFormValues) => {
-    if (!tenant) return;
+  const handleCreate = useCallback(async (formData: AccountMutationInput) => {
+    if (!tenant) throw new Error('Your workspace is unavailable. Refresh and try again.');
     try {
       if (USE_MOCK_DATA) {
         const raw = localStorage.getItem('leadcrm_accounts');
         const all: Account[] = raw ? JSON.parse(raw) : [];
         const newAccount: Account = {
           ...formData,
+          name: formData.name ?? '',
           id: uuid(),
           tenantId: tenant.id,
           createdAt: new Date().toISOString(),
@@ -102,13 +103,14 @@ export function useAccounts(params?: UseAccountsParams) {
         invalidatePageCache('accounts', tenant.id);
         refetch();
       }
+      toast.success('Account created.');
       setIsFormOpen(false);
     } catch (err) {
       throw err;
     }
   }, [tenant, refetch]);
 
-  const handleUpdate = useCallback(async (id: string, formData: AccountFormValues) => {
+  const handleUpdate = useCallback(async (id: string, formData: AccountMutationInput) => {
     try {
       if (USE_MOCK_DATA) {
         const raw = localStorage.getItem('leadcrm_accounts');
@@ -122,6 +124,7 @@ export function useAccounts(params?: UseAccountsParams) {
         invalidatePageCache('accounts', tenant?.id ?? '');
         refetch();
       }
+      toast.success('Account updated.');
       setIsFormOpen(false);
       setEditTarget(null);
     } catch (err) {
@@ -146,6 +149,7 @@ export function useAccounts(params?: UseAccountsParams) {
     /** Total record count from server metadata. */
     totalCount: meta?.total ?? displayAccounts.length,
     meta,
+    facets: facets ?? {},
     filters,
     setFilters,
     isLoading,

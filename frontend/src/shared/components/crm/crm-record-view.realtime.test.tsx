@@ -50,22 +50,33 @@ beforeEach(() => {
   });
 });
 
-it.each(['leads', 'contacts', 'deals'] as const)('reports mailbox failures in an open %s timeline and recovers through SSE', async module => {
+it.each(['leads', 'contacts', 'deals'] as const)('pauses a disconnected %s timeline stream and recovers through explicit retry', async module => {
   render(<CrmRecordView module={module} id="record" />);
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
   const timeline = screen.getByRole('region', { name: 'Activity Timeline' });
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity0'));
-  for (const failure of ['Mailbox ownership does not match, or temporary test access expired.', 'Email updates paused after repeated failures.', 'Connect your work Gmail account first.']) {
+  const failures = ['Mailbox ownership does not match, or temporary test access expired.', 'Email updates paused after repeated failures.', 'Connect your work Gmail account first.'];
+  for (const [index, failure] of failures.entries()) {
     mocks.status = { isConnected: false, syncError: failure };
-    act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+    if (index === 0) act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+    else fireEvent.click(within(timeline).getByRole('button', { name: 'Retry activities' }));
     await waitFor(() => expect(within(timeline).getByRole('alert').textContent).toBe(failure));
+    expect(streams[0].close).toHaveBeenCalled();
+    expect(streams).toHaveLength(1);
     expect(within(timeline).queryByText('No activities match your filter.')).toBeNull();
   }
   mocks.status = { isConnected: true, syncError: null }; rows.push(email('inbound'));
+  const reads = mocks.getAll.mock.calls.length;
   act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+  expect(mocks.getAll).toHaveBeenCalledTimes(reads);
+  fireEvent.click(within(timeline).getByRole('button', { name: 'Retry activities' }));
   await waitFor(() => expect(within(timeline).getByText('Persisted inbound body')).toBeTruthy());
+  await waitFor(() => expect(streams).toHaveLength(2));
   expect(within(timeline).queryByRole('alert')).toBeNull();
+  rows.push(email('outbound'));
+  act(() => streams[1].dispatchEvent(new Event('mailbox-change')));
+  await waitFor(() => expect(within(timeline).getByText('Persisted outbound body')).toBeTruthy());
   expect(screen.getByRole('region', { name: 'Activity Timeline' })).toBe(timeline);
   expect(screen.getByRole('button', { name: 'Emails' }).getAttribute('aria-pressed')).toBe('true');
 });

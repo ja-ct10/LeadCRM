@@ -56,7 +56,7 @@ export function useRecordCustomFields(module: CustomFieldModule, recordId?: stri
     } catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Upload failed.'); setErrors(prev => ({ ...prev, [field.id]: error instanceof Error ? error.message : 'Upload failed.' })); }
     finally { setUploadCount(count => count - 1); }
   };
-  return { module, fields, layout: query.data?.layout ?? defaultFieldLayout(module), value, update, payload, validate, errors, blocked, uploadCount, upload, query, files: [...(query.data?.files ?? []), ...Object.values(uploads)] };
+  return { module, fields, dirty: Object.keys(edits).some(id => edits[id] !== String(query.data?.values[id] ?? '')), layout: query.data?.layout ?? defaultFieldLayout(module), value, update, payload, validate, errors, blocked, uploadCount, upload, query, files: [...(query.data?.files ?? []), ...Object.values(uploads)] };
 }
 type FieldForm = ReturnType<typeof useRecordCustomFields>;
 

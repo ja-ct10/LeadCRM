@@ -50,6 +50,7 @@ export interface CampaignRecipient {
   clicked: boolean;
   lastActivity: string | null;
   failureReason: string | null;
+  failureDetail?: string | null;
 }
 
 export interface CampaignClickedLink {

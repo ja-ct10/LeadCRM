@@ -16,7 +16,7 @@ import { ValidationError } from '../../../shared/errors/http-error';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { createAssignedContact } from './contact-creation';
-import { mayReadContactAccount } from './contact-account-access';
+import { mayReadContactAccount, presentContactAccount } from './contact-account-access';
 import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../../shared/helpers/filter-parser';
 
 const CONTACT_FILTER_FIELDS: FilterFields = {
@@ -56,7 +56,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
   }
   const clauses = buildPrismaFilters(filters, CONTACT_FILTER_FIELDS);
-  clauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'company', 'phone', 'source'], contains => [
+  clauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'source'], contains => [
+    { company: contains, ...(!canReadAccount ? { companyFromAccount: false } : {}) },
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
     ...(['HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'].includes(contains.contains.toUpperCase()) ? [{ status: contains.contains.toUpperCase() }] : []),
   ]));
@@ -99,8 +100,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   const sort = typeof query.sort === 'string' ? query.sort.replace(/^companyName:/, 'company:') : query.sort;
   const ids = await sortedPageIds(sort === 'createdAt:desc' ? undefined : sort, ['firstName', 'lastName', 'email', 'phone', 'company', 'status', 'source', 'createdAt'], skip, limit,
-    async () => (await (salesContext.getStore() ?? prisma).contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true, status: true, source: true, createdAt: true } }))
-      .map(row => ({ ...row, status: normalizeCrmStatus(row.status) })),
+    async () => (await (salesContext.getStore() ?? prisma).contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, company: true, companyFromAccount: true, status: true, source: true, createdAt: true } }))
+      .map(row => ({ ...presentContactAccount(row, canReadAccount), status: normalizeCrmStatus(row.status) })),
     direction => (salesContext.getStore() ?? prisma).contact.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     (salesContext.getStore() ?? prisma).contact.findMany({
@@ -122,7 +123,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const facets: Record<string, number> = { touched, untouched: total - touched, has_deals: hasDeals };
   for (const row of statuses) facets['status:' + normalizeCrmStatus(row.status)] = row._count;
   for (const row of agents) if (row.assignedUserId) facets['owner:' + row.assignedUserId] = row._count;
-  return { data: orderPage(data.map(contact => ({ ...contact, account: canReadAccount ? contact.account : null })), ids), total, page, limit, facets };
+  return { data: orderPage(data.map(contact => presentContactAccount({ ...contact, account: contact.account ?? null }, canReadAccount)), ids), total, page, limit, facets };
 }
 
 export async function findContactById(id: string, tenantId: string) {
@@ -156,11 +157,14 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     const { customFieldValues, productInterestIds: _productIds, newAccount, ...data } = dto;
     if (newAccount) {
       const account = await createLinkedAccount(tx, tenantId, newAccount, actorId);
-      data.accountId = account.id; data.company = account.name;
+      data.accountId = account.id; data.company = account.name; data.companyFromAccount = true;
     } else if (data.accountId && data.accountId !== current.accountId) {
       const account = await tx.account.findFirst({ where: { tenantId, id: String(data.accountId), isArchived: false, deletedAt: null }, select: { name: true } });
       if (!account) throw new NotFoundError('Account');
       data.company = account.name;
+      data.companyFromAccount = true;
+    } else if (data.company !== undefined && data.company !== current.company) {
+      data.companyFromAccount = false;
     }
     await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({

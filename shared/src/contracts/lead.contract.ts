@@ -32,6 +32,21 @@ export const UpdateLeadSchema = LeadFieldsSchema.partial()
 export type CreateLeadInput = z.infer<typeof CreateLeadSchema>;
 export type UpdateLeadInput = z.infer<typeof UpdateLeadSchema>;
 
+/** New Account details use the same contract as standalone and linked creation. */
+export const ConvertLeadSchema = z.object({
+  accountId: z.string().uuid().optional(),
+  accountName: z.string().trim().min(1).max(2000).optional(),
+  newAccount: NewAccountSchema.optional(),
+  skipAccountCreation: z.boolean().optional(),
+  createContact: z.literal(true).default(true),
+  contactId: z.string().uuid().optional(),
+  createDeal: z.literal(false).default(false),
+  dealId: z.string().uuid().optional(),
+}).strict().refine(value => !value.newAccount || (!value.accountId && !value.accountName && !value.skipAccountCreation), {
+  path: ['newAccount'], message: 'Choose one Account creation or linking option.',
+});
+export type ConvertLeadInput = z.infer<typeof ConvertLeadSchema>;
+
 export const DeactivateUserSchema = z.object({ replacementAgentId: z.string().uuid().nullable().optional() }).strict();
 export interface DeactivationImpact {
   userId: string;

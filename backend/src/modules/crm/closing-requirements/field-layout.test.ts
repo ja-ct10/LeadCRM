@@ -66,6 +66,20 @@ describe('field configuration identity and preservation', () => {
     expect(getWorkflowConditionFields('lead', undefined, [hidden]).some(field => field.field === `lead.customFieldValues.${budget.id}`)).toBe(true);
     expect(getWorkflowUpdateFields('lead', [hidden]).some(field => field.field === `customFieldValues.${budget.id}`)).toBe(false);
   });
+  it.each(['leads', 'contacts'] as const)('rejects ignored native %s section moves while retaining labels and custom field placement', async module => {
+    const original = await getFieldLayout('tenant', module);
+    const email = original.fields.find(field => field.technicalKey === 'email')!;
+    const target = original.layout.groups.find(group => group.id !== email.groupId)!;
+    const snapshot = structuredClone(state);
+    await expect(updateFieldLayout('tenant', 'actor', module, { action: 'field', technicalKey: 'email', groupId: target.id })).rejects.toThrow('fixed section');
+    expect(state).toEqual(snapshot);
+    const renamed = await updateFieldLayout('tenant', 'actor', module, { action: 'field', technicalKey: 'email', groupId: email.groupId, label: 'Work email' });
+    expect(renamed.fields.find(field => field.technicalKey === 'email')).toMatchObject({ label: 'Work email', groupId: email.groupId });
+    const stored = state.preferences.find(row => row.module === module)!;
+    (stored.value as import('@leadcrm/shared').FieldLayout).fields.email.groupId = target.id;
+    const visibility = await updateFieldLayout('tenant', 'actor', module, { action: 'field', technicalKey: 'email', visibleInDetails: false });
+    expect(visibility.fields.find(field => field.technicalKey === 'email')).toMatchObject({ groupId: email.groupId, visibleInDetails: false });
+  });
   it('uses exact seeded IDs and a protected context, preserving renamed closing validation', async () => {
     const original = DEFAULT_CLOSING_FIELDS[0];
     expect(isSystemClosingField(original)).toBe(true);
@@ -101,20 +115,20 @@ describe('field configuration identity and preservation', () => {
     expect(tx.closingFieldDefinition.update).not.toHaveBeenCalled();
     expect(tx.auditLog.create).not.toHaveBeenCalled();
   });
-  it('protects mixed user-created groups after a System field moves there, retaining rename, reorder and presentation editing', async () => {
-    const added = await updateFieldLayout('tenant', 'actor', 'leads', { action: 'add', label: 'Mixed section' });
+  it('protects mixed Account groups after a System field moves there, retaining rename, reorder and presentation editing', async () => {
+    const added = await updateFieldLayout('tenant', 'actor', 'accounts', { action: 'add', label: 'Mixed section' });
     const group = added.layout.groups.find(group => group.label === 'Mixed section')!;
-    const custom = await createField({ groupId: group.id, group: group.label });
+    const custom = await createField({ module: 'accounts', groupId: group.id, group: group.label });
     state.values.push({ fieldId: custom.id, value: 0 });
-    await updateFieldLayout('tenant', 'actor', 'leads', { action: 'field', technicalKey: 'email', groupId: group.id, label: 'Work email', visibleInDetails: false });
-    await updateFieldLayout('tenant', 'actor', 'leads', { action: 'rename', groupId: group.id, label: 'Renamed mixed section' });
-    await updateFieldLayout('tenant', 'actor', 'leads', { action: 'moveGroup', groupId: group.id, direction: 'up' });
-    const before = await getFieldLayout('tenant', 'leads');
-    expect(before.fields.find(field => field.technicalKey === 'email')).toMatchObject({ kind: 'System', groupId: group.id, label: 'Work email', visibleInDetails: false });
+    await updateFieldLayout('tenant', 'actor', 'accounts', { action: 'field', technicalKey: 'website', groupId: group.id, label: 'Work website', visibleInDetails: false });
+    await updateFieldLayout('tenant', 'actor', 'accounts', { action: 'rename', groupId: group.id, label: 'Renamed mixed section' });
+    await updateFieldLayout('tenant', 'actor', 'accounts', { action: 'moveGroup', groupId: group.id, direction: 'up' });
+    const before = await getFieldLayout('tenant', 'accounts');
+    expect(before.fields.find(field => field.technicalKey === 'website')).toMatchObject({ kind: 'System', groupId: group.id, label: 'Work website', visibleInDetails: false });
     expect(before.layout.groups.find(item => item.id === group.id)?.label).toBe('Renamed mixed section');
     const snapshot = structuredClone(state);
     vi.clearAllMocks();
-    await expect(updateFieldLayout('tenant', 'actor', 'leads', { action: 'delete', groupId: group.id, moveToGroupId: before.layout.groups[0].id })).rejects.toThrow('Groups containing system fields cannot be deleted.');
+    await expect(updateFieldLayout('tenant', 'actor', 'accounts', { action: 'delete', groupId: group.id, moveToGroupId: before.layout.groups[0].id })).rejects.toThrow('Groups containing system fields cannot be deleted.');
     expect(state).toEqual(snapshot);
     expect(tx.tenantPreference.update).not.toHaveBeenCalled();
     expect(tx.closingFieldDefinition.update).not.toHaveBeenCalled();

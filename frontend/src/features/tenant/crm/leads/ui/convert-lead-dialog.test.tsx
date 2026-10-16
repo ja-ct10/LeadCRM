@@ -1,15 +1,19 @@
 import React from 'react';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import type { Lead } from '@/store/types';
+import type { CustomFieldState } from '@leadcrm/shared';
 import { ConvertLeadDialog } from './convert-lead-dialog';
-const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined) }));
+const mocks = vi.hoisted(() => ({ post: vi.fn(), refresh: vi.fn().mockResolvedValue(undefined), data: { fields: [], values: {}, files: [] } as CustomFieldState }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { post: mocks.post } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshContacts: mocks.refresh, refreshOrganizations: mocks.refresh, refreshDeals: mocks.refresh }) }));
 vi.mock('@/shared/components/sliding-drawer', () => ({ SlidingDrawer: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <div /> }));
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
+vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: mocks.data, error: null, isInitialLoad: false }) }));
 afterEach(cleanup);
+beforeEach(() => { mocks.post.mockReset(); mocks.refresh.mockClear(); mocks.data = { fields: [], values: {}, files: [] }; });
 it('confirms conversion without promising Closed status or requiring a Won Deal', async () => {
   mocks.post.mockResolvedValue({ data: {} });
   const onSuccess = vi.fn();
@@ -19,6 +23,28 @@ it('confirms conversion without promising Closed status or requiring a Won Deal'
   expect(screen.getByText(/Sales completion remains a separate Closed Won operation/)).toBeTruthy();
   expect(screen.queryByText(/must already be confirmed/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
-  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/crm/leads/lead/convert', { accountName: 'Example', createContact: true, createDeal: false }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/crm/leads/lead/convert', expect.objectContaining({ newAccount: expect.objectContaining({ name: 'Example', requestId: expect.any(String) }), createContact: true, createDeal: false })));
   await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
+});
+
+it('keeps required Account custom values through wizard steps and retains them after a failed conversion', async () => {
+  mocks.data.fields = [{ id: 'context', name: 'Company context', module: 'accounts', group: 'Basic Information', type: 'Text', active: true, required: true, visibleInForm: true, visibleInDetails: true, options: [], order: 0, description: '', version: 1 }];
+  mocks.post.mockRejectedValueOnce(new Error('Conversion could not be saved. Please retry.')).mockResolvedValue({ data: {} });
+  const onClose = vi.fn();
+  render(<ConvertLeadDialog isOpen onClose={onClose} lead={{ id: 'lead', firstName: 'Ada', lastName: 'Lead', status: 'Warm', companyName: 'Example' } as Lead} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  expect(mocks.post).not.toHaveBeenCalled();
+  expect(screen.getByRole('button', { name: 'Create new account' })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText(/Company context/), { target: { value: 'Required context retained' } });
+  for (let step = 2; step <= 4; step++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
+  await screen.findByRole('alert');
+  expect(onClose).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(2));
+  const first = mocks.post.mock.calls[0][1];
+  expect(first.newAccount.customFieldValues).toEqual({ context: 'Required context retained' });
+  expect(mocks.post.mock.calls[1][1]).toEqual(first);
+  await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
 });

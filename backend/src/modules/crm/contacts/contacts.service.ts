@@ -1,10 +1,10 @@
 import * as repo from './contacts.repository';
-import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
+import { mayReadContactAccount, presentContactAccount } from '../contacts-v2/contact-account-access';
 import prisma from '../../../config/database.config';
 import { salesContext } from '../leads/sales-context';
 
-async function presentLead<T extends { account?: unknown }>(tenantId: string, lead: T) {
-  return { ...lead, account: await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId) ? lead.account : null };
+async function presentLead<T extends { account?: unknown; companyName?: string | null; companyFromAccount?: boolean }>(tenantId: string, lead: T) {
+  return presentContactAccount(lead, await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId));
 }
 import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import { writeAuditLog } from '../../../core/audit/audit.service';
@@ -19,7 +19,7 @@ import { normalizeCrmStatus } from '@leadcrm/shared';
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
   const canReadAccount = await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId);
-  const data = result.data.map(lead => ({ ...lead, account: canReadAccount ? lead.account : null }));
+  const data = result.data.map(lead => presentContactAccount(lead, canReadAccount));
   return { ...paginate(data, result.total, { page: result.page, limit: result.limit }), facets: result.facets };
 }
 
@@ -84,9 +84,11 @@ export async function convertContact(id: string, tenantId: string, userId: strin
         } });
       }
     }
-    const converted = await convertLead(tx, tenantId, id, userId, { previousLead: lead, accountName: dto.accountName });
+    const converted = await convertLead(tx, tenantId, id, userId, { previousLead: lead, accountName: dto.accountName,
+      newAccount: dto.newAccount, skipAccountCreation: dto.skipAccountCreation });
     const account = converted.accountId ? await tx.account.findFirst({ where: { tenantId, id: converted.accountId } }) : null;
     const deal = dto.dealId ? await tx.deal.findFirst({ where: { tenantId, id: dto.dealId } }) : null;
-    return { lead: converted.lead, contact: { ...converted.contact, status: normalizeCrmStatus(converted.contact.status) }, account, deal };
+    const canReadAccount = await mayReadContactAccount(tx, tenantId);
+    return { lead: presentContactAccount(converted.lead, canReadAccount), contact: presentContactAccount({ ...converted.contact, status: normalizeCrmStatus(converted.contact.status) }, canReadAccount), account: canReadAccount ? account : null, deal };
   });
 }

@@ -8,6 +8,7 @@ export interface Campaign {
   type: 'Email' | 'Sms' | 'Multi-Channel';
   status: 'Draft' | 'scheduled' | 'sending' | 'interrupted' | 'sent' | 'partially_sent' | 'delivered' | 'failed';
   submissionStartedAt?: string | null;
+  reviewRequired?: boolean;
   submissionFinishedAt?: string | null;
   submissionInterruptedAt?: string | null;
   targetAudience: string;

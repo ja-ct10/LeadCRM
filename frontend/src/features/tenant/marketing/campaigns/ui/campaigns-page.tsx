@@ -191,7 +191,7 @@ export default function CampaignsPage() {
   const campaignColumns: DataGridColumnDef<Campaign>[] = [
     { id: 'name', sortable: true, header: 'Campaign', accessor: row => row.name, width: 260 },
     { id: 'type', header: 'Type', accessor: row => row.type, width: 140, cell: (_, row) => <span className="flex items-center gap-2">{getTypeIcon(row.type)}{row.type.toUpperCase() === 'SMS' ? 'SMS' : row.type}</span> },
-    { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} /> },
+    { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} reviewRequired={row.reviewRequired} /> },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
     { id: 'submitted', header: 'Submitted', accessor: row => row.sentCount, width: 120 },
     { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique opened recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },

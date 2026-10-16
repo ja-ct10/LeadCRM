@@ -13,6 +13,11 @@ export const AccountFieldsSchema = z.object({
     .transform(value => value.trim()).pipe(z.string().max(2000, 'Max 2000 characters')).optional(),
 });
 
+/** Omitted fields stay unchanged; null explicitly clears an optional Company Size. */
+export const AccountUpdateFieldsSchema = AccountFieldsSchema.partial().extend({
+  size: AccountFieldsSchema.shape.size.nullable(),
+});
+
 /** A retry identity belongs to this Account creation, including saves from edit forms. */
 export const NewAccountSchema = AccountFieldsSchema.extend({
   requestId: z.string().uuid(),

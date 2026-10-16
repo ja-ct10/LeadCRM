@@ -1,6 +1,6 @@
 import { normalizeCrmStatus, type LeadRead, type LeadUserSummary } from '@leadcrm/shared';
 import type { Lead as StoredLead } from '@prisma/client';
-type LeadProjectionSource = StoredLead & {
+type LeadProjectionSource = Omit<StoredLead, 'companyFromAccount'> & {
   assignedUser?: LeadUserSummary | null; account?: { id: string; name: string } | null;
   createdBy?: LeadUserSummary | null; updatedBy?: LeadUserSummary | null;
 };

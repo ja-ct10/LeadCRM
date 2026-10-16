@@ -7,6 +7,8 @@ export interface Campaign {
   name: string;
   type: CampaignType;
   status: CampaignStatus;
+  /** Unconfirmed SMS evidence requires review, without inventing a delivery state. */
+  reviewRequired?: boolean;
   submissionStartedAt?: string | null;
   submissionFinishedAt?: string | null;
   submissionInterruptedAt?: string | null;

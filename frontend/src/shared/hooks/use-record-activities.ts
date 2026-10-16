@@ -3,7 +3,7 @@
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { getPageCache, getPageCacheGeneration, invalidatePageCache, requestPageCache } from '@/shared/cache/page-cache';
 import { subscribeMailboxEvents } from '@/shared/services/mailbox-events';
 import { getGmailStatus, type GmailConnectionStatus } from '@/features/tenant/inbox/services/gmail.service';
@@ -39,6 +39,14 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
   const canViewLeads = useHasPermission('leads.view');
   const canViewContacts = useHasPermission('contacts.view');
   const canRead = enabled && canViewActivities && !isLoading && !authError;
+  const mailboxStatus = useCachedPage<GmailConnectionStatus>({
+    module: 'activities',
+    params: { purpose: 'gmail-status', authorizationRevision },
+    revalidateOnInvalidation: true,
+    disabled: USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || module === 'accounts' ||
+      !tenant?.id || !user?.id || !(canViewLeads || canViewContacts) || !!filters.type && !filters.type.split(',').includes('email'),
+    fetchFn: getGmailStatus,
+  });
   useEffect(() => {
     scopeRetry.current = false;
     if (USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || !tenant?.id || !user?.id) return;
@@ -47,20 +55,25 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       setAuthorizationRevision(value => value + 1);
     } };
     accessResets.add(accessReset);
+    return () => { accessResets.delete(accessReset); };
+  }, [canRead, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity]);
+  useEffect(() => {
+    if (USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || !tenant?.id || !user?.id || module === 'accounts' || !mailboxStatus.data?.isConnected) return;
     const refresh = () => {
       scopeRetry.current = false;
       invalidatePageCache('activities', tenant.id);
     };
-    const subscription = module !== 'accounts' ? subscribeMailboxEvents(tenant.id, user.id, {
+    const subscription = subscribeMailboxEvents(tenant.id, user.id, {
       onChange: refresh,
-      onOpen: refresh,
+      onOpen: () => { if (!scopeRetry.current) invalidatePageCache('activities', tenant.id); },
       onAccessChanged: () => {
         refresh();
         setAuthorizationRevision(value => value + 1);
       },
-    }) : undefined;
-    return () => { accessResets.delete(accessReset); subscription?.close(); };
-  }, [canRead, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity]);
+      onError: () => { void mailboxStatus.refetch(); },
+    });
+    return () => subscription.close();
+  }, [canRead, id, providedActivities, module, tenant?.id, user?.id, scopeIdentity, mailboxStatus.data?.isConnected, mailboxStatus.refetch]);
   const result = useCachedPage<ActivityPage>({
     module: 'activities',
     params: { recordModule: module, id, ...filters, pageCount, authorizationRevision },
@@ -96,15 +109,12 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
       return { data: [...rows.values()], total, nextCursor };
     },
   });
-  const mailboxStatus = useCachedPage<GmailConnectionStatus>({
-    module: 'activities',
-    params: { purpose: 'gmail-status', authorizationRevision },
-    revalidateOnInvalidation: true,
-    disabled: USE_MOCK_DATA || !canRead || !id || providedActivities !== undefined || module === 'accounts' ||
-      !tenant?.id || !user?.id || !(canViewLeads || canViewContacts) || !!filters.type && !filters.type.split(',').includes('email'),
-    fetchFn: getGmailStatus,
-  });
   const mailboxError = mailboxStatus.data?.syncError || (mailboxStatus.data?.isConnected === false ? 'Connect your work Gmail account first.' : mailboxStatus.error);
+  const refetch = useCallback(async () => {
+    // Explicit retry must also expire the per-cursor pages read inside the list.
+    invalidatePageCache('activities', tenant?.id ?? '', false);
+    await Promise.all([result.refetch(), mailboxStatus.refetch()]);
+  }, [result.refetch, mailboxStatus.refetch, tenant?.id]);
   const relatedType = module === 'accounts' ? 'company' : module === 'deals' ? 'deal' : 'contact';
   const loaded = useRef<{ identity: string; page?: ActivityPage }>({ identity });
   const unavailable = [401,403,404,409].includes(result.errorStatus ?? 0);
@@ -120,6 +130,7 @@ export function useRecordActivities(module: ActivityModule, id: string | undefin
     .sort((a,b) => b.createdAt.localeCompare(a.createdAt));
   const mockFiltered = mockActivities.filter(activity => (!filters.type || filters.type.split(',').includes(activity.type)) && matchesSearch(filters.search ?? '', activity.title, activity.description, activity.createdBy?.firstName, activity.createdBy?.lastName));
   return { ...result,
+    refetch,
     error: result.error || mailboxError,
     data: unavailable ? undefined : result.data,
     isInitialLoad: result.isInitialLoad && !page,
