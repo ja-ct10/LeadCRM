@@ -5,6 +5,7 @@ import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 const state = vi.hoisted(() => ({
+  role: 'Sales',
   pipelines: [] as any[], rows: [] as any[], params: '', permissions: [] as string[],
   replace: vi.fn(), refetch: vi.fn(), refreshPipelines: vi.fn(), addDeals: vi.fn(), moveDealStage: vi.fn(), setData: vi.fn(),
 }));
@@ -12,7 +13,7 @@ vi.mock('next/navigation', () => {
   const router = { replace: state.replace };
   return { useRouter: () => router, useSearchParams: () => new URLSearchParams(state.params) };
 });
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor' }, tenant: { id: 'tenant' } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'actor', role: state.role }, tenant: { id: 'tenant' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipelines, deals: [], users: [], addDeals: state.addDeals, moveDealStage: state.moveDealStage, refreshPipelines: state.refreshPipelines }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => state.permissions.includes(permission) }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: ({ params }: any) => ({ data: state.rows.filter(row => row.pipelineId === params.pipelineId), refetch: state.refetch, setData: state.setData, isInitialLoad: false }) }));
@@ -28,11 +29,14 @@ vi.mock('./pipeline-kanban-board', () => ({ PipelineKanbanBoard: ({ deals, onDea
   <button onClick={() => void onDealDragEnd('one', 'qualified')}>Move fixture Deal</button>
 </div> }));
 vi.mock('./forecast-bar', () => ({ default: () => null }));
-vi.mock('@/shared/components/crm/module-filter-rail', () => ({ ModuleFilterRail: ({ showFilters, onFilterToggle }: any) => showFilters ? <button onClick={() => onFilterToggle('stage', 'qualified')}>Filter Qualified</button> : null }));
+vi.mock('@/shared/components/crm/module-filter-rail', () => ({ ModuleFilterRail: ({ showFilters, onFilterToggle }: any) => showFilters ? <>
+  <button onClick={() => onFilterToggle('stage', 'qualified')}>Filter Qualified</button>
+  <button onClick={() => onFilterToggle('owner', 'other')}>Filter other owner</button>
+</> : null }));
 import PipelinePage from './pipeline-page';
 
 beforeEach(() => {
-  vi.clearAllMocks(); state.params = '';
+  vi.clearAllMocks(); state.role = 'Sales'; state.params = '';
   state.permissions = ['deals.create', 'deals.edit', 'deals.manage_stages'];
   state.pipelines = [{ id: 'sales', name: 'Sales Pipeline', stages: [{ id: 'lead', name: 'Lead', isDefault: true }, { id: 'qualified', name: 'Qualified' }] }];
   state.rows = [
@@ -43,6 +47,63 @@ beforeEach(() => {
   state.addDeals.mockResolvedValue(undefined); state.moveDealStage.mockResolvedValue({ ...state.rows[0], stageId: 'qualified' });
 });
 afterEach(cleanup);
+
+it('omits My Deals for Client Admin and keeps All Deals selected for personal-view URLs', () => {
+  state.role = 'Client Admin'; state.params = 'tab=my&view=my';
+  render(<PipelinePage />);
+  expect(screen.queryByRole('button', { name: 'My Deals', hidden: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'All Deals' }).className).toContain('border-b-2');
+  expect(screen.getByText('First Deal')).toBeTruthy();
+  expect(screen.getByText('Second Deal')).toBeTruthy();
+  expect(state.replace).not.toHaveBeenCalled();
+});
+
+it.each(['Sales', 'Account Manager'])('preserves personal Deal filtering for %s', role => {
+  state.role = role;
+  render(<PipelinePage />);
+  expect(screen.getByRole('button', { name: 'All Deals' }).className).toContain('border-b-2');
+  fireEvent.click(screen.getByRole('button', { name: 'My Deals' }));
+  expect(screen.getByRole('button', { name: 'My Deals' }).className).toContain('border-b-2');
+  expect(screen.getByText('First Deal')).toBeTruthy();
+  expect(screen.queryByText('Second Deal')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'All Deals' }));
+  expect(screen.getByText('Second Deal')).toBeTruthy();
+});
+
+it('clears a mounted personal Deal selection when the role changes to Client Admin', () => {
+  const view = render(<PipelinePage />);
+  fireEvent.click(screen.getByRole('button', { name: 'My Deals' }));
+  expect(screen.queryByText('Second Deal')).toBeNull();
+  state.role = 'Client Admin';
+  view.rerender(<PipelinePage />);
+  expect(screen.queryByRole('button', { name: 'My Deals', hidden: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'All Deals' }).className).toContain('border-b-2');
+  expect(screen.getByText('Second Deal')).toBeTruthy();
+  state.role = 'Sales';
+  view.rerender(<PipelinePage />);
+  expect(screen.getByRole('button', { name: 'My Deals' }).className).not.toContain('border-b-2');
+  expect(screen.getByText('Second Deal')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'My Deals' }));
+  expect(screen.queryByText('Second Deal')).toBeNull();
+});
+
+it('preserves Client Admin search, owner and stage filters without a personal tab', () => {
+  state.role = 'Client Admin';
+  render(<PipelinePage />);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: 'First' } });
+  expect(screen.getByText('First Deal')).toBeTruthy();
+  expect(screen.queryByText('Second Deal')).toBeNull();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search deals' }), { target: { value: '' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Deals' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter other owner' }));
+  expect(screen.queryByText('First Deal')).toBeNull();
+  expect(screen.getByText('Second Deal')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter other owner' }));
+  expect(screen.getByText('First Deal')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Qualified' }));
+  expect(screen.queryByText('First Deal')).toBeNull();
+  expect(screen.getByText('Second Deal')).toBeTruthy();
+});
 
 it('shows a readable persisted pipeline and a direct New Deal button without import controls', () => {
   render(<PipelinePage />);

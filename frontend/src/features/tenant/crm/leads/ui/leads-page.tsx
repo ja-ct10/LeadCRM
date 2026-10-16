@@ -51,6 +51,7 @@ export default function LeadsPage(): React.ReactElement {
     users,
   } = useData();
   const { user } = useAuth();
+  const isClientAdmin = user?.role === 'Client Admin';
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('leads.create');
   const canImport = useHasPermission('leads.import');
@@ -94,7 +95,12 @@ export default function LeadsPage(): React.ReactElement {
 
   // ── State ────────────────────────────────────────────────────────────
   const activeView: ViewType = 'table';
-  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
+  const tabParam = getParam('tab');
+  const [selectedTab, setActiveTab] = useState(() => isClientAdmin && tabParam === 'my' ? 'all' : tabParam || 'all');
+  const activeTab = isClientAdmin && (selectedTab === 'my' || tabParam === 'my') ? 'all' : selectedTab;
+  useEffect(() => {
+    if (isClientAdmin && (selectedTab === 'my' || tabParam === 'my')) setActiveTab('all');
+  }, [isClientAdmin, selectedTab, tabParam]);
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const highlightId = getParam('highlight') ?? undefined;
@@ -195,7 +201,10 @@ export default function LeadsPage(): React.ReactElement {
 
   // Sync to URL
   useEffect(() => {
-    if (highlightId) return;
+    if (highlightId) {
+      if (isClientAdmin && tabParam === 'my') updateParams({ tab: null });
+      return;
+    }
     updateParams({
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
@@ -207,7 +216,7 @@ export default function LeadsPage(): React.ReactElement {
       related: selectedRelated,
       createdOperator: createdFilter.operator || null, createdFrom: createdFilter.from || null, createdTo: createdFilter.to || null,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, createdFilter, highlightId, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, createdFilter, highlightId, isClientAdmin, tabParam, updateParams]);
 
   // -- Persist filter selections (fire-and-forget) ------------------------
   useEffect(() => {
@@ -382,7 +391,7 @@ export default function LeadsPage(): React.ReactElement {
           { id: 'all', label: 'All Leads' },
           { id: 'my', label: 'My Leads' },
           { id: 'active', label: 'Active Leads' },
-        ]}
+        ].filter(tab => !isClientAdmin || tab.id !== 'my')}
         activeTab={activeTab}
         onTabChange={setActiveTab}
         filterContent={<LeadCreatedFilter value={createdFilter} onChange={setCreatedFilter} />}

@@ -139,3 +139,25 @@ it('inserts a canonical variable in a new SMS template', async () => {
   fireEvent.click(await screen.findByRole('button', { name: /First Name.*firstName/ }));
   expect(content.value).toBe('{{firstName}}');
 });
+
+it.each(['Email', 'SMS'] as const)('inserts canonical first-name and source-specific company keys in new %s templates', async type => {
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
+  expect(content.placeholder).toContain('{{firstName}}');
+  expect(content.placeholder).not.toContain('{{first_name}}');
+  for (const source of ['LEADS', 'CONTACTS']) {
+    fireEvent.change(screen.getByLabelText('Template field source'), { target: { value: source } });
+    const companyKey = source === 'LEADS' ? 'companyName' : 'company';
+    for (const key of ['firstName', companyKey, 'sender_name', 'sender_email']) {
+      fireEvent.change(content, { target: { value: '' } });
+      fireEvent.focus(content);
+      fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+      const token = await screen.findByText(`{{${key}}}`);
+      fireEvent.click(token.closest('button')!);
+      expect(content.value).toBe(`{{${key}}}`);
+      expect(content.value).not.toMatch(/{{(?:first_name|company_name)}}/);
+    }
+  }
+});
