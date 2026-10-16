@@ -34,6 +34,68 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
+it.each(['leads', 'contacts'] as const)('projects canonical %s groups without changing saved layouts, custom groups, or technical keys', module => {
+  const layout = mocks.data[module].layout;
+  layout.revision = 7;
+  layout.groups.reverse().forEach((group, order) => { group.order = order; });
+  layout.groups.find(group => group.id === `${module}:section:1`)!.label = 'Status & Classification';
+  layout.groups.find(group => group.id === `${module}:section:2`)!.label = 'Relationships';
+  layout.groups.push({ id: 'custom-relationships', label: 'Relationships', order: 0 });
+  const companyKey = module === 'leads' ? 'companyName' : 'company';
+  layout.fields[companyKey] = { label: 'Company Name', groupId: `${module}:section:0`, order: 1, visibleInForm: false, visibleInDetails: true };
+  layout.fields.assignedUserId = { label: 'Assigned Agent', groupId: `${module}:section:2`, order: 0, visibleInForm: true, visibleInDetails: true };
+  mocks.data[module].definitions.push({ ...budget, module, id: 'relationship-note', name: 'Relationship Note', group: 'Relationships', groupId: 'custom-relationships' });
+  const before = structuredClone(mocks.data[module]);
+  render(<ClosingFieldsSettings />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: module } });
+  const expected = [
+    ['First Name', 'Basic Information'], ['Last Name', 'Basic Information'], ['Email', 'Basic Information'], ['Phone', 'Basic Information'], ['Created', 'Basic Information'],
+    ['Status', 'Status & Interest'], ['Product Interest', 'Status & Interest'], ['Company Name', 'Organization'], ['Account', 'Organization'],
+    [module === 'contacts' ? 'Source' : 'Lead Source', 'Additional Information'], ['Full Address', 'Additional Information'], ['Assigned Agent', 'Assigned Agent'],
+    ...(module === 'contacts' ? [['Notes', 'Additional Information']] : []),
+  ];
+  for (const [label, group] of expected) expect(screen.getByRole('button', { name: `Edit ${label}` }).closest('tr')!.cells[5].textContent).toBe(group);
+  expect(screen.queryByText('Status & Classification')).toBeNull();
+  expect(within(screen.getByText('Relationship Note').closest('tr')!).getByText('Relationships')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Reorder Company Name' })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'Reorder First Name' })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'Reorder Assigned Agent' })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'Reorder Status' })).toHaveProperty('disabled', false);
+  expect(screen.getByRole('button', { name: 'Reorder Relationship Note' })).toHaveProperty('disabled', false);
+  const canonical = ['Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent', 'Relationships'];
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  expect(Array.from((drawer('Add Field').getByLabelText('Group') as HTMLSelectElement).options, option => option.text)).toEqual(canonical);
+  fireEvent.click(drawer('Add Field').getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Company Name' }));
+  const nativeForm = within(screen.getByRole('region', { name: 'Edit Field' }));
+  expect(nativeForm.getByLabelText('Group')).toHaveProperty('value', `${module}:section:2`);
+  expect(Array.from((nativeForm.getByLabelText('Group') as HTMLSelectElement).options, option => option.text)).toEqual(canonical);
+  fireEvent.click(nativeForm.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Relationship Note' }));
+  expect(drawer('Edit Field').getByLabelText('Group')).toHaveProperty('value', 'custom-relationships');
+  expect(mocks.data[module]).toEqual(before);
+  expect(mocks.patch).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+  expect(within(screen.getByRole('button', { name: 'Edit Company Name' }).closest('tr')!).getByText(companyKey)).toBeTruthy();
+});
+
+it('keeps canonical labels after an optimistic server response and resolves a legacy custom-field group without an ID', async () => {
+  const layout = mocks.data.contacts.layout;
+  layout.groups[1].label = 'Status & Classification'; layout.groups[2].label = 'Relationships';
+  mocks.data.contacts.definitions.push({ ...contactNote, id: 'legacy', name: 'Legacy relationship note', group: 'Relationships', groupId: undefined });
+  render(<ClosingFieldsSettings />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'contacts' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Legacy relationship note' }));
+  expect(drawer('Edit Field').getByLabelText('Group')).toHaveProperty('value', 'contacts:section:2');
+  fireEvent.click(drawer('Edit Field').getByRole('button', { name: 'Cancel' }));
+  const responseLayout = { ...layout, revision: 1 };
+  mocks.patch.mockResolvedValueOnce({ data: { layout: responseLayout, fields: getCrmFieldCatalog('contacts', mocks.data.contacts.definitions, responseLayout) } });
+  fireEvent.click(screen.getByLabelText('Show in Details: Phone'));
+  await waitFor(() => expect(mocks.refetch).toHaveBeenCalled());
+  expect(within(screen.getByRole('button', { name: 'Edit Status' }).closest('tr')!).getByText('Status & Interest')).toBeTruthy();
+  expect(within(screen.getByRole('button', { name: 'Edit Legacy relationship note' }).closest('tr')!).getByText('Organization')).toBeTruthy();
+  expect(mocks.patch).toHaveBeenCalledWith('/administration/closing-requirements/layout/contacts', { action: 'field', technicalKey: 'phone', visibleInDetails: false, expectedRevision: 0 });
+});
+
 it('shows a compact searchable catalog with the four modules and System/Custom identity', () => {
   render(<ClosingFieldsSettings />);
   expect(screen.getByRole('heading', { name: 'Customize Fields' })).toBeTruthy();

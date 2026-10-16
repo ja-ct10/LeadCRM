@@ -46,6 +46,7 @@ import { RecordBackButton } from './record-back-button';
 import { ConvertLeadDialog } from '@/features/tenant/crm/leads/ui/convert-lead-dialog';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import { copyTextWithFeedback } from '@/shared/utils/clipboard';
+import { canonicalPersonFieldLayout } from '@/shared/utils/canonical-person-field-layout';
 
 export type CrmRecordModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 type RecordData = Record<string, unknown>;
@@ -96,6 +97,8 @@ function RelatedRecords({ records, module, empty, showSubtitle = true }: { recor
 export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = false, focusNote = false }: { module: CrmRecordModule; id: string; onClose?: () => void; onEdit?: (record: RecordData) => void; focusClosing?: boolean; focusNote?: boolean }) {
   const router = useRouter();
   const fieldLayout = useFieldLayout(module);
+  const detailLayout = canonicalPersonFieldLayout(fieldLayout.layout);
+  const isPerson = module === 'leads' || module === 'contacts';
   const customFields = useRecordCustomFieldDetails(module, id);
   const { user, tenant } = useAuth();
   const data = useData();
@@ -260,12 +263,11 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ];
   // Saved retired values remain readable; closing evidence uses its specialized component.
-  const catalog = getCrmFieldCatalog(module, customFields.fields.map(field => ({ ...field, deletedAt: undefined })), fieldLayout.layout);
+  const catalog = getCrmFieldCatalog(module, customFields.fields.map(field => ({ ...field, deletedAt: undefined })), detailLayout);
   const accountField = catalog.find(field => field.technicalKey === 'accountId');
   const showAccount = canReadAccounts && accountField?.visibleInDetails !== false;
   const linkedAccount = showAccount ? relationships?.account ?? object(record.account) ?? object(record.organization) : null;
-  const configuredRows = aboutRows.filter(row => row.technicalKey !== 'accountId' &&
-    !(linkedAccount && (row.apiField === 'companyName' || row.apiField === 'company')))
+  const configuredRows = aboutRows.filter(row => row.technicalKey !== 'accountId')
     .map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
   const relationshipGroupId = accountField?.groupId ?? `${module}:section:${module === 'deals' ? 1 : 2}`;
   const relationshipContent = module === 'deals' ? <div className="divide-y divide-border">
@@ -273,11 +275,13 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     {canReadContacts && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Contacts</h3><RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." /></div>}
     {showAccount && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3><RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." /></div>}
   </div> : (module === 'leads' || module === 'contacts') && showAccount ? <div>
+    <h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3>
     <RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." showSubtitle={false} />
     {linkedAccount && <RecordRows rows={[["Industry", linkedAccount.industry], ["Size", linkedAccount.size], ["Website", linkedAccount.website]]} />}
   </div> : null;
-  const showRelationships = module === 'deals' ? canReadLeads || canReadContacts || showAccount : (module === 'leads' || module === 'contacts') && showAccount;
-  const detailGroups = [...fieldLayout.layout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => ({ group,
+  const showRelationships = module === 'deals' ? canReadLeads || canReadContacts || showAccount : isPerson &&
+    (showAccount || Boolean(relationships && canReadDeals) || Boolean(module === 'contacts' && relationships?.sourceLead && canReadLeads));
+  const detailGroups = [...detailLayout.groups].sort((a, b) => a.order - b.order).filter(group => group.id !== CLOSED_WON_GROUP_ID).map(group => ({ group,
     fields: catalog.filter(field => field.groupId === group.id && field.visibleInDetails && (field.customFieldId ? !USE_MOCK_DATA : configuredRows.some(item => item.field?.technicalKey === field.technicalKey))),
     relationships: group.id === relationshipGroupId && showRelationships,
   })).filter(group => group.fields.length || group.relationships);
@@ -286,13 +290,24 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     : linkedAccount ? 1 : 0 : 0), 0);
 
   const mockCustomFields = object(record.customFields);
-  const deals = relationships?.deals ?? [];
+  const deals = (relationships?.deals ?? []).filter(deal => !isPerson || !deal.isArchived);
+  const dealCount = (relationships?.deals?.length ?? 0) < 50 ? deals.length : undefined;
   const links = module === 'deals' ? { dealId: id } : module === 'leads' ? { leadId: id } : module === 'contacts' ? { contactId: id } : { accountId: id };
   const activityLoading = timeline.isInitialLoad;
   const activityError = timeline.error;
   const formRecord = { ...record, companyName: company, leadSource: source, organizationId: record.accountId, productInterests: record.productInterest ?? record.productInterests, status: statusLabel };
   const website = text(record.website);
   const websiteHref = website && !/^[a-z][a-z0-9+.-]*:/i.test(website) ? `https://${website}` : /^https?:\/\//i.test(website) ? website : undefined;
+
+  const dealActions = canCreateDeal && !USE_MOCK_DATA && <Button variant="ghost" size="sm" className="min-h-9 gap-1 text-xs text-[var(--primary)]" onClick={() => setCreatingDeal(true)}><Plus size={13} />Create deal</Button>;
+  const dealContent = <>
+    <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
+    {relationships?.hasMoreDeals && <Button variant="ghost" size="sm" onClick={relatedQuery.loadMore} disabled={relatedQuery.isRefreshing}>Load older deals</Button>}
+    {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
+      await apiClient.post('/crm/deals', { customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
+      setCreatingDeal(false);
+    }} /></div>}
+  </>;
 
   const manageMenu = (canEdit || canArchive) && (
     <DropdownMenu>
@@ -380,28 +395,30 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
             {module === 'deals' && !USE_MOCK_DATA && <DealClosingRequirements focusRequested={closingAttention} dealId={id} canEdit={canEdit} />}
             {!USE_MOCK_DATA && customFields.query.error && <div role="alert" className="text-xs text-destructive">{customFields.query.error}<Button variant="ghost" size="sm" onClick={() => void customFields.query.refetch()}>Retry custom fields</Button></div>}
             {detailGroups.map(({ group, fields, relationships: hasRelationships }) => <RecordSection key={group.id} title={group.label}>
-              {hasRelationships && relationshipContent}
+              {hasRelationships && !isPerson && relationshipContent}
               {fields.map(field => {
                 if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldInlineRow key={field.customFieldId} details={customFields} fieldId={field.customFieldId} canEdit={canEdit} />;
                 const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
                 return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label, apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
               })}
+              {hasRelationships && isPerson && <>
+                {relationshipContent}
+                {relationships && canReadDeals && <div className="border-t border-border/60">
+                  <div className="flex min-w-0 flex-wrap items-center justify-between gap-1 px-3 pt-2"><h3 className="text-xs font-semibold text-muted-foreground">Deals{dealCount !== undefined && <span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">{dealCount}</span>}</h3>{dealActions}</div>
+                  {dealContent}
+                </div>}
+                {module === 'contacts' && relationships?.sourceLead && canReadLeads && <div className="border-t border-border/60">
+                  <h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Related Leads<span className="ml-1.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums">1</span></h3>
+                  <RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" />
+                </div>}
+              </>}
             </RecordSection>)}
             {detailsVisited && relatedQuery.isInitialLoad && <p role="status" className="animate-pulse p-3 text-sm text-muted-foreground">Loading related records…</p>}
             {relatedQuery.error && <div role="alert" className="rounded-xl border border-border p-3 text-sm"><p>{relatedQuery.error}</p><Button variant="ghost" size="sm" onClick={() => void relatedQuery.refetch()}>Retry related records</Button></div>}
 
             {relationships && <>
               {module === 'accounts' && canReadContacts && <RecordSection title="Contacts" count={(relationships.contacts?.length ?? 0) < 50 ? relationships.contacts?.length : undefined}><RelatedRecords records={relationships.contacts ?? []} module="contacts" empty="No contacts linked to this account." /></RecordSection>}
-              {module !== 'deals' && canReadDeals && <RecordSection title="Deals" count={deals.length < 50 ? deals.length : undefined} actions={canCreateDeal && !USE_MOCK_DATA && <Button variant="ghost" size="sm" className="min-h-9 gap-1 text-xs text-[var(--primary)]" onClick={() => setCreatingDeal(true)}><Plus size={13} />Create deal</Button>}>
-                <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
-                {relationships.hasMoreDeals && <Button variant="ghost" size="sm" onClick={relatedQuery.loadMore} disabled={relatedQuery.isRefreshing}>Load older deals</Button>}
-                {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-                  await apiClient.post('/crm/deals', { customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(module === 'leads' ? { leadIds: [id] } : module === 'contacts' ? { contactIds: [id] } : { accountId: id }) });
-                  setCreatingDeal(false);
-                }} /></div>}
-              </RecordSection>}
-
-              {module === 'contacts' && relationships.sourceLead && canReadLeads && <RecordSection title="Related leads" count={1}><RelatedRecords records={[relationships.sourceLead]} module="leads" empty="" /></RecordSection>}
+              {module === 'accounts' && canReadDeals && <RecordSection title="Deals" count={dealCount} actions={dealActions}>{dealContent}</RecordSection>}
             </>}
 
             {USE_MOCK_DATA && mockCustomFields && Object.keys(mockCustomFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(mockCustomFields).length}><RecordRows rows={Object.entries(mockCustomFields)} /></RecordSection>}

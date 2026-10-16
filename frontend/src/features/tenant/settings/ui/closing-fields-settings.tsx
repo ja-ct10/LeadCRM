@@ -20,6 +20,7 @@ import { SortableFieldLayoutItem } from './sortable-field-layout';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { toast } from 'sonner';
 import { matchesSearch } from '@/shared/utils/search';
+import { canonicalPersonFieldLayout } from '@/shared/utils/canonical-person-field-layout';
 
 const endpoint = '/administration/closing-requirements';
 type LayoutResponse = { layout: FieldLayout; fields: CrmFieldCatalogEntry[] };
@@ -32,13 +33,18 @@ function FieldForm({ field, module, initialLayout, onSaved, onClose }: { field?:
   const nameInput = useRef<HTMLInputElement>(null);
   const nameErrorId = useId();
   const [nameError, setNameError] = useState('');
-  const [layout, setLayout] = useState(initialLayout);
-  const [form, setForm] = useState<FieldDraft>(() => field ? { name: field.name, type: field.type, module: field.module, group: field.group, groupId: field.groupId ?? layout.groups.find(group => group.label === field.group)?.id, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, order: field.order, required: field.required, active: field.active, options: [...field.options], description: field.description } : empty(module, layout));
+  const [savedLayout, setSavedLayout] = useState(initialLayout);
+  const layout = canonicalPersonFieldLayout(savedLayout);
+  const [form, setForm] = useState<FieldDraft>(() => {
+    if (!field) return empty(module, layout);
+    const configured = getCrmFieldCatalog(module, [field], layout).find(entry => entry.customFieldId === field.id)!;
+    return { name: field.name, type: field.type, module: field.module, group: configured.group, groupId: configured.groupId, visibleInForm: field.visibleInForm, visibleInDetails: field.visibleInDetails, order: field.order, required: field.required, active: field.active, options: [...field.options], description: field.description };
+  });
   const [error, setError] = useState(''), [busy, setBusy] = useState(false), [addingGroup, setAddingGroup] = useState(false), [groupName, setGroupName] = useState('');
   const update = <K extends keyof FieldDraft>(key: K, value: FieldDraft[K]) => setForm(previous => ({ ...previous, [key]: value }));
   const addGroup = async () => {
     if (busy || !groupName.trim()) return; setBusy(true); setError('');
-    try { const result = (await apiClient.patch<{ data: LayoutResponse }>(`${endpoint}/layout/${module}`, { action: 'add', label: groupName, expectedRevision: layout.revision ?? 0 })).data; const added = result.layout.groups.find(group => !layout.groups.some(previous => previous.id === group.id))!; setLayout(result.layout); setForm(previous => ({ ...previous, groupId: added.id, group: added.label })); setAddingGroup(false); setGroupName(''); }
+    try { const result = (await apiClient.patch<{ data: LayoutResponse }>(`${endpoint}/layout/${module}`, { action: 'add', label: groupName, expectedRevision: layout.revision ?? 0 })).data; const added = result.layout.groups.find(group => !savedLayout.groups.some(previous => previous.id === group.id))!; setSavedLayout(result.layout); setForm(previous => ({ ...previous, groupId: added.id, group: added.label })); setAddingGroup(false); setGroupName(''); }
     catch (failure) { setError(failure instanceof Error ? failure.message : 'Unable to add group.'); } finally { setBusy(false); }
   };
   return <form className="flex h-full min-h-0 flex-col" noValidate onSubmit={async event => {
@@ -112,8 +118,20 @@ export function ClosingFieldsSettings() {
   } });
   const data = query.data?.layout.module === module ? query.data : undefined;
   const override = optimistic?.layout.module === module ? optimistic : null;
-  const layout = override?.layout ?? data?.layout ?? defaultFieldLayout(module);
-  const fields = override?.fields ?? getCrmFieldCatalog(module, data?.definitions ?? [], layout);
+  const savedLayout = override?.layout ?? data?.layout ?? defaultFieldLayout(module);
+  const savedFields = override?.fields ?? getCrmFieldCatalog(module, data?.definitions ?? [], savedLayout);
+  const layout = canonicalPersonFieldLayout(savedLayout);
+  const nativeFields = getCrmFieldCatalog(module, [], layout);
+  const fields = savedFields.map(field => {
+    const groupId = field.customFieldId ? field.groupId : nativeFields.find(native => native.technicalKey === field.technicalKey)!.groupId;
+    return { ...field, groupId, group: layout.groups.find(group => group.id === groupId)?.label ?? field.group };
+  }).sort((a, b) => (layout.groups.find(group => group.id === a.groupId)?.order ?? 100000) - (layout.groups.find(group => group.id === b.groupId)?.order ?? 100000) || a.order - b.order || a.technicalKey.localeCompare(b.technicalKey));
+  const identity = (field: CrmFieldCatalogEntry) => field.canonicalTechnicalKey ?? field.technicalKey;
+  const sortableGroups = new Set(layout.groups.filter(group => {
+    const savedKeys = new Set(savedFields.filter(field => field.groupId === group.id).map(identity));
+    const displayed = fields.filter(field => field.groupId === group.id);
+    return displayed.length === savedKeys.size && displayed.every(field => savedKeys.has(identity(field)));
+  }).map(group => group.id));
   const ready = !!data && !query.error && !query.isInitialLoad;
   const term = search.trim().toLowerCase();
   const filtered = fields.filter(field => matchesSearch(search, field.label, field.technicalKey, field.canonicalTechnicalKey, field.group, field.type, field.kind));
@@ -140,20 +158,19 @@ export function ClosingFieldsSettings() {
   };
   const reorderGroups = async (ids: string[]) => {
     if (saving.current || !ready) return;
-    setOptimistic({ layout: { ...layout, groups: ids.map((id, order) => ({ ...layout.groups.find(group => group.id === id)!, order })) }, fields });
+    setOptimistic({ layout: { ...savedLayout, groups: ids.map((id, order) => ({ ...savedLayout.groups.find(group => group.id === id)!, order })) }, fields: savedFields });
     await mutateLayout({ action: 'reorderGroups', groupIds: ids, expectedRevision: layout.revision ?? 0 });
   };
   const sameGroupCollision: CollisionDetection = args => closestCenter({ ...args, droppableContainers: args.droppableContainers.filter(container => container.data.current?.groupId === args.active.data.current?.groupId) });
   const reorderFields = async ({ active, over }: DragEndEvent) => {
     if (!canEdit || saving.current || pending || !ready || term || !over || active.id === over.id) return;
     const groupId = active.data.current?.groupId as string;
-    if (groupId !== over.data.current?.groupId) return;
-    const contained = fields.filter(field => field.groupId === groupId);
-    const identity = (field: CrmFieldCatalogEntry) => field.canonicalTechnicalKey ?? field.technicalKey;
+    if (groupId !== over.data.current?.groupId || !sortableGroups.has(groupId)) return;
+    const contained = savedFields.filter(field => field.groupId === groupId);
     const from = contained.findIndex(field => identity(field) === active.id), to = contained.findIndex(field => identity(field) === over.id);
     if (from < 0 || to < 0) return;
     const ordered = arrayMove(contained, from, to), orders = new Map(ordered.map((field, order) => [identity(field), order]));
-    setOptimistic({ layout, fields: fields.map(field => ({ ...field, order: orders.get(identity(field)) ?? field.order })).sort((a, b) => (layout.groups.find(group => group.id === a.groupId)?.order ?? 0) - (layout.groups.find(group => group.id === b.groupId)?.order ?? 0) || a.order - b.order) });
+    setOptimistic({ layout: savedLayout, fields: savedFields.map(field => ({ ...field, order: orders.get(identity(field)) ?? field.order })).sort((a, b) => (savedLayout.groups.find(group => group.id === a.groupId)?.order ?? 0) - (savedLayout.groups.find(group => group.id === b.groupId)?.order ?? 0) || a.order - b.order) });
     await mutateLayout({ action: 'reorderFields', groupId, technicalKeys: ordered.map(identity), expectedRevision: layout.revision ?? 0 });
   };
   return <div className="min-w-0 space-y-5">
@@ -166,7 +183,7 @@ export function ClosingFieldsSettings() {
     {query.isInitialLoad || !data && !query.error ? <TableLoadingState label="Loading fields" /> : query.error ? <p role="alert">{query.error}<Button onClick={() => void query.refetch()}>Retry</Button></p> : <DndContext sensors={sensors} collisionDetection={sameGroupCollision} onDragEnd={event => void reorderFields(event)}>
       <div className="overflow-x-auto rounded-lg border border-border"><table className="w-full min-w-[1050px] text-left text-xs"><thead className="bg-muted"><tr>{['Drag', 'Label', 'System/Custom', 'Type', 'Technical variable key', 'Group', 'Required', 'Show in Forms', 'Show in Details', 'Actions'].map(label => <th key={label} className="p-3 font-semibold">{label}</th>)}</tr></thead><tbody>
         {[...layout.groups].sort((a, b) => a.order - b.order).map(group => <SortableContext key={group.id} items={fields.filter(field => field.groupId === group.id).map(field => field.canonicalTechnicalKey ?? field.technicalKey)} strategy={verticalListSortingStrategy}>
-          {filtered.filter(field => field.groupId === group.id).map(field => <SortableFieldLayoutItem row key={field.canonicalTechnicalKey ?? field.technicalKey} id={field.canonicalTechnicalKey ?? field.technicalKey} groupId={field.groupId} label={field.label} disabled={!canEdit || pending || !ready || !!term}>
+          {filtered.filter(field => field.groupId === group.id).map(field => <SortableFieldLayoutItem row key={field.canonicalTechnicalKey ?? field.technicalKey} id={field.canonicalTechnicalKey ?? field.technicalKey} groupId={field.groupId} label={field.label} disabled={!canEdit || pending || !ready || !!term || !sortableGroups.has(group.id)} disabledReason={!sortableGroups.has(group.id) ? 'Sorting is unavailable while this group uses canonical field placement.' : undefined}>
             <td className="p-3 font-medium">{field.label}{!field.active && <span className="block text-muted-foreground">Disabled</span>}</td><td className="p-3">{field.kind}</td><td className="p-3">{field.type}</td><td className="max-w-64 break-all p-3 font-mono">{field.technicalKey}</td><td className="p-3">{field.group}</td><td className="p-3">{field.required ? 'Yes' : 'No'}</td>
             {(['visibleInForm', 'visibleInDetails'] as const).map(key => <td key={key} className="p-3"><input aria-label={`${key === 'visibleInForm' ? 'Show in Forms' : 'Show in Details'}: ${field.label}`} type="checkbox" checked={field[key]} disabled={!canEdit || pending || (key === 'visibleInForm' && field.mandatory)} onChange={event => void mutateLayout({ action: 'field', technicalKey: field.technicalKey, [key]: event.target.checked })} /></td>)}
             <td className="p-2"><div className="flex items-center gap-1">{canEdit && <Button variant="ghost" size="icon" className="h-11 w-11" aria-label={`Edit ${field.label}`} title={`Edit ${field.label}`} disabled={pending} onClick={() => setPanel(field)}><Pencil aria-hidden="true" /></Button>}{canDelete && field.kind === 'Custom' && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="ghost" size="icon" className="h-11 w-11 text-destructive dark:text-destructive hover:text-destructive dark:hover:text-destructive" aria-label="Delete field" title="Delete field" disabled={pending} onClick={() => { if (!saving.current) setDeleteTarget(field); }}><Trash2 aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Delete field</TooltipContent></Tooltip></TooltipProvider>}</div></td>
@@ -177,7 +194,7 @@ export function ClosingFieldsSettings() {
     <ConfirmActionDialog open={deleteTarget !== null} onOpenChange={open => { if (!open) setDeleteTarget(null); }} title="Delete custom field?"
       description={`Delete “${deleteTarget?.label ?? ''}” from the current configuration?`} warning="Historical values and evidence will be retained."
       confirmLabel="Delete field" cancelLabel="Cancel" variant="destructive" isLoading={pending} confirmDisabled={!canDelete} onConfirm={deleteField} />
-    <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'new' ? 'Add Field' : 'Edit Field'} subtitle={panel === 'new' ? 'Complete the field details below.' : undefined}>{panel && (panel === 'new' || panel.customFieldId ? <FieldForm key={panel === 'new' ? module : panel.customFieldId} field={panel === 'new' ? undefined : data?.definitions.find(field => field.id === panel.customFieldId)} module={module} initialLayout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} /> : <NativeFieldForm field={panel} layout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} />)}</SlidingDrawer>
-    <ManageFieldGroups key={module} open={manageGroups} onOpenChange={setManageGroups} module={module} onModuleChange={switchModule} layout={layout} fields={fields} pending={pending} ready={ready} canEdit={canEdit} canDelete={canDelete} mutate={mutateLayout} reorder={reorderGroups} />
+    <SlidingDrawer isOpen={panel !== null} onClose={() => setPanel(null)} title={panel === 'new' ? 'Add Field' : 'Edit Field'} subtitle={panel === 'new' ? 'Complete the field details below.' : undefined}>{panel && (panel === 'new' || panel.customFieldId ? <FieldForm key={panel === 'new' ? module : panel.customFieldId} field={panel === 'new' ? undefined : data?.definitions.find(field => field.id === panel.customFieldId)} module={module} initialLayout={savedLayout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} /> : <NativeFieldForm field={panel} layout={layout} onClose={() => setPanel(null)} onSaved={() => { setPanel(null); void query.refetch(); }} />)}</SlidingDrawer>
+    <ManageFieldGroups key={module} open={manageGroups} onOpenChange={setManageGroups} module={module} onModuleChange={switchModule} layout={savedLayout} fields={savedFields} pending={pending} ready={ready} canEdit={canEdit} canDelete={canDelete} mutate={mutateLayout} reorder={reorderGroups} />
   </div>;
 }
