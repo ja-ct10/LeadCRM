@@ -10,6 +10,7 @@ import { useNotifications } from '../hooks/use-notifications';
 import { NotificationContent, NotificationEmptyState } from './notification-content';
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
 
 interface NotificationsDropdownProps {
   isOpen: boolean;
@@ -99,11 +100,11 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
           : !notifications.length ? <NotificationEmptyState />
           : <div className="divide-y divide-border">{notifications.slice(0, 5).map(notification => (
             <button key={notification.id} type="button" disabled={isMutating}
-              onClick={async () => {
+              onClick={() => requestNavigation(async () => {
                 if (!notification.isRead && !await markAsRead(notification.id)) return;
                 const destination = await resolveNotificationDestination(notification.id);
                 if (destination) { onClose(); router.push(destination); }
-              }}
+              })}
               className={cn('flex w-full items-start gap-3 px-4 py-4 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
                 notification.isRead ? 'hover:bg-slate-50 dark:hover:bg-slate-800/60' : 'bg-blue-50/50 hover:bg-blue-50 dark:bg-blue-500/5 dark:hover:bg-blue-500/10')}>
               <NotificationContent notification={notification} />
@@ -111,7 +112,7 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
           ))}</div>}
       </div>
       <div className="shrink-0 border-t border-border p-3">
-        <Button className="h-10 w-full justify-between" onClick={() => { onClose(); router.push('/notifications'); }}><span className="flex-1">View All Notifications</span><ArrowRight aria-hidden="true" /></Button>
+        <Button className="h-10 w-full justify-between" onClick={() => requestNavigation(() => { onClose(); router.push('/notifications'); })}><span className="flex-1">View All Notifications</span><ArrowRight aria-hidden="true" /></Button>
       </div>
     </motion.div>
   )}</AnimatePresence>}</ThemedPortal>;

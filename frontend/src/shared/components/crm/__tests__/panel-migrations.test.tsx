@@ -1,7 +1,7 @@
-vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: true } }) }));
+vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => mocks.canMutate, canReassign: true, policy: { userId: 'actor', tenantId: 'tenant', assignmentRestricted: false, clientAdmin: mocks.role === 'Client Admin' } }) }));
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 // Apply the final tab visibility immediately; animation timing is covered in browser checks.
 vi.mock('motion/react', async importOriginal => {
   const actual = await importOriginal<typeof import('motion/react')>();
@@ -15,11 +15,11 @@ vi.mock('motion/react', async importOriginal => {
     get: (target, property) => property === 'div' ? StaticDiv : Reflect.get(target, property),
   }), useReducedMotion: () => true };
 });
-const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), post: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn(), userId: 'user', role: 'Client Admin', authenticated: true, canMutate: true }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
-vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', tenantId: 'tenant', role: 'Client Admin', } }) }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put, post: mocks.post } }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: mocks.authenticated ? { id: mocks.userId, tenantId: 'tenant', role: mocks.role } : undefined }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], deals: [], moveDealStage: mocks.move, pipelines: [{ id: 'sales', stages: [{ id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }, { id: 'lost', name: 'Lost', isLost: true }] }] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.includes('*') || mocks.permissions.includes(permission) }));
 vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: ({ links }: { links: object }) => <div data-testid="related-tasks">{JSON.stringify(links)}</div> }));
@@ -30,30 +30,38 @@ vi.mock('@/features/tenant/crm/leads/ui/convert-lead-dialog', () => ({ ConvertLe
 import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-record-view';
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { toast } from 'sonner';
-import { defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
+vi.mock('../inline-deal-form', () => ({ InlineDealForm: ({ onSubmit, onCancel }: { onSubmit: (values: object) => Promise<void>; onCancel: () => void }) => <form aria-label="New related Deal" onSubmit={event => { event.preventDefault(); void onSubmit({ title: 'Created deal', productInterestIds: ['product'], pipelineId: 'sales', stageId: 'lead', priority: 'MEDIUM', expectedCloseDate: '2026-10-20', customFieldValues: { evidence: 'Kept' } }); }}><button>Create Deal</button><button type="button" onClick={onCancel}>Cancel Deal</button></form> }));
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 
 const records = {
-  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
-  leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
-  contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
+  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUserId: 'user', assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
+  leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUserId: 'user', assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
+  contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company', assignedUserId: 'user' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
 };
 
-it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('opens the current $module recipient from the $surface Inbox icon', async ({ module, surface }) => {
+const personSurfaces = (['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface })));
+
+it.each(personSurfaces.flatMap(entry => ['Client Admin', 'Sales Agent'].map(role => ({ ...entry, role }))))('opens the owned $module recipient from both $surface actions as $role', async ({ module, surface, role }) => {
+  mocks.role = role;
   const original = mocks.get.getMockImplementation()!;
   const email = `${module}+sales@Example.test`;
   mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUser: { email: 'agent@example.test' }, account: { email: 'account@example.test' } } } : original(path));
   render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
-  fireEvent.click(await screen.findByRole('button', { name: 'Open messages' }));
-  expect(mocks.push).toHaveBeenCalledWith(recordEmailComposeHref(email));
+  for (const name of [`Compose email to ${email}`, 'Open messages']) {
+    mocks.push.mockClear();
+    fireEvent.click(await screen.findByRole('button', { name }));
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email));
+    expect(toast.error).not.toHaveBeenCalled();
+  }
   const url = new URL(mocks.push.mock.calls[0][0], 'https://example.test');
   expect(url.searchParams.get('to')).toBe(email);
   expect(url.searchParams.has('subject')).toBe(false);
   expect(url.searchParams.has('body')).toBe(false);
   expect(mocks.put).not.toHaveBeenCalled();
 });
-it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].flatMap(surface => ['', 'broken'].map(email => ({ module, surface, email })))))('disables $module $surface Inbox navigation for unusable email $email', async ({ module, surface, email }) => {
+it.each(personSurfaces.flatMap(entry => ['', 'broken', null, undefined].map(email => ({ ...entry, email }))))('disables owned $module $surface email actions for unusable email $email', async ({ module, surface, email }) => {
   const original = mocks.get.getMockImplementation()!;
   mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUser: { email: 'agent@example.test' } } } : original(path));
   render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
@@ -62,7 +70,78 @@ it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].fla
   expect(button.title).toBe('No valid email address available.');
   expect(button.parentElement?.tabIndex).toBe(0);
   fireEvent.click(button);
+  if (email) {
+    const chip = screen.getByRole('button', { name: `Compose email to ${email}` }) as HTMLButtonElement;
+    expect(chip.disabled).toBe(true);
+    fireEvent.click(chip);
+  } else expect(screen.queryByRole('button', { name: /^Compose email to/ })).toBeNull();
   expect(mocks.push).not.toHaveBeenCalled();
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+it.each(personSurfaces.flatMap(entry => ['Client Admin', 'Sales Agent'].flatMap(role =>
+  ['other-user', null, '', undefined].map(assignedUserId => ({ ...entry, role, assignedUserId })))))('blocks both $module $surface actions for $role with assignment $assignedUserId', async ({ module, surface, role, assignedUserId }) => {
+  mocks.role = role;
+  const original = mocks.get.getMockImplementation()!;
+  const email = `${module}@example.test`;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUserId,
+    assignedUser: { id: 'user', email: 'agent@example.test' } } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  for (const name of [`Compose email to ${email}`, 'Open messages']) {
+    vi.mocked(toast.error).mockClear();
+    const button = await screen.findByRole('button', { name }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(`You cannot email this ${module === 'leads' ? 'lead' : 'contact'} because it is not assigned to you.`);
+    expect(mocks.push).not.toHaveBeenCalled();
+  }
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+
+it.each(personSurfaces.flatMap(entry => ['', 'broken', null, undefined].map(email => ({ ...entry, email }))))('prioritizes assignment feedback for $module $surface with unusable email $email', async ({ module, surface, email }) => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUserId: null } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  const inbox = await screen.findByRole('button', { name: 'Open messages' }) as HTMLButtonElement;
+  expect(inbox.disabled).toBe(false);
+  expect(inbox.title).toBe('Open messages');
+  expect(inbox.parentElement?.tabIndex).toBe(-1);
+  for (const button of [inbox, ...(email ? [screen.getByRole('button', { name: `Compose email to ${email}` })] : [])]) {
+    vi.mocked(toast.error).mockClear();
+    expect((button as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(button);
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(`You cannot email this ${module === 'leads' ? 'lead' : 'contact'} because it is not assigned to you.`);
+    expect(mocks.push).not.toHaveBeenCalled();
+  }
+  if (!email) expect(screen.queryByRole('button', { name: /^Compose email to/ })).toBeNull();
+});
+
+it.each(personSurfaces.flatMap(entry => ['missing user', 'empty user ID'].map(auth => ({ ...entry, auth }))))('does not expose $module $surface email actions with $auth', async ({ module, surface, auth }) => {
+  mocks.authenticated = auth !== 'missing user';
+  mocks.userId = '';
+  const original = mocks.get.getMockImplementation()!;
+  const email = `${module}@example.test`;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email, assignedUserId: auth === 'missing user' ? undefined : '' } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  await screen.findByRole('alert');
+  expect(screen.queryByRole('button', { name: `Compose email to ${email}` })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Open messages' })).toBeNull();
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(toast.error).not.toHaveBeenCalled();
+});
+
+it.each(personSurfaces)('does not require general mutation access to email an owned $module from the $surface', async ({ module, surface }) => {
+  mocks.canMutate = false;
+  const original = mocks.get.getMockImplementation()!;
+  const email = `${module}@example.test`;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], email } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  for (const name of [`Compose email to ${email}`, 'Open messages']) {
+    mocks.push.mockClear();
+    fireEvent.click(await screen.findByRole('button', { name }));
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email));
+    expect(toast.error).not.toHaveBeenCalled();
+  }
 });
 
 
@@ -87,15 +166,65 @@ it('uses the Lead only when no Contact exists, with a safe missing-Product subje
   expect(href.searchParams.get('to')).toBe('lina@example.test'); expect(href.searchParams.get('subject')).toBe('Product Inquiry');
 });
 
-it.each(['', 'broken'])('disables an unusable canonical Contact email (%s) without falling back to the Lead or staff', async email => {
+const dealEmailCases = (['panel', 'page'] as const).flatMap(surface =>
+  (['chip', 'inbox'] as const).map(action => ({ surface, action })));
+const dealEmailRoleCases = dealEmailCases.flatMap(testCase =>
+  ['Sales Representative', 'Client Admin'].map(role => ({ ...testCase, role })));
+
+async function renderDealEmailAction({ surface, action }: typeof dealEmailCases[number], record: Record<string, unknown> = records.deals, email = 'lina@example.test') {
   const original = mocks.get.getMockImplementation()!;
-  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, contactDeals: [{ contact: { id: 'contact', email } }] } } : original(path));
-  render(<CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} />);
-  const button = await screen.findByRole('button', { name: email ? `Compose email to ${email}` : 'No email address is available for this Deal.' });
-  expect((button as HTMLButtonElement).disabled).toBe(true); fireEvent.click(button); expect(mocks.push).not.toHaveBeenCalled();
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: record } : original(path));
+  const error = vi.spyOn(toast, 'error');
+  const onOpenChange = vi.fn();
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={onOpenChange} /> : <CrmRecordView module="deals" id="one" />);
+  const button = await screen.findByRole('button', { name: action === 'inbox' ? 'Open messages' : email ? `Compose email to ${email}` : 'No email address is available for this Deal.' });
+  return { button, error, onOpenChange };
+}
+
+it.each(dealEmailRoleCases)('opens the assigned Deal from the $surface $action for $role without edit permission', async testCase => {
+  mocks.role = testCase.role;
+  mocks.permissions = ['deals.view'];
+  const { button, error, onOpenChange } = await renderDealEmailAction(testCase);
+  fireEvent.click(button);
+  expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry'));
+  expect(error).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(mocks.put).not.toHaveBeenCalled();
 });
+
+it.each(dealEmailRoleCases.flatMap(testCase => ['other-user', null, undefined].flatMap(assignedUserId =>
+  ['customer@example.test', '', 'broken'].map(email => ({ ...testCase, assignedUserId, email }))))
+)('blocks the Deal $surface $action for $role with assignment $assignedUserId and email $email', async testCase => {
+  mocks.role = testCase.role;
+  const { button, error, onOpenChange } = await renderDealEmailAction(testCase, {
+    ...records.deals, assignedUserId: testCase.assignedUserId,
+    contactDeals: [{ contact: { id: 'contact', email: testCase.email, assignedUserId: 'user' } }],
+  }, testCase.email);
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(button);
+  expect(error).toHaveBeenCalledExactlyOnceWith('You cannot email this deal because it is not assigned to you.');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(screen.getByRole('heading', { name: records.deals.title })).toBeTruthy();
+});
+
+it.each(dealEmailCases.flatMap(testCase => ['', 'broken'].map(email => ({ ...testCase, email }))))('reports unusable Contact email $email from the assigned Deal $surface $action without falling back to the Lead or staff', async testCase => {
+  const { button, error, onOpenChange } = await renderDealEmailAction(testCase, {
+    ...records.deals, assignedUser: { email: 'staff@example.test' },
+    contactDeals: [{ contact: { id: 'contact', email: testCase.email } }],
+  }, testCase.email);
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(button);
+  expect(error).toHaveBeenCalledExactlyOnceWith('No valid email address available.');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
+  mocks.userId = 'user'; mocks.role = 'Client Admin'; mocks.authenticated = true; mocks.canMutate = true;
+  vi.spyOn(toast, 'error').mockReturnValue(0);
+  mocks.post.mockResolvedValue({ data: { id: 'created' } });
   mocks.get.mockImplementation(async (path: string) => {
     if (path.endsWith('/field-layout')) {
       const module = path.split('/')[2] as CrmRecordModule;
@@ -225,7 +354,8 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByRole('button', { name: module === 'deals' ? /^Relationships/ : /^Deals/ });
+  if (module === 'leads' || module === 'contacts') await screen.findByRole('heading', { name: /^Deals/ });
+  else await screen.findByRole('button', { name: module === 'deals' ? /^Relationships/ : /^Deals/ });
   expect(screen.getAllByTestId('related-tasks')).toHaveLength(1);
   expect(screen.getByTestId('related-tasks').textContent).toContain(module === 'deals' ? 'dealId' : module === 'leads' ? 'leadId' : module === 'contacts' ? 'contactId' : 'accountId');
   expect(screen.getByTestId('related-tasks').closest('[role="tabpanel"]')?.getAttribute('aria-labelledby')).toBe('tab-activity');
@@ -250,7 +380,7 @@ it('does not refetch relationships when switching tabs and retains collapsible s
   await screen.findByText('Lina Reyes', { selector: 'h1' });
   expect(mocks.get.mock.calls.filter(([path]) => path.includes('/relationships'))).toHaveLength(0);
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  await screen.findByRole('button', { name: /^Deals/ });
+  await screen.findByRole('heading', { name: /^Deals/ });
   expect(screen.queryByRole('button', { name: /Converted contact/ })).toBeNull();
   const about = screen.getByRole('button', { name: defaultFieldLayout('leads').groups[0].label });
   fireEvent.click(about);
@@ -290,6 +420,7 @@ it('shows related request failures instead of empty relationship counts', async 
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
   await screen.findByText('Relationships unavailable');
   expect(screen.queryByRole('button', { name: /^Deals/ })).toBeNull();
+  expect(screen.queryByRole('heading', { name: /^Deals/ })).toBeNull();
 });
 
 it('clears the previous identity while a new record loads', async () => {
@@ -423,7 +554,7 @@ it('Deal header uses Messages between actions and status and the shared Activity
   expect(names.indexOf('Record actions')).toBeLessThan(names.indexOf('Open messages'));
   expect(names.indexOf('Open messages')).toBeLessThan(names.indexOf('Lead'));
   expect(names.indexOf('Lead')).toBeLessThan(names.indexOf('Close record'));
-  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledWith('/inbox');
+  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry'));
   expect(screen.queryByRole('button', { name: 'Notes' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Calls & Emails' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Emails' })).toBeTruthy();
@@ -461,7 +592,7 @@ it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map
   expect(organization.closest('section')?.textContent?.match(/Technology/g)).toHaveLength(1);
   expect(organization.closest('section')?.textContent).toContain('11-50');
   expect(screen.queryByRole('button', { name: /Company \/ Organization|Account \/ Company/ })).toBeNull();
-  expect(screen.queryByRole('button', { name: 'Edit Company Name' })).toBeNull();
+  expect(within(organization.closest('section')!).getByRole('button', { name: 'Edit Company Name' }).textContent).toContain('Old company');
 });
 it('groups Deal participants and Account under Relationships exactly once', async () => {
   const original = mocks.get.getMockImplementation()!;
@@ -472,4 +603,163 @@ it('groups Deal participants and Account under Relationships exactly once', asyn
   for (const path of ['/crm/leads/lead-one', '/crm/contacts/contact', '/crm/accounts/company']) expect(group.querySelectorAll(`a[href="${path}"]`)).toHaveLength(1);
   expect(screen.queryByRole('button', { name: 'Lead/Contact' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Account' })).toBeNull();
+});
+
+function organizationFixture(module: 'leads' | 'contacts', legacy = false) {
+  const original = mocks.get.getMockImplementation()!;
+  const layout = defaultFieldLayout(module);
+  if (legacy) {
+    layout.groups.reverse().forEach((group, order) => { group.order = order; });
+    layout.groups.find(group => group.id === `${module}:section:1`)!.label = 'Status & Classification';
+    layout.groups.find(group => group.id === `${module}:section:2`)!.label = 'Relationships';
+    layout.fields[module === 'leads' ? 'companyName' : 'company'] = { label: 'Company Name', groupId: `${module}:section:0`, order: 1, visibleInForm: true, visibleInDetails: true };
+    layout.fields.assignedUserId = { label: 'Assigned Agent', groupId: `${module}:section:2`, order: 0, visibleInForm: true, visibleInDetails: true };
+  }
+  layout.groups.push({ id: 'custom-relationships', label: 'Relationships', order: 0 });
+  const fields = [{ ...DEFAULT_CLOSING_FIELDS[0], id: 'custom-note', module, name: 'Custom relationship note', type: 'Text' as const, group: 'Relationships', groupId: 'custom-relationships', required: false }];
+  const account = { id: 'account', name: 'Linked Account', industry: 'Technology', size: '11-50', website: 'https://account.test' };
+  const relationships = {
+    account, deals: [{ ...records.deals, id: 'linked-deal', title: 'Linked deal' }, { ...records.deals, id: 'archived-deal', title: 'Archived deal', isArchived: true }],
+    sourceLead: { id: 'source-lead', firstName: 'Source', lastName: 'Lead', email: 'source@example.test' }, hasMoreDeals: false,
+  };
+  mocks.get.mockImplementation(async (path: string) => {
+    if (path === `/crm/${module}/one`) return { data: { ...records[module], companyName: 'Stored company', company: 'Stored company', accountId: account.id, account } };
+    if (path === `/crm/${module}/field-layout`) return { data: { layout, fields: getCrmFieldCatalog(module, fields, layout) } };
+    if (path === `/crm/${module}/one/custom-fields`) return { data: { fields, values: { 'custom-note': 'Preserved value' }, files: [], layout } };
+    if (path.includes(`/crm/${module}/one/relationships`)) return { data: relationships };
+    if (path === '/crm/deals/linked-deal') return { data: { ...records.deals, id: 'linked-deal', title: 'Linked deal' } };
+    return original(path);
+  });
+  return { layout, relationships, fields };
+}
+
+it.each((['leads', 'contacts'] as const).flatMap(module => ['panel', 'page'].map(surface => ({ module, surface }))))('uses canonical groups and flat Organization relationships on $module $surface', async ({ module, surface }) => {
+  const fixture = organizationFixture(module, true);
+  const saved = structuredClone(fixture.layout);
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} /> : <CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByRole('link', { name: /Linked deal/ });
+  const details = screen.getByRole('tabpanel', { name: /Details/ });
+  expect(Array.from(details.querySelectorAll('section > div > button[aria-expanded]')).map(button => button.textContent?.trim())).toEqual([
+    'Basic Information', 'Status & Interest', 'Organization', 'Additional Information', 'Assigned Agent', 'Relationships',
+  ]);
+  const organization = within(screen.getByRole('button', { name: 'Organization' }).closest('section')!);
+  expect(organization.getByRole('button', { name: 'Edit Company Name' }).textContent).toContain('Stored company');
+  expect(organization.getByRole('link', { name: 'Linked Account' }).getAttribute('href')).toBe('/crm/accounts/account');
+  for (const value of ['Technology', '11-50', 'https://account.test']) expect(organization.getByText(value)).toBeTruthy();
+  expect(organization.getByRole('heading', { name: 'Deals1' })).toBeTruthy();
+  const dealLink = organization.getByRole('link', { name: /Linked deal/ });
+  expect(dealLink.getAttribute('href')).toBe('/crm/deals/linked-deal');
+  expect(within(dealLink).getByText('Lead')).toBeTruthy();
+  expect(organization.queryByText('Archived deal')).toBeNull();
+  expect(organization.getByRole('button', { name: 'Create deal' })).toBeTruthy();
+  expect(organization.getByRole('button', { name: 'Actions for Linked deal' })).toBeTruthy();
+  const headings = organization.getAllByRole('heading').map(heading => heading.textContent);
+  expect(headings).toEqual(module === 'contacts' ? ['Account', 'Deals1', 'Related Leads1'] : ['Account', 'Deals1']);
+  if (module === 'contacts') {
+    expect(organization.getByRole('link', { name: /Source Lead/ }).getAttribute('href')).toBe('/crm/leads/source-lead');
+    expect(organization.getByText('source@example.test')).toBeTruthy();
+  }
+  expect(details.querySelectorAll('section section')).toHaveLength(0);
+  expect(within(details).queryByRole('button', { name: /^Deals|^Related [Ll]eads/ })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Status & Classification' })).toBeNull();
+  expect(within(screen.getByRole('button', { name: 'Relationships' }).closest('section')!).getByText('Preserved value')).toBeTruthy();
+  expect(fixture.layout).toEqual(saved);
+});
+
+it.each(['leads', 'contacts'] as const)('%s keeps Create deal association payloads, cancellation, menus and pagination inside Organization', async module => {
+  const fixture = organizationFixture(module);
+  fixture.relationships.hasMoreDeals = true;
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByRole('link', { name: /Linked deal/ });
+  const organization = within(screen.getByRole('button', { name: 'Organization' }).closest('section')!);
+  const badge = screen.getByRole('tab', { name: /Details/ }).textContent;
+  fireEvent.click(organization.getByRole('button', { name: 'Create deal' }));
+  expect(organization.getByRole('form', { name: 'New related Deal' })).toBeTruthy();
+  fireEvent.click(organization.getByRole('button', { name: 'Cancel Deal' }));
+  expect(organization.queryByRole('form')).toBeNull(); expect(mocks.post).not.toHaveBeenCalled();
+  fireEvent.click(organization.getByRole('button', { name: 'Create deal' }));
+  fireEvent.click(organization.getByRole('button', { name: 'Create Deal' }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/crm/deals', {
+    title: 'Created deal', productInterestIds: ['product'], pipelineId: 'sales', stageId: 'lead', priority: 'MEDIUM',
+    expectedCloseDate: '2026-10-20T00:00:00.000Z', customFieldValues: { evidence: 'Kept' }, [module === 'leads' ? 'leadIds' : 'contactIds']: ['one'],
+  }));
+  await waitFor(() => expect(organization.queryByRole('form')).toBeNull());
+  fireEvent.click(organization.getByRole('button', { name: 'Actions for Linked deal' }));
+  await screen.findByRole('menuitem', { name: 'Edit deal' });
+  fireEvent.keyDown(screen.getByRole('menuitem', { name: 'Edit deal' }), { key: 'Escape' });
+  fireEvent.click(organization.getByRole('button', { name: 'Load older deals' }));
+  await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => path.includes('relationships?limit=50&page=2'))).toBe(true));
+  expect(organization.getAllByRole('link', { name: /Linked deal/ })).toHaveLength(1);
+  expect(screen.getByRole('tab', { name: /Details/ }).textContent).toBe(badge);
+});
+
+it.each((['leads', 'contacts'] as const).flatMap(module => ['accounts.view', 'deals.view', ...(module === 'contacts' ? ['leads.view'] : [])].map(denied => ({ module, denied }))))('$module Organization hides only the relationship denied by $denied', async ({ module, denied }) => {
+  organizationFixture(module);
+  mocks.permissions = ['contacts.view', 'accounts.view', 'deals.view', 'leads.view', 'deals.create'].filter(permission => permission !== denied);
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await waitFor(() => expect(mocks.get.mock.calls.some(([path]) => path.includes('/relationships'))).toBe(true));
+  const organization = within(screen.getByRole('button', { name: 'Organization' }).closest('section')!);
+  await waitFor(() => expect(Boolean(organization.queryByRole('link', { name: 'Linked Account' }))).toBe(denied !== 'accounts.view'));
+  expect(Boolean(organization.queryByRole('link', { name: /Linked deal/ }))).toBe(denied !== 'deals.view');
+  expect(Boolean(organization.queryByRole('link', { name: /Source Lead/ }))).toBe(module === 'contacts' && denied !== 'leads.view');
+  expect(Boolean(organization.queryByRole('button', { name: 'Create deal' }))).toBe(denied !== 'deals.view');
+  if (denied === 'accounts.view') for (const value of ['Technology', '11-50', 'https://account.test']) expect(organization.queryByText(value)).toBeNull();
+});
+
+it.each(['leads', 'contacts'] as const)('%s retains Deals when Account is hidden and hides only the Create action without creation permission', async module => {
+  const fixture = organizationFixture(module);
+  fixture.layout.fields.accountId = { label: 'Account', groupId: `${module}:section:2`, order: 0, visibleInForm: true, visibleInDetails: false };
+  mocks.permissions = [`${module}.view`, 'accounts.view', 'deals.view', 'leads.view'];
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByRole('link', { name: /Linked deal/ });
+  const organization = within(screen.getByRole('button', { name: 'Organization' }).closest('section')!);
+  expect(organization.queryByRole('heading', { name: 'Account' })).toBeNull();
+  expect(organization.queryByRole('link', { name: 'Linked Account' })).toBeNull();
+  expect(organization.queryByRole('button', { name: 'Create deal' })).toBeNull();
+  if (module === 'contacts') expect(organization.getByRole('link', { name: /Source Lead/ })).toBeTruthy();
+});
+
+it('shows an empty Deals block with zero visible records when only archived deals are supplied', async () => {
+  const fixture = organizationFixture('leads');
+  fixture.relationships.deals = fixture.relationships.deals.filter(deal => 'isArchived' in deal && deal.isArchived);
+  render(<CrmRecordView module="leads" id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByText('No deals attached to this lead.');
+  expect(screen.getByRole('heading', { name: 'Deals0' })).toBeTruthy();
+  expect(screen.queryByText('Archived deal')).toBeNull();
+});
+
+it.each(['leads', 'contacts'] as const)('%s retains Account/Deal empty states and does not add relationship records to the Details badge', async module => {
+  const fixture = organizationFixture(module);
+  fixture.relationships.deals = [];
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByText(`No deals attached to this ${module === 'leads' ? 'lead' : 'contact'}.`);
+  const expectedCount = getCrmFieldCatalog(module, fixture.fields).filter(field => field.technicalKey !== 'accountId').length + 1;
+  expect(screen.getByRole('tab', { name: /Details/ }).textContent).toBe(`Details${expectedCount}`);
+  expect(screen.getAllByRole('link', { name: 'Linked Account' })).toHaveLength(1);
+  const rawLayout = structuredClone(fixture.layout);
+  rawLayout.fields.accountId = { label: 'Account', groupId: `${module}:section:2`, order: 0, visibleInForm: true, visibleInDetails: false };
+  fixture.layout.fields = rawLayout.fields;
+  // The shared cache invalidation follows the same reload path as a configuration edit.
+  cleanup(); clearPageCache();
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], companyName: 'Stored company', company: 'Stored company' } } : original(path));
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  await screen.findByText(`No deals attached to this ${module === 'leads' ? 'lead' : 'contact'}.`);
+  expect(screen.queryByRole('link', { name: 'Linked Account' })).toBeNull();
+  expect(screen.getByRole('tab', { name: /Details/ }).textContent).toBe(`Details${expectedCount - 1}`);
+});
+
+it.each(['leads', 'contacts'] as const)('%s shows the existing unlinked Account empty state inside Organization', async module => {
+  render(<CrmRecordView module={module} id="one" />);
+  await screen.findByRole('heading', { level: 1 }); fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  const organization = within(screen.getByRole('button', { name: 'Organization' }).closest('section')!);
+  expect(organization.getByText('No Account linked yet.')).toBeTruthy();
+  await organization.findByText(`No deals attached to this ${module === 'leads' ? 'lead' : 'contact'}.`);
 });

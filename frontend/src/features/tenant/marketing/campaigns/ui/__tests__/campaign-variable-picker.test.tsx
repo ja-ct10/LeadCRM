@@ -52,6 +52,16 @@ it('inserts the displayed key and keeps different company keys and definition id
   expect(choices.filter(choice => choice.technicalKey === 'customFieldValues.age').map(choice => choice.origins[0].customFieldId)).toEqual(definitions.slice(0, 2).map(field => field.id));
   expect(choices.filter(choice => ['companyName', 'company'].includes(choice.technicalKey)).map(choice => choice.technicalKey)).toEqual(['companyName', 'company']);
 });
+
+it.each(['LEADS', 'CONTACTS'] as const)('inserts the catalog company key for %s without a legacy alias', source => {
+  const onInsert = vi.fn(), choices = insertionChoices(fields, source);
+  render(<CampaignVariablePicker choices={choices} onInsert={onInsert} />);
+  const key = source === 'LEADS' ? 'companyName' : 'company';
+  fireEvent.click(screen.getByText(`{{${key}}}`).closest('button')!);
+  expect(onInsert).toHaveBeenCalledExactlyOnceWith(`{{${key}}}`);
+  expect(screen.queryByText('{{company_name}}')).toBeNull();
+  expect(screen.queryByText('{{first_name}}')).toBeNull();
+});
 it.each(['LEADS', 'CONTACTS'] as const)('deduplicates equivalent system keys and preserves %s labels and module availability', source => {
   const catalog = fields.map(field => field.technicalKey === 'firstName' && field.module === 'contacts' ? { ...field, label: 'Contact First Name' } : field);
   const choices = insertionChoices(catalog, source);

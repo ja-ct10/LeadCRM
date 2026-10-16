@@ -6,6 +6,7 @@ import LeadsPage from '../leads-page';
 
 const mocks = vi.hoisted(() => ({
   canCreate: true,
+  role: 'Sales',
   params: {} as Record<string, string | undefined>,
   arrays: {} as Record<string, string[]>,
   data: {
@@ -19,7 +20,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent' }, tenant: { id: 'tenant' } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', role: mocks.role }, tenant: { id: 'tenant' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: mocks.users, addContact: vi.fn(), updateContact: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => permission === 'leads.create' ? mocks.canCreate : true }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true }) }));
@@ -44,13 +45,71 @@ vi.mock('@/shared/components/manage-columns-drawer', () => ({ ManageColumnsDrawe
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.canCreate = true; mocks.params = {}; mocks.arrays = {}; mocks.columnsLoading = false;
+  mocks.canCreate = true; mocks.role = 'Sales'; mocks.params = {}; mocks.arrays = {}; mocks.columnsLoading = false;
   Object.assign(mocks.data, { leads: [], meta: { total: 0 }, isInitialLoad: false, isRefreshing: false, error: null });
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
   vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
   HTMLElement.prototype.scrollIntoView = vi.fn();
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+
+it('omits My Leads for Client Admin while preserving All and Active Leads', () => {
+  mocks.role = 'Client Admin';
+  render(<LeadsPage />);
+  expect(screen.queryByRole('button', { name: 'My Leads', hidden: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Active Leads' }));
+  expect(screen.getByRole('button', { name: 'Active Leads', pressed: true })).toBeTruthy();
+  expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: [{ field: 'scope', operator: 'equals', value: 'active' }] }));
+});
+
+it.each(['Sales', 'Account Manager'])('preserves personal and shared Lead scopes for %s', role => {
+  mocks.role = role;
+  render(<LeadsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'My Leads' }));
+  expect(screen.getByRole('button', { name: 'My Leads', pressed: true })).toBeTruthy();
+  expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: [{ field: 'scope', operator: 'equals', value: 'my' }] }));
+  fireEvent.click(screen.getByRole('button', { name: 'All Leads' }));
+  expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: undefined }));
+  fireEvent.click(screen.getByRole('button', { name: 'Active Leads' }));
+  expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: [{ field: 'scope', operator: 'equals', value: 'active' }] }));
+});
+
+it.each(['', 'selected-lead'])('normalizes Client Admin tab=my before querying, including highlight=%s', highlight => {
+  mocks.role = 'Client Admin'; mocks.params = { tab: 'my', search: 'retained', ...(highlight ? { highlight } : {}) };
+  render(<LeadsPage />);
+  expect(screen.queryByRole('button', { name: 'My Leads', hidden: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  expect(mocks.query.mock.calls.every(([query]) => !(query.filter ?? []).some((filter: { field: string; value: unknown }) => filter.field === 'scope' && filter.value === 'my'))).toBe(true);
+  expect(mocks.updateParams).toHaveBeenCalledWith(highlight ? { tab: null } : expect.objectContaining({ tab: null, search: 'retained' }));
+});
+
+it('clears a mounted personal Lead selection when the role changes to Client Admin', () => {
+  const view = render(<LeadsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'My Leads' }));
+  mocks.role = 'Client Admin'; mocks.query.mockClear();
+  view.rerender(<LeadsPage />);
+  expect(screen.queryByRole('button', { name: 'My Leads', hidden: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  expect(mocks.query.mock.calls.every(([query]) => query.filter === undefined)).toBe(true);
+  mocks.role = 'Sales';
+  view.rerender(<LeadsPage />);
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'My Leads', pressed: false })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'My Leads' }));
+  expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: [{ field: 'scope', operator: 'equals', value: 'my' }] }));
+});
+
+it('falls back to All when a personal Lead URL is opened on a mounted Client Admin page', () => {
+  mocks.role = 'Client Admin';
+  const view = render(<LeadsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Active Leads' }));
+  mocks.params = { tab: 'my' }; mocks.query.mockClear();
+  view.rerender(<LeadsPage />);
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  expect(mocks.query.mock.calls.every(([query]) => query.filter === undefined)).toBe(true);
+  expect(mocks.updateParams).toHaveBeenLastCalledWith(expect.objectContaining({ tab: null }));
+});
 
 function expectNoTable() {
   expect(screen.queryByRole('grid')).toBeNull();

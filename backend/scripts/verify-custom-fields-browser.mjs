@@ -103,6 +103,7 @@ try {
   await page.getByRole('button', { name: 'Edit Project Budget', exact: true }).first().waitFor();
   await responsive('settings');
   await page.getByRole('button', { name: 'Add Field', exact: true }).click();
+  await page.getByLabel('Module', { exact: true }).last().selectOption('leads');
   await page.getByLabel('Display label', { exact: true }).fill('Preferred Installation Date');
   await page.getByRole('combobox', { name: /^Type/ }).selectOption('Date');
   await page.getByRole('combobox', { name: /^Group/ }).selectOption({ label: 'Additional Information' });

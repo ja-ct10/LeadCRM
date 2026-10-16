@@ -3,6 +3,7 @@
 import { useRouter, usePathname } from 'next/navigation';
 import { usePermissions } from '@/shared/hooks/use-permissions';
 import { resolveModulePath, PATH_TO_PATHNAME } from '@/lib/route-map';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
 import {
   LayoutDashboard, Briefcase, Workflow, Mail, Settings,
   ListTodo,
@@ -38,7 +39,7 @@ export function useLayout() {
 
   const navigate = (path: string) => {
     const target = PATH_TO_PATHNAME[path];
-    if (target) router.push(target);
+    if (target) requestNavigation(() => router.push(target));
   };
 
   const isSuper = userPermissions.includes('*');

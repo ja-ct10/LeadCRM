@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Search, Mail, Phone, ExternalLink, X, ChevronDown, User, Building, Briefcase, Target, Tag } from 'lucide-react';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useRouter } from 'next/navigation';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
 import { useAuth } from '@/store/AuthContext';
 import { getTenantCurrency, formatCurrency } from '@/shared/utils/currency';
 import { leadsService } from '@/features/tenant/crm/leads/services/leads.service';
@@ -180,7 +181,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const selectResult = (path: string, id: string) => {
+  const selectResult = (path: string, id: string) => requestNavigation(() => {
     searchVersion.current++;
     setQuery('');
     setServerLeads([]); setServerContacts([]); setServerAccounts([]); setServerDeals([]);
@@ -190,7 +191,7 @@ export function GlobalOmnibox({ autoFocus = false, onResultSelect }: GlobalOmnib
     inputRef.current?.blur();
     onResultSelect?.();
     router.push(`${path}?highlight=${encodeURIComponent(id)}`);
-  };
+  });
 
   return (
 

@@ -21,6 +21,7 @@ import { VIEW_OPTIONS as VIEW_RENDERERS } from './view-registry';
 import { validateModuleConfig } from './validate-module-config';
 import { ModuleFilterRail, type FilterGroup } from './module-filter-rail';
 import { ModuleSearchInput } from './module-search-input';
+import { ModuleTabs } from './module-tabs';
 import { FilterButton } from './filter-button';
 import { RefreshButton } from './refresh-button';
 import { TableRefreshContext } from './data-view-states';
@@ -311,25 +312,7 @@ export function ModuleWorkspace({
 
       {/* ── Saved View Tabs ─────────────────────────────────────────── */}
       {savedTabs && savedTabs.length > 0 && (
-        <div className="flex items-center gap-1 mb-3 border-b border-[#E4E9F0] dark:border-slate-700">
-          {savedTabs.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => onTabChange?.(tab.id)}
-              className={cn(
-                'px-3 py-2 text-[13px] font-medium transition-colors relative',
-                activeTab === tab.id
-                  ? 'text-primary dark:text-primary'
-                  : 'text-[#5A6B85] dark:text-slate-400 hover:text-[#0F172A] dark:hover:text-white',
-              )}
-            >
-              {tab.label}
-              {activeTab === tab.id && (
-                <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary dark:bg-primary rounded-full" />
-              )}
-            </button>
-          ))}
-        </div>
+        <ModuleTabs tabs={savedTabs} activeTab={activeTab} onTabChange={onTabChange} ariaLabel={`${title} views`} className="mb-3" />
       )}
 
       {/* ── Toolbar ─────────────────────────────────────────────────── */}

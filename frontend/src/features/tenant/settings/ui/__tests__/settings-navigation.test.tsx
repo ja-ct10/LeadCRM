@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 const state = vi.hoisted(() => ({ tab: 'profile', canView: true, restricted: [] as string[], replace: vi.fn(), redirect: vi.fn() }));
 vi.mock('next/navigation', () => {
   const router = { replace: state.replace };
@@ -19,9 +19,28 @@ vi.mock('../forms-tab', () => ({ FormsTab: () => <p>Forms content</p> }));
 import SettingsPage from '../settings-page';
 import LegacyAccountPage from '../../../../../../app/(tenant)/settings/account/page';
 import { PATH_TO_PATHNAME, resolveModulePath } from '@/lib/route-map';
+import { NAVIGATION_INTENT_EVENT, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 
 beforeEach(() => { vi.clearAllMocks(); state.tab = 'profile'; state.canView = true; state.restricted = []; localStorage.clear(); });
 afterEach(cleanup);
+
+it.each(['desktop', 'mobile'])('defers the %s Settings destination without changing the current section', async mode => {
+  state.tab = 'forms'; render(<SettingsPage />); await screen.findByText('Forms content');
+  let pending: (() => void | Promise<void>) | undefined;
+  const guard = (event: Event) => { event.preventDefault(); pending = (event as NavigationIntentEvent).detail.navigate; };
+  window.addEventListener(NAVIGATION_INTENT_EVENT, guard);
+  try {
+    const select = screen.getByLabelText('Settings section') as HTMLSelectElement;
+    const navigate = () => mode === 'mobile' ? fireEvent.change(select, { target: { value: 'products' } }) : fireEvent.click(screen.getByRole('button', { name: 'Products' }));
+    navigate(); expect(pending).toBeTypeOf('function');
+    expect(select.value).toBe('forms'); expect(screen.getByText('Forms content')).toBeTruthy(); expect(screen.queryByText('Products content')).toBeNull();
+    pending = undefined; // Keep editing cancels the stored action.
+    expect(select.value).toBe('forms'); navigate();
+    window.removeEventListener(NAVIGATION_INTENT_EVENT, guard);
+    await act(async () => pending?.());
+    expect(screen.getByText('Products content')).toBeTruthy(); expect(select.value).toBe('products');
+  } finally { window.removeEventListener(NAVIGATION_INTENT_EVENT, guard); }
+});
 
 it.each(['roles', 'org-general'])('denies direct %s access and hides both restricted sections from desktop and mobile navigation', async tab => {
   state.tab = tab; state.restricted = ['roles', 'settings'];

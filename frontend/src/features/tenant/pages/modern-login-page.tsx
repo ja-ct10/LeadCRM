@@ -1,8 +1,9 @@
 'use client';
 
+import { responsiveTypography } from '@/shared/styles/typography';
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '@/store/AuthContext';
-import { ArrowLeft, CheckCircle2, Eye, EyeOff, Mail } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
@@ -11,7 +12,7 @@ import type { ApiRequestError } from '@/lib/api/client';
 import { CamxianBrandPanel } from './camxian-brand-panel';
 import { useLoginLockout } from '../auth/use-login-lockout';
 import { LoginLockoutDialog } from '../auth/login-lockout-dialog';
-import { LEGAL_ORGANIZATION } from '../legal/legal-documents';
+import { PublicFooter } from '@/shared/components/public-footer';
 
 const loginSchema = z.object({
   email: z.string().trim().toLowerCase().max(254).email('Invalid email address'),
@@ -249,7 +250,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     <button
                       type="button"
                       onClick={() => setShowResetPassword(!showResetPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      className="absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                     >
                       {showResetPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -278,7 +279,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     <button
                       type="button"
                       onClick={() => setShowResetConfirm(!showResetConfirm)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      className="absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                     >
                       {showResetConfirm ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
@@ -501,10 +502,10 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
         <div className="w-full max-w-md space-y-8">
           {/* Header */}
           <div>
-            <h2 className="font-display text-3xl font-bold text-slate-900 dark:text-white mb-2">
+            <h2 className={`${responsiveTypography.authTitle} font-display font-bold text-slate-900 dark:text-white mb-2`}>
               Login
             </h2>
-            <p className="text-slate-500 dark:text-slate-400 text-sm">
+            <p className={`${responsiveTypography.body} text-slate-500 dark:text-slate-400`}>
               Welcome back! Please enter your credentials
             </p>
           </div>
@@ -512,7 +513,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
           {/* Login form */}
           <form onSubmit={handleLogin} className="space-y-5">
                 <div>
-                  <label htmlFor="email" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  <label htmlFor="email" className={`${responsiveTypography.body} block font-semibold text-slate-700 dark:text-slate-300 mb-2`}>
                     Email address
                   </label>
                   <input
@@ -530,7 +531,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 </div>
 
                 <div>
-                  <label htmlFor="password" className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2">
+                  <label htmlFor="password" className={`${responsiveTypography.body} block font-semibold text-slate-700 dark:text-slate-300 mb-2`}>
                     Password
                   </label>
                   <div className="relative">
@@ -547,30 +548,31 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                     />
                     <button
                       type="button"
+                      aria-label={showPassword ? 'Hide password' : 'Show password'}
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      className="absolute right-0 top-1/2 inline-flex h-11 w-11 -translate-y-1/2 items-center justify-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between">
-                  <label className="flex items-center gap-2 cursor-pointer group">
+                <div className="flex flex-nowrap items-center justify-between gap-2 max-[360px]:gap-0.5">
+                  <label className="flex min-h-11 shrink-0 items-center gap-2 max-[360px]:gap-0.5 cursor-pointer group">
                     <input
                       type="checkbox"
                       checked={rememberMe}
                       onChange={(e) => setRememberMe(e.target.checked)}
-                      className="w-4 h-4 rounded border-gray-300 dark:border-white/8 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 transition-colors"
+                      className="w-4 h-4 shrink-0 rounded border-gray-300 dark:border-white/8 text-blue-600 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0 transition-colors"
                     />
-                    <span className="text-sm text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-300 transition-colors">
-                      Remember password
+                    <span className={`${responsiveTypography.body} whitespace-nowrap text-slate-600 dark:text-slate-400 group-hover:text-slate-900 dark:group-hover:text-slate-300 transition-colors`}>
+                      Remember me
                     </span>
                   </label>
                   <button
                     type="button"
                     onClick={() => { setForgotEmail(email); setError(''); setAuthView('forgot'); }}
-                    className="text-sm text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors"
+                    className={`${responsiveTypography.body} ml-auto min-h-11 shrink-0 whitespace-nowrap text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 font-semibold transition-colors`}
                   >
                     Forgot password?
                   </button>
@@ -579,52 +581,23 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
                 <button
                   type="submit"
                   disabled={isSigningIn || lockout.locked || lockout.checking}
-                  className="w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors active:scale-95"
+                  className={`${responsiveTypography.largeAction} w-full h-11 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl font-semibold transition-colors active:scale-95`}
                 >
                   {isSigningIn ? 'Signing in…' : lockout.locked ? `Try again in ${lockout.countdown}` : 'Login'}
                 </button>
                 {lockout.locked && (
-                  <p className="text-center text-sm text-slate-600 dark:text-slate-400">
+                  <p className={`${responsiveTypography.body} text-center text-slate-600 dark:text-slate-400`}>
                     Sign-in available in <span className="font-semibold tabular-nums">{lockout.countdown}</span>.{' '}
                     <button type="button" onClick={() => lockout.setOpen(true)} className="font-semibold text-blue-600 dark:text-blue-400 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 rounded">View timer</button>
                   </p>
                 )}
               </form>
 
-              <p className="text-center text-sm text-slate-500">Use the registered staff email provided to your Client Administrator. Contact your administrator for access.</p>
+              <p className={`${responsiveTypography.body} text-center text-slate-500`}>Use the registered staff email provided to your Client Administrator. Contact your administrator for access.</p>
         </div>
       </div>
     </div>
-    <footer className="w-full border-t border-slate-200 bg-blue-50/70 text-slate-600 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-400">
-      <div className="mx-auto max-w-7xl px-6 py-8 sm:px-8 sm:py-10 lg:px-12">
-        <div className="grid gap-8 md:grid-cols-[minmax(0,1fr)_auto] md:gap-16">
-          <div className="min-w-0">
-            <a href="/login" className="inline-flex items-center gap-3 rounded-lg text-xl font-bold text-slate-900 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 dark:text-white">
-              <span className="flex size-10 items-center justify-center rounded-lg border border-slate-200 bg-white"><img src="/leadcrm_logo.png" alt="" width={28} height={28} className="size-7 object-contain" /></span>
-              LeadCRM
-            </a>
-            <p className="mt-4 max-w-xl text-sm leading-7">A centralized CRM platform for Camxian Technologies, designed to manage leads, customers, sales pipelines, and automated workflows.</p>
-            <p className="mt-5 flex items-start gap-2 text-sm leading-6">
-              <Mail size={16} className="mt-1 shrink-0" aria-hidden="true" />
-              <span className="min-w-0">Support: <a href={`mailto:${LEGAL_ORGANIZATION.supportEmail}`} className="rounded-sm text-blue-600 hover:underline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 [overflow-wrap:anywhere] dark:text-blue-400">{LEGAL_ORGANIZATION.supportEmail}</a></span>
-            </p>
-          </div>
-          <nav aria-labelledby="login-company-heading">
-            <h2 id="login-company-heading" className="text-xs font-semibold tracking-wider">COMPANY</h2>
-            <ul className="mt-4 space-y-3 text-sm text-slate-900 dark:text-slate-100">
-              {[
-                ['Privacy Policy', '/privacy-policy'],
-                ['Terms of Service', '/terms-of-service'],
-                ['Help Center', '/help'],
-              ].map(([label, href]) => (
-                <li key={href}><a href={href} className="rounded-sm hover:text-blue-600 focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-600 dark:hover:text-blue-400">{label}</a></li>
-              ))}
-            </ul>
-          </nav>
-        </div>
-        <p className="mt-8 border-t border-slate-200 pt-5 text-xs dark:border-slate-700">© 2026 LeadCRM. All rights reserved.</p>
-      </div>
-    </footer>
+    <PublicFooter />
     </>
   );
 }

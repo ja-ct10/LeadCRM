@@ -2,6 +2,8 @@
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
 import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -11,6 +13,7 @@ import type { Campaign } from '@/store/types';
 import type { AudiencePreviewResult } from '@leadcrm/shared';
 import { PaginationControls } from '@/shared/components/crm/pagination-controls';
 import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { renderCampaignPreview, prepareCampaignBody } from '../services/campaign-html';
 import { useTheme } from '@/shared/hooks/use-theme';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -62,6 +65,7 @@ export function CampaignBuilder({
 
 }: CampaignBuilderProps) {
   const { tenant, user } = useAuth();
+  const router = useRouter();
 
   const maySend = useHasPermission('campaigns.send') && canSend;
   const canCreate = useHasPermission('campaigns.create'), canEdit = useHasPermission('campaigns.edit');
@@ -78,6 +82,67 @@ export function CampaignBuilder({
   const [targetAudience, setTargetAudience] = useState(initialCampaign?.targetAudienceId || initialCampaign?.audienceSource || '');
   const [messageContent, setMessageContent] = useState(initialCampaign?.body || initialContent || '');
   const [emailSubject, setEmailSubject] = useState(initialCampaign?.subject || initialSubject || '');
+  const draftSnapshot = JSON.stringify({ campaignName, campaignType, targetAudience, emailSubject, messageContent });
+  const [savedSnapshot, setSavedSnapshot] = useState(draftSnapshot);
+  const dirty = draftSnapshot !== savedSnapshot;
+  const [exit, setExit] = useState<NavigationAction | null>(null);
+  const leaving = useRef(false), exitPending = useRef(false);
+  const guardState = useRef({ dirty });
+  guardState.current = { dirty };
+  useEffect(() => { leaving.current = false; }, [draftSnapshot]);
+  function leaveBuilder() {
+    leaving.current = true; exitPending.current = false; setExit(null); onBack();
+  }
+  useEffect(() => {
+    if (!dirty) return;
+    const unload = (event: BeforeUnloadEvent) => {
+      if (leaving.current) return;
+      event.preventDefault(); event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', unload);
+    return () => window.removeEventListener('beforeunload', unload);
+  }, [dirty]);
+  useEffect(() => {
+    const intent = (event: Event) => {
+      if (leaving.current || !guardState.current.dirty) return;
+      event.preventDefault();
+      if (exitPending.current) return;
+      exitPending.current = true;
+      setExit(() => (event as NavigationIntentEvent).detail.navigate);
+    };
+    const link = (event: MouseEvent) => {
+      if (leaving.current || event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (!target) return;
+      // The inline builder shares the list URL. Preserve this button's list exit
+      // before replaying the sidebar action, including its mobile close behavior.
+      const control = target.closest('nav[aria-label="Workspace"] button[aria-label="Campaigns"]');
+      if (control instanceof HTMLButtonElement && !control.disabled && ['/campaigns', '/marketing/campaigns'].includes(window.location.pathname)) {
+        event.preventDefault(); event.stopPropagation();
+        requestNavigation(() => { leaving.current = true; onBack(); control.click(); });
+        return;
+      }
+      if (!guardState.current.dirty) return;
+      const anchor = target.closest('a[href]');
+      if (!(anchor instanceof HTMLAnchorElement) || (anchor.target && anchor.target !== '_self') || anchor.hasAttribute('download')) return;
+      const destination = new URL(anchor.href), current = window.location;
+      if (destination.origin !== current.origin || (destination.pathname === current.pathname && destination.search === current.search)) return;
+      event.preventDefault(); event.stopPropagation();
+      requestNavigation(() => router.push(destination.pathname + destination.search + destination.hash));
+    };
+    const navigation = (window as unknown as { navigation?: EventTarget }).navigation;
+    const traverse = (event: Event) => {
+      const entry = event as Event & { navigationType?: string; destination?: { url: string } };
+      if (!guardState.current.dirty || leaving.current || !entry.cancelable || entry.navigationType !== 'traverse' || !entry.destination || entry.destination.url === window.location.href) return;
+      event.preventDefault();
+      const url = entry.destination.url;
+      requestNavigation(() => window.location.assign(url));
+    };
+    window.addEventListener(NAVIGATION_INTENT_EVENT, intent);
+    document.addEventListener('click', link, true);
+    navigation?.addEventListener('navigate', traverse);
+    return () => { window.removeEventListener(NAVIGATION_INTENT_EVENT, intent); document.removeEventListener('click', link, true); navigation?.removeEventListener('navigate', traverse); };
+  }, [router, onBack]);
   const [previewDevice, setPreviewDevice] = useState<'desktop' | 'mobile'>('mobile');
   const [showPreview, setShowPreview] = useState(true);
   const [isDesktop, setIsDesktop] = useState(true);
@@ -215,17 +280,18 @@ export function CampaignBuilder({
       const res = !canWrite && savedId ? { data: { id: savedId } } : savedId ? await campaignsApi.update(savedId, parsed.data) : await campaignsApi.create(parsed.data);
       setSavedId(res.data.id);
       draftSaved = true;
+      if (intent === 'draft') setSavedSnapshot(draftSnapshot);
       if (intent === 'schedule') {
         // Saving can take long enough for the selected minute to elapse.
         await campaignsApi.schedule(res.data.id, campaignScheduleInstant(scheduleValue!));
-        toast.success('Campaign scheduled once in Asia/Manila.'); setScheduleOpen(false); onBack(); return;
+        toast.success('Campaign scheduled once in Asia/Manila.'); setScheduleOpen(false); leaveBuilder(); return;
       }
       if (send) {
         let result = (await campaignsApi.send(res.data.id)).data;
         if (campaignType === 'SMS') {
           toast.info('SMS campaign submitted. Waiting for gateway confirmation.');
           trackSmsCampaignSubmission(tenant?.id ?? user?.tenantId ?? '', user?.id ?? '');
-          onBack(); return;
+          leaveBuilder(); return;
         }
         // Each status request stays within the proxy timeout. Closing the editor
         // does not cancel a database-prepared campaign or submit it a second time.
@@ -236,18 +302,18 @@ export function CampaignBuilder({
         }
         if (result.submissionInterrupted || result.status === 'INTERRUPTED') {
           toast.warning('Campaign submission was interrupted. Review the recipient report and provider history before sending again; uncertain recipients were not retried.');
-          onBack(); return;
+          leaveBuilder(); return;
         }
         if (result.status === 'SENDING') {
           toast.warning(`${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted. Waiting for provider confirmation.`);
-          onBack(); return;
+          leaveBuilder(); return;
         }
         const message = `${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted successfully.`;
         if (result.status === 'FAILED') toast.error(`Campaign sending failed. ${result.submittedRecipients} of ${result.eligibleRecipients} emails were submitted.`);
         else if (result.failedRecipients) toast.warning(`${message} ${result.failedRecipients} failed.`);
         else toast.success(message);
       } else toast.success('Campaign draft saved.');
-      onBack();
+      leaveBuilder();
     } catch (e) {
       const error = e as Error & { fieldErrors?: Record<string, string[]> };
       const next: Record<string, string> = {};
@@ -266,7 +332,7 @@ export function CampaignBuilder({
       setScheduledTime(value!);
     }
     requestLock.current = true; setIsSending(true); setErrors({});
-    try { if (cancel) await campaignsApi.cancelSchedule(initialCampaign.id); else await campaignsApi.schedule(initialCampaign.id, due); toast.success(cancel ? 'Schedule cancelled. The campaign is now a draft.' : 'Campaign rescheduled.'); setScheduleOpen(false); onBack(); }
+    try { if (cancel) await campaignsApi.cancelSchedule(initialCampaign.id); else await campaignsApi.schedule(initialCampaign.id, due); toast.success(cancel ? 'Schedule cancelled. The campaign is now a draft.' : 'Campaign rescheduled.'); setScheduleOpen(false); leaveBuilder(); }
     catch (error) { setErrors({ form: error instanceof Error ? error.message : 'Unable to change schedule.' }); }
     finally { requestLock.current = false; setIsSending(false); }
   }
@@ -358,7 +424,7 @@ export function CampaignBuilder({
       {/* Top Bar */}
       <div className="flex flex-col md:flex-row md:flex-wrap md:items-center justify-between gap-3 border-b border-gray-200 dark:border-white/5 bg-white/80 dark:bg-slate-900/70 backdrop-blur-xl px-3 sm:px-6 py-3 shrink-0 shadow-sm">
         <div className="flex items-center gap-3">
-          <button disabled={isSending} onClick={onBack} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+          <button disabled={isSending} onClick={() => requestNavigation(onBack)} aria-label="Back to campaigns" className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-white/5 hover:bg-slate-200 dark:hover:bg-white/10 rounded-lg transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
             <ArrowLeft size={18} />
           </button>
           <div>
@@ -513,6 +579,10 @@ export function CampaignBuilder({
         </DialogContent>
       </Dialog>
       {showAudiencePanel && <AudiencePanel initialAudience={editingAudience} channel={campaignType === 'SMS' ? 'SMS' : 'EMAIL'} onClose={() => setShowAudiencePanel(false)} onCreated={audience => { setAudiences(prev => prev.some(item => item.id === audience.id) ? prev.map(item => item.id === audience.id ? audience : item) : [...prev, audience]); setTargetAudience(audience.id); setShowAudiencePanel(false); }} />}
+      <ConfirmActionDialog open={!!exit} onOpenChange={open => { if (!open) { exitPending.current = false; setExit(null); } }}
+        title="Discard unsaved changes?" description="Your unsaved campaign changes will be lost."
+        variant="warning" cancelLabel="Keep editing" confirmLabel="Discard changes"
+        onConfirm={() => { const navigate = exit; if (!navigate || leaving.current) return; leaving.current = true; exitPending.current = false; setSavedSnapshot(draftSnapshot); setExit(null); return navigate(); }} />
     </div>
   );
 }

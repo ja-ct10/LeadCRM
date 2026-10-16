@@ -7,6 +7,7 @@ import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
+import { useAuth } from '@/store/AuthContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 import { Contact } from '@/store/types';
 import { ModuleWorkspace, ViewType, StatusBadge, ContactPanel } from '@/shared/components/crm';
@@ -34,6 +35,8 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 
 export default function ContactsPage(): React.ReactElement {
   const { organizations, deals, users } = useData();
+  const { user } = useAuth();
+  const isClientAdmin = user?.role === 'Client Admin';
   const { dialogProps, confirm, close } = useConfirmDialog();
   const canCreate = useHasPermission('contacts.create');
   const canImport = useHasPermission('contacts.import');
@@ -82,7 +85,12 @@ export default function ContactsPage(): React.ReactElement {
 
   // ── State (Synced with URL) ──────────────────────────────────────────
   const [activeView, setActiveView] = useState<ViewType>(() => (getParam('view') as ViewType) || 'list');
-  const [activeTab, setActiveTab] = useState(() => getParam('tab') || 'all');
+  const tabParam = getParam('tab');
+  const [selectedTab, setActiveTab] = useState(() => isClientAdmin && tabParam === 'my' ? 'all' : tabParam || 'all');
+  const activeTab = isClientAdmin && (selectedTab === 'my' || tabParam === 'my') ? 'all' : selectedTab;
+  useEffect(() => {
+    if (isClientAdmin && (selectedTab === 'my' || tabParam === 'my')) setActiveTab('all');
+  }, [isClientAdmin, selectedTab, tabParam]);
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const [filterSearchTerm, setFilterSearchTerm] = useState('');
@@ -151,7 +159,10 @@ export default function ContactsPage(): React.ReactElement {
 
   // Sync to URL
   useEffect(() => {
-    if (highlightId) return;
+    if (highlightId) {
+      if (isClientAdmin && tabParam === 'my') updateParams({ tab: null });
+      return;
+    }
     updateParams({
       tab: activeTab !== 'all' ? activeTab : null,
       search: debouncedSearch || null,
@@ -162,7 +173,7 @@ export default function ContactsPage(): React.ReactElement {
       owners: selectedOwners,
       related: selectedRelated,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedStatuses, selectedSystemFilters, selectedOwners, selectedRelated, highlightId, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedStatuses, selectedSystemFilters, selectedOwners, selectedRelated, highlightId, isClientAdmin, tabParam, updateParams]);
 
   // ── Persist filter selections (fire-and-forget) ────────────────────────
   useEffect(() => {
@@ -324,7 +335,7 @@ export default function ContactsPage(): React.ReactElement {
         { id: 'all', label: 'All Contacts' },
         { id: 'my', label: 'My Contacts' },
         { id: 'active-customers', label: 'Active Contacts' },
-      ]}
+      ].filter(tab => !isClientAdmin || tab.id !== 'my')}
       activeTab={activeTab}
       onTabChange={setActiveTab}
       filterGroups={filterGroups}

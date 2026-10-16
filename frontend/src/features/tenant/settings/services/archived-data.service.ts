@@ -6,7 +6,6 @@ const restorePaths: Record<ArchiveType, string> = {
   Product: '/administration/archived-data/Product',
   User: '/administration/users', Task: '/administration/archived-data/Task',
   Campaign: '/administration/archived-data/Campaign', Workflow: '/administration/archived-data/Workflow',
-  Role: '/administration/archived-data/Role',
 };
 
 export const archivedDataService = {

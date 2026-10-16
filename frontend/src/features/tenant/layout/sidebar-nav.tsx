@@ -11,6 +11,7 @@ import { useModuleCounts } from '@/shared/hooks/use-module-counts';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { useLayout } from './use-layout';
 import { cn } from '@/lib/utils';
+import { requestNavigation } from '@/shared/lib/navigation-intent';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -197,7 +198,7 @@ export default function SidebarNav({
                   isActive={currentPath === item.path}
                   isCollapsed={isCollapsed}
                   badgeCount={getBadgeCount(item.path)}
-                  onClick={() => { navigate(item.path); onCloseSidebar(); }}
+                  onClick={() => requestNavigation(() => { navigate(item.path); onCloseSidebar(); })}
                 />
               ))}
 
@@ -220,7 +221,7 @@ export default function SidebarNav({
                         isActive={currentPath === item.path}
                         isCollapsed={isCollapsed}
                         badgeCount={getBadgeCount(item.path)}
-                        onClick={() => { navigate(item.path); onCloseSidebar(); }}
+                        onClick={() => requestNavigation(() => { navigate(item.path); onCloseSidebar(); })}
                       />
                     ))}
                   </div>

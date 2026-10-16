@@ -6,6 +6,9 @@ import { WorkflowLibrary } from './workflow-library';
 import WorkflowBuilder from './visual-workflow-builder';
 import { ActionFields } from './workflow-fields';
 
+const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
+
 afterEach(cleanup);
 const options = { users: [], pipelines: [], templates: [], campaigns: [] };
 it.each(WORKFLOW_TRIGGERS)('shows the correct actions for $label', trigger => {

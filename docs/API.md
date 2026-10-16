@@ -551,16 +551,18 @@ Membership, role, audit, and scalar user writes are transactional. Unfinished, n
 | GET | `/administration/roles`, `/administration/roles/:id` | Role definitions and permission rows | `roles.view` |
 | POST | `/administration/roles` | Create custom role | `roles.create` |
 | PUT | `/administration/roles/:id` | Save name/description and optional permission replacement atomically | `roles.edit` |
-| PATCH | `/administration/roles/:id/archive` | Archive custom role | `roles.archive` |
+| PATCH | `/administration/roles/:id/archive` | Delete custom role from active use (soft delete) | `roles.archive` |
 | POST / DELETE | `/administration/roles/assign` / `/administration/roles/unassign` | Assign/remove role | `roles.assign` |
 | GET | `/administration/permissions` | Permission-builder reference | `roles.view` |
 | GET | `/administration/audit` | Paginated team activity history | `users.view` |
-| GET | `/administration/archived-data` | Supported archived records, including roles | `archived_data.view` plus per-type service checks |
+| GET | `/administration/archived-data` | Supported archived records, excluding roles | `archived_data.view` plus per-type service checks |
 | PATCH | `/administration/archived-data/:type/:id/restore` | Restore supported record type | `archived_data.restore` plus per-type service checks |
 
 Archived Data includes `Product` records from the authenticated tenant's inactive `ProductInterest` catalog. Product rows use PHP-formatted default Deal values and `updatedAt` as the archive timestamp. Viewing requires `archived_data.view` plus `products.view`; `PATCH /administration/archived-data/Product/:id/restore` requires `archived_data.restore` plus `products.view`. Restore activates the original catalog record without changing relationships or historical Deal prices. An active case-insensitive name conflict or disabled Product Interest field returns 409; the shared 100-active-product limit returns 400.
 
 Role create/update bodies use `permissions` rows from the shared module/action catalog. There are no separate registered role permission-update endpoints. Protected system roles keep their safeguards. Group membership does not replace module permission grants.
+
+Delete Role sets `RoleDefinition.isArchived = true` and records `role.deleted`; the role, permission rows, and historical audits remain stored. Any assigned `UserRole` relationship blocks deletion with 409 until users are reassigned. Deleted roles are excluded from active lists and assignment and cannot be listed or restored through Archived Data. Role archive filters and restore parameters are unsupported and return 400. The internal archive endpoint and permission key remain unchanged.
 
 ### Inbox integration
 

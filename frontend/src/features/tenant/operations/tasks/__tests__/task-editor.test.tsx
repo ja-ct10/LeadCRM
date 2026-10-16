@@ -42,6 +42,7 @@ vi.mock("@/shared/hooks/use-permissions", () => ({
       : permission === 'tasks.assign' ? mocks.canAssign : permission !== "tasks.edit" || mocks.canEdit,
 }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => mocks.detail }));
+vi.mock('../ui/task-record-creator', () => ({ TaskRecordCreator: ({ onCancel }: { onCancel: () => void }) => <button type="button" onClick={onCancel}>Cancel deal creation</button> }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({
   tasksApi: {
@@ -95,6 +96,26 @@ beforeEach(() => {
   mocks.deniedPermissions = [];
   mocks.detail = { data: task, error: null, isInitialLoad: false, isRefreshing: false, refetch: vi.fn() };
   mocks.options.mockResolvedValue({ data: [{ id: 'owner', label: 'Test Owner' }] });
+});
+it('shows the create subtitle only in task creation and restores it after nested deal creation closes', async () => {
+  render(<TaskEditor onClose={vi.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Create task' })).toBeTruthy();
+  const subtitle = screen.getByText('Complete the task details below.');
+  expect(subtitle.classList.contains('text-sm')).toBe(true);
+  expect(subtitle.classList.contains('dark:text-slate-400')).toBe(true);
+  fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'Keep task draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Associate task to deal *' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Create a deal' }));
+  expect(screen.getByRole('heading', { name: 'Create deal' })).toBeTruthy();
+  expect(screen.queryByText('Complete the task details below.')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel deal creation' }));
+  expect(screen.getByText('Complete the task details below.')).toBeTruthy();
+  expect(screen.getByLabelText('Title *')).toHaveProperty('value', 'Keep task draft');
+});
+it.each([false, true])('omits task creation copy from Task details (read only: %s)', readOnly => {
+  render(<TaskEditor task={task} readOnly={readOnly} onClose={vi.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Task details' })).toBeTruthy();
+  expect(screen.queryByText('Complete the task details below.')).toBeNull();
 });
 async function selectAgent() {
   fireEvent.click(screen.getByRole('button', { name: 'Assigned Agent *' }));

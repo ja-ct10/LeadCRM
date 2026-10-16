@@ -34,10 +34,9 @@ const permissions: Record<ArchiveType | z.infer<typeof ArchiveRestoreParamsSchem
   Account: ['accounts.view', 'archived_data.restore'], Deal: ['deals.view', 'archived_data.restore'],
   Product: ['products.view', 'archived_data.restore'],
   Pipeline: ['deals.view', 'archived_data.restore'], User: ['users.view', 'archived_data.restore'],
-  Role: ['roles.view', 'archived_data.restore'], Workflow: ['workflows.view', 'archived_data.restore'],
+  Workflow: ['workflows.view', 'archived_data.restore'],
   Campaign: ['campaigns.view', 'archived_data.restore'], Template: ['campaigns.view', 'archived_data.restore'],
 };
-const protectedRole = (name: string) => ['guest', 'clientadmin'].includes(name.toLowerCase().replace(/[\s_-]/g, ''));
 const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
 function scope(actor: Actor) {
@@ -78,7 +77,6 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     Pipeline: source(() => prisma.pipeline.count({ where }), (skip, take) => prisma.pipeline.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     Product: source(() => prisma.productInterest.count({ where: productsWhere }), (skip, take) => prisma.productInterest.findMany({ where: productsWhere, ...pageArgs(skip, take), select: { id: true, name: true, dealValue: true, updatedAt: true } }), r => ({ id: r.id, name: r.name, detail: php.format(Number(r.dealValue)), archivedAt: r.updatedAt })),
     User: source(() => prisma.user.count({ where: usersWhere }), (skip, take) => prisma.user.findMany({ where: usersWhere, ...pageArgs(skip, take), select: { id: true, firstName: true, lastName: true, email: true } }), r => ({ id: r.id, name: `${r.firstName} ${r.lastName}`.trim(), detail: r.email })),
-    Role: source(() => prisma.roleDefinition.count({ where: nameWhere }), (skip, take) => prisma.roleDefinition.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true, isSystemRole: true } }), r => ({ id: r.id, name: r.name, canRestore: !r.isSystemRole && !protectedRole(r.name) })),
     Workflow: source(() => prisma.workflow.count({ where: nameWhere }), (skip, take) => prisma.workflow.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     Campaign: source(() => prisma.campaign.count({ where: nameWhere }), (skip, take) => prisma.campaign.findMany({ where: nameWhere, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
     Template: source(() => prisma.template.count({ where }), (skip, take) => prisma.template.findMany({ where, ...pageArgs(skip, take), select: { id: true, name: true } }), r => r),
@@ -101,7 +99,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     const restorePermissions = new Map(await Promise.all(visible.map(async type => [type, await allowed(permissions[type][1])] as const)));
     const data: ArchivedRecord[] = rows.map(row => ({ type: row.type, id: row.id, name: row.name, detail: row.type === 'Product' ? php.format(Number(row.detail)) : row.detail,
       archivedAt: row.archivedAt?.toISOString() ?? null,
-      canRestore: restorePermissions.get(row.type) === true && (row.type !== 'Role' || !row.isSystemRole && !protectedRole(row.name)) }));
+      canRestore: restorePermissions.get(row.type) === true }));
     return { data: await applyAssignmentRestorePolicy(actor, data), meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
   }
   // Merge archive identities before pagination so All types has a global ordering.
@@ -110,7 +108,7 @@ export async function list(actor: Actor, query: z.infer<typeof ArchiveQuerySchem
     const canRestore = await allowed(permissions[type][1]);
     for (let offset = 0; offset < counts[index]; offset += 500) {
       const rows = await sources[type].load(offset, 500);
-      const audits = type === 'Product' ? [] : await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type === 'Role' ? { in: ['Role', 'RoleDefinition'] } : type,
+      const audits = type === 'Product' ? [] : await prisma.auditLog.findMany({ where: { tenantId: actor.tenantId, entityType: type,
         entityId: { in: rows.map(row => row.id) }, OR: [{ action: { endsWith: '.archived' } }, ...(type === 'User' ? [{ action: 'user.updated' }, { action: 'user.deactivated_with_reassignment' }] : [])] },
         orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { entityId: true, createdAt: true, changeset: true, action: true } });
       const dates = new Map<string, Date>();
@@ -174,13 +172,6 @@ export async function restore(actor: Actor, params: z.infer<typeof ArchiveRestor
     case 'Template':
       result = await prisma.template.updateMany({ where, data: { isArchived: false } });
       break;
-    case 'Role': {
-      const role = await prisma.roleDefinition.findFirst({ where: { id: params.id, tenantId: actor.tenantId, isArchived: true } });
-      if (!role) throw new AppError('Archived record not found or already restored', 404);
-      if (role.isSystemRole || protectedRole(role.name)) throw new AppError('System roles cannot be restored here', 403);
-      result = await prisma.roleDefinition.updateMany({ where: { id: role.id, tenantId: actor.tenantId, isArchived: true, isSystemRole: false }, data: { isArchived: false } });
-      break;
-    }
   }
   if (!result.count) throw new AppError('Archived record not found or already restored', 404);
   await writeAuditLog({ tenantId: actor.tenantId, userId: actor.userId, action: `${params.type.toLowerCase()}.restored`, entityType: params.type, entityId: params.id, after: { isArchived: false } });

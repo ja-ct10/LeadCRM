@@ -13,6 +13,7 @@ import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
+import { ModuleTabs } from '@/shared/components/crm/module-tabs';
 import { archivedDataService } from '../services/archived-data.service';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
@@ -117,15 +118,9 @@ export function ArchivedData(): React.ReactElement {
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Archived Data Recovery</h3>
           <p className="text-xs text-slate-400 mt-0.5">Restore records previously archived instead of deleted.</p>
         </div>
-        <div role="group" aria-label="Archived record types" className="flex w-full items-center gap-1.5 flex-nowrap overflow-x-auto pb-1">
-          {(['All', ...ARCHIVE_TYPES] as const).map(type => (
-            <button key={type} type="button" aria-pressed={filter === type} disabled={restoring}
-              onClick={() => { setFilter(type); changePage(1); }}
-              className={`shrink-0 whitespace-nowrap px-3 py-1 rounded-lg text-xs font-medium transition-colors cursor-pointer ${filter === type ? 'bg-primary text-white' : 'bg-muted text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'}`}>
-              {type}
-            </button>
-          ))}
-        </div>
+        <ModuleTabs tabs={(['All', ...ARCHIVE_TYPES] as const).map(type => ({ id: type, label: type }))}
+          activeTab={filter} disabled={restoring} ariaLabel="Archived record types"
+          onTabChange={type => { setFilter(type); changePage(1); }} />
         <ModuleTableToolbar label="Archived records" search={search} onSearch={value => { setSearch(value); changePage(1); }} placeholder="Search archived records..."
           disabled={restoring} refreshing={isInitialLoad || isRefreshing} onRefresh={refetch} />
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
