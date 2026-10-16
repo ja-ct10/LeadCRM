@@ -1,7 +1,9 @@
 import { productRelationData } from './product-relations';
 import { isDeepStrictEqual } from 'node:util';
 import type { ContactStatus, Deal, Prisma } from '@prisma/client';
-import { normalizeCrmStatus } from '@leadcrm/shared';
+import { normalizeCrmStatus, type NewAccountInput } from '@leadcrm/shared';
+import { createCompany } from '../companies/companies.service';
+import { createLinkedAccount } from '../companies/organization-creation';
 import { AppError } from '../../../shared/errors/app-error';
 import { ConflictError, NotFoundError } from '../../../shared/errors/http-error';
 import { assertCrmRecordMutation } from '../access/crm-record-access.service';
@@ -26,6 +28,8 @@ export interface LeadConversionEvents {
   /** The Won transition captures this Deal's final stage and relationship changes. */
   dealEventHandledByCaller?: string;
   accountName?: string;
+  newAccount?: NewAccountInput;
+  skipAccountCreation?: boolean;
 }
 
 /** Runs in the caller's serializable sales transaction. Original records and FKs are retained. */
@@ -82,13 +86,15 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     if (relatedAccounts.length > 1) throw conflict();
     accountId = relatedAccounts[0] ?? null;
   }
-  const accountName = events.accountName?.trim() || lead.companyName?.trim();
-  if (!accountId && accountName) {
+  const accountName = events.newAccount?.name || events.accountName?.trim() || lead.companyName?.trim();
+  if (!accountId && accountName && !events.skipAccountCreation) {
     const name = accountName.replace(/\s+/g, ' ');
     const matches = (await tx.account.findMany({ where: { tenantId, name: { contains: name.split(' ')[0], mode: 'insensitive' } } }))
       .filter(row => companyIdentity(row.name) === companyIdentity(name));
     if (matches.length > 1 || matches[0]?.isArchived || matches[0]?.deletedAt) throw conflict();
-    accountId = matches[0]?.id ?? (await tx.account.create({ data: { tenantId, name, tags: [] } })).id;
+    accountId = matches[0]?.id ?? (events.newAccount
+      ? await createLinkedAccount(tx, tenantId, events.newAccount, actorId)
+      : await createCompany(tenantId, actorId, { name, tags: [] })).id;
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
   if (accountId && deals.some(deal => deal.accountId && deal.accountId !== accountId)) throw conflict();
@@ -99,7 +105,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   if (completedSale && !firstWon) throw new ConflictError('Confirmed Won evidence is required before conversion.');
   const status = (firstWon ? 'CLOSED' : normalizeCrmStatus(lead.status).toUpperCase()) as ContactStatus;
   if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
-    email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, address: lead.address,
+    email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, companyFromAccount: lead.companyFromAccount, address: lead.address,
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
     ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
     customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });

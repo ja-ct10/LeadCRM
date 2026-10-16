@@ -16,7 +16,7 @@ it.each([['leads', 'leadId'], ['accounts', 'accountId'], ['deals', 'dealId'], ['
   mocks.getAll.mockResolvedValue({ data: [{ id: 'event' }] });
   renderHook(() => useRecordActivities(module, 'selected-record'));
   const signal = new AbortController().signal;
-  await mocks.cache.mock.calls[0][0].fetchFn(signal);
+  await mocks.cache.mock.calls.find(([options]) => options.params.recordModule)![0].fetchFn(signal);
   expect(mocks.getAll).toHaveBeenCalledExactlyOnceWith({ [key]: 'selected-record', cursor: undefined, limit: 20 }, expect.any(AbortSignal));
 });
 it('reuses contact relationship history without another activity request', () => {
@@ -47,7 +47,7 @@ it('discards retained pagination history when the authorization cache is cleared
 it('fetches the older server cursor when loading more instead of revealing a local slice', async () => {
   mocks.getAll.mockResolvedValueOnce({ data: [{ id: 'newer' }], total: 2, nextCursor: 'older-cursor' });
   const { result } = renderHook(() => useRecordActivities('contacts', 'contact'));
-  await mocks.cache.mock.calls[0][0].fetchFn(new AbortController().signal);
+  await mocks.cache.mock.calls.find(([options]) => options.params.recordModule)![0].fetchFn(new AbortController().signal);
   const { act } = await import('@testing-library/react');
   act(() => result.current.loadMore());
   mocks.getAll.mockResolvedValueOnce({ data: [{ id: 'newer' }], total: 2, nextCursor: 'older-cursor' }).mockResolvedValueOnce({ data: [{ id: 'older' }], total: 2, nextCursor: null });

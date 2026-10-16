@@ -19,7 +19,7 @@ export function SelectedRowsBar({ count, onClear, children, disabled = false }: 
 
   const hasActions = Boolean(children) && (Array.isArray(children) ? children.some(Boolean) : true);
 
-  return <ThemedPortal>{<div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-50 flex justify-center px-1.5 sm:px-4">
+  return <ThemedPortal>{<div className="pointer-events-none fixed inset-x-0 bottom-[max(1rem,env(safe-area-inset-bottom))] z-40 flex justify-center px-1.5 sm:px-4">
       <section
         data-selected-row-actions
         role="toolbar"

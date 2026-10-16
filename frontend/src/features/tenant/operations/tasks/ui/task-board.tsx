@@ -24,13 +24,9 @@ import { LeadsPagination } from "@/shared/components/crm/leads-pagination";
 import { ConfirmActionDialog } from "@/shared/components/crm/confirm-action-dialog";
 import { ManageColumnsDrawer } from "@/shared/components/manage-columns-drawer";
 import { Button } from "@/shared/components/ui/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from "@/shared/components/ui/dialog";
+import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
+import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelBodyClass, panelFooterClass } from '@/shared/components/side-panel-styles';
+import { usePanelCloseGuard } from '@/shared/hooks/use-panel-close-guard';
 import {
   DatePicker,
   TimePicker,
@@ -67,15 +63,9 @@ export default function TaskBoard() {
     [limit, setLimit] = useState(25);
   const [editor, setEditor] = useState<{
     task?: TaskRecord;
+    taskId?: string;
     readOnly?: boolean;
   } | null>(null);
-  useEffect(() => {
-    if (!requestedTaskId || USE_MOCK_DATA) return;
-    let active = true;
-    tasksApi.get(requestedTaskId).then(response => { if (active) setEditor({ task: response.data, readOnly: true }); })
-      .catch(() => { if (active) toast.error('Unable to open this Task.'); });
-    return () => { active = false; };
-  }, [requestedTaskId]);
   const [selected, setSelected] = useState<string[]>([]),
     [busy, setBusy] = useState(false);
   const [error, setError] = useState(""),
@@ -92,6 +82,7 @@ export default function TaskBoard() {
   const [owners, setOwners] = useState<TaskOption[]>([]),
     [ownerError, setOwnerError] = useState("");
   const [columnsOpen, setColumnsOpen] = useState(false);
+  const bulkClose = usePanelCloseGuard(() => setBulkAction(null), { dirty: !!(owner || date || time), busy });
   const columnsTriggerRef = useRef<HTMLElement | null>(null);
   const openColumns = () => { columnsTriggerRef.current = document.activeElement as HTMLElement; setColumnsOpen(true); };
   const mutationPending = useRef(false),
@@ -150,6 +141,11 @@ export default function TaskBoard() {
     setNotice("");
     setOwners([]);
   }, [data.identity]);
+  useEffect(() => {
+    if (!requestedTaskId || USE_MOCK_DATA || !data.canRead) return;
+    // Open after the scope reset, including initial permission resolution.
+    setEditor({ taskId: requestedTaskId, readOnly: true });
+  }, [requestedTaskId, data.identity, data.canRead]);
   useEffect(() => {
     if (data.meta && page > Math.max(1, Math.ceil(data.meta.total / limit)))
       setPage(Math.max(1, Math.ceil(data.meta.total / limit)));
@@ -267,7 +263,10 @@ export default function TaskBoard() {
       setSelected((previous) =>
         previous.filter((id) => !result.succeeded.includes(id)),
       );
-      setBulkAction(null);
+      if (!result.failed.length) {
+        setBulkAction(null);
+        if (operation !== 'archive') toast.success(`${result.succeeded.length} task(s) updated.`);
+      }
       setArchiveIds(operation === "archive" ? result.failed.map(failure => failure.id) : []);
       if (operation === "archive" && result.failed.length) throw new Error(result.failed.map(failure => failure.error).join(" "));
     } catch (reason) {
@@ -524,6 +523,7 @@ export default function TaskBoard() {
                   disabled={busy || data.loading || !!filters.archived}
                   onClick={() => {
                     setOwner("");
+                    setDate(""); setTime(""); setError("");
                     setBulkAction("assign");
                   }}
                 >
@@ -538,6 +538,7 @@ export default function TaskBoard() {
                   onClick={() => {
                     setDate("");
                     setTime("");
+                    setOwner(""); setError("");
                     setBulkAction("reschedule");
                   }}
                 >
@@ -555,30 +556,33 @@ export default function TaskBoard() {
               </Button>
             )}
       </SelectedRowsBar>
-      <Dialog
+      <Sheet
         open={bulkAction !== null}
         onOpenChange={(open) => {
-          if (!open && !busy) setBulkAction(null);
+          if (!open) bulkClose.requestClose();
         }}
       >
-        <DialogContent
-          className="max-w-md"
+        <SheetContent
+          className={panelSurfaceClass}
+          showClose={!busy}
           aria-labelledby="task-bulk-title"
           aria-describedby="task-bulk-description"
         >
-          <DialogTitle id="task-bulk-title">
+          <header className={panelHeaderClass + ' pr-16'}><h2 id="task-bulk-title" className={panelTitleClass}>
             {bulkAction === "assign" ? "Assign tasks" : "Reschedule tasks"}
-          </DialogTitle>
-          <DialogDescription id="task-bulk-description">
+          </h2>
+          <p id="task-bulk-description" className="mt-2 text-sm text-muted-foreground">
             Update {selected.length} selected task(s). {bulkAction === 'reschedule' && 'Dates and times use Asia/Manila.'}
-          </DialogDescription>
+          </p></header>
+          <div className={panelBodyClass + ' space-y-4'}>
           {bulkAction === "assign" ? (
             <TaskSelector
               kind="user"
-              label="New owner"
+              label="Assigned Agent"
               required
               value={owner}
               onChange={setOwner}
+              disabled={busy}
             />
           ) : (
             <div className="grid gap-4">
@@ -621,11 +625,11 @@ export default function TaskBoard() {
               {error}
             </p>
           )}
-          <DialogFooter>
+          </div><footer className={panelFooterClass + ' justify-end'}>
             <Button
               variant="outline"
               disabled={busy}
-              onClick={() => setBulkAction(null)}
+              onClick={bulkClose.requestClose}
             >
               Cancel
             </Button>
@@ -637,9 +641,10 @@ export default function TaskBoard() {
             >
               {bulkAction === "assign" ? "Confirm assignment" : "Reschedule"}
             </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </footer>
+        </SheetContent>
+        {bulkAction && bulkClose.confirmation}
+      </Sheet>
       <ConfirmActionDialog
         open={archiveIds.length > 0}
         onOpenChange={(open) => {
@@ -672,8 +677,9 @@ export default function TaskBoard() {
       />
       {editor && (
         <TaskEditor
-          key={data.identity + (editor.task?.id ?? "new") + editor.readOnly}
+          key={data.identity + (editor.task?.id ?? editor.taskId ?? "new") + editor.readOnly}
           task={editor.task}
+          taskId={editor.taskId}
           readOnly={editor.readOnly}
           onClose={() => setEditor(null)}
         />

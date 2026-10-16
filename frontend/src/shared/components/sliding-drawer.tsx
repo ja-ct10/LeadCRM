@@ -7,6 +7,7 @@ import { AnimatePresence, motion } from 'motion/react';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 import { OverlayOwnerContext, ThemedPortal } from '@/shared/components/theme-scope';
+import { PanelCloseContext, usePanelCloseGuard } from '@/shared/hooks/use-panel-close-guard';
 
 interface SlidingDrawerProps {
   isOpen: boolean;
@@ -33,10 +34,11 @@ export function SlidingDrawer({
 }: SlidingDrawerProps) {
   const owner = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  useModalInteraction({ open: isOpen, panelRef, owner, onClose });
+  const guard = usePanelCloseGuard(onClose);
+  useModalInteraction({ open: isOpen, panelRef, owner, onClose: guard.requestClose });
 
   return (
-    <OverlayOwnerContext.Provider value={owner}><ThemedPortal><AnimatePresence>
+    <PanelCloseContext.Provider value={guard.context}><OverlayOwnerContext.Provider value={owner}><ThemedPortal><AnimatePresence>
       {isOpen && (
         <>
           {/* Backdrop Blur Overlay */}
@@ -45,7 +47,7 @@ export function SlidingDrawer({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
+            onClick={guard.requestClose}
             aria-hidden="true"
             className="fixed inset-0 bg-slate-950/40 backdrop-blur-sm z-[100] cursor-pointer"
           />
@@ -86,7 +88,7 @@ export function SlidingDrawer({
 
               <div className="flex shrink-0 items-center gap-2">
                 {headerActions}
-                <ModalCloseButton onClose={onClose} ariaLabel="Close drawer" size={20} className={panelCloseClass + " grid place-items-center"} />
+                <ModalCloseButton onClose={guard.requestClose} ariaLabel="Close drawer" size={20} className={panelCloseClass + " grid place-items-center"} />
               </div>
             </div>
 
@@ -97,6 +99,6 @@ export function SlidingDrawer({
           </motion.div>
         </>
       )}
-    </AnimatePresence></ThemedPortal></OverlayOwnerContext.Provider>
+    </AnimatePresence>{isOpen && guard.confirmation}</ThemedPortal></OverlayOwnerContext.Provider></PanelCloseContext.Provider>
   );
 }

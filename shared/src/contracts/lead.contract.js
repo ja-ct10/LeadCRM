@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DeactivateUserSchema = exports.UpdateLeadSchema = exports.CreateLeadSchema = exports.LeadFieldsSchema = exports.OptionalLeadSourceSchema = exports.LeadPhoneSchema = exports.LeadNameSchema = void 0;
+exports.DeactivateUserSchema = exports.ConvertLeadSchema = exports.UpdateLeadSchema = exports.CreateLeadSchema = exports.LeadFieldsSchema = exports.OptionalLeadSourceSchema = exports.LeadPhoneSchema = exports.LeadNameSchema = void 0;
 const zod_1 = require("zod");
 const administration_user_schema_1 = require("../validation/administration-user.schema");
 const crm_email_1 = require("../validation/crm-email");
@@ -31,4 +31,17 @@ exports.CreateLeadSchema = exports.LeadFieldsSchema.extend({ status: record_expe
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial()
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
+/** New Account details use the same contract as standalone and linked creation. */
+exports.ConvertLeadSchema = zod_1.z.object({
+    accountId: zod_1.z.string().uuid().optional(),
+    accountName: zod_1.z.string().trim().min(1).max(2000).optional(),
+    newAccount: organization_1.NewAccountSchema.optional(),
+    skipAccountCreation: zod_1.z.boolean().optional(),
+    createContact: zod_1.z.literal(true).default(true),
+    contactId: zod_1.z.string().uuid().optional(),
+    createDeal: zod_1.z.literal(false).default(false),
+    dealId: zod_1.z.string().uuid().optional(),
+}).strict().refine(value => !value.newAccount || (!value.accountId && !value.accountName && !value.skipAccountCreation), {
+    path: ['newAccount'], message: 'Choose one Account creation or linking option.',
+});
 exports.DeactivateUserSchema = zod_1.z.object({ replacementAgentId: zod_1.z.string().uuid().nullable().optional() }).strict();

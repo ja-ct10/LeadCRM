@@ -1,5 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import prisma from '../../../config/database.config';
 import app from '../../../app';
@@ -44,6 +44,109 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     expect(NewAccountSchema.safeParse({ ...newAccount, address: 'Bad\u0000address' }).success).toBe(false);
     expect(CreateLeadSchema.safeParse({ ...person(), accountId: randomUUID(), newAccount }).success).toBe(false);
     expect(CreateClientContactSchema.safeParse({ ...person(), accountId: randomUUID(), newAccount }).success).toBe(false);
+  });
+
+  it('replays standalone Account creation without duplicate records, receipts or audit entries', async () => {
+    const input = company();
+    const first = await call('/crm/accounts', 'POST', input);
+    expect(first.status, JSON.stringify(first.body)).toBe(201);
+    const replay = await call('/crm/accounts', 'POST', input);
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200);
+    expect(replay.body.data.id).toBe(first.body.data.id);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: input.name } }))).toBe(1);
+    expect(await scope(() => prisma.accountCreationReceipt.count({ where: { tenantId, requestId: input.requestId } }))).toBe(1);
+    expect(await scope(() => prisma.auditLog.count({ where: { tenantId, entityId: first.body.data.id, action: 'account.created' } }))).toBe(1);
+    const conflict = await call('/crm/accounts', 'POST', { ...input, name: `Changed ${input.name}` });
+    expect(conflict.status).toBe(409);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: `Changed ${input.name}` } }))).toBe(0);
+  });
+
+  it('deduplicates concurrent standalone Account creation and preserves older linked receipts', async () => {
+    const input = company();
+    const responses = await Promise.all(Array.from({ length: 3 }, () => call('/crm/accounts', 'POST', input)));
+    expect(responses.every(response => [200, 201].includes(response.status)), JSON.stringify(responses)).toBe(true);
+    expect(new Set(responses.map(response => response.body.data.id)).size).toBe(1);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: input.name } }))).toBe(1);
+
+    const legacy = await scope(() => prisma.account.create({ data: { tenantId, name: 'Legacy linked Account' } }));
+    const requestId = randomUUID();
+    await scope(() => prisma.accountCreationReceipt.create({ data: { tenantId, requestId, actorId: adminId, accountId: legacy.id,
+      requestHash: createHash('sha256').update('{"name":"Legacy linked Account"}').digest('hex') } }));
+    const replay = await call('/crm/accounts', 'POST', { requestId, name: legacy.name });
+    expect(replay.status, JSON.stringify(replay.body)).toBe(200);
+    expect(replay.body.data.id).toBe(legacy.id);
+  });
+
+  it('distinguishes omitted Company Size from an explicit clear and persists the clear', async () => {
+    const created = await call('/crm/accounts', 'POST', company());
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const id = created.body.data.id;
+    const unchanged = await call(`/crm/accounts/${id}`, 'PUT', { industry: 'Retail' });
+    expect(unchanged.status, JSON.stringify(unchanged.body)).toBe(200);
+    expect(unchanged.body.data.size).toBe('11-50');
+    const cleared = await call(`/crm/accounts/${id}`, 'PUT', { size: null });
+    expect(cleared.status, JSON.stringify(cleared.body)).toBe(200);
+    expect(cleared.body.data.size).toBeNull();
+    expect((await scope(() => prisma.account.findUniqueOrThrow({ where: { id, tenantId } }))).size).toBeNull();
+  });
+
+  it('filters Accounts before paging and reports complete Deal totals beyond the browser cache', async () => {
+    const prefix = `Paged ${randomUUID()}`;
+    const createdAt = new Date('2026-01-01T00:00:00Z');
+    const [empty, linked] = await scope(() => Promise.all([
+      prisma.account.create({ data: { tenantId, name: prefix + ' A', industry: 'Paged industry', createdAt, updatedAt: createdAt } }),
+      prisma.account.create({ data: { tenantId, name: prefix + ' Z', industry: 'Paged industry', createdAt, updatedAt: new Date('2026-01-02T00:00:00Z') } }),
+    ]));
+    const pipeline = await scope(() => prisma.pipeline.create({ data: { tenantId, name: prefix } }));
+    const stage = await scope(() => prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Open', order: 0, requiredFields: [] } }));
+    await scope(() => prisma.deal.createMany({ data: Array.from({ length: 106 }, (_, index) => ({ tenantId, accountId: linked.id, pipelineId: pipeline.id,
+      stageId: stage.id, title: prefix + index, value: 10, tags: [], productInterests: [], isArchived: index === 105 })) }));
+    const query = `/crm/accounts?search=${encodeURIComponent(prefix)}&pageSize=1&sort=name:asc`;
+    const all = await call(query, 'GET', undefined);
+    expect(all.status, JSON.stringify(all.body)).toBe(200);
+    expect(all.body.meta.total).toBe(2); expect(all.body.data[0].id).toBe(empty.id);
+    expect(all.body.facets).toMatchObject({ touched: 1, untouched: 1, has_deals: 1, 'industry:Paged industry': 2 });
+    for (const filter of ['related]=in:has_deals', 'system]=in:touched']) {
+      const filtered = await call(query + '&filter[' + filter, 'GET', undefined);
+      expect(filtered.status, JSON.stringify(filtered.body)).toBe(200);
+      expect(filtered.body.meta.total).toBe(1);
+      expect(filtered.body.data[0]).toMatchObject({ id: linked.id, dealCount: 105, dealValue: 1050 });
+    }
+    const untouched = await call(query + '&filter[system]=in:untouched', 'GET', undefined);
+    expect(untouched.body.data.map((row: { id: string }) => row.id)).toEqual([empty.id]);
+    expect((await call(`/crm/accounts/${linked.id}`, 'GET', undefined)).body.data).toMatchObject({ dealCount: 105, dealValue: 1050 });
+
+    await scope(() => prisma.rolePermission.create({ data: { tenantId, roleId, module: 'accounts', canView: true } }));
+    const restricted = await call(query, 'GET', undefined, staffToken);
+    expect(restricted.status).toBe(200);
+    expect(restricted.body.data[0]).not.toHaveProperty('dealCount');
+    expect(restricted.body.facets.has_deals).toBe(0);
+    expect((await call(query + '&filter[related]=in:has_deals', 'GET', undefined, staffToken)).body.meta.total).toBe(0);
+    await scope(() => prisma.rolePermission.deleteMany({ where: { tenantId, roleId, module: 'accounts' } }));
+  });
+
+  it('binds standalone receipts to the actor and tenant and rolls back invalid custom values', async () => {
+    const input = company();
+    const created = await call('/crm/accounts', 'POST', input);
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    const otherActor = await prisma.user.create({ data: { tenantId, firstName: 'Other', lastName: 'Creator', role: 'Client Admin', email: `${randomUUID()}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    const otherToken = (await issueAuthSession(otherActor)).token;
+    expect((await call('/crm/accounts', 'POST', input, otherToken)).status).toBe(409);
+    const otherTenant = await prisma.tenant.create({ data: { name: 'Other Account workspace', slug: randomUUID(), status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } });
+    const foreignActor = await prisma.user.create({ data: { tenantId: otherTenant.id, firstName: 'Other', lastName: 'Workspace', role: 'Client Admin', email: `${randomUUID()}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    const foreignToken = (await issueAuthSession(foreignActor)).token;
+    const independent = await call('/crm/accounts', 'POST', input, foreignToken);
+    expect(independent.status, JSON.stringify(independent.body)).toBe(201);
+    expect(independent.body.data.tenantId).toBe(otherTenant.id);
+    expect(independent.body.data.id).not.toBe(created.body.data.id);
+    expect((await call(`/crm/accounts/${created.body.data.id}`, 'GET', undefined, foreignToken)).status).toBe(404);
+
+    const invalid = { ...company(), customFieldValues: { nonexistent: 'invalid' } };
+    expect((await call('/crm/accounts', 'POST', invalid)).status).toBe(400);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: invalid.name } }))).toBe(0);
+    expect(await scope(() => prisma.accountCreationReceipt.count({ where: { tenantId, requestId: invalid.requestId } }))).toBe(0);
+    const retried = await call('/crm/accounts', 'POST', { ...invalid, customFieldValues: {} });
+    expect(retried.status, JSON.stringify(retried.body)).toBe(201);
   });
 
   it.each(['leads', 'contacts'])('creates %s plus one Account, returns company details and replays safely', async module => {
@@ -153,6 +256,30 @@ describe.skipIf(!disposable)('Atomic organization creation over authenticated HT
     const optional = await call('/crm/leads', 'POST', { ...person(), companyName: 'Legacy company text' });
     expect(optional.status, JSON.stringify(optional.body)).toBe(201); expect(optional.body.data.accountId).toBeNull();
     expect((await call(`/crm/leads/${optional.body.data.id}`, 'PUT', { address: 'Updated address' })).status).toBe(200);
+    const rejectedConversion = await call(`/crm/leads/${optional.body.data.id}/convert`, 'POST', {});
+    expect(rejectedConversion.status, JSON.stringify(rejectedConversion.body)).toBe(400);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: 'Legacy company text' } }))).toBe(0);
+    expect(await scope(() => prisma.contact.count({ where: { tenantId, email: optional.body.data.email } }))).toBe(0);
+    expect((await scope(() => prisma.lead.findUniqueOrThrow({ where: { id: optional.body.data.id, tenantId } }))).convertedAt).toBeNull();
+    const conversionAccount = { ...company(), customFieldValues: { [fieldId]: 'Conversion company context' } };
+    const converted = await call(`/crm/leads/${optional.body.data.id}/convert`, 'POST', { newAccount: conversionAccount });
+    expect(converted.status, JSON.stringify(converted.body)).toBe(200);
+    expect(converted.body.data.account.name).toBe(conversionAccount.name);
+    expect(await scope(() => prisma.customFieldValue.findFirst({ where: { tenantId, accountId: converted.body.data.account.id, fieldId } }))).toMatchObject({ value: 'Conversion company context' });
+    const replay = await call(`/crm/leads/${optional.body.data.id}/convert`, 'POST', { newAccount: conversionAccount });
+    expect(replay.status).toBe(200);
+    expect(replay.body.data.account.id).toBe(converted.body.data.account.id);
+    expect(await scope(() => prisma.account.count({ where: { tenantId, name: conversionAccount.name } }))).toBe(1);
+    const existing = await scope(() => prisma.account.create({ data: { tenantId, name: `Existing historical Account ${randomUUID()}` } }));
+    const linkedLead = await call('/crm/leads', 'POST', person());
+    const linked = await call(`/crm/leads/${linkedLead.body.data.id}/convert`, 'POST', { accountId: existing.id });
+    expect(linked.status, JSON.stringify(linked.body)).toBe(200);
+    expect(linked.body.data.account.id).toBe(existing.id);
+    expect(await scope(() => prisma.customFieldValue.count({ where: { tenantId, accountId: existing.id } }))).toBe(0);
+    const textOnlyLead = await call('/crm/leads', 'POST', { ...person(), companyName: `Intake text ${randomUUID()}` });
+    const withoutNewAccount = await call(`/crm/leads/${textOnlyLead.body.data.id}/convert`, 'POST', { skipAccountCreation: true });
+    expect(withoutNewAccount.status, JSON.stringify(withoutNewAccount.body)).toBe(200);
+    expect(withoutNewAccount.body.data.account).toBeNull();
     expect(await scope(() => prisma.account.count({ where: { tenantId, name: 'Legacy company text' } }))).toBe(0);
   });
 });

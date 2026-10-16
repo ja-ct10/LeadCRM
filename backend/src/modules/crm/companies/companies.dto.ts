@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CustomFieldValuesSchema, COMPANY_SIZE_OPTIONS, RETIRED_ACCOUNT_FIELDS } from '@leadcrm/shared';
+import { AccountUpdateFieldsSchema, CustomFieldValuesSchema, COMPANY_SIZE_OPTIONS, RETIRED_ACCOUNT_FIELDS } from '@leadcrm/shared';
 import { recordText, recordName } from '../record-validation';
 import { consolidateAccountAddress } from './account-address';
 
@@ -29,8 +29,8 @@ function fullAddress<T extends { address?: string; city?: string; province?: str
   return { ...data, ...(['address', 'city', 'province', 'country'].some(key => key in input)
     ? { address: consolidateAccountAddress(input) ?? undefined } : {}) };
 }
-export const CreateCompanySchema = rejectRetired.pipe(CompanyFieldsSchema).transform(fullAddress);
-export const UpdateCompanySchema = rejectRetired.pipe(CompanyFieldsSchema.partial()).transform(fullAddress);
+export const CreateCompanySchema = rejectRetired.pipe(CompanyFieldsSchema.extend({ requestId: z.string().uuid().optional() })).transform(fullAddress);
+export const UpdateCompanySchema = rejectRetired.pipe(CompanyFieldsSchema.partial().extend({ size: AccountUpdateFieldsSchema.shape.size })).transform(fullAddress);
 
 export type CreateCompanyDto = z.infer<typeof CreateCompanySchema>;
 export type UpdateCompanyDto = z.infer<typeof UpdateCompanySchema>;

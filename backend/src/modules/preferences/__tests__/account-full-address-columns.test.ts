@@ -11,11 +11,11 @@ it('removes legacy columns from user/tenant preferences while preserving placeme
   expect(reconcileTableColumns('accounts', result.columns, ACCOUNTS_TABLE_COLUMNS)).toEqual(result.columns);
   expect(legacy[1].id).toBe('city');
 });
-it('upgrades the old address label while retaining Notes in the Account field catalog', () => {
+it('upgrades the old address label and excludes retired Notes from the Account field catalog', () => {
   const layout = defaultFieldLayout('accounts');
   layout.fields.address = { label: 'Street Address', groupId: 'accounts:section:1', order: 0, visibleInForm: true, visibleInDetails: true };
   expect(getCrmFieldCatalog('accounts', [], layout).find(field => field.technicalKey === 'address')?.label).toBe('Full Address');
-  expect(getCrmFieldCatalog('accounts').find(field => field.technicalKey === 'notes')?.visibleInDetails).toBe(true);
+  expect(getCrmFieldCatalog('accounts').some(field => field.technicalKey === 'notes')).toBe(false);
   layout.fields.address.label = 'Delivery location';
   expect(getCrmFieldCatalog('accounts', [], layout).find(field => field.technicalKey === 'address')?.label).toBe('Delivery location');
   layout.fields.city = { ...layout.fields.address, label: 'City' };

@@ -112,6 +112,17 @@ it('shows the create subtitle only in task creation and restores it after nested
   expect(screen.getByText('Complete the task details below.')).toBeTruthy();
   expect(screen.getByLabelText('Title *')).toHaveProperty('value', 'Keep task draft');
 });
+
+it('opens an ID-only destination through the shared detail reader without presenting a create form', () => {
+  mocks.detail = { data: undefined, error: null, isInitialLoad: true, isRefreshing: false, refetch: vi.fn() };
+  const view = render(<TaskEditor taskId={task.id} readOnly onClose={vi.fn()} />);
+  expect(screen.getByRole('heading', { name: 'Task details' })).toBeTruthy();
+  expect(screen.queryByText('Complete the task details below.')).toBeNull();
+  mocks.detail = { ...mocks.detail, data: task, isInitialLoad: false };
+  view.rerender(<TaskEditor taskId={task.id} readOnly onClose={vi.fn()} />);
+  expect(screen.getByRole('textbox', { name: /^Title/ })).toHaveProperty('value', task.title);
+  expect(screen.queryByRole('button', { name: 'Create task' })).toBeNull();
+});
 it.each([false, true])('omits task creation copy from Task details (read only: %s)', readOnly => {
   render(<TaskEditor task={task} readOnly={readOnly} onClose={vi.fn()} />);
   expect(screen.getByRole('heading', { name: 'Task details' })).toBeTruthy();

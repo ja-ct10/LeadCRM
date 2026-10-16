@@ -36,7 +36,7 @@ it.each(cases)('$name renders one accessible error below each required field', a
   fireEvent.submit(container.querySelector('form')!);
   for (const label of labels) {
     const input = screen.getByLabelText(label);
-    const expectedMessage = name === 'Lead' ? 'Name is required' : label.startsWith('First') ? 'First name is required' : label.startsWith('Last') ? 'Last name is required' : label.startsWith('Account') ? 'Account name is required' : 'Title is required';
+    const expectedMessage = name === 'Lead' ? 'Name is required' : label.startsWith('First') ? 'First name is required' : label.startsWith('Last') ? 'Last name is required' : label.startsWith('Account') ? 'Account name is required.' : 'Title is required';
     await screen.findAllByText(expectedMessage);
     expect(input.getAttribute('aria-invalid')).toBe('true');
     const error = document.getElementById(input.getAttribute('aria-describedby')!);
@@ -69,7 +69,7 @@ it.each([
   for (const label of labels) fireEvent.change(screen.getByLabelText(label), { target: { value: '   ' } });
   fireEvent.submit(screen.getByLabelText(labels[0]).closest('form')!);
   for (const label of labels) {
-    await screen.findByText(label.startsWith('First') ? 'First name is required' : label.startsWith('Last') ? 'Last name is required' : 'Account name is required');
+    await screen.findByText(label.startsWith('First') ? 'First name is required' : label.startsWith('Last') ? 'Last name is required' : 'Account name is required.');
     expect(screen.getByLabelText(label).getAttribute('aria-invalid')).toBe('true');
   }
 });

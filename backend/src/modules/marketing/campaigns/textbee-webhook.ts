@@ -8,11 +8,12 @@ import { AppError } from '../../../shared/errors/app-error';
 import { recalculateCampaignDelivery } from './campaign-delivery-status';
 import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 import { smsSent } from './sms-campaign-outcomes';
+import { smsProviderDiagnostic } from '../../../shared/services/sms.service';
 
 const identity = z.string().min(1).max(500);
 const timestamp = z.string().datetime({ offset: true }).transform(value => new Date(value));
 const envelope = z.object({ smsId: identity, smsBatchId: identity, deviceId: identity,
-  webhookSubscriptionId: identity, idempotencyKey: identity, recipient: z.string().regex(/^\+[1-9]\d{7,14}$/) });
+  webhookSubscriptionId: identity, idempotencyKey: identity, recipient: z.string().regex(/^\+[1-9]\d{7,14}$/), errorCode: z.unknown().optional(), errorMessage: z.unknown().optional() });
 export const TextBeeEventSchema = z.discriminatedUnion('webhookEvent', [
   envelope.extend({ webhookEvent: z.literal('MESSAGE_SENT'), status: z.literal('sent'), sentAt: timestamp }),
   envelope.extend({ webhookEvent: z.literal('MESSAGE_DELIVERED'), status: z.literal('delivered'), sentAt: timestamp, deliveredAt: timestamp }),
@@ -39,7 +40,7 @@ export async function processTextBeeEvent(input: unknown) {
 }
 
 export type TextBeeEvidence = { smsId: string; smsBatchId: string; deviceId: string; recipient: string; status: string;
-  sentAt?: Date; deliveredAt?: Date; failedAt?: Date; providerUpdatedAt?: Date };
+  sentAt?: Date; deliveredAt?: Date; failedAt?: Date; providerUpdatedAt?: Date; errorCode?: unknown; errorMessage?: unknown };
 /** Shared verified-fact writer. Provider GET results are not webhook receipts. */
 export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: string, expectedUpdatedAt?: Date | null) {
   const started = performance.now();
@@ -70,19 +71,21 @@ export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: 
     if (expectedUpdatedAt !== undefined && current.providerUpdatedAt?.getTime() !== expectedUpdatedAt?.getTime()) return;
     if (current.smsId && current.smsId !== event.smsId) throw new AppError('SMS message identity does not match.', 400);
     const status = event.status;
+    const diagnostic = smsProviderDiagnostic(event.errorCode, event.errorMessage);
     // Final evidence cannot regress. A later matching callback may still supply
     // an actual timestamp omitted from an earlier authenticated status lookup.
     if (current.status === 'excluded' || ['delivered', 'failed'].includes(current.status) && status !== current.status) return;
     const newDates = !!(event.sentAt && !current.sentAt || event.deliveredAt && !current.deliveredAt);
     const at = event.deliveredAt ?? event.failedAt ?? event.sentAt ?? event.providerUpdatedAt ?? null;
     if (at && current.providerUpdatedAt && at < current.providerUpdatedAt && !(status === current.status && newDates)) return;
-    if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE' && !newDates) {
+    const newDiagnostic = !!(diagnostic.code && diagnostic.code !== current.providerErrorCode || diagnostic.message && diagnostic.message !== current.providerErrorMessage);
+    if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE' && !newDates && !newDiagnostic) {
       await recalculateCampaignDelivery(tx, recipient.campaignId, recipient.tenantId, true);
       return;
     }
     // UNKNOWN_STATE has no event timestamp. Preserve the confirmed sent fact,
     // while flagging it for review until a final delivery/failure arrives.
-    if (status === 'unknown' && current.failureReason === 'TEXTBEE_UNKNOWN_STATE') return;
+    if (status === 'unknown' && current.failureReason === 'TEXTBEE_UNKNOWN_STATE' && !newDiagnostic) return;
     await tx.campaignContact.update({ where: { id: recipient.id, ...where }, data: {
       status: status === 'unknown' && smsSent(current) ? 'sent' : status,
       smsId: event.smsId,
@@ -91,6 +94,10 @@ export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: 
       ...(event.sentAt ? { sentAt: current.sentAt ?? event.sentAt } : {}),
       ...(event.deliveredAt ? { deliveredAt: current.deliveredAt ?? event.deliveredAt } : {}),
       failureReason: status === 'failed' ? 'TEXTBEE_FAILED' : status === 'unknown' ? 'TEXTBEE_UNKNOWN_STATE' : null,
+      ...(['failed', 'unknown'].includes(status) ? {
+        providerErrorCode: diagnostic.code ?? current.providerErrorCode,
+        providerErrorMessage: diagnostic.message ?? current.providerErrorMessage,
+      } : { providerErrorCode: null, providerErrorMessage: null }),
     } });
     await recalculateCampaignDelivery(tx, recipient.campaignId, recipient.tenantId);
   }));

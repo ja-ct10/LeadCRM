@@ -1,4 +1,4 @@
-import { assertContactAccountSelection, mayReadContactAccount } from '../contacts-v2/contact-account-access';
+import { assertContactAccountSelection, mayReadContactAccount, presentContactAccount } from '../contacts-v2/contact-account-access';
 import type { Lead as LeadRecord } from '@prisma/client';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
@@ -57,7 +57,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
   }
   const filterClauses = buildPrismaFilters(parsedFilters, CONTACT_FILTER_FIELDS, CONTACT_FIELD_ALIASES);
-  filterClauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'companyName', 'source'], contains => [
+  filterClauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'source'], contains => [
+    { companyName: contains, ...(!canReadAccount ? { companyFromAccount: false } : {}) },
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
     ...(['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
       .map(status => ({ status: { in: [status, status.toUpperCase()] } }))),
@@ -87,8 +88,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const dateSort = ['createdAt', 'updatedAt'].includes(sortField);
   const ids = dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
     async () => (await prisma.lead.findMany({ where,
-      select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, status: true, source: true },
-    })).map(row => ({ ...row, name: row.firstName?.trim() || row.lastName?.trim() ? formatLeadName(row) : null, status: normalizeCrmStatus(row.status) })));
+      select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, companyFromAccount: true, status: true, source: true },
+    })).map(row => ({ ...presentContactAccount(row, canReadAccount), name: row.firstName?.trim() || row.lastName?.trim() ? formatLeadName(row) : null, status: normalizeCrmStatus(row.status) })));
   const [data, total] = await Promise.all([
     prisma.lead.findMany({
       where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit,
@@ -149,7 +150,7 @@ export async function createContact(
       if (!account) throw new NotFoundError('Active Account');
       fields.companyName = account.name;
     }
-    const lead = await createAssignedLead(tx, { ...fields, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
+    const lead = await createAssignedLead(tx, { ...fields, companyFromAccount: !!fields.accountId, productInterestIds: productInterest ?? [], tenantId, creationKey: requestId,
       ...(createdById ? { createdById, updatedById: createdById } : {}) }, createdById);
     if (!existing) await saveRecordValues(tx, tenantId, 'leads', lead.id, customFieldValues, createdById);
     return lead;
@@ -181,11 +182,14 @@ export async function updateContact(
       await assertContactAccountSelection(tx, tenantId, dto.accountId, current.accountId);
       if (dto.newAccount) {
         const account = await createLinkedAccount(tx, tenantId, dto.newAccount, updatedById);
-        data.accountId = account.id; data.companyName = account.name;
+        data.accountId = account.id; data.companyName = account.name; data.companyFromAccount = true;
       } else if (dto.accountId && dto.accountId !== current.accountId) {
         const account = await tx.account.findFirst({ where: { tenantId, id: dto.accountId, isArchived: false, deletedAt: null }, select: { name: true } });
         if (!account) throw new NotFoundError('Active Account');
         data.companyName = account.name;
+        data.companyFromAccount = true;
+      } else if (dto.companyName !== undefined && dto.companyName !== current.companyName) {
+        data.companyFromAccount = false;
       }
       const previousCustom = dto.customFieldValues === undefined ? undefined : await readRecordValues(tx, tenantId, 'leads', id);
       await saveRecordValues(tx, tenantId, 'leads', id, dto.customFieldValues, updatedById);

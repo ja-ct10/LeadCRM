@@ -424,6 +424,7 @@ model Lead {
   createdAt           DateTime  @default(now())
   updatedAt           DateTime  @default(now()) @updatedAt
   companyName         String?
+  companyFromAccount  Boolean              @default(false)
   address             String?
   firstName           String
   lastName            String
@@ -506,6 +507,8 @@ model Contact {
   email               String?
   phone               String?
   company             String?
+  // Retain provenance even after unlinking; copied Account text keeps its View boundary.
+  companyFromAccount  Boolean              @default(false)
   status              ContactStatus        @default(WARM)
   source              String?
   notes               String?
@@ -1135,6 +1138,8 @@ model CampaignMetrics {
 // CAMPAIGN-CONTACT JUNCTION (per-contact delivery tracking)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignContact {
+  providerErrorCode String?
+  providerErrorMessage String?
   smsId String?
   nextSmsCheckAt DateTime?
   smsCheckAttempts Int @default(0)

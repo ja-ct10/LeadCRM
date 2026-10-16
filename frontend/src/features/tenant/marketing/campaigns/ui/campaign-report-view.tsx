@@ -21,7 +21,7 @@ import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { CampaignStatusBadge, formatCampaignStatus } from './campaign-status-badge';
 import { campaignReportCsv } from '../services/campaign-report-export';
 
-const deliveryFilters = ['Delivered', 'Bounced', 'Submitted', 'Sent', 'Failed', 'Pending'];
+const deliveryFilters = ['Delivered', 'Bounced', 'Submitted', 'Sent', 'Failed', 'Pending', 'Unknown'];
 const engagementFilters = ['Opened', 'Clicked'];
 const engagement = (value: boolean, label: string) => <span aria-label={value ? label : `Not ${label.toLowerCase()}`}>
   {value ? <Check size={16} className="text-emerald-600" aria-hidden="true" /> : <span className="text-slate-400" aria-hidden="true">—</span>}
@@ -31,7 +31,7 @@ const recipientColumns: DataGridColumnDef<CampaignRecipient>[] = [
     cell: (_, row) => <AvatarCell name={row.name} initials={row.name.split(/\s+/).slice(0, 2).map(word => word[0]).join('')} /> },
   { id: 'email', header: 'Email', accessor: row => row.email || '—', width: 240 },
   { id: 'delivery', header: 'Delivery Status', accessor: row => row.deliveryStatus, width: 150,
-    cell: (_, row) => <Badge variant={row.deliveryStatus === 'Delivered' ? 'success' : ['Bounced', 'Failed'].includes(row.deliveryStatus) ? 'destructive' : 'secondary'} title={row.failureReason ?? undefined}>{row.deliveryStatus}</Badge> },
+    cell: (_, row) => <div className="min-w-0 space-y-1"><Badge variant={row.deliveryStatus === 'Delivered' ? 'success' : ['Bounced', 'Failed'].includes(row.deliveryStatus) ? 'destructive' : 'secondary'} title={row.failureReason ?? undefined}>{row.deliveryStatus}</Badge>{row.failureDetail && <p className="whitespace-normal text-xs text-muted-foreground [overflow-wrap:anywhere]">{row.failureDetail}</p>}</div> },
   { id: 'opened', header: 'Opened', accessor: row => row.opened, width: 90, cell: (_, row) => engagement(row.opened, 'Opened') },
   { id: 'clicked', header: 'Clicked', accessor: row => row.clicked, width: 90, cell: (_, row) => engagement(row.clicked, 'Clicked') },
   { id: 'activity', header: 'Last Activity', accessor: row => formatDateTime(row.lastActivity), width: 220 },
@@ -138,7 +138,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       (!engagementFilter.length || engagementFilter.some(value => value === 'Opened' ? row.opened : row.clicked));
   }), [recipients, search, deliveryFilter, engagementFilter]);
   const current = report ?? campaign;
-  const status = formatCampaignStatus(current.status);
+  const status = formatCampaignStatus(current.status, current.reviewRequired);
   const isSms = current.type.toUpperCase() === 'SMS';
   const columns: DataGridColumnDef<CampaignRecipient>[] = isSms ? recipientColumns.filter(c => !['opened', 'clicked'].includes(c.id)).map(c => c.id === 'email' ? { ...c, id: 'phone', header: 'Phone', accessor: row => row.phone || '—' } : c.id === 'actions' ? { ...c, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.phone} aria-label={`Copy phone for ${row.name}`} title="Copy phone" onClick={async () => { try { await navigator.clipboard.writeText(row.phone || ''); toast.success('Phone copied.'); } catch { toast.error('Unable to copy phone.'); } }}><Copy size={14} /></Button> } : c) : recipientColumns;
   const filterGroups: FilterGroup[] = [{ id: 'delivery', label: 'Delivery Status', items:
@@ -191,7 +191,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       <RecordBackButton label="Campaigns" onClick={onBack} />
       <div className="mb-3 flex flex-wrap gap-2">
         <Badge className="uppercase">{current.type} campaign</Badge>
-        <CampaignStatusBadge status={current.status} />
+        <CampaignStatusBadge status={current.status} reviewRequired={current.reviewRequired} />
       </div>
       <div className="flex min-w-0 items-start justify-between gap-3">
         <div className="min-w-0">
@@ -207,6 +207,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
       <Button variant="outline" onClick={() => void fetchReport()} disabled={loading}>Retry</Button>
     </div>}
     {current.scheduleConfig?.scheduleFailureReason && <p role="status" className="rounded border border-amber-300 p-3 text-sm">Schedule failed: {current.scheduleConfig.scheduleFailureReason}</p>}
+    {current.reviewRequired && <p role="status" className="rounded border border-amber-300 p-3 text-sm">Some SMS outcomes are unconfirmed. Review the recipient details and TextBee history before sending again. No uncertain message is automatically resent. Refresh this report to check for later provider evidence.</p>}
     {current.submissionInterruptedAt && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-200">Submission was interrupted. Recipients marked as not sent were never submitted. Unconfirmed recipients may have been accepted. Review recipient failure reasons and provider history before sending again; no recipients were automatically retried.</div>}
     {(report || initialLoading) && <>
       <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-5' : 'xl:grid-cols-6'} gap-3`}>

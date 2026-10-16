@@ -2,6 +2,7 @@ import { salesTransaction, validateSalesOwner } from '../leads/lead-automation.s
 import { productRelationData } from '../leads/product-relations';
 import { serializeLead } from '../leads/lead-serializer';
 import prisma from '../../../config/database.config';
+import { mayReadContactAccount, presentContactAccount } from '../contacts-v2/contact-account-access';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import * as repo from './merge.repository';
 import type {
@@ -85,7 +86,9 @@ async function previewLeadMerge(tenantId: string, primaryId: string, secondaryId
   if (primary.isArchived || primary.convertedAt || primary.status === 'Merged') throw new ValidationError('Primary lead has already been merged');
   if (secondary.isArchived || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
 
-  const fieldComparisons = buildFieldComparisons(primary, secondary, LEAD_MERGE_FIELDS);
+  const permitted = await mayReadContactAccount(prisma, tenantId);
+  const visiblePrimary = presentContactAccount(primary, permitted), visibleSecondary = presentContactAccount(secondary, permitted);
+  const fieldComparisons = buildFieldComparisons(visiblePrimary, visibleSecondary, LEAD_MERGE_FIELDS);
 
   const [primaryCounts, secondaryCounts] = await Promise.all([
     repo.countLeadRelationships(primaryId, tenantId),
@@ -93,8 +96,8 @@ async function previewLeadMerge(tenantId: string, primaryId: string, secondaryId
   ]);
 
   return {
-    primary: serializeLead(primary),
-    secondary: serializeLead(secondary),
+    primary: serializeLead(visiblePrimary),
+    secondary: serializeLead(visibleSecondary),
     fieldComparisons,
     relationshipCounts: { primary: primaryCounts, secondary: secondaryCounts },
   };
@@ -117,6 +120,8 @@ async function executeLeadMerge(
     if (secondary.isArchived || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
+    if (mergedData.companyName !== undefined) mergedData.companyFromAccount =
+      (fieldResolutions.companyName === 'secondary' ? secondary : primary).companyFromAccount;
 
     if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId), ['leads']);
     // 1. Reassign relationships
@@ -157,7 +162,7 @@ async function executeLeadMerge(
 
 
   return {
-    mergedRecord: serializeLead(result.mergedRecord),
+    mergedRecord: serializeLead(presentContactAccount(result.mergedRecord, await mayReadContactAccount(prisma, tenantId))),
     archivedRecordId: secondaryId,
     reassignedCounts: result.reassignedCounts,
   };
@@ -175,7 +180,9 @@ async function previewContactMerge(tenantId: string, primaryId: string, secondar
   if (!primary) throw new NotFoundError('Primary contact');
   if (!secondary) throw new NotFoundError('Secondary contact');
 
-  const fieldComparisons = buildFieldComparisons(primary, secondary, CONTACT_MERGE_FIELDS);
+  const permitted = await mayReadContactAccount(prisma, tenantId);
+  const visiblePrimary = presentContactAccount(primary, permitted), visibleSecondary = presentContactAccount(secondary, permitted);
+  const fieldComparisons = buildFieldComparisons(visiblePrimary, visibleSecondary, CONTACT_MERGE_FIELDS);
 
   const [primaryCounts, secondaryCounts] = await Promise.all([
     repo.countContactRelationships(primaryId, tenantId),
@@ -183,8 +190,8 @@ async function previewContactMerge(tenantId: string, primaryId: string, secondar
   ]);
 
   return {
-    primary: primary as unknown as Record<string, unknown>,
-    secondary: secondary as unknown as Record<string, unknown>,
+    primary: visiblePrimary as unknown as Record<string, unknown>,
+    secondary: visibleSecondary as unknown as Record<string, unknown>,
     fieldComparisons,
     relationshipCounts: { primary: primaryCounts, secondary: secondaryCounts },
   };
@@ -206,6 +213,8 @@ async function executeContactMerge(
     if (!secondary) throw new NotFoundError('Secondary contact');
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, CONTACT_MERGE_FIELDS);
+    if (mergedData.company !== undefined) mergedData.companyFromAccount =
+      (fieldResolutions.company === 'secondary' ? secondary : primary).companyFromAccount;
 
     if (mergedData.assignedUserId && mergedData.assignedUserId !== primary.assignedUserId) {
       await validateSalesOwner(tx, tenantId, String(mergedData.assignedUserId), ['contacts']);
@@ -249,7 +258,7 @@ async function executeContactMerge(
   });
 
   return {
-    mergedRecord: result.mergedRecord as unknown as Record<string, unknown>,
+    mergedRecord: presentContactAccount(result.mergedRecord, await mayReadContactAccount(prisma, tenantId)) as unknown as Record<string, unknown>,
     archivedRecordId: secondaryId,
     reassignedCounts: result.reassignedCounts,
   };

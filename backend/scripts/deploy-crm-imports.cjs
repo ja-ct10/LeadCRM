@@ -137,6 +137,9 @@ function deploymentPlan(records, localNames) {
     '20261212000000_mailbox_activity_deals',
     // Trigger-only permission correction; history access and retirements stay gated.
     '20261213000000_account_note_trigger_permissions',
+    // Additive provenance and bounded provider diagnostics; no retirements or data deletion.
+    '20261214000000_contact_company_provenance',
+    '20261215000000_sms_provider_diagnostics',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

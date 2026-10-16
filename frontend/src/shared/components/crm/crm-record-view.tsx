@@ -408,7 +408,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
       <div data-record-scroll className={cn('min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain', onClose ? 'bg-white dark:bg-slate-900' : 'bg-muted/20')}>
         <div className={cn('mx-auto w-full min-w-0', !onClose && 'max-w-[1440px]')}>
           <TabsContent value="activity" forceMount className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
-            <RecordTimelineTab compact focusNote={focusNote && tab === 'activity'} activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters}
+            <RecordTimelineTab compact focusNote={focusNote && tab === 'activity'} activities={timeline.activities} module={module} recordId={id} loading={activityLoading} error={activityError} hasMore={timeline.hasMore} onLoadMore={timeline.loadMore} onFiltersChange={setActivityFilters} onRetry={() => void timeline.refetch()}
               canEditRecord={canEdit} tasks={<RecordSection title="Tasks" count={taskCount}><RelatedTasks links={links} onCountChange={setTaskCount} allowCreate={module === "deals" && recordAccess.canMutate(record)} readOnly={module !== "deals"} /></RecordSection>} />
           </TabsContent>
           <TabsContent value="details" forceMount className={cn('m-0 p-4', onClose && 'px-[var(--panel-gutter)]')}><div className="space-y-3">

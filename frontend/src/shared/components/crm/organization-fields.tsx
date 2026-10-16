@@ -13,10 +13,10 @@ type CompanyFields = { companyName: string; industry: string; size: string; webs
 type OrganizationPayload = { companyName?: string; accountId?: string | null; newAccount?: NewAccountInput };
 const empty = { companyName: '', industry: '', size: '', website: '', address: '' };
 
-export function useOrganizationForm(initial?: { id?: string; accountId?: string | null; organizationId?: string; companyName?: string | null }) {
+export function useOrganizationForm(initial?: { id?: string; accountId?: string | null; organizationId?: string; companyName?: string | null }, options: { initialMode?: Mode } = {}) {
   const canView = useHasPermission('accounts.view');
   const canCreate = useHasPermission('accounts.create');
-  const [mode, setMode] = useState<Mode>('existing');
+  const [mode, setMode] = useState<Mode>(options.initialMode ?? 'existing');
   const [accountId, setAccountId] = useState(initial?.accountId || initial?.organizationId || '');
   const [fields, setFields] = useState<CompanyFields>({ ...empty, companyName: initial?.companyName || '' });
   const [error, setError] = useState('');
@@ -24,7 +24,7 @@ export function useOrganizationForm(initial?: { id?: string; accountId?: string 
   const custom = useRef<ReturnType<typeof useRecordCustomFields> | null>(null);
   const identity = useRef<{ value: string; requestId: string } | undefined>(undefined);
   useEffect(() => {
-    setMode('existing');
+    setMode(options.initialMode ?? 'existing');
     setAccountId(initial?.accountId || initial?.organizationId || '');
     setFields({ ...empty, companyName: initial?.companyName || '' });
     setError(''); setFieldErrors({}); identity.current = undefined;

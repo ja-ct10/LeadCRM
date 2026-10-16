@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 import { installProductProjections } from '../../../../core/tenant/product-projections';
 import { installTenantScoping } from '../../../../core/tenant/tenant-prisma';
+import { DEFAULT_CLOSING_FIELDS } from '@leadcrm/shared';
 
 export async function conversionFixture() {
   const pg = await PGlite.create(); await replayCrmMigrations(pg);
@@ -22,7 +23,7 @@ export async function conversionFixture() {
     const lead = await db.lead.create({ data: { tenantId: 'conversion', firstName: 'John', lastName: 'Smith', email: `${id}@example.test`, phone: '+639000000001', companyName,
       address: 'Makati', source: 'Website', assignedUserId: 'actor', status: 'Warm', productsNormalized: true,
       productLinks: { create: { productInterestId: 'product', position: 0 } } } });
-    await db.closingFieldDefinition.upsert({ where: { tenantId_id: { tenantId: 'conversion', id: 'retired-lead-description' } }, create: { tenantId: 'conversion', id: 'retired-lead-description', definition: { id: 'retired-lead-description', active: false, module: 'leads' } }, update: {} });
+    await db.closingFieldDefinition.upsert({ where: { tenantId_id: { tenantId: 'conversion', id: 'retired-lead-description' } }, create: { tenantId: 'conversion', id: 'retired-lead-description', definition: { ...DEFAULT_CLOSING_FIELDS[0], id: 'retired-lead-description', name: 'Original inquiry', type: 'Long Text', technicalAlias: 'retired_lead_description', active: false, module: 'leads' } }, update: {} });
     await db.customFieldValue.create({ data: { tenantId: 'conversion', leadId: lead.id, fieldId: 'retired-lead-description', module: 'leads', value: 'Original inquiry' } });
     const deal = await db.deal.create({ data: { tenantId: 'conversion', title: 'Original sale', pipelineId: 'p', stageId: won ? 'won' : 'open',
       wonConfirmedAt: won ? new Date() : null, hasEverBeenWon: won, wonHistoryVerified: true, value: 12500, productInterestId: 'product', productsNormalized: true,

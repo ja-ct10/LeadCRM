@@ -61,6 +61,12 @@ test('Every discovered suite receives one deterministic balanced owner, includin
     assert.throws(() => ci.discovery(directory), /Declare a disposable runtime/);
   } finally { fs.rmSync(directory, { recursive: true }); }
 });
+
+test('The real repository inventory includes the native Workflow Policy browser suite', () => {
+  const inventory = ci.discovery(path.resolve(__dirname, '..'));
+  assert.equal(inventory.browser.find(suite => suite.id === 'backend/scripts/verify-workflow-policy-browser.mjs')?.database, 'native');
+  assert.ok(ci.owners(inventory).some(owner => owner.suiteIds.includes('backend/scripts/verify-workflow-policy-browser.mjs')));
+});
 test('CI selection rejects reduced coverage, malformed shards, missing owners and unsupported modes', () => {
   const inventory = manifest();
   assert.equal(ci.plan(['all'], inventory).ci, false);

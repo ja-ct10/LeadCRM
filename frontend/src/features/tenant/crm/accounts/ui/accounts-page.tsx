@@ -11,6 +11,7 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useColumnPreferences } from '@/shared/hooks/use-column-preferences';
 import { useAccounts } from '../hooks/use-accounts';
 import { useData } from '@/store/DataContext';
+import { USE_MOCK_DATA } from '@/lib/config';
 import { useFilterUrlSync } from '@/shared/hooks/use-filter-url-sync';
 import { useDebounce } from '@/shared/hooks/use-debounce';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
@@ -136,7 +137,6 @@ export default function AccountsPage(): React.ReactElement {
   const [currentPage, setCurrentPage] = useState(1);
 
   // ── Server-side filter conditions ─────────────────────────────────────────
-  // selectedRelated (has_deals) stays client-side — no direct DB field.
   const serverFilters = useMemo((): import('@leadcrm/shared').FilterCondition[] => {
     const conditions: import('@leadcrm/shared').FilterCondition[] = [];
     if (selectedIndustries.length > 0) {
@@ -145,12 +145,15 @@ export default function AccountsPage(): React.ReactElement {
     if (selectedTypes.length > 0) {
       conditions.push({ field: 'size', operator: 'in', value: selectedTypes });
     }
+    if (selectedSystemFilters.length) conditions.push({ field: 'system', operator: 'in', value: selectedSystemFilters });
+    if (selectedRelated.length) conditions.push({ field: 'related', operator: 'in', value: selectedRelated });
     return conditions;
-  }, [selectedIndustries, selectedTypes, activeTab]);
+  }, [selectedIndustries, selectedTypes, selectedSystemFilters, selectedRelated]);
 
   const {
     accounts,
     totalCount,
+    facets,
     filters,
     setFilters,
     isFormOpen,
@@ -187,13 +190,16 @@ export default function AccountsPage(): React.ReactElement {
   // Reset page on filter/search/pageSize/sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedRelated, pageSize, sort]);
+  }, [debouncedSearch, selectedIndustries, selectedTypes, selectedRelated, selectedSystemFilters, pageSize, sort]);
 
-  // Client-side secondary filter — only has_deals (no server equivalent)
   const filteredAccounts = useMemo(() => {
-    if (highlightId || !selectedRelated.includes('has_deals')) return accounts;
-    return accounts.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived));
-  }, [accounts, selectedRelated, deals, highlightId]);
+    if (!USE_MOCK_DATA || highlightId) return accounts;
+    return accounts.filter(a => {
+      const touched = Boolean(a.updatedAt && a.updatedAt > a.createdAt);
+      return (!selectedRelated.includes('has_deals') || deals.some(d => d.organizationId === a.id && !d.isArchived)) &&
+        (selectedSystemFilters.length !== 1 || (selectedSystemFilters[0] === 'touched') === touched);
+    });
+  }, [accounts, selectedRelated, selectedSystemFilters, deals, highlightId]);
 
   // ── Helpers ──────────────────────────────────────────────────────────
   const getInitials = (name: string): string => {
@@ -203,11 +209,13 @@ export default function AccountsPage(): React.ReactElement {
   };
 
 
-  const getAccountDeals = (accountId: string): number => {
-    return deals.filter((d) => d.organizationId === accountId && !d.isArchived).length;
+  const getAccountDeals = (accountId: string): number | string => {
+    return USE_MOCK_DATA ? deals.filter((d) => d.organizationId === accountId && !d.isArchived).length
+      : accounts.find(a => a.id === accountId)?.dealCount ?? '—';
   };
 
   const getAccountValue = (accountId: string): number => {
+    if (!USE_MOCK_DATA) return accounts.find(a => a.id === accountId)?.dealValue ?? 0;
     return deals
       .filter((d) => d.organizationId === accountId && !d.isArchived)
       .reduce((sum, d) => sum + (d.value ?? 0), 0);
@@ -223,18 +231,20 @@ export default function AccountsPage(): React.ReactElement {
 
   // ── Filter groups ────────────────────────────────────────────────────
   const distinctIndustries = useMemo(() => {
+    if (!USE_MOCK_DATA) return Object.keys(facets).filter(key => key.startsWith('industry:')).map(key => key.slice(9));
     const set = new Set<string>();
     accounts.forEach((a) => { if (a.industry) set.add(a.industry); });
     return Array.from(set);
-  }, [accounts]);
+  }, [accounts, facets]);
 
   const distinctSizes = useMemo(() => {
+    if (!USE_MOCK_DATA) return Object.keys(facets).filter(key => key.startsWith('size:')).map(key => key.slice(5));
     const set = new Set<string>();
     accounts.forEach((a) => {
       if (a.size) set.add(a.size);
     });
     return Array.from(set);
-  }, [accounts]);
+  }, [accounts, facets]);
 
   const filterGroups = useMemo(() => [
     {
@@ -242,8 +252,8 @@ export default function AccountsPage(): React.ReactElement {
       label: 'System Defined Filters',
       isExpanded: true,
       items: [
-        { id: 'touched', label: 'Updated Records', count: accounts.length, isChecked: selectedSystemFilters.includes('touched') },
-        { id: 'untouched', label: 'Never Updated', count: 0, isChecked: selectedSystemFilters.includes('untouched') },
+        { id: 'touched', label: 'Updated Records', count: facets.touched ?? accounts.filter(a => a.updatedAt && a.updatedAt > a.createdAt).length, isChecked: selectedSystemFilters.includes('touched') },
+        { id: 'untouched', label: 'Never Updated', count: facets.untouched ?? accounts.filter(a => !a.updatedAt || a.updatedAt <= a.createdAt).length, isChecked: selectedSystemFilters.includes('untouched') },
       ],
     },
     {
@@ -254,13 +264,13 @@ export default function AccountsPage(): React.ReactElement {
         ...distinctIndustries.map((ind) => ({
           id: `industry:${ind}`,
           label: `Industry: ${ind}`,
-          count: accounts.filter((a) => a.industry === ind).length,
+          count: facets['industry:' + ind] ?? accounts.filter((a) => a.industry === ind).length,
           isChecked: selectedIndustries.includes(ind),
         })),
         ...distinctSizes.map((sz) => ({
           id: `size:${sz}`,
           label: `Size: ${sz}`,
-          count: accounts.filter((a) => a.size === sz).length,
+          count: facets['size:' + sz] ?? accounts.filter((a) => a.size === sz).length,
           isChecked: selectedTypes.includes(sz),
         })),
       ],
@@ -270,10 +280,10 @@ export default function AccountsPage(): React.ReactElement {
       label: 'Filter By Related Modules',
       isExpanded: true,
       items: [
-        { id: 'has_deals', label: 'Accounts with Deals', count: accounts.filter((a) => deals.some((d) => d.organizationId === a.id && !d.isArchived)).length, isChecked: selectedRelated.includes('has_deals') },
+        { id: 'has_deals', label: 'Accounts with Deals', count: facets.has_deals ?? 0, isChecked: selectedRelated.includes('has_deals') },
       ],
     },
-  ], [accounts, distinctIndustries, distinctSizes, selectedSystemFilters, selectedIndustries, selectedTypes, selectedRelated, deals]);
+  ], [accounts, facets, distinctIndustries, distinctSizes, selectedSystemFilters, selectedIndustries, selectedTypes, selectedRelated]);
 
   const handleFilterToggle = useCallback((groupId: string, itemId: string) => {
     if (groupId === 'system') {
@@ -463,7 +473,7 @@ export default function AccountsPage(): React.ReactElement {
                     {getAccountDeals(account.id)} deals
                   </span>
                   <span className="text-[13px] font-semibold text-[#0F172A] dark:text-white tabular-nums">
-                    {formatCurrency(getAccountValue(account.id))}
+                    {USE_MOCK_DATA || account.dealValue !== undefined ? formatCurrency(getAccountValue(account.id)) : '—'}
                   </span>
                 </div>
               </div>

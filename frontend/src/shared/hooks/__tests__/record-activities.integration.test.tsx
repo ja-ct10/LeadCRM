@@ -76,11 +76,26 @@ it('refreshes mailbox errors through the same cache without hiding permitted not
   await waitFor(() => expect(hook.result.current.error).toContain('Mailbox ownership'));
   expect(hook.result.current.activities).toEqual([note]);
   mocks.status.mockResolvedValue({ isConnected: true, syncError: 'Email updates paused after repeated failures.' });
-  changed();
+  await act(async () => { await hook.result.current.refetch(); });
   await waitFor(() => expect(hook.result.current.error).toContain('paused'));
   mocks.status.mockResolvedValue({ isConnected: true, syncError: null });
   changed();
   await waitFor(() => expect(hook.result.current.error).toBeFalsy());
+});
+
+it('does not open or retry an event stream for a disconnected mailbox and resumes after an explicit refresh', async () => {
+  mocks.status.mockResolvedValue({ isConnected: false });
+  const hook = renderHook(() => useRecordActivities('contacts', 'record'));
+  await waitFor(() => expect(hook.result.current.error).toBe('Connect your work Gmail account first.'));
+  expect(streams).toHaveLength(0);
+  mocks.status.mockResolvedValue({ isConnected: true });
+  await act(async () => { await hook.result.current.refetch(); });
+  await waitFor(() => expect(streams).toHaveLength(1));
+  mocks.status.mockResolvedValue({ isConnected: false });
+  act(() => streams[0].dispatchEvent(new Event('error')));
+  await waitFor(() => expect(streams[0].close).toHaveBeenCalledOnce());
+  await waitFor(() => expect(hook.result.current.error).toBe('Connect your work Gmail account first.'));
+  expect(hook.result.current.activities).toEqual([note]);
 });
 
 it('does not query Gmail status for Notes readers or expose the previous identity status', async () => {

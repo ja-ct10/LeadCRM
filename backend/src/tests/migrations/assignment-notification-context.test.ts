@@ -9,7 +9,7 @@ it('allows assignment context deployment while unrelated compatibility retiremen
   const { deploymentPlan } = createRequire(__filename)('../../../scripts/deploy-crm-imports.cjs');
   const names = readdirSync(resolve(__dirname, '../../../prisma/migrations')).filter(name => /^\d+_/.test(name));
   const plan = deploymentPlan([{ migration_name: '20261028000000_retire_legacy_crm_imports', finished_at: new Date() }], names);
-  expect(plan.through).toBe('20261208000000_retire_account_fields');
+  expect(plan.through).toBe(names.sort().at(-1));
   expect(plan.exclude).toContain('20261102000000_retire_relationship_compatibility');
   expect(plan.exclude).toContain('20261202000000_retire_account_address_columns');
   expect(plan.exclude).toContain('20261208000000_retire_account_fields');

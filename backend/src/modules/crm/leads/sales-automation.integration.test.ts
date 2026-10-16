@@ -153,20 +153,23 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   });
 
   it('commits Contact events with their source, executes queued work once, and never discovers workflows on replay', async () => {
-    const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Contact durable Task', trigger: 'contact.created', status: 'ACTIVE', isActive: true, activatedById: adminId,
-      actions: [{ type: 'create_task', config: { title: 'Durable Contact follow-up', assignedUserId: agentIds[0] } }] } });
+    const action = { type: 'update_field', config: { field: 'firstName', value: 'Workflow handled' } };
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Contact durable update', trigger: 'contact.created', status: 'ACTIVE', isActive: true, activatedById: adminId,
+      actions: [action] } });
     const input = { requestId: randomUUID(), firstName: 'Durable', lastName: 'Event', email: `${randomUUID()}@example.test`, productInterestIds: [productIds['Smart Lock']] };
     const created = await request('/crm/contacts', 'POST', input);
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const where = { tenantId, workflowId: workflow.id, entityId: created.body.data.id };
     expect(await prisma.workflowExecutionRun.count({ where: { ...where, status: 'queued' } })).toBe(1);
-    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(0);
+    const updates = () => prisma.auditLog.count({ where: { tenantId, entityId: created.body.data.id, action: 'contact.updated' } });
+    expect(await updates()).toBe(0);
     await prisma.$disconnect();
     await Promise.all([dispatchQueuedWorkflows(), dispatchQueuedWorkflows()]);
     const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where, include: { steps: true } });
     expect(run.status, run.errorMessage ?? '').toBe('completed');
-    expect(run.steps).toHaveLength(1); expect(run.steps[0].resolvedInput).toMatchObject({ requestId: run.steps[0].id });
-    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(1);
+    expect(run.steps).toHaveLength(1); expect(run.steps[0].resolvedInput).toMatchObject({ version: 1, action });
+    expect((await prisma.contact.findUniqueOrThrow({ where: { id: created.body.data.id } })).firstName).toBe('Workflow handled');
+    expect(await updates()).toBe(1);
     const recoveryTrigger = await prisma.workflowTriggerRecord.create({ data: { tenantId, workflowId: workflow.id, triggerType: 'contact.created', entityType: 'contact', entityId: created.body.data.id, eventId: randomUUID() } });
     const expired = new Date(Date.now() - 600000);
     const uncertain = await prisma.workflowExecutionRun.create({ data: { tenantId, workflowId: workflow.id, triggerId: recoveryTrigger.id, entityType: 'contact', entityId: created.body.data.id, status: 'running', dispatchContext: { version: 1 }, dispatchStartedAt: expired, leaseId: randomUUID(), leaseUntil: expired } });
@@ -175,12 +178,12 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     await dispatchQueuedWorkflows();
     expect((await prisma.workflowExecutionRun.findUniqueOrThrow({ where: { id: uncertain.id } })).status).toBe('interrupted');
     expect((await prisma.workflowExecutionRun.findUniqueOrThrow({ where: { id: historical.id } })).status).toBe('running');
-    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(1);
+    expect(await updates()).toBe(1);
     await prisma.workflow.create({ data: { tenantId, name: 'Activated after Contact', trigger: 'contact.created', status: 'ACTIVE', isActive: true, activatedById: adminId, actions: workflow.actions as never } });
     expect((await request('/crm/contacts', 'POST', input)).status).toBe(200);
     await dispatchQueuedWorkflows();
     expect(await prisma.workflowExecutionRun.count({ where: { tenantId, entityId: created.body.data.id } })).toBe(3);
-    expect(await prisma.task.count({ where: { tenantId, title: 'Durable Contact follow-up' } })).toBe(1);
+    expect(await updates()).toBe(1);
     await prisma.workflow.updateMany({ where: { tenantId, trigger: 'contact.created' }, data: { isActive: false, status: 'PAUSED' } });
   });
 
@@ -349,8 +352,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     const all = await request('/administration/archived-data');
     expect(all.status).toBe(200);
     expect(all.body.data.every((r: { type: ArchiveType }) => ARCHIVE_TYPES.includes(r.type))).toBe(true);
-    for (const type of ['Pipeline', 'Template']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
-    expect((await request('/administration/archived-data?type=Role')).status).toBe(200);
+    for (const type of ['Pipeline', 'Template', 'Role']) expect((await request('/administration/archived-data?type=' + type)).status).toBe(400);
     expect(await prisma.pipeline.count({ where: { tenantId, name: 'Hidden archived pipeline', isArchived: true } })).toBe(1);
   });
   it('manual Lead HTTP retries preserve a single Lead and automatic Deal', async () => {
