@@ -328,6 +328,30 @@ describe('campaign guard interactions', () => {
 });
 
 describe('campaign composer', () => {
+  it.each([['Email', 'LEADS'], ['Email', 'CONTACTS'], ['SMS', 'LEADS'], ['SMS', 'CONTACTS']] as const)('inserts canonical quick fields and picker company keys for %s/%s', async (type, source) => {
+    render(<CampaignBuilder onBack={vi.fn()} initialType={type} />);
+    fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: source } });
+    const body = screen.getByLabelText(/Body/) as HTMLTextAreaElement;
+    expect(body.placeholder).toContain('{{firstName}}');
+    expect(body.placeholder).not.toContain('{{first_name}}');
+    if (type === 'Email') expect((screen.getByLabelText(/Subject Line/) as HTMLInputElement).placeholder).toContain('{{firstName}}');
+    const companyKey = source === 'LEADS' ? 'companyName' : 'company';
+    for (const key of ['firstName', companyKey, 'sender_name', 'sender_email']) {
+      fireEvent.change(body, { target: { value: '' } });
+      fireEvent.focus(body);
+      fireEvent.click(await screen.findByRole('button', { name: `{{${key}}}` }));
+      expect(body.value).toBe(`{{${key}}}`);
+    }
+    fireEvent.change(body, { target: { value: '' } });
+    fireEvent.focus(body);
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
+    const search = await screen.findByLabelText('Search variables');
+    const picker = within(search.closest('.max-h-80') as HTMLElement);
+    fireEvent.click(picker.getByText(`{{${companyKey}}}`).closest('button')!);
+    expect(body.value).toBe(`{{${companyKey}}}`);
+    expect(body.value).not.toContain('{{company_name}}');
+  });
+
   it.each([
     ['Email', 'create'], ['Email', 'edit'], ['SMS', 'create'], ['SMS', 'edit'],
   ] as const)('limits the %s %s picker to Lead/Contact fields and preserves Quick Fields', async (type, mode) => {

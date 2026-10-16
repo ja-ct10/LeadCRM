@@ -1,11 +1,11 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { CUSTOM_FIELD_MODULES, DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog, type ClosingField, type FieldLayout } from '@leadcrm/shared';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { CUSTOM_FIELD_MODULES, customFieldAliasBase, customFieldTechnicalKey, DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog, type ClosingField, type CustomFieldModule, type FieldLayout } from '@leadcrm/shared';
 import { ClosingFieldsSettings } from '../closing-fields-settings';
 
 const mocks = vi.hoisted(() => ({
-  post: vi.fn(), patch: vi.fn(), delete: vi.fn(), refetch: vi.fn(), success: vi.fn(), error: vi.fn(),
+  get: vi.fn(), post: vi.fn(), patch: vi.fn(), delete: vi.fn(), refetch: vi.fn(), success: vi.fn(), error: vi.fn(),
   permissions: new Set<string>(), data: {} as Record<string, { definitions: ClosingField[]; layout: FieldLayout }>,
 }));
 vi.mock('@/lib/api/client', () => ({ apiClient: mocks }));
@@ -18,6 +18,10 @@ const budget: ClosingField = { ...DEFAULT_CLOSING_FIELDS[0], id: 'lead-budget', 
 const contactNote: ClosingField = { ...budget, id: 'contact-note', name: 'Contact Note', type: 'Text', module: 'contacts', groupId: 'contacts:section:0' };
 const customRow = () => screen.getByText(budget.name).closest('tr')!;
 const drawer = (name: 'Add Field' | 'Edit Field') => within(screen.getByRole('region', { name }));
+const selectDrawerModule = async (module: CustomFieldModule) => {
+  fireEvent.change(drawer('Add Field').getByLabelText('Module'), { target: { value: module } });
+  await waitFor(() => expect(drawer('Add Field').getByLabelText('Group')).toHaveProperty('disabled', false));
+};
 const customGroup = { id: 'lead-custom-group', label: 'Project specifics', order: 5 };
 const addCustomGroupFixture = () => {
   mocks.data.leads.layout.groups.push({ ...customGroup });
@@ -29,10 +33,136 @@ beforeEach(() => {
   mocks.permissions = new Set(['custom_fields.view', 'custom_fields.create', 'custom_fields.edit', 'custom_fields.delete', 'custom_fields.disable']);
   const definitions = [...DEFAULT_CLOSING_FIELDS, budget, contactNote];
   mocks.data = Object.fromEntries(CUSTOM_FIELD_MODULES.map(module => [module, { definitions, layout: defaultFieldLayout(module) }]));
+  mocks.get.mockReset().mockImplementation(async (url: string) => ({ data: { layout: mocks.data[url.split('/').at(-1)!].layout, fields: [] } }));
   mocks.post.mockResolvedValue({ data: { id: 'new-id' } }); mocks.patch.mockResolvedValue({}); mocks.delete.mockResolvedValue({}); mocks.refetch.mockResolvedValue(undefined);
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
+
+it('requires an initially empty drawer Module above Display label independently of the page filter', () => {
+  render(<ClosingFieldsSettings />);
+  fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'accounts' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  const form = drawer('Add Field'), module = form.getByLabelText('Module') as HTMLSelectElement;
+  expect(module.value).toBe(''); expect(module.required).toBe(true);
+  expect(Array.from(module.options, option => [option.value, option.text])).toEqual([
+    ['', 'Select module...'], ['leads', 'Leads'], ['contacts', 'Contacts'], ['accounts', 'Accounts'], ['deals', 'Deals'],
+  ]);
+  const indicator = within(module.closest('label')!).getByText('*');
+  expect(indicator.classList.contains('text-red-500')).toBe(true);
+  expect(indicator.getAttribute('aria-hidden')).toBe('true');
+  const controls = Array.from(screen.getByRole('region', { name: 'Add Field' }).querySelectorAll('input,select'));
+  expect(controls.slice(0, 5)).toEqual([module, form.getByLabelText('Display label'), form.getByLabelText('Type'), form.getByLabelText('Technical Variable Key'), form.getByLabelText('Group')]);
+  expect(form.getByLabelText('Group')).toHaveProperty('disabled', true);
+  expect(form.getByRole('button', { name: 'Add' })).toHaveProperty('disabled', true);
+  fireEvent.click(form.getByRole('button', { name: 'Save field' }));
+  const error = form.getByRole('alert');
+  expect(error.textContent).toBe('Module name is required.');
+  expect(error.classList.contains('text-destructive')).toBe(true);
+  expect(module.getAttribute('aria-invalid')).toBe('true');
+  expect(module.getAttribute('aria-describedby')).toBe(error.id);
+  expect(document.activeElement).toBe(module);
+  expect(mocks.post).not.toHaveBeenCalled();
+});
+
+it('previews the shared alias helper output without submitting the preview or overriding the saved suffix', async () => {
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  const form = drawer('Add Field'), preview = form.getByLabelText('Technical Variable Key') as HTMLInputElement;
+  expect(preview.readOnly).toBe(true); expect(preview.value).toBe('');
+  const note = form.getByText('Technical variable key is generated automatically and cannot be changed after creation.');
+  expect(note.classList.contains('text-muted-foreground')).toBe(true);
+  expect(preview.getAttribute('aria-describedby')).toBe(note.id);
+  expect(form.queryByText(/Type, module and technical key stay fixed/)).toBeNull();
+  for (const [label, alias] of [['Reviewed Date', 'reviewed-date'], ['Customer Type', 'customer-type'], [' Fávöríte Number!? ', 'favorite-number'], ['!!!', '']]) {
+    fireEvent.change(form.getByLabelText('Display label'), { target: { value: label } });
+    expect(customFieldAliasBase(label)).toBe(alias);
+    expect(preview.value).toBe(alias ? customFieldTechnicalKey({ id: '', technicalAlias: alias }) : '');
+  }
+  await selectDrawerModule('accounts');
+  fireEvent.change(form.getByLabelText('Display label'), { target: { value: 'Customer Type' } });
+  mocks.post.mockResolvedValueOnce({ data: { id: 'created-id', technicalAlias: 'customer-type-2' } });
+  fireEvent.click(form.getByRole('button', { name: 'Save field' }));
+  await waitFor(() => expect(mocks.post).toHaveBeenCalledOnce());
+  expect(mocks.post.mock.calls[0][1]).toMatchObject({ module: 'accounts', groupId: 'accounts:section:0', name: 'Customer Type' });
+  for (const key of ['technicalAlias', 'technicalKey', 'id']) expect(mocks.post.mock.calls[0][1]).not.toHaveProperty(key);
+  await waitFor(() => expect(screen.queryByRole('region', { name: 'Add Field' })).toBeNull());
+  mocks.data.accounts.definitions.push({ ...budget, id: 'created-id', module: 'accounts', groupId: 'accounts:section:0', name: 'Customer Type', technicalAlias: 'customer-type-2' });
+  fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'accounts' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Edit Customer Type' }));
+  expect(drawer('Edit Field').getByLabelText('Technical Variable Key')).toHaveProperty('value', 'customFieldValues.customer-type-2');
+});
+
+it.each([undefined, 'original-budget-2'])('keeps the saved module and technical key immutable when renaming (alias=%s)', async technicalAlias => {
+  mocks.data.leads.definitions = mocks.data.leads.definitions.map(field => field.id === budget.id ? { ...field, technicalAlias } : field);
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(within(customRow()).getByRole('button', { name: 'Edit Project Budget' }));
+  const form = drawer('Edit Field'), preview = form.getByLabelText('Technical Variable Key');
+  expect(form.getByLabelText('Module')).toHaveProperty('disabled', true);
+  expect(form.getByLabelText('Module')).toHaveProperty('value', 'leads');
+  expect(preview).toHaveProperty('readOnly', true);
+  const key = `customFieldValues.${technicalAlias ?? budget.id}`;
+  expect(preview).toHaveProperty('value', key);
+  fireEvent.change(form.getByLabelText('Display label'), { target: { value: 'Renamed Budget' } });
+  expect(preview).toHaveProperty('value', key);
+  fireEvent.click(form.getByRole('button', { name: 'Save field' }));
+  await waitFor(() => expect(mocks.patch).toHaveBeenCalledWith(`/administration/closing-requirements/${budget.id}`, expect.objectContaining({ module: 'leads', name: 'Renamed Budget' })));
+  expect(mocks.patch.mock.calls[0][1]).not.toHaveProperty('technicalAlias');
+  expect(mocks.patch.mock.calls[0][1]).not.toHaveProperty('technicalKey');
+});
+
+it('resets module groups and unfinished group creation while retaining the field draft', async () => {
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  const form = drawer('Add Field');
+  await selectDrawerModule('leads');
+  fireEvent.change(form.getByLabelText('Display label'), { target: { value: 'Keep label' } });
+  fireEvent.change(form.getByLabelText('Group'), { target: { value: 'leads:section:2' } });
+  fireEvent.click(form.getByRole('button', { name: 'Add' }));
+  fireEvent.change(form.getByLabelText('Add a new group name'), { target: { value: 'Unsaved Lead group' } });
+  await selectDrawerModule('deals');
+  expect(form.getByLabelText('Display label')).toHaveProperty('value', 'Keep label');
+  const group = form.getByLabelText('Group') as HTMLSelectElement;
+  expect(group.value).toBe('deals:section:0');
+  expect(Array.from(group.options, option => option.value)).toEqual(defaultFieldLayout('deals').groups.map(group => group.id));
+  expect(form.queryByLabelText('Add a new group name')).toBeNull();
+  fireEvent.click(form.getByRole('button', { name: 'Add' }));
+  expect(form.getByLabelText('Add a new group name')).toHaveProperty('value', '');
+  expect(screen.getAllByRole('combobox', { name: 'Module' })[0]).toHaveProperty('value', 'leads');
+});
+
+it('ignores an aborted module response and blocks saving until the current layout loads', async () => {
+  let resolveLead!: (value: unknown) => void, resolveContact!: (value: unknown) => void;
+  mocks.get.mockReturnValueOnce(new Promise(resolve => { resolveLead = resolve; })).mockReturnValueOnce(new Promise(resolve => { resolveContact = resolve; }));
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  const form = drawer('Add Field');
+  fireEvent.change(form.getByLabelText('Module'), { target: { value: 'leads' } });
+  expect(form.getByRole('button', { name: 'Save field' })).toHaveProperty('disabled', true);
+  fireEvent.change(form.getByLabelText('Module'), { target: { value: 'contacts' } });
+  expect(mocks.get.mock.calls[0][1].signal.aborted).toBe(true);
+  await act(async () => { resolveContact({ data: { layout: defaultFieldLayout('contacts'), fields: [] } }); });
+  await act(async () => { resolveLead({ data: { layout: defaultFieldLayout('leads'), fields: [] } }); });
+  expect(form.getByLabelText('Group')).toHaveProperty('value', 'contacts:section:0');
+  expect(form.getByRole('button', { name: 'Save field' })).toHaveProperty('disabled', false);
+  expect(form.queryByRole('status')).toBeNull();
+});
+
+it('keeps group controls disabled after a layout failure and retries for the selected module', async () => {
+  mocks.get.mockRejectedValueOnce(new Error('Unable to load groups'));
+  render(<ClosingFieldsSettings />);
+  fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  const form = drawer('Add Field');
+  fireEvent.change(form.getByLabelText('Module'), { target: { value: 'accounts' } });
+  await form.findByRole('alert');
+  expect(form.getByLabelText('Group')).toHaveProperty('disabled', true);
+  expect(form.getByRole('button', { name: 'Add' })).toHaveProperty('disabled', true);
+  expect(form.getByRole('button', { name: 'Save field' })).toHaveProperty('disabled', true);
+  fireEvent.click(form.getByRole('button', { name: 'Retry' }));
+  await waitFor(() => expect(form.getByLabelText('Group')).toHaveProperty('value', 'accounts:section:0'));
+  expect(mocks.get).toHaveBeenCalledTimes(2);
+  expect(form.queryByRole('alert')).toBeNull();
+});
 
 it('shows a compact searchable catalog with the four modules and System/Custom identity', () => {
   render(<ClosingFieldsSettings />);
@@ -76,6 +206,8 @@ it('edits the original custom ID and starts a clean create form without publishi
   fireEvent.click(drawer('Add Field').getByRole('button', { name: 'Save field' }));
   expect(mocks.post).not.toHaveBeenCalled();
   expect(drawer('Add Field').getByRole('alert')).toBeTruthy();
+  expect(drawer('Add Field').getByRole('alert').textContent).toBe('Module name is required.');
+  await selectDrawerModule('leads');
   fireEvent.change(drawer('Add Field').getByRole('textbox', { name: 'Display label' }), { target: { value: 'A new field' } });
   fireEvent.click(drawer('Add Field').getByRole('button', { name: 'Save field' }));
   await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/administration/closing-requirements', expect.objectContaining({ name: 'A new field', options: [], required: false })));
@@ -84,7 +216,7 @@ it('edits the original custom ID and starts a clean create form without publishi
   expect(mocks.refetch).toHaveBeenCalledTimes(2);
 });
 
-it('shows the create subtitle, a visual required indicator and an adjacent primary group action', () => {
+it('shows the create subtitle, visual required indicators and an adjacent primary group action', async () => {
   render(<ClosingFieldsSettings />);
   fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
   const form = drawer('Add Field');
@@ -94,7 +226,8 @@ it('shows the create subtitle, a visual required indicator and an adjacent prima
   const asterisk = within(input.closest('label')!).getByText('*');
   expect(asterisk.classList.contains('text-red-500')).toBe(true);
   expect(asterisk.getAttribute('aria-hidden')).toBe('true');
-  expect(form.getAllByText('*')).toHaveLength(1);
+  expect(form.getAllByText('*')).toHaveLength(2);
+  await selectDrawerModule('leads');
   const group = form.getByRole('combobox', { name: 'Group' });
   const add = form.getByRole('button', { name: 'Add' });
   expect(group.parentElement).toBe(add.parentElement);
@@ -117,6 +250,7 @@ it('adds and selects a persisted same-module group while preserving the unfinish
   render(<ClosingFieldsSettings />);
   fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'contacts' } });
   fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  await selectDrawerModule('contacts');
   fireEvent.change(drawer('Add Field').getByRole('textbox', { name: 'Display label' }), { target: { value: 'Preferred tier' } });
   fireEvent.change(drawer('Add Field').getByLabelText('Type'), { target: { value: 'Dropdown' } });
   fireEvent.change(drawer('Add Field').getByLabelText('Options, one per line'), { target: { value: 'Gold\nSilver' } });
@@ -133,7 +267,7 @@ it('adds and selects a persisted same-module group while preserving the unfinish
   expect((drawer('Add Field').getByLabelText('Description') as HTMLTextAreaElement).value).toBe('Keep this draft');
   expect((drawer('Add Field').getByLabelText('Options, one per line') as HTMLTextAreaElement).value).toBe('Gold\nSilver');
   expect((drawer('Add Field').getByLabelText('Required') as HTMLInputElement).checked).toBe(true);
-  expect(drawer('Add Field').queryByLabelText('Module')).toBeNull();
+  expect(drawer('Add Field').getByLabelText('Module')).toHaveProperty('value', 'contacts');
   expect(drawer('Add Field').queryByLabelText('Add a new group name')).toBeNull();
   fireEvent.click(drawer('Add Field').getByRole('button', { name: 'Add' }));
   expect(drawer('Add Field').getByLabelText('Add a new group name')).toHaveProperty('value', '');
@@ -141,9 +275,10 @@ it('adds and selects a persisted same-module group while preserving the unfinish
   await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/administration/closing-requirements', expect.objectContaining({ name: 'Preferred tier', module: 'contacts', groupId: group.id, group: group.label, type: 'Dropdown', options: ['Gold', 'Silver'], required: true, expectedRevision: 1 })));
 });
 
-it('cancels and clears the temporary group name without discarding the field draft or making a request', () => {
+it('cancels and clears the temporary group name without discarding the field draft or making a request', async () => {
   render(<ClosingFieldsSettings />);
   fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  await selectDrawerModule('leads');
   const form = drawer('Add Field');
   fireEvent.change(form.getByRole('textbox', { name: 'Display label' }), { target: { value: 'Keep this draft' } });
   const selected = (form.getByLabelText('Group') as HTMLSelectElement).value;
@@ -170,6 +305,7 @@ it('preserves inline group errors and disables duplicate creation while the exis
   mocks.patch.mockRejectedValueOnce(new Error('Field configuration changed. Refresh and retry your change.'));
   render(<ClosingFieldsSettings />);
   fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  await selectDrawerModule('leads');
   const form = drawer('Add Field');
   fireEvent.click(form.getByRole('button', { name: 'Add' }));
   const input = form.getByLabelText('Add a new group name');
@@ -195,10 +331,12 @@ it('preserves inline group errors and disables duplicate creation while the exis
   expect(form.queryByLabelText('Add a new group name')).toBeNull();
 });
 
-it('inherits module groups and discards a canceled field draft', () => {
+it('loads selected module groups and discards a canceled field draft', async () => {
   render(<ClosingFieldsSettings />);
   fireEvent.change(screen.getByRole('combobox', { name: 'Module' }), { target: { value: 'contacts' } });
   fireEvent.click(screen.getByRole('button', { name: 'Add Field' }));
+  expect(drawer('Add Field').getByLabelText('Module')).toHaveProperty('value', '');
+  await selectDrawerModule('contacts');
   expect(Array.from((drawer('Add Field').getByLabelText('Group') as HTMLSelectElement).options, option => option.value)).toEqual(defaultFieldLayout('contacts').groups.map(group => group.id));
   fireEvent.change(drawer('Add Field').getByRole('textbox', { name: 'Display label' }), { target: { value: 'Unsaved draft' } });
   fireEvent.click(drawer('Add Field').getByRole('button', { name: 'Cancel' }));

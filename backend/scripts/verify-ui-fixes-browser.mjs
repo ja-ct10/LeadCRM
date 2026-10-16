@@ -173,11 +173,14 @@ try {
   await navigate('/settings?tab=custom-fields'); await page.getByLabel('Module', { exact: true }).selectOption('accounts');
   await page.getByRole('button', { name: 'Add Field', exact: true }).click();
   const group = page.getByRole('combobox', { name: /^Group/ }); assert.equal(await group.evaluate(el => el.tagName), 'SELECT');
-  await page.getByText(/^Module: Accounts\b/).waitFor();
+  assert.equal(await page.getByLabel('Module', { exact: true }).last().inputValue(), '');
+  await page.getByLabel('Module', { exact: true }).last().selectOption('accounts');
+  await group.selectOption({ label: 'Basic Information' });
   assert.equal(await group.locator('option', { hasText: 'Closed Won Requirements' }).count(), 0);
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.getByLabel('Module', { exact: true }).selectOption('deals'); await page.getByRole('button', { name: 'Add Field', exact: true }).click();
-  await page.getByText(/^Module: Deals\b/).waitFor(); await group.selectOption({ label: 'Closed Won Requirements' }); record('Module-aware group dropdown and fixed creation module');
+  await page.getByLabel('Module', { exact: true }).last().selectOption('deals');
+  await group.selectOption({ label: 'Closed Won Requirements' }); record('Module-aware group dropdown and explicit creation module');
   await context.clearCookies();
   await page.route('**/api/proxy/auth/me', route => route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Unauthenticated' }) }));
   const resetToken = randomBytes(32).toString('hex');
