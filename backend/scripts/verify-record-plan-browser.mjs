@@ -198,16 +198,18 @@ try {
     await page.getByRole('tab', { name: /^Details/ }).click();
     const group = page.getByRole('button', { name: 'Project plan', exact: true }).locator('xpath=ancestor::section[1]');
     await group.getByText('Project budget', { exact: true }).waitFor();
-    await page.getByText(module === 'accounts' ? /^Public website(?: \*)?$/ : module === 'deals' ? /^Project priority(?: \*)?$/ : /^Work email(?: \*)?$/).waitFor();
+    await page.locator('dt').filter({ hasText: module === 'accounts' ? /^Public website(?: \*)?$/ : module === 'deals' ? /^Project priority(?: \*)?$/ : /^Work email(?: \*)?$/ }).waitFor();
     if (module === 'leads' || module === 'contacts') await page.getByText(module === 'leads' ? 'lead@example.test' : 'contact@example.test', { exact: true }).first().waitFor();
     if (module === 'accounts') await page.getByText('https://example.test', { exact: true }).first().waitFor();
     if (module === 'deals') await page.getByText(titles.deals, { exact: true }).first().waitFor();
     assert.equal(await group.getByText('0', { exact: true }).count(), 1, 'Stored zero custom value must remain visible once');
     assert.equal(await page.getByRole('button', { name: /^Custom fields(?: \d+)?$/ }).count(), 0, 'No duplicate legacy custom fields block');
     if (module === 'deals') {
-      await page.getByRole('button', { name: 'Lead/Contact', exact: true }).waitFor();
-      await page.getByRole('button', { name: 'Account', exact: true }).waitFor();
-      await page.getByText('Acceptance Lead', { exact: true }).first().waitFor(); await page.getByText('Acceptance Contact', { exact: true }).first().waitFor();
+      for (const name of ['Leads', 'Contacts', 'Account']) await page.getByRole('heading', { name, level: 3, exact: true }).waitFor();
+      for (const [name, relatedModule, relatedId] of [['Acceptance Lead', 'leads', lead.id], ['Acceptance Contact', 'contacts', contact.id], ['Acceptance Account', 'accounts', account.id]]) {
+        const link = page.getByRole('link', { name: new RegExp('^' + name) });
+        await link.waitFor(); assert.equal(await link.getAttribute('href'), `/crm/${relatedModule}/${relatedId}`);
+      }
     }
     record(`${module}-${mode} custom sections, fixed native sections, independent filters and Inbox policy`);
     await responsive(`${module}-${mode}-details`, group);

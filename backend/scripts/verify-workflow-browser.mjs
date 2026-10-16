@@ -250,8 +250,10 @@ try {
   await page.locator('details').first().locator('summary').first().click();
   await page.getByText('Assigned to Ana Specialist', { exact: false }).waitFor();
   await page.getByText('Definition used in this run · v2', { exact: true }).click();
-  assert.match(await page.locator('pre').innerText(), /Follow up with lead/);
-  assert.doesNotMatch(await page.locator('pre').innerText(), /Revised follow-up/);
+  const savedDefinition = page.getByText('Definition used in this run · v2', { exact: true }).locator('..');
+  await savedDefinition.getByText('Follow up with lead', { exact: true }).waitFor();
+  assert.match(await savedDefinition.innerText(), /Follow up with lead/);
+  assert.doesNotMatch(await savedDefinition.innerText(), /Revised follow-up/);
   await responsive('assignment-history');
   record('Run history retains the executed version, definition and concrete assignee after edits');
   await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));

@@ -42,13 +42,13 @@ export async function notificationTestPostgres() {
    catch (error) {
     // Another cleanup attempt may already have completed shutdown. Only status 3
     // proves this private cluster is stopped; never remove a running data directory.
-    try { run('pg_ctl',['-D',directory,'status']); } catch (status) { if (status.status === 3) { preserveLog(); rmSync(target, { recursive: true }); stopped = true; return; } }
+    try { run('pg_ctl',['-D',directory,'status']); } catch (status) { if (status.status === 3) { preserveLog(); rmSync(target, { recursive: true, maxRetries: 5, retryDelay: 200 }); stopped = true; return; } }
     throw error;
    }
   }
-  stopped = true;
   preserveLog();
-  rmSync(target, { recursive: true });
+  rmSync(target, { recursive: true, maxRetries: 5, retryDelay: 200 });
+  stopped = true;
  };
  // Bootstrap only: this newly created disposable cluster is discarded after QA.
  // Runtime WAL/data synchronization remains enabled and is verified below.

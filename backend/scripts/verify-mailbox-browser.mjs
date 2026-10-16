@@ -94,9 +94,9 @@ try {
   const log = createWriteStream(resolve(output, 'frontend.log'));
   frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(gateway.internalBase).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
-  for (let attempt = 0; attempt < 90; attempt++) { try { if ((await realFetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
-  // Compile the cold development route before starting browser navigation timing.
-  const warmedInbox = await realFetch(base + '/inbox', { signal: AbortSignal.timeout(180000) });
+  for (let attempt = 0; attempt < 90; attempt++) { try { if ((await realFetch(gateway.internalBase + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  // Warm the built route before starting the public TLS gateway and browser timing.
+  const warmedInbox = await realFetch(gateway.internalBase + '/inbox', { signal: AbortSignal.timeout(180000) });
   assert.equal(warmedInbox.status, 200, 'The local Inbox route must be available before browser assertions');
   await warmedInbox.arrayBuffer();
   await gateway.start();

@@ -36,4 +36,9 @@ function browserFailureDiagnostics(result, exitCode) {
   }, null, 2);
 }
 
-module.exports = { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport };
+function cleanupBrowserDatabase(database, onError) {
+  try { database?.stop(); }
+  catch (error) { onError(error); }
+}
+
+module.exports = { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport, cleanupBrowserDatabase };

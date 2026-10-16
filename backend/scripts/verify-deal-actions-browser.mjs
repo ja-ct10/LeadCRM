@@ -435,7 +435,19 @@ try {
   const x=mh.x+mh.width/2,y=mh.y+mh.height/2;
   await touch('touchStart',x,y);await mobile.waitForTimeout(240);await touch('touchMove',x+20,y);
   const br=await board(mobile).boundingBox();
-  for(let i=0;i<12;i++){await touch('touchMove',br.x+br.width-6,y);await mobile.waitForTimeout(180);const b=await column(mobile,'Qualified').boundingBox();if(b.x<200)break;}
+  // Stop edge scrolling before measuring; protocol delays can carry the target
+  // past the viewport. Steer back when necessary instead of accepting negative x.
+  let targetVisible=false;
+  for(let i=0;i<40;i++){
+    await touch('touchMove',br.x+br.width/2,y);
+    await mobile.evaluate(()=>new Promise(done=>requestAnimationFrame(()=>requestAnimationFrame(done))));
+    const b=await column(mobile,'Qualified').boundingBox();
+    const left=Math.max(br.x+br.width*.2,b.x),right=Math.min(br.x+br.width*.8,b.x+b.width);
+    if(right>left){targetVisible=true;break;}
+    const edge=b.x>=br.x+br.width*.8?br.x+br.width-12:br.x+12;
+    await touch('touchMove',edge,y);await mobile.waitForTimeout(100);
+  }
+  assert.ok(targetVisible,'Touch auto-scroll must bring Qualified into the visible board');
   assert.ok(await board(mobile).evaluate(el=>el.scrollLeft)>400,'Touch drag must auto-scroll horizontally');
   const mq=await column(mobile,'Qualified').boundingBox();
   const visibleLeft=Math.max(br.x+br.width*.2,mq.x),visibleRight=Math.min(br.x+br.width*.8,mq.x+mq.width);

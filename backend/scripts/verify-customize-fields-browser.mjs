@@ -176,7 +176,16 @@ try {
   await page.keyboard.press('Escape'); await confirmation.waitFor({ state: 'hidden' }); assert.ok(await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).isVisible());
   await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true });
   await confirmation.getByRole('button', { name: 'Delete group', exact: true }).click(); await confirmation.waitFor({ state: 'hidden' }); checks.push('Empty group deletion requires confirmation and supports Escape cancellation');
-  await dialog.getByRole('button', { name: 'Delete Customer Information group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true }); assert.ok(await confirmation.getByRole('button', { name: 'Delete group', exact: true }).isDisabled());
+  assert.equal(await dialog.getByRole('button', { name: 'Delete Customer Information group', exact: true }).count(), 0, 'Native field groups cannot be deleted');
+  await dialog.getByLabel('Add a new group name', { exact: true }).fill('Populated acceptance'); await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Delete Populated acceptance group', exact: true }).waitFor();
+  await page.waitForFunction(() => { const input = document.querySelector('[role="dialog"][aria-label="Manage Fields Groups"] input'); return input && !input.disabled && input.value === ''; });
+  await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click(); await dialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Edit Customer Age', exact: true }).click();
+  await page.getByLabel('Group', { exact: true }).last().selectOption({ label: 'Populated acceptance' });
+  await page.getByRole('button', { name: 'Save field', exact: true }).click(); await page.getByRole('button', { name: 'Edit Customer Age', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Manage Field Groups', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Delete Populated acceptance group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true }); assert.ok(await confirmation.getByRole('button', { name: 'Delete group', exact: true }).isDisabled());
   await page.setViewportSize({ width: 320, height: 900 }); await page.waitForTimeout(300); assert.ok(await confirmation.evaluate(node => node.scrollWidth <= node.clientWidth + 1)); await page.screenshot({ path: resolve(output, 'delete-confirmation-320.png') });
   await confirmation.getByLabel('Move fields to', { exact: true }).selectOption('leads:section:3'); await confirmation.getByRole('button', { name: 'Delete group', exact: true }).click(); await confirmation.waitFor({ state: 'hidden' }); await page.setViewportSize({ width: 1440, height: 900 });
   assert.equal((await call(`/crm/leads/${lead.id}/custom-fields`)).values[ageId], 37); checks.push('Populated group moves atomically without changing saved values');

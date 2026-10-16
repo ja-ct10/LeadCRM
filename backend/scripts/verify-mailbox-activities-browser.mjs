@@ -186,6 +186,19 @@ try {
       labels: [direction === 'outbound' ? 'SENT' : 'INBOX'], rfcMessageId: `<${randomUUID()}@example.test>` };
     message.revision = ++box.revision; box.messages.set(message.id, message);
     if (!scheduledDiscovery) await scope(() => syncMailbox(tenant.id, owner.id, 'worker'));
+    else {
+      // Discovery can span the 10s sync interval and the next 10s queue tick.
+      // Verify SQL persistence first; keep the separate 20s UI update deadline.
+      const deadline = Date.now() + 35000;
+      let activity;
+      do {
+        const stored = await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, providerMessageId: message.id }, select: { id: true } });
+        if (stored) activity = await prisma.activity.findFirst({ where: { mailboxMessageId: stored.id, type: 'email' }, select: { id: true, createdById: true } });
+        if (!activity) await new Promise(done => setTimeout(done, 250));
+      } while (!activity && Date.now() < deadline);
+      assert.ok(activity, 'Scheduled Gmail discovery must persist the message and Activity within its polling budget');
+      assert.equal(activity.createdById, owner.id);
+    }
     return body;
   }
   async function badge(tab, total) {

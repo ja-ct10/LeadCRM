@@ -24,8 +24,8 @@ const { salesPipeline, salesTransaction } = require('../dist/backend/src/modules
 const { saveField } = require('../dist/backend/src/modules/crm/closing-requirements/closing-requirements.service.js');
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
 const { updateFieldLayout } = require('../dist/backend/src/modules/crm/closing-requirements/field-layout.service.js');
-let api, frontend, browser, page;
-const checks = [], pageErrors = [];
+let api, frontend, browser, page, closing = false;
+const checks = [], pageErrors = [], transportErrors = [];
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Custom Field Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const admin = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Custom', lastName: 'Tester', email: 'custom-preview@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
@@ -40,6 +40,7 @@ try {
     await scope(() => saveField(tenant.id, admin.id, { module, group: 'Technical Requirements', name: 'Installation Notes', type: 'Long Text', required: false }));
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
+  const apiBase = `http://127.0.0.1:${api.address().port}/api/v1`;
   const log = createWriteStream(resolve(output, 'frontend.log'));
   frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
@@ -50,10 +51,15 @@ try {
   page = await context.newPage(); page.setDefaultTimeout(20000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url());
-    const local = `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`;
+    const local = `${apiBase}${url.pathname.replace('/api/proxy', '')}${url.search}`;
     const headers = { ...request.headers(), authorization: `Bearer ${token}` };
-    if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: local, headers });
-    await route.fulfill({ response: await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined }) });
+    try {
+      if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return await route.continue({ url: local, headers });
+      await route.fulfill({ response: await page.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined }) });
+    } catch (error) {
+      if (!closing) transportErrors.push({ method: request.method(), path: url.pathname, error: String(error).split('\n')[0] });
+      await route.abort('failed').catch(() => {});
+    }
   });
   const navigate = path => page.goto(base + path);
   async function responsive(label) {
@@ -189,13 +195,15 @@ try {
     checks.push({ label: `lead-${visible ? 'show' : 'hide'}-retains-value`, passed: true });
   }
   assert.deepEqual(pageErrors, []);
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors }, null, 2));
+  assert.deepEqual(transportErrors, []);
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors }, null, 2));
   console.log(`Browser acceptance passed: ${checks.length} responsive/persistence checks.`);
 } catch (error) {
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, error: String(error) }, null, 2));
   if (page) { await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {}); writeFileSync(resolve(output, 'failure.txt'), await page.locator('body').innerText().catch(() => '')); }
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, error: String(error) }, null, 2));
   throw error;
 } finally {
+  closing = true;
   await browser?.close(); frontend?.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
   await prisma.$disconnect();
 }
