@@ -9,12 +9,12 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(root, 'data/outputs/workflow-browser'));
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'http://localhost:3021';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_workflow_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 process.env.ALLOWED_ORIGINS = base;
@@ -47,13 +47,13 @@ try {
   await prisma.leadDeal.create({ data: { tenantId: tenant.id, leadId: records.lead.id, dealId: records.deal.id } });
   const definitions = {}, saved = {};
   for (const [entity, module] of Object.entries({ lead: 'leads', contact: 'contacts', account: 'accounts', deal: 'deals' })) {
-    definitions[entity] = await scope(() => saveField(tenant.id, admin.id, { module, group: entity === 'account' ? 'Notes' : entity === 'deal' ? 'Additional Details' : 'Additional Information', name: 'Site Access', type: 'Dropdown', required: false, options: ['Standard', 'Restricted'] }));
+    definitions[entity] = await scope(() => saveField(tenant.id, admin.id, { module, group: entity === 'deal' ? 'Additional Details' : 'Additional Information', name: 'Site Access', type: 'Dropdown', required: false, options: ['Standard', 'Restricted'] }));
     saved[entity] = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: entity + ' acceptance', trigger: entity + '.updated', isActive: entity === 'lead', conditions: { operator: 'AND', conditions: [{ field: entity + '.customFieldValues.' + definitions[entity].id, operator: 'is_empty', value: null }] }, actions: [{ type: 'update_field', config: { field: 'customFieldValues.' + definitions[entity].id, value: 'Standard' } }] }));
     if (entity === 'lead') await scope(() => workflows.toggleWorkflow(saved[entity].id, tenant.id, admin.id, false));
   }
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3021', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -212,7 +212,7 @@ try {
   const specialist = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Ana', lastName: 'Specialist', email: 'workflow-specialist@camxian.com', role: taskRole.name,
     userRoles: { create: { roleId: taskRole.id } } } });
   const pool = await prisma.tenantGroup.create({ data: { tenantId: tenant.id, name: 'Customer Follow-up and Technical Support Team', members: { create: [{ userId: specialist.id }, { userId: admin.id }] } } });
-  const assignment = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: 'Assignment browser acceptance', trigger: 'lead.created', isActive: false,
+  const assignment = await scope(() => workflows.createWorkflow(tenant.id, admin.id, { name: 'Assignment browser acceptance', trigger: 'deal.created', isActive: false,
     actions: [{ type: 'create_task', config: { title: 'Follow up with lead' } }] }));
   await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
   await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
@@ -233,7 +233,7 @@ try {
   assert.deepEqual(assignedDraft.actions[0].config.assignmentTarget, { type: 'group', id: pool.id, strategy: 'round_robin' });
   assert.equal(assignedDraft.version, 2);
   await page.getByRole('button', { name: 'Test', exact: true }).click();
-  await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+  await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
   assert.equal(await prisma.tenantPreference.count({ where: { tenantId: tenant.id, module: 'workflow-assignment' } }), 0);
@@ -242,7 +242,7 @@ try {
 
   await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
   const { fireWorkflowTrigger } = require('../dist/backend/src/modules/automation/workflows/workflow.engine.js');
-  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
+  await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: records.deal.id, triggerType: 'deal.created', context: {} }));
   await scope(() => workflows.updateWorkflow(assignment.id, tenant.id, admin.id, { actions: [{ type: 'create_task', config: { title: 'Revised follow-up', assignmentTarget: { type: 'group', id: pool.id, strategy: 'round_robin' } } }] }));
   await page.goto(base + '/automation/workflows/' + assignment.id + '/edit');
   await page.getByRole('button', { name: 'Activity', exact: true }).click();
@@ -250,8 +250,10 @@ try {
   await page.locator('details').first().locator('summary').first().click();
   await page.getByText('Assigned to Ana Specialist', { exact: false }).waitFor();
   await page.getByText('Definition used in this run · v2', { exact: true }).click();
-  assert.match(await page.locator('pre').innerText(), /Follow up with lead/);
-  assert.doesNotMatch(await page.locator('pre').innerText(), /Revised follow-up/);
+  const savedDefinition = page.getByText('Definition used in this run · v2', { exact: true }).locator('..');
+  await savedDefinition.getByText('Follow up with lead', { exact: true }).waitFor();
+  assert.match(await savedDefinition.innerText(), /Follow up with lead/);
+  assert.doesNotMatch(await savedDefinition.innerText(), /Revised follow-up/);
   await responsive('assignment-history');
   record('Run history retains the executed version, definition and concrete assignee after edits');
   await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, false));
@@ -285,11 +287,11 @@ try {
     await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
     assert.equal(await page.getByLabel('Assignment method', { exact: true }).inputValue(), 'round_robin');
     await page.getByRole('button', { name: 'Test', exact: true }).click();
-    await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+    await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
     await page.getByRole('button', { name: 'Run check', exact: true }).click();
     await page.getByText('Would assign Ana Specialist (1 eligible).', { exact: false }).waitFor();
     await scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true));
-    await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'lead', entityId: records.lead.id, triggerType: 'lead.created', context: {} }));
+    await scope(() => fireWorkflowTrigger({ tenantId: tenant.id, actorId: admin.id, eventId: randomUUID(), entityType: 'deal', entityId: records.deal.id, triggerType: 'deal.created', context: {} }));
     const history = await scope(() => workflows.getWorkflowExecutions(assignment.id, tenant.id));
     assert.equal(history[0].status, 'completed');
     assert.equal(history[0].steps[0].output.strategy, 'round_robin');
@@ -301,7 +303,7 @@ try {
   await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
   await page.getByText('2 members · 0 eligible', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'Test', exact: true }).click();
-  await page.getByLabel('Sample record', { exact: false }).selectOption(records.lead.id);
+  await page.getByLabel('Sample record', { exact: false }).selectOption(records.deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('no active members eligible', { exact: false }).waitFor();
   await assert.rejects(scope(() => workflows.toggleWorkflow(assignment.id, tenant.id, admin.id, true)), /no active members/);

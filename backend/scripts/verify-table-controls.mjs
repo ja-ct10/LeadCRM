@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { setAcceptanceTheme } from './verify-browser-matrix.mjs';
 
 /** Runs against the parent's disposable SQL, authenticated HTTP and production browser. */
-export async function verifyTableControls({ page, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output }) {
+export async function verifyTableControls({ page, base, prisma, tenant, foreignTenant, admin, deniedToken, call, until, record, reads, control, output }) {
   await page.setViewportSize({ width: 1440, height: 900 });
   await setAcceptanceTheme(page, 'Light');
   const modules = [
@@ -99,7 +99,7 @@ export async function verifyTableControls({ page, prisma, tenant, foreignTenant,
   record('All 39 supported fields in both directions match displayed values, empty-last order and stable IDs before SQL pagination; restricted roles are denied');
 
   await page.setViewportSize({ width: 1440, height: 900 });
-  const navigate = path => page.goto('http://localhost:3027' + path);
+  const navigate = path => page.goto(base + path);
   for (const module of modules) {
     await navigate(module.path);
     const region = page.getByRole('region', { name: module.region, exact: true });

@@ -36,7 +36,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
     name: initialData?.name || '', industry: initialData?.industry || '', size: (initialData?.size as AccountFormValues['size']) || '',
     website: initialData?.website || '', tags: initialData?.tags || [], address: initialData?.address || '',
   }), [initialData]);
-  const { register, handleSubmit, formState: { errors, isSubmitting, isDirty }, setFocus, setError } = useForm<AccountFormValues>({
+  const { register, handleSubmit, formState: { errors, isSubmitting: isValidatingSubmission, isDirty }, setFocus, setError } = useForm<AccountFormValues>({
     resolver: zodResolver(isEdit ? UpdateAccountSchema : CreateAccountSchema) as never, defaultValues, mode: 'onBlur',
   });
   const fieldId = React.useId();
@@ -44,12 +44,15 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
   const saving = useRef(false);
   const requestId = useRef<string | undefined>(undefined);
   const [saveError, setSaveError] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const isSubmitting = isValidatingSubmission || isSaving;
   const requestClose = usePanelDraft({ dirty: isDirty || !!customFields.dirty, busy: isSubmitting || customFields.uploadCount > 0 });
   useScrollToError({ errors, formRef, setFocus });
 
   const onSubmit = async (data: AccountFormValues): Promise<void> => {
     if (!canSubmit || saving.current || !customFields.validate()) return;
     saving.current = true; setSaveError('');
+    setIsSaving(true);
     try {
       if (!isEdit) requestId.current ??= crypto.randomUUID();
       await onSave({ ...(!isEdit ? { requestId: requestId.current } : {}), customFieldValues: customFields.payload(), name: data.name,
@@ -60,10 +63,10 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
       applyCrmFieldErrors(error, setError, ['name', 'industry', 'size', 'website', 'address']);
       const message = error instanceof Error ? error.message : 'Unable to save Account. Please try again.';
       setSaveError(message); showCrmMutationError(error, message);
-    } finally { saving.current = false; }
+    } finally { saving.current = false; setIsSaving(false); }
   };
 
-  return <form ref={formRef} onSubmit={handleSubmit(onSubmit)} className="flex h-full min-h-0 flex-col" noValidate>
+  return <form ref={formRef} onSubmit={event => { if (saving.current) event.preventDefault(); else void handleSubmit(onSubmit)(event); }} className="flex h-full min-h-0 flex-col" noValidate>
     <div className={`${panelBodyClass} space-y-6`}>
       {saveError && <p role="alert" className="text-sm text-destructive">{saveError}</p>}
       <ConfiguredFormLayout form={customFields} module="accounts">

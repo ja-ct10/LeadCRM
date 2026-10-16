@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { createWriteStream, existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 const root = resolve(import.meta.dirname, '../..');
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('../../scripts/qa-environment.cjs');
@@ -26,7 +26,7 @@ try {
   await replayCrmMigrations(db);
   socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
   const database = `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_crm_polish_browser?connection_limit=1&statement_cache_size=0`;
-  const base = 'http://localhost:3037';
+  const base = `http://localhost:${await acceptancePort()}`;
   const environment = qaEnvironment(root, { DATABASE_URL: database, DIRECT_URL: database, NODE_ENV: 'test', APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
   for (const key of Object.keys(process.env)) if (!(key in environment)) delete process.env[key];
   Object.assign(process.env, environment);
@@ -59,7 +59,7 @@ try {
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const apiBase = `http://127.0.0.1:${api.address().port}/api/v1`;
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3037', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...environment, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...environment, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   let ready = false;
   for (let attempt = 0; attempt < 90; attempt++) { try { if ((await fetch(base + '/login')).ok) { ready = true; break; } } catch {} await new Promise(done => setTimeout(done, 500)); }
@@ -206,9 +206,8 @@ try {
   await prisma.lead.update({ where: { id: lead.id }, data: { assignedUserId: admin.id } });
   await prisma.emailAccount.create({ data: { tenantId, userId: admin.id, email: admin.email, accessToken: 'disposable-preview-only', scopes: ['gmail.send'] } });
   for (let index = 2; index <= 3; index++) await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, title: `Preview Deal ${index}`, leadDeals: { create: { leadId: lead.id } } } });
-  const draft = { name: 'Workflow email and task preview', trigger: 'lead.created', isActive: false, actions: [
+  const draft = { name: 'Workflow email preview', trigger: 'lead.created', isActive: false, actions: [
     { type: 'send_email', config: { subject: 'Hello NAME!', body: '<p>Hello {{firstName}}</p>' } },
-    { type: 'create_task', config: { title: 'All related follow-up', assignedUserId: worker.id, targetMode: 'all_matching' } },
   ] };
   const draftResponse = await page.request.post(`${apiBase}/automation/workflows`, { headers: { authorization: `Bearer ${token}` }, data: draft });
   assert.equal(draftResponse.status(), 201, await draftResponse.text());
@@ -241,19 +240,31 @@ try {
   await page.getByLabel('Sample record', { exact: false }).selectOption(lead.id);
   const countsBefore = await Promise.all([prisma.task.count({ where: { tenantId } }), prisma.emailDeliveryLog.count({ where: { tenantId } }), prisma.workflowExecutionRun.count({ where: { tenantId } })]);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
-  await page.getByText('Creates 1 task linked to 3 deals.', { exact: true }).waitFor();
   await page.getByText(/Subject:.*Hello Polish!/).waitFor();
   assert.equal(await page.getByTitle('Email message preview 1').getAttribute('sandbox'), '');
   assert.deepEqual(await Promise.all([prisma.task.count({ where: { tenantId } }), prisma.emailDeliveryLog.count({ where: { tenantId } }), prisma.workflowExecutionRun.count({ where: { tenantId } })]), countsBefore);
-  await layout('workflow-email-task-preview');
+  await layout('workflow-email-preview');
   await page.reload();
-  await page.getByRole('button', { name: 'Configure action: 2. Create Task', exact: true }).click();
-  assert.equal(await page.getByLabel('Associate task with', { exact: true }).inputValue(), 'all_matching');
-  await page.getByRole('button', { name: 'Pipeline filter', exact: true }).click();
-  await page.getByRole('textbox', { name: 'Search pipeline filter', exact: true }).fill('Polish');
-  await page.getByRole('menuitem', { name: 'Polish Pipeline', exact: true }).waitFor();
-  await page.keyboard.press('Escape');
-  pass('Workflow save/refresh retains all-matching mode and Run Check renders email and three-deal preview without writes');
+  await page.getByRole('button', { name: 'Configure action: 1. Send Email', exact: true }).click();
+  assert.equal(await page.getByLabel('Subject (overrides template)', { exact: true }).inputValue(), 'Hello {{firstName}}!');
+  pass('Lead email draft retains personalization after refresh and previews without sending');
+  const taskResponse = await page.request.post(`${apiBase}/automation/workflows`, { headers: { authorization: `Bearer ${token}` }, data: {
+    name: 'Workflow Deal task preview', trigger: 'deal.created', isActive: false,
+    actions: [{ type: 'create_task', config: { title: 'Triggering Deal follow-up', assignmentTarget: { type: 'user', id: worker.id } } }],
+  } });
+  assert.equal(taskResponse.status(), 201, await taskResponse.text());
+  const taskWorkflow = (await taskResponse.json()).data;
+  await page.goto(`${base}/automation/workflows/${taskWorkflow.id}/edit`);
+  await page.getByRole('button', { name: 'Configure action: 1. Create Task', exact: true }).click();
+  assert.equal(await page.getByLabel('Associate task with', { exact: true }).inputValue(), 'triggering_deal');
+  assert.equal(await page.getByRole('button', { name: 'Pipeline filter', exact: true }).count(), 0);
+  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByLabel('Sample record', { exact: false }).selectOption(deal.id);
+  await page.getByRole('button', { name: 'Run check', exact: true }).click();
+  await page.getByText('Creates 1 task linked to 1 deal.', { exact: true }).waitFor();
+  assert.deepEqual(await Promise.all([prisma.task.count({ where: { tenantId } }), prisma.emailDeliveryLog.count({ where: { tenantId } }), prisma.workflowExecutionRun.count({ where: { tenantId } })]), countsBefore);
+  await layout('workflow-deal-task-preview');
+  pass('Supported Deal task preview uses the triggering Deal and performs no writes');
   assert.deepEqual(errors, []); pass('No page or API 5xx errors');
 } catch (error) {
   failure = error; console.error(error);

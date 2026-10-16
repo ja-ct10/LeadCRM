@@ -1,4 +1,4 @@
-import { createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Uses an isolated PostgreSQL cluster and the built application. No external messages.
 // Set PLAYWRIGHT_MODULE to an installed Playwright package.
 import { notificationTestPostgres } from './notification-test-postgres.mjs';
@@ -11,7 +11,7 @@ import assert from 'node:assert/strict';
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.NOTIFICATION_EVIDENCE_DIR || resolve(root, 'data/outputs/notification-verification/browser'));
 mkdirSync(output, { recursive: true });
 const pg = await notificationTestPostgres();
-const base = 'http://localhost:3021';
+const base = `http://localhost:${await acceptancePort()}`;
 const database = await pg.database('leadcrm_notification_browser_1');
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: database, DIRECT_URL: database,
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base,
@@ -43,7 +43,7 @@ try {
   assert.equal(await prisma.notification.count({where}),110);
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3021', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   await eventually(async()=>{try{return (await fetch(base+'/login')).ok;}catch{return false;}});
   browser = await chromium.launch({ channel: 'chrome', headless: true });

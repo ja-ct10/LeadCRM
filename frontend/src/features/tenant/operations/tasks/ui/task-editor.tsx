@@ -117,7 +117,8 @@ export function TaskEditor({
     !baseline.updatedAt && JSON.stringify(baseline) !== JSON.stringify(detail.data));
   const conflict = saveConflict || dirty && changed;
   const unavailable = !!recordId && (!canRead || [401, 403, 404].includes(detail.errorStatus ?? 0));
-  const detailReady = !recordId || USE_MOCK_DATA || !!detail.data;
+  // Do not expose editable fields between fetching a record and hydrating its draft.
+  const detailReady = !recordId || USE_MOCK_DATA || (!!detail.data && baseline?.id === recordId && (dirty || !changed || saveConflict));
   const resetDraft = useCallback((saved: TaskRecord) => {
     setBaseline(saved); setTitle(saved.title); setDescription(saved.description); setStatus(saved.status);
     setPriority(saved.priority ?? 'Medium'); setDueDate(manilaLocalDateTime(saved.dueDate));

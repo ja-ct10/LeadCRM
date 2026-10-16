@@ -1,4 +1,4 @@
-import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Disposable PostgreSQL and local application only. Screenshots stay outside Git.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -13,7 +13,7 @@ mkdirSync(output, { recursive: true });
 const database = new URL(process.env.DATABASE_URL);
 assert.equal(database.hostname, '127.0.0.1');
 assert.equal(database.pathname, '/leadcrm_forms_test_2');
-const base = 'http://localhost:3023';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test',
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
@@ -51,7 +51,7 @@ try {
   }
   for (let i = 0; i < 12; i++) await call('/operations/tasks', 'POST', { requestId: randomUUID(), title: `Browser QA Task ${String(i).padStart(2, '0')}`, assignedUserId: staff.id, dueDate: new Date(Date.now() + 86400000).toISOString(), dealIds: deals.map(x => x.id) });
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3023', '-H', '127.0.0.1'], {
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], {
     cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore','pipe','pipe'],
     env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' },
   });

@@ -1,4 +1,4 @@
-import { createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext, setAcceptanceTheme } from './verify-browser-matrix.mjs';
 // Real UI + authenticated HTTP + disposable SQL. No configured database or providers.
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
@@ -13,7 +13,7 @@ const output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.CUSTOM_FIELDS_
 mkdirSync(output, { recursive: true });
 const database = new URL(process.env.DATABASE_URL);
 assert.equal(database.hostname, '127.0.0.1'); assert.equal(database.pathname, '/leadcrm_forms_test_2');
-const base = 'http://localhost:3017';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, ALLOWED_ORIGINS: base, BREVO_API_KEY: '' });
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
@@ -43,7 +43,7 @@ try {
     const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1', NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -98,8 +98,11 @@ try {
     const control = scope.getByLabel(label, { exact: true });
     if (type === 'Dropdown') await control.selectOption(raw); else await control.fill(raw);
     const row = control.locator('xpath=ancestor::dd');
-    const response = page.waitForResponse(response => response.request().method() === 'PUT' && /\/crm\/(leads|contacts|accounts|deals)\/[^/]+$/.test(new URL(response.url()).pathname));
-    await row.getByRole('button', { name: 'Save', exact: true }).click(); assert.equal((await response).status(), 200);
+    const [response] = await Promise.all([
+      page.waitForResponse(response => response.request().method() === 'PUT' && /\/crm\/(leads|contacts|accounts|deals)\/[^/]+$/.test(new URL(response.url()).pathname)),
+      row.getByRole('button', { name: 'Save', exact: true }).click(),
+    ]);
+    assert.equal(response.status(), 200, await response.text());
     await scope.getByRole('button', { name: `Edit ${label}`, exact: true }).waitFor();
   }
   const expected = { Text: 'Saved text', 'Long Text': 'First line\nSecond line', Number: 0, Date: '2026-10-11', Dropdown: 'Gold' };
@@ -212,7 +215,7 @@ try {
   // Transient read errors retain both the loaded value and the open draft.
   await page.getByRole('button', { name: 'Edit Test Text', exact: true }).click(); await page.getByLabel('Test Text', { exact: true }).fill('Retry draft');
   await page.route(`**/api/proxy/crm/leads/${lead.id}/custom-fields`, route => route.fulfill({ status: 503, json: { error: 'Refresh unavailable' } }));
-  await edit('Test Number', '9', 'Number');
+  await call(`/crm/leads/${lead.id}`, 'PUT', { firstName: 'System refreshed' });
   await page.getByRole('button', { name: 'Retry custom fields', exact: true }).waitFor();
   assert.equal(await page.getByLabel('Test Text', { exact: true }).inputValue(), 'Retry draft');
   await page.unroute(`**/api/proxy/crm/leads/${lead.id}/custom-fields`); await page.getByRole('button', { name: 'Retry custom fields', exact: true }).click();

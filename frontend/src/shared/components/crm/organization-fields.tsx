@@ -7,6 +7,7 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
 import { AccountNativeField, type AccountNativeFieldKey } from './account-native-field';
 import { CustomFieldInput, useRecordCustomFields } from './record-custom-fields';
+import { usePanelDraft } from '@/shared/hooks/use-panel-close-guard';
 
 type Mode = 'existing' | 'new';
 type CompanyFields = { companyName: string; industry: string; size: string; website: string; address: string };
@@ -23,10 +24,13 @@ export function useOrganizationForm(initial?: { id?: string; accountId?: string 
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const custom = useRef<ReturnType<typeof useRecordCustomFields> | null>(null);
   const identity = useRef<{ value: string; requestId: string } | undefined>(undefined);
+  const baseline = useRef({ mode, accountId, fields });
   useEffect(() => {
-    setMode(options.initialMode ?? 'existing');
-    setAccountId(initial?.accountId || initial?.organizationId || '');
-    setFields({ ...empty, companyName: initial?.companyName || '' });
+    const next = { mode: options.initialMode ?? 'existing', accountId: initial?.accountId || initial?.organizationId || '', fields: { ...empty, companyName: initial?.companyName || '' } };
+    baseline.current = next;
+    setMode(next.mode);
+    setAccountId(next.accountId);
+    setFields(next.fields);
     setError(''); setFieldErrors({}); identity.current = undefined;
   }, [initial?.id]); // Background refreshes must not replace a user's draft.
   const newAccount = (): NewAccountInput => {
@@ -58,12 +62,14 @@ export function useOrganizationForm(initial?: { id?: string; accountId?: string 
     if (errors.accountId?.[0]) setError(errors.accountId[0]);
     else if (errors.newAccount?.[0]) setError(errors.newAccount[0]);
   };
-  return { mode, setMode, accountId, setAccountId, fields, setFields, error, fieldErrors, custom, validate, payload, applyServerErrors };
+  const dirty = mode !== baseline.current.mode || accountId !== baseline.current.accountId || JSON.stringify(fields) !== JSON.stringify(baseline.current.fields);
+  return { mode, setMode, accountId, setAccountId, fields, setFields, dirty, error, fieldErrors, custom, validate, payload, applyServerErrors };
 }
 type OrganizationForm = ReturnType<typeof useOrganizationForm>;
 
 function CompanyCustomFields({ draft }: { draft: OrganizationForm }) {
   const fields = useRecordCustomFields('accounts');
+  usePanelDraft({ dirty: fields.dirty, busy: fields.uploadCount > 0 });
   draft.custom.current = fields;
   useEffect(() => () => { draft.custom.current = null; }, [draft.custom]);
   return <>{fields.fields.map(field => <CustomFieldInput key={field.id} field={field} form={fields} />)}
@@ -76,6 +82,7 @@ export function OrganizationFields({ draft, companyLabel = 'Company Name', showA
   draft: OrganizationForm; companyLabel?: string; showAccount?: boolean; showCompany?: boolean; disabled?: boolean;
 }) {
   const id = useId();
+  usePanelDraft({ dirty: draft.dirty, busy: disabled });
   const canView = useHasPermission('accounts.view');
   const canCreate = useHasPermission('accounts.create');
   const [accountDraftOpened, setAccountDraftOpened] = useState(draft.mode === 'new');

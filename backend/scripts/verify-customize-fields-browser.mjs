@@ -1,4 +1,4 @@
-import { createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
+import { acceptanceGateway, createAcceptanceContext, responsiveMatrix } from './verify-browser-matrix.mjs';
 // Real UI + authenticated HTTP + disposable SQL. No configured database or providers.
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
@@ -16,7 +16,7 @@ const output = process.env.LEADCRM_BROWSER_OUTPUT || (process.env.CUSTOM_FIELDS_
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'http://localhost:3017';
+const gateway = await acceptanceGateway(output), base = gateway.base;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_customize_fields_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, BREVO_API_KEY: '' });
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
 Module._resolveFilename = function(request, parent, isMain, options) { return request === '@leadcrm/shared' ? resolve(root, 'backend/dist/shared/src/index.js') : originalResolve.call(this, request, parent, isMain, options); };
@@ -41,11 +41,12 @@ try {
     const result = await response.json(); assert.ok(response.ok, JSON.stringify(result)); return result.data;
   }
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'dev', '-p', '3017', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(gateway.internalBase).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'development', LEADCRM_QA_BUILD_ASSETS: '1', API_URL: apiBase, NEXT_PUBLIC_USE_MOCK_AUTH: 'false', NEXT_PUBLIC_USE_MOCK_DATA: 'false' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
-  for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  for (let attempt = 0; attempt < 120; attempt++) { try { if ((await fetch(gateway.internalBase + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
+  await gateway.start();
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const context = await createAcceptanceContext(browser, { viewport: { width: 1440, height: 900 } });
+  const context = await createAcceptanceContext(browser, { ignoreHTTPSErrors: true, viewport: { width: 1440, height: 900 } });
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
   page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => errors.push(error.message));
   const settings = async () => { await page.goto(base + '/settings?tab=custom-fields'); await page.getByRole('heading', { name: 'Customize Fields', exact: true }).waitFor(); await page.getByRole('button', { name: 'Edit Age', exact: true }).waitFor(); };
@@ -167,7 +168,7 @@ try {
   await pointerDrag(dialog.getByRole('button', { name: 'Reorder Assigned Agent group', exact: true }), dialog.getByRole('button', { name: 'Reorder Organization group', exact: true }), true); checks.push('Touch group drag saves one atomic reorder');
   await page.setViewportSize({ width: 1440, height: 900 }); await page.waitForTimeout(250);
   await dialog.getByRole('button', { name: 'Rename Basic Information', exact: true }).click(); await dialog.getByLabel('Group label: Basic Information', { exact: true }).fill('Customer Information'); await dialog.getByRole('button', { name: 'Save', exact: true }).click(); await dialog.getByRole('button', { name: 'Rename Customer Information', exact: true }).waitFor(); checks.push('Group rename preserves assignments');
-  await dialog.getByLabel('New group name', { exact: true }).fill('Empty acceptance'); await dialog.getByRole('button', { name: 'Add', exact: true }).click(); await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).click();
+  await dialog.getByLabel('Add a new group name', { exact: true }).fill('Empty acceptance'); await dialog.getByRole('button', { name: 'Add', exact: true }).click(); await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).click();
   let confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true });
   await confirmation.waitFor();
   await page.waitForFunction(() => document.querySelector('[role="dialog"][aria-label="Delete field group"]')?.contains(document.activeElement));
@@ -175,7 +176,16 @@ try {
   await page.keyboard.press('Escape'); await confirmation.waitFor({ state: 'hidden' }); assert.ok(await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).isVisible());
   await dialog.getByRole('button', { name: 'Delete Empty acceptance group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true });
   await confirmation.getByRole('button', { name: 'Delete group', exact: true }).click(); await confirmation.waitFor({ state: 'hidden' }); checks.push('Empty group deletion requires confirmation and supports Escape cancellation');
-  await dialog.getByRole('button', { name: 'Delete Customer Information group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true }); assert.ok(await confirmation.getByRole('button', { name: 'Delete group', exact: true }).isDisabled());
+  assert.equal(await dialog.getByRole('button', { name: 'Delete Customer Information group', exact: true }).count(), 0, 'Native field groups cannot be deleted');
+  await dialog.getByLabel('Add a new group name', { exact: true }).fill('Populated acceptance'); await dialog.getByRole('button', { name: 'Add', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Delete Populated acceptance group', exact: true }).waitFor();
+  await page.waitForFunction(() => { const input = document.querySelector('[role="dialog"][aria-label="Manage Fields Groups"] input'); return input && !input.disabled && input.value === ''; });
+  await dialog.getByRole('button', { name: 'Close dialog', exact: true }).click(); await dialog.waitFor({ state: 'hidden' });
+  await page.getByRole('button', { name: 'Edit Customer Age', exact: true }).click();
+  await page.getByLabel('Group', { exact: true }).last().selectOption({ label: 'Populated acceptance' });
+  await page.getByRole('button', { name: 'Save field', exact: true }).click(); await page.getByRole('button', { name: 'Edit Customer Age', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Manage Field Groups', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Delete Populated acceptance group', exact: true }).click(); confirmation = page.getByRole('dialog', { name: 'Delete field group', exact: true }); assert.ok(await confirmation.getByRole('button', { name: 'Delete group', exact: true }).isDisabled());
   await page.setViewportSize({ width: 320, height: 900 }); await page.waitForTimeout(300); assert.ok(await confirmation.evaluate(node => node.scrollWidth <= node.clientWidth + 1)); await page.screenshot({ path: resolve(output, 'delete-confirmation-320.png') });
   await confirmation.getByLabel('Move fields to', { exact: true }).selectOption('leads:section:3'); await confirmation.getByRole('button', { name: 'Delete group', exact: true }).click(); await confirmation.waitFor({ state: 'hidden' }); await page.setViewportSize({ width: 1440, height: 900 });
   assert.equal((await call(`/crm/leads/${lead.id}/custom-fields`)).values[ageId], 37); checks.push('Populated group moves atomically without changing saved values');
@@ -200,5 +210,6 @@ try {
   writeFileSync(resolve(output, 'report.json'), JSON.stringify({ checks, pageErrors: errors, failure: String(error) }, null, 2)); throw error;
 } finally {
   await browser?.close(); if (frontend) frontend.kill(); if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
+  await gateway.close();
   await prisma.$disconnect(); await socket.stop(); await db.close();
 }

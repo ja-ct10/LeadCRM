@@ -4,11 +4,44 @@ const assert = require('node:assert/strict');
 const { spawnSync } = require('node:child_process');
 const { resolve } = require('node:path');
 const { qaEnvironment } = require('./qa-environment.cjs');
-const { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport, cleanupBrowserDatabase } = require('./qa-browser-evidence.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
 const { acceptanceRuns, cleanPhaseEnvironment, cleanPhaseEvidence } = require('./qa-clean-evidence.cjs');
 const root = resolve(__dirname, '..');
 const child = code => spawnSync(process.execPath, ['-e', code], { cwd: root, env: qaEnvironment(root), encoding: 'utf8', windowsHide: true });
+
+test('Browser fixtures allocate an available loopback port independently of an active fixture', async () => {
+  const { acceptancePort } = await import('../backend/scripts/verify-browser-matrix.mjs');
+  const server = require('node:net').createServer();
+  const first = await acceptancePort();
+  await new Promise((done, fail) => { server.once('error', fail); server.listen(first, '127.0.0.1', done); });
+  try {
+    const second = await acceptancePort();
+    assert.notEqual(second, first);
+    assert.ok(Number.isInteger(second) && second > 0 && second <= 65535);
+  } finally { await new Promise((done, fail) => server.close(error => error ? fail(error) : done())); }
+});
+
+test('Local TLS acceptance preserves the public Host and HTTPS ingress for the real proxy', async () => {
+  const { acceptanceGateway } = await import('../backend/scripts/verify-browser-matrix.mjs');
+  const gateway = await acceptanceGateway(qaEnvironment(root).TMP);
+  const upstream = require('node:http').createServer((request, response) => {
+    response.setHeader('content-type', 'application/json');
+    response.end(JSON.stringify({ host: request.headers.host, protocol: request.headers['x-forwarded-proto'], path: request.url }));
+  });
+  await new Promise((done, fail) => { upstream.once('error', fail); upstream.listen(Number(new URL(gateway.internalBase).port), '127.0.0.1', done); });
+  try {
+    await gateway.start();
+    const value = await new Promise((done, fail) => {
+      // Trust only this freshly generated loopback fixture certificate.
+      const request = require('node:https').get(gateway.base + '/health', { rejectUnauthorized: false }, response => {
+        let body = ''; response.on('data', data => { body += data; }); response.on('end', () => done(JSON.parse(body))); response.on('error', fail);
+      });
+      request.on('error', fail);
+    });
+    assert.deepEqual(value, { host: new URL(gateway.base).host, protocol: 'https', path: '/health' });
+  } finally { await gateway.close(); upstream.closeAllConnections(); await new Promise(done => upstream.close(done)); }
+});
 
 test('Routed browser fixtures block service workers before installing network isolation', async () => {
   const { createAcceptanceContext } = await import('../backend/scripts/verify-browser-matrix.mjs');
@@ -255,6 +288,56 @@ test('Disposable native initialization retains runtime durability and stops its 
     if (savedBin === undefined) delete process.env.POSTGRES_TEST_BIN; else process.env.POSTGRES_TEST_BIN = savedBin;
   }
 });
+test('Browser database cleanup reports the original error and permits the next fixture to finish', () => {
+  const error = Object.assign(new Error('Owned stopped directory is temporarily locked'), { code: 'EPERM' });
+  const failures = [], completed = [];
+  for (const database of [{ stop() { throw error; } }, { stop() { completed.push('next fixture'); } }])
+    cleanupBrowserDatabase(database, failure => failures.push(failure));
+  assert.deepEqual(failures, [error]);
+  assert.deepEqual(completed, ['next fixture']);
+});
+
+test('Native stopped-directory cleanup can retry after a filesystem lock without deleting a running cluster', async () => {
+  const fs = require('node:fs'), path = require('node:path'), processes = require('node:child_process'), Module = require('node:module');
+  const bin = qaEnvironment(root).TEMP, savedExec = processes.execFileSync, savedRm = fs.rmSync, savedBin = process.env.POSTGRES_TEST_BIN;
+  fs.writeFileSync(resolve(bin, process.platform === 'win32' ? 'initdb.exe' : 'initdb'), 'fixture tool placeholder');
+  let pg, stopped = false, locked = true, removes = 0;
+  try {
+    process.env.POSTGRES_TEST_BIN = bin;
+    processes.execFileSync = (executable, args) => {
+      const name = path.basename(executable).replace(/\.exe$/, '');
+      if (name === 'pg_ctl' && args.includes('stop')) {
+        if (stopped) throw Object.assign(Error('Already stopped'), { status: 1 });
+        stopped = true;
+      }
+      if (name === 'pg_ctl' && args.includes('status') && stopped) throw Object.assign(Error('Not running'), { status: 3 });
+      return Buffer.from(name === 'psql' ? 'on|on|on\n' : 'fixture');
+    };
+    Module.syncBuiltinESMExports();
+    const { notificationTestPostgres } = await import('../backend/scripts/notification-test-postgres.mjs');
+    pg = await notificationTestPostgres();
+    fs.rmSync = (target, options) => {
+      if (target === pg.directory) {
+        assert.equal(stopped, true); removes++;
+        if (locked) { locked = false; throw Object.assign(Error('Temporary fixture lock'), { code: 'EPERM' }); }
+      }
+      return savedRm(target, options);
+    };
+    Module.syncBuiltinESMExports();
+    assert.throws(() => pg.stop(), /Temporary fixture lock/);
+    assert.equal(fs.existsSync(pg.directory), true);
+    pg.stop(); pg.stop();
+    assert.equal(fs.existsSync(pg.directory), false);
+    assert.equal(removes, 2);
+  } finally {
+    fs.rmSync = savedRm; Module.syncBuiltinESMExports();
+    try { pg?.stop(); } finally {
+      processes.execFileSync = savedExec; Module.syncBuiltinESMExports();
+      if (savedBin === undefined) delete process.env.POSTGRES_TEST_BIN; else process.env.POSTGRES_TEST_BIN = savedBin;
+    }
+  }
+});
+
 test('QA blocks fetch and Node transports before an external connection', () => {
   const result = child(`const assert=require('node:assert/strict');(async()=>{await assert.rejects(fetch('https://example.invalid'),/QA_EXTERNAL_NETWORK_BLOCKED/);assert.throws(()=>require('https').get('https://example.invalid'),/QA_EXTERNAL_NETWORK_BLOCKED/);assert.throws(()=>require('http').request({hostname:'example.invalid'}),/QA_EXTERNAL_NETWORK_BLOCKED/);})().catch(e=>{console.error(e);process.exitCode=1;});`);
   assert.equal(result.status, 0, result.stderr);

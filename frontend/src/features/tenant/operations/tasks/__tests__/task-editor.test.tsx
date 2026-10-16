@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => ({
   deniedPermissions: [] as string[],
   detail: {} as { data?: import('@leadcrm/shared').TaskRecord; error: string | null; errorStatus?: number; isInitialLoad: boolean; isRefreshing: boolean; refetch: ReturnType<typeof vi.fn> },
   options: vi.fn(),
+  captureLayout: undefined as (() => void) | undefined,
 }));
 const user = {
   id: "owner",
@@ -42,6 +43,13 @@ vi.mock("@/shared/hooks/use-permissions", () => ({
       : permission === 'tasks.assign' ? mocks.canAssign : permission !== "tasks.edit" || mocks.canEdit,
 }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => mocks.detail }));
+vi.mock('../ui/task-selector', async () => {
+  const actual = await vi.importActual<typeof import('../ui/task-selector')>('../ui/task-selector');
+  return { ...actual, TaskSelector: (props: React.ComponentProps<typeof actual.TaskSelector>) => {
+    React.useLayoutEffect(() => { mocks.captureLayout?.(); });
+    return <actual.TaskSelector {...props} />;
+  } };
+});
 vi.mock('../ui/task-record-creator', () => ({ TaskRecordCreator: ({ onCancel }: { onCancel: () => void }) => <button type="button" onClick={onCancel}>Cancel deal creation</button> }));
 vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({
@@ -94,8 +102,41 @@ beforeEach(() => {
   mocks.canEditLeads = true;
   mocks.canAssign = true;
   mocks.deniedPermissions = [];
+  mocks.captureLayout = undefined;
   mocks.detail = { data: task, error: null, isInitialLoad: false, isRefreshing: false, refetch: vi.fn() };
   mocks.options.mockResolvedValue({ data: [{ id: 'owner', label: 'Test Owner' }] });
+});
+it('keeps fetched Task fields disabled until the initial draft is hydrated, then saves an early status change', async () => {
+  mocks.detail = { ...mocks.detail, data: undefined, isInitialLoad: true };
+  let firstLoadedFrameDisabled: boolean | undefined;
+  mocks.captureLayout = () => {
+    if (mocks.detail.data && firstLoadedFrameDisabled === undefined)
+      firstLoadedFrameDisabled = screen.getByLabelText('Title *').matches(':disabled');
+  };
+  const onClose = vi.fn();
+  const view = render(<TaskEditor taskId={task.id} onClose={onClose} />);
+  mocks.detail = { ...mocks.detail, data: task, isInitialLoad: false };
+  view.rerender(<TaskEditor taskId={task.id} onClose={onClose} />);
+  expect(firstLoadedFrameDisabled).toBe(true);
+  fireEvent.change(screen.getByRole('combobox', { name: /^Status/ }), { target: { value: 'completed' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+  await waitFor(() => expect(mocks.updateTask).toHaveBeenCalledWith(task.id, { status: 'completed', expectedUpdatedAt: task.updatedAt }));
+  expect(mocks.updateTask).toHaveBeenCalledOnce();
+  expect(onClose).toHaveBeenCalledOnce();
+});
+it('keeps a pristine Task locked until a newly fetched version has hydrated its draft', () => {
+  mocks.detail = { ...mocks.detail, data: undefined, isInitialLoad: true };
+  let firstLoadedFrameDisabled: boolean | undefined;
+  mocks.captureLayout = () => {
+    if (mocks.detail.data && firstLoadedFrameDisabled === undefined)
+      firstLoadedFrameDisabled = screen.getByLabelText('Title *').matches(':disabled');
+  };
+  const view = render(<TaskEditor task={task} onClose={vi.fn()} />);
+  mocks.detail = { ...mocks.detail, data: { ...task, title: 'New saved title', updatedAt: '2026-09-02T00:00:00.000Z' }, isInitialLoad: false };
+  view.rerender(<TaskEditor task={task} onClose={vi.fn()} />);
+  expect(firstLoadedFrameDisabled).toBe(true);
+  expect(screen.getByLabelText('Title *')).toHaveProperty('value', 'New saved title');
+  expect(screen.getByLabelText('Title *').matches(':disabled')).toBe(false);
 });
 it('shows the create subtitle only in task creation and restores it after nested deal creation closes', async () => {
   render(<TaskEditor onClose={vi.fn()} />);

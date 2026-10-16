@@ -1,7 +1,5 @@
-// Real UI/API/mailbox SSE against a disposable migration-replayed database.
+// Real UI/API/mailbox SSE against the harness-owned native PostgreSQL database.
 // Two Sales agents use mocked Gmail send/History and the existing worker; no real mail is sent.
-import { PGlite } from '@electric-sql/pglite';
-import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { randomBytes, randomUUID } from 'node:crypto';
@@ -9,19 +7,17 @@ import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';
 import { resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
-import { replayCrmMigrations } from './replay-crm-migrations.mjs';
-import { createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, createAcceptanceContext } from './verify-browser-matrix.mjs';
 
 const root = resolve(import.meta.dirname, '../..');
 const output = process.env.LEADCRM_BROWSER_OUTPUT || resolve(tmpdir(), `leadcrm-mailbox-activities-${Date.now()}`);
 mkdirSync(output, { recursive: true });
-const db = await PGlite.create();
-await replayCrmMigrations(db);
-const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 });
-await socket.start();
-const port = Number(process.env.MAILBOX_ACTIVITIES_BROWSER_PORT || 3037), base = `http://localhost:${port}`;
+const database = new URL(process.env.DATABASE_URL);
+assert.equal(database.hostname, '127.0.0.1');
+assert.equal(database.pathname, '/leadcrm_forms_test_2', 'Run through the disposable browser harness');
+const port = Number(process.env.MAILBOX_ACTIVITIES_BROWSER_PORT || await acceptancePort()), base = `http://localhost:${port}`;
 for (const key of Object.keys(process.env)) if (/^(BREVO|TEXTBEE|SMTP|GMAIL|GOOGLE_CLIENT|GOOGLE_REFRESH)/.test(key)) delete process.env[key];
-Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_mailbox_activities_browser?connection_limit=1&statement_cache_size=0`,
+Object.assign(process.env, { NODE_ENV: 'test',
   JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base,
   GMAIL_CLIENT_ID: 'isolated-client', GMAIL_CLIENT_SECRET: 'isolated-secret', GMAIL_REDIRECT_URI: base + '/callback', GMAIL_SYNC_INTERVAL_SECONDS: '10' });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
@@ -170,13 +166,27 @@ try {
       return evidence;
     } };
   }
+  async function waitForMailboxActivity(providerMessageId) {
+    // Confirmed sends may finish history asynchronously. Discovery can also span
+    // the 10s sync interval and next 10s queue tick; time the UI independently.
+    const deadline = Date.now() + 35000;
+    let stored, activity;
+    do {
+      stored = await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, providerMessageId }, select: { id: true, tenantId: true } });
+      if (stored) activity = await prisma.activity.findFirst({ where: { mailboxMessageId: stored.id, type: 'email' }, select: { id: true, createdById: true } });
+      if (!activity) await new Promise(done => setTimeout(done, 250));
+    } while (!activity && Date.now() < deadline);
+    assert.ok(activity, 'Gmail history must persist the message and Activity within its polling budget');
+    assert.equal(activity.createdById, owner.id);
+    return stored;
+  }
   async function ingest(f, direction, scheduledDiscovery = true) {
     const body = `Persisted ${direction} ${f.thread}`;
     if (direction === 'outbound') {
       const response = await originalFetch(apiBase + '/integrations/gmail/send', { method: 'POST', headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
         body: JSON.stringify({ requestId: randomUUID(), to: f.email, subject: 'Customer email conversation', body }) });
       const sent = await response.json(); assert.equal(response.status, 200, JSON.stringify(sent)); f.thread = sent.threadId;
-      const stored = await prisma.mailboxMessage.findFirstOrThrow({ where: { accountId: account.id, providerMessageId: sent.messageId } });
+      const stored = await waitForMailboxActivity(sent.messageId);
       assert.equal(stored.tenantId, tenant.id);
       assert.equal((await prisma.activity.findFirstOrThrow({ where: { mailboxMessageId: stored.id, type: 'email' } })).createdById, owner.id);
       return body;
@@ -186,6 +196,7 @@ try {
       labels: [direction === 'outbound' ? 'SENT' : 'INBOX'], rfcMessageId: `<${randomUUID()}@example.test>` };
     message.revision = ++box.revision; box.messages.set(message.id, message);
     if (!scheduledDiscovery) await scope(() => syncMailbox(tenant.id, owner.id, 'worker'));
+    await waitForMailboxActivity(message.id);
     return body;
   }
   async function badge(tab, total) {
@@ -208,7 +219,7 @@ try {
       record(`Agent ${owner.firstName}: ${module} ${surface} ${filter}: ${direction} email and badge update without interaction`, { evidence, visibilityMs: Date.now() - observedAt });
       if (owner.firstName === 'B') assert.equal(await prisma.session.count({ where: { userId: agents[1].owner.id } }), 0, 'B cannot depend on A being signed in');
     }
-    stopWorker(); stopWorker = undefined;
+    await stopWorker(); stopWorker = undefined;
     for (let attempt = 0; attempt < 100 && await prisma.emailAccount.count({ where: { tenantId: tenant.id, syncLeaseId: { not: null } } }); attempt++) await new Promise(done => setTimeout(done, 100));
     assert.equal(await prisma.emailAccount.count({ where: { tenantId: tenant.id, syncLeaseId: { not: null } } }), 0);
     await view.tab.screenshot({ path: resolve(output, `${owner.firstName}-${module}-${surface}-${filter.toLowerCase()}.png`) });
@@ -253,9 +264,9 @@ try {
   throw error;
 } finally {
   closing = true;
-  stopWorker?.();
+  await stopWorker?.();
   const shutdown = setTimeout(() => process.exit(process.exitCode ?? 0), 20000); shutdown.unref();
   await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }
-  await prisma.$disconnect(); await socket.stop(); await db.close();
+  await prisma.$disconnect();
 }

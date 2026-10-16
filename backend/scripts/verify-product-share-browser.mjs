@@ -1,4 +1,4 @@
-import { responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
+import { acceptancePort, responsiveMatrix, createAcceptanceContext } from './verify-browser-matrix.mjs';
 // Real UI/API acceptance in a disposable database; no production data or email sends.
 // Pass an installed Playwright module path as the first argument.
 import { PGlite } from '@electric-sql/pglite';
@@ -15,7 +15,7 @@ const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM
 mkdirSync(output, { recursive: true });
 const db = await PGlite.create(); await replayCrmMigrations(db);
 const socket = new PGLiteSocketServer({ db, host: '127.0.0.1', port: 0 }); await socket.start();
-const base = 'http://localhost:3019';
+const base = `http://localhost:${await acceptancePort()}`;
 Object.assign(process.env, { NODE_ENV: 'test', DATABASE_URL: `postgresql://postgres:postgres@${socket.getServerConn()}/leadcrm_product_share_browser?connection_limit=1&statement_cache_size=0`, JWT_SECRET: randomBytes(32).toString('hex'), ENCRYPTION_KEY: randomBytes(32).toString('hex'), APP_URL: base, CORS_ORIGIN: base, ALLOWED_ORIGINS: base });
 process.env.DIRECT_URL = process.env.DATABASE_URL;
 const require = createRequire(import.meta.url), Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -46,13 +46,13 @@ try {
   const cctvDeal = await prisma.deal.create({ data: { tenantId: tenant.id, title: 'Historical CCTV price', pipelineId: pipeline.id, stageId: won.id, productInterestId: cctv.id, productsNormalized: true, value: 3210.75, currency: 'PHP', accountId: account.id, assignedUserId: admin.id, leadDeals: { create: { leadId: lead.id, position: 0 } }, contactDeals: { create: { contactId: contact.id, position: 0 } } } });
   for (let index = 0; index < 26; index++) await prisma.deal.create({ data: { tenantId: tenant.id, title: `Historical Laptop Deal ${index + 1}`, pipelineId: pipeline.id, stageId: won.id, productInterestId: products[1].id, productsNormalized: true, value: 41000.75, currency: 'PHP', accountId: account.id, assignedUserId: admin.id, closedAt: new Date('2026-10-06T10:00:00Z'), contactDeals: { create: { contactId: contact.id, position: 0 } } } });
   const deals = [];
-  for (const [index, product] of products.slice(0, 2).entries()) deals.push(await prisma.deal.create({ data: { tenantId: tenant.id, title: `Email Acceptance ${index + 1}`, pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true, value: product.dealValue.toNumber(), leadDeals: { create: { leadId: lead.id, position: 0 } }, ...(index === 0 ? { contactDeals: { create: { contactId: contact.id, position: 0 } } } : {}) } }));
+  for (const [index, product] of products.slice(0, 2).entries()) deals.push(await prisma.deal.create({ data: { tenantId: tenant.id, title: `Email Acceptance ${index + 1}`, pipelineId: pipeline.id, stageId: initial.id, assignedUserId: admin.id, productInterestId: product.id, productsNormalized: true, value: product.dealValue.toNumber(), leadDeals: { create: { leadId: lead.id, position: 0 } }, ...(index === 0 ? { contactDeals: { create: { contactId: contact.id, position: 0 } } } : {}) } }));
   const form = await scope(async () => forms.publishForm((await forms.createForm(tenant.id, admin.id, { name: 'Share Acceptance' })).id, tenant.id, admin.id));
   const submittedValues = { firstName: 'Actual Visitor', lastName: 'Customer', email: 'visitor@example.test', productInterest: [products[0].id, products[2].id], address: 'Long historical value '.repeat(15) };
   await prisma.formSubmission.create({ data: { tenantId: tenant.id, formId: form.id, publishedVersion: form.publishedVersion, publishedConfig: { name: form.name, fields: form.fields, design: form.design }, leadId: lead.id, values: submittedValues } });
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const log = createWriteStream(resolve(output, 'frontend.log'));
-  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', '3019', '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
+  frontend = spawn(process.execPath, [resolve(root, 'node_modules/next/dist/bin/next'), 'start', '-p', new URL(base).port, '-H', '127.0.0.1'], { cwd: resolve(root, 'frontend'), windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, NODE_ENV: 'production', API_URL: 'https://leadcrm-build.example/api/v1' } });
   frontend.stdout.pipe(log); frontend.stderr.pipe(log);
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
@@ -120,7 +120,7 @@ try {
     await navigate('/settings?tab=archived');
     const filters = page.getByRole('group', { name: 'Archived record types' });
     await filters.waitFor();
-    assert.deepEqual(await filters.getByRole('button').allTextContents(), ['All', 'Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow', 'Role']);
+    assert.deepEqual(await filters.getByRole('button').allTextContents(), ['All', 'Lead', 'Contact', 'Account', 'Deal', 'Product', 'User', 'Task', 'Campaign', 'Workflow']);
     const archivedRow = page.getByRole('region', { name: 'Archived data grid' }).getByRole('row').filter({ hasText: cctv.name });
     await archivedRow.waitFor();
     await filters.getByRole('button', { name: 'Product', exact: true }).click();
@@ -130,7 +130,7 @@ try {
     assert.notEqual((await archivedRow.locator('td').nth(4).innerText()).trim(), '—');
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     await filters.evaluate(element => { element.scrollLeft = element.scrollWidth; });
-    assert.equal(await filters.getByRole('button', { name: 'Role', exact: true }).evaluate(element => {
+    assert.equal(await filters.getByRole('button', { name: 'Workflow', exact: true }).evaluate(element => {
       const item = element.getBoundingClientRect(), container = element.parentElement.getBoundingClientRect();
       return item.left >= container.left - 1 && item.right <= container.right + 1;
     }), true);

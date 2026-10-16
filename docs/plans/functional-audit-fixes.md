@@ -73,3 +73,7 @@ npm audit --omit=dev
 ```
 
 These results establish only the named local scope. Live Coolify/browser access, exact deployed Account/SMS incident correlation, transport delivery and OAuth recovery remain blocked or unverified. The original inventory includes additional browser suites, handlers, physical-device, screen-reader, zoom and PWA scenarios that were not all rerun after implementation.
+
+## Follow-up verification
+
+The result table above records the first fix release. Further CRM draft/submission, Task initialization and mailbox shutdown corrections, together with the current verification commands and release boundaries, are described in [the follow-up notes](functional-verification-followup.md). Review the proposed revision's actual checks and final audit report separately from this historical evidence. Read-only production health/provider inspection was subsequently available; physical transport delivery and private production incident correlation remain unverified.

@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const { qaEnvironment } = require('./qa-environment.cjs');
 const { sourceIdentity } = require('./qa-source-identity.cjs');
-const { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport } = require('./qa-browser-evidence.cjs');
+const { browserEvidence, browserFailureDiagnostics, ensureBrowserFailureReport, cleanupBrowserDatabase } = require('./qa-browser-evidence.cjs');
 const ci = require('./qa-ci.cjs');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const sourceStart = sourceIdentity(root);
@@ -235,7 +235,11 @@ async function execute(section) {
         console.error(`\n[qa] Browser acceptance failed: ${label}\nReport: ${reportName}${command ? `\nCommand log: ${command.log}` : ''}\n${browserFailureDiagnostics(result, command?.exitCode ?? 1)}`);
         recordFailure(label, error, { report: reportName });
       }
-      finally { pg?.stop(); }
+      finally { cleanupBrowserDatabase(pg, error => {
+        const label = `${relative(root, script)} database cleanup`;
+        console.error(`[qa] ${label}: ${error.message}`);
+        recordFailure(label, error, { ownedDirectory: pg.directory });
+      }); }
     }
     if (!ciPlan.shard) await check('Mailbox worker restart', ['backend/scripts/verify-mailbox-restart.mjs']);
   } else throw new Error(`Unknown QA phase: ${section}`);
