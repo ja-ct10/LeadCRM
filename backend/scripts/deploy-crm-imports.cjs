@@ -133,6 +133,8 @@ function deploymentPlan(records, localNames) {
     '20261209000000_account_notes_preservation', '20261209010000_account_creation_receipts', accountNotesRetirement,
     // Token-only default template repair; no schema or Campaign history changes.
     '20261211000000_normalize_default_campaign_template_variables',
+    // Existing Activity/Message relationships only; no schema or identity changes.
+    '20261212000000_mailbox_activity_deals',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');
