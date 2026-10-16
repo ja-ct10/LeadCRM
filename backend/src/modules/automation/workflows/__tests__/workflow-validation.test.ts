@@ -10,7 +10,7 @@ const draft: WorkflowDraft = {
   name: 'Follow up',
   trigger: 'lead.created',
   isActive: true,
-  actions: [{ type: 'create_task', config: { title: 'Call lead' } }],
+  actions: [{ type: 'assign_owner', config: { userId: 'agent' } }],
 };
 
 describe('workflow activation errors', () => {

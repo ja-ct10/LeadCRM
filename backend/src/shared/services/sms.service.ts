@@ -57,7 +57,7 @@ export async function getSmsBatch(deviceId: string, batchId: string) {
   if (!/^[a-f\d]{24}$/i.test(deviceId) || !/^[a-f\d]{24}$/i.test(batchId)) throw new ValidationError('Invalid SMS provider identity.');
   const message = z.object({ _id: z.string().min(1), device: z.object({ _id: z.string() }), smsBatch: z.string().optional(), recipient: z.string(), status: z.string().default('unknown'),
     requestedAt: providerDate, dispatchedAt: providerDate, pushReceivedAt: providerDate, sendAttemptedAt: providerDate,
-    sentAt: providerDate, deliveredAt: providerDate, failedAt: providerDate });
+    sentAt: providerDate, deliveredAt: providerDate, failedAt: providerDate, updatedAt: providerDate });
   // Strip message content and other provider fields at this boundary.
   return z.object({ data: z.object({ batch: z.object({ _id: z.string(), recipientCount: z.number().int() }), messages: z.array(message) }) })
     .parse(await textBeeRead(`/gateway/devices/${deviceId}/sms-batch/${batchId}`)).data;

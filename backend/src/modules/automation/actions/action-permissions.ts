@@ -44,7 +44,7 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
         : action.type === 'send_sms' ? String(action.config.message ?? '') : `${action.config.title ?? ''} ${action.config.description ?? ''}`;
       const keys = campaignVariableKeys(content);
       if (keys.length) {
-        const messageEntity = workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined);
+        const messageEntity = workflowMessageEntity(entity, ['send_sms', 'send_email'].includes(action.type) ? action.config.recipient : undefined);
         const catalog = await campaignVariableFields(tenantId);
         const fields = messageEntity === 'lead' || messageEntity === 'contact' ? campaignFieldsForSource(catalog, messageEntity === 'lead' ? 'LEADS' : 'CONTACTS') : catalog.filter(field => field.module === WORKFLOW_MODULES[messageEntity]);
         for (const field of fields.filter(field => keys.includes(field.technicalKey) || !!field.canonicalTechnicalKey && keys.includes(field.canonicalTechnicalKey))) {
@@ -68,6 +68,7 @@ export async function assertWorkflowPermissions(draft: WorkflowDraft, tenantId: 
     if (action.type === 'create_task') required.push('tasks.create', 'tasks.assign', 'deals.view');
     if (action.type === 'send_campaign') required.push('campaigns.view', 'campaigns.send');
     if (action.type === 'send_email') required.push('campaigns.send');
+    if (action.type === 'send_email' && entity === 'deal') required.push(action.config.recipient === 'primary_lead' ? 'leads.view' : 'contacts.view');
     if (action.type === 'send_sms') required.push('campaigns.send', 'contacts.view', 'contacts.edit');
     if (['assign_owner', 'update_field'].includes(action.type)) required.push(entity === 'deal' ? 'deals.edit' : entity === 'account' ? 'accounts.edit' : entity === 'lead' ? 'leads.edit' : 'contacts.edit');
     if (action.type === 'move_deal_stage') required.push('deals.view', 'deals.edit');

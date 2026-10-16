@@ -1,5 +1,5 @@
 import type { CampaignStatus, Prisma } from '@prisma/client';
-import { enqueueSmsCampaignOutcomes } from './sms-campaign-outcomes';
+import { enqueueSmsCampaignOutcomes, smsSent, smsDelivered } from './sms-campaign-outcomes';
 
 type RecipientEvidence = {
   status: string;
@@ -25,10 +25,10 @@ export function deriveCampaignDeliveryStatus(
   // Never reconstruct a historical audience or guess from incomplete history.
   if (!campaign.recipientCount || eligible.length !== campaign.recipientCount) return campaign.status;
   const failed = eligible.filter(recipientDeliveryFailed).length;
-  const successful = eligible.filter(row => !recipientDeliveryFailed(row) && (row.sentAt || row.deliveredAt)).length;
-  const delivered = eligible.filter(row => !recipientDeliveryFailed(row) && row.deliveredAt).length;
+  const successful = eligible.filter(row => !recipientDeliveryFailed(row) && (campaign.type === 'SMS' ? smsSent(row) : row.sentAt || row.deliveredAt)).length;
+  const delivered = eligible.filter(row => !recipientDeliveryFailed(row) && (campaign.type === 'SMS' ? smsDelivered(row) : row.deliveredAt)).length;
   if (delivered === campaign.recipientCount && failed === 0) return 'DELIVERED';
-  const uncertain = campaign.type === 'SMS' && eligible.some(row => !row.sentAt && !row.deliveredAt
+  const uncertain = campaign.type === 'SMS' && eligible.some(row => !smsSent(row)
     && (row.status === 'unknown' || ['TEXTBEE_UNKNOWN_STATE', 'PROVIDER_SUBMISSION_UNCONFIRMED'].includes(row.failureReason ?? '')));
   if (successful > 0 && failed > 0 && (!campaign.type || campaign.type !== 'SMS' || (!uncertain && successful + failed === campaign.recipientCount))) return 'PARTIALLY_SENT';
   if (failed === campaign.recipientCount) return 'FAILED';
@@ -41,7 +41,7 @@ export function deriveCampaignDeliveryStatus(
 
 /** Call inside the provider/send transaction, after locking the campaign and
  * before releasing it. All recipient writers use this same lock order. */
-export async function recalculateCampaignDelivery(tx: Prisma.TransactionClient, id: string, tenantId: string) {
+export async function recalculateCampaignDelivery(tx: Prisma.TransactionClient, id: string, tenantId: string, skipUnchanged = false) {
   const campaign = await tx.campaign.update({ where: { id, tenantId }, data: { engagement: { increment: 0 } } });
   const where = { campaignId: id, tenantId };
   const rows = await tx.campaignContact.findMany({ where, select: {
@@ -62,12 +62,14 @@ export async function recalculateCampaignDelivery(tx: Prisma.TransactionClient, 
   // Legacy email sends stored acceptance in sentAt; retain that submitted total.
   const submitted = eligible.filter(row => row.submittedAt || (campaign.type === 'EMAIL' && row.sentAt)).length;
   const failed = eligible.filter(recipientDeliveryFailed).length;
-  const delivered = eligible.filter(row => row.deliveredAt && !recipientDeliveryFailed(row)).length;
+  const delivered = eligible.filter(row => (campaign.type === 'SMS' ? smsDelivered(row) : row.deliveredAt) && !recipientDeliveryFailed(row)).length;
   const opened = eligible.filter(row => row.openedAt).length;
   const clicked = eligible.filter(row => row.clickedAt).length;
   const bounced = eligible.filter(row => row.bouncedAt).length;
+  const status = deriveCampaignDeliveryStatus(campaign, evidence);
+  if (skipUnchanged && campaign.status === status && campaign.sentCount === submitted && campaign.failedCount === failed && campaign.openedCount === opened && campaign.clickedCount === clicked) return campaign;
   const updated = await tx.campaign.update({ where: { id, tenantId }, data: {
-    status: deriveCampaignDeliveryStatus(campaign, evidence), sentCount: submitted, failedCount: failed,
+    status, sentCount: submitted, failedCount: failed,
     openedCount: opened, clickedCount: clicked,
   } });
   await tx.campaignMetrics.create({ data: { ...where, sentCount: submitted, deliveredCount: delivered,

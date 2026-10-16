@@ -297,7 +297,7 @@ export function ActionFields({
       <p className="text-[var(--muted-foreground)]">{definition?.description}</p>
       {['create_task', 'assign_owner'].includes(action.type) && <WorkflowAssignmentFields action={action} entity={entity} options={options} className={workflowControl} onChange={onChange} />}
       {action.type === 'create_task' && <WorkflowTaskAssociations action={action} entity={entity} options={options} onChange={onChange} />}
-      {action.type === 'send_email' && <p className="text-xs text-muted-foreground">Email uses the triggering record’s assigned agent and their authorized Gmail connection. Assign an eligible agent and connect their Gmail before this action runs.</p>}
+      {action.type === 'send_email' && <p className="text-xs text-muted-foreground">Email uses the triggering record’s assigned agent and their authorized Gmail connection. For a Deal, select its primary Lead or Contact; the agent must also have permission to email that recipient.</p>}
       {action.type === 'send_sms' && options.smsConfigured === false && <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">SMS is not configured. You can save this draft and connect SMS before activating it.</p>}
       {action.type === 'move_deal_stage' && stageSetup}
       {action.type === 'move_deal_stage' && !stageSetup && (
@@ -325,7 +325,7 @@ export function ActionFields({
       )}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
         if (action.type === 'create_task' && ['targetMode', 'pipelineId', 'currentStageId', 'productInterestId', 'dealId'].includes(key)) return null;
-        if (action.type === 'send_email' && (key === 'subject' || key === 'body')) return <WorkflowEmailOverride key={key} field={key} label={field.label} value={String(action.config[key] ?? '')} entity={entity} options={options} className={workflowControl} onChange={value => onChange({ ...action.config, [key]: value })} />;
+        if (action.type === 'send_email' && (key === 'subject' || key === 'body') || action.type === 'send_sms' && key === 'message') return <WorkflowEmailOverride key={`${key}:${action.config.recipient ?? 'record'}`} field={key as 'subject' | 'body' | 'message'} label={field.label} value={String(action.config[key] ?? '')} entity={entity ? workflowMessageEntity(entity, action.config.recipient) : undefined} options={options} className={workflowControl} onChange={value => onChange({ ...action.config, [key]: value })} />;
         if (action.type === 'move_deal_stage' && stageSetup && ['stageId', 'currentStageId'].includes(key)) return null;
         if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) return null;
         if (action.type === 'move_deal_stage' && entity === 'deal' && ['targetMode', 'productInterestId', 'currentStageId'].includes(key)) return null;
@@ -335,7 +335,7 @@ export function ActionFields({
           choices =
             options.pipelines.find((entry) => entry.id === selectedPipeline)
               ?.stages ?? [];
-        if (action.type === 'send_sms' && key === 'recipient') choices = (choices ?? []).filter((choice) => entity === 'deal' ? choice.id !== 'record' : entity === 'account' ? choice.id === 'primary_contact' : choice.id === 'record').map((choice) => ({ ...choice, name: choice.id === 'record' ? 'Triggering record' : choice.id === 'primary_contact' ? 'Primary contact' : 'Primary lead' }));
+        if (['send_sms', 'send_email'].includes(action.type) && key === 'recipient') choices = (choices ?? []).filter((choice) => entity === 'deal' ? choice.id !== 'record' : entity === 'account' ? choice.id === 'primary_contact' : choice.id === 'record').map((choice) => ({ ...choice, name: choice.id === 'record' ? 'Triggering record' : choice.id === 'primary_contact' ? 'Primary contact' : 'Primary lead' }));
         if (key === 'targetMode') choices = [{ id: 'single_match', name: 'One matching Deal (default)' }, { id: 'all_matching', name: 'All matching related Deals' }];
         const change = (value: unknown) =>
           onChange({ ...action.config, [key]: value });

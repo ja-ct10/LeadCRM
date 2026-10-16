@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react';
 import { useDraggable } from '@dnd-kit/core';
 import { GripVertical, Search, Zap, GitBranch, Play } from 'lucide-react';
 import type { ActionDefinition, TriggerDefinition } from '@leadcrm/shared';
+import { workflowActionAllowed } from '@leadcrm/shared';
 import { Input } from '@/shared/components/ui/input';
 import { matchesSearch } from '@/shared/utils/search';
 import type { LibraryItem } from '../services/workflow-editor';
@@ -19,18 +20,20 @@ function LibraryCard({
   title,
   description,
   disabled,
+  dragEnabled,
   onChoose,
 }: {
   item: LibraryItem;
   title: string;
   description?: string;
   disabled: boolean;
+  dragEnabled: boolean;
   onChoose: (item: LibraryItem) => void;
 }) {
   const { setNodeRef, attributes, listeners, isDragging } = useDraggable({
     id: `library:${item.kind}:${'type' in item ? item.type : (item.field ?? 'group')}`,
     data: { item },
-    disabled,
+    disabled: disabled || !dragEnabled,
   });
   const Icon = stepIcons[item.kind];
   return (
@@ -57,7 +60,7 @@ function LibraryCard({
           )}
         </span>
       </button>
-      <button
+      {dragEnabled && <button
         type="button"
         {...attributes}
         {...listeners}
@@ -67,7 +70,7 @@ function LibraryCard({
         className="touch-none rounded-r-xl px-2 text-[var(--muted-foreground)] hover:bg-[var(--muted)] disabled:opacity-40"
       >
         <GripVertical size={16} />
-      </button>
+      </button>}
     </div>
   );
 }
@@ -76,6 +79,7 @@ export function WorkflowLibrary({
   actions,
   trigger,
   disabled,
+  dragEnabled = true,
   insertAt,
   onChoose,
 }: {
@@ -83,6 +87,7 @@ export function WorkflowLibrary({
   actions: ActionDefinition[];
   trigger?: TriggerDefinition;
   disabled: boolean;
+  dragEnabled?: boolean;
   insertAt?: number | null;
   onChoose: (item: LibraryItem) => void;
 }) {
@@ -121,7 +126,7 @@ export function WorkflowLibrary({
             .filter(
               (entry) =>
                 trigger &&
-                entry.entities.includes(trigger.entity) &&
+                workflowActionAllowed(trigger.type, entry.type) &&
                 match(`${entry.label} ${entry.description}`),
             )
             .map((entry) => ({
@@ -134,7 +139,7 @@ export function WorkflowLibrary({
       <div>
         <h2 className="font-semibold">Builder library</h2>
         <p className="mt-1 text-xs text-[var(--muted-foreground)]">
-          Drag a step, or click to place it.
+          {dragEnabled ? 'Drag a step, or click to place it.' : 'Tap a step to place it. Drag and drop is unavailable on mobile.'}
         </p>
       </div>
       <div className="relative">
@@ -184,6 +189,7 @@ export function WorkflowLibrary({
             key={JSON.stringify(entry.item)}
             {...entry}
             disabled={disabled}
+            dragEnabled={dragEnabled}
             onChoose={onChoose}
           />
         ))}

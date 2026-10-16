@@ -1,6 +1,5 @@
 import { resolveDealTargets, relatedDealMoveGuard } from './action-deal-targets';
 import { type WorkflowAction } from '@leadcrm/shared';
-import { renderMessage as render, resolveMessageValues } from './action-message';
 import { AppError } from '../../../shared/errors/app-error';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { sendEmail } from '../../../integrations/gmail/gmail.service';
@@ -13,7 +12,7 @@ import { prepareWorkflowTaskInput, restoredWorkflowTaskInput } from './action-ta
 import { assertCurrentStageEntry, isSupersededStageEntry } from '../workflows/workflow-stage-entry';
 import { sendSms, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { fenceWorkflowLease, isWorkflowLeaseLost, workflowLeaseWrite } from '../workflows/workflow-lease';
-import { smsRecipient } from './action-sms';
+import { prepareWorkflowSmsInput } from './action-sms';
 import { fieldUpdatePatch } from './action-fields';
 import { updateCompany } from '../../crm/companies/companies.service';
 import { createActivity } from '../../crm/activities/activities.service';
@@ -71,14 +70,12 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
       return knownResult;
     }
     if (action.type === 'send_sms') {
-      const recipient = await smsRecipient(action, entity, tenantId, context);
-      const values = await resolveMessageValues(String(config.message), tenantId, recipient.entity, { [`${recipient.entity}.id`]: recipient.id });
-      const message = render(String(config.message), values, false);
-      if (execution?.stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: { resolvedInput: { version: 1, phone: recipient.phone, message, recipientId: recipient.id } } }));
+      const { phone, message, recipientId } = await prepareWorkflowSmsInput(action, entity, tenantId, context);
+      if (execution?.stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: execution.stepId, tenantId }, data: { resolvedInput: { version: 1, phone, message, recipientId } } }));
       await fenceWorkflowLease();
       smsAttempted = true;
-      const receipt = await sendSms(recipient.phone, message, { beforeProviderWrite: () => fenceWorkflowLease() });
-      return { success: true, output: { ...receipt, recipientId: recipient.id, status: 'submitted' } };
+      const receipt = await sendSms(phone, message, { beforeProviderWrite: () => fenceWorkflowLease() });
+      return { success: true, output: { ...receipt, recipientId, status: 'submitted' } };
     }
     if (action.type === 'send_email') return { success: true, output: await deliverEmail(action, context, tenantId, execution?.stepId) };
     if (action.type === 'move_deal_stage') {
@@ -120,12 +117,12 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
 }
 async function deliverEmail(action: WorkflowAction, context: Record<string, unknown>, tenantId: string, stepId?: string): Promise<Record<string, unknown>> {
   const entity = actionEntity(context);
-  const { senderId, senderEmail, recipient, subject, body, warnings } = await prepareWorkflowEmailInput(action, entity, tenantId, context);
+  const { senderId, senderEmail, recipient, recipientEntity, recipientId, subject, body, warnings } = await prepareWorkflowEmailInput(action, entity, tenantId, context);
   const messageId = stepId ? `<workflow-${stepId}@leadcrm.local>` : undefined;
   if (stepId) await workflowLeaseWrite(tx => tx.workflowExecutionStep.update({ where: { id: stepId, tenantId }, data: { resolvedInput: { version: 1, senderId, recipient, subject, body, messageId } } }));
   const log = await workflowLeaseWrite(async tx => {
     const log = await repo.createDelivery({ tenantId, fromEmail: senderEmail, toEmail: recipient, subject,
-      ...(entity === 'lead' ? { leadId: String(context['lead.id']) } : { contactId: String(context['contact.id']) }) }, tx);
+      ...(recipientEntity === 'lead' ? { leadId: recipientId } : { contactId: recipientId }) }, tx);
     if (stepId) await tx.workflowExecutionStep.update({ where: { id: stepId, tenantId }, data: { resolvedInput: { version: 1, senderId, recipient, subject, body, messageId, deliveryLogId: log.id } } });
     return log;
   });

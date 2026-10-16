@@ -11,6 +11,7 @@ import { reconcileSmsStatuses } from '../sms-status-reconciliation';
 import { getSmsBatch, sendSms } from '../../../../shared/services/sms.service';
 import { interruptCampaignSubmission } from '../campaign-submission-recovery';
 import { smsCampaignSummary } from '../sms-campaign-outcomes';
+import { getCampaignReport } from '../campaigns.service';
 
 vi.mock('../../../../shared/services/sms.service', async original => ({ ...await original<object>(), sendSms: vi.fn(), getSmsBatch: vi.fn() }));
 vi.mock('../../../notifications/notification-events.service', async original => ({ ...await original<object>(), requestNotificationDispatch: vi.fn() }));
@@ -149,6 +150,19 @@ describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () 
   const lookup = (row: Row, status: string) => ({ batch: { _id: row.messageId!, recipientCount: 1 }, messages: [{ _id: `sms-${row.id}`, device: { _id: device }, smsBatch: row.messageId!, recipient: row.phone!, status,
     ...(status === 'sent' || status === 'delivered' ? { sentAt: '2026-10-14T01:00:00.000Z' } : {}), ...(status === 'delivered' ? { deliveredAt: '2026-10-14T01:00:01.000Z' } : {}) }] });
   async function due(row: Row) { await scope(() => prisma.campaignContact.update({ where: { id: row.id }, data: { nextSmsCheckAt: new Date(Date.now() - 1000) } })); }
+  it.each(['sent', 'delivered', 'failed'])('persists provider %s without optional event dates and exposes it consistently in reports', async status => {
+    const { campaign, rows: [row] } = await submitted(); await due(row);
+    const result = lookup(row, status);
+    vi.mocked(getSmsBatch).mockResolvedValue({ ...result, messages: [{ ...result.messages[0], sentAt: undefined, deliveredAt: undefined }] } as never);
+    await reconcileSmsStatuses();
+    const saved = await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } });
+    expect(saved).toMatchObject({ status, sentAt: null, deliveredAt: null });
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe(status.toUpperCase());
+    expect(smsCampaignSummary([saved])).toMatchObject({ [status]: 1, submitted: 0, unconfirmed: 0 });
+    const report = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(report.recipients[0].deliveryStatus.toLowerCase()).toBe(status);
+    expect(sendSms).not.toHaveBeenCalled();
+  });
   it('reconciles stale accepted batches once with backoff and preserves Sent when no delivery report exists', async () => {
     const { campaign, rows: [row] } = await submitted(); await due(row);
     vi.mocked(getSmsBatch).mockResolvedValue(lookup(row, 'sent') as never);
@@ -161,6 +175,32 @@ describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () 
     await due(row); vi.mocked(getSmsBatch).mockResolvedValue(lookup(row, 'delivered') as never); await reconcileSmsStatuses();
     expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).nextSmsCheckAt).toBeNull();
     expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_sent', 'sms_campaign_delivered']);
+  });
+  it('enriches status-only facts with later callback dates and repairs stale parent totals without duplicate notifications', async () => {
+    const { campaign, rows: [row] } = await submitted(); await due(row);
+    const result = lookup(row, 'sent');
+    vi.mocked(getSmsBatch).mockResolvedValue({ ...result, messages: [{ ...result.messages[0], sentAt: undefined, deliveredAt: undefined }] } as never);
+    await reconcileSmsStatuses();
+    await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'SENDING' } });
+    await due(row); await reconcileSmsStatuses();
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('SENT');
+    await processTextBeeEvent(event(row, 'sent'));
+    expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).sentAt).not.toBeNull();
+    expect((await outbox(campaign.id)).filter(item => item.type === 'sms_campaign_sent')).toHaveLength(1);
+    await processTextBeeEvent(event(row, 'delivered'));
+    expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('DELIVERED');
+  });
+
+  it('enriches a missing Sent date without replacing an already verified Delivered date', async () => {
+    const { rows: [row] } = await submitted();
+    const deliveredAt = new Date('2026-10-14T01:00:05.000Z');
+    await applyTextBeeEvidence({ smsId: `sms-${row.id}`, smsBatchId: row.messageId!, deviceId: device,
+      recipient: row.phone!, status: 'delivered', deliveredAt });
+    await processTextBeeEvent({ ...event(row, 'delivered'), sentAt: '2026-10-14T01:00:00.000Z', deliveredAt: '2026-10-14T01:00:01.000Z' });
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({
+      status: 'delivered', sentAt: new Date('2026-10-14T01:00:00.000Z'), deliveredAt, providerUpdatedAt: deliveredAt,
+    });
+    expect(sendSms).not.toHaveBeenCalled();
   });
 
   it('never resends on offline/timeout or mismatched lookup results and ignores stale lookup evidence', async () => {

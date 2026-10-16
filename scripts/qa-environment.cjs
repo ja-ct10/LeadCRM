@@ -16,7 +16,7 @@ function qaEnvironment(root, overrides = {}) {
   const storage = resolve(temporary, 'private-files');
   mkdirSync(storage);
   const env = {};
-  for (const name of ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'CI', 'npm_execpath']) {
+  for (const name of ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'SYSTEMROOT', 'WINDIR', 'ComSpec', 'ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432', 'TEMP', 'TMP', 'TMPDIR', 'HOME', 'USERPROFILE', 'APPDATA', 'LOCALAPPDATA', 'CI', 'npm_execpath']) {
     if (process.env[name] !== undefined) env[name] = process.env[name];
   }
   Object.assign(env, {

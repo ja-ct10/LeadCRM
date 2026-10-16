@@ -1,11 +1,23 @@
-import type { WorkflowAction, WorkflowEntity } from '@leadcrm/shared';
+import { buildFinalSms, SMS_MAX_LENGTH, smsMessageStats, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { normalizeSmsPhone } from '../../../shared/services/sms.service';
+import { renderMessage, resolveMessageValues } from './action-message';
 
 export function validateSmsRecipientMode(mode: unknown, entity: WorkflowEntity) {
   const allowed = entity === 'lead' || entity === 'contact' ? ['record'] : entity === 'account' ? ['primary_contact'] : ['primary_contact', 'primary_lead'];
   if (!allowed.includes(String(mode))) throw new ValidationError('Choose a recipient relationship available for this record.');
+}
+
+/** Run Check and dispatch validate the same personalized message and footer. */
+export async function prepareWorkflowSmsInput(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {
+  const recipient = await smsRecipient(action, entity, tenantId, context);
+  const values = await resolveMessageValues(String(action.config.message ?? ''), tenantId, recipient.entity, { [`${recipient.entity}.id`]: recipient.id });
+  const message = renderMessage(String(action.config.message ?? ''), values, false);
+  if (!message.trim()) throw new ValidationError('SMS variables left the message empty. Add recipient values or update the message.');
+  const final = buildFinalSms({ body: message });
+  if (final.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
+  return { phone: recipient.phone, recipientId: recipient.id, message, stats: smsMessageStats(final) };
 }
 export async function smsRecipient(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {
   validateSmsRecipientMode(action.config.recipient, entity);
@@ -14,7 +26,7 @@ export async function smsRecipient(action: WorkflowAction, entity: WorkflowEntit
     const contact = action.config.recipient === 'primary_contact';
     const id = context[contact ? 'deal.contactId' : 'deal.leadId'];
     if (!id) throw new ValidationError('The deal has no primary recipient for the selected relationship.');
-    const record = contact ? await prisma.contact.findFirst({ where: { id: String(id), tenantId, isArchived: false } }) : await prisma.lead.findFirst({ where: { id: String(id), tenantId, isArchived: false } });
+    const record = contact ? await prisma.contact.findFirst({ where: { id: String(id), tenantId, isArchived: false, deletedAt: null } }) : await prisma.lead.findFirst({ where: { id: String(id), tenantId, isArchived: false, deletedAt: null, convertedAt: null } });
     if (!record) throw new ValidationError('The selected primary recipient is unavailable.');
     recipient = { phone: record.phone, doNotContact: 'doNotContact' in record ? record.doNotContact : false, id: record.id, firstName: record.firstName, lastName: record.lastName, email: record.email, company: 'company' in record ? record.company : record.companyName };
   } else if (entity === 'account') {

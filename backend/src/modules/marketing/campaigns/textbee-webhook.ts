@@ -7,6 +7,7 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
 import { recalculateCampaignDelivery } from './campaign-delivery-status';
 import { requestNotificationDispatch } from '../../notifications/notification-events.service';
+import { smsSent } from './sms-campaign-outcomes';
 
 const identity = z.string().min(1).max(500);
 const timestamp = z.string().datetime({ offset: true }).transform(value => new Date(value));
@@ -38,7 +39,7 @@ export async function processTextBeeEvent(input: unknown) {
 }
 
 export type TextBeeEvidence = { smsId: string; smsBatchId: string; deviceId: string; recipient: string; status: string;
-  sentAt?: Date; deliveredAt?: Date; failedAt?: Date };
+  sentAt?: Date; deliveredAt?: Date; failedAt?: Date; providerUpdatedAt?: Date };
 /** Shared verified-fact writer. Provider GET results are not webhook receipts. */
 export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: string, expectedUpdatedAt?: Date | null) {
   const started = performance.now();
@@ -68,22 +69,27 @@ export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: 
     const current = await tx.campaignContact.findUniqueOrThrow({ where: { id: recipient.id, ...where } });
     if (expectedUpdatedAt !== undefined && current.providerUpdatedAt?.getTime() !== expectedUpdatedAt?.getTime()) return;
     if (current.smsId && current.smsId !== event.smsId) throw new AppError('SMS message identity does not match.', 400);
-    // Final delivery/failure cannot regress, even on a new delivery identity.
-    if (['delivered', 'failed', 'excluded'].includes(current.status)) return;
     const status = event.status;
-    const at = event.deliveredAt ?? event.failedAt ?? event.sentAt ?? null;
-    if (at && current.providerUpdatedAt && at < current.providerUpdatedAt) return;
-    if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE') return;
+    // Final evidence cannot regress. A later matching callback may still supply
+    // an actual timestamp omitted from an earlier authenticated status lookup.
+    if (current.status === 'excluded' || ['delivered', 'failed'].includes(current.status) && status !== current.status) return;
+    const newDates = !!(event.sentAt && !current.sentAt || event.deliveredAt && !current.deliveredAt);
+    const at = event.deliveredAt ?? event.failedAt ?? event.sentAt ?? event.providerUpdatedAt ?? null;
+    if (at && current.providerUpdatedAt && at < current.providerUpdatedAt && !(status === current.status && newDates)) return;
+    if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE' && !newDates) {
+      await recalculateCampaignDelivery(tx, recipient.campaignId, recipient.tenantId, true);
+      return;
+    }
     // UNKNOWN_STATE has no event timestamp. Preserve the confirmed sent fact,
     // while flagging it for review until a final delivery/failure arrives.
     if (status === 'unknown' && current.failureReason === 'TEXTBEE_UNKNOWN_STATE') return;
     await tx.campaignContact.update({ where: { id: recipient.id, ...where }, data: {
-      status: status === 'unknown' && current.sentAt ? 'sent' : status,
+      status: status === 'unknown' && smsSent(current) ? 'sent' : status,
       smsId: event.smsId,
       ...(['delivered', 'failed'].includes(status) ? { nextSmsCheckAt: null } : {}),
-      ...(at ? { providerUpdatedAt: at } : {}),
+      ...(at ? { providerUpdatedAt: current.providerUpdatedAt && current.providerUpdatedAt > at ? current.providerUpdatedAt : at } : {}),
       ...(event.sentAt ? { sentAt: current.sentAt ?? event.sentAt } : {}),
-      ...(event.deliveredAt ? { deliveredAt: event.deliveredAt } : {}),
+      ...(event.deliveredAt ? { deliveredAt: current.deliveredAt ?? event.deliveredAt } : {}),
       failureReason: status === 'failed' ? 'TEXTBEE_FAILED' : status === 'unknown' ? 'TEXTBEE_UNKNOWN_STATE' : null,
     } });
     await recalculateCampaignDelivery(tx, recipient.campaignId, recipient.tenantId);

@@ -5,16 +5,22 @@ import { defaultFieldLayout, getAvailableActions, getWorkflowEmailVariableChoice
 import { actionIssues } from '../services/workflow-editor';
 import { ActionFields } from './workflow-fields';
 afterEach(cleanup);
-const definition = getAvailableActions().find(action => action.type === 'create_task');
-it.each(['lead', 'contact'] as const)('inserts canonical person-field shortcuts for %s', entity => {
-  const options: WorkflowOptions = { users: [], templates: [], campaigns: [], pipelines: [] }, onChange = vi.fn();
-  render(<ActionFields entity={entity} action={{ type: 'create_task', config: { title: 'Follow up with ' } }} definition={definition} options={options} onChange={onChange} />);
-  const shortcuts = within(screen.getByLabelText('Personalize Task title'));
-  expect(shortcuts.getAllByRole('button').map(button => button.textContent)).toEqual(expect.arrayContaining(['First Name', 'Last Name', 'Email', 'Company Name']));
-  for (const [label, token] of [['First Name', 'firstName'], ['Last Name', 'lastName'], ['Email', 'email'], ['Company Name', entity === 'lead' ? 'companyName' : 'company']]) {
-    fireEvent.click(shortcuts.getByRole('button', { name: label }));
-    expect(onChange).toHaveBeenLastCalledWith({ title: `Follow up with {{${token}}}` });
+const definition = getAvailableActions().find(action => action.type === 'send_sms');
+it.each(['lead', 'contact'] as const)('reuses the Campaign variable picker and selection insertion for %s SMS', entity => {
+  const options: WorkflowOptions = { users: [], templates: [], campaigns: [], pipelines: [] };
+  function Editor() {
+    const [config, setConfig] = React.useState({ recipient: 'record', message: 'Hi NAME!' });
+    return <ActionFields entity={entity} action={{ type: 'send_sms', config }} definition={definition} options={options} onChange={value => setConfig(value as typeof config)} />;
   }
+  render(<Editor />);
+  const input = screen.getByLabelText('SMS message') as HTMLTextAreaElement;
+  input.focus(); input.setSelectionRange(3, 7);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert Variable into SMS message' }));
+  const picker = within(screen.getByRole('group', { name: 'Variables for SMS message' }));
+  for (const category of ['Standard Fields', 'Custom Fields', 'Sender']) expect(picker.getByText(category)).toBeTruthy();
+  fireEvent.change(picker.getByRole('textbox', { name: 'Search variables' }), { target: { value: 'firstName' } });
+  fireEvent.click(picker.getByRole('button', { name: /^First Name/ }));
+  expect(input.value).toBe('Hi {{firstName}}!');
 });
 it('uses configured catalog labels and module-specific technical keys', () => {
   const layout = defaultFieldLayout('leads');
@@ -26,13 +32,14 @@ it('uses configured catalog labels and module-specific technical keys', () => {
 it('inserts exact custom aliases, accepts canonical IDs and legacy aliases, and names unsupported keys', () => {
   const field: ClosingField = { id: 'field-id', technicalAlias: 'project-code', name: 'Project Code', module: 'leads', group: 'Basic Information', type: 'Text', active: true, required: false, visibleInForm: true, visibleInDetails: true, options: [], description: '', order: 0, version: 1 };
   const options: WorkflowOptions = { users: [], templates: [], campaigns: [], pipelines: [], customFields: [field] }, onChange = vi.fn();
-  render(<ActionFields entity="lead" action={{ type: 'create_task', config: { title: '' } }} definition={definition} options={options} onChange={onChange} />);
-  fireEvent.click(within(screen.getByLabelText('Personalize Task title')).getByRole('button', { name: 'Project Code' }));
-  expect(onChange).toHaveBeenCalledWith({ title: '{{customFieldValues.project-code}}' });
+  render(<ActionFields entity="lead" action={{ type: 'send_sms', config: { recipient: 'record', message: '' } }} definition={definition} options={options} onChange={onChange} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert Variable into SMS message' }));
+  fireEvent.click(screen.getByRole('button', { name: /^Project Code/ }));
+  expect(onChange).toHaveBeenCalledWith({ recipient: 'record', message: '{{customFieldValues.project-code}}' });
   const keys = workflowMessageVariableKeys('lead', [field]);
   for (const key of ['first_name', 'last_name', 'company_name', 'contact_number', 'firstName', 'companyName', 'customFieldValues.project-code', 'customFieldValues.field-id']) expect(keys.has(key)).toBe(true);
-  expect(actionIssues({ type: 'create_task', config: { title: '{{first_name}} {{company_name}} {{customFieldValues.project-code}}' } }, definition, 'lead', options)).toEqual([]);
-  expect(actionIssues({ type: 'create_task', config: { title: '{{missingKey}}' } }, definition, 'lead', options).join(' ')).toContain('{{missingKey}}');
+  expect(actionIssues({ type: 'send_sms', config: { recipient: 'record', message: '{{first_name}} {{company_name}} {{customFieldValues.project-code}}' } }, definition, 'lead', options)).toEqual([]);
+  expect(actionIssues({ type: 'send_sms', config: { recipient: 'record', message: '{{missingKey}}' } }, definition, 'lead', options).join(' ')).toContain('{{missingKey}}');
   expect(workflowMessageVariableKeys('lead', [{ ...field, active: false }]).has('customFieldValues.project-code')).toBe(false);
 });
 

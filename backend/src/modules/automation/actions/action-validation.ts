@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { workflowMessageEntity, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { validateMessageVariables } from './action-message';
 import { fieldUpdatePatch } from './action-fields';
-import { smsRecipient, validateSmsRecipientMode } from './action-sms';
+import { prepareWorkflowSmsInput, validateSmsRecipientMode } from './action-sms';
 import { isSmsConfigured } from '../../../shared/services/sms.service';
 import { validateAssignment } from '../assignment/workflow-assignment.service';
 import prisma from '../../../config/database.config';
@@ -30,7 +30,12 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     throw new ValidationError('This action is retired. Disable or remove it before activating.');
   }
   const definition = getAvailableActions().find(entry => entry.type === action.type);
-  if (!definition || !definition.entities.includes(entity)) throw new ValidationError(`Action ${action.type} is not supported for ${entity}.`);
+  if (!definition) {
+    if (incomplete || action.enabled === false) return;
+    throw new ValidationError(`Action ${action.type} is not supported for ${entity}.`);
+  }
+  const supported = definition.entities.includes(entity);
+  if (!supported && !incomplete && action.enabled !== false) throw new ValidationError(`Action ${action.type} is not supported for ${entity}.`);
   if (action.type === 'update_field') {
     await fieldUpdatePatch(action, entity, tenantId, incomplete || action.enabled === false);
     return;
@@ -51,7 +56,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     if (key === 'title' && (String(value).length > 255 || /[\r\n\t]/.test(String(value)))) throw new ValidationError('Title must be at most 255 characters without control characters.');
     if (['user', 'stage', 'template', 'campaign', 'products'].includes(field.type) && !z.string().uuid().safeParse(value).success) throw new ValidationError(`Choose a valid ${field.label}.`);
     if (key === 'subject' && !EmailSubjectSchema.safeParse(value).success) throw new ValidationError('Email subject must not contain line breaks or control characters.');
-    if (['title', 'description', 'subject', 'body', 'message'].includes(key)) await validateMessageVariables(String(value), workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined), tenantId);
+    if (['title', 'description', 'subject', 'body', 'message'].includes(key)) await validateMessageVariables(String(value), workflowMessageEntity(entity, ['send_sms', 'send_email'].includes(action.type) ? action.config.recipient : undefined), tenantId);
     if (field.options && !field.options.includes(String(value))) throw new ValidationError(`Choose a supported ${field.label.toLowerCase()}.`);
     if (field.type === 'user' && !await repo.findUser(String(value), tenantId)) throw new NotFoundError('Active workspace user');
     if (field.type === 'products' && !await prisma.productInterest.findFirst({ where: { tenantId, id: String(value), active: true } })) throw new NotFoundError('Product Interest');
@@ -64,6 +69,8 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     await validateTaskDealSelection(action, entity, tenantId);
     if (context && action.enabled !== false) await resolveTaskDealIds(action, entity, tenantId, context);
   }
+  // Repairable legacy drafts still validate settings and tenant-scoped references.
+  if (!supported) return;
   // Disabled steps retain safe configuration and scoped references, but need no delivery readiness.
   if (action.enabled === false) return;
   if (incomplete && Object.entries(definition.configSchema).some(([key, field]) => field.required && !action.config[key])) return;
@@ -83,7 +90,7 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
     validateSmsRecipientMode(action.config.recipient, entity);
     if (String(action.config.message ?? '').length > 1600) throw new ValidationError('SMS message must be at most 1600 characters.');
     if (!incomplete && !isSmsConfigured()) throw new ValidationError('Configure the SMS sender and API key before activating SMS workflows.');
-    if (context) await smsRecipient(action, entity, tenantId, context);
+    if (context) await prepareWorkflowSmsInput(action, entity, tenantId, context);
   }
 }
 export async function validateEmail(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context?: Record<string, unknown>): Promise<void> {

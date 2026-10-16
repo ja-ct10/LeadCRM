@@ -3,6 +3,12 @@ import { smsCampaignSummary } from '../sms-campaign-outcomes';
 import { deriveCampaignDeliveryStatus } from '../campaign-delivery-status';
 import { runSubmissionPool } from '../campaign-submission-pool';
 const row = (status: string) => ({ status, failureReason: null, submittedAt: new Date(), sentAt: ['sent', 'delivered'].includes(status) ? new Date() : null, deliveredAt: status === 'delivered' ? new Date() : null });
+it.each(['sent', 'delivered', 'failed'])('retains verified %s status when provider event dates are absent', status => {
+  const evidence = { ...row(status), sentAt: null, deliveredAt: null };
+  expect(smsCampaignSummary([evidence])).toMatchObject({ [status]: 1, submitted: 0, unconfirmed: 0 });
+  expect(deriveCampaignDeliveryStatus({ type: 'SMS', status: 'SENDING', recipientCount: 1 }, [evidence])).toBe(status === 'delivered' ? 'DELIVERED' : status === 'sent' ? 'SENT' : 'FAILED');
+  expect(evidence.sentAt).toBeNull(); expect(evidence.deliveredAt).toBeNull();
+});
 it('reconciles disjoint SMS states against the frozen eligible denominator', () => {
   expect(smsCampaignSummary(['pending', 'submitted', 'sent', 'delivered', 'failed', 'unknown', 'excluded'].map(status => ({ ...row(status), submittedAt: status === 'pending' ? null : new Date() })))).toEqual({
     total: 6, pending: 1, submitting: 0, submitted: 1, sent: 1, delivered: 1, failed: 1, unconfirmed: 1,

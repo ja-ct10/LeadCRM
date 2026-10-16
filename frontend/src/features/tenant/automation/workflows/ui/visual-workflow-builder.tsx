@@ -14,6 +14,7 @@ import {
   WorkflowDraftSchema,
   retiredAccountWorkflowReferences,
   ACCOUNT_RETIREMENT_REASON,
+  workflowActionAllowed,
   type Workflow,
   type WorkflowDraft,
   type ActionDefinition,
@@ -134,6 +135,7 @@ export default function WorkflowBuilder({
   const [changeTrigger, setChangeTrigger] = useState<string | null>(null),
     [exit, setExit] = useState<(() => void) | null>(null);
   const [confirmActivation, setConfirmActivation] = useState(false);
+  const [mobile, setMobile] = useState(false);
   const [templateDetached, setTemplateDetached] = useState(false);
   const operation = useRef(false),
     focusOrigin = useRef<HTMLElement | null>(null),
@@ -183,6 +185,13 @@ export default function WorkflowBuilder({
   useEffect(() => {
     const media = window.matchMedia('(min-width: 1280px)');
     const update = () => setWide(media.matches);
+    update();
+    media.addEventListener('change', update);
+    return () => media.removeEventListener('change', update);
+  }, []);
+  useEffect(() => {
+    const media = window.matchMedia('(max-width: 767px)');
+    const update = () => { setMobile(media.matches); setDragging(null); };
     update();
     media.addEventListener('change', update);
     return () => media.removeEventListener('change', update);
@@ -330,7 +339,7 @@ export default function WorkflowBuilder({
       .map((action, index) =>
         definitions.some(
           (def) =>
-            def.type === action.type && def.entities.includes(next.entity),
+            def.type === action.type && workflowActionAllowed(next.type, action.type),
         )
           ? index
           : -1,
@@ -417,7 +426,7 @@ export default function WorkflowBuilder({
     const item = event.active.data.current?.item as DragItem | undefined;
     const target = event.over?.data.current?.target as Placement | undefined;
     setDragging(null);
-    if (item && target) place(item, target);
+    if (!mobile && !locked && item && target) place(item, target);
   }
   function reportError(message: string) {
     setError(message);
@@ -693,7 +702,7 @@ export default function WorkflowBuilder({
       <p className="text-xs text-[var(--muted-foreground)]">
         Changes update the canvas immediately. Save the workflow to apply them.
       </p>
-      <Button variant={selected === 'trigger' || selected === 'conditions' ? 'default' : 'outline'} onClick={closeInspector}>
+      <Button onClick={closeInspector}>
         Done
       </Button>
     </div>
@@ -705,6 +714,7 @@ export default function WorkflowBuilder({
       trigger={trigger}
       disabled={locked}
       insertAt={insertAt}
+      dragEnabled={!mobile}
       onChoose={choose}
     />
   );
@@ -854,6 +864,7 @@ export default function WorkflowBuilder({
           </div>
         </div>
       </header>
+      {mobile && view === 'builder' && <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Tap each step to configure it. Use Add steps to insert steps and the arrow buttons to reorder actions.</p>}
       {retiredAccountWorkflowReferences(draft).length > 0 && <p role="alert" className="border-b border-border px-5 py-3 text-sm text-destructive">{ACCOUNT_RETIREMENT_REASON}</p>}
       {dirty && savedId && <p className="border-b border-[var(--border)] px-5 py-2 text-sm text-[var(--muted-foreground)]">Testing uses the last saved version of this workflow. Save changes before running the check.</p>}
       {error && (
@@ -885,12 +896,13 @@ export default function WorkflowBuilder({
           <Button
             variant="ghost"
             size="sm"
+            className="text-destructive hover:text-destructive dark:text-destructive dark:hover:text-destructive"
             onClick={() => {
               setPending(null);
               setInsertAt(null);
             }}
           >
-            Cancel placement
+            Cancel
           </Button>
         </div>
       )}
@@ -946,6 +958,7 @@ export default function WorkflowBuilder({
               issues={issues}
               item={dragging ?? pending}
               locked={locked}
+              dragEnabled={!mobile}
               onSelect={select}
               onPlace={(target) => {
                 if (pending) place(pending, target);
@@ -1034,7 +1047,7 @@ export default function WorkflowBuilder({
         <ConfirmActionDialog open onOpenChange={open => { if (!open) setChangeTrigger(null); }}
           title="Change workflow record type?" variant="warning" confirmLabel="Change trigger" cancelLabel="Keep current trigger"
           onConfirm={() => applyTrigger(changeTrigger)}>
-          <p>This clears {draft.conditions?.conditions.length ?? 0} condition rules and removes {draft.actions.filter(action => !definitions.find(def => def.type === action.type)?.entities.includes(triggers.find(entry => entry.type === changeTrigger)!.entity)).length} incompatible actions. Compatible actions are kept. Review their configuration before saving.</p>
+          <p>This clears {draft.conditions?.conditions.length ?? 0} condition rules and removes {draft.actions.filter(action => !workflowActionAllowed(changeTrigger!, action.type)).length} incompatible actions. Compatible actions are kept. Review their configuration before saving.</p>
         </ConfirmActionDialog>
       )}
       <ConfirmActionDialog open={confirmActivation} onOpenChange={setConfirmActivation}

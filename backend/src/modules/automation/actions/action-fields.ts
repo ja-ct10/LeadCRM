@@ -11,6 +11,10 @@ import { assertEligibleAssignedAgent, crmAssignmentRequirements } from '../../cr
 
 export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, incomplete = false): Promise<Record<string, unknown>> {
   const config = action.config;
+  if (config.field === 'assignedUserId') {
+    if (incomplete) return {};
+    throw new ValidationError('Use Assign Agent to change ownership. Field updates cannot reassign records.');
+  }
   if (isRetiredContactField(String(config.field), entity)) {
     if (incomplete) return {};
     throw new ValidationError(`Retired Contact field: ${config.field}. Repair or disable this Workflow action before activation.`);

@@ -1,7 +1,7 @@
 import { findTrigger, getWorkflowConditionFields, customFieldTechnicalKey, resolveCustomFieldReference, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { readConfiguredFields } from '../../crm/closing-requirements/closing-requirements.repository';
-import { normalizeWorkflowReferences, WorkflowActionSchema, normalizeSavedWorkflowAssignment, retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
+import { normalizeWorkflowReferences, WorkflowActionSchema, WorkflowConditionSchema, normalizeSavedWorkflowAssignment, retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON, workflowActionPolicyIssues } from '@leadcrm/shared';
 import { workflowEmailContent } from '../actions/action-email-content';
 
 export const workflowCustomFields = (tenantId: string, db: import('@prisma/client').Prisma.TransactionClient = prisma) => readConfiguredFields(db, tenantId);
@@ -49,15 +49,21 @@ export async function compatibleWorkflow<T extends Pick<WorkflowDraft, 'trigger'
     return parsed.success ? normalizeSavedWorkflowAssignment(parsed.data) : action;
   }) : references.actions };
   const entity = findTrigger(draft.trigger)?.entity;
+  const conditions = WorkflowConditionSchema.safeParse(normalized.conditions);
+  const policyIssues = workflowActionPolicyIssues({ trigger: normalized.trigger, actions: Array.isArray(normalized.actions) ? normalized.actions.flatMap(action => {
+    const parsed = WorkflowActionSchema.safeParse(action);
+    return parsed.success ? [parsed.data] : [];
+  }) : [], conditions: conditions.success ? conditions.data : undefined });
+  if (policyIssues.length) Object.assign(normalized, { repairReason: policyIssues[0] });
   if (!entity || !JSON.stringify([draft.conditions, draft.actions]).includes('customFieldValues.')) return normalized;
   const definitions = await workflowCustomFields(tenantId);
   const canonical = (key: string) => {
     const field = resolveCustomFieldReference(WORKFLOW_MODULES[entity], key, definitions);
     return field ? `customFieldValues.${field.id}` : key;
   };
-  const conditions = normalized.conditions as WorkflowDraft['conditions'];
+  const savedConditions = normalized.conditions as WorkflowDraft['conditions'];
   return { ...normalized,
-    conditions: conditions && Array.isArray(conditions.conditions) ? { ...conditions, conditions: conditions.conditions.map(rule =>
+    conditions: savedConditions && Array.isArray(savedConditions.conditions) ? { ...savedConditions, conditions: savedConditions.conditions.map(rule =>
       rule?.field?.startsWith(`${entity}.customFieldValues.`) ? { ...rule, field: `${entity}.${canonical(rule.field.slice(entity.length + 1))}` } : rule,
     ) } : normalized.conditions,
     actions: Array.isArray(normalized.actions) ? normalized.actions.map(action => action?.type === 'update_field' && typeof action.config?.field === 'string' && action.config.field.startsWith('customFieldValues.')

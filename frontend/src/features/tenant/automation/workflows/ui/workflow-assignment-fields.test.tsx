@@ -11,7 +11,7 @@ const options: WorkflowOptions = { users: [], taskAssignees: [{ id: userId, name
   roles: [{ id: groupId, name: 'Support', memberCount: 3, eligibleMemberCounts: { task_assignee: 2, crm_owner: 0 } }],
   groups: [{ id: groupId, name: 'Follow-up team', memberCount: 4, eligibleMemberCounts: { task_assignee: 2, crm_owner: 1 }, members: [{ id: userId, name: 'Task specialist', purposes: ['task_assignee'] }] }],
   pipelines: [], templates: [], campaigns: [] };
-function Editor({ initial, entity = 'lead' }: { initial: WorkflowAction; entity?: 'lead' | 'account' }) {
+function Editor({ initial, entity = initial.type === 'create_task' ? 'deal' : 'lead' }: { initial: WorkflowAction; entity?: 'lead' | 'account' | 'deal' }) {
   const [action, setAction] = useState(initial);
   return <><ActionFields action={action} entity={entity} definition={getAvailableActions().find(definition => definition.type === action.type)} options={options} onChange={config => setAction({ ...action, config })} />
     <output data-testid="config">{JSON.stringify(action.config)}</output></>;
@@ -44,11 +44,11 @@ describe('workflow assignment editor', () => {
     expect(screen.queryByLabelText('Sticky fallback method')).toBeNull();
   });
   it.each(['least_workload', 'random', 'availability', 'capacity', 'sticky'])('loads and saves a retired %s method as round-robin', strategy => {
-    const draft = toDraft({ name: 'Saved', trigger: 'lead.created', isActive: false, actions: [{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy, ...(strategy === 'sticky' ? { sticky: { fallback: 'random', preferCurrentOwner: true } } : {}) } } }] });
+    const draft = toDraft({ name: 'Saved', trigger: 'deal.created', isActive: false, actions: [{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy, ...(strategy === 'sticky' ? { sticky: { fallback: 'random', preferCurrentOwner: true } } : {}) } } }] });
     render(<Editor initial={draft.actions[0]} />);
     expect((screen.getByLabelText('Assignment method') as HTMLSelectElement).value).toBe('round_robin');
     expect(draft.actions[0].config.assignmentTarget).toEqual({ type: 'group', id: groupId, strategy: 'round_robin' });
-    expect(actionIssues(draft.actions[0], getAvailableActions()[0], 'lead', options)).toEqual([]);
+    expect(actionIssues(draft.actions[0], getAvailableActions()[0], 'deal', options)).toEqual([]);
   });
   it('configures per-member availability, custom shifts, capacity overrides and validation', () => {
     render(<Editor initial={{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin', availability: { timeZone: 'Asia/Manila', schedule: { days: [1], start: '09:00', end: '17:00' }, members: [] } } } }} />);
@@ -61,9 +61,9 @@ describe('workflow assignment editor', () => {
     fireEvent.change(screen.getByLabelText('Task specialist capacity limit'), { target: { value: '3' } });
     const config = JSON.parse(screen.getByTestId('config').textContent!);
     expect(config.assignmentTarget).toMatchObject({ availability: { timeZone: 'UTC', members: [{ userId, unavailable: true, schedule: { start: '22:00' } }] }, capacity: { maxPerMember: 10, members: [{ userId, limit: 3 }] } });
-    expect(actionIssues({ type: 'create_task', config }, getAvailableActions()[0], 'lead', options)).toEqual([]);
+    expect(actionIssues({ type: 'create_task', config }, getAvailableActions()[0], 'deal', options)).toEqual([]);
     fireEvent.change(screen.getByLabelText('Default capacity limit'), { target: { value: '0' } });
-    expect(actionIssues({ type: 'create_task', config: JSON.parse(screen.getByTestId('config').textContent!) }, getAvailableActions()[0], 'lead', options).length).toBeGreaterThan(0);
+    expect(actionIssues({ type: 'create_task', config: JSON.parse(screen.getByTestId('config').textContent!) }, getAvailableActions()[0], 'deal', options).length).toBeGreaterThan(0);
   });
   it('uses task candidates for legacy tasks and removes the old field on edits', () => {
     render(<Editor initial={{ type: 'create_task', config: { title: 'Call', assignedUserId: userId } }} />);
@@ -77,7 +77,7 @@ describe('workflow assignment editor', () => {
     render(<Editor initial={action} />);
     expect((screen.getByLabelText('Assignment group') as HTMLSelectElement).value).toBe(userId);
     expect(screen.getByText('This assignment target is unavailable. Choose another before activating.')).toBeTruthy();
-    expect(actionIssues(action, getAvailableActions()[0], 'lead', options)).toContain('Assignment target unavailable. Choose an available selection.');
+    expect(actionIssues(action, getAvailableActions()[0], 'deal', options)).toContain('Assignment target unavailable. Choose an available selection.');
   });
   it('shows role summaries, enforces purpose-specific eligibility, and excludes record owner from Assign Agent', () => {
     const action: WorkflowAction = { type: 'assign_owner', config: { assignmentTarget: { type: 'role', id: groupId, strategy: 'round_robin' } } };
@@ -86,7 +86,7 @@ describe('workflow assignment editor', () => {
     expect(actionSummary(action, options)).toEqual(['Assign to Role · Support · Round-robin']);
     expect(actionIssues(action, getAvailableActions().find(definition => definition.type === 'assign_owner'), 'lead', options)).toContain('Support has no eligible members for this assignment.');
     const task: WorkflowAction = { type: 'create_task', config: { title: 'Call', assignedUserId: userId } };
-    expect(actionIssues(task, getAvailableActions()[0], 'lead', options)).toEqual([]);
-    expect(toDraft({ name: 'Test', trigger: 'lead.created', isActive: false, actions: [task] }).actions[0].config).toEqual({ title: 'Call', assignmentTarget: { type: 'user', id: userId } });
+    expect(actionIssues(task, getAvailableActions()[0], 'deal', options)).toEqual([]);
+    expect(toDraft({ name: 'Test', trigger: 'deal.created', isActive: false, actions: [task] }).actions[0].config).toEqual({ title: 'Call', assignmentTarget: { type: 'user', id: userId } });
   });
 });

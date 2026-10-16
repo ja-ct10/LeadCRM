@@ -17,7 +17,7 @@ const actions = getAvailableActions(),
   options = { senders: [{ id: "sender", name: "Sender" }], users: [], pipelines: [], templates: [], campaigns: [] };
 const draft: WorkflowDraft = {
   name: 'Sequence',
-  trigger: 'lead.created',
+  trigger: 'deal.created',
   isActive: false,
   actions: [
     { type: 'create_task', config: { title: 'A' } },

@@ -28,17 +28,26 @@ export async function notificationTestPostgres() {
  const port = probe.address().port; await new Promise(done => probe.close(done));
  // Windows postgres inherits pg_ctl's output handles; pipes keep spawnSync waiting
  // after pg_ctl has exited even when the server is already ready.
- const run = (name,args) => execFileSync(exe(name),args,{ windowsHide:true, env:toolEnvironment, stdio:name==='pg_ctl' && process.platform === 'win32'?'ignore':'pipe', timeout:120000 })?.toString() ?? '';
+ const run = (name,args) => execFileSync(exe(name),args,{ windowsHide:true, env:toolEnvironment, stdio:name==='pg_ctl' && process.platform === 'win32'?'ignore':'pipe', timeout:150000 })?.toString() ?? '';
  const preserveLog = () => { if (existsSync(log)) copyFileSync(log, evidence); };
  let started = false, stopped = false;
  const stop = () => {
   if (stopped) return;
-  // pg_ctl targets this private data directory; never kill by name or port.
-  if (started || existsSync(join(directory, 'postmaster.pid'))) run('pg_ctl',['-D',directory,'-m','fast','-w','stop']);
-  stopped = true;
-  preserveLog();
   const target = realpathSync(directory);
   if (!target.startsWith(parent + sep) || !target.slice(parent.length + 1).startsWith('leadcrm-pg-')) throw Error('Unsafe fixture cleanup path');
+  // pg_ctl targets this private data directory; never kill by name or port.
+  // Durable shutdown can exceed pg_ctl's default 60s when the host is busy.
+  if (started || existsSync(join(directory, 'postmaster.pid'))) {
+   try { run('pg_ctl',['-D',directory,'-m','fast','-w','-t','120','stop']); }
+   catch (error) {
+    // Another cleanup attempt may already have completed shutdown. Only status 3
+    // proves this private cluster is stopped; never remove a running data directory.
+    try { run('pg_ctl',['-D',directory,'status']); } catch (status) { if (status.status === 3) { preserveLog(); rmSync(target, { recursive: true }); stopped = true; return; } }
+    throw error;
+   }
+  }
+  stopped = true;
+  preserveLog();
   rmSync(target, { recursive: true });
  };
  // Bootstrap only: this newly created disposable cluster is discarded after QA.

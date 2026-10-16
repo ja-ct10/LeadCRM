@@ -26,7 +26,7 @@ describe('complete workflow recipe catalog', () => {
       [23, 'Hot Lead → Move Related Deal'],
       [24, 'Hot Contact → Move Related Deal'],
       [25, 'Selected Stage Entry Follow-up'],
-      [26, 'Account Update Follow-up'],
+      [26, 'Account Field Maintenance'],
     ]);
   });
   it.each(WORKFLOW_RECIPES)('$name matches supported metadata and validates after configuring references', recipe => {
@@ -49,6 +49,7 @@ describe('complete workflow recipe catalog', () => {
       if (action.type === 'create_task' && draft.trigger.startsWith('account.')) action.config.assignmentTarget = { type: 'user', id: userId };
       if (action.type === 'send_email') action.config.senderUserId = userId;
       if (action.type === 'move_deal_stage') action.config.stageId = stageId;
+      if (action.type === 'update_field') action.config.value = 'https://example.test';
     });
     expect(editorIssues(editorDocument(draft), WORKFLOW_TRIGGERS, actions, options)).toEqual([]);
     expect(workflowTemplateSetupIssues(draft, index, options)).toEqual([]);
@@ -79,6 +80,6 @@ describe('complete workflow recipe catalog', () => {
     }
     expect(WORKFLOW_RECIPES[26].trigger).toBe('account.updated');
     expect(WORKFLOW_RECIPES[26].conditions).toBeUndefined();
-    expect(WORKFLOW_RECIPES[26].actions.map(action => action.type)).toEqual(['create_task']);
+    expect(WORKFLOW_RECIPES[26].actions.map(action => action.type)).toEqual(['update_field']);
   });
 });

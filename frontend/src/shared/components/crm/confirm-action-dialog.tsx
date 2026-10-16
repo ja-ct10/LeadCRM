@@ -143,14 +143,14 @@ export function ConfirmActionDialog({
       <div className="absolute inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-sm" onClick={handleCancel} aria-hidden="true" />
       <div ref={dialogRef} tabIndex={-1} role="alertdialog" aria-modal="true" aria-labelledby={`${id}-title`} aria-describedby={describedBy} aria-busy={loading}
         className="relative flex max-h-[calc(100dvh-2rem)] w-full max-w-[420px] flex-col overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-2xl outline-none">
-        <header className="flex shrink-0 items-center justify-between gap-2 border-b border-gray-100 px-4 py-4 dark:border-white/[0.05] sm:px-5">
-          <div className="flex min-w-0 items-center gap-3">
+        <header className="relative flex shrink-0 items-center justify-center border-b border-gray-100 px-12 py-5 text-center dark:border-white/[0.05]">
+          <div className="flex min-w-0 flex-col items-center gap-3">
             <div aria-hidden="true" className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-full', style.accent)}><Icon size={18} /></div>
             <h2 id={`${id}-title`} className="text-base font-semibold text-slate-900 [overflow-wrap:anywhere] dark:text-white">{title}</h2>
           </div>
-          <button type="button" onClick={handleCancel} disabled={loading} aria-label="Close confirmation" className={cn('flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white', focusClass)}><X size={16} aria-hidden="true" /></button>
+          <button type="button" onClick={handleCancel} disabled={loading} aria-label="Close confirmation" className={cn('absolute right-3 top-3 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:opacity-50 dark:text-slate-400 dark:hover:bg-white/5 dark:hover:text-white', focusClass)}><X size={16} aria-hidden="true" /></button>
         </header>
-        <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-4 text-sm text-slate-600 [overflow-wrap:anywhere] dark:text-slate-300 sm:px-5">
+        <div className="min-h-0 space-y-3 overflow-y-auto px-4 py-4 text-center text-sm text-slate-600 [overflow-wrap:anywhere] dark:text-slate-300 sm:px-5">
           {description && <p id={`${id}-description`} className="leading-relaxed">{description}</p>}
           {!!items?.length && <ul className="list-inside list-disc space-y-1.5 rounded-lg border border-slate-100 bg-slate-50 p-3 text-xs dark:border-white/5 dark:bg-white/[0.02]">{items.map((item, index) => <li key={index}>{item}</li>)}</ul>}
           {children && <fieldset disabled={loading} className="min-w-0 space-y-3">{children}</fieldset>}
@@ -158,9 +158,9 @@ export function ConfirmActionDialog({
           {error && <p id={`${id}-error`} role="alert" className="rounded-lg border border-red-200 bg-red-50 p-2.5 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/20 dark:text-red-300">{error}</p>}
           <span role="status" className="sr-only">{loading ? 'Processing. Please wait.' : ''}</span>
         </div>
-        <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t border-gray-100 bg-slate-50/50 px-4 py-3 dark:border-white/[0.05] dark:bg-white/[0.02] sm:px-5">
-          <button ref={cancelRef} type="button" onClick={handleCancel} disabled={loading} className={cn('min-h-9 rounded-lg px-3 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/5', focusClass)}>{cancelLabel}</button>
-          <button type="button" onClick={() => void handleConfirm()} disabled={loading || confirmDisabled} className={cn('flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, style.button)}>
+        <footer className="grid shrink-0 grid-cols-2 items-stretch gap-2 border-t border-gray-100 bg-slate-50/50 px-4 py-3 dark:border-white/[0.05] dark:bg-white/[0.02] sm:px-5">
+          <button ref={cancelRef} type="button" onClick={handleCancel} disabled={loading} className={cn('min-h-9 min-w-0 rounded-lg px-2 py-2 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 disabled:opacity-50 dark:text-slate-300 dark:hover:bg-white/5', focusClass)}>{cancelLabel}</button>
+          <button type="button" onClick={() => void handleConfirm()} disabled={loading || confirmDisabled} className={cn('flex min-h-9 min-w-0 items-center justify-center gap-2 rounded-lg px-2 py-2 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50', focusClass, style.button)}>
             {loading && <Loader2 size={14} className="animate-spin motion-reduce:animate-none" aria-hidden="true" />}{confirmLabel}
           </button>
         </footer>

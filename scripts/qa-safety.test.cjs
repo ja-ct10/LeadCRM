@@ -133,6 +133,9 @@ test('QA excludes inherited secrets and rejects remote database overrides', () =
     assert.equal(env.BREVO_API_KEY, '');
     assert.equal(env.TEXTBEE_API_KEY, '');
     assert.equal(env.PLAYWRIGHT_MODULE, resolve(root, 'node_modules/playwright'));
+    for (const name of ['ProgramFiles', 'ProgramFiles(x86)', 'ProgramW6432']) {
+      assert.equal(env[name], process.env[name], 'Windows browser discovery retains standard installation paths');
+    }
     assert.match(env.DATABASE_URL, /127\.0\.0\.1:1/);
     assert.equal(env.TEMP, env.TMP);
     assert.equal(env.TMP, env.TMPDIR);
