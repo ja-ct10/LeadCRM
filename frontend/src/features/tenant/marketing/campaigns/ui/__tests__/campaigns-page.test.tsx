@@ -3,14 +3,14 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, type ClosingField } from '@leadcrm/shared';
 import { clearPageCache } from '@/shared/cache/page-cache';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), archive: vi.fn(), refresh: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
 vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [campaign], total: 1, templates: mocks.templates, metrics: { activeCampaigns: 1, sent: 10, emailSent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive, variableFields: mocks.variableFields, emailSettings: mocks.emailSettings, smsSettings: mocks.smsSettings } }));
-vi.mock('../campaign-builder', () => ({ CampaignBuilder: () => <div>Campaign editor</div> }));
+vi.mock('../campaign-builder', () => ({ CampaignBuilder: (props: unknown) => { mocks.builder(props); return <div>Campaign editor</div>; } }));
 vi.mock('../campaign-report-view', () => ({ CampaignReportView: () => <div>Campaign report</div> }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ replace: vi.fn() }) }));
 import CampaignsPage from '../campaigns-page';
@@ -128,6 +128,41 @@ it.each(['Email', 'SMS'] as const)('previews %s templates with current configure
   fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
   const text = type === 'Email' ? 'John John Provider sender provider@example.test' : 'John John SMS organization contact@example.test';
   await screen.findByText(text);
+});
+
+const persistedDefaults = [
+  { name: 'Lead Inquiry Acknowledgment', type: 'Email' },
+  { name: 'Proposal Follow-Up', type: 'Email' },
+  { name: 'Thank You and Next Steps', type: 'Email' },
+  { name: 'Inquiry Received', type: 'SMS' },
+  { name: 'Inquiry Follow-Up', type: 'SMS' },
+  { name: 'Proposal Ready', type: 'SMS' },
+] as const;
+it.each(persistedDefaults)('displays canonical persisted $name content in its card, preview and both Use Template flows', async ({ name, type }) => {
+  const template = { id: name, name, type, category: 'Edited category',
+    subject: type === 'Email' ? 'Thank you, {{firstName}} — next steps for {{companyName}}' : undefined,
+    content: 'Hi {{firstName}}, please call us tomorrow for {{companyName}}. {{sender_name}} {{sender_email}}',
+  };
+  mocks.templates = [template];
+  const page = render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  expect(screen.getByText(template.content)).toBeTruthy();
+  if (template.subject) expect(screen.getByText(template.subject)).toBeTruthy();
+  expect(page.container.textContent).not.toMatch(/{{(?:first_name|company_name)}}/);
+  fireEvent.click(screen.getByRole('button', { name: 'Use Template' }));
+  expect(mocks.builder).toHaveBeenLastCalledWith(expect.objectContaining({ initialType: type, initialSubject: template.subject ?? '', initialContent: template.content }));
+
+  page.unmount();
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  const preview = screen.getByRole('dialog', { name: 'Template Preview' });
+  const sender = type === 'Email' ? 'Provider sender provider@example.test' : 'SMS organization contact@example.test';
+  await waitFor(() => expect(preview.textContent).toContain(`Hi John, please call us tomorrow for Example Company Name. ${sender}`));
+  if (template.subject) expect(preview.textContent).toContain('Thank you, John — next steps for Example Company Name');
+  expect(preview.textContent).not.toContain('{{');
+  fireEvent.click(within(preview).getByRole('button', { name: 'Use Template' }));
+  expect(mocks.builder).toHaveBeenLastCalledWith(expect.objectContaining({ initialType: type, initialSubject: template.subject ?? '', initialContent: template.content }));
 });
 it('inserts a canonical variable in a new SMS template', async () => {
   render(<CampaignsPage />);
