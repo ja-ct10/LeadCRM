@@ -1,4 +1,4 @@
-import type { PrismaClient } from '@prisma/client';
+import { Prisma, type PrismaClient } from '@prisma/client';
 import { MarketingTemplateSchema } from '@leadcrm/shared';
 
 export const DEFAULT_CAMXIAN_TEMPLATES = [
@@ -45,6 +45,17 @@ export async function seedCampaignTemplates(db: PrismaClient, tenantId: string) 
   return db.$transaction(async tx => {
     // Serialize concurrent seeds without adding a uniqueness constraint to user templates.
     await tx.$queryRaw`SELECT "id" FROM "Tenant" WHERE "id" = ${tenantId} FOR UPDATE`;
+    // Repair only legacy tokens, preserving edits, archive state and timestamps.
+    await tx.$executeRaw(Prisma.sql`
+      UPDATE "Template" AS template
+      SET subject = replace(replace(template.subject, '{{first_name}}', '{{firstName}}'), '{{company_name}}', '{{companyName}}'),
+          content = replace(replace(template.content, '{{first_name}}', '{{firstName}}'), '{{company_name}}', '{{companyName}}')
+      FROM (VALUES ${Prisma.join(DEFAULT_CAMXIAN_TEMPLATES.map(sample => Prisma.sql`(${sample.name}, ${sample.type})`))}) AS defaults(name, type)
+      WHERE template."tenantId" = ${tenantId}
+        AND template.name = defaults.name AND template.type = defaults.type
+        AND (strpos(template.subject, '{{first_name}}') > 0 OR strpos(template.subject, '{{company_name}}') > 0
+          OR strpos(template.content, '{{first_name}}') > 0 OR strpos(template.content, '{{company_name}}') > 0)
+    `);
     let created = 0;
     for (const sample of DEFAULT_CAMXIAN_TEMPLATES) {
       // Archived and edited records keep their identity; never overwrite user content.
