@@ -15,11 +15,11 @@ vi.mock('motion/react', async importOriginal => {
     get: (target, property) => property === 'div' ? StaticDiv : Reflect.get(target, property),
   }), useReducedMotion: () => true };
 });
-const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn() }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), put: vi.fn(), permissions: ['*'], push: vi.fn(), move: vi.fn(), user: { id: 'user', tenantId: 'tenant', role: 'Client Admin' } }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: mocks.get, put: mocks.put } }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', tenantId: 'tenant', role: 'Client Admin', } }) }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: mocks.user }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], organizations: [], activities: [], users: [], deals: [], moveDealStage: mocks.move, pipelines: [{ id: 'sales', stages: [{ id: 'lead', name: 'Lead' }, { id: 'won', name: 'Won', isWon: true }, { id: 'lost', name: 'Lost', isLost: true }] }] }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => mocks.permissions.includes('*') || mocks.permissions.includes(permission) }));
 vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: ({ links }: { links: object }) => <div data-testid="related-tasks">{JSON.stringify(links)}</div> }));
@@ -34,7 +34,7 @@ import { defaultFieldLayout, getCrmFieldCatalog } from '@leadcrm/shared';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 
 const records = {
-  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
+  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUserId: 'user', assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
   leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', company: 'North Company' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
@@ -87,15 +87,63 @@ it('uses the Lead only when no Contact exists, with a safe missing-Product subje
   expect(href.searchParams.get('to')).toBe('lina@example.test'); expect(href.searchParams.get('subject')).toBe('Product Inquiry');
 });
 
-it.each(['', 'broken'])('disables an unusable canonical Contact email (%s) without falling back to the Lead or staff', async email => {
+const dealEmailCases = (['panel', 'page'] as const).flatMap(surface =>
+  (['chip', 'inbox'] as const).map(action => ({ surface, action })));
+const dealEmailRoleCases = dealEmailCases.flatMap(testCase =>
+  ['Sales Representative', 'Client Admin'].map(role => ({ ...testCase, role })));
+
+async function renderDealEmailAction({ surface, action }: typeof dealEmailCases[number], record: Record<string, unknown> = records.deals, email = 'lina@example.test') {
   const original = mocks.get.getMockImplementation()!;
-  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, contactDeals: [{ contact: { id: 'contact', email } }] } } : original(path));
-  render(<CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} />);
-  const button = await screen.findByRole('button', { name: email ? `Compose email to ${email}` : 'No email address is available for this Deal.' });
-  expect((button as HTMLButtonElement).disabled).toBe(true); fireEvent.click(button); expect(mocks.push).not.toHaveBeenCalled();
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: record } : original(path));
+  const error = vi.spyOn(toast, 'error');
+  const onOpenChange = vi.fn();
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={onOpenChange} /> : <CrmRecordView module="deals" id="one" />);
+  const button = await screen.findByRole('button', { name: action === 'inbox' ? 'Open messages' : email ? `Compose email to ${email}` : 'No email address is available for this Deal.' });
+  return { button, error, onOpenChange };
+}
+
+it.each(dealEmailRoleCases)('opens the assigned Deal from the $surface $action for $role without edit permission', async testCase => {
+  mocks.user = { id: 'user', tenantId: 'tenant', role: testCase.role };
+  mocks.permissions = ['deals.view'];
+  const { button, error, onOpenChange } = await renderDealEmailAction(testCase);
+  fireEvent.click(button);
+  expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry'));
+  expect(error).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(mocks.put).not.toHaveBeenCalled();
 });
+
+it.each(dealEmailRoleCases.flatMap(testCase => ['other-user', null, undefined].flatMap(assignedUserId =>
+  ['customer@example.test', '', 'broken'].map(email => ({ ...testCase, assignedUserId, email }))))
+)('blocks the Deal $surface $action for $role with assignment $assignedUserId and email $email', async testCase => {
+  mocks.user = { id: 'user', tenantId: 'tenant', role: testCase.role };
+  const { button, error, onOpenChange } = await renderDealEmailAction(testCase, {
+    ...records.deals, assignedUserId: testCase.assignedUserId,
+    contactDeals: [{ contact: { id: 'contact', email: testCase.email, assignedUserId: 'user' } }],
+  }, testCase.email);
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(button);
+  expect(error).toHaveBeenCalledExactlyOnceWith('You cannot email this deal because it is not assigned to you.');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+  expect(screen.getByRole('heading', { name: records.deals.title })).toBeTruthy();
+});
+
+it.each(dealEmailCases.flatMap(testCase => ['', 'broken'].map(email => ({ ...testCase, email }))))('reports unusable Contact email $email from the assigned Deal $surface $action without falling back to the Lead or staff', async testCase => {
+  const { button, error, onOpenChange } = await renderDealEmailAction(testCase, {
+    ...records.deals, assignedUser: { email: 'staff@example.test' },
+    contactDeals: [{ contact: { id: 'contact', email: testCase.email } }],
+  }, testCase.email);
+  expect((button as HTMLButtonElement).disabled).toBe(false);
+  fireEvent.click(button);
+  expect(error).toHaveBeenCalledExactlyOnceWith('No valid email address available.');
+  expect(mocks.push).not.toHaveBeenCalled();
+  expect(onOpenChange).not.toHaveBeenCalled();
+});
+
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.permissions = ['*'];
+  mocks.user = { id: 'user', tenantId: 'tenant', role: 'Client Admin' };
   mocks.get.mockImplementation(async (path: string) => {
     if (path.endsWith('/field-layout')) {
       const module = path.split('/')[2] as CrmRecordModule;
@@ -423,7 +471,7 @@ it('Deal header uses Messages between actions and status and the shared Activity
   expect(names.indexOf('Record actions')).toBeLessThan(names.indexOf('Open messages'));
   expect(names.indexOf('Open messages')).toBeLessThan(names.indexOf('Lead'));
   expect(names.indexOf('Lead')).toBeLessThan(names.indexOf('Close record'));
-  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledWith('/inbox');
+  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry'));
   expect(screen.queryByRole('button', { name: 'Notes' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Calls & Emails' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Emails' })).toBeTruthy();
