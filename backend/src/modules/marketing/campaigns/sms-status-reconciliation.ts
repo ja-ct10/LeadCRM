@@ -10,7 +10,7 @@ export async function reconcileSmsStatuses(now = new Date()) {
   // Discovery contains no customer content; all claims/writes then enter tenant scope.
   const due = await prisma.campaignContact.findMany({ where: {
     messageId: { not: null }, submittedAt: { gte: new Date(+now - 30 * DAY) },
-    deliveredAt: null, status: { notIn: ['failed', 'excluded'] }, nextSmsCheckAt: { lte: now },
+    deliveredAt: null, status: { notIn: ['delivered', 'failed', 'excluded'] }, nextSmsCheckAt: { lte: now },
     campaign: { type: 'SMS' },
   }, orderBy: [{ nextSmsCheckAt: 'asc' }, { id: 'asc' }], take: 10,
   select: { id: true, tenantId: true, campaignId: true, messageId: true, phone: true, providerUpdatedAt: true, nextSmsCheckAt: true, smsCheckAttempts: true,
@@ -22,7 +22,7 @@ export async function reconcileSmsStatuses(now = new Date()) {
     const claimed = await prisma.$transaction(async tx => {
       await tx.campaign.update({ where: { id: row.campaignId, tenantId: row.tenantId }, data: { engagement: { increment: 0 } } });
       return tx.campaignContact.updateMany({ where: { id: row.id, tenantId: row.tenantId, nextSmsCheckAt: row.nextSmsCheckAt,
-        deliveredAt: null, status: { notIn: ['failed', 'excluded'] } }, data: {
+        deliveredAt: null, status: { notIn: ['delivered', 'failed', 'excluded'] } }, data: {
         nextSmsCheckAt: new Date(+now + delays[Math.min(row.smsCheckAttempts, delays.length - 1)] * 60000), smsCheckAttempts: { increment: 1 },
       } });
     });
@@ -39,10 +39,12 @@ export async function reconcileSmsStatuses(now = new Date()) {
       const sentAt = message.sentAt ? new Date(message.sentAt) : undefined;
       const deliveredAt = message.deliveredAt ? new Date(message.deliveredAt) : undefined;
       const failedAt = message.failedAt ? new Date(message.failedAt) : undefined;
-      if ((message.status === 'sent' && !sentAt) || (message.status === 'delivered' && (!sentAt || !deliveredAt)) || (message.status === 'failed' && !failedAt)) return;
+      // TextBee's authoritative status is evidence even when optional event
+      // timestamps are absent. Preserve absent dates instead of inventing them.
       if (['sent', 'delivered', 'failed', 'unknown', 'delivery_failed'].includes(message.status)) {
         await applyTextBeeEvidence({ smsId: message._id, smsBatchId: row.messageId, deviceId, recipient: row.phone,
-          status: message.status === 'delivery_failed' ? 'unknown' : message.status, sentAt, deliveredAt, failedAt }, undefined, row.providerUpdatedAt);
+          status: message.status === 'delivery_failed' ? 'unknown' : message.status, sentAt, deliveredAt, failedAt,
+          providerUpdatedAt: message.updatedAt ? new Date(message.updatedAt) : undefined }, undefined, row.providerUpdatedAt);
       }
       console.info('[Campaigns]', { event: 'sms_status_lookup', campaignId: row.campaignId, recipientId: row.id, status: message.status,
         requestedAt: message.requestedAt, dispatchedAt: message.dispatchedAt, pushReceivedAt: message.pushReceivedAt,

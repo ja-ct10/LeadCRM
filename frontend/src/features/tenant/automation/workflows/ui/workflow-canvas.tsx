@@ -176,23 +176,25 @@ function NodeCard({
 function MovableAction({
   id,
   disabled,
+  dragEnabled,
   children,
 }: {
   id: string;
   disabled: boolean;
+  dragEnabled: boolean;
   children: ReactNode;
 }) {
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: `action:${id}`,
     data: { item: { kind: 'move', id } },
-    disabled,
+    disabled: disabled || !dragEnabled,
   });
   return (
     <div
       ref={setNodeRef}
       className={`relative ${isDragging ? 'opacity-30' : ''}`}
     >
-      <div className="absolute -left-9 top-4">
+      {dragEnabled && <div className="absolute -left-9 top-4">
         <button
           type="button"
           {...attributes}
@@ -204,7 +206,7 @@ function MovableAction({
         >
           <GripVertical size={18} />
         </button>
-      </div>
+      </div>}
       {children}
     </div>
   );
@@ -218,6 +220,7 @@ export function WorkflowCanvas({
   issues,
   item,
   locked,
+  dragEnabled = true,
   onSelect,
   onPlace,
   onAdd,
@@ -233,6 +236,7 @@ export function WorkflowCanvas({
   issues: EditorIssue[];
   item: DragItem | null;
   locked: boolean;
+  dragEnabled?: boolean;
   onSelect: (step: StepSelection) => void;
   onPlace: (target: Placement) => void;
   onAdd: (index: number) => void;
@@ -399,7 +403,7 @@ export function WorkflowCanvas({
             {document.draft.actions.map((action, index) => (
               <div key={document.actionIds[index]}>
                 {slot(index)}
-                <MovableAction id={document.actionIds[index]} disabled={locked}>
+                <MovableAction id={document.actionIds[index]} disabled={locked} dragEnabled={dragEnabled}>
                   <NodeCard
                     kind="action"
                     label={`${index + 1}. ${actions.find((entry) => entry.type === action.type)?.label ?? retiredActionLabels[action.type] ?? 'Unavailable action'}`}

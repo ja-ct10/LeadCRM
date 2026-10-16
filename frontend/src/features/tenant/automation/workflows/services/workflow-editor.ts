@@ -8,6 +8,8 @@ import {
   WORKFLOW_MODULES,
   getWorkflowUpdateFields,
   getAvailableActions,
+  workflowActionAllowed,
+  workflowActionPolicyIssues,
   normalizeSavedWorkflowAssignment,
   WorkflowTaskAssociationSchema,
   retiredAccountWorkflowReferences,
@@ -133,7 +135,7 @@ export function canPlace(
     document.draft.actions.length < 20 &&
     actions.some(
       (entry) =>
-        entry.type === item.type && entry.entities.includes(trigger.entity),
+        entry.type === item.type && workflowActionAllowed(trigger.type, entry.type),
     )
   );
 }
@@ -321,7 +323,7 @@ export function actionIssues(
   if (entity === 'account' && retiredAccountWorkflowReferences({ trigger: 'account.updated', actions: [action] }).length) return incomplete ? [] : [ACCOUNT_RETIREMENT_REASON];
   if (retiredActionLabels[action.type]) return incomplete ? [] : ['This action is retired. Disable or remove it before activating.'];
   if (!definition || !entity || !definition.entities.includes(entity))
-    return ['This action is unavailable for the trigger.'];
+    return incomplete ? [] : ['This action is unavailable for the trigger.'];
   const issues: string[] = [];
   if (action.type === 'create_task') {
     const selection = WorkflowTaskAssociationSchema.safeParse(action.config);
@@ -377,7 +379,7 @@ export function actionIssues(
     )
       issues.push(`${field.label}: enter a whole number from 0 to 365.`);
     if (['title', 'description', 'subject', 'body', 'message'].includes(key) && typeof value === 'string') {
-      const messageEntity = workflowMessageEntity(entity, action.type === 'send_sms' ? action.config.recipient : undefined);
+      const messageEntity = workflowMessageEntity(entity, ['send_sms', 'send_email'].includes(action.type) ? action.config.recipient : undefined);
       const error = workflowMessageVariableError(value, workflowMessageVariableKeys(messageEntity, options.customFields, options.fieldLayouts?.[WORKFLOW_MODULES[messageEntity]]));
       if (error) issues.push(`${field.label}: ${error}`);
     }
@@ -394,6 +396,8 @@ export function actionIssues(
     );
   if (action.type === 'send_sms' && options.smsConfigured === false && !incomplete)
     issues.push('SMS is not configured. Connect SMS before activating this workflow.');
+  if (action.type === 'send_email' && entity === 'deal' && !['primary_contact', 'primary_lead'].includes(String(action.config.recipient)) && !incomplete)
+    issues.push('Choose a primary Lead or Contact recipient for this Deal email.');
   return issues;
 }
 export function editorIssues(
@@ -407,6 +411,7 @@ export function editorIssues(
   const { draft, actionIds } = document;
   const trigger = triggers.find((entry) => entry.type === draft.trigger);
   return [
+    ...(!incomplete ? workflowActionPolicyIssues(draft).map(message => ({ step: `action:${actionIds[Number(message.match(/^Action (\d+)/)?.[1] ?? 1) - 1]}` as StepSelection, message })) : []),
     ...(!draft.name.trim()
       ? [{ step: 'details' as const, message: 'Workflow name is required.' }]
       : []),

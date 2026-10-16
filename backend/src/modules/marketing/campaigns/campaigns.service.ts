@@ -10,7 +10,7 @@ import { getPaginationParams, paginate } from '../../../shared/helpers/paginatio
 import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissionError } from '../../../shared/services/email.service';
 import { sendSms, assertSmsConfigured, getSmsSenderIdentity, getSmsDeviceId, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { runSubmissionPool } from './campaign-submission-pool';
-import { smsCampaignSummary } from './sms-campaign-outcomes';
+import { smsCampaignSummary, smsSent, smsDelivered } from './sms-campaign-outcomes';
 import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience, campaignFieldsForAudienceSource } from './audiences.service';
 import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
@@ -67,8 +67,8 @@ export async function getCampaignReport(id: string, tenantId: string) {
       id: recipient.id, name: name || recipient.email || recipient.phone || 'Unknown recipient', email: recipient.email, phone: recipient.phone,
       deliveryStatus: recipient.status === 'excluded' ? 'Excluded'
         : recipientDeliveryFailed(recipient) ? (campaign.type === 'EMAIL' && recipient.bouncedAt ? 'Bounced' : 'Failed')
-        : recipient.deliveredAt ? 'Delivered'
-        : recipient.sentAt && (campaign.type !== 'EMAIL' || recipient.submittedAt || confirmedSentIds.has(recipient.messageId)) ? 'Sent'
+        : (campaign.type === 'SMS' ? smsDelivered(recipient) : recipient.deliveredAt) ? 'Delivered'
+        : (campaign.type === 'SMS' ? smsSent(recipient) : recipient.sentAt && (recipient.submittedAt || confirmedSentIds.has(recipient.messageId))) ? 'Sent'
         : campaign.type === 'SMS' && (recipient.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(recipient.failureReason ?? '')) ? 'Pending'
         : recipient.submittedAt || (campaign.type === 'EMAIL' && recipient.sentAt) ? 'Submitted' : 'Pending',
       opened: campaign.type !== 'SMS' && (!!recipient.openedAt || openingRecipients.has((recipient.email ?? '').toLowerCase())),
@@ -77,7 +77,8 @@ export async function getCampaignReport(id: string, tenantId: string) {
     };
   });
   const eligible = campaignContacts.filter(row => row.status !== 'excluded');
-  const deliveredCount = eligible.filter(row => row.deliveredAt).length;
+  const deliveredCount = eligible.filter(row => !recipientDeliveryFailed(row) && (campaign.type === 'SMS' ? smsDelivered(row) : row.deliveredAt)).length;
+  if (campaign.type === 'SMS') trackingUpdatedAt = Math.max(0, ...campaignContacts.map(row => row.providerUpdatedAt?.getTime() ?? 0));
   const topLinks: CampaignClickedLink[] = [...links].map(([url, link]) => ({
     url, uniqueClicks: link.emails.size, totalClicks: link.total,
     clickRate: deliveredCount ? link.emails.size / deliveredCount * 100 : 0,

@@ -1,4 +1,4 @@
-import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, retiredContactReferences, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
+import { workflowOperators, WorkflowConditionSchema, missingWorkflowConditionValues, retiredContactReferences, workflowActionPolicyIssues, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowField } from '@leadcrm/shared';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { AppError } from '../../../shared/errors/app-error';
 import { findTrigger } from '../triggers/trigger-catalog';
@@ -49,6 +49,8 @@ export async function validateConditionReferences(draft: WorkflowDraft, tenantId
 }
 
 export async function validateWorkflow(draft: WorkflowDraft, tenantId: string, previousConditions?: unknown): Promise<void> {
+  const policyIssues = workflowActionPolicyIssues(draft);
+  if (policyIssues.length) throw new ValidationError(policyIssues[0]);
   await validateConditionReferences(draft, tenantId);
   const previous = WorkflowConditionSchema.safeParse(previousConditions);
   const missing = missingWorkflowConditionValues(draft.conditions, previous.success ? previous.data : undefined);

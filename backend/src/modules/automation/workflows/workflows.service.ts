@@ -25,6 +25,8 @@ import { workflowStageEvent, assertCurrentStageEntry, isStageEvent, isSuperseded
 import { prepareWorkflowTaskInput } from '../actions/action-task-input';
 import { resolveTaskDeals, workflowTaskAssociationSummary } from '../actions/action-task-deals';
 import { prepareWorkflowEmailInput } from '../actions/action-email';
+import { prepareWorkflowSmsInput } from '../actions/action-sms';
+import { workflowActionPolicyIssues } from '@leadcrm/shared';
 
 function sanitizeDraft(draft: WorkflowDraft, previousConditions?: unknown): WorkflowDraft {
   const previous = WorkflowConditionSchema.safeParse(previousConditions);
@@ -83,6 +85,10 @@ function parseDraft(value: unknown): WorkflowDraft {
 export async function createWorkflow(tenantId: string, userId: string, dto: unknown) {
   requireScope(tenantId);
   const draft = parseDraft(dto);
+  if (draft.isActive) {
+    const issues = workflowActionPolicyIssues(draft);
+    if (issues.length) throw new ValidationError(issues[0]);
+  }
   if ((await accountWorkflowRetirementReferences(draft, tenantId)).length) throw new ValidationError(ACCOUNT_RETIREMENT_REASON);
   if (retiredContactReferences([draft.conditions, draft.actions], findTrigger(draft.trigger)?.entity).length) throw new ValidationError('Retired Contact fields cannot be used in a new Workflow. Choose supported fields.');
   await assertAssignmentReferencePermissions(draft, tenantId, userId);
@@ -177,7 +183,8 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
   const conditionsMatch = !draft.conditions || evaluateCondition(draft.conditions, conditionContext);
   const actions: WorkflowTestResult['actions'] = [];
   const previewLoads = new Map<string, number>();
-  let stoppedReason = triggerReason ?? (!conditionsMatch ? 'Workflow conditions did not match. Actions would be skipped.' : undefined);
+  const policyIssues = workflowActionPolicyIssues(draft);
+  let stoppedReason = policyIssues[0] ?? triggerReason ?? (!conditionsMatch ? 'Workflow conditions did not match. Actions would be skipped.' : undefined);
   for (const [actionIndex, action] of draft.actions.entries()) {
     if (action.enabled === false) {
       actions.push({ type: action.type, valid: true, status: 'skipped', message: 'Disabled. This action will be skipped.' });
@@ -193,6 +200,7 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
       const targets = action.type === 'move_deal_stage' ? await resolveDealTargets(action, trigger.entity, tenantId, context) : undefined;
       const taskInput = action.type === 'create_task' ? await prepareWorkflowTaskInput({ action, entity: trigger.entity, tenantId, context, assignedUserId: assignment!.resolvedUserId }) : undefined;
       const preparedEmail = action.type === 'send_email' ? await prepareWorkflowEmailInput(action, trigger.entity, tenantId, context) : undefined;
+      const preparedSms = action.type === 'send_sms' ? await prepareWorkflowSmsInput(action, trigger.entity, tenantId, context) : undefined;
       const emailPreview = preparedEmail ? { senderName: preparedEmail.senderName, senderEmail: preparedEmail.senderEmail, recipient: preparedEmail.recipient, subject: preparedEmail.subject, body: preparedEmail.body, warnings: preparedEmail.warnings } : undefined;
       const taskPreview = taskInput ? { title: taskInput.title, description: taskInput.description, priority: taskInput.priority,
         status: 'pending' as const, dueDate: taskInput.dueDate, assignedUserId: taskInput.assignedUserId, dealIds: taskInput.dealIds ?? [],
@@ -202,7 +210,7 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
         throw new ValidationError('Related deals changed during this check. Run the check again before saving.');
       actions.push({ type: action.type, valid: true, status: 'ready', ...(assignment ? { assignment } : {}), ...(taskPreview ? { taskPreview } : {}), ...(emailPreview ? { emailPreview, warnings: emailPreview.warnings } : {}),
         message: assignment ? `${taskPreview ? `${taskPreview.associationSummary} ` : ''}Would assign ${assignment.resolvedUserName} (${assignment.candidateCount} eligible). ${assignment.reason}.${assignment.workload !== undefined ? ` Active workload: ${assignment.workload}${assignment.capacityLimit !== undefined ? ` / ${assignment.capacityLimit}` : ''}.` : ''} No records or assignment state changed.` : targets ? (targets.length ? `${targets.length} matching Deal(s): ${targets.join(', ')}. No changes made.` : 'No matching Deals. This action will be a no-op.')
-          : action.type === 'send_email' ? 'Recipient, sender permissions, mailbox ownership and projected assignment are valid. No email sent.' : 'Configuration and references valid. No changes made.' });
+          : action.type === 'send_email' ? 'Recipient, sender permissions, mailbox ownership and projected assignment are valid. No email sent.' : preparedSms ? `SMS recipient ${preparedSms.phone} and personalized content are valid (${preparedSms.stats.characters} characters, ${preparedSms.stats.segments} segment(s), including the footer). No SMS sent.` : 'Configuration and references valid. No changes made.' });
       // Project validated earlier actions into this in-memory sample only.
       if (action.type === 'assign_owner') context[`${trigger.entity}.assignedUserId`] = assignment!.resolvedUserId;
       if (action.type === 'create_task' && assignment) {
@@ -224,7 +232,7 @@ export async function testWorkflow(id: string, tenantId: string, entityId: strin
   return { trigger: { type: draft.trigger, matched: !triggerReason, requiresEvent: !draft.trigger.endsWith('.created'),
     ...(stageHistoryId ? { stageHistoryId, eventId } : {}), ...(triggerReason ? { reason: triggerReason } : {}) }, conditions: { total: rules.length,
     passed: rules.filter(rule => evaluateRule(rule, conditionContext)).length, matched: conditionsMatch },
-    actions, valid: !triggerReason && draft.actions.some(action => action.enabled !== false) && actions.every(action => action.valid) };
+    actions, valid: !policyIssues.length && !triggerReason && draft.actions.some(action => action.enabled !== false) && actions.every(action => action.valid) };
 }
 
 export async function validateDraft(tenantId: string, userId: string, input: unknown) {

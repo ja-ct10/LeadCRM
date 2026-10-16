@@ -57,6 +57,13 @@ Workflows and notification delivery use their existing background services. Noti
 
 ## Shared package
 
+Workflow trigger/action availability has one shared policy, enforced by the builder,
+activation and execution. Tasks require Deal triggers; Accounts support field
+maintenance only. Person and Deal workflows support Email/SMS, and assignment
+handoffs require explicit target status/stage conditions. Related Deal email uses
+the actual recipient's mailbox authorization without granting ownership. See
+[policy and SMS reporting verification](workflows/workflow-policy-ui-sms-report.md).
+
 `shared/src` defines reusable contracts, permission keys, canonical schemas, date helpers, and response types consumed by both workspaces. TypeScript is the source of truth. `npm --prefix shared run build` synchronizes compatibility JavaScript companions used by plain Node consumers; do not edit those generated files independently. Tests resolve TypeScript before JavaScript to avoid stale contract copies.
 
 ## Deployment and verification

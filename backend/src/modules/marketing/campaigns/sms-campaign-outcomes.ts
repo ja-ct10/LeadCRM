@@ -2,14 +2,17 @@ import type { Campaign, Prisma } from '@prisma/client';
 import type { SmsCampaignSummary } from '@leadcrm/shared';
 
 type Evidence = { status: string; failureReason: string | null; sentAt: Date | null; deliveredAt: Date | null; submittedAt: Date | null };
+type DeliveryEvidence = Pick<Evidence, 'status' | 'sentAt' | 'deliveredAt'>;
+export const smsDelivered = (row: DeliveryEvidence) => row.status === 'delivered' || !!row.deliveredAt;
+export const smsSent = (row: DeliveryEvidence) => row.status === 'sent' || smsDelivered(row) || !!row.sentAt;
 export function smsCampaignSummary(rows: Evidence[]): SmsCampaignSummary {
   const result: SmsCampaignSummary = { total: 0, pending: 0, submitting: 0, submitted: 0, sent: 0, delivered: 0, failed: 0, unconfirmed: 0 };
   for (const row of rows) {
     if (row.status === 'excluded') continue;
     result.total++;
     if (row.status === 'failed') result.failed++;
-    else if (row.deliveredAt) result.delivered++;
-    else if (row.sentAt) result.sent++;
+    else if (smsDelivered(row)) result.delivered++;
+    else if (smsSent(row)) result.sent++;
     else if (row.status === 'unknown' || ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE'].includes(row.failureReason ?? '')) result.unconfirmed++;
     else if (row.submittedAt) result.submitted++;
     else if (row.status === 'submitting') result.submitting++;

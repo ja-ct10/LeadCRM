@@ -33,6 +33,27 @@ describe('Workflow email preparation', () => {
     expect(workflowEmailContent({ subject: ' \n ', body: ' \t ' }, { subject: 'Template', content: '<p>Template</p>' })).toEqual({ subject: 'Template', body: '<p>Template</p>' });
     expect(workflowEmailContent({ subject: ' Override ', body: '' }, { subject: 'Template', content: '<p>Template</p>' })).toEqual({ subject: 'Override', body: '<p>Template</p>' });
   });
+  it.each(['primary_contact', 'primary_lead'])('sends Deal email to its explicitly selected %s without projecting ownership onto that person', async recipient => {
+    fixtures.record.mockResolvedValue({ id: recordId, email: 'customer@example.test', firstName: 'Ada', doNotContact: false });
+    const prepared = await prepareWorkflowEmailInput({ ...action, config: { ...action.config, recipient } }, 'deal', tenantId,
+      { 'deal.id': 'deal', 'deal.assignedUserId': ownerId, 'deal.contactId': recordId, 'deal.leadId': recordId });
+    expect(prepared).toMatchObject({ senderId: ownerId, recipient: 'customer@example.test', recipientId: recordId, recipientEntity: recipient === 'primary_lead' ? 'lead' : 'contact' });
+    expect(fixtures.validate).toHaveBeenCalledWith(expect.any(String), recipient === 'primary_lead' ? 'lead' : 'contact', tenantId);
+    expect(fixtures.recipients).toHaveBeenCalledWith(expect.anything(), {}, {}, ['customer@example.test'], '', expect.objectContaining({ id: recordId }));
+  });
+  it('rejects missing relationships, unavailable recipients, opt-outs and mailbox denials for Deal email', async () => {
+    const deal = { 'deal.id': 'deal', 'deal.assignedUserId': ownerId, 'deal.contactId': recordId };
+    const selected = { ...action, config: { ...action.config, recipient: 'primary_contact' } };
+    await expect(prepareWorkflowEmailInput(action, 'deal', tenantId, deal)).rejects.toThrow('recipient relationship');
+    await expect(prepareWorkflowEmailInput(selected, 'deal', tenantId, { ...deal, 'deal.contactId': null })).rejects.toThrow('no primary recipient');
+    fixtures.record.mockResolvedValueOnce(null);
+    await expect(prepareWorkflowEmailInput(selected, 'deal', tenantId, deal)).rejects.toThrow('Active email recipient');
+    fixtures.record.mockResolvedValue({ id: recordId, email: 'customer@example.test', doNotContact: true });
+    await expect(prepareWorkflowEmailInput(selected, 'deal', tenantId, deal)).rejects.toThrow('Do not contact');
+    fixtures.record.mockResolvedValue({ id: recordId, email: 'customer@example.test' });
+    fixtures.recipients.mockRejectedValueOnce(new AppError('Forbidden', 403));
+    await expect(prepareWorkflowEmailInput(selected, 'deal', tenantId, deal)).rejects.toMatchObject({ statusCode: 403 });
+  });
   it('resolves only the assigned agent and ignores a legacy unrelated sender', async () => {
     const prepared = await prepareWorkflowEmailInput({ ...action, config: { ...action.config, senderUserId: randomUUID() } }, 'lead', tenantId, context);
     expect(prepared).toMatchObject({ senderId: ownerId, senderName: 'Assigned Agent', senderEmail: 'agent@example.test', recipient: 'ada@example.test', subject: 'Hi Ada', body: '<p>Call </p>' });

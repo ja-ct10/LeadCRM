@@ -16,17 +16,16 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
   // 1. Lead Management & Qualification
   {
     name: 'New Lead Follow-up',
-    description: 'Assign an agent and create a follow-up task.',
+    description: 'Assign an eligible agent to handle the new Lead. Configure the agent, Role or Group before activating.',
     trigger: 'lead.created',
     isActive: false,
     actions: [
       { type: 'assign_owner', config: { userId: '' } },
-      { type: 'create_task', config: { title: 'Follow up with new lead', dueDaysFromNow: 1, priority: 'Medium' } },
     ],
   },
   {
     name: 'Hot Lead Urgent Response',
-    description: 'Schedule an urgent call when a lead becomes Hot.',
+    description: 'Hand off a Lead to the selected agent or Group when its status becomes Hot.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -34,12 +33,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'lead.status', operator: 'equals', value: 'Hot' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Urgent: Call hot lead {{first_name}}', dueDaysFromNow: 0, priority: 'High', description: 'Immediate outreach for high-intent prospect.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'Website Inbound Lead Triage',
-    description: 'Create a qualification task for leads submitted via website.',
+    description: 'Route new website Leads to a configured qualification agent or Group. This can deliberately replace initial form routing.',
     trigger: 'lead.created',
     isActive: false,
     conditions: {
@@ -47,12 +46,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'lead.source', operator: 'equals', value: 'Website' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Qualify inbound website lead: {{first_name}}', dueDaysFromNow: 1, priority: 'Medium', description: 'Review web form inquiry and verify contact details.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'Warm Lead Discovery Preparation',
-    description: 'Schedule a discovery task when a lead becomes Warm.',
+    description: 'Assign discovery responsibility when a Lead becomes Warm.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -60,12 +59,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Warm' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Schedule discovery call with {{first_name}}', dueDaysFromNow: 2, priority: 'High', description: 'Prepare presentation deck and schedule qualification call.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'Cold Lead Nurture Check',
-    description: 'Schedule a nurture review task when a lead goes cold.',
+    description: 'Hand off a Lead to a configured nurture agent or Group when it becomes Cold.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
@@ -73,56 +72,55 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'lead.status', operator: 'equals', value: 'Cold' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Review cold lead for future nurture: {{first_name}}', dueDaysFromNow: 14, priority: 'Low', description: 'Revisit engagement history and consider quarterly check-in.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
-    name: 'Closed Lead Milestone',
-    description: 'Create a handoff review task when a lead becomes Closed, including after conversion.',
+    name: 'Cancelled Lead Review',
+    description: 'Hand off a cancelled Lead for review when its status becomes Cancelled. Closed Leads follow the governed conversion lifecycle.',
     trigger: 'lead.status_changed',
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Closed' }],
+      conditions: [{ field: 'lead.status', operator: 'equals', value: 'Cancelled' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Review closed lead handoff', description: 'Review the record history and complete any remaining handoff.', priority: 'Medium', dueDaysFromNow: 1 } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'Lead Re-assignment & Greeting',
-    description: 'Assign an agent and schedule an introductory call.',
+    description: 'Assign a connected eligible agent and send an introductory email.',
     trigger: 'lead.created',
     isActive: false,
     actions: [
       { type: 'assign_owner', config: { userId: '' } },
-      { type: 'create_task', config: { title: 'Conduct introductory call with {{first_name}}', dueDaysFromNow: 2, priority: 'Medium' } },
+      { type: 'send_email', config: { subject: 'Hello {{firstName}}', body: '<p>Hi {{firstName}},</p><p>I will help you with your inquiry. Please reply with any questions.</p>' } },
     ],
   },
   {
     name: 'New Lead Email Welcome',
-    description: 'Send an immediate welcome email and schedule a confirmation follow-up.',
+    description: 'Send an immediate welcome email through the assigned agent’s connected Gmail.',
     trigger: 'lead.created',
     isActive: false,
     actions: [
       { type: 'send_email', config: { subject: 'Thank you for connecting, {{first_name}}', body: '<p>Hi {{first_name}},</p><p>Thank you for reaching out to our team. We received your details and an account representative will be in touch shortly.</p>' } },
-      { type: 'create_task', config: { title: 'Confirm welcome email receipt with {{first_name}}', dueDaysFromNow: 2, priority: 'Low' } },
     ],
   },
 
   // 2. Contact Management
   {
     name: 'Contact Onboarding Handoff',
-    description: 'Create an onboarding task when a contact is created.',
+    description: 'Assign an eligible onboarding agent or Group when a Contact is created.',
     trigger: 'contact.created',
     isActive: false,
     actions: [
-      { type: 'create_task', config: { title: 'Welcome and onboarding setup for {{first_name}}', dueDaysFromNow: 3, priority: 'High', description: 'Send welcome packet and schedule onboarding session.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'VIP Contact Review',
-    description: 'Schedule an account review when contact status changes to HOT.',
+    description: 'Assign a relationship-review agent when a Contact becomes Hot.',
     trigger: 'contact.status_changed',
     isActive: false,
     conditions: {
@@ -130,12 +128,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'contact.status', operator: 'equals', value: 'Hot' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Executive relationship review for {{company}}', dueDaysFromNow: 2, priority: 'High', description: 'Key contact marked HOT. Conduct satisfaction check-in.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'At-Risk Contact Follow-up',
-    description: 'Create an urgent follow-up task when contact status changes to COLD.',
+    description: 'Hand off a Contact to the selected recovery agent or Group when its status becomes Cold.',
     trigger: 'contact.status_changed',
     isActive: false,
     conditions: {
@@ -143,12 +141,12 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'contact.status', operator: 'equals', value: 'Cold' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Re-engagement outreach for {{company}}', dueDaysFromNow: 1, priority: 'High', description: 'Contact engagement dropped. Reach out to address concerns and offer support.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
     name: 'Contact Status Closed Wrap-up',
-    description: 'Create wrap-up checklist task when contact status changes to CLOSED.',
+    description: 'Assign wrap-up responsibility when a Contact becomes Closed.',
     trigger: 'contact.status_changed',
     isActive: false,
     conditions: {
@@ -156,17 +154,16 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
       conditions: [{ field: 'contact.status', operator: 'equals', value: 'Closed' }],
     },
     actions: [
-      { type: 'create_task', config: { title: 'Complete account wrap-up and archive files for {{company}}', dueDaysFromNow: 7, priority: 'Low', description: 'Finalize wrap-up and record contact status closure reason.' } },
+      { type: 'assign_owner', config: { userId: '' } },
     ],
   },
   {
-    name: 'Contact Welcome & Check-in Email',
-    description: 'Send automated welcome email when contact is created and schedule 30-day check-in.',
+    name: 'Contact Welcome Email',
+    description: 'Send a welcome email through the assigned agent’s connected Gmail when a Contact is created.',
     trigger: 'contact.created',
     isActive: false,
     actions: [
       { type: 'send_email', config: { subject: 'Welcome to our platform, {{first_name}}!', body: '<p>Hello {{first_name}},</p><p>Welcome! We are excited to partner with {{company}}. Please let us know if you have any questions as you get started.</p>' } },
-      { type: 'create_task', config: { title: 'First 30-day check-in with {{first_name}}', dueDaysFromNow: 30, priority: 'Medium' } },
     ],
   },
 
@@ -318,11 +315,11 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [{ type: 'create_task', config: { title: 'Complete follow-up for entered Deal stage', dueDaysFromNow: 1, priority: 'Medium' } }],
   },
   {
-    name: 'Account Update Follow-up',
-    description: 'Create a follow-up task when an Account changes. Choose a task assignee, role or Group before activating.',
+    name: 'Account Field Maintenance',
+    description: 'Maintain an approved Account field after an update. Choose the field, value and matching conditions before activating.',
     trigger: 'account.updated',
     isActive: false,
-    actions: [{ type: 'create_task', config: { title: 'Review Account update', dueDaysFromNow: 1, priority: 'Medium', assignmentTarget: { type: 'user', id: '' } } }],
+    actions: [{ type: 'update_field', config: { field: 'website', value: '' } }],
   },
 ];
 

@@ -30,7 +30,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   };
   const create = (extra: Partial<WorkflowDraft> = {}) => scope(() => workflows.createWorkflow(tenantId, actor.id, {
     name: `Polish ${randomUUID()}`, trigger: 'lead.updated', isActive: true,
-    actions: [{ type: 'create_task', config: { title: 'Follow up', assignedUserId: taskOwner.id } }], ...extra,
+    actions: [(extra.trigger ?? 'lead.updated').startsWith('deal.') ? { type: 'create_task', config: { title: 'Follow up', assignedUserId: taskOwner.id } } : { type: 'update_field', config: { field: 'address', value: 'Workflow follow up' } }], ...extra,
   }));
   const runs = (id: string) => scope(() => workflows.getWorkflowExecutions(id, tenantId));
   const newDeal = (extra = {}) => scope(() => prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id,
@@ -51,7 +51,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
       initial = await stage('Lead', 0); qualified = await stage('Qualified', 1); won = await stage('Won', 2, { isWon: true }); lost = await stage('Lost', 3, { isLost: true });
     });
   }, 60000);
-  beforeEach(async () => { await scope(() => prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } })); vi.mocked(sendSms).mockClear(); });
+  beforeEach(async () => { await scope(async () => { await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } }); await prisma.lead.update({ where: { id: lead.id }, data: { firstName: 'Lead', lastName: 'Test', phone: lead.phone } }); await prisma.contact.update({ where: { id: contact.id }, data: { firstName: 'Contact', lastName: 'Test', phone: contact.phone } }); }); vi.mocked(sendSms).mockClear(); });
   afterAll(async () => { await prisma.$disconnect(); });
 
   it.each([
@@ -61,7 +61,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     ['deal', 'deals', 'Date', '2026-10-01', '2026-10-02'],
   ] as const)('persists and evaluates %s Custom Fields through CRM services without recursive runs', async (entity, module, type, initialValue, nextValue) => {
     const record = entity === 'lead' ? lead : entity === 'contact' ? contact : entity === 'account' ? account : await newDeal();
-    const field = await scope(() => saveField(tenantId, actor.id, { module, group: module === 'accounts' ? 'Notes' : module === 'deals' ? 'Additional Details' : 'Additional Information', name: `Workflow ${type}`, type, required: false, options: type === 'Dropdown' ? ['First', 'Second'] : [] }));
+    const field = await scope(() => saveField(tenantId, actor.id, { module, group: module === 'accounts' ? 'Additional Information' : module === 'deals' ? 'Additional Details' : 'Additional Information', name: `Workflow ${type}`, type, required: false, options: type === 'Dropdown' ? ['First', 'Second'] : [] }));
     const edit = (patch: any) => scope(() => entity === 'lead' ? updateLead(record.id, tenantId, actor.id, patch) : entity === 'contact' ? updateContact(record.id, tenantId, patch, actor.id) : entity === 'account' ? updateCompany(record.id, tenantId, actor.id, patch) : updateDeal(record.id, tenantId, actor.id, patch));
     await edit({ customFieldValues: { [field.id]: initialValue } });
     const workflow = await create({ trigger: `${entity}.updated`, conditions: { operator: 'AND', conditions: [{ field: `${entity}.customFieldValues.${field.id}`, operator: 'equals', value: initialValue }] }, actions: [{ type: 'update_field', config: { field: `customFieldValues.${field.id}`, value: nextValue } }] });
@@ -195,7 +195,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
       ['account.updated', () => updateCompany(account.id, tenantId, actor.id, { notes: 'Changed account' })],
       ['deal.updated', () => updateDeal(deal.id, tenantId, actor.id, { title: 'Changed deal' })],
     ] as const) {
-      const workflow = await create({ trigger, actions:[{type:'create_task',config:{title:'Follow up',assignedUserId:taskOwner.id,dealId:deal.id}}] });
+      const workflow = await create({ trigger, actions: [trigger === 'deal.updated' ? { type:'create_task', config:{title:'Follow up',assignedUserId:taskOwner.id} } : { type:'update_field', config:{field: trigger === 'account.updated' ? 'website' : 'firstName', value: trigger === 'account.updated' ? 'https://example.test' : 'Workflow'} }] });
       await scope(edit); await scope(edit);
       expect(await runs(workflow.id), trigger).toHaveLength(1);
       expect((await runs(workflow.id))[0].status, trigger).toBe('completed');
@@ -278,7 +278,7 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
   });
   it('preserves retired steps in drafts but refuses activation until they are disabled or removed', async () => {
     const workflow = await create({ isActive: false, actions: [{ type: 'create_notification', config: { title: 'Legacy' } }] });
-    await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/retired/);
+    await expect(scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true))).rejects.toThrow(/unavailable|retired/);
     expect((await scope(() => workflows.getWorkflowById(workflow.id, tenantId))).actions).toEqual([{ type: 'create_notification', config: { title: 'Legacy' } }]);
   });
   it('rejects incomplete activation even after saving a draft, and preserves previously active blank literals', async () => {

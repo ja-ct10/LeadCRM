@@ -11,6 +11,8 @@ exports.getWorkflowUpdateFields = getWorkflowUpdateFields;
 exports.getWorkflowConditionFields = getWorkflowConditionFields;
 exports.normalizeWorkflowReferences = normalizeWorkflowReferences;
 exports.getAvailableActions = getAvailableActions;
+exports.workflowActionAllowed = workflowActionAllowed;
+exports.workflowActionPolicyIssues = workflowActionPolicyIssues;
 const record_experience_1 = require("./record-experience");
 const company_industries_1 = require("../constants/company-industries");
 const closing_requirements_1 = require("./closing-requirements");
@@ -40,12 +42,12 @@ function getWorkflowMessageVariables(entity, layout, definitions = []) {
         { token: 'sender_name', label: 'Sender Name' }, { token: 'sender_email', label: 'Sender Email' }];
 }
 /** New email insertion is limited to fields owned by the triggering person. */
-function getWorkflowEmailVariableChoices(entity, layout, definitions = []) {
+function getWorkflowEmailVariableChoices(entity, layout, definitions = [], includeSender = false) {
     if (entity !== 'lead' && entity !== 'contact')
         return [];
     const source = entity === 'lead' ? 'LEADS' : 'CONTACTS';
     return (0, campaign_fields_1.campaignVariableChoices)((0, campaign_fields_1.campaignFields)(source, definitions, layout), source, { forInsertion: true })
-        .filter(choice => choice.category !== 'Sender' && choice.personalizationAvailable);
+        .filter(choice => (includeSender || choice.category !== 'Sender') && choice.personalizationAvailable);
 }
 function workflowMessageVariableKeys(entity, definitions = [], layout) {
     const keys = (0, campaign_fields_1.campaignApprovedVariableKeys)(messageCatalog(entity, definitions, layout));
@@ -93,11 +95,13 @@ function getWorkflowUpdateFields(entity, customFields = [], layout) {
             { ...choice('status', 'Status', record_experience_1.CRM_STATUSES), required: true }, product, account,
             choice('source', entity === 'lead' ? 'Lead Source' : 'Source', record_experience_1.LEAD_SOURCES), assignment, text('address', 'Full Address'),
         ];
-    return [...standard.map(field => ({ ...field, label: layout?.fields[field.field]?.label ?? field.label })), ...getWorkflowCustomFields(entity, customFields)];
+    return [...standard.filter(field => field.field !== 'assignedUserId').map(field => ({ ...field, label: layout?.fields[field.field]?.label ?? field.label })), ...getWorkflowCustomFields(entity, customFields)];
 }
 function getWorkflowConditionFields(entity, trigger, customFields = [], layout) {
     // Presentation visibility governs editing; active hidden values remain readable.
     const definitions = getWorkflowUpdateFields(entity, customFields.map(field => ({ ...field, visibleInForm: true })), layout).map(f => ({ ...f, field: entity + '.' + f.field }));
+    if (entity !== 'account')
+        definitions.push({ field: `${entity}.assignedUserId`, label: layout?.fields.assignedUserId?.label ?? 'Assigned Agent', type: 'user', nullable: true });
     if (entity === 'deal')
         definitions.push({ field: 'deal.value', label: 'Deal Value', type: 'number' }, { field: 'deal.productInterestIds', label: 'Product Interest', type: 'products' }, { field: 'deal.stageId', label: 'Stage', type: 'stage' }, { field: 'deal.pipelineId', label: 'Pipeline', type: 'pipeline' }, { field: 'deal.hasEverBeenWon', label: 'Has ever reached Won', type: 'boolean' }, { field: 'deal.wonHistoryVerified', label: 'Stage history verified', type: 'boolean' });
     if (trigger === 'deal.stage_changed')
@@ -164,7 +168,7 @@ function normalizeWorkflowReferences(draft, products) {
 exports.RETIRED_WORKFLOW_ACTIONS = ['send_campaign', 'create_notification'];
 function getAvailableActions() {
     return [
-        { type: 'create_task', label: 'Create Task', description: 'Create a linked follow-up task.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
+        { type: 'create_task', label: 'Create Task', description: 'Create a follow-up task linked to the triggering Deal.', entities: ['deal'], configSchema: {
                 targetMode: { type: 'select', label: 'Associate task with', required: false, options: ['triggering_deal', 'single_match', 'all_matching'] },
                 pipelineId: { type: 'pipeline', label: 'Pipeline filter', required: false },
                 currentStageId: { type: 'stage', label: 'Stage filter', required: false },
@@ -175,11 +179,12 @@ function getAvailableActions() {
                 assignmentTarget: { type: 'assignment', label: 'Assign to', required: false },
                 dueDaysFromNow: { type: 'number', label: 'Due in days', required: false }, priority: { type: 'select', label: 'Priority', required: false, options: ['Low', 'Medium', 'High'] },
             } },
-        { type: 'send_email', label: 'Send Email', description: 'Send a template through a connected Gmail account.', entities: ['lead', 'contact'], configSchema: {
+        { type: 'send_email', label: 'Send Email', description: 'Send a template through the assigned agent’s connected Gmail account.', entities: ['lead', 'contact', 'deal'], configSchema: {
+                recipient: { type: 'select', label: 'Recipient', required: false, options: ['record', 'primary_contact', 'primary_lead'] },
                 templateId: { type: 'template', label: 'Email template (optional with subject and message)', required: false },
                 subject: { type: 'string', label: 'Subject (overrides template)', required: false }, body: { type: 'string', label: 'Message (overrides template)', required: false },
             } },
-        { type: 'send_sms', label: 'Send SMS', description: 'Send a message to the record or its explicitly selected primary relationship.', entities: ['lead', 'contact', 'deal', 'account'], configSchema: {
+        { type: 'send_sms', label: 'Send SMS', description: 'Send a message to the record or its explicitly selected primary relationship.', entities: ['lead', 'contact', 'deal'], configSchema: {
                 recipient: { type: 'select', label: 'Recipient', required: true, options: ['record', 'primary_contact', 'primary_lead'] },
                 message: { type: 'string', label: 'SMS message', required: true },
             } },
@@ -198,4 +203,32 @@ function getAvailableActions() {
                 stageId: { type: 'stage', label: 'Target stage', required: true }, lostReason: { type: 'string', label: 'Reason (required for lost stages)', required: false },
             } },
     ];
+}
+/** One policy for builder placement, activation and execution. */
+function workflowActionAllowed(triggerType, actionType) {
+    const trigger = (0, exports.findTrigger)(triggerType);
+    if (!trigger || !getAvailableActions().find(action => action.type === actionType)?.entities.includes(trigger.entity))
+        return false;
+    if (trigger.entity === 'account')
+        return actionType === 'update_field';
+    return actionType !== 'assign_owner' || ['lead.created', 'contact.created', 'deal.created', 'lead.status_changed', 'contact.status_changed', 'deal.stage_changed'].includes(triggerType);
+}
+function workflowActionPolicyIssues(draft) {
+    return draft.actions.flatMap((action, index) => {
+        if (action.enabled === false)
+            return [];
+        const prefix = `Action ${index + 1}: `;
+        if (!workflowActionAllowed(draft.trigger, action.type))
+            return [prefix + 'This action is unavailable for the selected trigger. Disable or remove it before activating.'];
+        if (action.type === 'update_field' && action.config.field === 'assignedUserId')
+            return [prefix + 'Use Assign Agent to change ownership. Field updates cannot reassign records.'];
+        if (action.type !== 'assign_owner' || draft.trigger.endsWith('.created'))
+            return [];
+        const entity = (0, exports.findTrigger)(draft.trigger).entity;
+        const fields = draft.trigger === 'deal.stage_changed' ? ['deal.stageId', 'event.newStageId'] : [`${entity}.status`, 'event.newStatus'];
+        const rules = draft.conditions?.conditions ?? [];
+        const routes = rules.map(rule => fields.includes(rule.field) && rule.operator === 'equals' && typeof rule.value === 'string' && !!rule.value.trim());
+        const guarded = rules.length > 0 && (draft.conditions?.operator === 'OR' ? routes.every(Boolean) : routes.some(Boolean));
+        return guarded ? [] : [prefix + 'Agent handoffs require an explicit target status or stage Equals condition that every matching record must satisfy.'];
+    });
 }

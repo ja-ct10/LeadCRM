@@ -259,7 +259,7 @@ describe('visual workflow editor', () => {
   });
   it('supports click-to-place and excludes incompatible actions', () => {
     setup();
-    expect(screen.queryByRole('button', { name: 'Add Send Email' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add Send Email' })).toBeTruthy();
     fireEvent.click(button('Add Create Task'));
     expect(button('Insert at position 1')).toBeTruthy();
     fireEvent.click(button('Insert at position 1'));

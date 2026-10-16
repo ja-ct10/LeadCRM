@@ -388,6 +388,14 @@ new missing value cannot become a historical-literal exception after a paused
 draft save. This metadata does not change the condition's value or execution
 operator.
 
+Create Task is limited to Deal triggers. Account Updated supports Update Fields
+only. Lead, Contact and Deal triggers support both Send Email and Send SMS.
+Assign Agent supports Created events plus explicit Lead/Contact status and Deal
+stage handoffs; every matching handoff must bind a target status/stage Equals
+condition. Ordinary Updated triggers cannot reassign records, and Update Fields
+cannot write `assignedUserId`. Unsupported saved definitions retain their history
+and must be repaired; execution pauses an incompatible definition before acting.
+
 Assignment configuration and versioned execution history are documented in
 [Workflow assignment and history](workflows/workflow-assignment-history.md).
 Role/Group assignment supports only round-robin among active, permission-eligible
@@ -407,20 +415,27 @@ and validate the same payload used at execution and return resolved title, notes
 priority, status, assignee, named Deals, association count and due instant without creating a Task.
 Email checks return the authorized sender, recipient, rendered subject/message and
 missing-value warnings. Checks neither send messages nor write delivery records.
+SMS checks validate the actual personalized content and mandatory footer, returning
+character/segment counts without sending or advancing assignment rotation.
 
-Send Email automatically uses the triggering Lead/Contact's assigned agent's
+Send Email automatically uses the triggering Lead/Contact/Deal's assigned agent's
 authorized Gmail connection, including an earlier owner assignment. The deprecated
 `senderUserId` setting is accepted and discarded; it is never required or used to
 select another mailbox. Missing assignment, Gmail connection or sender access
 fails with a corrective message at the record check/execution. Empty or whitespace
 overrides fall back independently to the template subject/message. New picker
-choices come only from the triggering person module; supported saved tokens and
+choices come only from the recipient's person module; supported saved tokens and
 templates retain their existing rendering and permission checks. Optional missing
 values render blank with warnings; invalid/empty effective content blocks sending.
+Deal email requires `config.recipient` to be `primary_contact` or `primary_lead`.
+The actual related recipient must remain available and authorized in the sender's
+mailbox scope. A Deal assignment never projects ownership onto its related person.
+Lead/Contact email may omit `recipient` or use `record`.
 
 Workflow options include stage order/default and terminal flags. The chooser
 generates templates bound to current tenant pipeline/stage IDs and opens inactive
-drafts; existing numeric template URLs and saved definitions remain compatible.
+drafts; existing numeric template URLs remain stable and saved definitions remain
+readable for explicit repair when their actions no longer match the trigger policy.
 Stage automation uses the internal `Deal.currentStageHistoryId` to distinguish
 rapid leave/re-entry. Each genuine current entry can create a new Task; retries
 reuse the same event result and superseded queued entries record skipped reasons.

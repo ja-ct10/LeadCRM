@@ -27,6 +27,8 @@
     "gmail:setup-system-sender": "ts-node src/scripts/setup-gmail-system-sender.ts",
     "test": "vitest --run",
     "test:watch": "vitest",
+    "test:workflows:integration": "node scripts/test-workflow-policy-postgres.mjs",
+    "test:workflow-policy:browser": "node scripts/verify-workflow-policy-browser.mjs",
     "db:deploy": "node scripts/deploy-crm-imports.cjs --deploy",
     "db:imports:recover": "node scripts/deploy-crm-imports.cjs --recover",
     "db:imports:verify": "node scripts/deploy-crm-imports.cjs --verify",

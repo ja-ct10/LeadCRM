@@ -20,7 +20,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
   const evidence = { 'confirmation-type': 'Approved Quotation', 'confirmation-date': '2026-10-01' };
   const activate = (trigger: string) => scope(() => createWorkflow(tenantId, actorId, {
     name: `${trigger} ${randomUUID()}`, trigger, isActive: true,
-    actions: [{ type: 'create_task', config: { title: 'Conversion follow up', assignedUserId: ownerId } }],
+    actions: [trigger.startsWith('deal.') ? { type: 'create_task', config: { title: 'Conversion follow up', assignedUserId: ownerId } } : { type: 'update_field', config: { field: 'lastName', value: 'Conversion follow up' } }],
   }));
   const events = (entityId: string, type?: string) => prisma.workflowTriggerRecord.findMany({ where: { tenantId, entityId, ...(type ? { triggerType: type } : {}) }, orderBy: { triggerType: 'asc' } });
   async function inquiry(confirmed = false, extra: Record<string, unknown> = {}) {

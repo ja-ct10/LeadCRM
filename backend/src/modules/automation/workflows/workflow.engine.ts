@@ -5,7 +5,7 @@ import prisma from '../../../config/database.config';
 import { workflowChain as chain, workflowLease } from './workflow-dispatch-context';
 import { fenceWorkflowLease, isWorkflowLeaseLost, workflowLeaseWrite } from './workflow-lease';
 import { interruptWorkflowEvidence } from './workflow-interruption';
-import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, ACCOUNT_RETIREMENT_REASON, type WorkflowDraft } from '@leadcrm/shared';
+import { WorkflowDraftSchema, WorkflowActionSchema, normalizeSavedWorkflowAssignment, CRM_STATUSES, ACCOUNT_RETIREMENT_REASON, workflowActionPolicyIssues, type WorkflowDraft } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import * as repo from './workflows.repository';
@@ -79,10 +79,16 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
       const stageHistoryId = isStageEvent(params.triggerType)
         ? String(context['event.stageHistoryId'] ?? (eventId.startsWith(`${params.triggerType}:`) ? eventId.slice(params.triggerType.length + 1) : '')) : undefined;
       try {
-        const parsed = WorkflowDraftSchema.safeParse(await compatibleWorkflow({ name: workflow.name, description: workflow.description, trigger: workflow.trigger,
+        // The read adapter may attach repair metadata; it is not a definition field.
+        const parsed = WorkflowDraftSchema.strip().safeParse(await compatibleWorkflow({ name: workflow.name, description: workflow.description, trigger: workflow.trigger,
           conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive }, params.tenantId));
         if (!parsed.success) throw new ValidationError('This workflow uses an invalid configuration. Edit and save it before activating.');
         const draft: WorkflowDraft = parsed.data;
+        const policyIssues = workflowActionPolicyIssues(draft);
+        if (policyIssues.length) {
+          await prisma.workflow.updateMany({ where: { id: workflow.id, tenantId: params.tenantId, version: workflow.version, isActive: true }, data: { isActive: false, status: 'PAUSED' } });
+          throw new ValidationError(`${policyIssues[0]} This workflow was paused for repair; no actions were performed.`);
+        }
         if (stageHistoryId !== undefined) {
           const recorded = await workflowStageEvent(params.tenantId, params.entityId, params.triggerType, stageHistoryId);
           if (recorded.eventId !== eventId) throw new ValidationError('The workflow event identifier does not match its recorded stage transition.');

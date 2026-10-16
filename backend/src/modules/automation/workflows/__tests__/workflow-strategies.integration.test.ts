@@ -12,11 +12,11 @@ import { assignmentWorkloads } from '../../assignment/workflow-assignment.reposi
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
 describe.skipIf(!disposable)('round-robin assignment filters with real database and domain services', { timeout: 30000 }, () => {
-  let tenantId: string, actorId: string, firstId: string, secondId: string, groupId: string, leadId: string, roleId: string, foreignUserId: string;
+  let tenantId: string, actorId: string, firstId: string, secondId: string, groupId: string, leadId: string, dealId: string, roleId: string, foreignUserId: string;
   const scope = <T>(run: () => T) => tenantContext.run({ tenantId }, run);
   const pool = (settings = {}): WorkflowAssignmentTarget => ({ type: 'group', id: groupId, strategy: 'round_robin', ...settings });
-  const create = (target: WorkflowAssignmentTarget, assignOwner = false) => scope(() => workflows.createWorkflow(tenantId, actorId, { name: `Method ${randomUUID()}`, trigger: 'lead.created', isActive: true, actions: [{ type: assignOwner ? 'assign_owner' : 'create_task', config: { ...(assignOwner ? {} : { title: 'Strategy follow-up' }), assignmentTarget: target } }] }));
-  const fire = () => scope(() => fireWorkflowTrigger({ tenantId, actorId, eventId: randomUUID(), triggerType: 'lead.created', entityType: 'lead', entityId: leadId, context: {} }));
+  const create = (target: WorkflowAssignmentTarget, assignOwner = false) => scope(() => workflows.createWorkflow(tenantId, actorId, { name: `Method ${randomUUID()}`, trigger: assignOwner ? 'lead.created' : 'deal.created', isActive: true, actions: [{ type: assignOwner ? 'assign_owner' : 'create_task', config: { ...(assignOwner ? {} : { title: 'Strategy follow-up' }), assignmentTarget: target } }] }));
+  const fire = (entity: 'lead' | 'deal' = 'deal') => scope(() => fireWorkflowTrigger({ tenantId, actorId, eventId: randomUUID(), triggerType: `${entity}.created`, entityType: entity, entityId: entity === 'lead' ? leadId : dealId, context: {} }));
   const runs = (workflowId: string) => scope(() => workflows.getWorkflowExecutions(workflowId, tenantId));
   const openTask = (assignedUserId: string, status = 'pending', isArchived = false) => prisma.task.create({ data: { tenantId, assignedUserId, title: 'Existing workload', dueDate: new Date(), status, isArchived } });
   const request = (target: WorkflowAssignmentTarget) => ({ tenantId, workflowId: randomUUID(), actionIndex: 0, purpose: 'task_assignee' as const, target, entity: 'lead' as const, entityId: leadId, recordOwnerId: actorId });
@@ -41,8 +41,8 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
       leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Sample', lastName: 'Lead', assignedUserId: actorId } })).id;
       const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Strategy opportunities' } });
       const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
-      await prisma.deal.create({ data: { tenantId, title: 'Strategy fixture opportunity', pipelineId: pipeline.id, stageId: stage.id,
-        assignedUserId: actorId, leadDeals: { create: { leadId, position: 0 } } } });
+      dealId = (await prisma.deal.create({ data: { tenantId, title: 'Strategy fixture opportunity', pipelineId: pipeline.id, stageId: stage.id,
+        assignedUserId: actorId, leadDeals: { create: { leadId, position: 0 } } } })).id;
     });
   });
   beforeEach(async () => {
@@ -61,7 +61,7 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
     await openTask(nextId); await openTask(nextId, 'completed'); await openTask(nextId, 'cancelled'); await openTask(nextId, 'pending', true);
     const workflow = await create(pool({ capacity: { maxPerMember: 100, members: [] } }));
     const before = await prisma.tenantPreference.count({ where: { tenantId } });
-    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, dealId, actorId));
     expect(preview.actions[0].assignment).toMatchObject({ resolvedUserId: nextId, workload: 1, strategy: 'round_robin' });
     expect(await prisma.tenantPreference.count({ where: { tenantId } })).toBe(before);
     await fire();
@@ -103,16 +103,16 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
     await prisma.lead.updateMany({ where: { tenantId, assignedUserId: firstId, isArchived: false }, data: { assignedUserId: actorId } });
     await prisma.user.update({ where: { id: firstId }, data: { status: 'INACTIVE' } });
     const workflow = await create(pool());
-    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, dealId, actorId));
     expect(preview.actions[0].assignment).toMatchObject({ resolvedUserId: secondId, candidateCount: 1, strategy: 'round_robin' });
     await fire();
     expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId, strategy: 'round_robin' } }] });
   });
   it('previews sequential workload changes without creating tasks or consuming capacity', async () => {
     const target = pool({ capacity: { maxPerMember: 1, members: [] } });
-    const workflow = await scope(() => workflows.createWorkflow(tenantId, actorId, { name: 'Sequential preview', trigger: 'lead.created', isActive: true, actions: [0, 1].map(index => ({ type: 'create_task', config: { title: `Task ${index}`, assignmentTarget: target } })) }));
+    const workflow = await scope(() => workflows.createWorkflow(tenantId, actorId, { name: 'Sequential preview', trigger: 'deal.created', isActive: true, actions: [0, 1].map(index => ({ type: 'create_task', config: { title: `Task ${index}`, assignmentTarget: target } })) }));
     const before = await prisma.task.count({ where: { tenantId } });
-    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, dealId, actorId));
     expect(new Set(preview.actions.map(action => action.assignment?.resolvedUserId)).size).toBe(2);
     expect(await prisma.task.count({ where: { tenantId } })).toBe(before);
     await fire();
@@ -125,7 +125,7 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
     const loaded = await scope(() => workflows.getWorkflowById(workflow.id, tenantId));
     expect(loaded.actions).toMatchObject([{ config: { assignmentTarget: { strategy: 'round_robin' } } }]);
     expect(await prisma.workflow.findUniqueOrThrow({ where: { id: workflow.id } })).toMatchObject({ actions });
-    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, leadId, actorId));
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, dealId, actorId));
     expect(preview.valid).toBe(true);
     await fire(); await fire();
     const history = await runs(workflow.id);
@@ -140,7 +140,7 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
   it('excludes a reassigned record from its capacity while rotating CRM owners', async () => {
     await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: firstId } });
     const workflow = await create(pool({ capacity: { maxPerMember: 1, members: [] } }), true);
-    await fire();
+    await fire('lead');
     expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: [firstId, secondId].sort()[0], workload: 0, capacityLimit: 1 } }] });
   });
   it('reserves distinct round-robin turns for concurrent executions', async () => {
@@ -161,7 +161,7 @@ describe.skipIf(!disposable)('round-robin assignment filters with real database 
     const counts = await scope(() => assignmentWorkloads(prisma, tenantId, [firstId, secondId], 'crm_owner', 'lead', leadId));
     expect(counts.get(firstId)).toBe(1); expect(counts.get(secondId) ?? 0).toBe(0);
     const workflow = await create(pool({ capacity: { maxPerMember: 1, members: [] } }), true);
-    await fire();
+    await fire('lead');
     expect((await runs(workflow.id))[0]).toMatchObject({ status: 'completed', steps: [{ output: { resolvedUserId: secondId } }] });
     await prisma.lead.update({ where: { id: extra.id }, data: { isArchived: true } });
   });

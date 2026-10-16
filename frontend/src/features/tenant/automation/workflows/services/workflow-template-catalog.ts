@@ -1,6 +1,7 @@
 import {
   getWorkflowUpdateFields,
   workflowOperators,
+  workflowActionAllowed,
   workflowAssignmentTarget,
   WorkflowAssignmentTargetSchema,
   type ActionDefinition,
@@ -27,7 +28,7 @@ export function templateAvailability(
   const issues: string[] = [];
   for (const action of recipe.actions) {
     const definition = actions.find(entry => entry.type === action.type);
-    if (!definition?.entities.includes(trigger.entity)) {
+    if (!definition || !workflowActionAllowed(trigger.type, action.type)) {
       issues.push('This template includes an action that is unavailable for its record type.');
     }
     if (action.type === 'update_field' && !getWorkflowUpdateFields(trigger.entity).some(field => field.field === action.config.field)) {
@@ -84,7 +85,7 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
 
 export function templateBehaviorLabel(recipe: WorkflowDraft): string {
   if (recipe.actions.some(action => action.type === 'move_deal_stage')) return recipe.actions.some(action => action.type === 'create_task') ? 'Move Deal + create task' : 'Move related Deal';
-  if (recipe.actions.some(action => action.type === 'send_email')) return 'Send email + follow-up';
+  if (recipe.actions.some(action => action.type === 'send_email')) return recipe.actions.some(action => action.type === 'create_task') ? 'Send email + follow-up' : 'Send email';
   if (recipe.actions.some(action => action.type === 'assign_owner')) return recipe.actions.some(action => action.type === 'create_task') ? 'Assign agent + create task' : 'Assign agent';
   return recipe.trigger === 'deal.stage_changed' ? 'Task on stage entry' : 'Create follow-up task';
 }
