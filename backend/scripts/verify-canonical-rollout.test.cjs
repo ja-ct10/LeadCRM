@@ -58,8 +58,9 @@ test('the complete release history deploys reviewed transitions while guarded co
   const accountNotesRetirement = '20261210000000_retire_account_internal_notes';
   const defaultTemplateVariables = '20261211000000_normalize_default_campaign_template_variables';
   const mailboxActivityDeals = '20261212000000_mailbox_activity_deals';
+  const accountNoteTriggerPermissions = '20261213000000_account_note_trigger_permissions';
   const plan = deploymentPlan(rows, names);
-  assert.equal(plan.through, mailboxActivityDeals);
+  assert.equal(plan.through, accountNoteTriggerPermissions);
   assert.deepEqual(plan.exclude, [relationship, crm, lead, contact, contactJobTitle, accountRetirement, accountFieldRetirement, accountNotesRetirement]);
   const selected = names.filter(name => /^\d+_/.test(name) && name <= plan.through && !plan.exclude.includes(name));
   for (const name of ['20261106000000_scoped_mailbox_delivery', '20261110000000_preserve_retired_lead_fields',
@@ -73,7 +74,7 @@ test('the complete release history deploys reviewed transitions while guarded co
     '20261125030000_durable_workflow_dispatch', '20261125040000_activity_mailbox_authorization',
     '20261126000000_notification_policy', '20261127000000_login_attempt_lockout',
     '20261128000000_preserve_contact_retirement_history', accountAddress, optionalClosedWonDefaults, workflowStageEntryIdentity, smsCampaignOutcomes, assignmentNotificationContext, accountFieldPreservation,
-    '20261209000000_account_notes_preservation', '20261209010000_account_creation_receipts', defaultTemplateVariables, mailboxActivityDeals]) {
+    '20261209000000_account_notes_preservation', '20261209010000_account_creation_receipts', defaultTemplateVariables, mailboxActivityDeals, accountNoteTriggerPermissions]) {
     assert.ok(selected.includes(name), name);
   }
   assert.throws(() => deploymentPlan(rows, [...names, '20261115000000_unreviewed']), /REVIEW_MIGRATIONS/);

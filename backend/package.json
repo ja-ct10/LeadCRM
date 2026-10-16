@@ -47,6 +47,7 @@
     "db:accounts:retire": "node scripts/deploy-account-address-retirement.cjs --retire",
     "test:accounts:migration": "node scripts/test-accounts-full-address.mjs",
     "test:accounts:rollout": "node --test scripts/deploy-account-address-retirement.test.cjs",
+    "test:accounts:trigger": "node --test scripts/account-trigger-permissions.test.mjs",
     "typecheck:tests": "tsc --noEmit --project tsconfig.tests.json",
     "db:accounts:fields:status": "node scripts/deploy-account-fields-retirement.cjs --status",
     "db:accounts:fields:verify": "node scripts/deploy-account-fields-retirement.cjs --verify",
