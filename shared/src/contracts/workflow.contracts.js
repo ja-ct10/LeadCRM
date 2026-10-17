@@ -2,6 +2,8 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkflowTestInputSchema = exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowTaskAssociationSchema = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
 exports.missingWorkflowConditionValues = missingWorkflowConditionValues;
+exports.workflowLossReason = workflowLossReason;
+exports.workflowLossReasonIssue = workflowLossReasonIssue;
 exports.workflowAssignmentTarget = workflowAssignmentTarget;
 exports.normalizeWorkflowAssignment = normalizeWorkflowAssignment;
 exports.normalizeSavedWorkflowAssignment = normalizeSavedWorkflowAssignment;
@@ -41,6 +43,18 @@ exports.WorkflowActionSchema = zod_1.z.object({
     const { senderUserId: _deprecated, ...config } = action.config;
     return { ...action, config };
 });
+/** Older actions with a saved reason keep that reason unless explicitly disabled. */
+function workflowLossReason(config) {
+    return config.includeLossReason === false ? undefined : typeof config.lostReason === 'string' ? config.lostReason.trim() || undefined : undefined;
+}
+function workflowLossReasonIssue(config, incomplete = false) {
+    if (config.includeLossReason !== undefined && typeof config.includeLossReason !== 'boolean')
+        return 'Include a loss reason must be Yes or No.';
+    if (config.lostReason !== undefined && (typeof config.lostReason !== 'string' || config.lostReason.length > 2000 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(config.lostReason)))
+        return 'Loss reason must be text of at most 2000 characters without control characters.';
+    if (!incomplete && config.includeLossReason === true && !workflowLossReason(config))
+        return 'Enter a loss reason or turn off Include a loss reason.';
+}
 const optionalWorkflowReference = zod_1.z.preprocess(value => value === '' ? undefined : value, zod_1.z.string().uuid().optional());
 exports.WorkflowTaskAssociationSchema = zod_1.z.object({
     targetMode: zod_1.z.preprocess(value => value === '' ? undefined : value, zod_1.z.enum(['triggering_deal', 'single_match', 'all_matching']).optional()),

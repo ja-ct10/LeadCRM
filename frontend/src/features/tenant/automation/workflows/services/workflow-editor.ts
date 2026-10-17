@@ -10,6 +10,7 @@ import {
   getAvailableActions,
   workflowActionAllowed,
   workflowActionPolicyIssues,
+  workflowLossReasonIssue,
   normalizeSavedWorkflowAssignment,
   WorkflowTaskAssociationSchema,
   retiredAccountWorkflowReferences,
@@ -325,6 +326,10 @@ export function actionIssues(
   if (!definition || !entity || !definition.entities.includes(entity))
     return incomplete ? [] : ['This action is unavailable for the trigger.'];
   const issues: string[] = [];
+  if (action.type === 'move_deal_stage') {
+    const reasonIssue = workflowLossReasonIssue(action.config, incomplete);
+    if (reasonIssue) issues.push(reasonIssue);
+  }
   if (action.type === 'create_task') {
     const selection = WorkflowTaskAssociationSchema.safeParse(action.config);
     if (!selection.success) issues.push('Choose a valid task association mode and available filters.');

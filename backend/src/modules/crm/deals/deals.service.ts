@@ -123,7 +123,7 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
   });
 }
 
-export async function validateDealStageMove(id: string, tenantId: string, dto: MoveDealStageDto) {
+export async function validateDealStageMove(id: string, tenantId: string, dto: MoveDealStageDto, policy: import('./deal-lifecycle').DealStageMovePolicy = {}) {
   // SEC-1 fix: Resolve stage within the tenant boundary via pipeline
   const newStage = await (salesContext.getStore() ?? prisma).stage.findFirst({
     where: { id: dto.stageId, tenantId },
@@ -136,7 +136,7 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
   if (deal.stageId === newStage.id) return newStage;
   assertDealStageTransition(deal, newStage, await dealHasEverBeenWon(salesContext.getStore() ?? prisma, tenantId, deal));
 
-  if (newStage.isLost && !dto.lostReason) {
+  if (newStage.isLost && !dto.lostReason?.trim() && !policy.optionalLossReason) {
     throw new ValidationError('Lost reason is required when closing a deal as lost');
   }
 
@@ -159,12 +159,12 @@ export async function validateDealStageMove(id: string, tenantId: string, dto: M
   return newStage;
 }
 
-export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto, guard?: import('./deal-lifecycle').RelatedDealMoveGuard) {
+export async function moveDealStage(id: string, tenantId: string, userId: string, dto: MoveDealStageDto, guard?: import('./deal-lifecycle').RelatedDealMoveGuard, policy: import('./deal-lifecycle').DealStageMovePolicy = {}) {
   return salesTransaction(async () => {
-  const newStage = await validateDealStageMove(id, tenantId, dto);
+  const newStage = await validateDealStageMove(id, tenantId, dto, policy);
   let result;
   try {
-    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason, dto.confirmation, undefined, guard);
+    result = await repo.moveDealStage(id, tenantId, dto.stageId, userId, dto.note, dto.handoff, dto.lostReason, dto.confirmation, undefined, guard, policy);
   } catch (error) {
     mapRepositoryError(error, 'moveDealStage');
   }

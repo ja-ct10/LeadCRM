@@ -77,7 +77,7 @@ export async function getSmsBatch(deviceId: string, batchId: string) {
     .parse(await textBeeRead(`/gateway/devices/${deviceId}/sms-batch/${batchId}`)).data;
 }
 const receiptSchema = z.object({ data: z.object({ success: z.literal(true), smsBatchId: z.string().regex(/^[a-f\d]{24}$/i), recipientCount: z.literal(1) }) });
-/** Every caller, including Workflows, gets the shared Camxian contact footer. */
+/** Every caller uses the same message formatting and size validation. */
 export async function sendSms(recipient: string, content: string, options: { beforeProviderWrite?: () => Promise<void>; deviceId?: string } = {}): Promise<{ submitted: true; messageId: string; status: 'pending' }> {
   assertSmsConfigured();
   const phone = normalizeSmsPhone(recipient);
@@ -87,7 +87,7 @@ export async function sendSms(recipient: string, content: string, options: { bef
   const finalContent = buildFinalSms({ body: content });
   const deviceId = options.deviceId ?? process.env.TEXTBEE_DEVICE_ID?.trim();
   if (deviceId && !/^[a-f\d]{24}$/i.test(deviceId)) throw new ValidationError('Invalid SMS gateway Device ID.');
-  if (finalContent.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
+  if (finalContent.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit after personalization.`);
   await options.beforeProviderWrite?.();
   let response: Response;
   try {

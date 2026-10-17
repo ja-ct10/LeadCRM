@@ -18,6 +18,7 @@ require('../../scripts/qa-network-guard.cjs');
 mkdirSync(output, { recursive: true });
 let pg, prisma, api, frontend, browser, log, failure, currentPage, closing = false;
 const checks = [], pageErrors = [], serverErrors = [];
+const expectedChecks = 22;
 const resultPath = resolve(output, 'results.json');
 writeFileSync(resultPath, JSON.stringify({ status: 'RUNNING', success: false, cleanup: 'pending', checks, pageErrors }, null, 2));
 const Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -106,6 +107,20 @@ try {
     });
     assert.ok(channels[0] > channels[1] + 30 && channels[0] > channels[2] + 30, JSON.stringify(channels));
     await cancel.click();
+    if (width < 1280) await page.getByRole('button', { name: 'Add steps', exact: true }).click();
+    await page.getByRole('button', { name: 'Add Move Deal Stage', exact: true }).click();
+    await page.getByRole('button', { name: 'Insert at position 1', exact: true }).click();
+    const includeReason = page.getByRole('checkbox', { name: 'Include a loss reason', exact: true });
+    assert.equal(await includeReason.isChecked(), false);
+    assert.equal(await page.getByLabel('Loss reason', { exact: true }).count(), 0);
+    await includeReason.check();
+    await page.getByLabel('Loss reason', { exact: true }).fill('Budget changed');
+    assert.equal(await page.getByLabel('Loss reason', { exact: true }).inputValue(), 'Budget changed');
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+    await page.screenshot({ path: resolve(output, `loss-reason-${theme}-${width}.png`) });
+    await includeReason.uncheck();
+    assert.equal(await page.getByLabel('Loss reason', { exact: true }).count(), 0);
+    await page.getByRole('button', { name: 'Done', exact: true }).click();
     await page.getByRole('button', { name: 'Back to workflows' }).click();
     const dialog = page.getByRole('alertdialog', { name: 'Discard unsaved changes?' }); await dialog.waitFor();
     const geometry = await dialog.evaluate(element => {
@@ -116,7 +131,7 @@ try {
     assert.equal(geometry.buttons.length, 2); assert.ok(Math.abs(geometry.buttons[0].y - geometry.buttons[1].y) < 1);
     assert.ok(geometry.buttons.every(button => button.x >= 0 && button.right <= width));
     await page.screenshot({ path: resolve(output, `confirmation-${theme}-${width}.png`) });
-    checks.push(`${theme} ${width}px: tap/drag policy, SMS variable insertion, blue Done, red Cancel, centered confirmation and one-row buttons`);
+    checks.push(`${theme} ${width}px: tap/drag policy, SMS variables, optional loss reason, action controls and centered confirmation`);
     await dialog.getByRole('button', { name: 'Keep editing', exact: true }).click();
     await page.close();
   }
@@ -129,6 +144,24 @@ try {
     for (const name of ['Send SMS', 'Send Email']) assert.equal(await page.getByRole('button', { name: `Add ${name}`, exact: true }).count(), entity === 'account' ? 0 : 1);
     if (entity === 'account') assert.equal(await page.getByRole('button', { name: 'Add Update Fields', exact: true }).count(), 1);
     checks.push(`${entity}: persisted action availability matches policy`);
+  }
+  await page.goto(`${base}/automation/workflows`);
+  for (const theme of ['Light', 'Dark']) for (const width of [320, 375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 960 });
+    await setAcceptanceTheme(page, theme);
+    await page.getByRole('button', { name: 'Create Workflow', exact: true }).click();
+    const chooser = page.getByRole('dialog', { name: 'Create workflow', exact: true });
+    await chooser.locator('[data-template-id="new-deal-created"]').waitFor();
+    assert.equal(await chooser.locator('[data-template-id]:not([data-template-id^="stage:"])').count(), 23);
+    await chooser.getByLabel('Search templates', { exact: true }).fill('Deal Assignment');
+    await chooser.getByRole('button', { name: 'Preview Deal Assignment Follow-up', exact: true }).click();
+    await chooser.getByRole('region', { name: 'Template setup requirements' }).waitFor();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
+    const use = await chooser.getByRole('button', { name: 'Use this template', exact: true }).boundingBox();
+    assert.ok(use && use.x >= 0 && use.x + use.width <= width + 1 && use.y + use.height <= 960);
+    await page.screenshot({ path: resolve(output, `template-${theme}-${width}.png`) });
+    await chooser.getByRole('button', { name: 'Close create workflow', exact: true }).click();
+    checks.push(`${theme} ${width}px: 23 starters, assignment preview and visible template action`);
   }
   const { applyTextBeeEvidence } = require('../dist/backend/src/modules/marketing/campaigns/textbee-webhook.js');
   for (const status of ['sent', 'delivered', 'failed']) {
@@ -151,7 +184,7 @@ try {
   }
   assert.deepEqual(pageErrors, []);
   assert.deepEqual(serverErrors, []);
-  assert.equal(checks.length, 14);
+  assert.equal(checks.length, expectedChecks);
 } catch (error) {
   failure = error;
   if (currentPage && !currentPage.isClosed()) await currentPage.screenshot({ path: resolve(output, 'failure.png'), fullPage: true }).catch(() => {});
@@ -173,7 +206,7 @@ try {
     () => pg?.stop(),
   ]) { try { await close(); } catch (error) { cleanupErrors.push(String(error)); } }
   log?.end(); Module._resolveFilename = originalResolve;
-  const success = !failure && !cleanupErrors.length && checks.length === 14 && !pageErrors.length;
+  const success = !failure && !cleanupErrors.length && checks.length === expectedChecks && !pageErrors.length;
   const report = { status: success ? 'PASS' : 'FAIL', success, cleanup: cleanupErrors.length ? 'failed' : 'complete', checks, pageErrors, serverErrors,
     ...(failure ? { error: String(failure) } : {}), ...(cleanupErrors.length ? { cleanupErrors } : {}) };
   writeFileSync(resultPath, JSON.stringify(report, null, 2));

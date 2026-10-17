@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { buildFinalSms, smsMessageStats } from '@leadcrm/shared';
+import { buildFinalSms, smsMessageStats, SMS_DEFAULT_FOOTER, insertDefaultSmsFooter, hasDefaultSmsFooter } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 vi.mock('../../../config/database.config', () => ({ default: { tenant: { findUnique: vi.fn() } } }));
 import prisma from '../../../config/database.config';
@@ -14,6 +14,17 @@ beforeEach(() => {
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 describe('TextBee shared SMS transport', () => {
+  it('inserts the editable footer only on explicit request and never restores it during formatting', () => {
+    expect(insertDefaultSmsFooter('')).toBe(SMS_DEFAULT_FOOTER);
+    const message = insertDefaultSmsFooter('My offer');
+    expect(message).toBe(`My offer\n\n${SMS_DEFAULT_FOOTER}`);
+    expect(insertDefaultSmsFooter(message)).toBe(message);
+    expect(insertDefaultSmsFooter(message.replaceAll('\n', '\r\n'))).toBe(message.replaceAll('\n', '\r\n'));
+    expect(hasDefaultSmsFooter(message)).toBe(true);
+    const edited = message.replace('This is a no-reply message.', 'Reply to your account representative.');
+    expect(buildFinalSms({ body: edited })).toBe(edited);
+    expect(buildFinalSms({ body: 'My offer' })).toBe('My offer');
+  });
   it('resolves the default device once with a read-only request and honors an explicit configured device', async () => {
     const device = '664a9b8cd0e1f2a3b4c5d6e7';
     vi.mocked(fetch).mockResolvedValue(new Response(JSON.stringify({ data: [{ _id: device, enabled: true, isDefault: true }] })));
@@ -66,12 +77,12 @@ describe('TextBee shared SMS transport', () => {
     vi.stubEnv('TEXTBEE_API_KEY', 'fixture-key'); vi.stubEnv('TEXTBEE_DEVICE_ID', 'invalid');
     await expect(send()).rejects.toThrow(/Device ID/); expect(fetch).not.toHaveBeenCalled();
   });
-  it('submits once with x-api-key, one E164 recipient, optional device and the fixed Camxian footer', async () => {
+  it('submits once with x-api-key, one E164 recipient, optional device and only the entered body', async () => {
     expect(await send()).toEqual({ submitted: true, messageId: batchId, status: 'pending' });
     const [url, init] = vi.mocked(fetch).mock.calls[0];
     expect(url).toBe('https://api.textbee.dev/api/v1/gateway/send-sms');
     expect(init?.headers).toMatchObject({ 'x-api-key': 'fixture-key' });
-    expect(JSON.parse(String(init?.body))).toEqual({ recipients: ['+639171234567'], message: 'Hello\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.' });
+    expect(JSON.parse(String(init?.body))).toEqual({ recipients: ['+639171234567'], message: 'Hello' });
     vi.stubEnv('TEXTBEE_DEVICE_ID', '664a9b8cd0e1f2a3b4c5d6e7'); await send();
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[1][1]?.body)).deviceId).toBe('664a9b8cd0e1f2a3b4c5d6e7');
   });
@@ -80,15 +91,16 @@ describe('TextBee shared SMS transport', () => {
     await expect(send()).resolves.toMatchObject({ submitted: true });
     expect(prisma.tenant.findUnique).not.toHaveBeenCalled();
     vi.mocked(fetch).mockClear();
-    await expect(send('a'.repeat(50000))).rejects.toThrow('50000-character'); expect(fetch).not.toHaveBeenCalled();
+    await expect(send('a'.repeat(50001))).rejects.toThrow('50000-character'); expect(fetch).not.toHaveBeenCalled();
   });
-  it('personalizes allowed variables and appends the mandatory footer exactly once', () => {
+  it('personalizes variables without adding or deleting message content', () => {
     const input = { body: '  Hi {{first_name}}, your proposal is ready.  ', variables: { first_name: 'John' } };
     const final = buildFinalSms(input);
-    expect(final).toBe('Hi John, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.');
+    expect(final).toBe('Hi John, your proposal is ready.');
     expect(buildFinalSms({ ...input, body: final })).toBe(final);
     const legacy = 'Hi John, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\ninfo@example.test\n\nThis is a no-reply message.';
-    expect(buildFinalSms({ ...input, body: legacy })).toBe(final);
+    expect(buildFinalSms({ ...input, body: legacy })).toBe(legacy);
+    expect(buildFinalSms({ body: '' })).toBe('');
     expect(buildFinalSms({ ...input, body: '{{__proto__}} {{process.env.KEY}}' })).not.toContain('{{');
   });
   it('counts GSM extension and Unicode multipart segments without truncating content', async () => {

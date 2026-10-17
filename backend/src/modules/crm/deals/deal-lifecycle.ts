@@ -4,6 +4,9 @@ import { ValidationError } from '../../../shared/errors/http-error';
 type StageState = { id: string; name: string; isWon: boolean; isLost: boolean };
 type DealState = { id: string; stageId: string; hasEverBeenWon?: boolean; wonHistoryVerified?: boolean; wonConfirmedAt?: Date | null; stage: StageState };
 
+/** Internal execution policy; never accepted from an HTTP request body. */
+export interface DealStageMovePolicy { optionalLossReason?: boolean }
+
 export interface RelatedDealMoveGuard {
   pipelineId: string;
   currentStageId?: string;

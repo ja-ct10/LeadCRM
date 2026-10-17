@@ -17,6 +17,7 @@ import { fieldUpdatePatch } from './action-fields';
 import { updateCompany } from '../../crm/companies/companies.service';
 import { createActivity } from '../../crm/activities/activities.service';
 import { moveDealStage, updateDeal } from '../../crm/deals/deals.service';
+import { workflowLossReason } from '@leadcrm/shared';
 import { updateContact as updateLead } from '../../crm/contacts/contacts.service';
 import { updateContact as updateClientProfile } from '../../crm/contacts-v2/contacts-v2.service';
 
@@ -84,7 +85,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
       const movedDealIds: string[] = [];
       for (const id of ids) {
         try {
-          const result = await moveDealStage(id, tenantId, actorId, { stageId: String(config.stageId), lostReason: config.lostReason ? String(config.lostReason) : undefined }, guard);
+          const result = await moveDealStage(id, tenantId, actorId, { stageId: String(config.stageId), lostReason: workflowLossReason(config) }, guard, { optionalLossReason: true });
           if (result.stageHistory) movedDealIds.push(id);
         } catch (error) {
           return { success: false, error: safeWorkflowError(error), output: { movedDealIds, failedDealId: id, matchedDealIds: ids } };

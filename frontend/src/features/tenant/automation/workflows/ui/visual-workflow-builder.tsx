@@ -738,7 +738,7 @@ export default function WorkflowBuilder({
               <button
                 type="button"
                 onClick={() => select('details')}
-                className="max-w-full truncate rounded text-left text-base font-semibold focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
+                className="max-w-full truncate rounded text-left text-sm font-semibold focus-visible:ring-2 focus-visible:ring-[var(--ring)]"
               >
                 {draft.name || 'New workflow'}
               </button>

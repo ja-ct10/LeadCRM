@@ -27,6 +27,8 @@ describe('complete workflow recipe catalog', () => {
       [24, 'Hot Contact → Move Related Deal'],
       [25, 'Selected Stage Entry Follow-up'],
       [26, 'Account Field Maintenance'],
+      [27, 'New Deal Created'], [28, 'Deal Assignment Follow-up'], [29, 'Deal Follow-up Email'],
+      [30, 'Won Deal Thank-you Email'], [31, 'Lost Deal Follow-up'], [32, 'New Lead SMS Acknowledgment'], [33, 'Contact Welcome Email Template'],
     ]);
   });
   it.each(WORKFLOW_RECIPES)('$name matches supported metadata and validates after configuring references', recipe => {
@@ -47,7 +49,7 @@ describe('complete workflow recipe catalog', () => {
     draft.actions.forEach(action => {
       if (action.type === 'assign_owner') action.config.userId = userId;
       if (action.type === 'create_task' && draft.trigger.startsWith('account.')) action.config.assignmentTarget = { type: 'user', id: userId };
-      if (action.type === 'send_email') action.config.senderUserId = userId;
+      if (action.type === 'send_email') { action.config.subject = 'Hello'; action.config.body = 'Follow-up message'; }
       if (action.type === 'move_deal_stage') action.config.stageId = stageId;
       if (action.type === 'update_field') action.config.value = 'https://example.test';
     });
@@ -62,6 +64,11 @@ describe('complete workflow recipe catalog', () => {
     expect(templateSetup({ ...recipe, actions: [{ type: 'update_field', config: { field: 'address', value: 'New address' } }] }, trigger, getAvailableActions()).join(' ')).toContain('field will be replaced');
     expect(templateSetup(WORKFLOW_RECIPES[0], WORKFLOW_TRIGGERS[0], getAvailableActions()).join(' ')).toContain('Choose agent');
     expect(templateConditionLabel({ field: 'deal.hasEverBeenWon', operator: 'equals', value: false }, WORKFLOW_TRIGGERS.find(trigger => trigger.type === 'deal.stage_changed'))).toBe('Has ever reached Won is No');
+  });
+  it('describes SMS and field updates with the actions they actually perform', () => {
+    expect(templateBehaviorLabel(WORKFLOW_RECIPES[32])).toBe('Send SMS');
+    expect(templateBehaviorLabel(WORKFLOW_RECIPES[26])).toBe('Update fields');
+    expect(WORKFLOW_RECIPES[28].conditions?.conditions).toContainEqual({ field: 'event.changedFields', operator: 'contains', value: 'assignedUserId' });
   });
   it('labels actual movement separately from stage-entry tasks and explains related targeting', () => {
     expect(templateBehaviorLabel(WORKFLOW_RECIPES[17])).toBe('Move Deal + create task');

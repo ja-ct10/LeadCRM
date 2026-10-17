@@ -350,6 +350,11 @@ Campaign sends use Brevo email or TextBee SMS, not the removed placeholder sched
 
 The variable catalog returns existing `CrmFieldCatalogEntry` metadata; field presence does not authorize recipient values or provide related Account/Deal binding. Send and schedule validate variables against the effective Lead/Contact source. Email settings return configured Brevo `senderName` and `senderEmail`; SMS settings return tenant `organizationName` and validated `organizationEmail`. These public identities contain no provider credentials. Template tokens remain `sender_name` and `sender_email`. See the [variable consistency report](campaign-workflow-variable-consistency-report.md) for availability and verification details.
 
+The SMS footer is editable text in the existing `body` field. The composer seeds
+new blank SMS campaigns and offers explicit default insertion; create/update,
+copy, schedule and send operations preserve authored text without inserting or
+restoring a footer. See the [SMS footer lifecycle](sms-footer-lifecycle.md).
+
 Forms editing and publishing are distinct permissions. Company Website is explicitly submission-only; it is retained in submission history and is not advertised as a saved Lead field.
 
 See [Campaign email delivery](campaign-email-delivery.md), [Forms implementation](forms-production-report.md#actual-api-endpoints), and the [polish plan](plans/system-polish.md).
@@ -415,8 +420,19 @@ and validate the same payload used at execution and return resolved title, notes
 priority, status, assignee, named Deals, association count and due instant without creating a Task.
 Email checks return the authorized sender, recipient, rendered subject/message and
 missing-value warnings. Checks neither send messages nor write delivery records.
-SMS checks validate the actual personalized content and mandatory footer, returning
+SMS checks validate only the entered personalized content, returning
 character/segment counts without sending or advancing assignment rotation.
+
+Move Deal Stage accepts optional `includeLossReason` and `lostReason` settings.
+When the option is enabled, a nonblank reason of at most 2,000 characters is
+required at activation. When disabled or omitted without a saved reason, automated
+Lost transitions need no reason. Existing saved reasons remain effective unless
+explicitly disabled. Manual Deal endpoints retain their required-reason rule;
+the internal automation policy cannot be supplied through the HTTP body.
+Updated triggers expose `event.changedFields` as a list condition. The Deal
+Assignment Follow-up starter matches `assignedUserId` changes and creates a
+linked task using the new record owner. Task creation uses existing notifications.
+Timers and Task/Campaign workflow triggers remain unavailable.
 
 Send Email automatically uses the triggering Lead/Contact/Deal's assigned agent's
 authorized Gmail connection, including an earlier owner assignment. The deprecated

@@ -53,6 +53,7 @@ beforeEach(() => {
 it.each(['leads', 'contacts', 'deals'] as const)('pauses a disconnected %s timeline stream and recovers through explicit retry', async module => {
   render(<CrmRecordView module={module} id="record" />);
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
+  await waitFor(() => expect(streams).toHaveLength(1));
   const timeline = screen.getByRole('region', { name: 'Activity Timeline' });
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity0'));
@@ -92,7 +93,8 @@ it.each(cases)('keeps the $module $surface mounted on $filter while sent and rec
   }
   const timeline = screen.getByRole('region', { name: 'Activity Timeline' });
   const badge = screen.getByRole('tab', { name: /^Activity/ });
-  expect(streams).toHaveLength(1);
+  // Activity rows and Gmail connection status load independently.
+  await waitFor(() => expect(streams).toHaveLength(1));
   for (const [index, direction] of (['outbound', 'inbound'] as const).entries()) {
     rows = [...rows, email(direction)];
     act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
@@ -114,6 +116,7 @@ it('clears revoked email immediately while preserving the selected Emails filter
   mocks.edit = true; rows.push(email('outbound'));
   render(<CrmRecordView module="leads" id="record" />);
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity2'));
+  await waitFor(() => expect(streams).toHaveLength(1));
   fireEvent.click(screen.getByRole('button', { name: 'Emails' }));
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
   fireEvent.change(screen.getByLabelText('Note'), { target: { value: 'Keep my unfinished note' } });

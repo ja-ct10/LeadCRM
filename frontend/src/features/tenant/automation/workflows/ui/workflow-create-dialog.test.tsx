@@ -27,10 +27,10 @@ it.each(WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index }) => [recipe.name, inde
   expect(toast.success).not.toHaveBeenCalled();
 });
 
-it('shows the sixteen approved starters and excludes hidden recipes from search', () => {
+it('shows the supported starters and excludes hidden recipes from search', () => {
   setup();
-  expect(screen.getByRole('status').textContent).toBe('16 templates available');
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
+  expect(screen.getByRole('status').textContent).toBe('23 templates available');
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(23);
   const starters = new Set(WORKFLOW_STARTER_TEMPLATES.map(entry => entry.index));
   WORKFLOW_RECIPES.forEach((recipe, index) => {
     if (starters.has(index)) return;
@@ -48,31 +48,33 @@ it('searches multiple template words with extra whitespace', () => {
   expect(screen.getByRole('button', { name: 'Preview New Lead Email Welcome' })).toBeTruthy();
 });
 
-it('combines record, action, and text filters; returns to the same result and focus; clears empty SMS results', () => {
+it('combines record, action, and text filters; restores focus and offers the supported SMS starter', () => {
   setup();
   fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'lead' } });
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_email' } });
-  expect(screen.getByRole('status').textContent).toBe('1 template of 16');
+  expect(screen.getByRole('status').textContent).toBe('1 template of 23');
   const name = 'Preview New Lead Email Welcome';
   fireEvent.click(screen.getByRole('button', { name }));
-  expect(screen.getByText(/connect the selected sender to Gmail/)).toBeTruthy();
+  expect(screen.getByText(/Connect the record’s assigned agent to Gmail/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'All templates' }));
   expect(document.activeElement).toBe(screen.getByRole('button', { name }));
   expect((screen.getByLabelText('Record type') as HTMLSelectElement).value).toBe('lead');
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_sms' } });
-  expect(screen.getByText(/No SMS templates are included yet/)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Preview New Lead SMS Acknowledgment' })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'account' } });
+  expect(screen.getByText('Try another search or clear your filters.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(23);
   expect(document.activeElement).toBe(screen.getByRole('searchbox'));
 });
 
 it('finds actual movement templates and exposes related setup without creating a workflow', () => {
   const { onChoose } = setup();
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'move_deal_stage' } });
-  expect(screen.getByRole('status').textContent).toBe('3 templates of 16');
+  expect(screen.getByRole('status').textContent).toBe('3 templates of 23');
   expect(screen.queryByRole('button', { name: 'Preview Qualified Deal Follow-up' })).toBeNull();
   fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'contact' } });
-  expect(screen.getByRole('status').textContent).toBe('1 template of 16');
+  expect(screen.getByRole('status').textContent).toBe('1 template of 23');
   fireEvent.click(screen.getByRole('button', { name: 'Preview Hot Contact → Move Related Deal' }));
   expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('different open source and target stages');
   expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('No matches produce no movement or task');

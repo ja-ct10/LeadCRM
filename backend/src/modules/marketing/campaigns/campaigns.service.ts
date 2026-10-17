@@ -329,6 +329,7 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     }
     const sends = eligible.map(r => {
       const tracked = campaign.type === 'SMS' ? prepareSmsLinks(buildFinalSms({ body: content.body, variables: { ...r.personalization, ...sender } })) : { message: '', links: [] };
+      if (campaign.type === 'SMS' && !tracked.message.trim()) throw new AppError('Personalization left an SMS empty. Add recipient values or update the message.', 400);
       return { ...r, personalization: { ...r.personalization, ...sender }, id: randomUUID(), logId: randomUUID(), channel: campaign.type, smsLinks: tracked.links,
         ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: tracked.message }
           : { ...renderCampaignMessage(content.subject, content.body, { ...r.personalization, ...sender }), sms: '' }) };

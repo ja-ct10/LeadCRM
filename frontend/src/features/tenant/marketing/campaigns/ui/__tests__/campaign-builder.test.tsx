@@ -1,7 +1,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { campaignFields, CUSTOM_FIELD_MODULES, getCrmFieldCatalog } from '@leadcrm/shared';
+import { campaignFields, CUSTOM_FIELD_MODULES, getCrmFieldCatalog, SMS_DEFAULT_FOOTER } from '@leadcrm/shared';
 import { CampaignBuilder } from '../campaign-builder';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { campaignsApi } from '@/shared/services/campaigns.api';
@@ -60,6 +60,53 @@ function unloadPrevented() {
   return event.defaultPrevented;
 }
 const existingDraft = { id: 'saved-id', name: 'Saved campaign', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'LEADS' };
+it('starts with editable SMS footer text and preserves its deletion through save and reopening', async () => {
+  const view = render(<CampaignBuilder initialType="SMS" onBack={vi.fn()} />);
+  expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe(SMS_DEFAULT_FOOTER);
+  expect((screen.getByRole('button', { name: 'Insert default SMS footer' }) as HTMLButtonElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText(/Body/), { target: { value: '' } });
+  expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('');
+  expect(screen.queryByText(/For inquiries regarding|This is a no-reply/)).toBeNull();
+  fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Empty SMS draft' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
+  await waitFor(() => expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: '' })));
+  view.unmount();
+  render(<CampaignBuilder initialCampaign={{ ...existingDraft, type: 'SMS', body: '', subject: '' } as never} onBack={vi.fn()} />);
+  expect((screen.getByLabelText(/Body/) as HTMLTextAreaElement).value).toBe('');
+  expect(screen.queryByText(/For inquiries regarding|This is a no-reply/)).toBeNull();
+  expect(campaignsApi.send).not.toHaveBeenCalled();
+});
+it('keeps edited SMS and email bodies separate and guards inactive-channel edits', () => {
+  render(<CampaignBuilder onBack={vi.fn()} />);
+  const body = () => screen.getByLabelText(/Body/) as HTMLTextAreaElement;
+  fireEvent.change(body(), { target: { value: 'Email content' } });
+  fireEvent.click(screen.getByRole('button', { name: 'SMS' }));
+  expect(body().value).toBe(SMS_DEFAULT_FOOTER);
+  fireEvent.change(body(), { target: { value: 'SMS with my own footer' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Email' }));
+  expect(body().value).toBe('Email content');
+  expect(screen.queryByRole('button', { name: 'Insert default SMS footer' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'SMS' }));
+  expect(body().value).toBe('SMS with my own footer');
+  expect(unloadPrevented()).toBe(true);
+});
+it('inserts the default footer once on request and sends the author’s edited text', async () => {
+  render(<CampaignBuilder initialType="SMS" initialContent="My offer" onBack={vi.fn()} />);
+  const body = screen.getByLabelText(/Body/) as HTMLTextAreaElement;
+  expect(body.value).toBe('My offer');
+  fireEvent.click(screen.getByRole('button', { name: 'Insert default SMS footer' }));
+  expect(body.value).toBe(`My offer\n\n${SMS_DEFAULT_FOOTER}`);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert default SMS footer' }));
+  expect(body.value.match(/This is a no-reply message/g)).toHaveLength(1);
+  const edited = body.value.replace('+63 (28) 462-3488', '+63 917 123 4567');
+  fireEvent.change(body, { target: { value: edited } });
+  fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'Editable footer' } });
+  fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
+  await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalled());
+  sendNow();
+  await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
+  expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ type: 'SMS', body: edited, subject: '' }));
+});
 it('previews tracked SMS length while preserving the original editable URL', async () => {
   vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'info@example.test', trackingOrigin: 'https://crm.example.test' } });
   render(<CampaignBuilder initialType="SMS" onBack={vi.fn()} />);
@@ -67,7 +114,7 @@ it('previews tracked SMS length while preserving the original editable URL', asy
   fireEvent.change(body, { target: { value: 'Visit https://destination.test/products?a=1&b=2' } });
   await screen.findByText(/Counts include the tracking URL/);
   expect(body.value).toBe('Visit https://destination.test/products?a=1&b=2');
-  expect(screen.getAllByText(/https:\/\/crm.example.test\/s\/x{24}/).length).toBeGreaterThan(0);
+  expect(screen.getByRole('link', { name: 'https://destination.test/products?a=1&b=2' }).getAttribute('href')).toBe('https://destination.test/products?a=1&b=2');
 });
 function ModuleNavigation({ label, module, onNavigated }: { label: string; module: string; onNavigated?: () => void }) {
   const { navigate } = useLayout();
@@ -416,10 +463,10 @@ describe('campaign composer', () => {
   it('previews pasted URLs as anchors and preserves the safe draft through reopening', async () => {
     render(<CampaignBuilder onBack={vi.fn()} initialCampaign={{ id: 'draft', name: 'Links', type: 'Email', status: 'Draft', body: 'Hi {{first_name}}\nhttps://camxian.com/products?a=1&b=2', subject: 'Hi' } as never} />);
     const frame = screen.getByTitle('Email body preview');
-    expect(frame.getAttribute('srcdoc')).toContain('<a href="https://camxian.com/products?a=1&amp;b=2">');
+    expect(frame.getAttribute('srcdoc')).toContain('<a href="https://camxian.com/products?a=1&amp;b=2" style="color: #2563eb; text-decoration: underline;">');
     expect(frame.getAttribute('srcdoc')).toContain('Hi John<br>');
     fireEvent.click(screen.getByRole('button', { name: 'Save Draft' }));
-    await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('draft', expect.objectContaining({ body: 'Hi {{first_name}}<br><a href="https://camxian.com/products?a=1&amp;b=2">https://camxian.com/products?a=1&amp;b=2</a>' })));
+    await waitFor(() => expect(campaignsApi.update).toHaveBeenCalledWith('draft', expect.objectContaining({ body: 'Hi {{first_name}}<br><a href="https://camxian.com/products?a=1&amp;b=2" style="color: #2563eb; text-decoration: underline;">https://camxian.com/products?a=1&amp;b=2</a>' })));
     expect(campaignsApi.send).not.toHaveBeenCalled();
   });
   it('saves the pasted product-services URL as an anchor before Send Now', async () => {
@@ -427,7 +474,7 @@ describe('campaign composer', () => {
     fireEvent.change(screen.getByLabelText(/Body/), { target: { value: 'hi click this link if you have any inquiries of our products:\nhttps://camxian.com/product-services/' } });
     sendNow();
     await waitFor(() => expect(campaignsApi.send).toHaveBeenCalledOnce());
-    expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ body: 'hi click this link if you have any inquiries of our products:<br><a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>' }));
+    expect(campaignsApi.create).toHaveBeenCalledWith(expect.objectContaining({ body: 'hi click this link if you have any inquiries of our products:<br><a href="https://camxian.com/product-services/" style="color: #2563eb; text-decoration: underline;">https://camxian.com/product-services/</a>' }));
   });
   it('uses one panel toggle after Send Now and preserves preview device switching', async () => {
     render(<CampaignBuilder onBack={vi.fn()} />);
@@ -559,12 +606,13 @@ describe('campaign composer', () => {
     expect(setData).toHaveBeenCalledWith('text/plain', '{{firstName}}');
     expect(campaignsApi.send).not.toHaveBeenCalled();
   });
-  it('previews the fixed Camxian footer and sends SMS if the organization email lookup fails', async () => {
+  it('previews only entered SMS and sends if the organization email lookup fails', async () => {
     vi.mocked(campaignsApi.smsSettings).mockRejectedValueOnce(new Error('Settings unavailable'));
     render(<CampaignBuilder onBack={vi.fn()} initialType="SMS" initialContent="Hi {{first_name}}, your proposal is ready." />);
     fireEvent.change(screen.getByLabelText(/Campaign Name/), { target: { value: 'SMS campaign' } });
     fireEvent.change(screen.getByLabelText(/Target Audience/), { target: { value: 'LEADS' } });
-    await screen.findByText(/For inquiries regarding our products and services, contact Camxian Technologies:\s*\+63 \(28\) 462-3488 or go to the official website\.\s*This is a no-reply message\./s);
+    await screen.findByText('Hi John, your proposal is ready.');
+    expect(screen.queryByText(/For inquiries regarding|This is a no-reply/)).toBeNull();
     expect(screen.queryByLabelText(/Subject Line/)).toBeNull();
     await waitFor(() => expect(audiencesApi.preview).toHaveBeenCalledWith(expect.objectContaining({ channel: 'SMS' })));
     sendNow();

@@ -1,5 +1,5 @@
 import sanitizeHtml from 'sanitize-html';
-import { CAMPAIGN_EMAIL_TAGS, CAMPAIGN_EMAIL_ATTRIBUTES, linkifyCampaignHtml, renderEmailVariables, EmailSubjectSchema, type EmailVariables } from '@leadcrm/shared';
+import { CAMPAIGN_EMAIL_TAGS, CAMPAIGN_EMAIL_ATTRIBUTES, styleCampaignEmailLinks, renderEmailVariables, EmailSubjectSchema, type EmailVariables } from '@leadcrm/shared';
 import { AppError } from '../../../shared/errors/app-error';
 
 export function sanitizeCampaignHtml(body: string): string {
@@ -10,7 +10,7 @@ export function sanitizeCampaignHtml(body: string): string {
   }).trim();
 }
 export function prepareCampaignHtml(body: string): string {
-  return linkifyCampaignHtml(sanitizeCampaignHtml(body));
+  return styleCampaignEmailLinks(sanitizeCampaignHtml(body));
 }
 export function renderCampaignMessage(subject: string, body: string, values: EmailVariables) {
   const renderedSubject = EmailSubjectSchema.parse(renderEmailVariables(subject, values));

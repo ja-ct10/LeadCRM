@@ -1,7 +1,7 @@
 import { validateDealTargets } from './action-deal-targets';
 import { resolveTaskDealIds, validateTaskDealSelection } from './action-task-deals';
 import { z } from 'zod';
-import { workflowMessageEntity, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { workflowLossReasonIssue, workflowMessageEntity, EmailSubjectSchema, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import { validateMessageVariables } from './action-message';
 import { fieldUpdatePatch } from './action-fields';
 import { prepareWorkflowSmsInput, validateSmsRecipientMode } from './action-sms';
@@ -43,8 +43,13 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   for (const key of Object.keys(action.config)) {
     if (!definition.configSchema[key]) throw new ValidationError(`Remove unsupported action setting: ${key}.`);
   }
+  if (action.type === 'move_deal_stage') {
+    const reasonIssue = workflowLossReasonIssue(action.config, incomplete || action.enabled === false);
+    if (reasonIssue) throw new ValidationError(reasonIssue);
+  }
   for (const [key, field] of Object.entries(definition.configSchema)) {
     const value = action.config[key];
+    if (action.type === 'move_deal_stage' && ['includeLossReason', 'lostReason'].includes(key)) continue;
     if (action.type === 'send_email' && ['subject', 'body'].includes(key) && typeof value === 'string' && !value.trim()) continue;
     if (field.type === 'assignment' || (action.type === 'create_task' && key === 'assignedUserId') || (action.type === 'assign_owner' && key === 'userId')) continue;
     if (!incomplete && action.enabled !== false && field.required && (typeof value !== 'string' || !value.trim())) throw new ValidationError(`${field.label} is required.`);
@@ -78,7 +83,6 @@ export async function validateAction(action: WorkflowAction, entity: WorkflowEnt
   if (action.type === 'move_deal_stage') {
     const stage = await repo.findStage(String(action.config.stageId), tenantId);
     if (!stage) throw new NotFoundError('Stage');
-    if (stage.isLost && !String(action.config.lostReason ?? '').trim()) throw new ValidationError('Enter a reason for closing the deal as lost.');
     if (action.config.currentStageId && (await repo.findStage(String(action.config.currentStageId), tenantId))?.pipelineId !== stage.pipelineId) throw new ValidationError('Current and target stages must belong to the same pipeline.');
     if (entity === 'deal' && (action.config.targetMode || action.config.productInterestId || action.config.currentStageId)) throw new ValidationError('Related Deal filters require a Lead or Contact trigger.');
     if (context) {

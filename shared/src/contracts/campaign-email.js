@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema = exports.SMS_CAMXIAN_FOOTER = exports.SMS_MAX_LENGTH = exports.CampaignScheduleConfigSchema = exports.CampaignScheduleSchema = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceMatchModeSchema = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
+exports.MarketingTemplateSchema = exports.CampaignSendSchema = exports.CreateCampaignDraftSchema = exports.CampaignDraftSchema = exports.SMS_DEFAULT_FOOTER = exports.SMS_MAX_LENGTH = exports.CampaignScheduleConfigSchema = exports.CampaignScheduleSchema = exports.CreateAudienceSchema = exports.AudiencePreviewRequestSchema = exports.AudiencePreviewSchema = exports.AudienceConditionSchema = exports.AUDIENCE_OPERATORS = exports.AUDIENCE_FIELDS = exports.AudienceMatchModeSchema = exports.AudienceSourceSchema = exports.EmailSubjectSchema = exports.MarketingNameSchema = exports.EMAIL_VARIABLE_TOKENS = exports.EMAIL_VARIABLES = void 0;
 exports.escapeEmailHtml = escapeEmailHtml;
 exports.renderEmailVariables = renderEmailVariables;
 exports.campaignVariableKeys = campaignVariableKeys;
+exports.hasDefaultSmsFooter = hasDefaultSmsFooter;
+exports.insertDefaultSmsFooter = insertDefaultSmsFooter;
 exports.buildFinalSms = buildFinalSms;
-exports.appendSmsFooter = appendSmsFooter;
 exports.smsMessageStats = smsMessageStats;
 const zod_1 = require("zod");
 const lead_created_contract_1 = require("./lead-created.contract");
@@ -55,18 +56,20 @@ function campaignVariableKeys(text) {
 // Application safety bound, not a TextBee limit. TextBee documents multipart
 // segmentation but no hard message-length maximum in its public API contract.
 exports.SMS_MAX_LENGTH = 50000;
-exports.SMS_CAMXIAN_FOOTER = 'For inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.';
+/** Editable starting content for a new SMS, never appended by the transport. */
+exports.SMS_DEFAULT_FOOTER = 'For inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.';
+function hasDefaultSmsFooter(body) {
+    return body.replace(/\r\n?/g, '\n').includes(exports.SMS_DEFAULT_FOOTER);
+}
+function insertDefaultSmsFooter(body) {
+    if (hasDefaultSmsFooter(body))
+        return body;
+    const content = body.trimEnd();
+    return content ? `${content}\n\n${exports.SMS_DEFAULT_FOOTER}` : exports.SMS_DEFAULT_FOOTER;
+}
 /** Shared by previews, campaign preflight and every server-side SMS caller. */
 function buildFinalSms({ body, variables }) {
-    let content = (variables ? renderEmailVariables(body, variables) : body).trim();
-    // Rebuilding a prepared message replaces its system footer instead of stacking it.
-    const generatedFooter = /(?:\s*\n\n)?(?:For inquiries regarding our products and services, contact Camxian Technologies:\r?\n[^\r\n]+\r?\n\r?\nThis is a no-reply message\.|For product inquiries, contact Camxian Technologies at [^\r\n]+\.\r?\nThis SMS is no-reply\.)$/;
-    while (generatedFooter.test(content))
-        content = content.replace(generatedFooter, '').trimEnd();
-    return `${content}\n\n${exports.SMS_CAMXIAN_FOOTER}`;
-}
-function appendSmsFooter(content) {
-    return buildFinalSms({ body: content });
+    return (variables ? renderEmailVariables(body, variables) : body).trim();
 }
 /** GSM extension characters occupy two septets; Unicode uses UTF-16 units. */
 function smsMessageStats(message) {

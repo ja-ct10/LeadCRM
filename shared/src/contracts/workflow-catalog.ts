@@ -96,6 +96,7 @@ export function getWorkflowConditionFields(entity: WorkflowEntity, trigger?: str
   if (trigger === 'lead.status_changed' || trigger === 'contact.status_changed') definitions.push(
     choice('event.previousStatus', 'Previous Status', CRM_STATUSES), choice('event.newStatus', 'New Status', CRM_STATUSES),
   );
+  if (trigger?.endsWith('.updated')) definitions.push({ field: 'event.changedFields', label: 'Changed fields', type: 'list', maxLength: 160 });
   return definitions;
 }
 export const WORKFLOW_TRIGGERS: WorkflowTriggerDefinition[] = [
@@ -178,7 +179,9 @@ export function getAvailableActions(): ActionDefinition[] {
       targetMode: { type: 'select', label: 'Related Deal selection', required: false, options: ['single_match', 'all_matching'] },
       productInterestId: { type: 'products', label: 'Product filter', required: false },
       currentStageId: { type: 'stage', label: 'Current stage filter', required: false },
-      stageId: { type: 'stage', label: 'Target stage', required: true }, lostReason: { type: 'string', label: 'Reason (required for lost stages)', required: false },
+      stageId: { type: 'stage', label: 'Target stage', required: true },
+      includeLossReason: { type: 'boolean', label: 'Include a loss reason', required: false },
+      lostReason: { type: 'string', label: 'Loss reason', required: false },
     } },
   ];
 }
