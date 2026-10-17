@@ -34,6 +34,8 @@ export const WORKFLOW_TEMPLATE_DESCRIPTORS: WorkflowTemplateDescriptor[] = [
   { id: 'lost-deal-follow-up', index: 31, trigger: 'deal.closed_lost', setup: 'none' },
   { id: 'new-lead-sms-acknowledgment', index: 32, trigger: 'lead.created', setup: 'none' },
   { id: 'contact-welcome-email-template', index: 33, trigger: 'contact.created', setup: 'none' },
+  { id: 'deal-stage-changed', index: 16, trigger: 'deal.stage_changed', setup: 'none' },
+  { id: 'automatic-deal-stage-update', index: 34, trigger: 'deal.updated', setup: 'pipeline-routing' },
 ];
 
 export function workflowTemplateDescriptor(identity: number | string | undefined): WorkflowTemplateDescriptor | undefined {

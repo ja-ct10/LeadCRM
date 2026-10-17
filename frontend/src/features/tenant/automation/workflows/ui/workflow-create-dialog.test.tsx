@@ -29,8 +29,8 @@ it.each(WORKFLOW_STARTER_TEMPLATES.map(({ recipe, index }) => [recipe.name, inde
 
 it('shows the supported starters and excludes hidden recipes from search', () => {
   setup();
-  expect(screen.getByRole('status').textContent).toBe('23 templates available');
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(23);
+  expect(screen.getByRole('status').textContent).toBe('16 templates available');
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
   const starters = new Set(WORKFLOW_STARTER_TEMPLATES.map(entry => entry.index));
   WORKFLOW_RECIPES.forEach((recipe, index) => {
     if (starters.has(index)) return;
@@ -48,11 +48,11 @@ it('searches multiple template words with extra whitespace', () => {
   expect(screen.getByRole('button', { name: 'Preview New Lead Email Welcome' })).toBeTruthy();
 });
 
-it('combines record, action, and text filters; restores focus and offers the supported SMS starter', () => {
+it('combines record, action, and text filters, restores focus and explains an empty SMS selection', () => {
   setup();
   fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'lead' } });
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_email' } });
-  expect(screen.getByRole('status').textContent).toBe('1 template of 23');
+  expect(screen.getByRole('status').textContent).toBe('1 template of 16');
   const name = 'Preview New Lead Email Welcome';
   fireEvent.click(screen.getByRole('button', { name }));
   expect(screen.getByText(/Connect the record’s assigned agent to Gmail/)).toBeTruthy();
@@ -60,21 +60,23 @@ it('combines record, action, and text filters; restores focus and offers the sup
   expect(document.activeElement).toBe(screen.getByRole('button', { name }));
   expect((screen.getByLabelText('Record type') as HTMLSelectElement).value).toBe('lead');
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'send_sms' } });
-  expect(screen.getByRole('button', { name: 'Preview New Lead SMS Acknowledgment' })).toBeTruthy();
+  expect(screen.getByText('No matching templates')).toBeTruthy();
+  expect(screen.getByText(/Start from scratch to add a Send SMS action/)).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'account' } });
+  fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'create_task' } });
   expect(screen.getByText('Try another search or clear your filters.')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(23);
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
   expect(document.activeElement).toBe(screen.getByRole('searchbox'));
 });
 
 it('finds actual movement templates and exposes related setup without creating a workflow', () => {
   const { onChoose } = setup();
   fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'move_deal_stage' } });
-  expect(screen.getByRole('status').textContent).toBe('3 templates of 23');
+  expect(screen.getByRole('status').textContent).toBe('4 templates of 16');
   expect(screen.queryByRole('button', { name: 'Preview Qualified Deal Follow-up' })).toBeNull();
   fireEvent.change(screen.getByLabelText('Record type'), { target: { value: 'contact' } });
-  expect(screen.getByRole('status').textContent).toBe('1 template of 23');
+  expect(screen.getByRole('status').textContent).toBe('1 template of 16');
   fireEvent.click(screen.getByRole('button', { name: 'Preview Hot Contact → Move Related Deal' }));
   expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('different open source and target stages');
   expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('No matches produce no movement or task');
@@ -133,43 +135,38 @@ it('locks repeated handoffs, displays a failure once, and allows retry', async (
   await waitFor(() => expect(onChoose).toHaveBeenCalledTimes(2));
 });
 
-it('loads every configured stage, previews named bindings and opens a stable stage identity as a draft', async () => {
+it('offers one configurable stage template after loading pipeline options', async () => {
   const choices = { users: [], templates: [], campaigns: [], pipelines: [{ id: 'p1', name: 'Sales', stages: [
     { id: 'lead', name: 'Lead', isDefault: true }, { id: 'contacted', name: 'Contacted' },
     { id: 'qualified', name: 'Qualified', requiredFields: ['accountId'] }, { id: 'won', name: 'Approved', isWon: true }, { id: 'lost', name: 'Declined', isLost: true },
   ] }] };
   const { onChoose } = setup({ loadOptions: async () => choices });
-  expect(screen.getByText('Loading pipeline templates…')).toBeTruthy();
-  const preview = await screen.findByRole('button', { name: 'Preview Sales / Contacted: Stage entry follow-up' });
-  expect(preview.getAttribute('data-template-id')).toBe('stage:entry:p1:contacted');
-  for (const stage of choices.pipelines[0].stages) expect(document.querySelector(`[data-template-id="stage:${stage.isWon ? 'won' : stage.isLost ? 'lost' : 'entry'}:p1:${stage.id}"]`)).toBeTruthy();
-  expect(screen.getByRole('region', { name: 'Unsupported workflow scenarios' }).textContent).toContain('overdue Task timers are unavailable');
+  const preview = await screen.findByRole('button', { name: 'Preview Deal Entered a Specific Stage' });
+  await waitFor(() => expect(screen.queryByText('Loading pipeline templates…')).toBeNull());
+  expect(document.querySelector('[data-template-id^="stage:"]')).toBeNull();
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
   fireEvent.click(preview);
-  expect(screen.getByRole('list', { name: 'Template steps' }).textContent).toContain('Sales / Contacted');
   expect(screen.getByRole('region', { name: 'Template behavior' }).textContent).toContain('Superseded queued entries are skipped');
-  expect(screen.getByRole('region', { name: 'Template behavior' }).textContent).toContain('elapsed 24-hour days');
-  expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('no fallback');
+  expect(screen.getByRole('region', { name: 'Template setup requirements' }).textContent).toContain('Choose the pipeline and entry stage');
   fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
-  await waitFor(() => expect(onChoose).toHaveBeenCalledExactlyOnceWith('stage:entry:p1:contacted'));
+  await waitFor(() => expect(onChoose).toHaveBeenCalledExactlyOnceWith(25));
 });
 
-it('recovers a failed options read without inventing configured stages', async () => {
+it('recovers a failed options read without adding per-stage template cards', async () => {
   const loadOptions = vi.fn().mockRejectedValueOnce(new Error('Pipeline choices unavailable')).mockResolvedValue({ users: [], pipelines: [{ id: 'p1', name: 'Current', stages: [{ id: 'custom', name: 'Custom review' }] }], templates: [], campaigns: [] });
   setup({ loadOptions });
   expect((await screen.findByRole('alert')).textContent).toContain('Pipeline choices unavailable');
-  expect(document.querySelector('[data-template-id^="stage:"]')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Retry pipeline templates' }));
-  await screen.findByRole('button', { name: 'Preview Current / Custom review: Stage entry follow-up' });
-  expect(screen.queryByText('Pipeline choices unavailable')).toBeNull();
+  await waitFor(() => expect(screen.queryByText('Pipeline choices unavailable')).toBeNull());
+  expect(screen.getAllByRole('button', { name: /^Preview / })).toHaveLength(16);
 });
 
-it('blocks a selected configured template removed by a later option refresh', async () => {
+it('retains the selected starter when pipeline options change; the builder validates the new choices', async () => {
   const initialOptions = { users: [], pipelines: [{ id: 'p1', name: 'Current', stages: [{ id: 'custom', name: 'Custom review' }] }], templates: [], campaigns: [] };
   const onChoose = vi.fn();
   const view = render(<WorkflowCreateDialog triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} options={initialOptions} onClose={vi.fn()} onChoose={onChoose} />);
-  fireEvent.click(screen.getByRole('button', { name: 'Preview Current / Custom review: Stage entry follow-up' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Preview Deal Entered a Specific Stage' }));
   view.rerender(<WorkflowCreateDialog triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} options={{ ...initialOptions, pipelines: [] }} onClose={vi.fn()} onChoose={onChoose} />);
-  await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('no longer available'));
-  expect(screen.queryByRole('button', { name: 'Use this template' })).toBeNull();
-  expect(onChoose).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: 'Use this template' }));
+  await waitFor(() => expect(onChoose).toHaveBeenCalledExactlyOnceWith(25));
 });

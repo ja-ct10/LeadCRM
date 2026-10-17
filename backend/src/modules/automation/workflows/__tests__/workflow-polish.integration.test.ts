@@ -16,6 +16,8 @@ import { getTasks } from '../../../operations/tasks/tasks.service';
 import { saveField } from '../../../crm/closing-requirements/closing-requirements.service';
 import { readRecordValues } from '../../../crm/closing-requirements/custom-field-values.repository';
 import { entityContext } from '../workflows.repository';
+import { WORKFLOW_RECIPES, prepareWorkflowRecipe } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-recipes';
+import { bindWorkflowTemplate } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-template-bindings';
 import { getWorkflowConditionFields, getWorkflowUpdateFields } from '@leadcrm/shared';
 vi.mock('../../../../shared/services/sms.service', async original => ({ ...await original<typeof import('../../../../shared/services/sms.service')>(), isSmsConfigured: () => true, sendSms: vi.fn(async () => ({ submitted: true, messageId: 'sms-test' })) }));
 vi.mock('../../../../shared/services/email.service', async original => ({ ...await original<typeof import('../../../../shared/services/email.service')>(), sendMail: vi.fn(async () => ({ submitted: true, messageId: 'mail-test' })) }));
@@ -179,6 +181,28 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     const draft = await create({ trigger: 'deal.created', isActive: false, actions: [{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: true, lostReason: '' } }] });
     await expect(scope(() => workflows.toggleWorkflow(draft.id, tenantId, actor.id, true))).rejects.toThrow('Enter a loss reason');
     expect((await scope(() => workflows.updateWorkflow(draft.id, tenantId, actor.id, { actions: [{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: false } }], isActive: true }))).isActive).toBe(true);
+  });
+  it('activates automatic stage routing, responds to real priority changes and cannot loop or transfer pipelines', async () => {
+    const options = { users: [], templates: [], campaigns: [], pipelines: [{ ...pipeline, stages: [initial, qualified, won, lost] }] };
+    const draft = bindWorkflowTemplate(prepareWorkflowRecipe(WORKFLOW_RECIPES[34], options, 34), 34, options,
+      { pipelineId: pipeline.id, sourceStageId: initial.id, targetStageId: qualified.id });
+    const workflow = await create({ ...draft, isActive: false });
+    await scope(() => workflows.toggleWorkflow(workflow.id, tenantId, actor.id, true));
+    const deal = await newDeal({ priority: 'LOW' });
+    const initialHistoryCount = await prisma.dealStageHistory.count({ where: { dealId: deal.id } });
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { title: 'Ordinary edit' }));
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stageId).toBe(initial.id);
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { priority: 'HIGH' }));
+    expect(await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ pipelineId: pipeline.id, stageId: qualified.id });
+    expect((await runs(workflow.id)).filter(run => run.status === 'completed')).toHaveLength(1);
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { priority: 'HIGH' }));
+    expect(await prisma.dealStageHistory.count({ where: { dealId: deal.id } })).toBe(initialHistoryCount + 1);
+    expect((await runs(workflow.id)).filter(run => run.status === 'completed')).toHaveLength(1);
+    const otherPipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Other routing pipeline' } });
+    const otherStage = await prisma.stage.create({ data: { tenantId, pipelineId: otherPipeline.id, name: 'Lead', order: 0 } });
+    const foreignPipelineDeal = await newDeal({ pipelineId: otherPipeline.id, stageId: otherStage.id, priority: 'LOW' });
+    await scope(() => updateDeal(foreignPipelineDeal.id, tenantId, actor.id, { priority: 'HIGH' }));
+    expect(await prisma.deal.findUniqueOrThrow({ where: { id: foreignPipelineDeal.id } })).toMatchObject({ pipelineId: otherPipeline.id, stageId: otherStage.id });
   });
   it('creates a linked follow-up only when the Deal assignee changes, using the new owner', async () => {
     const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Assignment follow-up staff', permissions: { create: [

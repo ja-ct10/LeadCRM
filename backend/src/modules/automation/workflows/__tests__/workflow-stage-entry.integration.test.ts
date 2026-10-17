@@ -12,7 +12,7 @@ import { flushWorkflowQueue } from './workflow-queue-test-helper';
 import * as workflows from '../workflows.service';
 import * as taskPreparation from '../../actions/action-task-input';
 import * as assignments from '../../assignment/workflow-assignment.service';
-import { workflowTemplateCatalog } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-stage-templates';
+import { resolveWorkflowTemplate } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-stage-templates';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
@@ -54,7 +54,7 @@ describe.skipIf(!disposable)('persisted Workflow stage entry identity and Task p
     const stageId = scenario === 'created' ? initialId : scenario === 'contacted' || scenario === 'assign' ? contactedId : scenario === 'custom' ? customId : scenario === 'won' ? wonId : scenario === 'lost' ? lostId : qualifiedId;
     const kind = ['created', 'won', 'lost', 'assign', 'reopen'].includes(scenario) ? scenario : 'entry';
     const identity = `stage:${kind}:${pipelineId}:${stageId}${scenario === 'reopen' ? ':' + lostId : ''}`;
-    const entry = workflowTemplateCatalog(options).find(template => template.id === identity)!;
+    const entry = resolveWorkflowTemplate(identity, options)!;
     expect(entry).toBeDefined(); expect(entry.recipe.isActive).toBe(false);
     const draft = structuredClone(entry.recipe);
     draft.name = `${scenario} ${randomUUID()}`;

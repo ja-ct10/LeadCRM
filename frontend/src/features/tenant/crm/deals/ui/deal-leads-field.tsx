@@ -54,7 +54,7 @@ export function DealLeadsField({
       />
       {!error && (
         <p className="text-xs text-slate-400 dark:text-slate-500">
-          Associate one or more leads with this deal (optional)
+          Associate one or more leads with this deal
         </p>
       )}
     </div>

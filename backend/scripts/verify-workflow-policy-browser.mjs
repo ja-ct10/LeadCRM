@@ -72,8 +72,8 @@ try {
     const local = `http://127.0.0.1:${api.address().port}/api/v1${url.pathname.replace('/api/proxy', '')}${url.search}`;
     const headers = { ...request.headers(), authorization: `Bearer ${token}` }; delete headers.host;
     if (url.pathname.endsWith('/events') || url.pathname.endsWith('/record-events')) return route.continue({ url: local, headers });
-    try { await route.fulfill({ response: await context.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined }) }); }
-    catch { if (!closing) await route.abort().catch(() => {}); }
+    try { await route.fulfill({ response: await context.request.fetch(local, { method: request.method(), headers, data: request.postDataBuffer() ?? undefined, maxRetries: request.method() === 'GET' ? 2 : 0 }) }); }
+    catch (error) { if (!closing) { console.error(`Fixture proxy failed: ${request.method()} ${url.pathname}: ${String(error).split('\n')[0]}`); await route.abort().catch(() => {}); } }
   });
   for (const theme of ['Light', 'Dark']) for (const width of [320, 375, 768, 1440]) {
     const page = currentPage = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(60000);
@@ -152,9 +152,10 @@ try {
     await page.getByRole('button', { name: 'Create Workflow', exact: true }).click();
     const chooser = page.getByRole('dialog', { name: 'Create workflow', exact: true });
     await chooser.locator('[data-template-id="new-deal-created"]').waitFor();
-    assert.equal(await chooser.locator('[data-template-id]:not([data-template-id^="stage:"])').count(), 23);
+    assert.equal(await chooser.locator('[data-template-id]').count(), 16);
+    assert.equal(await chooser.locator('[data-template-id^="stage:"]').count(), 0);
     await chooser.getByLabel('Search templates', { exact: true }).fill('Deal Assignment');
-    await chooser.getByRole('button', { name: 'Preview Deal Assignment Follow-up', exact: true }).click();
+    await chooser.getByRole('button', { name: 'Preview Deal Assigned', exact: true }).click();
     await chooser.getByRole('region', { name: 'Template setup requirements' }).waitFor();
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth + 1), false);
     const use = await chooser.getByRole('button', { name: 'Use this template', exact: true }).boundingBox();

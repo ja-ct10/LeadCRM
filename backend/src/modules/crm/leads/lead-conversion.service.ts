@@ -92,9 +92,10 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     const matches = (await tx.account.findMany({ where: { tenantId, name: { contains: name.split(' ')[0], mode: 'insensitive' } } }))
       .filter(row => companyIdentity(row.name) === companyIdentity(name));
     if (matches.length > 1 || matches[0]?.isArchived || matches[0]?.deletedAt) throw conflict();
-    accountId = matches[0]?.id ?? (events.newAccount
-      ? await createLinkedAccount(tx, tenantId, events.newAccount, actorId)
-      : await createCompany(tenantId, actorId, { name, tags: [] })).id;
+    // Shared Account creation must join even callers using a raw Prisma transaction.
+    accountId = matches[0]?.id ?? (await salesContext.run(tx, () => events.newAccount
+      ? createLinkedAccount(tx, tenantId, events.newAccount, actorId)
+      : createCompany(tenantId, actorId, { name, tags: [] }))).id;
   }
   if (accountId && !await tx.account.findFirst({ where: { tenantId, id: accountId, isArchived: false, deletedAt: null } })) throw conflict();
   if (accountId && deals.some(deal => deal.accountId && deal.accountId !== accountId)) throw conflict();

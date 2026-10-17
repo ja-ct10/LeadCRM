@@ -96,6 +96,7 @@ data/outputs/retired-features-*.json
 # Reproducible Workflow responsive and persistence evidence.
 /data/outputs/workflow-browser/
 /data/outputs/workflow-policy-tests/
+/data/outputs/deal-stage-templates/
 
 # Reproducible local Leads acceptance screenshots and logs.
 /data/outputs/lead-polish-browser/

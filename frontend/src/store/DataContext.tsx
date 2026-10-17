@@ -16,6 +16,7 @@ import React, {
   ReactNode,
 } from "react";
 import { useAuth } from "./AuthContext";
+import { dealStagePipeline } from '@/shared/utils/deal-stage-pipeline';
 import {
   Organization,
   Contact,
@@ -1102,7 +1103,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
       }
     } else {
       const original = deals.find((d) => d.id === id);
-      if (!original || original.isArchived || !targetStage || !pipelines.find(p => p.id === original.pipelineId)?.stages.some(s => s.id === stageId)) throw new Error('Deal or stage is unavailable.');
+      const pipeline = original && dealStagePipeline(original, pipelines);
+      if (!original || original.isArchived || !pipeline || !targetStage || !pipeline.stages.some(s => s.id === stageId)) throw new Error('Deal or stage is unavailable.');
       const sourceStage = pipelines.flatMap(p => p.stages).find(s => s.id === original.stageId);
       if (original.stageId === stageId) return original;
       if (sourceStage?.isWon || sourceStage?.isLost && targetStage.name.trim().toLowerCase() !== 'qualified') throw new Error('This outcome cannot be changed.');
@@ -1113,6 +1115,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
         if (d.id === id) {
           const updated = {
             ...d,
+            pipelineId: pipeline.id,
             stageId,
             lostReason: targetStage?.isLost ? lostReason : undefined,
             lastStageChangeDate: new Date().toISOString(),

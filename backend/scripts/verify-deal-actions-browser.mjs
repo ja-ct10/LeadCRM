@@ -224,7 +224,8 @@ try {
   const currentOnly=page.getByRole('dialog',{name:'Change Deal stage'});
   const currentLocation=currentOnly.getByRole('region',{name:'Current deal location'});
   await currentLocation.getByText(pipeline.name,{exact:true}).waitFor();await currentLocation.getByText(initial.name,{exact:true}).waitFor();
-  assert.equal(await currentOnly.getByLabel('Choose the target pipeline',{exact:true}).inputValue(),pipeline.id);
+  assert.equal(await currentOnly.getByLabel('Choose the target pipeline',{exact:true}).count(),0);
+  assert.equal(await currentOnly.getByRole('combobox').count(),1);
   assert.equal(await currentOnly.getByLabel('Choose the target stage',{exact:true}).isEnabled(),true);
   assert.equal(await currentOnly.getByRole('option',{name:initial.name+' (current)',exact:true}).evaluate(option=>option.disabled),true);
   assert.equal(await currentOnly.getByRole('button',{name:'Move deal',exact:true}).isDisabled(),true);
@@ -245,7 +246,7 @@ try {
   await observer.getByRole('dialog').getByLabel('Title',{exact:false}).fill('Keep this unfinished edit');
   await action('Action Deal','Change stage');
   const stageChange=page.getByRole('dialog',{name:'Change Deal stage'});
-  assert.equal(await stageChange.getByLabel('Choose the target pipeline',{exact:true}).inputValue(),pipeline.id);
+  assert.equal(await stageChange.getByLabel('Choose the target pipeline',{exact:true}).count(),0);
   await stageChange.getByLabel('Choose the target stage',{exact:true}).selectOption(qualified.id);
   await stageChange.getByRole('button',{name:'Move deal',exact:true}).click();await stageChange.waitFor({state:'hidden'});
   await until(async()=>(await stored('Action Deal')).stageId===qualified.id,'Single-pipeline stage selection did not persist');
@@ -320,19 +321,12 @@ try {
   await page.getByRole('dialog',{name:'Choose an email recipient'}).getByRole('button',{name:/Acceptance Contact/}).click();
   await page.waitForURL(/\/inbox/);record('Context email requires explicit linked recipient and opens Inbox');
   await page.goto(base+'/crm/deals');
-  await action('Action Deal Updated','Change stage');
-  const transfer=page.getByRole('dialog',{name:'Change Deal stage'});
-  await transfer.getByRole('region',{name:'Current deal location'}).getByText(pipeline.name,{exact:true}).waitFor();
-  await transfer.getByLabel('Choose the target pipeline',{exact:true}).selectOption(destination.id);
-  assert.equal(await transfer.getByLabel('Choose the target stage',{exact:true}).inputValue(),'');
-  await transfer.getByLabel('Choose the target stage',{exact:true}).selectOption(required.id);
-  await transfer.getByRole('button',{name:'Move deal',exact:true}).click();
-  await transfer.getByRole('alert').filter({hasText:/industry/}).waitFor();
-  assert.equal(await transfer.getByLabel('Choose the target stage',{exact:true}).inputValue(),required.id);
-  assert.equal((await stored('Action Deal')).pipelineId,pipeline.id);
-  await transfer.getByLabel('Choose the target stage',{exact:true}).selectOption(target.id);
-  await transfer.getByRole('button',{name:'Move deal',exact:true}).click();
-  await page.getByRole('button',{name:'Actions for Action Deal Updated',exact:true}).waitFor({state:'hidden'});
+  // The separate pipeline API remains compatible; Change stage never offers transfers.
+  const transferResponse = await fetch(apiBase + '/crm/deals/' + fixtures['Action Deal'].id + '/pipeline', {
+    method: 'PATCH', headers: { authorization: 'Bearer ' + token, 'content-type': 'application/json' },
+    body: JSON.stringify({ pipelineId: destination.id, stageId: target.id }),
+  });
+  assert.equal(transferResponse.status, 200, await transferResponse.text());
   const moved=await stored('Action Deal');assert.equal(moved.pipelineId,destination.id);assert.equal(moved.stageId,target.id);assert.equal(Number(moved.value),25000);assert.equal(moved.assignedUserId,agents[60].id);
   assert.equal(await prisma.leadDeal.count({where:{dealId:moved.id}}),1);assert.equal(await prisma.contactDeal.count({where:{dealId:moved.id}}),1);assert.equal(await prisma.taskDeal.count({where:{dealId:moved.id}}),1);
   await page.goto(base+'/crm/deals?highlight='+moved.id+'&pipelineId='+destination.id);
@@ -340,14 +334,21 @@ try {
   await action('Action Deal Updated','Change stage');
   const movedLocation=page.getByRole('dialog',{name:'Change Deal stage'});
   await movedLocation.getByRole('region',{name:'Current deal location'}).getByText(destination.name,{exact:true}).waitFor();
-  assert.equal(await movedLocation.getByLabel('Choose the target pipeline',{exact:true}).inputValue(),destination.id);
-  assert.equal(await movedLocation.getByRole('option',{name:destination.name+' (current)',exact:true}).evaluate(option=>option.disabled),false);
-  assert.equal(await movedLocation.getByRole('option',{name:pipeline.name,exact:true}).isEnabled(),true);
+  assert.equal(await movedLocation.getByLabel('Choose the target pipeline',{exact:true}).count(),0);
+  assert.equal(await movedLocation.getByRole('option',{name:'Qualified',exact:true}).count(),0);
+  await movedLocation.getByLabel('Choose the target stage',{exact:true}).selectOption(required.id);
+  await movedLocation.getByRole('button',{name:'Move deal',exact:true}).click();
+  await movedLocation.getByRole('alert').filter({hasText:/industry/}).waitFor();
+  assert.equal(await movedLocation.getByLabel('Choose the target stage',{exact:true}).inputValue(),required.id);
+  assert.equal((await stored('Action Deal')).pipelineId,destination.id);
   await movedLocation.getByRole('button',{name:'Cancel',exact:true}).click();
-  record('Transfer dialog reads the moved Deal current pipeline by ID and offers Sales Pipeline as a valid different destination');
+  record('Change stage reads the assigned Renewals pipeline, excludes Sales stages and preserves stage requirements without transferring pipelines');
   await page.getByRole('button',{name:'New Deal',exact:true}).click();
   await page.getByRole('heading',{name:'New Deal',exact:true}).waitFor();await page.getByRole('dialog').getByText('Renewals',{exact:true}).waitFor();
   const createEditor=page.getByRole('dialog');
+  assert.equal(await createEditor.getByText('Contacts',{exact:true}).count(),1);
+  assert.equal(await createEditor.getByText('Leads',{exact:true}).count(),1);
+  assert.equal(await createEditor.getByText(/Associate one or more.*optional/i).count(),0);
   await createEditor.getByLabel('Title',{exact:false}).fill('New Renewal Deal');
   await createEditor.getByRole('button',{name:'Product Interest',exact:true}).click();
   await page.getByRole('checkbox',{name:'Acceptance product',exact:true}).check();
@@ -495,7 +496,7 @@ try {
   const mobileTransfer=mobile.getByRole('dialog',{name:'Change Deal stage'});
   await until(async()=>{const b=await mobileTransfer.boundingBox();return b&&b.x>=0&&b.y>=0&&b.x+b.width<=320&&b.y+b.height<=500;},'Transfer dialog must fit a short mobile viewport');
   await mobileTransfer.getByRole('region',{name:'Current deal location'}).getByText(pipeline.name,{exact:true}).waitFor();
-  assert.equal(await mobileTransfer.getByLabel('Choose the target pipeline',{exact:true}).inputValue(),pipeline.id);
+  assert.equal(await mobileTransfer.getByLabel('Choose the target pipeline',{exact:true}).count(),0);
   await mobileTransfer.getByLabel('Choose the target stage',{exact:true}).selectOption(allStages.find(stage=>stage.name==='Contacted').id);
   await mobile.screenshot({path:resolve(output,'current-stage-selection-320.png')});
   await mobileTransfer.getByRole('button',{name:'Move deal',exact:true}).tap();await mobileTransfer.waitFor({state:'hidden'});
@@ -503,13 +504,14 @@ try {
   assert.equal((await stored('Mobile Drag')).pipelineId,pipeline.id);
   await touchStageAction();
   await mobileTransfer.getByRole('region',{name:'Current deal location'}).getByText('Contacted',{exact:true}).waitFor();
-  await mobileTransfer.getByLabel('Choose the target pipeline',{exact:true}).selectOption(destination.id);
-  await mobileTransfer.getByLabel('Choose the target stage',{exact:true}).selectOption(target.id);
+  assert.equal(await mobileTransfer.getByLabel('Choose the target pipeline',{exact:true}).count(),0);
+  assert.equal(await mobileTransfer.getByRole('option',{name:'Review',exact:true}).count(),0);
+  await mobileTransfer.getByLabel('Choose the target stage',{exact:true}).selectOption(qualified.id);
   assert.equal(await mobileTransfer.getByRole('button',{name:'Move deal',exact:true}).isEnabled(),true);
   await mobile.screenshot({path:resolve(output,'current-pipeline-transfer-320.png')});
   await mobileTransfer.getByRole('button',{name:'Cancel',exact:true}).tap();await mobileTransfer.waitFor({state:'hidden'});
   assert.equal((await stored('Mobile Drag')).pipelineId,pipeline.id);assert.equal((await stored('Mobile Drag')).stageId,allStages.find(stage=>stage.name==='Contacted').id);
-  record('320x500 touch viewport saves a stage in Sales and permits/cancels a different-pipeline selection');
+  record('320x500 touch viewport saves a stage in Sales and cancels another same-pipeline selection');
   closing=true;await browser.close();browser=undefined;page=undefined;
   const mailbox=await prisma.emailAccount.create({data:{tenantId:tenant.id,userId:admin.id,email:admin.email,accessToken:'local-fixture-only',scopes:[]}});
   const messageData={tenantId:tenant.id,accountId:mailbox.id,direction:'outbound',from:admin.email,fromAddress:admin.email,recipients:[contact.email],recipientAddresses:[contact.email],authorizationParticipants:[admin.email,contact.email],participantPolicyVersion:1,subject:'Fixture conversation',body:'Local verification',snippet:'Local verification',labels:['SENT'],sentAt:new Date(),contactId:contact.id};

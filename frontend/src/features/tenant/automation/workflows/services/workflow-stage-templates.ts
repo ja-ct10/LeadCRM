@@ -16,7 +16,7 @@ export interface WorkflowTemplateEntry {
 export const WORKFLOW_UNSUPPORTED_SCENARIOS = [
   'Waiting, inactivity and overdue Task timers are unavailable. Due dates schedule Task work; they do not start another workflow.',
   'Won Deals cannot reopen. Create a new Deal for a new opportunity.',
-  'Stage-entry assignment templates require an actual stage entry. Deal Assignment Follow-up instead matches changes to the assigned agent.',
+  'Deal Assigned matches changes to the assigned agent. Stage-entry templates require an actual stage entry.',
   'Tasks and Campaigns do not expose workflow triggers. Task assignment and due reminders use the existing notification system; Send Campaign and manual notification actions are retired.',
 ] as const;
 
@@ -44,6 +44,7 @@ function commonPrerequisites(recipe: WorkflowDraft): string[] {
     else notes.push('The Task links to the triggering persisted Deal. Archived Deals are ineligible.');
   }
   if (recipe.actions.some(action => action.type === 'assign_owner')) notes.push('Choose an eligible agent, Role or Group. Pools use round-robin and fail if no eligible member is available; there is no fallback outside the pool.');
+  if (recipe.trigger === 'deal.stage_changed' && recipe.actions.some(action => action.type === 'create_task')) notes.push('Use the general stage-change template or the specific-stage template for the same task. Independent matching workflows each execute their own actions.');
   return notes;
 }
 
@@ -96,12 +97,17 @@ function stageEntry(pipeline: Pipeline, stage: Stage, scenario: WorkflowStageSce
     expectedResult: expectedResult(bound), repeatPolicy: scenario === 'created' ? 'One first follow-up per created Deal event. Stage entry and later ordinary edits do not repeat this creation workflow.' : currentEntryRepeat };
 }
 
-/** Only authenticated option IDs define configured coverage; seeds and display names never supply IDs. */
-export function workflowTemplateCatalog(options: WorkflowOptions): WorkflowTemplateEntry[] {
+/** One editable template per scenario, independent of the number of configured stages. */
+export function workflowTemplateCatalog(_options: WorkflowOptions): WorkflowTemplateEntry[] {
   const starters: WorkflowTemplateEntry[] = WORKFLOW_STARTER_TEMPLATES.map(({ id, index, recipe }) => ({ id, identity: index, recipe: structuredClone(recipe),
     prerequisites: commonPrerequisites(recipe), expectedResult: expectedResult(recipe),
     repeatPolicy: recipe.trigger.endsWith('.created') ? 'Once per created record event; retries reuse that event.' : recipe.trigger.startsWith('deal.') && !recipe.trigger.endsWith('.updated') ? currentEntryRepeat : 'Each distinct matching record-change event may run. Duplicate delivery of the same event does not run again.' }));
-  const configured = options.pipelines.flatMap(pipeline => {
+  return starters;
+}
+
+/** Retain previously shared stage-template URLs without adding them to the chooser. */
+function legacyStageTemplates(options: WorkflowOptions): WorkflowTemplateEntry[] {
+  return options.pipelines.flatMap(pipeline => {
     const stages = [...pipeline.stages].sort((left, right) => (left.order ?? 0) - (right.order ?? 0) || left.id.localeCompare(right.id));
     const initial = stages.filter(stage => !stage.isWon && !stage.isLost && stage.name.trim().toLowerCase() === 'lead');
     const lost = stages.filter(stage => stage.isLost && !stage.isWon);
@@ -115,14 +121,15 @@ export function workflowTemplateCatalog(options: WorkflowOptions): WorkflowTempl
       return entries;
     });
   });
-  return [...configured, ...starters];
 }
 
 /** Old numeric URLs and stable starter IDs remain readable; dynamic identities must still exist. */
 export function resolveWorkflowTemplate(identity: number | string, options: WorkflowOptions): { recipe: WorkflowDraft; identity: number | string } | undefined {
   const index = typeof identity === 'number' ? identity : /^(0|[1-9]\d*)$/.test(identity) ? Number(identity) : undefined;
   if (index !== undefined) return WORKFLOW_RECIPES[index] ? { recipe: prepareWorkflowRecipe(WORKFLOW_RECIPES[index], options, index), identity: index } : undefined;
-  const entry = workflowTemplateCatalog(options).find(template => template.id === identity);
+  const descriptor = workflowTemplateDescriptor(identity);
+  if (descriptor && !String(identity).startsWith('stage:')) return { recipe: prepareWorkflowRecipe(WORKFLOW_RECIPES[descriptor.index], options, identity), identity };
+  const entry = legacyStageTemplates(options).find(template => template.id === identity);
   if (!entry) return undefined;
   return { recipe: entry.id.startsWith('stage:') ? structuredClone(entry.recipe) : prepareWorkflowRecipe(entry.recipe, options, entry.id), identity: entry.id };
 }

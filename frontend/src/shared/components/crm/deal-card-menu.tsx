@@ -26,6 +26,7 @@ import { TaskEditor } from '@/features/tenant/operations/tasks/ui/task-editor';
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 import { CrmRecordPanel } from './crm-record-view';
 import { DealStageDialog } from './deal-stage-dialog';
+import { dealStagePipeline } from '@/shared/utils/deal-stage-pipeline';
 import { DealLostDialog } from './deal-lost-dialog';
 
 interface DealCardMenuProps {
@@ -83,7 +84,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
   const deal = USE_MOCK_DATA ? data.deals.find(d => d.id === dealId) ?? cardDeal : query.data ? toFrontendDeal(query.data) as Deal : cardDeal;
   const canEdit = hasEditPermission && recordAccess.canMutate(deal);
   const canArchive = hasArchivePermission && recordAccess.canMutate(deal);
-  const pipeline = data.pipelines.find(p => p.id === deal?.pipelineId);
+  const pipeline = deal && dealStagePipeline(deal, data.pipelines);
   const stage = pipeline?.stages.find(s => s.id === deal?.stageId);
   const won = pipeline?.stages.filter(s => s.isWon) ?? [], lost = pipeline?.stages.filter(s => s.isLost) ?? [];
   const closed = !!stage?.isWon || !!stage?.isLost;
@@ -161,7 +162,7 @@ function DealCardMenuController({ dealId, dealTitle, deal: cardDeal, onArchive, 
       {action === 'edit' && deal && <DealFormSheet isOpen mode="edit" initialData={editSnapshot ?? deal} onClose={closeAction} onSubmit={async values => { const next = await data.updateDeal(dealId, values as Partial<Deal>); changed(next); closeAction(); toast.success('Deal updated'); }} />}
       {action === 'task' && <TaskEditor links={{ dealIds: [dealId] }} preserveContextLinks onClose={closeAction} />}
       {(action === 'note' || action === 'won') && <CrmRecordPanel module="deals" id={dealId} open onOpenChange={value => { if (!value) { closeAction(); changed(); } }} focusNote={action === 'note'} focusClosing={action === 'won'} />}
-      {action === 'stage' && deal && <DealStageDialog deal={deal} pipelines={data.pipelines} onClose={closeAction} onMove={async input => { const samePipeline = input.pipelineId === deal.pipelineId; const next = samePipeline ? await data.moveDealStage(dealId, input.stageId) : await data.moveDealPipeline(dealId, input); changed(next); toast.success(samePipeline ? 'Deal stage updated' : 'Deal moved to new pipeline'); }} />}
+      {action === 'stage' && deal && <DealStageDialog deal={deal} pipelines={data.pipelines} onClose={closeAction} onMove={async stageId => { const next = await data.moveDealStage(dealId, stageId); changed(next); toast.success('Deal stage updated'); }} />}
       {action === 'lost' && lost.length === 1 && <DealLostDialog onClose={closeAction} onSave={async reason => { const next = await data.moveDealStage(dealId, lost[0].id, undefined, reason); changed(next); toast.success('Deal closed as lost'); }} />}
       {action === 'recipient' && <Dialog open onOpenChange={value => { if (!value) closeAction(); }}><DialogContent aria-label="Choose an email recipient" className="max-w-sm"><DialogHeader><DialogTitle>Choose an email recipient</DialogTitle></DialogHeader><div className="space-y-2">{recipients.map(person => <Button key={person.email} variant="outline" className="h-auto min-h-11 w-full justify-start whitespace-normal text-left" onClick={() => send(person)}>{person.name} · {person.email}</Button>)}</div><Button variant="ghost" onClick={closeAction}>Cancel</Button></DialogContent></Dialog>}
     </>}
