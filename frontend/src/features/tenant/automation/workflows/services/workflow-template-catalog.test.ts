@@ -11,24 +11,12 @@ const options = { senders: [{ id: userId, name: "Sender" }], users: [{ id: userI
 describe('complete workflow recipe catalog', () => {
   it('retains the approved starters in display order with stable template URL indexes', () => {
     expect(WORKFLOW_STARTER_TEMPLATES.map(({ index, recipe }) => [index, recipe.name])).toEqual([
-      [0, 'New Lead Follow-up'],
-      [1, 'Hot Lead Urgent Response'],
-      [7, 'New Lead Email Welcome'],
-      [8, 'Contact Onboarding Handoff'],
-      [10, 'At-Risk Contact Follow-up'],
-      [22, 'Qualified Deal Follow-up'],
-      [13, 'High-value Deal Review'],
-      [18, 'Won Deal Handoff'],
-      [20, 'Lost Deal Win/Loss Analysis'],
-      [2, 'Website Inbound Lead Triage'],
-      [3, 'Warm Lead Discovery Preparation'],
-      [17, 'Pipeline Stage Routing'],
-      [23, 'Hot Lead → Move Related Deal'],
-      [24, 'Hot Contact → Move Related Deal'],
-      [25, 'Selected Stage Entry Follow-up'],
-      [26, 'Account Field Maintenance'],
-      [27, 'New Deal Created'], [28, 'Deal Assignment Follow-up'], [29, 'Deal Follow-up Email'],
-      [30, 'Won Deal Thank-you Email'], [31, 'Lost Deal Follow-up'], [32, 'New Lead SMS Acknowledgment'], [33, 'Contact Welcome Email Template'],
+      [27, 'New Deal Created'], [16, 'Deal Stage Changed'], [25, 'Deal Entered a Specific Stage'],
+      [34, 'Automatic Deal Stage Update'], [17, 'Move New Deal Stage'], [18, 'Deal Marked as Won'],
+      [31, 'Deal Marked as Lost'], [28, 'Deal Assigned'],
+      [0, 'New Lead Follow-up'], [1, 'Hot Lead Urgent Response'], [7, 'New Lead Email Welcome'],
+      [23, 'Hot Lead → Move Related Deal'], [8, 'Contact Onboarding Handoff'],
+      [33, 'Contact Welcome Email Template'], [24, 'Hot Contact → Move Related Deal'], [26, 'Account Field Maintenance'],
     ]);
   });
   it.each(WORKFLOW_RECIPES)('$name matches supported metadata and validates after configuring references', recipe => {
@@ -74,6 +62,7 @@ describe('complete workflow recipe catalog', () => {
     expect(templateBehaviorLabel(WORKFLOW_RECIPES[17])).toBe('Move Deal + create task');
     expect(templateBehaviorLabel(WORKFLOW_RECIPES[22])).toBe('Task on stage entry');
     expect(templateBehaviorLabel(WORKFLOW_RECIPES[23])).toBe('Move related Deal');
+    expect(templateBehaviorLabel(WORKFLOW_RECIPES[34])).toBe('Move Deal stage');
     const notes = templateSetup(WORKFLOW_RECIPES[23], WORKFLOW_TRIGGERS.find(trigger => trigger.type === 'lead.status_changed'), getAvailableActions(), 23).join(' ');
     expect(notes).toContain('No matches produce no movement or task');
     expect(notes).toContain('multiple matches require review');

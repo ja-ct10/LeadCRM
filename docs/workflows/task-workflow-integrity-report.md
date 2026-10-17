@@ -29,14 +29,13 @@ Patterns, Security Review and Verification Loop guided the audit and changes.
 
 ## Template coverage
 
-The existing catalog generates entries from authenticated current pipeline/stage
-options, preserving the 16 original starters, numeric URLs and saved customizations.
-Each open stage has follow-up and assignment-before-follow-up alternatives; every
-Won/Lost stage uses its configured terminal flag. Exactly one open Lead enables
-an initial Deal-created follow-up. Compatible Lost/Qualified pairs add reopening
-alternatives. Conflicting or missing stage configuration receives explicit notes.
+The chooser now offers 16 curated scenarios rather than generating follow-up
+cards for every stage. Pipeline and stage choices remain configurable in the
+builder using authenticated current options. Numeric URLs, earlier stage-template
+links and saved customizations remain supported. See the current
+[Deal stage and template changes](deal-stage-template-simplification.md).
 
-All new Tasks default to pending, Medium priority and the eligible current owner.
+Legacy configured-stage Tasks default to pending, Medium priority and the eligible current owner.
 Due intervals are one elapsed day, or three for Lost review. Assignment variants
 require an explicit eligible user, Role or Group. Each preview describes purpose,
 trigger, conditions, actual binding, action order, assignment, due rule, repeat

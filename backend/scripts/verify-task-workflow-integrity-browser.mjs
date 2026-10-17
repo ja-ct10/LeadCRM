@@ -82,12 +82,14 @@ try {
 
   await page.goto(base + '/automation/workflows');
   await page.getByRole('button', { name: 'Create Workflow', exact: true }).click();
-  const identity = `stage:entry:${pipeline.id}:${stages.Contacted.id}`;
-  // The preview button names identify current metadata; stable identities select the card.
-  const preview = page.locator(`[data-template-id="${identity}"]`);
+  const preview = page.locator('[data-template-id="selected-stage-entry-follow-up"]');
   await preview.click();
   await page.getByRole('region', { name: 'Template setup requirements' }).waitFor();
   await page.getByRole('button', { name: 'Use this template', exact: true }).click();
+  await page.getByRole('button', { name: /^Configure condition:/ }).click();
+  await page.getByLabel('Template pipeline', { exact: true }).selectOption(pipeline.id);
+  await page.getByLabel('Template entry stage', { exact: true }).selectOption(stages.Contacted.id);
+  await page.getByRole('button', { name: 'Done', exact: true }).click();
   await page.getByRole('button', { name: 'Workflow details', exact: true }).click();
   await page.getByLabel('Workflow name', { exact: true }).fill('Integrity stage follow-up');
   await page.getByRole('button', { name: 'Done', exact: true }).click();
@@ -98,7 +100,7 @@ try {
   assert.equal(workflow.isActive, false); assert.equal(workflow.status, 'DRAFT');
   assert.ok(workflow.conditions.conditions.some(rule => rule.field === 'deal.pipelineId' && rule.value === pipeline.id));
   assert.ok(workflow.conditions.conditions.some(rule => rule.field === 'event.newStageId' && rule.value === stages.Contacted.id));
-  passed('Configured stage chooser → builder → persisted inactive draft keeps actual binding IDs');
+  passed('Curated stage template → configured builder → persisted inactive draft keeps actual binding IDs');
   const entered = await move('Contacted');
   const historyId = entered.data.stageHistory.id;
   await page.goto(base + `/automation/workflows/${workflow.id}/edit`);

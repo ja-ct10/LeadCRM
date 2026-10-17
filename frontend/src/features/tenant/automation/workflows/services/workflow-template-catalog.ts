@@ -84,7 +84,7 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
 }
 
 export function templateBehaviorLabel(recipe: WorkflowDraft): string {
-  if (recipe.actions.some(action => action.type === 'move_deal_stage')) return recipe.actions.some(action => action.type === 'create_task') ? 'Move Deal + create task' : 'Move related Deal';
+  if (recipe.actions.some(action => action.type === 'move_deal_stage')) return recipe.actions.some(action => action.type === 'create_task') ? 'Move Deal + create task' : recipe.trigger.startsWith('deal.') ? 'Move Deal stage' : 'Move related Deal';
   if (recipe.actions.some(action => action.type === 'send_email')) return recipe.actions.some(action => action.type === 'create_task') ? 'Send email + follow-up' : 'Send email';
   if (recipe.actions.some(action => action.type === 'send_sms')) return 'Send SMS';
   if (recipe.actions.some(action => action.type === 'update_field')) return 'Update fields';

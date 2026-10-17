@@ -208,8 +208,8 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     ],
   },
   {
-    name: 'Deal Stage Follow-up',
-    description: 'Create milestone tasks whenever a deal changes stage.',
+    name: 'Deal Stage Changed',
+    description: 'Create a task for the assigned agent after each actual stage change. Use Deal Entered a Specific Stage instead to limit the task to one stage.',
     trigger: 'deal.stage_changed',
     isActive: false,
     actions: [
@@ -217,7 +217,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     ],
   },
   {
-    name: 'Pipeline Stage Routing',
+    name: 'Move New Deal Stage',
     description: 'Move a newly created Deal from a selected source stage to a different open stage in the same pipeline, then create a qualification task. Choose the pipeline and both stages before activating.',
     trigger: 'deal.created',
     isActive: false,
@@ -231,7 +231,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     ],
   },
   {
-    name: 'Won Deal Handoff',
+    name: 'Deal Marked as Won',
     description: 'Create a handoff task for the assigned agent.',
     trigger: 'deal.closed_won',
     isActive: false,
@@ -304,8 +304,8 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [{ type: 'move_deal_stage', config: { stageId: '', currentStageId: '', targetMode: 'single_match' } }],
   },
   {
-    name: 'Selected Stage Entry Follow-up',
-    description: 'Create a Deal task after an actual move into the selected pipeline stage. A later distinct entry can create another task. Creation directly in the stage and ordinary edits do not trigger this workflow. Review the task assignee, due interval and priority before activating.',
+    name: 'Deal Entered a Specific Stage',
+    description: 'Create a task for the assigned agent when a Deal enters a selected pipeline stage. Choose the stage before activating. Ordinary edits and creation directly in that stage do not trigger this workflow.',
     trigger: 'deal.stage_changed',
     isActive: false,
     conditions: { operator: 'AND', conditions: [
@@ -327,7 +327,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [{ type: 'create_task', config: { title: 'Follow up on new Deal', dueDaysFromNow: 1, priority: 'Medium', assignmentTarget: { type: 'record_owner' } } }],
   },
   {
-    name: 'Deal Assignment Follow-up', description: 'When a Deal’s assigned agent changes, create a linked task for the new agent. Existing assignment and task notifications inform that agent. Ordinary edits do not match.',
+    name: 'Deal Assigned', description: 'When a Deal’s assigned agent changes, create a linked task for the new agent. Existing assignment and task notifications inform that agent. Ordinary edits do not match.',
     trigger: 'deal.updated', isActive: false,
     conditions: { operator: 'AND', conditions: [
       { field: 'event.changedFields', operator: 'contains', value: 'assignedUserId' },
@@ -350,7 +350,7 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     actions: [{ type: 'send_email', config: { recipient: 'primary_contact', templateId: '' } }],
   },
   {
-    name: 'Lost Deal Follow-up', description: 'Create a review task for the assigned agent when a Deal is marked Lost, whether or not an automated closing action supplied a loss reason.',
+    name: 'Deal Marked as Lost', description: 'Create a review task for the assigned agent when a Deal is marked Lost, whether or not an automated closing action supplied a loss reason.',
     trigger: 'deal.closed_lost', isActive: false,
     actions: [{ type: 'create_task', config: { title: 'Review lost Deal and next steps', dueDaysFromNow: 3, priority: 'Low', assignmentTarget: { type: 'record_owner' } } }],
   },
@@ -364,7 +364,22 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     trigger: 'contact.created', isActive: false,
     actions: [{ type: 'send_email', config: { recipient: 'record', templateId: '' } }],
   },
+  {
+    name: 'Automatic Deal Stage Update',
+    description: 'Move a Deal to a different open stage when its priority changes to High. Choose the pipeline, source and target stages, then customize the matching conditions before activating. The Deal stays in its current pipeline.',
+    trigger: 'deal.updated', isActive: false,
+    conditions: { operator: 'AND', conditions: [
+      { field: 'event.changedFields', operator: 'contains', value: 'priority' },
+      { field: 'deal.priority', operator: 'equals', value: 'HIGH' },
+      { field: 'deal.pipelineId', operator: 'equals', value: '' },
+      { field: 'deal.stageId', operator: 'equals', value: '' },
+    ] },
+    actions: [{ type: 'move_deal_stage', config: { stageId: '' } }],
+  },
 ];
 
-/** Curated starters retain every existing numeric URL index. */
-export const WORKFLOW_STARTER_TEMPLATES = WORKFLOW_TEMPLATE_DESCRIPTORS.map(descriptor => ({ ...descriptor, recipe: WORKFLOW_RECIPES[descriptor.index] }));
+// Curate only the chooser. The registry and descriptors retain legacy URLs.
+const starterOrder = [27, 16, 25, 34, 17, 18, 31, 28, 0, 1, 7, 23, 8, 33, 24, 26];
+export const WORKFLOW_STARTER_TEMPLATES = starterOrder.map(index => ({
+  ...WORKFLOW_TEMPLATE_DESCRIPTORS.find(descriptor => descriptor.index === index)!, recipe: WORKFLOW_RECIPES[index],
+}));

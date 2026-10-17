@@ -136,19 +136,15 @@ try {
   assert.ok(await page.locator('[data-template-index]').count() >= 16);
   const configuredStages = await prisma.stage.findMany({ where: { tenantId: tenant.id, pipelineId: pipeline.pipeline.id } });
   assert.ok(configuredStages.length > 0);
-  // Generic starters render before the authenticated stage options resolve.
-  // Await each actual bound stage card, rather than sampling an initial render.
-  for (const configuredStage of configuredStages) {
-    const scenario = configuredStage.isWon ? 'won' : configuredStage.isLost ? 'lost' : 'entry';
-    await page.locator(`[data-template-id="stage:${scenario}:${pipeline.pipeline.id}:${configuredStage.id}"]`).waitFor();
-  }
-  assert.ok(await page.locator('[data-template-id^="stage:"]').count() > 0);
+  assert.equal(await page.locator('[data-template-index]').count(), 16);
+  assert.equal(await page.locator('[data-template-id^="stage:"]').count(), 0);
+  await page.getByRole('button', { name: 'Preview Deal Entered a Specific Stage', exact: true }).waitFor();
   await page.getByLabel('Search templates', { exact: true }).fill('Move Related Deal');
   assert.equal(await page.locator('[data-template-index]').count(), 2);
   await page.getByRole('button', { name: 'Preview Hot Lead → Move Related Deal', exact: true }).click();
   await page.getByRole('region', { name: 'Template setup requirements' }).waitFor();
   await page.getByRole('button', { name: 'Close create workflow', exact: true }).click();
-  record('The chooser preserves searchable starters, adds configured stage templates and explains related-deal prerequisites');
+  record('The chooser offers 16 searchable starters without per-stage duplicates and explains related-deal prerequisites');
   await page.goto(base + '/automation/workflows/new');
   await page.getByLabel('Workflow name', { exact: true }).waitFor(); record('Blank builder loads without creating a database record');
   assert.equal(await prisma.workflow.count({ where: { tenantId: tenant.id } }), 4);

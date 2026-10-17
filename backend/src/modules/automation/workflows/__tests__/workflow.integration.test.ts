@@ -17,6 +17,7 @@ import { sendEmail } from '../../../../integrations/gmail/gmail.service';
 import app from '../../../../app';
 import { taskContextWhere } from '../../../operations/tasks/tasks.repository';
 import { sendMail } from '../../../../shared/services/email.service';
+import { sendSms } from '../../../../shared/services/sms.service';
 import { createCampaign } from '../../../marketing/campaigns/campaigns.service';
 import { dispatchTenantNotifications } from '../../../notifications/notification-events.service';
 import { prepareWorkflowRecipe, WORKFLOW_RECIPES } from '../../../../../../frontend/src/features/tenant/automation/workflows/services/workflow-recipes';
@@ -32,6 +33,10 @@ vi.mock('../../../../shared/services/email.service', async importOriginal => ({
 vi.mock('../../../../integrations/gmail/gmail.service', async importOriginal => ({
   ...await importOriginal<typeof import('../../../../integrations/gmail/gmail.service')>(),
   sendEmail: vi.fn(),
+}));
+vi.mock('../../../../shared/services/sms.service', async importOriginal => ({
+  ...await importOriginal<typeof import('../../../../shared/services/sms.service')>(),
+  isSmsConfigured: () => true, sendSms: vi.fn(async () => ({ submitted: true, messageId: 'fixture-sms' })),
 }));
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
@@ -152,6 +157,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } });
     vi.mocked(sendEmail).mockReset().mockImplementation(async () => ({ messageId: `provider-message-${randomUUID()}`, threadId: `provider-thread-${randomUUID()}` }));
     vi.mocked(sendMail).mockReset().mockImplementation(async () => ({ messageId: randomUUID(), submitted: true }));
+    vi.mocked(sendSms).mockClear();
   });
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
@@ -255,7 +261,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     });
     for (const action of draft.actions) {
       if (action.type === 'assign_owner') action.config.userId = owner.id;
-      if (action.type === 'send_email') action.config.senderUserId = owner.id;
+      if (action.type === 'send_email') { action.config.senderUserId = owner.id; if (action.config.templateId === '') action.config.templateId = template.id; }
       if (action.type === 'update_field' && action.config.value === '') action.config.value = 'https://example.test';
       if (action.type === 'create_task' && draft.trigger.startsWith('account.')) action.config.assignmentTarget = { type: 'user', id: owner.id };
       if (action.type === 'move_deal_stage') action.config.stageId = contacted.id;
@@ -264,13 +270,16 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const status = draft.conditions?.conditions.find(rule => rule.field === `${entity}.status` || rule.field === 'event.newStatus')?.value;
     const stageId = draft.trigger === 'deal.closed_won' ? won.id : draft.trigger === 'deal.closed_lost' ? lost.id
       : draft.trigger === 'deal.stage_changed' ? required.id : deal.stageId;
+    const recipeContact = entity === 'deal' && draft.actions.some(action => action.type === 'send_email')
+      ? await prisma.contact.create({ data: { tenantId, firstName: 'Recipe', lastName: 'Contact', email: `${randomUUID()}@example.test`, assignedUserId: owner.id } }) : undefined;
     const record = await scope(async () => {
-      const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', assignedUserId: owner.id };
+      const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', phone: '+639171234567', assignedUserId: owner.id };
       if (entity === 'lead') return prisma.lead.create({ data: { ...customer, source: 'Website', status: String(status ?? 'Warm'), productInterest: [] } });
       if (entity === 'contact') return prisma.contact.create({ data: { ...customer, company: 'Example', status: String(status ?? 'Warm').toUpperCase() as 'HOT', productInterests: [] } });
       if (entity === 'account') return prisma.account.create({ data: { tenantId, name: 'Ownerless recipe Account' } });
       return prisma.deal.create({ data: { tenantId, title: 'Catalog opportunity', pipelineId: deal.pipelineId, stageId: isStageEvent(draft.trigger) ? deal.stageId : stageId,
-        assignedUserId: owner.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true } });
+        assignedUserId: owner.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true,
+        ...(recipeContact ? { contactDeals: { create: { contactId: recipeContact.id, position: 0 } } } : {}) } });
     });
     const relatedDeal = entity !== 'deal' && draft.actions.some(action => ['move_deal_stage', 'create_task'].includes(action.type))
       ? await prisma.deal.create({ data: { tenantId, title: 'Related recipe opportunity', pipelineId: deal.pipelineId, stageId: deal.stageId, assignedUserId: actor.id, wonHistoryVerified: true,
@@ -289,7 +298,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const context = entry
       ? { 'event.previousStageId': entry.previousStageId, 'event.newStageId': entry.newStageId, 'event.stageHistoryId': entry.id }
       : draft.trigger.endsWith('.status_changed') ? { 'event.previousStatus': status === 'Cold' ? 'Warm' : 'Cold', 'event.newStatus': status }
-      : draft.trigger.endsWith('.updated') ? { 'event.changedFields': ['name'] } : {};
+      : draft.trigger.endsWith('.updated') ? { 'event.changedFields': draft.conditions?.conditions.filter(rule => rule.field === 'event.changedFields' && rule.operator === 'contains').map(rule => String(rule.value)) ?? ['name'] } : {};
     const event = { tenantId, actorId: actor.id, eventId: entry ? `${draft.trigger}:${entry.id}` : randomUUID(), entityType: entity, entityId: record.id, triggerType: draft.trigger, context };
     await scope(() => fireWorkflowTrigger(event));
     // Delivery retries cannot duplicate tasks or emails from the same event.
@@ -305,6 +314,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
       expect(task.assignedUserId).toBe(owner.id);
     }
     expect(vi.mocked(sendEmail)).toHaveBeenCalledTimes(draft.actions.filter(action => action.type === 'send_email').length);
+    expect(vi.mocked(sendSms)).toHaveBeenCalledTimes(draft.actions.filter(action => action.type === 'send_sms').length);
     for (const action of draft.actions) {
       if (action.type === 'update_field') {
         const updated = entity === 'lead' ? await prisma.lead.findUniqueOrThrow({ where: { id: record.id } }) : entity === 'account' ? await prisma.account.findUniqueOrThrow({ where: { id: record.id } }) : await prisma.contact.findUniqueOrThrow({ where: { id: record.id } });
@@ -704,7 +714,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const disconnected = await scope(() => workflows.testWorkflow(automatic.id, tenantId, lead.id));
     expect(disconnected.valid).toBe(false); expect(disconnected.actions[0].message).toContain('connect their work Gmail');
     await prisma.lead.update({ where: { id: lead.id }, data: { assignedUserId: actor.id } });
-    await expect(create([{ type: 'move_deal_stage', config: { stageId: lost.id } }], { trigger: 'deal.created' })).rejects.toThrow(/reason/);
+    await expect(create([{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: true } }], { trigger: 'deal.created' })).rejects.toThrow(/reason/);
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: required.id } }], { trigger: 'deal.created' });
     const dry = await scope(() => workflows.testWorkflow(workflow.id, tenantId, deal.id));
     expect(dry.valid).toBe(false); expect(dry.actions[0].message).toContain('expectedCloseDate');
