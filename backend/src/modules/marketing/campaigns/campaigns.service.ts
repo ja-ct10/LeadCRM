@@ -11,6 +11,7 @@ import { sendMail, assertBrevoConfigured, getBrevoSenderIdentity, EmailSubmissio
 import { sendSms, assertSmsConfigured, getSmsSenderIdentity, getSmsDeviceId, SmsSubmissionError } from '../../../shared/services/sms.service';
 import { runSubmissionPool } from './campaign-submission-pool';
 import { smsCampaignSummary, smsSent, smsDelivered } from './sms-campaign-outcomes';
+import { prepareSmsLinks } from './sms-link-tracking';
 import { requestNotificationDispatch } from '../../notifications/notification-events.service';
 import { audienceDefinition, validateAudienceReferences, campaignScope, resolveAudience, campaignFieldsForAudienceSource } from './audiences.service';
 import { sanitizeCampaignHtml, prepareCampaignHtml, renderCampaignMessage } from './campaign-content';
@@ -56,12 +57,26 @@ export async function getCampaignReport(id: string, tenantId: string) {
       links.set(event.url, link);
     }
   }
+  if (campaign.type === 'SMS') for (const row of campaignContacts) {
+    if (row.status === 'excluded') continue;
+    if (row.clickedAt) clickingRecipients.add(row.id);
+    trackingUpdatedAt = Math.max(trackingUpdatedAt, row.providerUpdatedAt?.getTime() ?? 0, row.clickedAt?.getTime() ?? 0);
+    for (const receipt of row.smsLinks ?? []) {
+      if (!receipt.clickedAt || !campaignLinkDestination(receipt.url)) continue;
+      const time = (receipt.lastClickedAt ?? receipt.clickedAt).getTime();
+      const link = links.get(receipt.url) ?? { emails: new Set<string>(), total: 0, last: 0 };
+      link.emails.add(row.id); link.total += receipt.clickCount; link.last = Math.max(link.last, time);
+      links.set(receipt.url, link); totalClicks += receipt.clickCount;
+      trackingUpdatedAt = Math.max(trackingUpdatedAt, time);
+    }
+  }
   const recipients: CampaignRecipient[] = campaignContacts.map(recipient => {
     const person = recipient.contact ?? recipient.lead;
     const snapshot = recipient.personalization as Record<string, unknown> | null;
     const snapshotName = [snapshot?.first_name, snapshot?.last_name].filter(value => typeof value === 'string').join(' ').trim();
     const name = snapshotName || (person?.tenantId === tenantId ? `${person.firstName} ${person.lastName}`.trim() : '');
-    const last = Math.max(latestByEmail.get((recipient.email ?? '').toLowerCase()) ?? 0,
+    const linkActivity = campaign.type === 'SMS' ? (recipient.smsLinks ?? []).reduce((last, link) => Math.max(last, link.lastClickedAt?.getTime() ?? 0), 0) : 0;
+    const last = Math.max(linkActivity, latestByEmail.get((recipient.email ?? '').toLowerCase()) ?? 0,
       ...[recipient.submittedAt, recipient.providerUpdatedAt, recipient.sentAt, recipient.deliveredAt, recipient.openedAt, recipient.clickedAt, recipient.bouncedAt].map(at => at?.getTime() ?? 0));
     return {
       id: recipient.id, name: name || recipient.email || recipient.phone || 'Unknown recipient', email: recipient.email, phone: recipient.phone,
@@ -72,34 +87,38 @@ export async function getCampaignReport(id: string, tenantId: string) {
         : campaign.type === 'SMS' && (recipient.status === 'unknown' || smsReviewReasons.includes(recipient.failureReason ?? '')) ? 'Unknown'
         : recipient.submittedAt || (campaign.type === 'EMAIL' && recipient.sentAt) ? 'Submitted' : 'Pending',
       opened: campaign.type !== 'SMS' && (!!recipient.openedAt || openingRecipients.has((recipient.email ?? '').toLowerCase())),
-      clicked: campaign.type !== 'SMS' && (!!recipient.clickedAt || clickingRecipients.has((recipient.email ?? '').toLowerCase())),
+      clicked: !!recipient.clickedAt || (campaign.type !== 'SMS' && clickingRecipients.has((recipient.email ?? '').toLowerCase())),
       lastActivity: last ? new Date(last).toISOString() : null, failureReason: recipient.failureReason,
-      ...(campaign.type === 'SMS' ? { failureDetail: recipient.providerErrorMessage ?? smsReviewExplanation(recipient.failureReason) } : {}),
+      ...(campaign.type === 'SMS' ? { failureDetail: recipient.providerErrorMessage ?? smsReviewExplanation(recipient.failureReason),
+        providerConflict: recipient.smsStatusConflict,
+        providerEvents: (recipient.smsWebhookReceipts ?? []).map(event => ({ status: event.status!, occurredAt: event.eventAt?.toISOString() ?? null, receivedAt: event.createdAt.toISOString() })),
+      } : {}),
     };
   });
   const eligible = campaignContacts.filter(row => row.status !== 'excluded');
   const deliveredCount = eligible.filter(row => !recipientDeliveryFailed(row) && (campaign.type === 'SMS' ? smsDelivered(row) : row.deliveredAt)).length;
-  if (campaign.type === 'SMS') trackingUpdatedAt = Math.max(0, ...campaignContacts.map(row => row.providerUpdatedAt?.getTime() ?? 0));
+  const clickDenominator = campaign.type === 'SMS' ? campaign.sentCount : deliveredCount;
   const topLinks: CampaignClickedLink[] = [...links].map(([url, link]) => ({
     url, uniqueClicks: link.emails.size, totalClicks: link.total,
-    clickRate: deliveredCount ? link.emails.size / deliveredCount * 100 : 0,
+    clickRate: clickDenominator ? link.emails.size / clickDenominator * 100 : 0,
     clickShare: totalClicks ? link.total / totalClicks * 100 : 0,
     lastClicked: new Date(link.last).toISOString(),
   })).sort((a, b) => b.uniqueClicks - a.uniqueClicks || b.totalClicks - a.totalClicks || (a.url < b.url ? -1 : a.url > b.url ? 1 : 0));
   // Recipient timestamps retain historical unique evidence even if event history
   // predates repeatable receipts. Never fabricate historical total event counts.
   for (const row of eligible) {
+    if (campaign.type === 'SMS') continue;
     if (row.openedAt && row.email) openingRecipients.add(row.email.toLowerCase());
     if (row.clickedAt && row.email) clickingRecipients.add(row.email.toLowerCase());
   }
-  const completeHistory = !emailDeliveryLogs.some(log => log.EmailEvent.some(event => ['click', 'opened'].includes(event.eventType) && !event.providerEventKey?.includes(`:${event.eventType}:v2:`))) && eligible.length === campaign.recipientCount && eligible.every(row =>
+  const completeHistory = campaign.type === 'SMS' ? campaign.smsTrackingVersion === 1 : !emailDeliveryLogs.some(log => log.EmailEvent.some(event => ['click', 'opened'].includes(event.eventType) && !event.providerEventKey?.includes(`:${event.eventType}:v2:`))) && eligible.length === campaign.recipientCount && eligible.every(row =>
     !row.email || ((!row.openedAt || historyByEmail.get(row.email.toLowerCase())?.has('opened')) && (!row.clickedAt || historyByEmail.get(row.email.toLowerCase())?.has('click'))));
   const trackingStatus = campaign.status === 'DRAFT' ? 'draft' as const
     : !campaign.submissionStartedAt && !campaign.sentCount ? 'not_sent' as const
-    : !completeHistory || (campaign.sentCount > 0 && !emailDeliveryLogs.some(log => log.brevoMessageId)) ? 'historical_unavailable' as const
+    : !completeHistory || (campaign.type !== 'SMS' && campaign.sentCount > 0 && !emailDeliveryLogs.some(log => log.brevoMessageId)) ? 'historical_unavailable' as const
     : totalClicks > 0 ? 'recorded' as const
-    : !campaignHtmlLinks(sanitizeCampaignHtml(campaign.body ?? '')).length ? 'no_links' as const : 'pending' as const;
-  const measurable = campaign.type !== 'SMS' && !['draft', 'not_sent', 'historical_unavailable'].includes(trackingStatus);
+    : !(campaign.type === 'SMS' ? campaignContacts.some(row => row.smsLinks?.length) : campaignHtmlLinks(sanitizeCampaignHtml(campaign.body ?? '')).length) ? 'no_links' as const : 'pending' as const;
+  const measurable = !['draft', 'not_sent', 'historical_unavailable'].includes(trackingStatus);
   // Historical receipts still prove which recipients clicked each destination,
   // even when repeatable event totals cannot be reconstructed.
   return { ...campaign, recipients, topLinks, sendResult: campaignSendResult(campaign),
@@ -109,9 +128,9 @@ export async function getCampaignReport(id: string, tenantId: string) {
     bouncedCount: recipients.filter(row => row.deliveryStatus === 'Bounced').length,
     openedCount: openingRecipients.size, clickedCount: clickingRecipients.size,
     totalClicks: measurable ? totalClicks : null, uniqueClicks: measurable ? clickingRecipients.size : null,
-    totalOpens: measurable ? totalOpens : null, uniqueOpens: measurable ? openingRecipients.size : null,
-    ctr: measurable && deliveredCount ? clickingRecipients.size / deliveredCount * 100 : null,
-    ctor: measurable && openingRecipients.size ? clickingRecipients.size / openingRecipients.size * 100 : null,
+    totalOpens: measurable && campaign.type !== 'SMS' ? totalOpens : null, uniqueOpens: measurable && campaign.type !== 'SMS' ? openingRecipients.size : null,
+    ctr: measurable && clickDenominator && (campaign.type !== 'SMS' || clickingRecipients.size <= clickDenominator) ? clickingRecipients.size / clickDenominator * 100 : null,
+    ctor: measurable && campaign.type !== 'SMS' && openingRecipients.size ? clickingRecipients.size / openingRecipients.size * 100 : null,
     trackingStatus, trackingUpdatedAt: trackingUpdatedAt ? new Date(trackingUpdatedAt).toISOString() : null,
   };
 }
@@ -136,15 +155,15 @@ export async function getCampaignById(id: string, tenantId: string) {
   if (!c) throw new AppError('Campaign not found.', 404);
   const where = { ...campaignScope(tenantId), campaignId: id };
   const [deliveredCount, bouncedCount] = await Promise.all([
-    prisma.campaignContact.count({ where: { ...where, deliveredAt: { not: null } } }),
+    prisma.campaignContact.count({ where: { ...where, deliveredAt: { not: null }, ...(c.type === 'SMS' ? { status: { not: 'failed' } } : {}) } }),
     prisma.campaignContact.count({ where: { ...where, bouncedAt: { not: null } } }),
   ]);
   const reviews = await smsReviewCampaignIds(tenantId, c.type === 'SMS' ? [id] : []);
   return { ...c, deliveredCount, bouncedCount, sendResult: campaignSendResult(c), reviewRequired: reviews.has(id) };
 }
 const smsReviewReasons = ['PROVIDER_SUBMISSION_UNCONFIRMED', 'TEXTBEE_UNKNOWN_STATE', 'SMS_VERIFICATION_EXPIRED'];
-const smsNeedsReview = (row: { status: string; failureReason: string | null }) => !['delivered', 'failed', 'excluded'].includes(row.status)
-  && (row.status === 'unknown' || smsReviewReasons.includes(row.failureReason ?? ''));
+const smsNeedsReview = (row: { status: string; failureReason: string | null; smsStatusConflict?: boolean }) => !!row.smsStatusConflict || (!['delivered', 'failed', 'excluded'].includes(row.status)
+  && (row.status === 'unknown' || smsReviewReasons.includes(row.failureReason ?? '')));
 function smsReviewExplanation(reason: string | null) {
   if (reason === 'SMS_VERIFICATION_EXPIRED') return 'No final provider result within 30 days. Automatic verification has stopped. Review TextBee history before sending again.';
   if (reason === 'PROVIDER_SUBMISSION_UNCONFIRMED') return 'Provider acceptance was not confirmed. Review TextBee history before sending again; this message has not been retried.';
@@ -155,7 +174,7 @@ function smsReviewExplanation(reason: string | null) {
 async function smsReviewCampaignIds(tenantId: string, campaignIds: string[]) {
   if (!campaignIds.length) return new Set<string>();
   const rows = await prisma.campaignContact.findMany({ where: { tenantId, campaignId: { in: campaignIds },
-    status: { notIn: ['delivered', 'failed', 'excluded'] }, OR: [{ status: 'unknown' }, { failureReason: { in: smsReviewReasons } }] },
+    OR: [{ smsStatusConflict: true }, { status: { notIn: ['delivered', 'failed', 'excluded'] }, OR: [{ status: 'unknown' }, { failureReason: { in: smsReviewReasons } }] }] },
     distinct: ['campaignId'], select: { campaignId: true } });
   return new Set(rows.map(row => row.campaignId));
 }
@@ -187,12 +206,13 @@ export async function updateCampaign(id: string, tenantId: string, userId: strin
 }
 export async function getCampaignMetrics(tenantId: string) {
   const where = { ...campaignScope(tenantId), isArchived: false };
-  const [sum, active, email] = await Promise.all([
+  const [sum, active, email, sms] = await Promise.all([
     prisma.campaign.aggregate({ where, _sum: { sentCount: true, openedCount: true, clickedCount: true } }),
     prisma.campaign.count({ where: { ...where, status: 'SENDING', submissionFinishedAt: null } }),
     prisma.campaign.aggregate({ where: { ...where, type: 'EMAIL' }, _sum: { sentCount: true, openedCount: true, clickedCount: true } }),
+    prisma.campaign.aggregate({ where: { ...where, type: 'SMS', smsTrackingVersion: 1 }, _sum: { clickedCount: true } }),
   ]);
-  return { activeCampaigns: active, sent: sum._sum.sentCount || 0, emailSent: email._sum.sentCount || 0, opened: email._sum.openedCount || 0, clicked: email._sum.clickedCount || 0 };
+  return { activeCampaigns: active, sent: sum._sum.sentCount || 0, emailSent: email._sum.sentCount || 0, opened: email._sum.openedCount || 0, clicked: (email._sum.clickedCount || 0) + (sms._sum.clickedCount || 0) };
 }
 
 type ScheduledExpectation = { scheduledFor: Date; scheduledById: string; updatedAt: Date; definition: AudienceInput };
@@ -307,17 +327,22 @@ async function prepareCampaign(id: string, tenantId: string, expected?: Schedule
     const reserved = await tx.campaignEmailQuota.updateMany({ where: { day, reserved: { lte: limit - eligible.length } }, data: { reserved: { increment: eligible.length } } });
     if (!reserved.count) throw new AppError(`This campaign has ${eligible.length} eligible recipients, exceeding the available campaign allowance under the configured ${limit}/day limit. Reduce the audience or try another day.`, 409);
     }
-    const sends = eligible.map(r => ({ ...r, personalization: { ...r.personalization, ...sender }, id: randomUUID(), logId: randomUUID(), channel: campaign.type,
-      ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: buildFinalSms({ body: content.body, variables: { ...r.personalization, ...sender } }) }
-        : { ...renderCampaignMessage(content.subject, content.body, { ...r.personalization, ...sender }), sms: '' }) }));
+    const sends = eligible.map(r => {
+      const tracked = campaign.type === 'SMS' ? prepareSmsLinks(buildFinalSms({ body: content.body, variables: { ...r.personalization, ...sender } })) : { message: '', links: [] };
+      return { ...r, personalization: { ...r.personalization, ...sender }, id: randomUUID(), logId: randomUUID(), channel: campaign.type, smsLinks: tracked.links,
+        ...(campaign.type === 'SMS' ? { subject: '', html: '', sms: tracked.message }
+          : { ...renderCampaignMessage(content.subject, content.body, { ...r.personalization, ...sender }), sms: '' }) };
+    });
     const tooLong = sends.filter(r => r.channel === 'SMS' && r.sms.length > SMS_MAX_LENGTH).length;
     if (tooLong) throw new AppError(`${tooLong} recipient message${tooLong === 1 ? '' : 's'} exceeds the ${SMS_MAX_LENGTH}-character SMS limit after personalization.`, 400);
     await tx.campaignContact.createMany({ data: [
       ...sends.map(r => ({ id: r.id, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: r.personalization, status: 'pending' })),
       ...resolved.records.filter(r => r.reason).map(r => ({ ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, email: r.email, phone: r.phone, personalization: { ...r.personalization, ...sender }, status: 'excluded', failureReason: r.reason })),
     ] });
+    const smsLinks = sends.flatMap(r => r.smsLinks.map(link => ({ ...link, ...scope, campaignContactId: r.id })));
+    if (smsLinks.length) await tx.smsCampaignLink.createMany({ data: smsLinks });
     if (campaign.type === 'EMAIL') await tx.emailDeliveryLog.createMany({ data: sends.map(r => ({ id: r.logId, ...scope, campaignId: id, leadId: r.leadId, contactId: r.contactId, fromEmail: sender.sender_email, toEmail: r.email!, subject: r.subject, status: 'pending' })) });
-    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId } : {}), ...content } });
+    await tx.campaign.update({ where: { id, ...scope }, data: { recipientCount: eligible.length, ...(campaign.type === 'SMS' ? { submittedById, smsDeviceId, smsTrackingVersion: 1 } : {}), ...content } });
     return { recipients: sends, leaseId, smsDeviceId };
   }, { timeout: 30000 });
   activePreparations.add(preparation);

@@ -9,6 +9,7 @@ export interface Campaign {
   status: 'Draft' | 'scheduled' | 'sending' | 'interrupted' | 'sent' | 'partially_sent' | 'delivered' | 'failed';
   submissionStartedAt?: string | null;
   reviewRequired?: boolean;
+  smsTrackingVersion?: number | null;
   submissionFinishedAt?: string | null;
   submissionInterruptedAt?: string | null;
   targetAudience: string;

@@ -1,4 +1,5 @@
 'use client';
+import { campaignEngagementRate } from '@leadcrm/shared';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
@@ -194,9 +195,9 @@ export default function CampaignsPage() {
     { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} reviewRequired={row.reviewRequired} /> },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
     { id: 'submitted', header: 'Submitted', accessor: row => row.sentCount, width: 120 },
-    { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique opened recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },
-    { id: 'clicked', header: 'Clicked', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0, width: 110, cell: (_, row) => <span title="Unique clicking recipients">{row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0}</span> },
-    { id: 'engagement', header: 'Engagement', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`, width: 130, cell: (_, row) => <span title="Unique opens / email submissions">{row.type.toUpperCase() === 'SMS' ? '—' : `${row.sentCount ? Math.round((row.openedCount || 0) / row.sentCount * 100) : 0}%`}</span> },
+    { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span title={row.type.toUpperCase() === 'SMS' ? 'SMS opens are unavailable' : 'Unique opened recipients'}>{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },
+    { id: 'clicked', header: 'Clicked', accessor: row => row.type.toUpperCase() === 'SMS' && row.smsTrackingVersion !== 1 ? '—' : row.clickedCount ?? 0, width: 110, cell: (_, row) => <span title={row.type.toUpperCase() === 'SMS' && row.smsTrackingVersion !== 1 ? 'Older SMS links were not tracked' : 'Unique clicking recipients'}>{row.type.toUpperCase() === 'SMS' && row.smsTrackingVersion !== 1 ? '—' : row.clickedCount ?? 0}</span> },
+    { id: 'engagement', header: 'Engagement', accessor: row => campaignEngagementRate(row) === null ? '—' : `${Math.round(campaignEngagementRate(row)!)}%`, width: 130, cell: (_, row) => <span title={row.type.toUpperCase() === 'SMS' ? 'Unique clicking recipients / SMS submissions; older SMS links are untracked' : 'Unique opens / email submissions'}>{campaignEngagementRate(row) === null ? '—' : `${Math.round(campaignEngagementRate(row)!)}%`}</span> },
     { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 210, cell: (_, row) => <span title={formatDateTime(row.createdAt)}>{formatDateTime(row.createdAt)}</span> },
   ];
   const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted', 'opened', 'clicked', 'engagement'].includes(column.id)));
@@ -262,13 +263,15 @@ export default function CampaignsPage() {
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
           <span title="Unique opened recipients summed across email campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Opened</span>
+          <span className="text-[10px] text-muted-foreground">Email only</span>
           <div className="flex items-baseline gap-1.5 mt-1">
             <span className="text-base font-bold text-slate-900 dark:text-white">{totalOpened.toLocaleString()}</span>
           </div>
         </div>
 
         <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span title="Unique clicking recipients summed across email campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Clicked</span>
+          <span title="Unique clicking recipients summed across email and tracked SMS campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Clicked</span>
+          <span className="text-[10px] text-muted-foreground">Email + tracked SMS</span>
           <div className="flex items-baseline gap-1 mt-1">
             <span className="text-base font-bold text-slate-900 dark:text-white">{totalClicked.toLocaleString()}</span>
           </div>

@@ -41,6 +41,9 @@ export async function processTextBeeEvent(input: unknown) {
 
 export type TextBeeEvidence = { smsId: string; smsBatchId: string; deviceId: string; recipient: string; status: string;
   sentAt?: Date; deliveredAt?: Date; failedAt?: Date; providerUpdatedAt?: Date; errorCode?: unknown; errorMessage?: unknown };
+function evidenceTime(event: TextBeeEvidence) {
+  return (event.status === 'failed' ? event.failedAt : event.status === 'delivered' ? event.deliveredAt : event.sentAt) ?? event.providerUpdatedAt ?? null;
+}
 /** Shared verified-fact writer. Provider GET results are not webhook receipts. */
 export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: string, expectedUpdatedAt?: Date | null) {
   const started = performance.now();
@@ -64,7 +67,8 @@ export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: 
     if (locked.smsDeviceId && locked.smsDeviceId !== event.deviceId) throw new AppError('SMS device does not match.', 400);
     if (!locked.smsDeviceId) await tx.campaign.update({ where: { id: recipient.campaignId, tenantId: recipient.tenantId }, data: { smsDeviceId: event.deviceId } });
     if (receiptKey) {
-      const receipt = await tx.smsWebhookReceipt.createMany({ data: [{ idempotencyKey: receiptKey, tenantId: recipient.tenantId, campaignContactId: recipient.id }], skipDuplicates: true });
+      const receipt = await tx.smsWebhookReceipt.createMany({ data: [{ idempotencyKey: receiptKey, tenantId: recipient.tenantId, campaignContactId: recipient.id,
+        status: event.status, eventAt: evidenceTime(event) }], skipDuplicates: true });
       if (!receipt.count) return;
     }
     const current = await tx.campaignContact.findUniqueOrThrow({ where: { id: recipient.id, ...where } });
@@ -72,11 +76,15 @@ export async function applyTextBeeEvidence(event: TextBeeEvidence, receiptKey?: 
     if (current.smsId && current.smsId !== event.smsId) throw new AppError('SMS message identity does not match.', 400);
     const status = event.status;
     const diagnostic = smsProviderDiagnostic(event.errorCode, event.errorMessage);
-    // Final evidence cannot regress. A later matching callback may still supply
-    // an actual timestamp omitted from an earlier authenticated status lookup.
-    if (current.status === 'excluded' || ['delivered', 'failed'].includes(current.status) && status !== current.status) return;
+    const at = evidenceTime(event);
+    if (current.status === 'excluded') return;
+    if (['delivered', 'failed'].includes(current.status) && status !== current.status) {
+      if (!['delivered', 'failed'].includes(status)) return;
+      // Conflicting terminal facts require review. Receipt arrival order is not event order.
+      await tx.campaignContact.update({ where: { id: current.id, ...where }, data: { smsStatusConflict: true } });
+      if (!at || !current.providerUpdatedAt || at <= current.providerUpdatedAt) return;
+    }
     const newDates = !!(event.sentAt && !current.sentAt || event.deliveredAt && !current.deliveredAt);
-    const at = event.deliveredAt ?? event.failedAt ?? event.sentAt ?? event.providerUpdatedAt ?? null;
     if (at && current.providerUpdatedAt && at < current.providerUpdatedAt && !(status === current.status && newDates)) return;
     const newDiagnostic = !!(diagnostic.code && diagnostic.code !== current.providerErrorCode || diagnostic.message && diagnostic.message !== current.providerErrorMessage);
     if (status === current.status && current.failureReason !== 'TEXTBEE_UNKNOWN_STATE' && !newDates && !newDiagnostic) {

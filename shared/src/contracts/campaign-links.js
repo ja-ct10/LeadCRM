@@ -1,7 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.CAMPAIGN_EMAIL_ATTRIBUTES = exports.CAMPAIGN_EMAIL_TAGS = void 0;
+exports.SMS_LINK_TOKEN_PATTERN = exports.CAMPAIGN_EMAIL_ATTRIBUTES = exports.CAMPAIGN_EMAIL_TAGS = void 0;
 exports.campaignLinkDestination = campaignLinkDestination;
+exports.mapCampaignTextLinks = mapCampaignTextLinks;
+exports.smsCampaignTrackingUrl = smsCampaignTrackingUrl;
 exports.linkifyCampaignHtml = linkifyCampaignHtml;
 exports.campaignHtmlLinks = campaignHtmlLinks;
 const campaign_email_1 = require("./campaign-email");
@@ -18,6 +20,27 @@ function campaignLinkDestination(value) {
     catch {
         return null;
     }
+}
+/** Plain-text URLs share the email linkifier's punctuation rules. */
+function mapCampaignTextLinks(text, replace) {
+    return text.replace(/https?:\/\/[^\s<>"']+/gi, candidate => {
+        let url = candidate;
+        while (/[.,;:!?]$/.test(url))
+            url = url.slice(0, -1);
+        for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']]) {
+            while (url.endsWith(close) && url.split(close).length > url.split(open).length)
+                url = url.slice(0, -1);
+        }
+        return campaignLinkDestination(url) ? replace(url) + candidate.slice(url.length) : candidate;
+    });
+}
+exports.SMS_LINK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
+function smsCampaignTrackingUrl(origin, token) {
+    const url = new URL(origin);
+    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/' || !exports.SMS_LINK_TOKEN_PATTERN.test(token)) {
+        throw new Error('Invalid SMS tracking origin or token.');
+    }
+    return `${url.origin}/s/${token}`;
 }
 function decodeEntities(value) {
     return value.replace(/&(?:amp|lt|gt|quot|apos|#39|#\d+|#x[\da-f]+);/gi, entity => {

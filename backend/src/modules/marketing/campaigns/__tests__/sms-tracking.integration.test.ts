@@ -83,9 +83,51 @@ describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () 
     const { campaign, rows: [row] } = await submitted();
     await processTextBeeEvent(event(row, 'delivered'));
     await processTextBeeEvent(event(row, 'sent'));
-    await processTextBeeEvent(event(row, 'failed'));
+    await processTextBeeEvent({ ...event(row, 'failed'), failedAt: '2026-10-14T01:00:00.500Z' });
     expect((await outbox(campaign.id)).map(n => n.type)).toEqual(['sms_campaign_delivered']);
     expect((await prisma.campaign.findUniqueOrThrow({ where: { id: campaign.id } })).status).toBe('DELIVERED');
+    expect((await scope(() => getCampaignReport(campaign.id, tenantId))).reviewRequired).toBe(true);
+  });
+
+  it.each([false, true])('resolves conflicting final evidence by timestamp in either arrival order (failure first: %s)', async failureFirst => {
+    const { campaign, rows: [row] } = await submitted();
+    const failed = { ...event(row, 'failed'), failedAt: '2026-10-17T03:15:51.234Z' };
+    const delivered = { ...event(row, 'delivered'), sentAt: '2026-10-17T03:15:52.643Z', deliveredAt: '2026-10-17T03:15:54.165Z' };
+    for (const payload of failureFirst ? [failed, delivered, failed] : [delivered, failed, delivered]) await processTextBeeEvent(payload);
+    const report = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(report).toMatchObject({ status: 'DELIVERED', reviewRequired: true, deliveredCount: 1, failedCount: 0 });
+    expect(report.recipients[0]).toMatchObject({ deliveryStatus: 'Delivered', providerConflict: true });
+    expect(report.recipients[0].providerEvents).toHaveLength(2);
+    expect((await scope(() => getCampaignById(campaign.id, tenantId))).reviewRequired).toBe(true);
+    expect((await scope(() => getCampaigns(tenantId, { search: campaign.name }))).data.find(item => item.id === campaign.id)?.reviewRequired).toBe(true);
+    expect(sendSms).not.toHaveBeenCalled();
+  });
+
+  it('does not hide newer authenticated failure evidence behind an earlier Delivered status', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await processTextBeeEvent(event(row, 'delivered')); await processTextBeeEvent(event(row, 'failed'));
+    const report = await scope(() => getCampaignReport(campaign.id, tenantId));
+    expect(report).toMatchObject({ status: 'FAILED', reviewRequired: true, failedCount: 1, deliveredCount: 0 });
+    expect(report.recipients[0]).toMatchObject({ deliveryStatus: 'Failed', providerConflict: true });
+    expect((await scope(() => getCampaignById(campaign.id, tenantId))).deliveredCount).toBe(0);
+  });
+
+  it('retains the current final result for an undated conflict and still exposes review evidence', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await processTextBeeEvent(event(row, 'delivered'));
+    await applyTextBeeEvidence({ smsId: `sms-${row.id}`, smsBatchId: row.messageId!, deviceId: device, recipient: row.phone!, status: 'failed' });
+    expect(await scope(() => getCampaignReport(campaign.id, tenantId))).toMatchObject({ status: 'DELIVERED', reviewRequired: true });
+    expect(sendSms).not.toHaveBeenCalled();
+  });
+
+  it('uses the failure timestamp when a provider lookup retains older sent and delivery timestamps', async () => {
+    const { campaign, rows: [row] } = await submitted();
+    await processTextBeeEvent(event(row, 'delivered'));
+    await applyTextBeeEvidence({ smsId: `sms-${row.id}`, smsBatchId: row.messageId!, deviceId: device, recipient: row.phone!, status: 'failed',
+      sentAt: new Date('2026-10-14T01:00:00Z'), deliveredAt: new Date('2026-10-14T01:00:01Z'), failedAt: new Date('2026-10-14T01:00:02Z') });
+    expect(await scope(() => getCampaignReport(campaign.id, tenantId))).toMatchObject({ status: 'FAILED', reviewRequired: true, failedCount: 1, deliveredCount: 0 });
+    expect(await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).toMatchObject({ providerUpdatedAt: new Date('2026-10-14T01:00:02Z') });
+    expect(sendSms).not.toHaveBeenCalled();
   });
 
   it('retains verified Sent when a later device report is unknown and another recipient completes', async () => {

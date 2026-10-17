@@ -86,6 +86,10 @@ data/outputs/retired-features-*.json
 /data/outputs/campaign-status-*.json
 /data/outputs/campaign-status-*.jsonl
 
+# Reproducible local SMS link preview state and request logs.
+/data/outputs/sms-links-preview-*.json
+/data/outputs/sms-links-preview-*.jsonl
+
 # Reproducible local mailbox acceptance evidence and redacted hosting screenshots.
 /data/outputs/mailbox-browser/
 

@@ -9,6 +9,8 @@ export interface Campaign {
   status: CampaignStatus;
   /** Unconfirmed SMS evidence requires review, without inventing a delivery state. */
   reviewRequired?: boolean;
+  /** Present only on SMS prepared with recipient link tracking. Older SMS remain untracked. */
+  smsTrackingVersion?: number | null;
   submissionStartedAt?: string | null;
   submissionFinishedAt?: string | null;
   submissionInterruptedAt?: string | null;
@@ -23,7 +25,7 @@ export interface Campaign {
   sentCount: number;
   /** Distinct recipients with persisted provider open evidence. */
   openedCount: number;
-  /** Distinct recipients with persisted provider click evidence. */
+  /** Distinct recipients with persisted email-provider or SMS redirect click evidence. */
   clickedCount: number;
   engagement: number;
   scheduledFor?: string | null;

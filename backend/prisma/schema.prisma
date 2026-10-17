@@ -1016,6 +1016,7 @@ model Campaign {
   smsTransitionVersion Int @default(0)
   submittedById String?
   smsDeviceId String?
+  smsTrackingVersion Int?
   submissionFinishedAt DateTime?
   subject          String?
   body             String? // inline body override when no template selected
@@ -1138,6 +1139,8 @@ model CampaignMetrics {
 // CAMPAIGN-CONTACT JUNCTION (per-contact delivery tracking)
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model CampaignContact {
+  smsStatusConflict Boolean @default(false)
+  smsLinks SmsCampaignLink[]
   providerErrorCode String?
   providerErrorMessage String?
   smsId String?
@@ -1180,12 +1183,28 @@ model CampaignContact {
 
 // Delivery identities only; message bodies and gateway credentials are never stored here.
 model SmsWebhookReceipt {
+  status String?
+  eventAt DateTime?
   idempotencyKey String @id
   tenantId String
   campaignContactId String
   createdAt DateTime @default(now())
   campaignContact CampaignContact @relation(fields: [campaignContactId, tenantId], references: [id, tenantId], onDelete: Cascade)
   @@index([campaignContactId])
+  @@index([tenantId])
+}
+
+// Opaque redirect tokens contain no recipient or tenant identifiers.
+model SmsCampaignLink {
+  id String @id
+  tenantId String
+  campaignContactId String
+  url String
+  clickedAt DateTime?
+  lastClickedAt DateTime?
+  clickCount Int @default(0)
+  campaignContact CampaignContact @relation(fields: [campaignContactId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  @@index([campaignContactId, tenantId])
   @@index([tenantId])
 }
 

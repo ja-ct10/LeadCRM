@@ -3,6 +3,13 @@ import type { CampaignSendResult } from './campaign-email';
 import type { SmsCampaignSummary } from './notifications';
 export type { Campaign, CampaignType, CampaignStatus, CreateCampaignInput };
 
+export function campaignEngagementRate(campaign: { type: string; smsTrackingVersion?: number | null; sentCount: number; openedCount?: number; clickedCount?: number }): number | null {
+  const sms = campaign.type.toUpperCase() === 'SMS';
+  if (sms && campaign.smsTrackingVersion !== 1) return null;
+  if (sms && (!campaign.sentCount || (campaign.clickedCount ?? 0) > campaign.sentCount)) return null;
+  return campaign.sentCount ? (sms ? campaign.clickedCount ?? 0 : campaign.openedCount ?? 0) / campaign.sentCount * 100 : 0;
+}
+
 export interface UpdateCampaignInput extends Partial<CreateCampaignInput> {
   status?: CampaignStatus;
 }
@@ -38,6 +45,7 @@ export interface CampaignEmailSettings {
 export interface CampaignSmsSettings {
   organizationName: string | null;
   organizationEmail: string | null;
+  trackingOrigin?: string | null;
 }
 
 export interface CampaignRecipient {
@@ -51,6 +59,8 @@ export interface CampaignRecipient {
   lastActivity: string | null;
   failureReason: string | null;
   failureDetail?: string | null;
+  providerConflict?: boolean;
+  providerEvents?: { status: string; occurredAt: string | null; receivedAt: string }[];
 }
 
 export interface CampaignClickedLink {
@@ -71,7 +81,7 @@ export interface CampaignReportResponse extends CampaignDetailResponse {
     bouncedCount: number;
     recipients: CampaignRecipient[];
     topLinks: CampaignClickedLink[];
-    /** Provider event totals; the report uses Campaign.clickedCount for recipients. */
+    /** Event/redirect totals; the report uses Campaign.clickedCount for recipients. */
     totalClicks: number | null;
     uniqueClicks: number | null;
     totalOpens: number | null;
