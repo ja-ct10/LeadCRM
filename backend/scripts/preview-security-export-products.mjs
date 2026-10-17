@@ -1,5 +1,5 @@
-// Rendered UI acceptance with isolated API fixtures. Database/security acceptance
-// is exercised separately by test-security-export-products.mjs.
+// Local rendered UI preview with isolated API fixtures, outside the database-backed
+// acceptance inventory. Database/security checks use test-security-export-products.mjs.
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { mkdirSync, writeFileSync, createWriteStream } from 'node:fs';

@@ -107,7 +107,7 @@ migration or deployment was performed.
 - Existing deployment rollout tests: **11 passed**.
 - Migration rehearsal: full history replay on fresh disposable PostgreSQL plus
   populated legacy Product/archived Product/Deal/cooldown/reminder preservation.
-- `node backend/scripts/verify-security-export-products-browser.mjs`: production
+- `node backend/scripts/preview-security-export-products.mjs`: production
   frontend with isolated API fixtures; **56 checks passed** across all requested
   viewport widths. Includes unclipped dialog controls, inline full-lock message,
   absence of a permanent countdown, cooldown restoration and four CSV downloads.
@@ -130,7 +130,7 @@ backend/prisma/schema.prisma
 backend/scripts/deploy-crm-imports.cjs
 backend/scripts/test-security-export-products.mjs
 backend/scripts/verify-canonical-rollout.test.cjs
-backend/scripts/verify-security-export-products-browser.mjs
+backend/scripts/preview-security-export-products.mjs
 backend/src/api/middleware/__tests__/auth-state.test.ts
 backend/src/api/middleware/auth.middleware.ts
 backend/src/api/routes/administration.routes.ts
