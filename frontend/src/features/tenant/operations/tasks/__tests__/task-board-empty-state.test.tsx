@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(mocks.searchParams) }));
 vi.mock('sonner', () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
 vi.mock('@/lib/config', () => ({ get USE_MOCK_DATA() { return mocks.mockData; } }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: mocks.users, updateTask: vi.fn(), bulkTasks: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: (permission: string) => permission === 'tasks.create' ? mocks.canCreate : true }));
 vi.mock('@/shared/hooks/use-table-preferences', () => ({ useTablePreferences: () => ({ sort: { field: 'createdAt', direction: 'desc' }, setSort: vi.fn() }) }));
@@ -44,6 +45,15 @@ function expectNoTable() {
   expect(document.querySelector('[role="region"] .overflow-auto')).toBeNull();
   expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
 }
+
+it('disables every bulk mutation for a mixed-owner selection while preserving selection and viewing', () => {
+  mocks.data.tasks = ['agent', 'other'].map((createdById, index) => ({ id: `task-${index}`, tenantId: 'tenant', title: `Task ${index}`, createdById, assignedUserId: 'agent', status: 'pending', description: '', dueDate: '2030-01-01T00:00:00Z', createdAt: '2026-10-01T00:00:00Z' }));
+  mocks.data.meta.total = 2;
+  render(<TaskBoard />);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  for (const name of ['Mark as done', 'Assign', 'Reschedule', 'Archive']) expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('checkbox', { name: 'Select all records' })).toHaveProperty('checked', true);
+});
 
 it('opens an ID-only destination after the scope reset and permission readiness, and respects closing it', () => {
   mocks.mockData = false; mocks.searchParams = 'taskId=linked-task'; mocks.data.canRead = false;

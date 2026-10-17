@@ -3,13 +3,14 @@ import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
 import { InlineEditRows, type InlineRowDef } from './inline-edit-rows';
 import { useFieldLayout } from '@/shared/hooks/use-field-layout';
-import { panelSurfaceClass, panelHeaderClass, panelTitleClass, panelCloseClass } from '@/shared/components/side-panel-styles';
+import { panelSurfaceClass, panelHeaderClass, panelCloseClass } from '@/shared/components/side-panel-styles';
+import { RecordIdentityHeader, RecordQuickInfo, RecordRows, RecordLinkRow } from './record-panel-presentation';
 
 import React, { useEffect, useState } from 'react';
 import { DealClosingRequirements } from './deal-closing-requirements';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Pencil, Phone, Plus, User, UserPlus, X, type LucideIcon } from 'lucide-react';
+import { Archive, Building, ChevronDown, ChevronRight, ExternalLink, Globe, Inbox, Mail, MapPin, MoreHorizontal, Pencil, Phone, Plus, User, UserPlus, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { apiClient } from '@/lib/api/client';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -64,33 +65,11 @@ const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account', deals:
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 const personName = (record?: RecordData | null) => record ? [text(record.firstName), text(record.lastName)].filter(Boolean).join(' ') : '';
 const object = (value: unknown): RecordData | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordData : undefined;
-const present = (value: unknown) => value !== undefined && value !== null && value !== '' && (!Array.isArray(value) || value.length > 0);
 
-
-function RecordQuickInfo({ items, actions }: { items: { value: string; icon: LucideIcon; href?: string; label?: string; onClick?: () => void; ariaLabel?: string; disabled?: boolean }[]; actions?: React.ReactNode }) {
-  return <div className="mt-3 flex min-w-0 flex-wrap items-center gap-1 sm:mt-4 sm:gap-1.5">
-    {items.filter(item => item.value).map(({ value, icon: Icon, href, label, onClick, ariaLabel, disabled }) => {
-      const content = <><Icon className="h-3 w-3 shrink-0 text-muted-foreground sm:h-3.5 sm:w-3.5" /><span className="min-w-0 [overflow-wrap:anywhere]">{label}{value}</span></>;
-      const cls = 'inline-flex min-h-8 max-w-full items-center gap-1 rounded-lg border border-border px-2 py-1 text-[11px] text-foreground sm:min-h-9 sm:gap-1.5 sm:px-2.5 sm:py-1.5 sm:text-xs';
-      if (onClick) return <button key={label || value} type="button" onClick={onClick} aria-label={ariaLabel} title={ariaLabel} disabled={disabled} className={cn(cls, 'text-left enabled:cursor-pointer enabled:hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:opacity-60')}>{content}</button>;
-      return href ? <a key={label || value} href={href} className={cn(cls, 'hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring')}>{content}</a> : <span key={label || value} className={cls}>{content}</span>;
-    })}
-    {actions}
-  </div>;
-}
-
-function RecordRows({ rows }: { rows: [string, unknown][] }) {
-  return <dl className="divide-y divide-border/60">{rows.filter(([, value]) => present(value)).map(([label, value]) => <div key={label} className="grid min-w-0 grid-cols-[minmax(0,2fr)_minmax(0,3fr)] gap-3 px-3 py-2.5 text-xs">
-    <dt className="text-muted-foreground">{label}</dt>
-    <dd className="min-w-0 text-right [overflow-wrap:anywhere]">{Array.isArray(value) ? <span className="flex flex-wrap justify-end gap-1">{value.map((item, index) => <span key={index} className="rounded-md bg-[var(--primary)]/10 px-1.5 py-0.5 text-[var(--primary)]">{String(item)}</span>)}</span> : String(value)}</dd>
-  </div>)}</dl>;
-}
 
 function RelatedRecords({ records, module, empty, showSubtitle = true }: { records: RecordData[]; module: string; empty: string; showSubtitle?: boolean }) {
   if (module === 'deals') return records.length ? <div className="divide-y divide-border/60">{records.filter(record => !record.isArchived).map(record => <div key={text(record.id)} className="flex min-w-0 items-center gap-2 px-3 py-2"><Link href={'/crm/deals/' + encodeURIComponent(text(record.id))} className="min-w-0 flex-1 py-2 text-sm font-medium [overflow-wrap:anywhere]">{text(record.title)}<span className="mt-1 block text-xs text-muted-foreground">{text(object(record.stage)?.name)}</span></Link><DealCardMenu dealId={text(record.id)} dealTitle={text(record.title)} /></div>)}</div> : <p className="p-4 text-sm text-muted-foreground">{empty}</p>;
-  return records.length ? <div className="divide-y divide-border/60">{records.map(record => <Link key={text(record.id)} href={`/crm/${module}/${encodeURIComponent(text(record.id))}`} className="flex min-w-0 items-center gap-3 px-3 py-3 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring">
-    <div className="min-w-0 flex-1 [overflow-wrap:anywhere]"><p className="text-sm font-medium">{text(record.name) || text(record.title) || personName(record)}</p>{showSubtitle && <p className="mt-0.5 text-xs text-muted-foreground">{text(record.email) || text(record.industry) || text(object(record.stage)?.name)}</p>}</div><ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-  </Link>)}</div> : <p className="px-4 py-7 text-center text-sm text-muted-foreground">{empty}</p>;
+  return records.length ? <div className="divide-y divide-border/60">{records.map(record => <RecordLinkRow key={text(record.id)} href={`/crm/${module}/${encodeURIComponent(text(record.id))}`} label={text(record.name) || text(record.title) || personName(record)} subtitle={showSubtitle ? text(record.email) || text(record.industry) || text(object(record.stage)?.name) : undefined} />)}</div> : <p className="px-4 py-7 text-center text-sm text-muted-foreground">{empty}</p>;
 }
 
 /** The drawer and route render this same record reader, actions and content. */
@@ -357,15 +336,12 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
             </nav>
           </div>
         )}
-        <div className="relative flex min-w-0 flex-wrap items-start gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--primary)] text-sm font-semibold text-[var(--primary-foreground)]">{module === 'accounts' ? <Building size={20} /> : module === 'deals' ? title.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() : `${text(record.firstName)[0] || ''}${text(record.lastName)[0] || ''}`}</div>
-          <div className={cn('min-w-0 flex-1 basis-[calc(100%-64px)] @min-[400px]:basis-0 @min-[400px]:pr-0', onClose ? 'pr-11' : 'pr-9')}>
-            <div className="mb-1 flex flex-wrap gap-1"><span className="rounded bg-[var(--primary)]/10 px-1.5 py-0.5 text-[9px] font-semibold tracking-wide text-[var(--primary)]">{label.toUpperCase()}</span>{source && <span className="max-w-full rounded border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground [overflow-wrap:anywhere]">{source}</span>}</div>
-            <h1 className={onClose ? panelTitleClass : 'text-base font-semibold leading-tight tracking-tight [overflow-wrap:anywhere] sm:text-lg'}>{title}</h1>
-            {subtitle && <p className="mt-1 text-xs text-muted-foreground [overflow-wrap:anywhere]">{subtitle}</p>}
-            {onClose && <Link href={`/crm/${module}/${encodeURIComponent(id)}?from=${module}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium text-[var(--primary)]">Open full page <ExternalLink size={11} /></Link>}
-          </div>
-          <div className={cn('ml-[52px] flex min-w-0 max-w-[calc(100%-52px)] items-center gap-1.5 [&>div]:min-w-0 @min-[400px]:ml-0', onClose ? '@min-[400px]:pr-11' : '@min-[400px]:pr-9')}>
+        <RecordIdentityHeader
+          avatar={module === 'accounts' ? <Building size={20} /> : module === 'deals' ? title.split(/\s+/).slice(0, 2).map(word => word[0]).join('').toUpperCase() : `${text(record.firstName)[0] || ''}${text(record.lastName)[0] || ''}`}
+          label={label} title={title} subtitle={subtitle} panel={!!onClose}
+          badges={source && <span className="max-w-full rounded border border-border px-1.5 py-0.5 text-[9px] text-muted-foreground [overflow-wrap:anywhere]">{source}</span>}
+          titleAction={onClose && <Link href={`/crm/${module}/${encodeURIComponent(id)}?from=${module}`} className="mt-1 inline-flex min-h-8 items-center gap-1 text-xs font-medium text-[var(--primary)]">Open full page <ExternalLink size={11} /></Link>}
+          actions={<>
             {manageMenu}
             {module !== 'accounts' && <TooltipProvider><Tooltip>
               <TooltipTrigger asChild><span tabIndex={personInboxAction && composeDisabled ? 0 : undefined}>
@@ -380,8 +356,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
             </Tooltip></TooltipProvider>}
             {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
-          </div>
-        </div>
+          </>}
+        />
         <RecordQuickInfo items={[
           { value: email || (module === 'deals' ? 'No email address is available for this Deal.' : ''), icon: Mail, ...(emailChipAction ? { onClick: module === 'deals' ? openDealEmail : openRecordEmail, ariaLabel: email ? `Compose email to ${email}` : 'No email address is available for this Deal.', disabled: module !== 'deals' && composeDisabled } : { href: email ? `mailto:${email}` : undefined }) },
           { value: phone, icon: Phone, ...(personChipActions ? { onClick: () => { void copyTextWithFeedback(phone, 'Phone number'); }, ariaLabel: `Copy phone number ${phone}` } : { href: phone ? `tel:${phone}` : undefined }) },

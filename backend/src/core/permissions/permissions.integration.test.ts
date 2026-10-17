@@ -99,9 +99,12 @@ describe.skipIf(!disposable)('independent module actions with real sessions and 
     // Make the later assignment target eligible without granting mutation authority.
     await prisma.rolePermission.create({ data: { tenantId, roleId: actor.roleId, module: 'tasks', canView: true } });
     const operator = await roleUser('Task Operator QA', [{ module: 'tasks', canView: true, canComplete: true, canAssign: true }]);
-    expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { assignedUserId: actor.user.userId })).status).toBe(200);
-    expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { status: 'completed' })).status).toBe(200);
-    expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { title: 'Unauthorized rename' })).status).toBe(403);
+    expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { assignedUserId: actor.user.userId })).status).toBe(403);
+    expect((await call(`/operations/tasks/${task.body.data.id}`, operator.token, 'PUT', { status: 'completed' })).status).toBe(403);
+    const ownedTask = await prisma.task.create({ data: { tenantId, title: 'Operator-owned Task', createdById: operator.user.userId, assignedUserId: editor.user.userId, dueDate: new Date('2026-11-01') } });
+    expect((await call(`/operations/tasks/${ownedTask.id}`, operator.token, 'PUT', { assignedUserId: actor.user.userId })).status).toBe(200);
+    expect((await call(`/operations/tasks/${ownedTask.id}`, operator.token, 'PUT', { status: 'completed' })).status).toBe(200);
+    expect((await call(`/operations/tasks/${ownedTask.id}`, operator.token, 'PUT', { title: 'Unauthorized rename' })).status).toBe(403);
   });
   it('validates unknown flags/prerequisites and protects Client Admin permissions and role', async () => {
     for (const permission of [{ module: 'leads', canView: false, canEdit: true }, { module: 'settings', canCreate: true }, { module: 'leads', arbitrary: true }]) {

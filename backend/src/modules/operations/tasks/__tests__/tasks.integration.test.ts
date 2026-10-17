@@ -207,10 +207,12 @@ describe.skipIf(!disposable)(
       const completer = await prisma.user.create({ data: { tenantId, role: role.name, email: `completer-${Date.now()}@camxian.com`, firstName: 'Task', lastName: 'Completer',
         mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date(), userRoles: { create: { roleId: role.id } } } });
       const auth = (await issueAuthSession(completer)).token;
-      const completed = await call(`/operations/tasks/${first.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: updated.updatedAt }, auth);
+      expect((await call(`/operations/tasks/${first.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: updated.updatedAt }, auth)).status).toBe(403);
+      const owned = await scope(() => prisma.task.create({ data: { tenantId, createdById: completer.id, assignedUserId: owner.id, title: 'Completer-owned', dueDate: new Date('2030-01-01') } }));
+      const completed = await call(`/operations/tasks/${owned.id}`, 'PUT', { status: 'completed', expectedUpdatedAt: owned.updatedAt.toISOString() }, auth);
       expect(completed.status).toBe(200);
       expect(completed.body.data).toMatchObject({ status: 'completed', completedById: completer.id });
-      expect((await call(`/operations/tasks/${first.id}`, 'PUT', { title: 'Denied edit', expectedUpdatedAt: completed.body.data.updatedAt }, auth)).status).toBe(403);
+      expect((await call(`/operations/tasks/${owned.id}`, 'PUT', { title: 'Denied edit', expectedUpdatedAt: completed.body.data.updatedAt }, auth)).status).toBe(403);
     });
     it("persists Task columns per user and protects required columns and permissions", async () => {
       const path = "/preferences/columns/tasks";
@@ -338,6 +340,43 @@ describe.skipIf(!disposable)(
       return response.body.data;
     };
     const history = (taskId: string) => prisma.activity.findMany({ where: { tenantId, taskId }, orderBy: [{ createdAt: 'asc' }, { title: 'asc' }] });
+
+    it('enforces creator ownership on update, complete, archive and mixed-owner bulk without losing view access', async () => {
+      const task = await create('Ownership protected');
+      // Exercise the assignee with every existing Task grant, and another Client Admin.
+      await prisma.rolePermission.updateMany({ where: { tenantId, role: { name: 'Task staff' }, module: 'tasks' },
+        data: { canEdit: true, canAssign: true, canComplete: true, canArchive: true } });
+      const admin = await prisma.user.create({ data: { tenantId, role: 'Client Admin', firstName: 'Other', lastName: 'Admin', email: `task-other-admin-${Date.now()}@camxian.com`, emailVerified: new Date(), onboardingCompletedAt: new Date(), mustChangePassword: false } });
+      const assigneeToken = (await issueAuthSession(owner)).token;
+      const adminToken = (await issueAuthSession(admin)).token;
+      const before = await prisma.task.findUniqueOrThrow({ where: { id: task.id } });
+      const beforeHistory = await history(task.id);
+      const beforeAudit = await prisma.auditLog.findMany({ where: { tenantId, entityType: 'Task', entityId: task.id } });
+      const beforeLinks = await prisma.taskDeal.findMany({ where: { taskId: task.id } });
+      for (const auth of [assigneeToken, adminToken]) {
+        expect((await call(`/operations/tasks/${task.id}`, 'GET', undefined, auth)).status).toBe(200);
+        for (const [suffix, method, payload] of [['', 'PUT', { title: 'Denied', dealIds: [deal.id] }], ['/complete', 'PATCH', undefined], ['/archive', 'PATCH', undefined]] as const) {
+          const response = await call(`/operations/tasks/${task.id}${suffix}`, method, payload, auth);
+          expect(response.status, JSON.stringify(response.body)).toBe(403);
+          expect(response.body.error).toBe(suffix === '/archive' ? 'Only the task owner can archive this task.' : 'Only the task owner can edit this task.');
+        }
+      }
+      expect(await prisma.task.findUniqueOrThrow({ where: { id: task.id } })).toEqual(before);
+      expect(await history(task.id)).toEqual(beforeHistory);
+      expect(await prisma.auditLog.findMany({ where: { tenantId, entityType: 'Task', entityId: task.id } })).toEqual(beforeAudit);
+      expect(await prisma.taskDeal.findMany({ where: { taskId: task.id } })).toEqual(beforeLinks);
+      const otherTask = await scope(() => prisma.task.create({ data: { tenantId, createdById: admin.id, assignedUserId: owner.id, title: 'Other-owned', dueDate: new Date('2030-01-01') } }));
+      const legacy = await scope(() => prisma.task.create({ data: { tenantId, assignedUserId: owner.id, title: 'No creator', dueDate: new Date('2030-01-01') } }));
+      for (const operation of ['complete', 'archive'] as const) {
+        const response = await call('/operations/tasks/bulk', 'POST', { operation, ids: [task.id, otherTask.id, legacy.id] });
+        expect(response.status).toBe(200); expect(response.body.data.succeeded).toEqual([task.id]);
+        expect(response.body.data.failed.map((failure: { id: string }) => failure.id)).toEqual([otherTask.id, legacy.id]);
+      }
+      expect((await call(`/operations/tasks/${legacy.id}`, 'PUT', { title: 'Denied' })).status).toBe(403);
+      expect((await call(`/operations/tasks/${legacy.id}/archive`, 'PATCH')).status).toBe(403);
+      expect(await history(otherTask.id)).toHaveLength(0); expect(await history(legacy.id)).toHaveLength(0);
+      expect((await prisma.task.findUniqueOrThrow({ where: { id: otherTask.id } })).isArchived).toBe(false);
+    });
 
     it('requires Deals, rejects every direct association field, and rejects conflicting input', async () => {
       const invalid = [{ dealIds: [] }, { dealIds: undefined }, { dealId: deal.id },
@@ -609,7 +648,9 @@ describe.skipIf(!disposable)(
       expect((await call('/operations/tasks', 'POST', { ...draft('Denied Sales Task'), dealIds: [other.id] }, auth)).status).toBe(403);
       const task = await create('Admin task on Other Deal', { dealIds: [other.id] });
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [own.id] }, auth)).status).toBe(403);
-      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(200);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(403);
+      const owned = (await call('/operations/tasks', 'POST', { ...draft('Sales-owned editable'), dealIds: [own.id] }, auth)).body.data;
+      expect((await call(`/operations/tasks/${owned.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(200);
       expect((await call(`/crm/deals/${own.id}`, 'PUT', { title: 'No CRM edit grant' }, auth)).status).toBe(403);
       const options = await call('/operations/tasks/options?kind=deal', 'GET', undefined, auth);
       expect(options.body.data.map((row: any) => row.id)).toContain(own.id);

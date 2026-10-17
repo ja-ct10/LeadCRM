@@ -1,5 +1,10 @@
 import type { TaskLinkKind, TaskOption, TaskRecord } from '@leadcrm/shared';
 
+/** Creator ownership is separate from assignment, including for administrators. */
+export function isTaskOwner(task: Pick<TaskRecord, 'createdById'> | undefined, userId: string | undefined): boolean {
+  return !!userId && !!task?.createdById && task.createdById === userId;
+}
+
 export function taskRecordHref(kind: TaskLinkKind, id: string): string {
   return `/crm/${kind}s/${encodeURIComponent(id)}`;
 }

@@ -1,6 +1,12 @@
 import { expect, it } from 'vitest';
 import type { TaskRecord } from '@leadcrm/shared';
-import { taskRecordOptions } from '../task-relations';
+import { isTaskOwner, taskRecordOptions } from '../task-relations';
+
+it('requires the authoritative creator ID without assignee, name, or missing-creator fallbacks', () => {
+  expect(isTaskOwner({ createdById: 'owner' }, 'owner')).toBe(true);
+  for (const createdById of ['other', null, undefined]) expect(isTaskOwner({ createdById }, 'owner')).toBe(false);
+  expect(isTaskOwner({ createdById: 'owner' }, undefined)).toBe(false);
+});
 
 it('retains legacy labels when hydrated arrays are empty and deduplicates mixed responses', () => {
   const task = { leads: [], lead: { id: 'l', firstName: 'Lead', lastName: 'One' }, contacts: [{ id: 'c', firstName: 'Contact', lastName: 'One' }], contact: { id: 'c', firstName: 'Contact', lastName: 'One' }, deals: [], deal: { id: 'd', title: 'Expansion' }, accounts: [], account: { id: 'a', name: 'Acme' } } as unknown as TaskRecord;
