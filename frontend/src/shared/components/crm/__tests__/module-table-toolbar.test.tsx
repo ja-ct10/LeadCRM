@@ -1,0 +1,48 @@
+import React from 'react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { afterEach, expect, it, vi } from 'vitest';
+import { ModuleTableToolbar } from '../module-table-toolbar';
+import { FilterButton } from '../filter-button';
+
+afterEach(cleanup);
+
+it('keeps search and the existing refresh action together while secondary controls remain available', async () => {
+  const search = vi.fn(), refresh = vi.fn(), filter = vi.fn(), columns = vi.fn();
+  render(<ModuleTableToolbar label="Records" search="" onSearch={search} placeholder="Search records..." onRefresh={refresh}
+    filter={<FilterButton title="Records" open={false} onClick={filter} />} onManageColumns={columns} />);
+  const primary = screen.getByRole('group', { name: 'Records search and refresh' });
+  expect(primary.className).toContain('flex-nowrap');
+  const input = within(primary).getByRole('textbox', { name: 'Search records' });
+  expect(input.parentElement?.parentElement?.className).toContain('min-w-0');
+  expect(input.parentElement?.parentElement?.className).toContain('flex-1');
+  fireEvent.change(input, { target: { value: 'CCTV' } });
+  expect(search).toHaveBeenCalledExactlyOnceWith('CCTV');
+  const button = within(primary).getByRole('button', { name: 'Refresh' });
+  expect(button.parentElement?.className).toContain('shrink-0');
+  expect(button.className).toContain('min-w-11');
+  expect(button.className).toContain('min-h-11');
+  fireEvent.click(button);
+  await waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Records' }));
+  expect(filter).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole('button', { name: 'Table settings' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Columns' }));
+  expect(columns).toHaveBeenCalledOnce();
+});
+
+it('retains disabled and refreshing states without removing either primary control', () => {
+  const search = vi.fn(), refresh = vi.fn();
+  const view = render(<ModuleTableToolbar label="Records" search="saved" onSearch={search} placeholder="Search records..." onRefresh={refresh} disabled />);
+  const input = screen.getByRole('textbox', { name: 'Search records' });
+  const button = screen.getByRole('button', { name: 'Refresh' });
+  expect(input).toHaveProperty('disabled', true);
+  expect(button).toHaveProperty('disabled', true);
+  fireEvent.click(button);
+  expect(refresh).not.toHaveBeenCalled();
+  view.rerender(<ModuleTableToolbar label="Records" search="saved" onSearch={search} placeholder="Search records..." onRefresh={refresh} refreshing />);
+  expect(input).toHaveProperty('disabled', false);
+  expect(input).toHaveProperty('value', 'saved');
+  expect(button).toHaveProperty('disabled', true);
+  expect(button.getAttribute('aria-busy')).toBe('true');
+  expect(screen.getByRole('group', { name: 'Records search and refresh' }).contains(button)).toBe(true);
+});

@@ -12,60 +12,46 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   async function layout(label) {
     await wait(400);
     const dimensions = await revenue().evaluate(region => {
-      const card = region.parentElement, canvas = region.querySelector('canvas');
-      const rect = element => { const r = element.getBoundingClientRect(); return { x: r.x, y: r.y, width: r.width, height: r.height, bottom: r.bottom, right: r.right }; };
-      const list = card.nextElementSibling.querySelector('[aria-label="Action Center actions"]');
-      const items = [...list.querySelectorAll('a')].map(link => {
-        const style = getComputedStyle(link), title = link.querySelector('p');
-        return { ...rect(link), title: link.title, fullTitle: title.textContent, titleHeight: title.getBoundingClientRect().height,
-          titleLineHeight: parseFloat(getComputedStyle(title).lineHeight), clamp: getComputedStyle(title).webkitLineClamp,
-          paddingX: parseFloat(style.paddingLeft), paddingY: parseFloat(style.paddingBottom),
-          bottomSlack: link.getBoundingClientRect().bottom - link.lastElementChild.getBoundingClientRect().bottom - parseFloat(style.paddingBottom) - parseFloat(style.borderBottomWidth) };
-      });
-      return { width: innerWidth, rootWidth: document.documentElement.scrollWidth, fontSize: parseFloat(getComputedStyle(document.documentElement).fontSize),
-        region: rect(region), card: rect(card), canvas: rect(canvas), action: rect(card.nextElementSibling),
-        list: { ...rect(list), clientHeight: list.clientHeight, scrollHeight: list.scrollHeight, scrollWidth: list.scrollWidth, clientWidth: list.clientWidth, overflow: getComputedStyle(list).overflowY,
-          items, clippedItems: [...list.querySelectorAll('a')].filter(link => [...link.children].some(child => child.getBoundingClientRect().bottom > link.getBoundingClientRect().bottom - parseFloat(getComputedStyle(link).paddingBottom))).length },
-        bottomPadding: parseFloat(getComputedStyle(card).paddingBottom), labels: canvas.__labels ?? [],
-        points: canvas.__points ?? [], overflowY: region.scrollHeight > region.clientHeight + 1 };
+      const card=region.closest('section'),action=document.querySelector('section[aria-label="Action Center"]');
+      const list=action.querySelector('[aria-label="Action Center actions"]'),canvas=region.querySelector('canvas');
+      const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right};};
+      const items=[...list.querySelectorAll('a')].map(link=>{const title=link.querySelector('p'),style=getComputedStyle(link);return {...rect(link),title:link.title,fullTitle:title.textContent,titleHeight:title.getBoundingClientRect().height,titleLineHeight:parseFloat(getComputedStyle(title).lineHeight),clamp:getComputedStyle(title).webkitLineClamp,paddingX:parseFloat(style.paddingLeft),paddingY:parseFloat(style.paddingBottom)};});
+      const sections=[...document.querySelectorAll('main section[aria-label]')].filter(section=>['Action Center','Revenue Trend','Pipeline Overview','Conversion Funnel','Sales Leaderboard'].includes(section.getAttribute('aria-label'))).map(section=>({name:section.getAttribute('aria-label'),...rect(section)}));
+      const kpis=[...document.querySelectorAll('[aria-label="Dashboard KPIs"] > [role="group"]')].map(group=>({name:group.getAttribute('aria-label'),...rect(group)}));
+      return {width:innerWidth,rootWidth:document.documentElement.scrollWidth,fontSize:parseFloat(getComputedStyle(document.documentElement).fontSize),region:rect(region),card:rect(card),canvas:rect(canvas),action:rect(action),sections,kpis,
+        list:{...rect(list),clientHeight:list.clientHeight,scrollHeight:list.scrollHeight,scrollWidth:list.scrollWidth,clientWidth:list.clientWidth,overflow:getComputedStyle(list).overflowY,items,
+          clippedItems:[...list.querySelectorAll('a p')].filter(text=>{const parent=text.closest('a').getBoundingClientRect(),bounds=text.getBoundingClientRect();return bounds.bottom>parent.bottom+1||bounds.right>parent.right+1;}).length},
+        columnGap:parseFloat(getComputedStyle(card.parentElement).columnGap),bottomPadding:parseFloat(getComputedStyle(card).paddingBottom),labels:canvas.__labels??[],points:canvas.__points??[],overflowY:region.scrollHeight>region.clientHeight+1};
     });
-    assert.ok(dimensions.rootWidth <= dimensions.width + 1, JSON.stringify(dimensions));
-    assert.ok(Math.abs(dimensions.canvas.height - dimensions.region.height) <= 1, JSON.stringify(dimensions));
-    assert.ok(Math.abs(dimensions.card.bottom - dimensions.region.bottom - dimensions.bottomPadding) <= 1, JSON.stringify(dimensions));
-    assert.ok(dimensions.region.height >= 220 && dimensions.canvas.width > 0);
-    assert.equal(dimensions.overflowY, false);
-    assert.ok(dimensions.canvas.right <= dimensions.width + 1);
-    assert.ok(dimensions.labels.some(text => text.startsWith('₱')), JSON.stringify(dimensions.labels));
-    assert.equal(dimensions.list.overflow, 'auto');
-    assert.ok(dimensions.list.scrollWidth <= dimensions.list.clientWidth);
-    assert.equal(dimensions.list.clippedItems, 0, 'Action labels, titles and due dates fit at every width');
-    const items = dimensions.list.items, limit = dimensions.width >= 1024 ? 5 : 3;
-    if (items.length) {
-      assert.ok(Math.abs(dimensions.list.height - (items[Math.min(limit, items.length) - 1].bottom - items[0].y)) <= 1, 'Viewport ends after actual visible cards');
-      for (const item of items) {
-        assert.ok(Math.abs(item.bottomSlack) <= 1, `No reserved whitespace under ${item.title}`);
-        assert.ok(item.titleHeight <= item.titleLineHeight * 2 + 1, 'At most two visible title lines');
-        assert.equal(item.clamp, '2'); assert.equal(item.title, item.fullTitle, 'Full title remains accessible');
-        assert.equal(item.paddingX, dimensions.fontSize * 0.75); assert.equal(item.paddingY, dimensions.fontSize * 0.625);
-      }
-    }
-    if (dimensions.width >= 1024) {
-      assert.ok(Math.abs(dimensions.card.y - dimensions.action.y) <= 1);
-      assert.ok(Math.abs(dimensions.card.height - dimensions.action.height) <= 1);
-      assert.ok(dimensions.action.x >= dimensions.card.right);
-    } else {
-      assert.ok(dimensions.action.y >= dimensions.card.bottom);
-      assert.ok(dimensions.region.height <= 221, 'Stacked chart keeps its sensible minimum height');
-    }
-    record(label, dimensions);
-    return dimensions;
+    assert.ok(dimensions.rootWidth<=dimensions.width+1,JSON.stringify(dimensions));
+    assert.ok(Math.abs(dimensions.canvas.height-dimensions.region.height)<=1);
+    assert.ok(Math.abs(dimensions.card.bottom-dimensions.region.bottom-dimensions.bottomPadding)<=1);
+    assert.ok(dimensions.region.height>=220&&dimensions.canvas.width>0);
+    assert.equal(dimensions.overflowY,false);
+    assert.ok(dimensions.canvas.right<=dimensions.width+1);
+    assert.ok(dimensions.labels.some(text=>text.startsWith('₱')),JSON.stringify(dimensions.labels));
+    assert.equal(dimensions.list.overflow,'auto');assert.ok(dimensions.list.scrollWidth<=dimensions.list.clientWidth);assert.equal(dimensions.list.clippedItems,0);
+    assert.deepEqual(dimensions.kpis.map(kpi=>kpi.name),['Revenue','Forecast','Open Deals','Leads','Win Rate']);
+    assert.deepEqual(dimensions.sections.map(section=>section.name),['Action Center','Revenue Trend','Pipeline Overview','Conversion Funnel','Sales Leaderboard']);
+    const expectedKpiColumns=dimensions.width>=1024?5:dimensions.width>=640?3:dimensions.width>=360?2:1;
+    assert.equal(dimensions.kpis.filter(kpi=>Math.abs(kpi.y-dimensions.kpis[0].y)<=1).length,expectedKpiColumns);
+    const items=dimensions.list.items,limit=dimensions.width>=1024?5:3;
+    if(items.length){assert.ok(Math.abs(dimensions.list.height-(items[Math.min(limit,items.length)-1].bottom-items[0].y))<=1,'Measured action viewport');for(const item of items){assert.ok(item.titleHeight<=item.titleLineHeight*2+1);assert.equal(item.clamp,'2');assert.equal(item.title,item.fullTitle);}}
+    if(dimensions.width>=1024){
+      assert.ok(dimensions.kpis.every(kpi=>Math.abs(kpi.y-dimensions.kpis[0].y)<=1),'Five KPIs across');
+      assert.ok(Math.abs(dimensions.card.y-dimensions.action.y)<=1);assert.ok(Math.abs(dimensions.card.height-dimensions.action.height)<=1);assert.ok(dimensions.card.x>=dimensions.action.right,'Action Center first');
+      assert.ok(Math.abs(dimensions.sections[2].y-dimensions.sections[3].y)<=1);
+    }else{assert.ok(dimensions.card.y>=dimensions.action.bottom);assert.ok(dimensions.sections[3].y>=dimensions.sections[2].bottom);assert.ok(dimensions.region.height<=221);}
+    assert.ok(dimensions.sections[4].y>=dimensions.sections[3].bottom);
+    assert.ok(Math.abs(dimensions.sections[4].width-(dimensions.width>=1024?dimensions.action.width+dimensions.card.width+dimensions.columnGap:dimensions.card.width))<=1,'Full-width leaderboard');
+    record(label,dimensions);return dimensions;
   }
   async function interval(label, range = 'thisMonth') {
     const response = page.waitForResponse(r => r.url().includes('/reporting/dashboard?') && new URL(r.url()).searchParams.get('revenueInterval') === label.toLowerCase());
     await page.getByRole('button', { name: 'Filter Revenue Trend', exact: true }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
     await response;
-    await page.getByRole('heading', { name: `Revenue Trend by ${label}`, exact: true }).waitFor();
+    await page.getByRole('heading', { name: 'Revenue Trend', exact: true }).waitFor();
     const report = await http(`/reporting/dashboard?range=${range}&revenueInterval=${label.toLowerCase()}`);
     assert.equal(report.metrics.totalRevenue, report.trend.reduce((sum, row) => sum + row.revenue, 0));
     assert.equal(report.metrics.won, report.trend.reduce((sum, row) => sum + row.won, 0));
@@ -100,7 +86,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     while (tasks.length < count) tasks.push(await http('/operations/tasks', 'POST', { title: tasks.length === 4 ? 'A long follow-up title that wraps across several lines while the due date remains readable and the complete title is available on the existing record' : `UI polish overdue follow-up ${tasks.length}`, dueDate: new Date(Date.now() - 86400000).toISOString(), priority: 'High', assignedUserId: agent.id, dealIds: [won.id] }));
     const report = await http('/reporting/dashboard?range=thisMonth');
     await until(async () => await action().getByRole('link').count() === report.actions.length, `${count} task Action Center refresh`);
-    if (!count) await action().getByText('All caught up!', { exact: true }).waitFor();
+    if (!count) await action().getByText('No actions require attention.', { exact: true }).waitFor();
     else assert.equal(report.actions.length, count);
     await actionList().evaluate(list => { list.scrollTop = 0; });
     const slots = await actionList().evaluate(list => {
@@ -216,8 +202,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const endpoints = await canvas.evaluate(c => c.__curves);
   assert.ok(endpoints.length > 0, 'Multiple observations form a real curve');
   let tooltip = false;
-  // The existing area chart has invisible multi-point markers and a small hit
-  // radius. Probe the real curve endpoints with subpixel rounding tolerance.
+  // Probe real curve endpoints with subpixel rounding tolerance.
   for (const endpoint of endpoints) {
     for (const delta of [-1, 0, 1]) {
       await canvas.hover({ position: { x: endpoint.x + delta, y: endpoint.y + delta } });
@@ -265,8 +250,8 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
       await actionList().evaluate(list => { list.scrollTop = 0; });
       const size = await layout(`${theme} mixed compact actions responsive ${width}`);
       const links = actionList().getByRole('link');
-      assert.equal(await links.filter({ hasText: /^Hot lead/ }).locator('p').count(), 3, 'Hot leads contain only their title');
-      assert.equal(await links.filter({ hasText: /^Deal needs attention/ }).locator('p').count(), 1, 'Stagnant deal has no date placeholder');
+      assert.equal(await links.filter({ hasText: /Hot lead/ }).count(), 3, 'All real hot leads remain');
+      assert.equal(await links.filter({ hasText: /Stale deal/ }).count(), 1, 'Real stale deal remains');
       assert.ok(size.list.items[2].height < size.list.items[0].height, 'Hot leads are shorter than overdue tasks');
       assert.ok(Math.abs(size.list.items[1].titleHeight - size.list.items[1].titleLineHeight * 2) <= 1, 'Long task uses two title lines');
       const visible = size.list.items.filter(item => item.y >= size.list.y - 1 && item.bottom <= size.list.bottom + 1).length;
@@ -294,7 +279,9 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const downloadWait = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export CSV', exact: true }).click();
   const download = await downloadWait; assert.equal(await download.failure(), null);
-  record('Reports retains its CSV download');
+  for(const title of ['Deals Won vs. Lost','Pipeline Distribution','Pipeline Value by Stage','Deal Pipeline Conversion Funnel']) await page.getByRole('heading',{name:title,exact:true}).waitFor();
+  await page.getByRole('group',{name:'Avg Deal Velocity',exact:true}).waitFor();
+  record('Reports retains its original visualizations and CSV download');
   }
 
   if (dashboardOnly) return;
@@ -374,5 +361,5 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   await compose.waitFor(); assert.equal(await compose.getByLabel('To', { exact: true }).inputValue(), 'polish0@example.test');
   record('Edited Lead refresh, reassignment, status and existing email compose handoff');
   await staffPage.goto(base + '/dashboard');
-  await staffPage.getByRole('heading', { name: 'Revenue Trend by Month', exact: true }).waitFor();
+  await staffPage.getByRole('heading', { name: 'Revenue Trend', exact: true }).waitFor();
 }

@@ -1,12 +1,13 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import type { DashboardReport } from '@leadcrm/shared';
+import type { DashboardReport, DashboardQuery } from '@leadcrm/shared';
 import Dashboard from './dashboard';
 
-const mocks = vi.hoisted(() => ({ report: null as DashboardReport | null, refresh: vi.fn(async () => true), charts: [] as any[] }));
+const mocks = vi.hoisted(() => ({ report: null as DashboardReport | null, query: null as DashboardQuery | null, error: null as string | null, loading: false, refresh: vi.fn(async () => true), charts: [] as any[], success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'Sales' } }) }));
-vi.mock('../hooks/use-dashboard-report', () => ({ useDashboard: () => ({ report: mocks.report, error: null, loading: false, refresh: mocks.refresh }) }));
+vi.mock('../hooks/use-dashboard-report', () => ({ useDashboard: (query: DashboardQuery) => { mocks.query = query; return { report: mocks.report, error: mocks.error, loading: mocks.loading, refresh: mocks.refresh }; } }));
+vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.failure } }));
 vi.mock('react-chartjs-2', () => ({
   Bar: (props: any) => { mocks.charts.push({ type: 'bar', ...props }); return <canvas />; },
   Line: (props: any) => { mocks.charts.push({ type: 'area', ...props }); return <canvas />; },
@@ -15,6 +16,8 @@ vi.mock('react-chartjs-2', () => ({
 
 beforeEach(() => {
   mocks.charts = [];
+  mocks.loading = false; mocks.error = null;
+  mocks.refresh.mockResolvedValue(true); mocks.success.mockClear(); mocks.failure.mockClear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   mocks.report = {
     generatedAt: '2020-01-15T04:00:00Z', queryMs: 1, currency: 'PHP', scope: 'organization',
@@ -34,8 +37,8 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); mocks.refresh.mockClear(); });
 
-it('renders current all-time KPI counts and exact backend forecast, with separate unattributed revenue', () => {
-  render(<Dashboard />);
+it('preserves Reports current all-time KPI counts and exact backend forecast, with separate unattributed revenue', () => {
+  render(<Dashboard presentation="reporting" />);
   const rate = within(screen.getByRole('group', { name: 'Win Rate' }));
   expect(rate.getByText('8%')).toBeTruthy();
   expect(rate.getByText('2 won / 25 total deals · current')).toBeTruthy();
@@ -44,7 +47,7 @@ it('renders current all-time KPI counts and exact backend forecast, with separat
   expect(screen.getByText('1 won deals · ₱1,000.00 without verified eligible sales credit')).toBeTruthy();
 });
 it('exposes unique backend warnings, cohort totals and incomplete history without conflating current stages', () => {
-  render(<Dashboard />);
+  render(<Dashboard presentation="reporting" />);
   fireEvent.click(screen.getByText('Reporting warnings (1)'));
   expect(screen.getAllByText('Missing historical stage data.')).toHaveLength(1);
   expect(screen.getByText('10 deals in the creation cohort · Historical milestones, not current stages')).toBeTruthy();
@@ -55,7 +58,7 @@ it('exposes unique backend warnings, cohort totals and incomplete history withou
 it('shows backend conversion rates and formats single-bucket revenue and won/lost dates', () => {
   mocks.report!.conversion!.missingHistory = 0;
   mocks.report!.conversion!.qualifiedToWon = 37.5;
-  render(<Dashboard />);
+  render(<Dashboard presentation="reporting" />);
   expect(screen.getByText('Qualified → Closed Won: 37.5%')).toBeTruthy();
   const trend = mocks.charts.find(chart => chart.type === 'area');
   const outcomes = mocks.charts.find(chart => chart.type === 'bar' && chart.data.datasets[0].label === 'Closed Won');
@@ -69,10 +72,170 @@ it('uses meaningful revenue and outcome empty states and unavailable monetary da
   mocks.report!.metrics.totalRevenue = 0;
   mocks.report!.metrics.won = 0; mocks.report!.metrics.lost = 0;
   mocks.report!.metrics.openPipelineValue = null; mocks.report!.metrics.forecastedRevenue = null;
-  render(<Dashboard />);
+  render(<Dashboard presentation="reporting" />);
   expect(screen.getByText('No won revenue in the selected period.')).toBeTruthy();
   expect(screen.getByText('No resolved deals in the selected period.')).toBeTruthy();
   expect(screen.getByText('Pipeline value unavailable.')).toBeTruthy();
   expect(within(screen.getByRole('group', { name: 'Forecasted Revenue' })).getByText('Unavailable')).toBeTruthy();
   expect(mocks.charts.filter(chart => chart.type === 'area' || chart.type === 'bar')).toHaveLength(0);
+});
+
+it('renders exactly five mapped KPIs and the five requested sections in sample order', () => {
+  render(<Dashboard />);
+  expect(within(screen.getByLabelText('Dashboard KPIs')).getAllByRole('group').map(group => group.getAttribute('aria-label'))).toEqual(['Revenue', 'Forecast', 'Open Deals', 'Leads', 'Win Rate']);
+  expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Action Center', 'Revenue Trend', 'Pipeline Overview', 'Conversion Funnel', 'Sales Leaderboard']);
+  for (const removed of ['Avg Deal Velocity', 'Deals Won vs. Lost', 'Pipeline Distribution', 'Pipeline Value by Stage']) expect(screen.queryByText(removed)).toBeNull();
+  expect(within(screen.getByRole('group', { name: 'Revenue' })).getByLabelText('₱45,000.00').textContent).toBe('₱45K');
+  expect(within(screen.getByRole('group', { name: 'Forecast' })).getByLabelText('₱225,000.00').textContent).toBe('₱225K');
+  expect(within(screen.getByRole('group', { name: 'Open Deals' })).getByText('3')).toBeTruthy();
+  expect(within(screen.getByRole('group', { name: 'Leads' })).getByText('1')).toBeTruthy();
+  expect(within(screen.getByRole('group', { name: 'Win Rate' })).getByText('8%')).toBeTruthy();
+});
+
+it('shows exact compact amounts on keyboard focus', async () => {
+  render(<Dashboard />);
+  const amount = within(screen.getByRole('group', { name: 'Revenue' })).getByLabelText('₱45,000.00');
+  expect(amount.tabIndex).toBe(0);
+  fireEvent.focus(amount);
+  expect(await screen.findByRole('tooltip')).toHaveProperty('textContent', '₱45,000.00');
+});
+
+it('uses real distribution values, saved colors and count-relative widths, excluding closed stages', () => {
+  mocks.report!.distribution = [
+    { id: 'lead', name: 'Lead', color: '#FFCC00', count: 13, value: 132123, percentage: 72.2 },
+    { id: 'contacted', name: 'Contacted', color: '#123456', count: 3, value: 37000, percentage: 16.7 },
+    { id: 'qualified', name: 'Qualified', color: '#654321', count: 2, value: null, percentage: 11.1 },
+    { id: 'won', name: 'Closed Won', color: null, count: 8, value: 1000, percentage: 0 },
+  ];
+  render(<Dashboard />);
+  const pipeline = within(screen.getByRole('region', { name: 'Pipeline Overview' }));
+  expect(pipeline.getAllByRole('listitem').map(row => row.getAttribute('aria-label'))).toEqual(['Lead', 'Contacted', 'Qualified']);
+  const lead = within(pipeline.getByRole('listitem', { name: 'Lead' }));
+  expect(lead.getByText('13 deals')).toBeTruthy();
+  expect(lead.getByLabelText('₱132,123.00').textContent).toBe('₱132.1K');
+  expect((lead.getByRole('meter').firstChild as HTMLElement).style.width).toBe('100%');
+  expect((lead.getByRole('meter').firstChild as HTMLElement).style.backgroundColor).toBe('rgb(255, 204, 0)');
+  const contacted = pipeline.getByRole('meter', { name: 'Contacted deal count relative to largest stage' });
+  expect(parseFloat((contacted.firstChild as HTMLElement).style.width)).toBeCloseTo(3 / 13 * 100);
+  expect(within(pipeline.getByRole('listitem', { name: 'Qualified' })).getByText('Unavailable')).toBeTruthy();
+});
+
+it('uses historical reached counts and backend rates rather than recomputing adjacent ratios', () => {
+  Object.assign(mocks.report!.conversion!, { leadToContacted: 27.8, contactedToQualified: 40, qualifiedToWon: 37.5, qualifiedToLost: 5 });
+  render(<Dashboard />);
+  const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
+  expect(funnel.getByRole('list', { name: 'Historical conversion stages' }).children).toHaveLength(4);
+  expect(funnel.getByRole('listitem', { name: 'Lead: 9 reached' })).toBeTruthy();
+  expect(funnel.getByRole('listitem', { name: 'Closed Won: 1 reached' })).toBeTruthy();
+  for (const rate of ['27.8%', '40%', '37.5%']) expect(funnel.getByText(rate)).toBeTruthy();
+  expect(funnel.getByText('Closed Lost: 1 reached · Qualified → Closed Lost: 5%')).toBeTruthy();
+  fireEvent.click(funnel.getByText('Cohort details'));
+  expect(funnel.getByText('10 deals in the creation cohort · Historical milestones, not current stages')).toBeTruthy();
+  expect(funnel.getByText(/1 deals lack recorded starting history/)).toBeTruthy();
+});
+it('accepts the same normalized official stage names as the backend', () => {
+  mocks.report!.distribution[0].name = ' lead ';
+  render(<Dashboard />);
+  expect(within(screen.getByRole('region', { name: 'Pipeline Overview' })).getByText('3 deals')).toBeTruthy();
+});
+
+it('keeps action ordering, summaries, links, actual priority and Manila due dates', () => {
+  mocks.report!.actions = [
+    { id: 'task', kind: 'task', title: 'Call customer', dueDate: '2020-01-14T18:00:00Z', priority: 'High', overdue: true, href: '/operations/taskboard?taskId=task' },
+    { id: 'pending', kind: 'task', title: 'Prepare proposal', dueDate: null, priority: 'Low', overdue: false, href: '/operations/taskboard?taskId=pending' },
+    { id: 'lead', kind: 'lead', title: 'Doris Joe', dueDate: null, priority: 'High', overdue: false, href: '/crm/leads/lead' },
+    { id: 'deal', kind: 'deal', title: 'Customer renewal', dueDate: null, priority: 'Medium', overdue: false, href: '/crm/deals/deal' },
+  ];
+  mocks.report!.pendingActions = 4;
+  render(<Dashboard />);
+  const actions = within(screen.getByRole('region', { name: 'Action Center' }));
+  expect(actions.getByText('1 overdue task · 1 hot lead · 1 stale deal')).toBeTruthy();
+  expect(actions.getAllByRole('link').map(link => link.getAttribute('href'))).toEqual(mocks.report!.actions.map(action => action.href));
+  expect(actions.getByText('DJ')).toBeTruthy();
+  expect(actions.getByText('Hot lead · High')).toBeTruthy();
+  expect(actions.getByText('Pending task · Low')).toBeTruthy();
+  expect(actions.getByText('Due Jan 15, 2020')).toBeTruthy();
+  expect(actions.queryByText(/Follow-up overdue/)).toBeNull();
+});
+
+it('renders backend leaderboard rank, initials, revenue and attributed deal count', () => {
+  render(<Dashboard />);
+  const board = within(screen.getByRole('region', { name: 'Sales Leaderboard' }));
+  expect(board.getByLabelText('Rank 1')).toBeTruthy();
+  expect(board.getByText('HA')).toBeTruthy();
+  expect(board.getByText('Historical Agent')).toBeTruthy();
+  expect(board.getByLabelText('₱44,000.00').textContent).toBe('₱44K');
+  expect(board.getByText('2 deals')).toBeTruthy();
+  expect(board.getByText('1 won deals · ₱1,000.00 without verified eligible sales credit')).toBeTruthy();
+});
+
+it('renders truthful empty states, zero historical blocks and unavailable rates', () => {
+  mocks.report!.metrics.totalRevenue = 0;
+  mocks.report!.metrics.forecastedRevenue = null;
+  mocks.report!.distribution.forEach(stage => { stage.count = 0; });
+  mocks.report!.leaderboard = [];
+  mocks.report!.conversion!.cohort = 0;
+  mocks.report!.conversion!.missingHistory = 0;
+  mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
+  render(<Dashboard />);
+  for (const empty of ['No actions require attention.', 'No won revenue in the selected period.', 'No open deals.', 'No verified eligible sales attribution in this period.']) expect(screen.getByText(empty)).toBeTruthy();
+  expect(screen.getByRole('list', { name: 'Historical conversion stages' }).children).toHaveLength(4);
+  expect(screen.getAllByRole('listitem', { name: /0 reached/ })).toHaveLength(4);
+  expect(within(screen.getByRole('group', { name: 'Forecast' })).getByText('Unavailable')).toBeTruthy();
+  expect(screen.queryByRole('meter')).toBeNull();
+  expect(mocks.charts).toHaveLength(0);
+});
+
+it('preserves chart report data, compact ticks, exact tooltips and opt-in data points', () => {
+  render(<Dashboard />);
+  const trend = mocks.charts.find(chart => chart.type === 'area');
+  expect(mocks.charts).toHaveLength(1);
+  expect(trend.data.datasets[0].data).toEqual([45000]);
+  expect(trend.data.datasets[0].pointRadius).toBe(6);
+  expect(trend.options.scales.x.ticks.callback(0)).toBe('Jan');
+  expect(trend.options.plugins.tooltip.callbacks.title([{ label: '2020-01-01' }])).toBe('Jan 2020');
+  expect(trend.options.plugins.tooltip.callbacks.label({ dataset: { label: 'Revenue (PHP)' }, parsed: { y: 45000 } })).toBe('Revenue (PHP): ₱45,000.00');
+});
+
+it('preserves independent global, revenue interval and historical funnel filters', () => {
+  render(<Dashboard />);
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Last 3 Months' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Revenue Trend' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Week' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Conversion Funnel' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Year' }));
+  expect(mocks.query).toMatchObject({ range: 'last3', revenueInterval: 'week', funnelRange: 'year' });
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Date Range' }));
+  fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2020-01-01' } });
+  fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2020-01-02' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply dates' }));
+  expect(mocks.query).toMatchObject({ range: 'custom', start: '2020-01-01', end: '2020-01-02', revenueInterval: 'week', funnelRange: 'year' });
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Conversion Funnel' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Range' }));
+  fireEvent.change(screen.getByLabelText('Funnel From Date'), { target: { value: '2020-01-03' } });
+  fireEvent.change(screen.getByLabelText('Funnel To Date'), { target: { value: '2020-01-04' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply funnel dates' }));
+  expect(mocks.query).toMatchObject({ range: 'custom', start: '2020-01-01', end: '2020-01-02', funnelRange: 'custom', funnelStart: '2020-01-03', funnelEnd: '2020-01-04' });
+});
+
+it('uses Sync Metrics and reports refresh success or failure', async () => {
+  render(<Dashboard />);
+  fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
+  await waitFor(() => expect(mocks.success).toHaveBeenCalledWith('Dashboard metrics refreshed'));
+  mocks.refresh.mockResolvedValueOnce(false);
+  fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
+  await waitFor(() => expect(mocks.failure).toHaveBeenCalledWith('Dashboard could not refresh'));
+  expect(mocks.refresh).toHaveBeenCalledTimes(2);
+});
+
+it('uses the simplified loading skeleton and preserves permission-based unavailable states', () => {
+  mocks.report = null; mocks.loading = true;
+  const view = render(<Dashboard />);
+  expect(screen.getByLabelText('Loading Dashboard')).toBeTruthy();
+  mocks.loading = false; mocks.error = 'Your reporting access changed.';
+  view.rerender(<Dashboard />);
+  expect(screen.getByRole('alert').textContent).toContain('Your reporting access changed.');
+  expect(screen.queryByRole('group')).toBeNull();
 });

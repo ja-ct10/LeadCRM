@@ -40,6 +40,22 @@ it('uses the shared row menu with View, Edit and Archive', async () => {
   fireEvent.click(trigger); fireEvent.mouseDown(document.body); expect(screen.queryByRole('menu')).toBeNull();
 });
 
+it('keeps product search and refresh in one non-wrapping toolbar without changing search', async () => {
+  render(<ProductsPage />); await screen.findByRole('grid');
+  const toolbar = screen.getByRole('toolbar', { name: 'Products controls' });
+  expect(toolbar.className).toContain('flex-nowrap');
+  const input = within(toolbar).getByRole('textbox', { name: 'Search products' });
+  const refresh = within(toolbar).getByRole('button', { name: 'Refresh products' });
+  expect(input.parentElement?.parentElement?.className).toContain('flex-1');
+  expect(input.parentElement?.parentElement?.className).toContain('min-w-0');
+  expect(refresh.parentElement?.className).toContain('shrink-0');
+  fireEvent.change(input, { target: { value: 'unmatched product' } });
+  expect(screen.queryByText(product.name)).toBeNull();
+  expect(within(toolbar).getByRole('button', { name: 'Refresh products' })).toBe(refresh);
+  fireEvent.change(input, { target: { value: 'CCTV' } });
+  expect(screen.getByText(product.name)).toBeTruthy();
+});
+
 it('pins Others after all sorted products, including descending order', async () => {
   vi.mocked(apiClient.get).mockResolvedValue({ data: [
     { ...product, id: 'others', name: 'Others', dealValue: 10 },

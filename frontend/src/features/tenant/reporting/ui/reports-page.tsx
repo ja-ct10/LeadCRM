@@ -28,5 +28,5 @@ function ReportsCsvExport({ query, report, error, className }: { query: Dashboar
 
 /** Reports reuse the authorized Dashboard view and retain their CSV control. */
 export default function ReportsPage() {
-  return <Dashboard heading="Analytics & Reports" renderToolbarActions={props => <ReportsCsvExport {...props} />} />;
+  return <Dashboard presentation="reporting" heading="Analytics & Reports" renderToolbarActions={props => <ReportsCsvExport {...props} />} />;
 }

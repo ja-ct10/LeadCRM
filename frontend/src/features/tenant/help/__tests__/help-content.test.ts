@@ -22,6 +22,8 @@ describe('Help Center content integrity', () => {
     }
   });
   it('has populated categories and real implementation sources for maintenance', () => {
+    expect(helpCategories).toHaveLength(14);
+    expect(new Set(helpCategories.map(category => category.id)).size).toBe(helpCategories.length);
     for (const category of helpCategories) {
       expect(getCategoryArticles(category.id).length).toBeGreaterThan(0);
       for (const source of category.sources) {
@@ -29,6 +31,12 @@ describe('Help Center content integrity', () => {
       }
     }
     for (const slug of popularArticleIds) expect(getArticle(slug)).toBeDefined();
+  });
+  it('keeps new guides in existing categories and retires removed controls', () => {
+    for (const slug of ['products', 'inbox', 'email-activity']) expect(getArticle(slug)?.category).toBe('settings');
+    expect(getArticle('conversion-funnel')?.category).toBe('dashboard');
+    expect(getCategoryArticles('roles')[0].slug).toBe('understanding-roles');
+    for (const slug of ['average-velocity', 'deal-table', 'multi-channel-campaigns']) expect(getArticle(slug)).toBeUndefined();
   });
   it('returns no record for unknown routes', () => {
     expect(getArticle('not-a-guide')).toBeUndefined();
@@ -38,6 +46,21 @@ describe('Help Center content integrity', () => {
 });
 
 describe('Help Center search', () => {
+  it.each([
+    ['RBAC', 'understanding-roles'],
+    ['custom field', 'custom-fields'],
+    ['technical variable', 'custom-fields'],
+    ['reassignment', 'assigning-leads'],
+    ['product', 'products'],
+    ['archived data', 'archived-data'],
+    ['inbox', 'inbox'],
+    ['email activity', 'email-activity'],
+  ])('finds the current guide for %s', (query, slug) => {
+    expect(searchHelp(query).map(article => article.slug)).toContain(slug);
+  });
+  it('ranks the primary RBAC explanation first', () => {
+    expect(searchHelp('RBAC')[0].slug).toBe('understanding-roles');
+  });
   it.each(['create role', 'CREATING ROLE', ' create   roles '])('ranks the custom-role procedure first for %s', query => {
     expect(searchHelp(query)[0].slug).toBe('creating-roles');
   });

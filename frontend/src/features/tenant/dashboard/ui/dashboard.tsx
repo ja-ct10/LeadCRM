@@ -2,13 +2,14 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/store/AuthContext';
-import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Calendar, ChevronDown, Filter } from 'lucide-react';
+import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Calendar, ChevronDown, ChevronRight, Filter, Layers, Trophy, ChartNoAxesColumnIncreasing, CircleAlert, ListTodo } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from '@/shared/components/charts/ChartComponents';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import DashboardSkeleton from '@/shared/components/dashboard-skeleton';
 import { useDashboard } from '../hooks/use-dashboard-report';
 import { DASHBOARD_TIMEZONE, DashboardQuerySchema, dashboardPeriod, dashboardFunnelPeriod, dashboardToday, pipelineStageColor, type DashboardQuery, type DashboardReport, type DashboardRange, type FunnelRange } from '@leadcrm/shared';
 import { Input } from '@/shared/components/ui/input';
+import { Tooltip as ValueTooltip, TooltipTrigger, TooltipContent, TooltipProvider } from '@/shared/components/ui/tooltip';
 import { toast } from 'sonner';
 import { motion } from 'motion/react';
 
@@ -37,6 +38,20 @@ function ChartFilter({ title, options, value, onSelect }: { title: string; optio
 }
 function Empty({ children }: { children: React.ReactNode }) {
   return <div className="flex-1 flex items-center justify-center text-sm text-slate-500 py-6">{children}</div>;
+}
+function CompactMoney({ value, currency }: { value: number | null | undefined; currency: string }) {
+  if (value == null) return <span>Unavailable</span>;
+  const exact = new Intl.NumberFormat('en-PH', { style: 'currency', currency }).format(value);
+  const compact = new Intl.NumberFormat('en-PH', { style: 'currency', currency, notation: 'compact', minimumFractionDigits: 0, maximumFractionDigits: 1 }).format(value);
+  return <TooltipProvider delayDuration={150}><ValueTooltip><TooltipTrigger asChild>
+    <span tabIndex={0} aria-label={exact} className="rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500">{compact}</span>
+  </TooltipTrigger><TooltipContent>{exact}</TooltipContent></ValueTooltip></TooltipProvider>;
+}
+function countLabel(count: number, singular: string) { return `${count} ${singular}${count === 1 ? '' : 's'}`; }
+function initials(name: string) { return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase(); }
+function stageForeground(color: string) {
+  const channels = [1, 3, 5].map(index => parseInt(color.slice(index, index + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722 > 0.179 ? '#0f172a' : '#ffffff';
 }
 function ActionCenterList({ children }: { children: React.ReactNode }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -82,8 +97,9 @@ function DashboardClock() {
   </time>;
 }
 
-export default function Dashboard({ heading, renderToolbarActions }: {
+export default function Dashboard({ heading, renderToolbarActions, presentation = 'dashboard' }: {
   heading?: string;
+  presentation?: 'dashboard' | 'reporting';
   renderToolbarActions?: (props: { query: DashboardQuery; report: DashboardReport | null; error: string | null; className: string }) => React.ReactNode;
 } = {}) {
   const { user } = useAuth();
@@ -97,7 +113,7 @@ export default function Dashboard({ heading, renderToolbarActions }: {
   const { report, error, loading, refresh } = dashboard;
   const currency = report?.currency ?? 'PHP';
   const money = (value: number | null | undefined) => value == null ? 'Unavailable' : new Intl.NumberFormat('en-PH', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value);
-  const axisMoney = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency, notation: 'compact', maximumFractionDigits: 1 }).format(Number(value));
+  const axisMoney = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency, notation: 'compact', ...(presentation === 'dashboard' ? { minimumFractionDigits: 0 } : {}), maximumFractionDigits: 1 }).format(Number(value));
   const metric = report?.metrics;
   const pipelineData = report?.distribution.map(row => ({ ...row, value: row.count, color: pipelineStageColor(row) })) ?? [];
   const pipelineValues = report?.distribution.map(row => ({ name: row.name, value: row.value ?? 0, color: pipelineStageColor(row) })) ?? [];
@@ -120,6 +136,26 @@ export default function Dashboard({ heading, renderToolbarActions }: {
     { label: 'Win Rate', value: metric?.winRate == null ? 'Unavailable' : `${metric.winRate}%`, icon: Target, color: 'pink', trend: `${metric?.currentWon ?? '—'} won / ${metric?.totalDeals ?? '—'} total deals · current` },
     { label: 'Avg Deal Velocity', value: metric?.averageDealDays == null ? 'Unavailable' : `${metric.averageDealDays} days`, icon: Zap, color: 'indigo', trend: 'Period · creation to won' },
   ];
+  const dashboardCards = [
+    { label: 'Revenue', value: <CompactMoney value={metric?.totalRevenue} currency={currency} />, icon: ChartNoAxesColumnIncreasing, color: 'emerald', context: 'Won revenue in the selected period' },
+    { label: 'Forecast', value: <CompactMoney value={metric?.forecastedRevenue} currency={currency} />, icon: TrendingUp, color: 'purple', context: 'Current open pipeline' },
+    { label: 'Open Deals', value: metric?.activeDeals ?? 'Unavailable', icon: Briefcase, color: 'blue', context: 'Current open pipeline' },
+    { label: 'Leads', value: metric?.totalLeads ?? 'Unavailable', icon: Users, color: 'orange', context: 'Current unconverted leads' },
+    { label: 'Win Rate', value: metric?.winRate == null ? 'Unavailable' : `${metric.winRate}%`, icon: Target, color: 'pink', context: 'Current won deals divided by all current eligible deals' },
+  ];
+  const openStages = report?.distribution.filter(stage => ['lead', 'contacted', 'qualified'].includes(stage.name.trim().toLowerCase())) ?? [];
+  const largestStage = Math.max(0, ...openStages.map(stage => stage.count));
+  const actionSummary = report ? [
+    report.access.tasks && countLabel(report.actions.filter(action => action.kind === 'task' && action.overdue).length, 'overdue task'),
+    report.access.leads && countLabel(report.actions.filter(action => action.kind === 'lead').length, 'hot lead'),
+    report.access.deals && countLabel(report.actions.filter(action => action.kind === 'deal').length, 'stale deal'),
+  ].filter(Boolean).join(' · ') : '';
+  const compactBucketLabel = (value: unknown) => {
+    const multipleYears = new Set(report?.trend.map(row => row.name.slice(0, 4))).size > 1;
+    return new Intl.DateTimeFormat('en-PH', { timeZone: DASHBOARD_TIMEZONE,
+      ...(interval === 'year' ? { year: 'numeric' as const } : { month: 'short' as const, ...(interval === 'week' ? { day: 'numeric' as const } : {}), ...(multipleYears ? { year: '2-digit' as const } : {}) }),
+    }).format(new Date(`${String(value)}T12:00:00+08:00`));
+  };
   const selectRange = (range: DashboardRange) => {
     if (range === 'custom') {
       const current = dashboardPeriod(query);
@@ -152,7 +188,7 @@ export default function Dashboard({ heading, renderToolbarActions }: {
     if (await refresh()) toast.success('Dashboard metrics refreshed'); else toast.error('Dashboard could not refresh');
   };
   if (!user) return null;
-  if (!report && loading && !error) return <div className="p-4 lg:p-6 space-y-6"><DashboardSkeleton /></div>;
+  if (!report && loading && !error) return <div className="p-4 lg:p-6 space-y-6"><DashboardSkeleton presentation={presentation} /></div>;
   return (
     <motion.div initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="p-4 lg:p-6 space-y-6" aria-busy={loading}>
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -179,6 +215,68 @@ export default function Dashboard({ heading, renderToolbarActions }: {
           <summary className="cursor-pointer font-medium text-amber-800 dark:text-amber-400">Reporting warnings ({new Set(report.warnings).size})</summary>
           <ul className="mt-2 list-disc space-y-1 pl-4">{Array.from(new Set(report.warnings)).map(warning => <li key={warning}>{warning}</li>)}</ul>
         </details>}
+        {presentation === 'dashboard' ? <>
+          <div className="grid grid-cols-1 min-[360px]:grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3" aria-label="Dashboard KPIs">
+            {dashboardCards.map(({ label, value, icon: Icon, color, context }) => <div key={label} role="group" aria-label={label} className="flex min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm dark:border-white/[0.06] dark:bg-white/[0.02] xl:gap-3 xl:p-3.5">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl xl:h-10 xl:w-10 ${colors[color].bg} ${colors[color].text}`}><Icon size={23} aria-hidden="true" /></div>
+              <div className="min-w-0"><span className="block text-xs font-medium text-slate-500 dark:text-slate-400">{label}</span><span data-metric-value className="mt-1 block break-words text-lg font-bold tracking-tight tabular-nums text-slate-950 dark:text-white xl:text-xl">{value}</span><span className="sr-only">{context}</span></div>
+            </div>)}
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <section aria-label="Action Center" className={`${card} !p-4 sm:!p-5 lg:col-span-5 min-h-[280px]`}>
+              <div className="mb-4 shrink-0"><h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><Zap size={21} className="text-amber-500" aria-hidden="true" />Action Center</h3>{actionSummary && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{actionSummary}</p>}</div>
+              <ActionCenterList>
+                {!report.access.tasks && !report.access.leads && !report.access.deals ? <Empty>No permitted action modules.</Empty> : report.pendingActions === 0 ? <Empty>No actions require attention.</Empty> : report.actions.map(action => {
+                  const urgent = action.overdue || action.kind === 'lead';
+                  const ActionIcon = action.kind === 'task' ? ListTodo : Briefcase;
+                  return <Link href={action.href} key={`${action.kind}:${action.id}`} title={action.title} className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 ${urgent ? 'bg-red-50 dark:bg-red-950/20 border-red-100 dark:border-red-900/30' : 'bg-amber-50 dark:bg-amber-950/20 border-amber-100 dark:border-amber-900/30'} focus-visible:outline focus-visible:outline-2 focus-visible:outline-blue-500 focus-visible:-outline-offset-2`}>
+                    <span aria-hidden="true" className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold ${urgent ? 'bg-red-100 text-destructive dark:bg-red-900/30' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>{action.kind === 'lead' ? initials(action.title) : <ActionIcon size={18} />}</span>
+                    <div className="min-w-0 flex-1"><p className="line-clamp-2 break-words text-sm font-semibold text-slate-900 dark:text-white">{action.title}</p><p className={`mt-0.5 break-words text-[11px] ${urgent ? 'text-destructive' : 'text-amber-700 dark:text-amber-400'}`}>{action.overdue ? 'Overdue task' : action.kind === 'lead' ? 'Hot lead' : action.kind === 'deal' ? 'Stale deal' : 'Pending task'} · {action.priority}</p>{action.dueDate && <p className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">Due {new Intl.DateTimeFormat('en-PH', { dateStyle: 'medium', timeZone: DASHBOARD_TIMEZONE }).format(new Date(action.dueDate))}</p>}</div>
+                    <CircleAlert size={19} aria-hidden="true" className={`shrink-0 ${urgent ? 'text-destructive' : 'text-amber-500'}`} />
+                  </Link>;
+                })}
+              </ActionCenterList>
+            </section>
+            <section aria-label="Revenue Trend" className={`${card} !p-4 sm:!p-5 lg:col-span-7 min-h-[280px]`}>
+              <div className="mb-4 flex shrink-0 items-center justify-between gap-2"><h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><ChartNoAxesColumnIncreasing size={21} className="text-emerald-500" aria-hidden="true" />Revenue Trend</h3><ChartFilter title="Revenue Trend" options={['Week', 'Month', 'Year']} value={intervalLabel} onSelect={label => setQuery(previous => ({ ...previous, revenueInterval: label.toLowerCase() as DashboardQuery['revenueInterval'] }))} /></div>
+              {metric?.totalRevenue == null ? <Empty>Revenue unavailable for this scope or incomplete data.</Empty> : metric.totalRevenue === 0 ? <Empty>No won revenue in the selected period.</Empty> : <div className="relative min-h-[220px] flex-1" role="img" aria-label={`Revenue Trend by ${intervalLabel}: ${money(metric.totalRevenue)} for the selected period.`}><div className="absolute inset-0"><ResponsiveContainer width="100%" height="100%"><AreaChart data={report.trend}><CartesianGrid /><XAxis dataKey="name" tickFormatter={compactBucketLabel} /><YAxis domain={[0, 'auto']} tickFormatter={axisMoney} /><Tooltip labelFormatter={bucketLabel} formatter={value => money(Number(value))} /><Area dataKey="revenue" name={`Revenue (${currency})`} stroke="#3B82F6" dot /></AreaChart></ResponsiveContainer></div></div>}
+            </section>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-5">
+            <section aria-label="Pipeline Overview" className={`${card} !p-4 sm:!p-5 lg:col-span-5`}>
+              <h3 className="mb-5 flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><Layers size={21} className="text-purple-500" aria-hidden="true" />Pipeline Overview</h3>
+              {!report.access.deals ? <Empty>Deal reporting unavailable.</Empty> : largestStage === 0 ? <Empty>No open deals.</Empty> : <ul className="space-y-5">{openStages.map(stage => <li key={stage.id} aria-label={stage.name} className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 text-xs xl:grid-cols-[4rem_minmax(0,1fr)_3.25rem_4.5rem]">
+                <span className="font-medium text-slate-600 dark:text-slate-300 xl:order-1">{stage.name}</span><span className="font-bold tabular-nums text-slate-950 dark:text-white xl:order-4 xl:text-right"><CompactMoney value={stage.value} currency={currency} /></span>
+                <div role="meter" aria-label={`${stage.name} deal count relative to largest stage`} aria-valuemin={0} aria-valuemax={largestStage} aria-valuenow={stage.count} className="h-3 min-w-0 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800 xl:order-2"><div className="h-full rounded-full" style={{ width: `${stage.count / largestStage * 100}%`, backgroundColor: pipelineStageColor(stage) }} /></div><span className="text-right tabular-nums text-slate-500 dark:text-slate-400 xl:order-3">{stage.count} {stage.count === 1 ? 'deal' : 'deals'}</span>
+              </li>)}</ul>}
+            </section>
+            <section aria-label="Conversion Funnel" className={`${card} !p-4 sm:!p-5 lg:col-span-7`}>
+              <div className="mb-4 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><Filter size={21} className="text-pink-500" aria-hidden="true" />Conversion Funnel</h3><ChartFilter title="Conversion Funnel" options={['Week', 'Month', 'Year', 'Custom Range']} value={query.funnelRange === 'custom' ? 'Custom Range' : (query.funnelRange ?? 'month')[0].toUpperCase() + (query.funnelRange ?? 'month').slice(1)} onSelect={selectFunnel} /></div>
+              {funnelCustom && <div className="mb-4 space-y-3 rounded-lg border border-border p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="min-w-0 text-xs">From Date<Input aria-label="Funnel From Date" type="date" max={funnelDraft.end && funnelDraft.end < dashboardToday() ? funnelDraft.end : dashboardToday()} value={funnelDraft.start} onChange={event => setFunnelDraft(previous => ({ ...previous, start: event.target.value }))} className="mt-1 min-w-0" /></label><label className="min-w-0 text-xs">To Date<Input aria-label="Funnel To Date" type="date" min={funnelDraft.start} max={dashboardToday()} value={funnelDraft.end} onChange={event => setFunnelDraft(previous => ({ ...previous, end: event.target.value }))} className="mt-1 min-w-0" /></label></div>
+                {funnelError && <p role="alert" className="text-xs text-destructive">{funnelError}</p>}<div className="flex flex-wrap gap-2"><button className={button} onClick={applyFunnel}>Apply funnel dates</button><button className={button} onClick={() => setFunnelCustom(false)}>Cancel</button></div>
+              </div>}
+              {!report.conversion ? <Empty>Deal history unavailable.</Empty> : <>
+                <ol aria-label="Historical conversion stages" className="grid grid-cols-4 gap-3">{report.conversion.stages.slice(0, 4).map((stage, index) => <li key={stage.id} aria-label={`${stage.name}: ${stage.reached} reached`} className="relative min-w-0 text-center">
+                  <div className="rounded-lg py-2 text-lg font-bold tabular-nums" style={{ backgroundColor: pipelineStageColor(stage), color: stageForeground(pipelineStageColor(stage)) }}>{stage.reached}</div><p className="mt-1.5 break-words text-[11px] text-slate-600 dark:text-slate-300">{stage.name}</p>{index < 3 && <ChevronRight size={14} aria-hidden="true" className="absolute -right-3 top-3 text-slate-400" />}
+                </li>)}</ol>
+                <dl className="mt-4 grid grid-cols-1 min-[375px]:grid-cols-3 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">{[
+                  ['Lead → Contacted', report.conversion.leadToContacted], ['Contacted → Qualified', report.conversion.contactedToQualified], ['Qualified → Closed Won', report.conversion.qualifiedToWon],
+                ].map(([label, rate]) => <div key={label} className="min-w-0 text-center"><dt className="text-[11px] text-slate-500 dark:text-slate-400">{label}</dt><dd className={`mt-1 break-words font-bold tabular-nums text-blue-600 dark:text-blue-400 ${rate == null ? 'text-xs leading-7' : 'text-lg'}`}>{rate == null ? 'Unavailable' : `${rate}%`}</dd></div>)}</dl>
+                {report.conversion.stages.filter(stage => stage.name.trim().toLowerCase() === 'closed lost' && stage.reached > 0).map(stage => <p key={stage.id} className="mt-3 text-xs text-slate-500 dark:text-slate-400">Closed Lost: {stage.reached} reached · Qualified → Closed Lost: {report.conversion!.qualifiedToLost == null ? 'Unavailable' : `${report.conversion!.qualifiedToLost}%`}</p>)}
+                <details className="mt-3 text-xs text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Cohort details</summary><p className="mt-2">{funnelSubtitle}</p><p className="mt-1">{report.conversion.cohort} deals in the creation cohort · Historical milestones, not current stages</p>{report.conversion.cohort === 0 && <p className="mt-1">No deals created in this cohort.</p>}</details>
+                {report.conversion.missingHistory > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{report.conversion.missingHistory} deals lack recorded starting history. Rates are unavailable; counts show recorded milestones only.</p>}
+              </>}
+            </section>
+          </div>
+          <section aria-label="Sales Leaderboard" className={`${card} !p-4 sm:!p-5`}>
+            <h3 className="mb-4 flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><Trophy size={21} className="text-amber-500" aria-hidden="true" />Sales Leaderboard</h3>
+            {(metric?.unattributedWon ?? 0) > 0 && <p className="mb-3 text-xs text-amber-700 dark:text-amber-400">{metric?.unattributedWon} won deals · {money(metric?.unattributedRevenue)} without verified eligible sales credit</p>}
+            {report.leaderboard.length === 0 ? <Empty>{report.access.deals ? 'No verified eligible sales attribution in this period.' : 'Deal reporting unavailable.'}</Empty> : <ol className="divide-y divide-slate-100 dark:divide-white/[0.06]">{report.leaderboard.map((agent, index) => <li key={agent.id} className="grid min-w-0 grid-cols-[1.5rem_2rem_minmax(0,1fr)] items-center gap-2 py-3 sm:grid-cols-[1.5rem_2rem_minmax(0,1fr)_auto_5rem] sm:gap-3">
+              <span aria-label={`Rank ${index + 1}`} className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold ${index === 0 ? 'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300'}`}>{index + 1}</span><span aria-hidden="true" className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-xs font-semibold text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">{initials(`${agent.firstName} ${agent.lastName}`)}</span><p className="min-w-0 break-words text-sm font-medium text-slate-900 dark:text-white">{agent.firstName} {agent.lastName}</p><div className="col-span-2 col-start-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 sm:contents"><p className="text-base font-bold tabular-nums text-slate-950 dark:text-white sm:text-right"><CompactMoney value={agent.revenue} currency={currency} /></p><p className="text-xs tabular-nums text-slate-500 dark:text-slate-400 sm:text-right">{agent.won} {agent.won === 1 ? 'deal' : 'deals'}</p></div>
+            </li>)}</ol>}
+          </section>
+        </> : <>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {statCards.map(({ label, value, icon: Icon, color, trend }) => <div key={label} role="group" aria-label={label} className="bg-white dark:bg-slate-900 p-3.5 rounded-lg border border-slate-200 dark:border-slate-800 shadow-xs hover:border-slate-300 dark:hover:border-slate-700 transition-colors flex flex-col gap-2 min-w-0">
             <div className="flex min-w-0 items-start justify-between gap-1"><div className={`shrink-0 p-2 rounded-md ${colors[color].bg} ${colors[color].text}`}><Icon size={16} /></div><span className="min-w-0 break-words text-[10px] font-semibold text-slate-500 text-right">{trend}</span></div>
@@ -230,6 +328,7 @@ export default function Dashboard({ heading, renderToolbarActions }: {
             <div className="relative shrink-0"><div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500/20 to-purple-500/20 border border-gray-200 dark:border-white/[0.08] flex items-center justify-center text-xs font-bold text-slate-700 dark:text-slate-200">{agent.firstName[0]}{agent.lastName[0]}</div>{index === 0 && <Star size={10} className="absolute -top-1 -right-1 text-amber-500 fill-amber-500" />}</div><div className="flex-1 min-w-[80px]"><p className="text-sm font-medium text-slate-800 dark:text-white break-words">{agent.firstName} {agent.lastName}</p><p className="text-xs text-slate-500">{agent.won} won deals</p></div><p className="ml-auto max-w-full break-words text-sm font-bold text-emerald-600 dark:text-emerald-400">{money(agent.revenue)}</p>
           </div>)}</div></div>
         </div>
+        </>}
       </>}
     </motion.div>
   );
