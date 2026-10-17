@@ -31,6 +31,15 @@ import { TaskRecordCreator } from "../ui/task-record-creator";
 import { TaskTable } from "../ui/task-table";
 import { normalizeTaskColumns } from "../task-columns";
 afterEach(cleanup);
+it.each(['other', null, undefined])('keeps non-owned Task %s viewable and selectable while hiding row mutations', createdById => {
+  const open = vi.fn(), select = vi.fn();
+  const record = { id: 'readonly', tenantId: 'tenant', title: 'View this Task', description: '', createdById, status: 'pending' as const, assignedUserId: 'owner', dueDate: '2030-01-01T00:00:00Z', createdAt: '2026-10-01T00:00:00Z' };
+  render(<TaskTable tasks={[record]} columns={normalizeTaskColumns([])} selected={[]} onSelect={select} onOpen={open} onStatus={vi.fn()} onSort={vi.fn()} query={{}} busy={false} canEdit canComplete canAssign canArchive onEdit={vi.fn()} onArchive={vi.fn()} totalRecords={1} onManageColumns={vi.fn()} />);
+  expect(screen.queryByRole('button', { name: 'Done' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'View this Task' })); expect(open).toHaveBeenCalledWith(record);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' })); expect(select).toHaveBeenCalledWith(['readonly']);
+  fireEvent.click(screen.getByRole('button', { name: 'Row actions' })); expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View']);
+});
 beforeEach(() => {
   vi.resetAllMocks();
   api.get.mockResolvedValue({ data: [], meta: { enabled: true } });
@@ -217,6 +226,7 @@ it("uses saved table order and selects only the displayed page", () => {
     title: "Follow-up",
     description: "",
     status: "pending" as const,
+    createdById: "owner",
     assignedUserId: "owner",
     dueDate: "2030-01-01T08:00:00Z",
     createdAt: "2026-09-01T08:00:00Z",

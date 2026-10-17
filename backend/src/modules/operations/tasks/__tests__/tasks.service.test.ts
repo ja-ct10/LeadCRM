@@ -140,9 +140,33 @@ describe("Task service authority", () => {
   });
 
   it("reassignment and completion leave the original creator intact", async () => {
-    const task = await scoped(() => service.updateTask(original.id, tenantId, 'new-actor', { assignedUserId: 'replacement', status: 'completed' }));
-    expect(task).toMatchObject({ createdById: actorId, assignedUserId: 'replacement', assignedById: 'new-actor' });
+    const task = await scoped(() => service.updateTask(original.id, tenantId, actorId, { assignedUserId: 'replacement', status: 'completed' }));
+    expect(task).toMatchObject({ createdById: actorId, assignedUserId: 'replacement', assignedById: actorId });
     expect(db.task.update.mock.calls[0][0].data).not.toHaveProperty('createdById');
+  });
+  it.each(['new-actor', input.assignedUserId])('rejects non-owner %s including administrators and assignees before any writes', async userId => {
+    for (const mutate of [
+      () => service.updateTask(original.id, tenantId, userId, { title: 'Denied', dealIds: ['deal'] }),
+      () => service.completeTask(original.id, tenantId, userId),
+      () => service.archiveTask(original.id, tenantId, userId),
+    ]) await expect(scoped(mutate)).rejects.toMatchObject({ statusCode: 403 });
+    expect(db.task.update).not.toHaveBeenCalled();
+    expect(db.taskDeal.deleteMany).not.toHaveBeenCalled();
+    expect(db.taskDeal.createMany).not.toHaveBeenCalled();
+    expect(recordTaskHistory).not.toHaveBeenCalled();
+  });
+  it('does not infer ownership for records with no creator', async () => {
+    db.task.findFirst.mockResolvedValue({ ...original, createdById: null });
+    await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, { title: 'Denied' }))).rejects.toMatchObject({ statusCode: 403, message: 'Only the task owner can edit this task.' });
+    await expect(scoped(() => service.archiveTask(original.id, tenantId, actorId))).rejects.toMatchObject({ statusCode: 403, message: 'Only the task owner can archive this task.' });
+    expect(db.task.update).not.toHaveBeenCalled();
+    expect(recordTaskHistory).not.toHaveBeenCalled();
+  });
+  it('retains per-record failures for mixed-owner bulk mutations', async () => {
+    db.task.findFirst.mockImplementation(({ where }) => Promise.resolve({ ...original, id: where.id, createdById: where.id === 'owned' ? actorId : 'another-owner' }));
+    const result = await scoped(() => service.bulkTasks(tenantId, actorId, { operation: 'complete', ids: ['owned', 'not-owned'] }));
+    expect(result).toEqual({ succeeded: ['owned'], failed: [{ id: 'not-owned', error: 'Only the task owner can edit this task.' }] });
+    expect(db.task.update).toHaveBeenCalledOnce();
   });
   it("validates payloads even when called directly by Workflow", async () => {
     await expect(

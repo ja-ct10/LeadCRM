@@ -15,6 +15,8 @@ import {
   type TaskBulkInput,
   type TaskOption,
 } from "@leadcrm/shared";
+import { useAuth } from '@/store/AuthContext';
+import { isTaskOwner } from '../task-relations';
 import { useData } from "@/store/DataContext";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { USE_MOCK_DATA } from "@/lib/config";
@@ -48,6 +50,7 @@ const periods = [
 ];
 
 export default function TaskBoard() {
+  const { user } = useAuth();
   const requestedTaskId = useSearchParams().get('taskId');
   const { updateTask, bulkTasks, users } = useData();
   const canCreate = useHasPermission("tasks.create"),
@@ -108,6 +111,8 @@ export default function TaskBoard() {
   };
   const queryKey = JSON.stringify(query);
   const data = useTasks(query, true);
+  const ownedSelection = (ids: string[]) => ids.length > 0 && ids.every(id => isTaskOwner(data.tasks.find(task => task.id === id), user?.id));
+  const allSelectedOwned = ownedSelection(selected);
   const columnPreferences = useTaskColumns(data.identity, data.canRead);
   const identity = useRef(data.identity);
   identity.current = data.identity;
@@ -144,7 +149,7 @@ export default function TaskBoard() {
   useEffect(() => {
     if (!requestedTaskId || USE_MOCK_DATA || !data.canRead) return;
     // Open after the scope reset, including initial permission resolution.
-    setEditor({ taskId: requestedTaskId, readOnly: true });
+    setEditor({ taskId: requestedTaskId });
   }, [requestedTaskId, data.identity, data.canRead]);
   useEffect(() => {
     if (data.meta && page > Math.max(1, Math.ceil(data.meta.total / limit)))
@@ -187,7 +192,7 @@ export default function TaskBoard() {
   }, [showFilters, data.canRead, data.identity, filterSearch, users]);
 
   const change = async (task: TaskRecord) => {
-    if (mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
+    if (!isTaskOwner(task, user?.id) || mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
     const started = identity.current;
     mutationPending.current = true;
     setBusy(true);
@@ -224,7 +229,7 @@ export default function TaskBoard() {
     ids = selected,
   ) => {
     if (
-      !ids.length ||
+      !ownedSelection(ids) ||
       mutationPending.current ||
       (operation === "archive" ? !canDelete : operation === "complete" ? !canComplete : operation === "assign" ? !canAssign : !canEdit)
     )
@@ -466,7 +471,7 @@ export default function TaskBoard() {
                 columns={columnPreferences.columns}
                 selected={selected}
                 onSelect={setSelected}
-                onOpen={(task) => setEditor({ task, readOnly: true })}
+                onOpen={(task) => setEditor({ task })}
                 onEdit={(task) => setEditor({ task })}
                 onArchive={(task) => setArchiveIds([task.id])}
                 onStatus={(task) => void change(task)}
@@ -510,7 +515,7 @@ export default function TaskBoard() {
             {canComplete && (
                 <Button
                   size="sm"
-                  disabled={busy || data.loading || !!filters.archived}
+                  disabled={busy || data.loading || !!filters.archived || !allSelectedOwned}
                   onClick={() => void runBulk("complete")}
                 >
                   Mark as done
@@ -520,7 +525,7 @@ export default function TaskBoard() {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={busy || data.loading || !!filters.archived}
+                  disabled={busy || data.loading || !!filters.archived || !allSelectedOwned}
                   onClick={() => {
                     setOwner("");
                     setDate(""); setTime(""); setError("");
@@ -534,7 +539,7 @@ export default function TaskBoard() {
                 <Button
                   size="sm"
                   variant="outline"
-                  disabled={busy || data.loading || !!filters.archived}
+                  disabled={busy || data.loading || !!filters.archived || !allSelectedOwned}
                   onClick={() => {
                     setDate("");
                     setTime("");
@@ -549,7 +554,7 @@ export default function TaskBoard() {
               <Button
                 size="sm"
                 variant="outline"
-                disabled={busy || data.loading}
+                disabled={busy || data.loading || !!filters.archived || !allSelectedOwned}
                 onClick={() => setArchiveIds([...selected])}
               >
                 Archive
@@ -634,7 +639,7 @@ export default function TaskBoard() {
               Cancel
             </Button>
             <Button
-              disabled={busy || (bulkAction === "assign" ? !owner : !dueDate)}
+              disabled={busy || !allSelectedOwned || (bulkAction === "assign" ? !owner : !dueDate)}
               onClick={() => {
                 if (bulkAction) void runBulk(bulkAction);
               }}

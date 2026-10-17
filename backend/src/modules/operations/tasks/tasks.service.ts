@@ -298,7 +298,7 @@ export async function archiveTask(
   const { task } = await repo.withTaskTransaction(async (client) => {
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before) throw new NotFoundError("Task");
-    await authorizeTask(client, tenantId, userId, "canArchive", {});
+    await authorizeTask(client, tenantId, userId, "canArchive", {}, before);
     await validateReferences(tenantId, userId, {}, client);
     const task = before.isArchived ? before : await repo.updateTask(id, tenantId, { isArchived: true }, client);
     await recordTaskHistory(client, userId, task, before);
@@ -414,6 +414,8 @@ export async function getTaskOptions(
 /** Task grants and association eligibility are enforced in the mutation transaction. */
 async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: string,
   action: 'canCreate' | 'canEdit' | 'canArchive', dto: TaskLinkInput & { status?: string; assignedUserId?: string }, before?: repo.TaskRow) {
+  if (action !== 'canCreate' && (!before?.createdById || before.createdById !== userId))
+    throw new AppError(action === 'canArchive' ? 'Only the task owner can archive this task.' : 'Only the task owner can edit this task.', 403);
   const policy = await resolveCrmActor(client, { tenantId, userId });
   const system = authorizedWorkflowScope(tenantId);
   const permitted = (flag: 'canCreate' | 'canEdit' | 'canArchive' | 'canAssign' | 'canComplete') => {

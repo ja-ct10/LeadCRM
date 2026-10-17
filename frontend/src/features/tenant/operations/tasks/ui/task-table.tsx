@@ -17,8 +17,9 @@ import {
 import { Eye, Edit, Archive } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
-import { taskRecordHref, taskRecordOptions } from '../task-relations';
+import { isTaskOwner, taskRecordHref, taskRecordOptions } from '../task-relations';
 import Link from 'next/link';
+import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 interface Props {
   tasks: TaskRecord[];
@@ -58,6 +59,7 @@ export function TaskTable({
   onManageColumns,
   onColumnWidthChange,
 }: Props) {
+  const { user } = useAuth();
   const selectable = canEdit || canArchive || canComplete || canAssign;
   const readableRecords = { lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'),
     deal: useHasPermission('deals.view'), account: useHasPermission('accounts.view') };
@@ -102,7 +104,7 @@ export function TaskTable({
   const cell = (task: TaskRecord, id: string): ReactNode => {
     switch (id) {
       case "action":
-        return (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
+        return isTaskOwner(task, user?.id) && (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
           <Button
             size="sm"
             variant="outline"
@@ -232,21 +234,21 @@ export function TaskTable({
           icon: <Eye size={14} />,
           onClick: () => onOpen(task),
         },
-        {
+        ...(isTaskOwner(task, user?.id) && canEdit && !task.isArchived ? [{
           id: "edit",
           label: "Edit",
           icon: <Edit size={14} />,
           disabled: busy || !canEdit || !!task.isArchived,
           onClick: () => onEdit(task),
-        },
-        {
+        }] : []),
+        ...(isTaskOwner(task, user?.id) && canArchive && !task.isArchived ? [{
           id: "archive",
           label: "Archive",
           icon: <Archive size={14} />,
           separator: true,
           disabled: busy || !canArchive || !!task.isArchived,
           onClick: () => onArchive(task),
-        },
+        }] : []),
       ]}
       onColumnWidthChange={onColumnWidthChange}
       columnWidths={Object.fromEntries(columns.filter(column => column.width !== undefined).map(column => [column.id, column.width!]))}

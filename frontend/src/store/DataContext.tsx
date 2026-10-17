@@ -133,7 +133,7 @@ interface DataContextType {
   updatePipeline: (id: string, updates: Partial<Pipeline>) => Promise<void>;
   deletePipeline: (id: string) => Promise<void>;
   addTask: (task: CreateTaskInput) => Promise<void>;
-  updateTask: (id: string, updates: UpdateTaskDto) => Promise<void>;
+  updateTask: (id: string, updates: UpdateTaskDto) => Promise<Task | undefined>;
   deleteTask: (id: string) => Promise<void>;
   addWorkflow: (
     workflow: WorkflowDraft,
@@ -1401,7 +1401,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     if (USE_MOCK_DATA) taskQueries.refreshTasks();
   };
 
-  const updateTask = async (id: string, updates: UpdateTaskDto): Promise<void> => {
+  const updateTask = async (id: string, updates: UpdateTaskDto): Promise<Task | undefined> => {
     const identity = dataIdentityRef.current;
     const dto = UpdateTaskSchema.parse({ ...updates, ...(updates.dueDate ? { dueDate: taskDueInstant(updates.dueDate) } : {}) });
     const { expectedUpdatedAt, reassignReason: _reason, ...changes } = dto;
@@ -1409,19 +1409,18 @@ export function DataProvider({ children }: { children: ReactNode }) {
       throw Object.assign(new Error('This Task changed since you opened it. Reload the saved Task before saving your changes.'), { status: 409 });
     const updated = USE_MOCK_DATA ? null : (await tasksApi.update(id, dto)).data;
     if (identity !== dataIdentityRef.current) return;
-    setTasks(previous => {
-      const next = previous.map(task => {
-        if (task.id !== id) return task;
-        if (updated) return updated;
-        const completed = changes.status === 'completed';
-        return { ...task, ...changes, ...taskAssociationPatch(changes), updatedAt: new Date().toISOString(), description: changes.description === undefined ? task.description : changes.description ?? '',
-          ...(changes.status === undefined ? {} : { completedAt: completed ? task.completedAt ?? new Date().toISOString() : null, completedById: completed ? task.completedById ?? user?.id : null }),
-          ...(changes.assignedUserId && changes.assignedUserId !== task.assignedUserId ? { assignedById: user?.id } : {}) };
-      });
+    const current = tasks.find(task => task.id === id);
+    const completed = changes.status === 'completed';
+    const saved = updated ?? (current ? { ...current, ...changes, ...taskAssociationPatch(changes), updatedAt: new Date().toISOString(), description: changes.description === undefined ? current.description : changes.description ?? '',
+      ...(changes.status === undefined ? {} : { completedAt: completed ? current.completedAt ?? new Date().toISOString() : null, completedById: completed ? current.completedById ?? user?.id : null }),
+      ...(changes.assignedUserId && changes.assignedUserId !== current.assignedUserId ? { assignedById: user?.id } : {}) } : undefined);
+    if (saved) setTasks(previous => {
+      const next = previous.map(task => task.id === id ? saved : task);
       if (USE_MOCK_DATA) localStorage.setItem('leadcrm_tasks', JSON.stringify(next));
       return next;
     });
     if (USE_MOCK_DATA) taskQueries.refreshTasks();
+    return saved;
   };
 
   const deleteTask = async (id: string): Promise<void> => {
