@@ -16,7 +16,8 @@ export interface WorkflowTemplateEntry {
 export const WORKFLOW_UNSUPPORTED_SCENARIOS = [
   'Waiting, inactivity and overdue Task timers are unavailable. Due dates schedule Task work; they do not start another workflow.',
   'Won Deals cannot reopen. Create a new Deal for a new opportunity.',
-  'These assignment templates run on an actual stage entry. Ordinary reassignment alone does not create a stage-entry event.',
+  'Stage-entry assignment templates require an actual stage entry. Deal Assignment Follow-up instead matches changes to the assigned agent.',
+  'Tasks and Campaigns do not expose workflow triggers. Task assignment and due reminders use the existing notification system; Send Campaign and manual notification actions are retired.',
 ] as const;
 
 export function workflowTemplateConfigurationNotes(options: WorkflowOptions): string[] {
@@ -87,7 +88,7 @@ function stageEntry(pipeline: Pipeline, stage: Stage, scenario: WorkflowStageSce
   const prerequisites = commonPrerequisites(bound);
   if (stage.requiredFields?.length) prerequisites.push(`Stage entry requires: ${stage.requiredFields.join(', ')}. These templates do not supply missing stage evidence.`);
   if (stage.isWon) prerequisites.push('Close the Deal through the governed Won controls with the required closing evidence. Won Deals cannot reopen.');
-  if (stage.isLost) prerequisites.push('Close the Deal through the governed Lost controls with a loss reason.');
+  if (stage.isLost) prerequisites.push('Close the Deal through the governed Lost controls. Manual closing retains its reason requirement; automated stage actions can omit the reason.');
   if (!stage.isWon && !stage.isLost && stage.name.trim().toLowerCase() === 'qualified') prerequisites.push('Qualified follow-up requires verified stage history and a Deal that has never been Won.');
   if (scenario === 'reopen') prerequisites.push('The Lost Deal must never have been Won, its history must be verified, and the target must be an open Qualified stage. Use this as an alternative to the general Qualified entry template to avoid overlapping Tasks.');
   if (scenario === 'assign') prerequisites.push('This is an alternative to the follow-up-only template for this entry. An existing owner can be reassigned only through the selected ownership rules.');

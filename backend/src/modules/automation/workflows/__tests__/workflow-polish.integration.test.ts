@@ -156,6 +156,48 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     expect(getAvailableActions().map(a => a.type)).toContain('send_sms');
     expect(getAvailableActions().some(a => ['send_campaign', 'create_notification'].includes(a.type))).toBe(false);
   });
+  it.each([undefined, 'Budget changed'])('activates and executes Mark as Lost once with optional reason %s', async reason => {
+    const deal = await newDeal();
+    const closing = await create({ trigger: 'deal.created', actions: [{ type: 'move_deal_stage', config: {
+      stageId: lost.id, includeLossReason: !!reason, ...(reason ? { lostReason: reason } : {}),
+    } }] });
+    const followUp = await create({ trigger: 'deal.closed_lost', actions: [{ type: 'create_task', config: { title: 'Review lost Deal', assignedUserId: taskOwner.id } }] });
+    expect((await scope(() => workflows.testWorkflow(closing.id, tenantId, deal.id, actor.id))).valid).toBe(true);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stageId).toBe(initial.id);
+    await scope(() => fireDealCreated({ tenantId, actorId: actor.id, deal }));
+    await scope(() => fireDealCreated({ tenantId, actorId: actor.id, deal }));
+    expect(await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ stageId: lost.id, lostReason: reason ?? null, closedAt: expect.any(Date) });
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deal.id, newStageId: lost.id } })).toBe(1);
+    expect((await runs(closing.id)).map(run => run.status)).toEqual(['completed']);
+    expect((await runs(followUp.id)).map(run => run.status)).toEqual(['completed']);
+    expect(await prisma.task.count({ where: { tenantId, title: 'Review lost Deal', dealLinks: { some: { dealId: deal.id } } } })).toBe(1);
+    const manual = await newDeal();
+    await expect(scope(() => moveDealStage(manual.id, tenantId, actor.id, { stageId: lost.id }))).rejects.toThrow('Lost reason');
+    await expect(scope(() => moveDealStage(manual.id, tenantId, actor.id, { stageId: lost.id, lostReason: 'Manual reason' }))).resolves.toBeTruthy();
+  });
+  it('saves an incomplete loss-reason draft but rejects empty enabled reasons at activation', async () => {
+    const draft = await create({ trigger: 'deal.created', isActive: false, actions: [{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: true, lostReason: '' } }] });
+    await expect(scope(() => workflows.toggleWorkflow(draft.id, tenantId, actor.id, true))).rejects.toThrow('Enter a loss reason');
+    expect((await scope(() => workflows.updateWorkflow(draft.id, tenantId, actor.id, { actions: [{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: false } }], isActive: true }))).isActive).toBe(true);
+  });
+  it('creates a linked follow-up only when the Deal assignee changes, using the new owner', async () => {
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Assignment follow-up staff', permissions: { create: [
+      { module: 'deals', canView: true, canEdit: true }, { module: 'tasks', canView: true },
+    ] } } });
+    const nextOwner = await prisma.user.create({ data: { tenantId, role: role.name, email: `${randomUUID()}@camxian.com`, firstName: 'Next', lastName: 'Owner', status: 'ACTIVE', userRoles: { create: { roleId: role.id } } } });
+    const deal = await newDeal();
+    const workflow = await create({ trigger: 'deal.updated', conditions: { operator: 'AND', conditions: [
+      { field: 'event.changedFields', operator: 'contains', value: 'assignedUserId' },
+      { field: 'deal.assignedUserId', operator: 'is_not_empty', value: null },
+    ] }, actions: [{ type: 'create_task', config: { title: 'Review newly assigned Deal', dueDaysFromNow: 1, assignmentTarget: { type: 'record_owner' } } }] });
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { title: 'Ordinary edit' }));
+    expect((await runs(workflow.id)).map(run => run.status)).toEqual(['skipped']);
+    expect(await prisma.task.count({ where: { tenantId, title: 'Review newly assigned Deal', dealLinks: { some: { dealId: deal.id } } } })).toBe(0);
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { assignedUserId: nextOwner.id }));
+    await scope(() => updateDeal(deal.id, tenantId, actor.id, { assignedUserId: nextOwner.id }));
+    expect((await runs(workflow.id)).filter(run => run.status === 'completed')).toHaveLength(1);
+    expect(await prisma.task.findMany({ where: { tenantId, title: 'Review newly assigned Deal', dealLinks: { some: { dealId: deal.id } } } })).toMatchObject([{ assignedUserId: nextOwner.id }]);
+  });
   it('runs once on entering Qualified, allows never-Won re-entry, ignores edits and retries', async () => {
     const deal = await newDeal();
     const workflow = await create({ trigger: 'deal.stage_changed', conditions: { operator: 'AND', conditions: [

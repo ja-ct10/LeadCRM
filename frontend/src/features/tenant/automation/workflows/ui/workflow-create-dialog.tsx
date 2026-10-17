@@ -114,7 +114,7 @@ export function WorkflowCreateDialog({ triggers, actions, options = emptyOptions
     <DialogContent ref={attachPanel} showClose={false} aria-labelledby={`${id}-title`} aria-describedby={`${id}-description`}
       className="flex max-h-[calc(100dvh-2rem)] max-w-[960px] flex-col gap-0 overflow-hidden p-0 text-[var(--text-primary)] [color-scheme:light] dark:[color-scheme:dark]">
       <header className="flex shrink-0 items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-5 sm:px-6">
-        <div className="min-w-0"><DialogTitle id={`${id}-title`} className="text-xl leading-snug">Create workflow</DialogTitle>
+        <div className="min-w-0"><DialogTitle id={`${id}-title`} className="text-base leading-snug">Create workflow</DialogTitle>
           <DialogDescription id={`${id}-description`} className="mt-1.5 leading-relaxed">Start from scratch or customize a ready-made workflow.</DialogDescription></div>
         <Button type="button" variant="ghost" size="icon" className="h-11 w-11 shrink-0" aria-label="Close create workflow" disabled={opening} onClick={close}><X aria-hidden="true" /></Button>
       </header>
@@ -125,7 +125,7 @@ export function WorkflowCreateDialog({ triggers, actions, options = emptyOptions
         {selected !== null && !current && <p role="alert" className="mb-4 text-sm">This template’s pipeline or stage is no longer available. Choose a current template.</p>}
         {current ? <div className="space-y-5">
           <Button type="button" variant="ghost" className="-ml-2 min-h-11" data-template-back disabled={opening} onClick={() => { setSelected(null); setError(''); }}><ArrowLeft aria-hidden="true" />All templates</Button>
-          <div><p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">{current.trigger ? workflowRecordLabels[current.trigger.entity] : 'Template'} · {templateBehaviorLabel(current.recipe)}</p><h3 className="text-lg font-semibold">{current.recipe.name}</h3><p className="mt-2 text-sm leading-relaxed text-[var(--muted-foreground)]">{current.recipe.description}</p></div>
+          <div><p className="mb-2 text-xs font-medium text-[var(--muted-foreground)]">{current.trigger ? workflowRecordLabels[current.trigger.entity] : 'Template'} · {templateBehaviorLabel(current.recipe)}</p><h3 className="text-base font-semibold">{current.recipe.name}</h3><p className="mt-2 text-sm leading-relaxed text-[var(--muted-foreground)]">{current.recipe.description}</p></div>
           {!!current.issues.length && <div role="alert" className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">{current.issues.join(' ')} Refresh workflow options before trying again.</div>}
           <ol aria-label="Template steps" className="space-y-3">
             <li className="flex gap-3 rounded-xl border border-[var(--border)] p-4"><Zap size={18} aria-hidden="true" className="mt-0.5 shrink-0 text-[var(--primary)]" /><div><h4 className="text-sm font-semibold">Trigger</h4><p className="mt-1 text-sm text-[var(--muted-foreground)]">{current.trigger?.label ?? current.recipe.trigger}</p></div></li>

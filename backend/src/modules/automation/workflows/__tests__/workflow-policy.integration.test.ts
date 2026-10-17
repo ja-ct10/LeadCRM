@@ -81,7 +81,7 @@ describe.skipIf(!disposable)('Workflow policy on native disposable PostgreSQL', 
     const id = entity === 'deal' ? dealId : entity === 'lead' ? leadId : contactId;
     const workflow = await create(`${entity}.created`, [{ type: 'send_sms', config: { recipient, message: 'Hello {{firstName}}' } }]);
     const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, id, actorId));
-    expect(preview.valid).toBe(true); expect(preview.actions[0].message).toContain('including the footer'); expect(sendSms).not.toHaveBeenCalled();
+    expect(preview.valid).toBe(true); expect(preview.actions[0].message).toContain('personalized content'); expect(sendSms).not.toHaveBeenCalled();
     await fire(`${entity}.created`, id);
     expect(sendSms).toHaveBeenCalledExactlyOnceWith(entity === 'lead' ? '+639171234567' : '+639181234567', entity === 'lead' ? 'Hello Ada' : 'Hello Grace', expect.anything());
     expect((await scope(() => workflows.getWorkflowExecutions(workflow.id, tenantId)))[0].status).toBe('completed');

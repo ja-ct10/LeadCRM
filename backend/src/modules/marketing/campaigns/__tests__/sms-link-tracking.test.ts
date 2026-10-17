@@ -1,9 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mapCampaignTextLinks, smsCampaignTrackingUrl } from '@leadcrm/shared';
+import { campaignTextLinkParts, mapCampaignTextLinks, smsCampaignTrackingUrl } from '@leadcrm/shared';
 import { isSmsLinkPreview, prepareSmsLinks, smsTrackingOrigin } from '../sms-link-tracking';
 
 afterEach(() => vi.unstubAllEnvs());
 describe('SMS recipient links', () => {
+  it('splits preview links without losing text, punctuation or unresolved variables', () => {
+    const message = 'Hi {{firstName}}, visit (https://example.test/a(b)?x=1&y=2#here). Next https://other.test! Pending https://example.test/{{customFieldValues.slug}}';
+    const parts = campaignTextLinkParts(message);
+    expect(parts.map(part => part.text).join('')).toBe(message);
+    expect(parts.filter(part => part.url).map(part => part.url)).toEqual(['https://example.test/a(b)?x=1&y=2#here', 'https://other.test']);
+    expect(campaignTextLinkParts('')).toEqual([]);
+  });
   it('preserves exact destinations, queries, fragments and surrounding punctuation', () => {
     const prepared = prepareSmsLinks('Visit (https://example.test/a(b)?x=1&y=2#section). Again https://example.test/a(b)?x=1&y=2#section!', 'https://crm.example.test');
     expect(prepared.links).toHaveLength(1);

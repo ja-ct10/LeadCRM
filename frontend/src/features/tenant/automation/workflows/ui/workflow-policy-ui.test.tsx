@@ -5,12 +5,29 @@ import { WORKFLOW_TRIGGERS, getAvailableActions } from '@leadcrm/shared';
 import { WorkflowLibrary } from './workflow-library';
 import WorkflowBuilder from './visual-workflow-builder';
 import { ActionFields } from './workflow-fields';
+import { actionIssues } from '../services/workflow-editor';
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
 
 afterEach(cleanup);
 const options = { users: [], pipelines: [], templates: [], campaigns: [] };
+it('makes loss reasons optional and validates an enabled empty reason before activation', () => {
+  const definition = getAvailableActions().find(action => action.type === 'move_deal_stage');
+  const change = vi.fn();
+  const initial = { type: 'move_deal_stage' as const, config: { stageId: 'lost' } };
+  const rendered = render(<ActionFields entity="deal" action={initial} definition={definition} options={options} onChange={change} />);
+  expect(screen.queryByLabelText('Loss reason')).toBeNull();
+  fireEvent.click(screen.getByLabelText('Include a loss reason'));
+  expect(change).toHaveBeenLastCalledWith({ stageId: 'lost', includeLossReason: true, lostReason: '' });
+  const enabled = { ...initial, config: change.mock.calls[0][0] };
+  rendered.rerender(<ActionFields entity="deal" action={enabled} definition={definition} options={options} onChange={change} />);
+  expect(screen.getByLabelText('Loss reason').getAttribute('aria-required')).toBe('true');
+  expect(actionIssues(enabled, definition, 'deal', options)).toContain('Enter a loss reason or turn off Include a loss reason.');
+  fireEvent.change(screen.getByLabelText('Loss reason'), { target: { value: 'Budget changed' } });
+  fireEvent.click(screen.getByLabelText('Include a loss reason'));
+  expect(change).toHaveBeenLastCalledWith({ stageId: 'lost', includeLossReason: false });
+});
 it.each(WORKFLOW_TRIGGERS)('shows the correct actions for $label', trigger => {
   render(<WorkflowLibrary triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} trigger={trigger} disabled={false} dragEnabled={false} onChoose={vi.fn()} />);
   expect(!!screen.queryByRole('button', { name: 'Add Create Task' })).toBe(trigger.entity === 'deal');

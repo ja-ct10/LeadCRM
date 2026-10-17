@@ -1,5 +1,6 @@
 'use client';
-import { mapCampaignTextLinks, smsCampaignTrackingUrl } from '@leadcrm/shared';
+import { mapCampaignTextLinks, smsCampaignTrackingUrl, SMS_DEFAULT_FOOTER } from '@leadcrm/shared';
+import { SmsFooterControl } from '@/shared/components/sms-footer-control';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -7,6 +8,7 @@ import { useRouter } from 'next/navigation';
 import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { CampaignDraftSchema, CampaignScheduleSchema, CampaignSendSchema, campaignApprovedVariableKeys, campaignVariableChoices, campaignVariableKeys, renderEmailVariables, buildFinalSms, smsMessageStats, SMS_MAX_LENGTH, type SavedAudience, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
 import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
+import { SmsMessageContent } from './sms-message-content';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { AudiencePanel, FieldError } from './audience-panel';
@@ -72,18 +74,28 @@ export function CampaignBuilder({
   const canCreate = useHasPermission('campaigns.create'), canEdit = useHasPermission('campaigns.edit');
   const canWrite = initialCampaign ? canEdit && initialCampaign.status.toLowerCase() === 'draft' : canCreate;
   const [campaignName, setCampaignName] = useState(initialCampaign?.name || '');
-  const [campaignType, setCampaignType] = useState<CampaignType>(
-    (initialCampaign?.type === 'Sms' ? 'SMS' : initialCampaign?.type as CampaignType) || (initialType as CampaignType) || 'Email',
-  );
+  const [campaignType, setCampaignType] = useState<CampaignType>(() => {
+    const type = (initialCampaign?.type ?? initialType ?? 'Email').toLowerCase();
+    return type === 'sms' ? 'SMS' : ['multi-channel', 'multi_channel'].includes(type) ? 'Multi-Channel' : 'Email';
+  });
   const scheduled = initialCampaign?.status.toLowerCase() === 'scheduled';
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [scheduleSession, setScheduleSession] = useState(0);
   const [scheduledTime, setScheduledTime] = useState(initialCampaign?.scheduledFor ? manilaLocalDateTime(initialCampaign.scheduledFor) : '');
   const [targetAudience, setTargetAudience] = useState(initialCampaign?.targetAudienceId || initialCampaign?.audienceSource || '');
-  const [messageContent, setMessageContent] = useState(initialCampaign?.body || initialContent || '');
+  const [messageBodies, setMessageBodies] = useState<Record<CampaignType, string>>(() => {
+    const content = initialCampaign ? initialCampaign.body ?? '' : initialContent;
+    return {
+      Email: campaignType === 'Email' ? content ?? '' : '',
+      SMS: campaignType === 'SMS' ? content ?? SMS_DEFAULT_FOOTER : SMS_DEFAULT_FOOTER,
+      'Multi-Channel': campaignType === 'Multi-Channel' ? content ?? '' : '',
+    };
+  });
+  const messageContent = messageBodies[campaignType];
+  const setMessageContent = (value: string) => setMessageBodies(previous => ({ ...previous, [campaignType]: value }));
   const [emailSubject, setEmailSubject] = useState(initialCampaign?.subject || initialSubject || '');
-  const draftSnapshot = JSON.stringify({ campaignName, campaignType, targetAudience, emailSubject, messageContent });
+  const draftSnapshot = JSON.stringify({ campaignName, campaignType, targetAudience, emailSubject, messageBodies });
   const [savedSnapshot, setSavedSnapshot] = useState(draftSnapshot);
   const dirty = draftSnapshot !== savedSnapshot;
   const [exit, setExit] = useState<NavigationAction | null>(null);
@@ -226,7 +238,7 @@ export function CampaignBuilder({
   const quickKeys = ['firstName', 'lastName', selectedSource === 'CONTACTS' ? 'company' : 'companyName', 'phone', 'status', 'sender_name', 'sender_email'];
   const quickChoices = quickKeys.flatMap(key => { const choice = choices.find(choice => choice.technicalKey === key && (choice.category === 'Sender' || choice.origins.some(origin => origin.module === (selectedSource === 'CONTACTS' ? 'contacts' : 'leads')))); return choice ? [choice] : []; });
   const approvedVariables = campaignApprovedVariableKeys(variableCatalog.fields, selectedSource);
-  const invalidVariables = selectedSource && variableCatalog.data ? campaignVariableKeys(emailSubject + '\n' + messageContent).filter(key => !approvedVariables.has(key)) : [];
+  const invalidVariables = selectedSource && variableCatalog.data ? campaignVariableKeys((campaignType === 'Email' ? emailSubject : '') + '\n' + messageContent).filter(key => !approvedVariables.has(key)) : [];
   const variableRepair = invalidVariables.length ? `Repair unavailable variables for this source: ${invalidVariables.map(key => '{{' + key + '}}').join(', ')}.` : '';
   const previewFields = selectedSource ? variableCatalog.fields.filter(field => [selectedSource === 'LEADS' ? 'leads' : 'contacts', 'accounts', 'deals'].includes(field.module)) : variableFields;
   const previewVariables = { ...campaignSampleValues(previewFields), firstName: 'John', lastName: 'Doe', email: 'jdoe@example.com', companyName: 'Example Company', company: 'Example Company', phone: '+639123456789', first_name: 'John', last_name: 'Doe', company_name: 'Example Company', contact_number: '+639123456789', status: 'Hot', sender_name: senderValues.sender_name || 'Configured sender unavailable', sender_email: senderValues.sender_email || 'Sender email unavailable' };
@@ -237,12 +249,12 @@ export function CampaignBuilder({
   }, [variableCatalog.refetch, emailSettings.refetch, smsSettings.refetch]);
   const getPreviewText = (text: string) => renderEmailVariables(text, previewVariables);
   const previewSubject = () => getPreviewText(emailSubject) || campaignName || 'Email preview';
-  const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><base target="_blank"><style>body{font:14px/1.6 system-ui;margin:0;overflow-wrap:anywhere;color:${previewDark ? '#cbd5e1' : '#334155'}}a{color:${previewDark ? '#60a5fa' : '#2563eb'}}img,table{max-width:100%}</style></head><body>${renderCampaignPreview(messageContent, previewVariables)}</body></html>`} />;
-  let smsPreview = '', smsPreviewError = '';
+  const previewBody = () => <iframe title="Email body preview" sandbox="allow-popups allow-popups-to-escape-sandbox" className="w-full h-full min-h-48 border-0" srcDoc={`<!doctype html><html><head><meta name="referrer" content="no-referrer"><base target="_blank"><style>body{font:14px/1.6 system-ui;margin:0;overflow-wrap:anywhere;color:${previewDark ? '#cbd5e1' : '#334155'}}a{color:#2563eb;text-decoration:underline}img,table{max-width:100%}</style></head><body>${renderCampaignPreview(messageContent, previewVariables)}</body></html>`} />;
+  let smsPreview = '', smsLengthPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
     smsPreview = buildFinalSms({ body: messageContent, variables: previewVariables });
-    if (smsSettings.data?.trackingOrigin) smsPreview = mapCampaignTextLinks(smsPreview, () => smsCampaignTrackingUrl(smsSettings.data!.trackingOrigin!, 'x'.repeat(24)));
-    if (smsPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit including personalization and the contact footer.`;
+    smsLengthPreview = smsSettings.data?.trackingOrigin ? mapCampaignTextLinks(smsPreview, () => smsCampaignTrackingUrl(smsSettings.data!.trackingOrigin!, 'x'.repeat(24))) : smsPreview;
+    if (smsLengthPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit after personalization and link tracking.`;
   }
   function openSchedule() {
     if (requestLock.current || !maySend) return;
@@ -262,7 +274,7 @@ export function CampaignBuilder({
       setScheduledTime(scheduleValue!);
     }
     const source = ['LEADS', 'CONTACTS'].includes(targetAudience) ? targetAudience : null;
-    const input = { name: campaignName, type: toApiType(campaignType), subject: emailSubject, body: campaignType === 'Email' ? prepareCampaignBody(messageContent) : messageContent,
+    const input = { name: campaignName, type: toApiType(campaignType), subject: campaignType === 'Email' ? emailSubject : '', body: campaignType === 'Email' ? prepareCampaignBody(messageContent) : messageContent,
       audienceSource: source, targetAudienceId: source ? null : targetAudience || null };
     const parsed = (send ? CampaignSendSchema : CampaignDraftSchema).safeParse(input);
     if (!parsed.success) {
@@ -273,7 +285,7 @@ export function CampaignBuilder({
     if (targetAudience === 'ALL' || chosenAudience?.source === 'ALL' || chosenAudience?.repairReason) { setErrors({ audienceSource: 'Repair this legacy audience by selecting Leads, Contacts, or a new single-source audience.' }); return; }
     if (send && variableRepair) { setErrors({ form: variableRepair }); return; }
     if (send && variableError) { setErrors({ form: variableError }); return; }
-    if (send && campaignVariableKeys(messageContent + '\n' + emailSubject).some(key => key in senderValues && !senderValues[key as keyof typeof senderValues])) { setErrors({ form: 'Configure the sender before using sender variables.' }); return; }
+    if (send && campaignVariableKeys(messageContent + '\n' + (campaignType === 'Email' ? emailSubject : '')).some(key => key in senderValues && !senderValues[key as keyof typeof senderValues])) { setErrors({ form: 'Configure the sender before using sender variables.' }); return; }
     if (send && campaignType === 'Multi-Channel') { setErrors({ form: 'Send Now supports Email or SMS. Save Multi-Channel campaigns as drafts.' }); return; }
     if (send && campaignType === 'SMS' && smsPreviewError) { setErrors({ form: smsPreviewError }); return; }
     requestLock.current = true; setIsSending(true); setPendingIntent(intent); setErrors({});
@@ -367,10 +379,10 @@ export function CampaignBuilder({
                     <div className="flex flex-col h-full min-h-0 overflow-y-auto">
                       <div className="text-center text-[10px] text-slate-400 dark:text-slate-500 mb-3 font-medium">+639XXXXXXXXX · Today</div>
                       <div className="bg-emerald-500 text-white p-3 rounded-2xl rounded-tr-sm max-w-[85%] self-end wrap-break-word shadow-sm text-[11px] whitespace-pre-wrap leading-relaxed">
-                        {smsPreview || <span className="italic opacity-60">Your SMS message will appear here...</span>}
+                        <SmsMessageContent content={smsPreview} />
                       </div>
                       <div className="text-[10px] text-slate-400 text-right mt-1.5 pr-1">Sample preview</div>
-                      <div className="mt-auto pt-4 text-center"><div className="text-[10px] text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div></div>
+                      <div className="mt-auto pt-4 text-center"><div className="text-[10px] text-slate-400">{smsMessageStats(smsLengthPreview).characters} characters · {smsMessageStats(smsLengthPreview).segments} SMS segment(s)</div></div>
                     </div>
                   ) : (
                     <div className="flex flex-col h-full bg-slate-50 dark:bg-[#131924] rounded-lg overflow-hidden border border-gray-200/50 dark:border-white/5">
@@ -395,10 +407,10 @@ export function CampaignBuilder({
                   <div className="flex flex-col h-full p-5 justify-center">
                     <div className="text-xs text-slate-400 dark:text-slate-500 mb-2 text-center">SMS Preview</div>
                     <div className="bg-emerald-500 text-white px-4 py-3 rounded-2xl rounded-tr-sm max-w-[80%] self-end wrap-break-word shadow text-sm whitespace-pre-wrap leading-relaxed">
-                      {smsPreview || <span className="italic opacity-60">Message preview...</span>}
+                      <SmsMessageContent content={smsPreview} />
                     </div>
                     <div className="text-[10px] text-slate-400 text-right mt-2 pr-2">Sample preview · No delivery confirmation</div>
-                    <div className="mt-4 text-center text-xs text-slate-400">{smsMessageStats(smsPreview).characters} characters · {smsMessageStats(smsPreview).segments} SMS segment(s)</div>
+                    <div className="mt-4 text-center text-xs text-slate-400">{smsMessageStats(smsLengthPreview).characters} characters · {smsMessageStats(smsLengthPreview).segments} SMS segment(s)</div>
                   </div>
                 ) : (
                   <div className="flex flex-col h-full">
@@ -430,7 +442,7 @@ export function CampaignBuilder({
             <ArrowLeft size={18} />
           </button>
           <div>
-            <h1 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">Create Campaign</h1>
+            <h1 className="text-base font-bold text-slate-900 dark:text-white tracking-tight">Create Campaign</h1>
             <p className="text-xs text-slate-500 dark:text-slate-400 hidden sm:block">Draft a new message to send to your contacts.</p>
           </div>
         </div>
@@ -544,10 +556,11 @@ export function CampaignBuilder({
                 <label htmlFor="builder-body" className="block text-xs font-medium text-slate-500 dark:text-slate-400 mb-1">Body <span className="text-red-500">*</span></label>
                 <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{firstName}}, ...' : 'Hi {{firstName}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
                 <FieldError message={errors.body || (campaignType === 'SMS' ? smsPreviewError : '')} />
+                {campaignType === 'SMS' && <SmsFooterControl value={messageContent} onChange={setMessageContent} />}
                 {campaignType === 'SMS' && (
                   <div className="flex flex-col gap-1 mt-2 text-xs text-slate-500 dark:text-slate-400">
-                    <span>{smsMessageStats(smsPreview).characters} characters including footer · {smsMessageStats(smsPreview).segments} SMS segment(s) · {smsMessageStats(smsPreview).encoding} (sample recipient)</span>
-                    <span>HTTP/HTTPS links use a recipient tracking URL when sent. Preview tokens are samples. {smsSettings.data?.trackingOrigin ? 'Counts include the tracking URL.' : 'Tracking configuration is unavailable; final link lengths are checked before sending.'}</span>
+                    <span>{smsMessageStats(smsLengthPreview).characters} characters after personalization and link tracking · {smsMessageStats(smsLengthPreview).segments} SMS segment(s) · {smsMessageStats(smsLengthPreview).encoding} (sample recipient)</span>
+                    <span>HTTP/HTTPS links use a recipient tracking URL when sent. The preview opens original destinations; sent links use recipient tracking. {smsSettings.data?.trackingOrigin ? 'Counts include the tracking URL.' : 'Tracking configuration is unavailable; final link lengths are checked before sending.'}</span>
                   </div>
                 )}
                 <div className="mt-2.5">

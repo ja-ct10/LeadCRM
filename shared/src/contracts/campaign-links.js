@@ -2,9 +2,11 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SMS_LINK_TOKEN_PATTERN = exports.CAMPAIGN_EMAIL_ATTRIBUTES = exports.CAMPAIGN_EMAIL_TAGS = void 0;
 exports.campaignLinkDestination = campaignLinkDestination;
+exports.campaignTextLinkParts = campaignTextLinkParts;
 exports.mapCampaignTextLinks = mapCampaignTextLinks;
 exports.smsCampaignTrackingUrl = smsCampaignTrackingUrl;
 exports.linkifyCampaignHtml = linkifyCampaignHtml;
+exports.styleCampaignEmailLinks = styleCampaignEmailLinks;
 exports.campaignHtmlLinks = campaignHtmlLinks;
 const campaign_email_1 = require("./campaign-email");
 // Both sanitizers use this allowlist before the shared text-node transformation.
@@ -22,8 +24,11 @@ function campaignLinkDestination(value) {
     }
 }
 /** Plain-text URLs share the email linkifier's punctuation rules. */
-function mapCampaignTextLinks(text, replace) {
-    return text.replace(/https?:\/\/[^\s<>"']+/gi, candidate => {
+function campaignTextLinkParts(text) {
+    const parts = [];
+    let position = 0;
+    for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
+        const candidate = match[0];
         let url = candidate;
         while (/[.,;:!?]$/.test(url))
             url = url.slice(0, -1);
@@ -31,8 +36,19 @@ function mapCampaignTextLinks(text, replace) {
             while (url.endsWith(close) && url.split(close).length > url.split(open).length)
                 url = url.slice(0, -1);
         }
-        return campaignLinkDestination(url) ? replace(url) + candidate.slice(url.length) : candidate;
-    });
+        if (url.includes('{{') || !campaignLinkDestination(url))
+            continue;
+        if (match.index > position)
+            parts.push({ text: text.slice(position, match.index) });
+        parts.push({ text: url, url });
+        position = match.index + url.length;
+    }
+    if (position < text.length)
+        parts.push({ text: text.slice(position) });
+    return parts;
+}
+function mapCampaignTextLinks(text, replace) {
+    return campaignTextLinkParts(text).map(part => part.url ? replace(part.url) : part.text).join('');
 }
 exports.SMS_LINK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
 function smsCampaignTrackingUrl(origin, token) {
@@ -81,9 +97,13 @@ function linkifyCampaignHtml(safeHtml) {
                     url = url.slice(0, -1);
             }
             const suffix = decoded.slice(url.length);
-            return campaignLinkDestination(url) ? `<a href="${(0, campaign_email_1.escapeEmailHtml)(url)}">${(0, campaign_email_1.escapeEmailHtml)(url)}</a>${(0, campaign_email_1.escapeEmailHtml)(suffix)}` : (0, campaign_email_1.escapeEmailHtml)(segment);
+            return !url.includes('{{') && campaignLinkDestination(url) ? `<a href="${(0, campaign_email_1.escapeEmailHtml)(url)}">${(0, campaign_email_1.escapeEmailHtml)(url)}</a>${(0, campaign_email_1.escapeEmailHtml)(suffix)}` : (0, campaign_email_1.escapeEmailHtml)(segment);
         }).join('');
     }).join('');
+}
+/** Apply trusted presentation after sanitization; user-supplied CSS stays disallowed. */
+function styleCampaignEmailLinks(safeHtml) {
+    return linkifyCampaignHtml(safeHtml).replace(/<a\b([^>]*)>/gi, (tag, attributes) => /\bhref\s*=/.test(attributes) ? `<a${attributes} style="color: #2563eb; text-decoration: underline;">` : tag);
 }
 function campaignHtmlLinks(safeHtml) {
     return [...new Set([...linkifyCampaignHtml(safeHtml).matchAll(/<a\s[^>]*?href="([^"]*)"/gi)]

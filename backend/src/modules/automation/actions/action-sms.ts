@@ -9,14 +9,14 @@ export function validateSmsRecipientMode(mode: unknown, entity: WorkflowEntity) 
   if (!allowed.includes(String(mode))) throw new ValidationError('Choose a recipient relationship available for this record.');
 }
 
-/** Run Check and dispatch validate the same personalized message and footer. */
+/** Run Check and dispatch validate the same personalized message. */
 export async function prepareWorkflowSmsInput(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {
   const recipient = await smsRecipient(action, entity, tenantId, context);
   const values = await resolveMessageValues(String(action.config.message ?? ''), tenantId, recipient.entity, { [`${recipient.entity}.id`]: recipient.id });
   const message = renderMessage(String(action.config.message ?? ''), values, false);
   if (!message.trim()) throw new ValidationError('SMS variables left the message empty. Add recipient values or update the message.');
   const final = buildFinalSms({ body: message });
-  if (final.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit including the contact footer.`);
+  if (final.length > SMS_MAX_LENGTH) throw new ValidationError(`SMS exceeds the ${SMS_MAX_LENGTH}-character limit after personalization.`);
   return { phone: recipient.phone, recipientId: recipient.id, message, stats: smsMessageStats(final) };
 }
 export async function smsRecipient(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {

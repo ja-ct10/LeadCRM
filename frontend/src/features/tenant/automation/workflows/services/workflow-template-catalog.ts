@@ -53,7 +53,7 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
       notes.push('Choose a pipeline and different open source and target stages in linked setup. Optionally narrow related Deals to a Product.');
       notes.push('The default moves one matching persisted related open Deal. No matches produce no movement or task; multiple matches require review. All matching moves sequentially and can partially complete.');
     }
-    if (descriptor.setup === 'stage-entry' || descriptor.setup === 'qualified-entry') notes.push('Choose the pipeline and entry stage in linked setup. An actual entry creates the task; a later distinct entry can create another task.');
+    if (descriptor.setup === 'stage-entry' || descriptor.setup === 'qualified-entry') notes.push('Choose the pipeline and entry stage in linked setup. An actual entry runs the configured actions; a later distinct entry can run them again.');
   }
   for (const action of recipe.actions) {
     const definition = actions.find(entry => entry.type === action.type);
@@ -62,7 +62,7 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
         notes.push(`Choose ${field.label.toLowerCase().replace('gmail', 'Gmail')} in the builder.`);
       }
     }
-    if (action.type === 'send_email') notes.push('Review the email message and connect the selected sender to Gmail before activating.');
+    if (action.type === 'send_email') notes.push('Choose an email template or enter both subject and message. Connect the record’s assigned agent to Gmail before activating.');
     if (action.type === 'assign_owner' && !WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action)).success) notes.push('Choose agent, role or group in the builder.');
     if (action.type === 'create_task' && WorkflowAssignmentTargetSchema.safeParse(workflowAssignmentTarget(action)).data?.type === 'record_owner') {
       notes.push('Tasks use the record’s assigned agent. Assign an agent to the record or choose a task assignee in the builder.');
@@ -86,6 +86,8 @@ export function templateSetup(recipe: WorkflowDraft, trigger: TriggerDefinition 
 export function templateBehaviorLabel(recipe: WorkflowDraft): string {
   if (recipe.actions.some(action => action.type === 'move_deal_stage')) return recipe.actions.some(action => action.type === 'create_task') ? 'Move Deal + create task' : 'Move related Deal';
   if (recipe.actions.some(action => action.type === 'send_email')) return recipe.actions.some(action => action.type === 'create_task') ? 'Send email + follow-up' : 'Send email';
+  if (recipe.actions.some(action => action.type === 'send_sms')) return 'Send SMS';
+  if (recipe.actions.some(action => action.type === 'update_field')) return 'Update fields';
   if (recipe.actions.some(action => action.type === 'assign_owner')) return recipe.actions.some(action => action.type === 'create_task') ? 'Assign agent + create task' : 'Assign agent';
   return recipe.trigger === 'deal.stage_changed' ? 'Task on stage entry' : 'Create follow-up task';
 }

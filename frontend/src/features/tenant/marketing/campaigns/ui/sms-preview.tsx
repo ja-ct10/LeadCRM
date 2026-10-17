@@ -1,15 +1,16 @@
 'use client';
 
 import React from 'react';
+import { smsMessageStats } from '@leadcrm/shared';
+import { SmsMessageContent } from './sms-message-content';
 
 interface SmsPreviewProps {
   content?: string;
 }
 
 function getSmsStats(text: string): { charCount: number; partCount: number } {
-  const charCount = text.length;
-  const partCount = charCount === 0 ? 1 : Math.ceil(charCount / 160);
-  return { charCount, partCount };
+  const stats = smsMessageStats(text);
+  return { charCount: stats.characters, partCount: stats.segments };
 }
 
 export function SmsPreview({ content }: SmsPreviewProps): React.ReactElement {
@@ -32,13 +33,9 @@ export function SmsPreview({ content }: SmsPreviewProps): React.ReactElement {
           <div className="flex flex-col flex-1">
             {hasContent ? (
               <p className="bg-emerald-500 text-white text-[11px] leading-relaxed rounded-2xl rounded-tr-sm px-3 py-2 self-end max-w-[90%] whitespace-pre-wrap break-words shadow-sm">
-                {content}
+                <SmsMessageContent content={content!} />
               </p>
-            ) : (
-              <p className="bg-emerald-500 text-white/70 text-[11px] leading-relaxed rounded-2xl rounded-tr-sm px-3 py-2 self-end max-w-[90%] italic shadow-sm">
-                Your SMS message will appear here...
-              </p>
-            )}
+            ) : null}
           </div>
         </div>
       </div>

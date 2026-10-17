@@ -7,11 +7,11 @@ describe('campaign validation and rendering', () => {
   it('persists the screenshot URL as an anchor and keeps it intact across draft edits and sending', () => {
     const body = 'hi click this link if you have any inquiries of our products:\nhttps://camxian.com/product-services/';
     const prepared = prepareCampaignHtml(body);
-    expect(prepared).toBe('hi click this link if you have any inquiries of our products:<br><a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>');
+    expect(prepared).toBe('hi click this link if you have any inquiries of our products:<br><a href="https://camxian.com/product-services/" style="color: #2563eb; text-decoration: underline;">https://camxian.com/product-services/</a>');
     const edited = prepareCampaignHtml(prepared);
     const message = renderCampaignMessage('Welcome {{first_name}}', edited, { first_name: 'Shaun' });
     expect(message.subject).toBe('Welcome Shaun');
-    expect(message.html).toContain('<a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>');
+    expect(message.html).toContain('<a href="https://camxian.com/product-services/" style="color: #2563eb; text-decoration: underline;">https://camxian.com/product-services/</a>');
     expect(message.html.match(/<a(?: |>)/g)).toHaveLength(1);
   });
   it.each([
@@ -20,7 +20,7 @@ describe('campaign validation and rendering', () => {
     'https://camxian.com/contact#inquiry', 'https://camxian.com/a_(b)',
   ])('generates a real anchor for %s without changing its destination', url => {
     const message = renderCampaignMessage('Test', `Before (${url}).\nAfter {{first_name}}`, { first_name: 'John' });
-    expect(message.html).toContain(`<a href="${url.replaceAll('&', '&amp;')}">${url.replaceAll('&', '&amp;')}</a>`);
+    expect(message.html).toContain(`<a href="${url.replaceAll('&', '&amp;')}" style="color: #2563eb; text-decoration: underline;">${url.replaceAll('&', '&amp;')}</a>`);
     expect(message.html).toContain(').<br>After John');
   });
   it('preserves existing anchors, entities, variables and line breaks through a saved draft', () => {

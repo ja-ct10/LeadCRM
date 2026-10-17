@@ -1,11 +1,20 @@
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
-import { defaultFieldLayout, getAvailableActions, getWorkflowEmailVariableChoices, getWorkflowMessageVariables, workflowMessageVariableKeys, WorkflowDraftSchema, type ClosingField, type WorkflowOptions } from '@leadcrm/shared';
+import { defaultFieldLayout, getAvailableActions, getWorkflowEmailVariableChoices, getWorkflowMessageVariables, workflowMessageVariableKeys, WorkflowDraftSchema, SMS_DEFAULT_FOOTER, type ClosingField, type WorkflowOptions } from '@leadcrm/shared';
 import { actionIssues } from '../services/workflow-editor';
 import { ActionFields } from './workflow-fields';
 afterEach(cleanup);
 const definition = getAvailableActions().find(action => action.type === 'send_sms');
+it('offers editable footer insertion for SMS actions without adding it to email actions', () => {
+  const options: WorkflowOptions = { users: [], templates: [], campaigns: [], pipelines: [] };
+  const change = vi.fn();
+  const view = render(<ActionFields entity="lead" action={{ type: 'send_sms', config: { message: 'My message' } }} definition={definition} options={options} onChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Insert default SMS footer' }));
+  expect(change).toHaveBeenCalledWith({ message: `My message\n\n${SMS_DEFAULT_FOOTER}` });
+  view.rerender(<ActionFields entity="lead" action={{ type: 'send_email', config: {} }} definition={getAvailableActions().find(action => action.type === 'send_email')} options={options} onChange={change} />);
+  expect(screen.queryByRole('button', { name: 'Insert default SMS footer' })).toBeNull();
+});
 it.each(['lead', 'contact'] as const)('reuses the Campaign variable picker and selection insertion for %s SMS', entity => {
   const options: WorkflowOptions = { users: [], templates: [], campaigns: [], pipelines: [] };
   function Editor() {

@@ -23,7 +23,7 @@ import { sendSms, SmsSubmissionError } from '../../../../shared/services/sms.ser
 import { processTextBeeEvent } from '../textbee-webhook';
 import { DEFAULT_CAMXIAN_TEMPLATES, seedCampaignTemplates } from '../../templates/default-templates';
 import { previewAudience, campaignVariableFields } from '../audiences.service';
-import { CUSTOM_FIELD_MODULES, campaignVariableChoices, defaultFieldLayout, type CrmFieldCatalogEntry } from '@leadcrm/shared';
+import { CUSTOM_FIELD_MODULES, campaignVariableChoices, defaultFieldLayout, SMS_DEFAULT_FOOTER, type CrmFieldCatalogEntry } from '@leadcrm/shared';
 import { sendMail, EmailSubmissionError } from '../../../../shared/services/email.service';
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
@@ -115,13 +115,13 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
     });
     try {
       const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'Pasted URL', type: 'EMAIL', targetAudienceId: audienceId, subject: 'Welcome {{first_name}}', body: 'hi click this link if you have any inquiries of our products:\nhttps://camxian.com/product-services/' }));
-      expect(campaign.body).toContain('<a href="https://camxian.com/product-services/">');
+      expect(campaign.body).toContain('<a href="https://camxian.com/product-services/" style="color: #2563eb; text-decoration: underline;">');
       await scoped(() => updateCampaign(campaign.id, tenantId, userId, { body: campaign.body + '\nhttps://camxian.com/?a=1&b=2#contact' }));
       await scoped(() => sendCampaign(campaign.id, tenantId, userId));
       expect(payloads).toHaveLength(2);
       for (const payload of payloads) {
-        expect(payload.htmlContent).toContain('<a href="https://camxian.com/product-services/">https://camxian.com/product-services/</a>');
-        expect(payload.htmlContent).toContain('<a href="https://camxian.com/?a=1&amp;b=2#contact">');
+        expect(payload.htmlContent).toContain('<a href="https://camxian.com/product-services/" style="color: #2563eb; text-decoration: underline;">https://camxian.com/product-services/</a>');
+        expect(payload.htmlContent).toContain('<a href="https://camxian.com/?a=1&amp;b=2#contact" style="color: #2563eb; text-decoration: underline;">');
         expect(payload.htmlContent.match(/<a(?: |>)/g)).toHaveLength(2);
         expect(payload.htmlContent).not.toContain('&amp;amp;');
       }
@@ -504,7 +504,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
   });
   it('SMS preflight does not require organization email and still rejects an oversized personalized recipient', async () => {
     await scoped(async () => {
-      const person = await prisma.contact.create({ data: { tenantId, firstName: 'A'.repeat(49900), lastName: 'Long', phone: '+639171234567' } });
+      const person = await prisma.contact.create({ data: { tenantId, firstName: 'A'.repeat(50000), lastName: 'Long', phone: '+639171234567' } });
       const campaign = await createCampaign(tenantId, userId, { name: 'SMS preflight', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}' });
       await prisma.tenant.update({ where: { id: tenantId }, data: { email: null } });
       await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('1 recipient message exceeds the 50000-character');
@@ -515,12 +515,47 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await prisma.contact.delete({ where: { id: person.id } });
     });
   });
+  it.each(['edited', 'removed'] as const)('preserves an %s SMS footer through HTTP edits, copy, schedule, cancellation and dispatch', async mode => {
+    const person = await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'SMS', lastName: 'Footer', phone: '+639171234561' } }));
+    try {
+      const created = await request('/marketing/campaigns', 'POST', { name: `Footer ${mode}`, type: 'SMS', audienceSource: 'CONTACTS', body: `Hi {{first_name}}\n\n${SMS_DEFAULT_FOOTER}` });
+      expect(created.status).toBe(201);
+      const id = created.body.data.id;
+      const body = mode === 'edited' ? `Hi {{first_name}}\n\n${SMS_DEFAULT_FOOTER.replace('+63 (28) 462-3488', '+63 917 123 4567')}` : 'Hi {{first_name}}';
+      expect((await request(`/marketing/campaigns/${id}`, 'PUT', { body })).status).toBe(200);
+      expect((await request(`/marketing/campaigns/${id}`)).body.data.body).toBe(body);
+      expect((await scoped(() => duplicateCampaign(id, tenantId, userId))).body).toBe(body);
+      const due = { scheduledFor: new Date(Date.now() + 60000).toISOString() };
+      await scoped(() => scheduleCampaign(id, tenantId, userId, due));
+      await expect(scoped(() => updateCampaign(id, tenantId, userId, { body: 'Unapproved edit' }))).rejects.toMatchObject({ statusCode: 409 });
+      await scoped(() => cancelCampaignSchedule(id, tenantId, userId));
+      expect((await request(`/marketing/campaigns/${id}`)).body.data.body).toBe(body);
+      await scoped(() => scheduleCampaign(id, tenantId, userId, due));
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(1);
+      await vi.waitFor(async () => expect((await scoped(() => getCampaignById(id, tenantId))).submissionFinishedAt).not.toBeNull());
+      expect(sendSms).toHaveBeenCalledExactlyOnceWith(person.phone, body.replace('{{first_name}}', 'SMS'), { deviceId: 'device-fixture' });
+      expect(await dispatchDueCampaigns(new Date(Date.now() + 120000))).toBe(0);
+    } finally { await scoped(() => prisma.contact.delete({ where: { id: person.id } })); }
+  });
+  it('rejects an SMS that becomes empty after personalization without reserving or submitting it', async () => {
+    await scoped(async () => {
+      const person = await prisma.contact.create({ data: { tenantId, firstName: 'Blank', lastName: 'SMS', phone: '+639171234561' } });
+      try {
+        const audience = await createAudience(tenantId, { name: 'Empty personalized SMS', source: 'CONTACTS', conditions: [{ field: 'phone', operator: 'equals', value: person.phone! }] });
+        const campaign = await createCampaign(tenantId, userId, { name: 'Empty SMS recipient', type: 'SMS', targetAudienceId: audience.id, body: '{{company}}' });
+        await expect(sendCampaign(campaign.id, tenantId, userId)).rejects.toThrow('Personalization left an SMS empty');
+        expect(sendSms).not.toHaveBeenCalled();
+        expect((await getCampaignById(campaign.id, tenantId)).status).toBe('DRAFT');
+        expect(await prisma.campaignContact.count({ where: { campaignId: campaign.id } })).toBe(0);
+      } finally { await prisma.contact.delete({ where: { id: person.id } }); }
+    });
+  });
   it('submits personalized SMS once, persists its reference and phone, and authenticates idempotent webhook transitions', async () => {
     const person = await scoped(() => prisma.contact.create({ data: { tenantId, firstName: 'SMS', lastName: 'Customer', phone: '+639171234567', email: null } }));
     const campaign = await scoped(() => createCampaign(tenantId, userId, { name: 'SMS send', type: 'SMS', audienceSource: 'CONTACTS', body: 'Hi {{first_name}}, your proposal is ready.' }));
     const sends = await Promise.allSettled([scoped(() => sendCampaign(campaign.id, tenantId, userId)), scoped(() => sendCampaign(campaign.id, tenantId, userId))]);
     expect(sends.filter(r => r.status === 'fulfilled')).toHaveLength(1); expect(sendSms).toHaveBeenCalledOnce();
-    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.\n\nFor inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.', { deviceId: 'device-fixture' }]);
+    expect(vi.mocked(sendSms).mock.calls[0]).toEqual(['+639171234567', 'Hi SMS, your proposal is ready.', { deviceId: 'device-fixture' }]);
     const row = await prisma.campaignContact.findFirstOrThrow({ where: { campaignId: campaign.id, contactId: person.id } });
     expect(row).toMatchObject({ email: null, phone: '+639171234567', status: 'submitted', sentAt: null, submittedAt: expect.any(Date), messageId: expect.stringContaining('msg_') });
     expect(await prisma.emailDeliveryLog.count({ where: { campaignId: campaign.id } })).toBe(0);

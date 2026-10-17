@@ -5,6 +5,7 @@ import { Button } from '@/shared/components/ui/button';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/shared/components/ui/dropdown-menu';
 import { VariablePicker } from '@/shared/components/variable-picker';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
+import { SmsFooterControl } from '@/shared/components/sms-footer-control';
 
 export function WorkflowEmailOverride({ field, label, value, entity, options, className, onChange }: {
   field: 'subject' | 'body' | 'message'; label: string; value: string; entity?: WorkflowEntity; options: WorkflowOptions; className: string; onChange: (value: string) => void;
@@ -32,6 +33,7 @@ export function WorkflowEmailOverride({ field, label, value, entity, options, cl
       </DropdownMenu>
       <p id={`${id}-hint`} className="text-xs text-muted-foreground">{field === 'message' ? 'Variables use the selected recipient. Sender variables use your organization’s contact details.' : `Leave empty to use the template ${field === 'subject' ? 'subject' : 'message'}.`}</p>
     </div>
+    {field === 'message' && <SmsFooterControl value={value} onChange={onChange} maxLength={1600} />}
     {issue && <p id={`${id}-error`} role="alert" className="text-sm text-destructive">{issue}</p>}
   </div>;
 }

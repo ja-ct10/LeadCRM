@@ -1,4 +1,4 @@
-import { DEFAULT_CLOSING_FIELDS, type ClosingField, type ClosingValues, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
+import { workflowLossReason, DEFAULT_CLOSING_FIELDS, type ClosingField, type ClosingValues, type WorkflowAction, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { ValidationError, NotFoundError } from '../../../shared/errors/http-error';
 import { validateDealStageMove } from '../../crm/deals/deals.service';
@@ -36,7 +36,7 @@ export async function resolveDealTargets(action: WorkflowAction, entity: Workflo
 export async function validateDealTargets(action: WorkflowAction, entity: WorkflowEntity, tenantId: string, context: Record<string, unknown>) {
   const ids = await resolveDealTargets(action, entity, tenantId, context);
   for (const id of ids) {
-    const stage = await validateDealStageMove(id, tenantId, { stageId: String(action.config.stageId), lostReason: String(action.config.lostReason ?? '') });
+    const stage = await validateDealStageMove(id, tenantId, { stageId: String(action.config.stageId), lostReason: workflowLossReason(action.config) }, { optionalLossReason: true });
     if (stage.isWon) {
       const deal = await prisma.deal.findFirstOrThrow({ where: { tenantId, id }, include: { stage: true } });
       if (deal.stageId !== stage.id) {

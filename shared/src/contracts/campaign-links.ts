@@ -13,15 +13,26 @@ export function campaignLinkDestination(value: string): string | null {
 }
 
 /** Plain-text URLs share the email linkifier's punctuation rules. */
-export function mapCampaignTextLinks(text: string, replace: (url: string) => string): string {
-  return text.replace(/https?:\/\/[^\s<>"']+/gi, candidate => {
+export function campaignTextLinkParts(text: string): Array<{ text: string; url?: string }> {
+  const parts: Array<{ text: string; url?: string }> = [];
+  let position = 0;
+  for (const match of text.matchAll(/https?:\/\/[^\s<>"']+/gi)) {
+    const candidate = match[0];
     let url = candidate;
     while (/[.,;:!?]$/.test(url)) url = url.slice(0, -1);
     for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']]) {
       while (url.endsWith(close) && url.split(close).length > url.split(open).length) url = url.slice(0, -1);
     }
-    return campaignLinkDestination(url) ? replace(url) + candidate.slice(url.length) : candidate;
-  });
+    if (url.includes('{{') || !campaignLinkDestination(url)) continue;
+    if (match.index! > position) parts.push({ text: text.slice(position, match.index) });
+    parts.push({ text: url, url });
+    position = match.index! + url.length;
+  }
+  if (position < text.length) parts.push({ text: text.slice(position) });
+  return parts;
+}
+export function mapCampaignTextLinks(text: string, replace: (url: string) => string): string {
+  return campaignTextLinkParts(text).map(part => part.url ? replace(part.url) : part.text).join('');
 }
 
 export const SMS_LINK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
@@ -66,9 +77,15 @@ export function linkifyCampaignHtml(safeHtml: string): string {
         while (url.endsWith(close) && url.split(close).length > url.split(open).length) url = url.slice(0, -1);
       }
       const suffix = decoded.slice(url.length);
-      return campaignLinkDestination(url) ? `<a href="${escapeEmailHtml(url)}">${escapeEmailHtml(url)}</a>${escapeEmailHtml(suffix)}` : escapeEmailHtml(segment);
+      return !url.includes('{{') && campaignLinkDestination(url) ? `<a href="${escapeEmailHtml(url)}">${escapeEmailHtml(url)}</a>${escapeEmailHtml(suffix)}` : escapeEmailHtml(segment);
     }).join('');
   }).join('');
+}
+
+/** Apply trusted presentation after sanitization; user-supplied CSS stays disallowed. */
+export function styleCampaignEmailLinks(safeHtml: string): string {
+  return linkifyCampaignHtml(safeHtml).replace(/<a\b([^>]*)>/gi, (tag, attributes: string) =>
+    /\bhref\s*=/.test(attributes) ? `<a${attributes} style="color: #2563eb; text-decoration: underline;">` : tag);
 }
 
 export function campaignHtmlLinks(safeHtml: string): string[] {

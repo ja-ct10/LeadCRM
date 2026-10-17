@@ -234,6 +234,7 @@ export async function moveDealStage(
   confirmation?: ClosedWonConfirmation,
   transaction?: Prisma.TransactionClient,
   guard?: RelatedDealMoveGuard,
+  policy: import('./deal-lifecycle').DealStageMovePolicy = {},
 ) {
   const transition = async (tx: Prisma.TransactionClient) => {
     await assertCrmRecordMutation(tx, 'deals', id);
@@ -261,7 +262,7 @@ export async function moveDealStage(
       assertDealStageTransition(deal, newStage, hasEverBeenWon);
       const snapshot = newStage.isWon ? await closingEvidence(tx, tenantId, deal, movedById) : undefined;
       if (newStage.isWon) note = 'All configured Closed Won requirements completed and validated.';
-      if (newStage.isLost && !lostReason?.trim()) throw new ValidationError('Lost reason is required.');
+      if (newStage.isLost && !lostReason?.trim() && !policy.optionalLossReason) throw new ValidationError('Lost reason is required.');
       const missing = newStage.requiredFields.filter(field => {
         const value = (deal as Record<string, unknown>)[field];
         return value == null || value === '' || Array.isArray(value) && !value.length;
@@ -273,7 +274,7 @@ export async function moveDealStage(
         hasEverBeenWon: hasEverBeenWon || newStage.isWon,
         ...(hasEverBeenWon || newStage.isWon ? { wonHistoryVerified: true } : {}),
         stageChangedAt: now,
-        closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason : null,
+        closedAt: newStage.isWon || newStage.isLost ? now : null, lostReason: newStage.isLost ? lostReason?.trim() || null : null,
         ...(newStage.isWon ? { closingSnapshot: snapshot, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
       if (newStage.isWon) {
         await resolveWonRelationships(tx, deal, movedById);

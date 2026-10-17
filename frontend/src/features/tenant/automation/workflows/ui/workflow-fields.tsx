@@ -300,6 +300,14 @@ export function ActionFields({
       {action.type === 'send_email' && <p className="text-xs text-muted-foreground">Email uses the triggering record’s assigned agent and their authorized Gmail connection. For a Deal, select its primary Lead or Contact; the agent must also have permission to email that recipient.</p>}
       {action.type === 'send_sms' && options.smsConfigured === false && <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">SMS is not configured. You can save this draft and connect SMS before activating it.</p>}
       {action.type === 'move_deal_stage' && stageSetup}
+      {action.type === 'move_deal_stage' && <fieldset className="space-y-2">
+        <label className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={action.config.includeLossReason === true || action.config.includeLossReason === undefined && !!String(action.config.lostReason ?? '').trim()} onChange={event => {
+          const { lostReason: _reason, ...config } = action.config;
+          onChange({ ...config, includeLossReason: event.target.checked, ...(event.target.checked ? { lostReason: '' } : {}) });
+        }} />Include a loss reason</label>
+        {(action.config.includeLossReason === true || action.config.includeLossReason === undefined && !!String(action.config.lostReason ?? '').trim()) && <label className="block space-y-1">Loss reason<textarea aria-label="Loss reason" aria-required="true" maxLength={2000} rows={3} className={workflowControl} value={String(action.config.lostReason ?? '')} onChange={event => onChange({ ...action.config, lostReason: event.target.value })} /></label>}
+        <p className="text-xs text-muted-foreground">Used when the target stage is Lost. Turn this off to close automatically without a reason. No dialog opens during execution.</p>
+      </fieldset>}
       {action.type === 'move_deal_stage' && !stageSetup && (
         <label className="block space-y-1">
           Pipeline
@@ -324,6 +332,7 @@ export function ActionFields({
         </label>
       )}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
+        if (action.type === 'move_deal_stage' && ['includeLossReason', 'lostReason'].includes(key)) return null;
         if (action.type === 'create_task' && ['targetMode', 'pipelineId', 'currentStageId', 'productInterestId', 'dealId'].includes(key)) return null;
         if (action.type === 'send_email' && (key === 'subject' || key === 'body') || action.type === 'send_sms' && key === 'message') return <WorkflowEmailOverride key={`${key}:${action.config.recipient ?? 'record'}`} field={key as 'subject' | 'body' | 'message'} label={field.label} value={String(action.config[key] ?? '')} entity={entity ? workflowMessageEntity(entity, action.config.recipient) : undefined} options={options} className={workflowControl} onChange={value => onChange({ ...action.config, [key]: value })} />;
         if (action.type === 'move_deal_stage' && stageSetup && ['stageId', 'currentStageId'].includes(key)) return null;

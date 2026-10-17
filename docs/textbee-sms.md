@@ -27,14 +27,22 @@ characters). Subscribe only to `MESSAGE_SENT`, `MESSAGE_DELIVERED`,
 ## Message construction
 
 `buildFinalSms()` is shared by campaign preflight, live preview and the transport.
-It renders allowed campaign variables, trims outer whitespace, and appends the
-fixed Camxian contact block (`+63 (28) 462-3488 or go to the official website.`)
-and no-reply statement once. SMS delivery no longer depends on an organization
-email address; an email variable appears only if a campaign author explicitly
-adds `{{sender_email}}` to its message. Templates continue storing only editable
-content. Users cannot disable the footer.
+It renders allowed campaign variables and trims outer whitespace. New blank SMS
+campaigns start with the editable `SMS_DEFAULT_FOOTER` contact/no-reply text in
+their body. Authors can edit or delete it, or use **Insert default SMS footer** to
+add the original text once. Explicit template content and existing drafts,
+including empty bodies, are preserved. Email and SMS retain separate in-progress
+bodies; unsaved changes in either body remain guarded when switching channels.
+SMS workflow message editors offer the same insertion control on request.
+The API, scheduler and transport never add or restore a footer. SMS delivery does
+not depend on an organization email address; an email variable appears only if
+the author explicitly adds `{{sender_email}}`. Templates store editable content.
+Draft edits, copies and scheduling use the authored body. Scheduled content must
+be cancelled back to Draft before editing. Cancelling retains its body; scheduling
+again approves that current text. Submission freezes the approved personalized
+message with the existing tracking links. Previously sent content is preserved.
 
-The preview includes the complete personalized sample, footer, character count,
+The preview includes the complete personalized sample, character count,
 and GSM-7/Unicode segment estimates.
 TextBee's documented segmentation is 160/153 GSM septets and 70/67 UTF-16 units;
 GSM extension characters consume two septets. The 50,000-character bound is a
@@ -103,14 +111,14 @@ through Coolify, then verify
 the serving commit through the frontend proxy. Use only an approved isolated
 test recipient for one SMS. Confirm its provider batch, signed status callbacks,
 persisted recipient status and actual receipt. Ask the recipient to verify the
-fixed Camxian phone contact block and single no-reply footer.
+entered message and its links.
 Do not infer receipt or tapping behavior from API acceptance.
 
 ## SMS campaign links and conflicting provider evidence
 
 New SMS campaigns replace valid HTTP/HTTPS destinations with opaque, per-recipient
-`APP_URL/s/:token` links after personalization and the contact footer are rendered.
-The preview uses the same URL lengths with sample tokens; the server checks the
+`APP_URL/s/:token` links after personalization. The preview opens the original
+destinations and counts the sent URL lengths with sample tokens; the server checks the
 actual final SMS length transactionally before provider submission. `APP_URL`
 must be the public website origin, using HTTPS in production. The frontend's
 existing server-only `API_URL` forwards these public redirects without CRM

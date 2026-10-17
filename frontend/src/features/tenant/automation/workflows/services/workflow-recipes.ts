@@ -321,7 +321,50 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     isActive: false,
     actions: [{ type: 'update_field', config: { field: 'website', value: '' } }],
   },
+  {
+    name: 'New Deal Created', description: 'Create a first follow-up task for the new Deal’s assigned agent. Review the assignee and due interval before activating.',
+    trigger: 'deal.created', isActive: false,
+    actions: [{ type: 'create_task', config: { title: 'Follow up on new Deal', dueDaysFromNow: 1, priority: 'Medium', assignmentTarget: { type: 'record_owner' } } }],
+  },
+  {
+    name: 'Deal Assignment Follow-up', description: 'When a Deal’s assigned agent changes, create a linked task for the new agent. Existing assignment and task notifications inform that agent. Ordinary edits do not match.',
+    trigger: 'deal.updated', isActive: false,
+    conditions: { operator: 'AND', conditions: [
+      { field: 'event.changedFields', operator: 'contains', value: 'assignedUserId' },
+      { field: 'deal.assignedUserId', operator: 'is_not_empty', value: null },
+    ] },
+    actions: [{ type: 'create_task', config: { title: 'Review newly assigned Deal', dueDaysFromNow: 1, priority: 'Medium', assignmentTarget: { type: 'record_owner' } } }],
+  },
+  {
+    name: 'Deal Follow-up Email', description: 'Send an existing email template to the primary Contact after entry into a selected pipeline stage. Choose the stage and email template; verify the assigned agent’s Gmail connection and recipient permissions.',
+    trigger: 'deal.stage_changed', isActive: false,
+    conditions: { operator: 'AND', conditions: [
+      { field: 'deal.pipelineId', operator: 'equals', value: '' },
+      { field: 'event.newStageId', operator: 'equals', value: '' },
+    ] },
+    actions: [{ type: 'send_email', config: { recipient: 'primary_contact', templateId: '' } }],
+  },
+  {
+    name: 'Won Deal Thank-you Email', description: 'Send an existing post-sale email template to the primary Contact when the Deal is marked Won. Existing closing requirements still apply.',
+    trigger: 'deal.closed_won', isActive: false,
+    actions: [{ type: 'send_email', config: { recipient: 'primary_contact', templateId: '' } }],
+  },
+  {
+    name: 'Lost Deal Follow-up', description: 'Create a review task for the assigned agent when a Deal is marked Lost, whether or not an automated closing action supplied a loss reason.',
+    trigger: 'deal.closed_lost', isActive: false,
+    actions: [{ type: 'create_task', config: { title: 'Review lost Deal and next steps', dueDaysFromNow: 3, priority: 'Low', assignmentTarget: { type: 'record_owner' } } }],
+  },
+  {
+    name: 'New Lead SMS Acknowledgment', description: 'Acknowledge a new Lead by SMS using its saved first name. Configure TextBee and review eligible recipients before activation.',
+    trigger: 'lead.created', isActive: false,
+    actions: [{ type: 'send_sms', config: { recipient: 'record', message: 'Hi {{firstName}}, we received your inquiry. Our team will contact you shortly.' } }],
+  },
+  {
+    name: 'Contact Welcome Email Template', description: 'Send an existing welcome email template when a Contact is created. Choose the template and verify the assigned agent’s Gmail connection.',
+    trigger: 'contact.created', isActive: false,
+    actions: [{ type: 'send_email', config: { recipient: 'record', templateId: '' } }],
+  },
 ];
 
-/** Sixteen curated starters retain every existing numeric URL index. */
+/** Curated starters retain every existing numeric URL index. */
 export const WORKFLOW_STARTER_TEMPLATES = WORKFLOW_TEMPLATE_DESCRIPTORS.map(descriptor => ({ ...descriptor, recipe: WORKFLOW_RECIPES[descriptor.index] }));

@@ -95,6 +95,10 @@ try {
   await page.getByTitle('Email body preview').waitFor();
   const preview = await page.getByTitle('Email body preview').getAttribute('srcdoc');
   assert.ok(preview.includes('Hi John Configured Preview Sender configured@example.test')); record('Preview uses canonical recipient samples and actual configured email identity');
+  await body.fill('Visit https://example.test/products?a=1&b=2.');
+  const linkedPreview = await page.getByTitle('Email body preview').getAttribute('srcdoc');
+  assert.ok(linkedPreview.includes('href="https://example.test/products?a=1&amp;b=2" style="color: #2563eb; text-decoration: underline;"'));
+  record('Email preview renders an exact blue underlined URL without opening an external site');
   const field = await prisma.closingFieldDefinition.findUniqueOrThrow({ where: { tenantId_id: { tenantId: tenant.id, id: ageIds.leads } } });
   await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId: tenant.id, id: ageIds.leads } }, data: { definition: { ...field.definition, name: 'Customer Age' } } });
   await prisma.tenant.update({ where: { id: tenant.id }, data: { name: 'Changed SMS Organization', email: 'changed@example.test' } });
@@ -102,9 +106,40 @@ try {
   await page.getByRole('button', { name: /Customer Age.*customFieldValues.age.*Leads/ }).waitFor(); record('Reopening refreshes renamed label without changing the alias or canonical ID');
   await page.getByRole('textbox', { name: 'Search variables', exact: true }).press('Escape');
   await page.getByRole('button', { name: 'SMS', exact: true }).click();
+  const defaultFooter = 'For inquiries regarding our products and services, contact Camxian Technologies:\n+63 (28) 462-3488 or go to the official website.\n\nThis is a no-reply message.';
+  assert.equal(await body.inputValue(), defaultFooter);
+  await body.fill('My editable SMS');
+  await page.getByRole('button', { name: 'Email', exact: true }).click();
+  assert.equal(await body.inputValue(), 'Visit https://example.test/products?a=1&b=2.');
+  await page.getByRole('button', { name: 'SMS', exact: true }).click();
+  assert.equal(await body.inputValue(), 'My editable SMS');
+  await page.getByRole('button', { name: 'Insert default SMS footer', exact: true }).click();
+  assert.equal(await body.inputValue(), `My editable SMS\n\n${defaultFooter}`);
+  assert.equal(await page.getByRole('button', { name: 'Insert default SMS footer', exact: true }).isDisabled(), true);
+  await body.fill('');
+  assert.equal(await body.inputValue(), '');
+  assert.equal(await page.getByText(/For inquiries regarding|This is a no-reply/).count(), 0);
+  await page.getByText(/0 characters after personalization/).waitFor();
+  record('Editable SMS footer is inserted once, survives channel changes, stays out of email and can be removed');
   await body.fill('{{sender_name}} {{sender_email}}');
   await page.getByText(/Changed SMS Organization changed@example.test/).waitFor();
-  record('SMS preview uses current organization contact identity and preserves the fixed footer');
+  record('SMS preview uses current organization identity only when its variables are entered');
+  for await (const { theme, width } of responsiveMatrix(page)) {
+    await body.fill(`Hello {{firstName}}, visit https://example.test/products?a=1&b=2.\n\n${defaultFooter.replace('+63 (28) 462-3488', '+63 917 123 4567')}`);
+    const openPreview = page.getByRole('button', { name: 'Show live preview', exact: true });
+    if (await openPreview.isVisible()) await openPreview.click();
+    const link = page.getByRole('link', { name: 'https://example.test/products?a=1&b=2', exact: true });
+    await link.scrollIntoViewIfNeeded();
+    assert.equal(await link.getAttribute('href'), 'https://example.test/products?a=1&b=2');
+    assert.ok((await page.locator('#campaign-live-preview').textContent()).includes('+63 917 123 4567'));
+    const linkBounds = await link.boundingBox();
+    assert.ok(linkBounds && linkBounds.x >= -1 && linkBounds.x + linkBounds.width <= width + 1, `SMS link bounds at ${width}`);
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), `SMS page overflow at ${width}`);
+    await page.screenshot({ path: resolve(output, `sms-link-${theme}-${width}.png`) });
+    const closePreview = page.getByRole('button', { name: 'Close preview', exact: true });
+    if (await closePreview.isVisible()) await closePreview.click();
+    record(`Editable SMS footer, destination and message wrapping at ${width} in ${theme}`);
+  }
   for (const entity of ['lead', 'contact']) {
     await page.goto(base + `/automation/workflows/${saved[entity].id}/edit`);
     await page.getByRole('button', { name: /Configure action: 1. Create Task/ }).click();
