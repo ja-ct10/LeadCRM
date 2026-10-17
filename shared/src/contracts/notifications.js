@@ -35,6 +35,7 @@ exports.SmsCampaignNotificationTypes = [
     'sms_campaign_partial', 'sms_campaign_unconfirmed', 'sms_campaign_progress',
 ];
 exports.NotificationTypes = [
+    'password_expiring_soon',
     'lead_assigned', 'contact_assigned', 'account_assigned', 'deal_assigned', 'task_assigned',
     'customer_hot', 'customer_cold', 'customer_cancelled', 'deal_progressed', 'deal_won', 'deal_lost',
     'closing_requirements_needed', 'closing_requirements_completed', 'task_due', 'task_overdue',

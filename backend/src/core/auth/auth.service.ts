@@ -8,6 +8,7 @@ import { authTransaction } from './auth-transaction';
 import { INVALID_LOGIN_MESSAGE, LOGIN_FAILURE_LIMIT, LOGIN_LOCKOUT_MS, isWorkspaceAccessible } from '@leadcrm/shared';
 import { databaseNow, loginIdentityKey, lockLoginState, LoginLockedError, loginSecurityEvent, resetExpiredLoginState } from './login-attempt.service';
 import { LoginSchema } from './auth.dto';
+import { LOGIN_SECURITY_LOCK_CYCLE_LIMIT, accountLockedError } from './login-attempt.service';
 export { buildAuthUserResponse } from './auth-user';
 export type { AuthUserSource, AuthUserResponse } from './auth-user';
 export { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
@@ -24,6 +25,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     const state = await lockLoginState(tx, identityKey);
     const now = await databaseNow(tx); // Sample after waiting for the row lock.
     const events: { event: string; count?: number }[] = [];
+    if (state.lockoutCycles >= LOGIN_SECURITY_LOCK_CYCLE_LIMIT) return { error: accountLockedError(), events };
     if (await resetExpiredLoginState(tx, state, now)) events.push({ event: 'lockout_expired' });
     if (state.lockedUntil) {
       if (!state.lockedRejectionLoggedAt) {
@@ -35,8 +37,20 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     // Five failures are stored without locking. ONLY the next submission enters
     // this branch, before any user lookup, password comparison or token creation.
     if (state.failedAttempts >= LOGIN_FAILURE_LIMIT) {
+      const lockoutCycles = state.lockoutCycles + 1;
+      if (lockoutCycles >= LOGIN_SECURITY_LOCK_CYCLE_LIMIT) {
+        await tx.loginAttemptState.update({ where: { identityKey }, data: { lockoutCycles, lockedUntil: null, lockedRejectionLoggedAt: null, updatedAt: now } });
+        const users = await tx.user.findMany({ where: { email: { equals: normalisedEmail, mode: 'insensitive' } }, select: { id: true, tenantId: true } });
+        for (const user of users) {
+          await tx.user.updateMany({ where: { id: user.id, tenantId: user.tenantId, securityLockedAt: null }, data: { securityLockedAt: now } });
+          await tx.session.updateMany({ where: { userId: user.id, tenantId: user.tenantId, revokedAt: null }, data: { revokedAt: now } });
+          await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: 'ACCOUNT_SECURITY_LOCKED', category: 'auth', entityType: 'User', entityId: user.id, metadata: { lockoutCycles } } });
+        }
+        events.push({ event: 'account_security_locked', count: lockoutCycles });
+        return { error: accountLockedError(), events };
+      }
       const lockedUntil = new Date(now.getTime() + LOGIN_LOCKOUT_MS);
-      await tx.loginAttemptState.update({ where: { identityKey }, data: { lockedUntil, lockedRejectionLoggedAt: null, updatedAt: now } });
+      await tx.loginAttemptState.update({ where: { identityKey }, data: { lockoutCycles, lockedUntil, lockedRejectionLoggedAt: null, updatedAt: now } });
       events.push({ event: 'lockout_activated_on_sixth_attempt', count: state.failedAttempts });
       return { error: new LoginLockedError(identityKey, lockedUntil, now), events };
     }
@@ -75,6 +89,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
     await tx.$queryRaw`SELECT "id" FROM "Tenant" WHERE "id" = ${verified.tenantId} FOR SHARE`;
     const current = await tx.user.findFirst({ where: { id: verified.id, tenantId: verified.tenantId }, include: authUserInclude });
     if (!current || current.passwordHash !== verified.passwordHash) return { error: new AppError(INVALID_LOGIN_MESSAGE, 401), events };
+    if (current.securityLockedAt) return { error: accountLockedError(), events };
     try {
       await requireEmployeeAccount(current, tx);
       if (!isWorkspaceAccessible(current.tenant?.status)) throw new AppError('Workspace access is unavailable.', 403);
@@ -84,7 +99,7 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
       return { error, events };
     }
     const result = { token: await createAuthSessionToken(current, ctx, tx), user: buildAuthUserResponse(current) };
-    await tx.loginAttemptState.update({ where: { identityKey }, data: { failedAttempts: 0, lastFailedAt: null, updatedAt: await databaseNow(tx) } });
+    await tx.loginAttemptState.update({ where: { identityKey }, data: { failedAttempts: 0, lockoutCycles: 0, lastFailedAt: null, updatedAt: await databaseNow(tx) } });
     if (state.failedAttempts) {
       events.push({ event: 'successful_login_after_failures', count: state.failedAttempts });
       await tx.auditLog.create({ data: { tenantId: current.tenantId, userId: current.id, action: 'LOGIN_FAILURES_RESET', category: 'auth', entityType: 'User', entityId: current.id,

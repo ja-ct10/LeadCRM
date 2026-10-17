@@ -4,12 +4,14 @@ export const assignmentNotifications = new Set<NotificationType>([
   'lead_assigned', 'contact_assigned', 'account_assigned', 'deal_assigned', 'task_assigned',
 ]);
 export const adminNotifications = new Set<NotificationType>([
+  'password_expiring_soon',
   ...SmsCampaignNotificationTypes,
   'website_lead', 'deal_won', 'deal_lost', 'campaign_failed', 'workflow_failed', 'form_processing_failed',
   'mailbox_disconnected', 'mailbox_sync_failed', 'user_created', 'user_status_changed',
   'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed',
 ]);
 export const staffNotifications = new Set<NotificationType>([
+  'password_expiring_soon',
   ...SmsCampaignNotificationTypes,
   ...assignmentNotifications, 'customer_hot', 'customer_cold', 'customer_cancelled', 'deal_won', 'deal_lost',
   'closing_requirements_needed', 'task_due', 'task_overdue', 'customer_reply',
@@ -17,6 +19,7 @@ export const staffNotifications = new Set<NotificationType>([
 ]);
 
 export const notificationEntities: Partial<Record<NotificationType, readonly string[]>> = {
+  password_expiring_soon: ['PasswordSecurity'],
   ...Object.fromEntries(SmsCampaignNotificationTypes.map(type => [type, ['Campaign']])),
   website_lead: ['Lead'], lead_assigned: ['Lead'], contact_assigned: ['Contact'], account_assigned: ['Account'], deal_assigned: ['Deal'], task_assigned: ['Task'],
   customer_hot: ['Lead', 'Contact'], customer_cold: ['Lead', 'Contact'], customer_cancelled: ['Lead', 'Contact'],

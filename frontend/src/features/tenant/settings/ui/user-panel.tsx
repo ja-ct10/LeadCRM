@@ -164,6 +164,7 @@ export function UserPanel({ user, roles, canEdit, onSaved, onClose, actions = []
   const organizationRows: InlineRowDef[] = [
     { label: 'Role', value: saved?.role, apiField: canChangeRole ? 'role' : undefined, type: 'select', options: roles.map(role => role.name), alwaysVisible: true },
     profileRow('jobTitle'),
+    { label: 'Login Security', value: saved?.securityLockedAt ? 'Locked — contact an administrator' : 'Unlocked', alwaysVisible: true },
     { label: 'Status', value: saved?.status, displayValue: saved?.status ? saved.status[0].toUpperCase() + saved.status.slice(1) : '—', alwaysVisible: true },
     { label: 'Groups', value: JSON.stringify(saved?.groups?.map(group => group.id) ?? []),
       displayValue: saved?.groups?.map(group => group.name).join(', ') || 'No groups assigned',

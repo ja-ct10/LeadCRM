@@ -44,7 +44,7 @@ it.each(['cookie', 'bearer'])('restricts the same %s session on its next protect
   expect(next).toHaveBeenLastCalledWith(expect.objectContaining({ statusCode: 403, code: 'PASSWORD_CHANGE_REQUIRED' }));
   expect(source.mustChangePassword).toBe(false);
 });
-it.each(['/me', '/change-password', '/logout'])('permits expired-password recovery at %s', async path => {
+it.each(['/me', '/change-password', '/logout', '/activity'])('permits expired-password recovery at %s', async path => {
   vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(new Date('2030-04-01'));
   vi.mocked(readAuthUser).mockResolvedValue(buildAuthUserResponse(expiringUser()));
   const next = vi.fn();
@@ -101,7 +101,7 @@ it.each(['/api/v1/crm', '/api/v1/administration', '/api/v1/preferences', '/api/v
   await authMiddleware({ ...request(), baseUrl, path: '/anything' } as never, {} as never, next);
   expect(next).toHaveBeenCalledWith(expect.objectContaining({ code: 'PASSWORD_CHANGE_REQUIRED' }));
 });
-it.each(['/me', '/change-password'])('permits only required recovery actions: %s', async path => {
+it.each(['/me', '/change-password', '/activity'])('permits only required recovery actions: %s', async path => {
   vi.mocked(readAuthUser).mockResolvedValue({ id: 'user-1', tenantId: 'tenant-1', role: 'Client Admin', status: 'ACTIVE', tenantStatus: 'ACTIVE', email: 'employee@camxian.com', mustChangePassword: true } as never);
   const next = vi.fn();
   await authMiddleware({ ...request(), baseUrl: '/api/v1/auth', path } as never, {} as never, next);

@@ -1,3 +1,4 @@
+import { salesContext } from '../leads/sales-context';
 import { assertContactAccountSelection, mayReadContactAccount, presentContactAccount } from '../contacts-v2/contact-account-access';
 import type { Lead as LeadRecord } from '@prisma/client';
 import { createLinkedAccount } from '../companies/organization-creation';
@@ -39,7 +40,8 @@ const CONTACT_FIELD_ALIASES: Record<string, string> = {
 
 // All queries are scoped to tenantId — cross-tenant access is impossible by design
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
-  const canReadAccount = await mayReadContactAccount(prisma, tenantId);
+  const db = salesContext.getStore() ?? prisma;
+  const canReadAccount = await mayReadContactAccount(db, tenantId);
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;
 
@@ -68,7 +70,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   if (scope === 'active') filterClauses.push({ status: { in: ['Hot','Warm','HOT','WARM'] } });
 
   for (const field of ['email', 'phone']) if (related.includes('has_' + field)) filterClauses.push({ [field]: { not: null } }, { [field]: { not: '' } });
-  if (systemValues.includes('touched') !== systemValues.includes('untouched')) filterClauses.push({ updatedAt: systemValues.includes('touched') ? { gt: prisma.lead.fields.createdAt } : { lte: prisma.lead.fields.createdAt } });
+  if (systemValues.includes('touched') !== systemValues.includes('untouched')) filterClauses.push({ updatedAt: systemValues.includes('touched') ? { gt: db.lead.fields.createdAt } : { lte: db.lead.fields.createdAt } });
   if (query.status) filterClauses.push({ status: { in: [normalizeCrmStatus(String(query.status)), normalizeCrmStatus(String(query.status)).toUpperCase()] } });
   const where: Record<string, unknown> = {
     ...(createdAt ? { createdAt } : {}),
@@ -87,11 +89,11 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const sortDirection = direction === 'asc' ? 'asc' as const : 'desc' as const;
   const dateSort = ['createdAt', 'updatedAt'].includes(sortField);
   const ids = dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
-    async () => (await prisma.lead.findMany({ where,
+    async () => (await db.lead.findMany({ where,
       select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, companyFromAccount: true, status: true, source: true },
     })).map(row => ({ ...presentContactAccount(row, canReadAccount), name: row.firstName?.trim() || row.lastName?.trim() ? formatLeadName(row) : null, status: normalizeCrmStatus(row.status) })));
   const [data, total] = await Promise.all([
-    prisma.lead.findMany({
+    db.lead.findMany({
       where: ids ? { ...where, id: { in: ids } } : where, skip: ids ? 0 : skip, take: limit,
       orderBy: [{ [dateSort ? sortField : 'createdAt']: sortDirection }, { id: 'asc' }],
       include: {
@@ -101,16 +103,16 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
     }),
-    prisma.lead.count({ where }),
+    db.lead.count({ where }),
   ]);
 
   const [statuses, sources, agents, email, phone, touched] = await Promise.all([
-    prisma.lead.groupBy({ by: ['status'], where, _count: true }),
-    prisma.lead.groupBy({ by: ['source'], where, _count: true }),
-    prisma.lead.groupBy({ by: ['assignedUserId'], where, _count: true }),
-    prisma.lead.count({ where: { AND: [where, { email: { not: null } }, { email: { not: '' } }] } }),
-    prisma.lead.count({ where: { AND: [where, { phone: { not: null } }, { phone: { not: '' } }] } }),
-    prisma.lead.count({ where: { AND: [where, { updatedAt: { gt: prisma.lead.fields.createdAt } }] } }),
+    db.lead.groupBy({ by: ['status'], where, _count: true }),
+    db.lead.groupBy({ by: ['source'], where, _count: true }),
+    db.lead.groupBy({ by: ['assignedUserId'], where, _count: true }),
+    db.lead.count({ where: { AND: [where, { email: { not: null } }, { email: { not: '' } }] } }),
+    db.lead.count({ where: { AND: [where, { phone: { not: null } }, { phone: { not: '' } }] } }),
+    db.lead.count({ where: { AND: [where, { updatedAt: { gt: db.lead.fields.createdAt } }] } }),
   ]);
   const facets: Record<string, number> = { has_email: email, has_phone: phone, touched, untouched: total - touched };
   for (const row of statuses) { const key = 'status:' + normalizeCrmStatus(row.status); facets[key] = (facets[key] ?? 0) + row._count; }

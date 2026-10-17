@@ -5,6 +5,7 @@ exports.dashboardToday = dashboardToday;
 exports.dashboardFunnelPeriod = dashboardFunnelPeriod;
 exports.dashboardPeriod = dashboardPeriod;
 exports.dashboardCsv = dashboardCsv;
+const crm_export_1 = require("./crm-export");
 const zod_1 = require("zod");
 exports.DASHBOARD_TIMEZONE = 'Asia/Manila';
 exports.DASHBOARD_RANGES = ['today', 'last7', 'last30', 'thisMonth', 'lastMonth', 'last3', 'last6', 'thisYear', 'custom'];
@@ -105,10 +106,5 @@ function dashboardCsv(report) {
         ['Action', 'Due', 'Priority'], ...report.actions.map(row => [row.title, row.dueDate, row.priority]),
         ...report.warnings.map(warning => ['Reporting limitation', warning]),
     ];
-    return '\uFEFF' + rows.map(row => row.map(value => {
-        let cell = value === null ? 'Unavailable' : String(value);
-        if (/^[\s\uFEFF]*[=+\-@]/.test(cell) || /^[\t\r\n]/.test(cell))
-            cell = `'${cell}`;
-        return `"${cell.replace(/"/g, '""')}"`;
-    }).join(',')).join('\r\n');
+    return (0, crm_export_1.csvDocument)(rows.map(row => row.map(value => value === null ? 'Unavailable' : value)));
 }

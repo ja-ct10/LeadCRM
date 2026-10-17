@@ -5,7 +5,7 @@ vi.mock('../../../config/database.config', async () => ({
 vi.mock('../../../shared/helpers/crypto', () => ({
   comparePassword: vi.fn(), hashPassword: vi.fn(),
 }));
-vi.mock('../session.service', () => ({ createSession: vi.fn(), revokeSession: vi.fn() }));
+vi.mock('../session.service', () => ({ createSession: vi.fn(), revokeSession: vi.fn(), validateSession: vi.fn(async () => ({ lastActiveAt: new Date(), expiresAt: new Date(Date.now() + 86400000) })) }));
 vi.mock('../jwt.service', () => ({ signToken: vi.fn().mockReturnValue('server-only-token') }));
 import { db, user, tenant, resetDb } from './auth-test-db';
 import { loginUser } from '../auth.service';

@@ -20,12 +20,14 @@ async function request<T>(
   body?: unknown,
   params?: Record<string, unknown>,
   signal?: AbortSignal,
+  responseType: 'json' | 'blob' = 'json',
 ): Promise<T> {
   // Server fetch does not inherit browser cookies, even with credentials: include.
   if (typeof window === 'undefined') {
     throw new Error('The browser API client cannot be used during server rendering.');
   }
   const headers: Record<string, string> = {
+    'X-LeadCRM-Passive': '1',
     'Content-Type': body instanceof Blob ? body.type : 'application/json',
   };
 
@@ -73,6 +75,7 @@ async function request<T>(
       if (typeof rawError.serverNow === 'string' && Number.isFinite(Date.parse(rawError.serverNow))) error.serverNow = rawError.serverNow;
     }
     error.status = res.status;
+    if (error.code === 'SESSION_IDLE_EXPIRED' || error.code === 'AUTH_ACCOUNT_LOCKED') window.dispatchEvent(new CustomEvent('leadcrm:session-ended', { detail: { code: error.code } }));
     if (res.status === 403 && error.code === 'PASSWORD_CHANGE_REQUIRED') {
       window.dispatchEvent(new Event(PASSWORD_CHANGE_REQUIRED_EVENT));
     }
@@ -96,12 +99,16 @@ async function request<T>(
     throw error;
   }
 
+  if (responseType === 'blob') return await res.blob() as T;
   const data = await res.json() as T;
+  const session = (data as { data?: { session?: unknown } })?.data?.session;
+  if (session) window.dispatchEvent(new CustomEvent('leadcrm:session-metadata', { detail: session }));
   if (method !== 'GET') invalidateApiPageCache(path);
   return data;
 }
 
 export const apiClient = {
+  download: (path: string, params?: Record<string, unknown>) => request<Blob>('GET', path, undefined, params, undefined, 'blob'),
   upload: <T>(path: string, body: Blob) => request<T>('POST', path, body),
   get:    <T>(path: string, config?: { params?: Record<string, unknown>; signal?: AbortSignal }) => request<T>('GET', path, undefined, config?.params, config?.signal),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),

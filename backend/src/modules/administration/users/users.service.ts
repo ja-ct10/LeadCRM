@@ -24,7 +24,7 @@ import { buildSearchClauses } from '../../../shared/helpers/search';
 const SAFE_USER_SELECT = {
   id: true, tenantId: true, firstName: true, lastName: true,
   email: true, role: true, status: true, createdAt: true, updatedAt: true,
-  phone: true, jobTitle: true, avatarUrl: true, lastLoginAt: true,
+  phone: true, jobTitle: true, avatarUrl: true, lastLoginAt: true, securityLockedAt: true,
   groupMemberships: { select: { group: { select: { id: true, name: true } } } },
   // passwordHash is NEVER selected
 };

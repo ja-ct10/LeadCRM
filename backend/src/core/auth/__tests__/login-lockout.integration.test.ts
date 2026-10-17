@@ -8,6 +8,11 @@ import { replayCrmMigrations } from '../../../tests/replay-crm-migrations';
 import { loginIdentityKey, loginIpKey, LOGIN_LOCKOUT_COOKIE } from '../login-attempt.service';
 import * as cryptoHelpers from '../../../shared/helpers/crypto';
 import { hashResetToken } from '../password-reset.service';
+import { dispatchTenantNotifications } from '../../../modules/notifications/notification-events.service';
+import { notificationAccess } from '../../../modules/notifications/notification-access';
+import { installTenantScoping } from '../../tenant/tenant-prisma';
+import { installProductProjections } from '../../tenant/product-projections';
+import { installCrmRecordAccess } from '../../../modules/crm/access/crm-record-access.service';
 import { loginIpIdentity } from '../../../api/middleware/login-ip-rate-limit.middleware';
 
 const holder = vi.hoisted(() => ({ client: null as PrismaClient | null }));
@@ -52,12 +57,13 @@ beforeAll(async () => {
     vi.stubEnv('LOGIN_LOCKOUT_TEST_DATABASE_URL', `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`);
   }
   db = new PrismaClient({ datasources: { db: { url: process.env.LOGIN_LOCKOUT_TEST_DATABASE_URL! } } }); holder.client = db;
+  installProductProjections(db); installTenantScoping(db); installCrmRecordAccess(db);
   other = new PrismaClient({ datasources: { db: { url: process.env.LOGIN_LOCKOUT_TEST_DATABASE_URL! } } });
-  tenantId = (await db.tenant.create({ data: { name: 'Disposable login lockout', slug: `lockout-${Date.now()}`, status: 'ACTIVE' } })).id;
+  tenantId = (await db.tenant.create({ data: { name: 'Disposable login lockout', slug: `lockout-${Date.now()}`, status: 'ACTIVE', onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
   uid = (await db.user.create({ data: { tenantId, email, firstName: 'Lockout', lastName: 'Test', role: 'Client Admin', passwordHash: hashSync(password, 12), mustChangePassword: false, onboardingCompletedAt: new Date() } })).id;
   await startServer();
 }, 90_000);
-beforeEach(async () => { vi.restoreAllMocks(); network += 1; await db.loginAttemptState.deleteMany(); await db.loginIpRateLimit.deleteMany(); await db.session.deleteMany(); });
+beforeEach(async () => { vi.restoreAllMocks(); network += 1; await db.user.updateMany({ data: { securityLockedAt: null } }); await db.user.update({ where: { id: uid }, data: { status: 'ACTIVE', mustChangePassword: false } }); await db.loginAttemptState.deleteMany(); await db.loginIpRateLimit.deleteMany(); await db.session.deleteMany(); });
 afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await other?.$disconnect(); await db?.$disconnect(); await socket?.stop(); await pg?.close(); vi.unstubAllEnvs(); });
 
 describe.sequential('durable sixth-attempt login lockout', () => {
@@ -187,4 +193,162 @@ describe.sequential('durable sixth-attempt login lockout', () => {
     expect(events.mock.calls.filter(([, detail]) => detail.event === 'login_rejected_during_lockout')).toHaveLength(1);
     expect(JSON.stringify(events.mock.calls)).not.toMatch(/NormalLogin2026|incorrect|login-lockout@|passwordHash|token/);
   }, 30_000);
+});
+
+describe.sequential('security escalation, idle sessions and admin unlock', () => {
+  async function escalate() {
+    for (let cycle = 1; cycle <= 3; cycle++) {
+      await failures(); const result = await login(password);
+      expect((await state()).lockoutCycles).toBe(cycle);
+      if (cycle < 3) {
+        expect(result.status).toBe(429);
+        await db.loginAttemptState.update({ where: { identityKey: loginIdentityKey(email) }, data: { lockedUntil: new Date(Date.now() - 1) } });
+      } else { expect(result.status).toBe(423); expect(result.body.error.code).toBe('AUTH_ACCOUNT_LOCKED'); expect(result.body.error.retryAt).toBeUndefined(); }
+    }
+  }
+  async function admin() {
+    const role = await db.roleDefinition.upsert({ where: { tenantId_name: { tenantId, name: 'Client Admin' } }, update: {}, create: { tenantId, name: 'Client Admin' } });
+    await db.rolePermission.upsert({ where: { roleId_module: { roleId: role.id, module: 'users' } }, update: { canView: true, canActivate: true }, create: { tenantId, roleId: role.id, module: 'users', canView: true, canActivate: true } });
+    const user = await db.user.upsert({ where: { tenantId_email: { tenantId, email: 'unlock-admin@camxian.com' } }, update: {}, create: { tenantId, email: 'unlock-admin@camxian.com', firstName: 'Admin', lastName: 'Unlock', role: 'Client Admin', mustChangePassword: false, passwordHash: hashSync(password, 4), onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
+    const result = await login(password, user.email);
+    expect(result.status).toBe(200);
+    return result.cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
+  }
+  it('locks on cycle three, persists indefinitely, revokes sessions and survives password reset', async () => {
+    const cookie = (await login(password)).cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
+    await escalate();
+    expect(await db.user.findUniqueOrThrow({ where: { id: uid } })).toMatchObject({ status: 'ACTIVE', securityLockedAt: expect.any(Date) });
+    expect((await state()).lockedUntil).toBeNull();
+    await db.user.update({ where: { id: uid }, data: { securityLockedAt: new Date('2000-01-01') } });
+    expect((await login(password)).status).toBe(423);
+    expect([401,423]).toContain((await call('/auth/me', undefined, cookie)).status);
+    const token = 'full-lock-recovery';
+    await db.passwordResetToken.create({ data: { email, userId: uid, token: hashResetToken(token), expires: new Date(Date.now() + 60000) } });
+    expect((await call('/auth/reset-password', { token, password: 'Replacement2026!' })).status).toBe(200);
+    expect((await login('Replacement2026!')).status).toBe(423);
+    await db.user.update({ where: { id: uid }, data: { passwordHash: hashSync(password, 12) } });
+  }, 60000);
+  it('allows only authorized admin unlock and preserves deactivation and other account locks', async () => {
+    const cookie = await admin(); await escalate();
+    const duplicate = await db.user.findFirst({ where: { email, id: { not: uid } } });
+    await db.user.update({ where: { id: uid }, data: { status: 'INACTIVE' } });
+    expect((await call('/administration/users/' + uid + '/unlock', {})).status).toBe(401);
+    expect((await call('/administration/users/' + uid + '/unlock', {}, cookie)).status).toBe(200);
+    expect(await state()).toMatchObject({ failedAttempts: 0, lockoutCycles: 0, lockedUntil: null });
+    expect(await db.user.findUniqueOrThrow({ where: { id: uid } })).toMatchObject({ securityLockedAt: null, status: 'INACTIVE' });
+    if (duplicate) expect((await db.user.findUniqueOrThrow({ where: { id: duplicate.id } })).securityLockedAt).not.toBeNull();
+    expect(await db.auditLog.count({ where: { entityId: uid, action: 'ACCOUNT_SECURITY_UNLOCKED' } })).toBeGreaterThan(0);
+    await db.user.update({ where: { id: uid }, data: { status: 'ACTIVE' } });
+  }, 60000);
+  it('resets cycles only after an allowed successful login', async () => {
+    await failures(); await login();
+    await db.loginAttemptState.update({ where: { identityKey: loginIdentityKey(email) }, data: { lockedUntil: new Date(Date.now() - 1) } });
+    expect((await login()).status).toBe(401); expect((await state()).lockoutCycles).toBe(1);
+    expect((await login(password)).status).toBe(200); expect((await state()).lockoutCycles).toBe(0);
+  }, 30000);
+  it('denies authenticated staff unlock even with activation permission and rejects foreign-tenant targets', async () => {
+    const cookie = await admin();
+    const role = await db.roleDefinition.create({ data: { tenantId, name: 'Unlock operator', permissions: { create: { module: 'users', canView: true, canActivate: true } } } });
+    const staff = await db.user.create({ data: { tenantId, email: 'unlock-staff@camxian.com', firstName: 'Staff', lastName: 'Unlock', role: role.name,
+      passwordHash: hashSync(password, 4), mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
+    const signedIn = await login(password, staff.email);
+    expect(signedIn.status).toBe(200);
+    const staffCookie = signedIn.cookies.find(value => value.startsWith('leadcrm_token='))!;
+    expect((await call('/administration/users/' + uid + '/unlock', {}, staffCookie)).status).toBe(403);
+    const foreign = await db.user.findFirstOrThrow({ where: { tenantId: { not: tenantId } } });
+    expect((await call('/administration/users/' + foreign.id + '/unlock', {}, cookie)).status).toBe(404);
+  });
+  it('applies the same full-lock response to unknown identities', async () => {
+    const unknown = 'unknown-escalation@camxian.com';
+    await db.loginAttemptState.create({ data: { identityKey: loginIdentityKey(unknown), failedAttempts: 5, lockoutCycles: 2 } });
+    expect((await login('x', unknown)).body.error.code).toBe('AUTH_ACCOUNT_LOCKED');
+    expect((await login(password, unknown)).status).toBe(423);
+  });
+  it('rejects an idle API session before updating activity, while passive reads do not renew it', async () => {
+    const result = await login(password), cookie = result.cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
+    await db.session.updateMany({ where: { userId: uid }, data: { lastActiveAt: new Date(Date.now() - 30 * 60000) } });
+    expect((await call('/auth/activity', { lastActiveAt: new Date().toISOString() }, cookie)).body.error.code).toBe('SESSION_IDLE_EXPIRED');
+    expect((await db.session.findFirstOrThrow({ where: { userId: uid } })).revokedAt).not.toBeNull();
+  });
+});
+
+describe.sequential('password reminders, authorized CSV and Product metadata', () => {
+  async function manager() {
+    const role = await db.roleDefinition.findUniqueOrThrow({ where: { tenantId_name: { tenantId, name: 'Client Admin' } } });
+    for (const module of ['leads','contacts','accounts','deals','products']) await db.rolePermission.upsert({ where: { roleId_module: { roleId: role.id, module } }, update: { canView: true, canCreate: true, canEdit: true }, create: { tenantId, roleId: role.id, module, canView: true, canCreate: true, canEdit: true } });
+    const result = await login(password, 'unlock-admin@camxian.com'); expect(result.status).toBe(200);
+    return result.cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
+  }
+  it('delivers exactly once in day 89, ignores stale cycles and links only to self', async () => {
+    const now = new Date(), changed = new Date(+now - 89 * 86400000);
+    await db.notificationEvent.updateMany({ where: { tenantId }, data: { processedAt: now } });
+    await db.user.update({ where: { id: uid }, data: { passwordChangedAt: new Date(+now - 88 * 86400000), mustChangePassword: false } });
+    expect((await dispatchTenantNotifications(tenantId, now)).claimed).toBe(0);
+    await db.userPreference.upsert({ where: { tenantId_userId_module_key: { tenantId, userId: uid, module: 'notifications', key: 'channels' } }, update: { value: { inAppGeneral: false, leadAssignmentEmail: false, dailyPipelineBriefing: false, urgentHotLeadSms: false } }, create: { tenantId, userId: uid, module: 'notifications', key: 'channels', value: { inAppGeneral: false, leadAssignmentEmail: false, dailyPipelineBriefing: false, urgentHotLeadSms: false } } });
+    await db.user.update({ where: { id: uid }, data: { passwordChangedAt: changed } });
+    expect((await dispatchTenantNotifications(tenantId, now)).failed).toBe(0);
+    const notices = await db.notification.findMany({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } });
+    expect(notices).toHaveLength(1); expect(notices[0]).toMatchObject({ title: 'Password Expiring Soon', body: 'Your password will expire tomorrow. Please change your password to avoid losing access.' });
+    expect(await (await notificationAccess(tenantId, uid)).resolve('PasswordSecurity', uid)).toMatchObject({ destination: '/settings?tab=profile&changePassword=1' });
+    expect(await (await notificationAccess(tenantId, uid)).resolve('PasswordSecurity', 'another-user')).toBeNull();
+    await db.notification.deleteMany({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } });
+    await db.notificationEvent.updateMany({ where: { tenantId, eventKey: notices[0].eventKey! }, data: { processedAt: null } });
+    await dispatchTenantNotifications(tenantId, now); expect(await db.notification.count({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } })).toBe(0);
+    await db.user.update({ where: { id: uid }, data: { passwordChangedAt: new Date(+now - 89 * 86400000 + 1000) } });
+    await dispatchTenantNotifications(tenantId, now); expect(await db.notification.count({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } })).toBe(0);
+    await dispatchTenantNotifications(tenantId, new Date(+now + 1000)); expect(await db.notification.count({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } })).toBe(1);
+    await db.user.update({ where: { id: uid }, data: { passwordChangedAt: new Date(+now - 91 * 86400000) } });
+    await dispatchTenantNotifications(tenantId, now); expect(await db.notification.count({ where: { tenantId, userId: uid, type: 'password_expiring_soon' } })).toBe(1);
+    await db.user.update({ where: { id: uid }, data: { passwordChangedAt: now } });
+  }, 60000);
+  it('exports all 220 matching rows for each module with scope, tenant and RBAC protection', async () => {
+    const cookie = await manager();
+    const pipeline = await db.pipeline.create({ data: { tenantId, name: 'Export Pipeline' } });
+    const stage = await db.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Export Stage', order: 0 } });
+    const owner = await db.user.findUniqueOrThrow({ where: { tenantId_email: { tenantId, email: 'unlock-admin@camxian.com' } } });
+    await db.lead.createMany({ data: Array.from({ length: 220 }, (_, i) => ({ tenantId, firstName: 'Export Needle', lastName: String(i), status: 'Hot', assignedUserId: owner.id })) });
+    await db.contact.createMany({ data: Array.from({ length: 220 }, (_, i) => ({ tenantId, firstName: 'Export Needle', lastName: String(i), status: 'HOT', assignedUserId: owner.id })) });
+    await db.account.createMany({ data: Array.from({ length: 220 }, (_, i) => ({ tenantId, name: 'Export Needle ' + i, industry: 'IT' })) });
+    await db.deal.createMany({ data: Array.from({ length: 220 }, (_, i) => ({ tenantId, title: 'Export Needle ' + i, pipelineId: pipeline.id, stageId: stage.id, ownerId: owner.id, assignedUserId: owner.id, priority: 'HIGH', value: 123 })) });
+    await db.lead.create({ data: { tenantId, firstName: 'Export Needle Other', lastName: '', assignedUserId: uid } });
+    const foreign = await db.tenant.create({ data: { name: 'Export Foreign', slug: 'export-foreign' } });
+    await db.lead.create({ data: { tenantId: foreign.id, firstName: 'Export Needle Foreign', lastName: '' } });
+    for (const module of ['leads','contacts','accounts','deals']) {
+      const query = new URLSearchParams({ search: 'Export Needle', page: '2', limit: '1' });
+      if (module === 'leads' || module === 'contacts') { query.set('filter[scope]', 'equals:my'); query.set('filter[assignedUserId]', 'in:' + owner.id); }
+      if (module === 'accounts') query.set('filter[industry]', 'in:IT');
+      if (module === 'deals') { query.delete('search'); query.set('pipelineId', pipeline.id); query.set('view', JSON.stringify({ search: 'Export Needle', my: true, filters: { owner: [owner.id], priority: ['High'], status: ['Open'] } })); }
+      const res = await fetch(base + '/crm/' + module + '/export?' + query, { headers: { Cookie: cookie, 'X-Forwarded-For': '192.0.2.200' } });
+      const text = await res.text(); expect(res.status, text).toBe(200); expect(text.split('\r\n')).toHaveLength(221);
+      expect(text).not.toMatch(/tenantId|passwordHash|securityLockedAt|Foreign|Needle Other/);
+      expect(res.headers.get('content-type')).toContain('text/csv'); expect(res.headers.get('content-disposition')).toMatch(new RegExp(module + '-[0-9]{4}-[0-9]{2}-[0-9]{2}\\.csv'));
+      const emptyQuery = new URLSearchParams(query);
+      if (module === 'deals') emptyQuery.set('view', JSON.stringify({ search: 'NoMatchingExportRecord', my: false, filters: {} }));
+      else emptyQuery.set('search', 'NoMatchingExportRecord');
+      const empty = await fetch(base + '/crm/' + module + '/export?' + emptyQuery, { headers: { Cookie: cookie } });
+      expect(empty.status).toBe(200); expect((await empty.text()).split('\r\n')).toHaveLength(1);
+      expect((await call('/crm/' + module + '/export')).status).toBe(401);
+    }
+    const noGrants = await login(password, email); const deniedCookie = noGrants.cookies.find(cookie => cookie.startsWith('leadcrm_token='))!;
+    await db.user.update({ where: { id: uid }, data: { role: 'Sales Staff' } });
+    const role = await db.roleDefinition.upsert({ where: { tenantId_name: { tenantId, name: 'Sales Staff' } }, update: {}, create: { tenantId, name: 'Sales Staff' } });
+    await db.userRole.create({ data: { tenantId, userId: uid, roleId: role.id } });
+    for (const module of ['leads', 'contacts', 'accounts', 'deals']) expect((await call('/crm/' + module + '/export', undefined, deniedCookie)).status).toBe(403);
+    await db.user.update({ where: { id: uid }, data: { role: 'Client Admin' } });
+  }, 90000);
+  it('requires category, persists description and value, and leaves existing Deal snapshots intact', async () => {
+    const cookie = await manager(), endpoint = '/administration/product-interests';
+    expect((await call(endpoint, { name: 'QA Product', dealValue: 25000 }, cookie)).status).toBe(400);
+    const created = await call(endpoint, { name: 'QA Product', category: 'Security', description: 'A product description', dealValue: 25000 }, cookie);
+    expect(created.status).toBe(200); const product = created.body.data.find((row: any) => row.name === 'QA Product');
+    expect(product).toMatchObject({ category: 'Security', description: 'A product description', dealValue: 25000 });
+    const owner = await db.user.findUniqueOrThrow({ where: { tenantId_email: { tenantId, email: 'unlock-admin@camxian.com' } } });
+    const stage = await db.stage.findFirstOrThrow({ where: { tenantId } });
+    const deal = await db.deal.create({ data: { tenantId, title: 'Product snapshot', ownerId: owner.id, pipelineId: stage.pipelineId, stageId: stage.id, productInterestId: product.id, productsNormalized: true, value: 25000, currency: 'PHP' } });
+    const update = await fetch(base + endpoint + '/' + product.id, { method: 'PATCH', headers: { 'Content-Type': 'application/json', Cookie: cookie }, body: JSON.stringify({ category: 'New Inline Category', description: 'Updated description', dealValue: 30000 }) });
+    expect(update.status, await update.text()).toBe(200);
+    expect((await call(endpoint + '/' + product.id, undefined, cookie)).body.data).toMatchObject({ category: 'New Inline Category', description: 'Updated description', dealValue: 30000 });
+    expect((await call(endpoint, undefined, cookie)).body.meta.categories).toContain('New Inline Category');
+    expect(await db.deal.findUniqueOrThrow({ where: { id: deal.id } })).toMatchObject({ productInterestId: product.id, value: 25000, currency: 'PHP' });
+  }, 30000);
 });

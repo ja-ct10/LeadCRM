@@ -233,7 +233,7 @@ function DataGridRowInner<T>({
       {/* Pinned left data cells */}
       {pinnedLeftColumns.map((col, colIdx) => {
         const cellContent = renderCellContent(col, row, rowIdx);
-        const shouldShowTooltip = viewMode === 'clip' && !col.cell;
+        const shouldShowTooltip = col.truncate !== false && viewMode === 'clip' && !col.cell;
         const cellText = shouldShowTooltip ? String(cellContent ?? '') : '';
         const isLastPinned = colIdx === pinnedLeftColumns.length - 1;
 
@@ -263,7 +263,7 @@ function DataGridRowInner<T>({
                 {cellContent}
               </TruncatedCellTooltip>
             ) : (
-              <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
+              <div className={cn('flex items-center', col.truncate === false ? 'min-h-[28px] whitespace-normal break-words' : [viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass])}>
                 {cellContent}
               </div>
             )}
@@ -274,7 +274,7 @@ function DataGridRowInner<T>({
       {/* Scrollable data cells */}
       {scrollableColumns.map((col) => {
         const cellContent = renderCellContent(col, row, rowIdx);
-        const shouldShowTooltip = viewMode === 'clip' && !col.cell;
+        const shouldShowTooltip = col.truncate !== false && viewMode === 'clip' && !col.cell;
         const cellText = shouldShowTooltip ? String(cellContent ?? '') : '';
 
         return (
@@ -296,7 +296,7 @@ function DataGridRowInner<T>({
                 {cellContent}
               </TruncatedCellTooltip>
             ) : (
-              <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
+              <div className={cn('flex items-center', col.truncate === false ? 'min-h-[28px] whitespace-normal break-words' : [viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass])}>
                 {cellContent}
               </div>
             )}
@@ -307,7 +307,7 @@ function DataGridRowInner<T>({
       {/* Pinned right data cells */}
       {pinnedRightColumns.map((col) => {
         const cellContent = renderCellContent(col, row, rowIdx);
-        const shouldShowTooltip = viewMode === 'clip' && !col.cell;
+        const shouldShowTooltip = col.truncate !== false && viewMode === 'clip' && !col.cell;
         const cellText = shouldShowTooltip ? String(cellContent ?? '') : '';
 
         return (
@@ -334,7 +334,7 @@ function DataGridRowInner<T>({
                 {cellContent}
               </TruncatedCellTooltip>
             ) : (
-              <div className={cn('flex items-center', viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass)}>
+              <div className={cn('flex items-center', col.truncate === false ? 'min-h-[28px] whitespace-normal break-words' : [viewMode === 'clip' ? 'h-full truncate' : 'min-h-[28px]', cellContentClass])}>
                 {cellContent}
               </div>
             )}
@@ -854,7 +854,7 @@ export function DataGrid<T = Record<string, unknown>>({
                   }
                 >
                   <div className="flex items-center gap-1">
-                    <span className="truncate flex-1">{col.header}</span>
+                    {col.headerCell ? col.headerCell(col) : <span className="truncate flex-1">{col.header}</span>}
                     {sortDir && <SortIndicator direction={sortDir} />}
                     {headerMenu(col)}
                   </div>
@@ -888,7 +888,7 @@ export function DataGrid<T = Record<string, unknown>>({
                     }
                   >
                     <div className="flex items-center gap-1 truncate">
-                      <span className="truncate flex-1">{col.header}</span>
+                      {col.headerCell ? col.headerCell(col) : <span className="truncate flex-1">{col.header}</span>}
                       {sortDir && <SortIndicator direction={sortDir} />}
                       {headerMenu(col)}
                     </div>
@@ -925,7 +925,7 @@ export function DataGrid<T = Record<string, unknown>>({
                     }
                   >
                     <div className="flex items-center gap-1">
-                    <span className="truncate flex-1">{col.header}</span>
+                    {col.headerCell ? col.headerCell(col) : <span className="truncate flex-1">{col.header}</span>}
                     {sortDir && <SortIndicator direction={sortDir} />}
                     {headerMenu(col)}
                     </div>

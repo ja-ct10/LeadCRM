@@ -24,6 +24,7 @@ export async function deliverEvent({ ownerId, actorId, admins, ...event }: Event
 }
 
 const titles: Record<NotificationType, string> = {
+  password_expiring_soon: 'Password Expiring Soon',
   sms_campaign_sent: 'SMS Campaign Sent', sms_campaign_delivered: 'SMS Campaign Delivered',
   sms_campaign_failed: 'SMS Campaign Failed', sms_campaign_partial: 'SMS Campaign Partially Completed',
   sms_campaign_unconfirmed: 'SMS Campaign Pending Verification', sms_campaign_progress: 'SMS Campaign Delivery Update',
@@ -69,6 +70,7 @@ async function presentation(event: NotificationEvent, facts: Facts) {
   }
   const name = safeName(facts.name ?? stored.name, event.entityType === 'Lead' || event.entityType === 'Contact' ? 'A customer' : `The ${event.entityType.toLowerCase()}`);
   let title = titles[type], body = 'Open the related record for details.';
+  if (type === 'password_expiring_soon') body = 'Your password will expire tomorrow. Please change your password to avoid losing access.';
   if (type.startsWith('sms_campaign_') && facts.counts) {
     const c = facts.counts;
     if (type === 'sms_campaign_sent') body = `SMS campaign sent successfully. ${c.sent + c.delivered} of ${c.total} messages sent.`;

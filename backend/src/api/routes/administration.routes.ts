@@ -54,6 +54,7 @@ router.patch('/organization-settings', authorize('settings.edit'), validate(Upda
 
 // -- Users ---------------------------------------------
 router.get('/users/:id/deactivation-impact', authorizeAll('users.activate', 'users.view'), authorizeClientAdmin, userController.deactivationImpact);
+router.post('/users/:id/unlock', authorizeAll('users.activate', 'users.view'), authorizeClientAdmin, userController.unlock);
 router.post('/users/:id/deactivate', authorizeAll('users.activate', 'users.view'), authorizeClientAdmin, userController.deactivate);
 router.get(   '/users',                  authorize('users.view'),   userController.getAll);
 router.get(   '/users/:id',              authorize('users.view'),   userController.getById);

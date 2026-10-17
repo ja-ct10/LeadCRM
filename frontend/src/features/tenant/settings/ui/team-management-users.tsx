@@ -7,7 +7,7 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import {
-  Archive, Eye, Pencil, UserCheck, UserX,
+  Archive, Eye, Pencil, UserCheck, UserX, Unlock,
 } from 'lucide-react';
 import { AnimatePresence } from 'motion/react';
 import { toast } from 'sonner';
@@ -65,6 +65,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
   const { sort: savedSort, setSort } = useTablePreferences('users');
   const sort = savedSort ?? { field: 'createdAt', direction: 'desc' as const };
   const [reload, setReload] = useState(0);
+  const [unlocking, setUnlocking] = useState<string | null>(null);
   const tenantId = currentUser?.tenantId ?? '';
   const directory = useCachedPage<User[]>({
     module: 'users', params: { directory: true, sort }, disabled: !userCan('users', 'canView'), revalidateOnInvalidation: true,
@@ -221,6 +222,12 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
     return undefined;
   };
   const managementActions = (target: User): RowActionItem[] => [
+    ...(target.securityLockedAt && currentUser?.role === 'Client Admin' && userCan('users', 'canActivate') && userCan('users', 'canView') ? [{ id: 'unlock', label: 'Unlock account', icon: <Unlock size={14} />, disabled: !!unlocking, onClick: async () => {
+      if (unlocking) return; setUnlocking(target.id);
+      try { await usersService.unlock(target.id); toast.success('Account security lock removed.'); setReload(value => value + 1); }
+      catch (error) { toast.error(error instanceof Error ? error.message : 'Unable to unlock account.'); }
+      finally { setUnlocking(null); }
+    } }] : []),
     { id: 'status', label: target.status === 'active' ? 'Deactivate' : 'Activate',
       icon: target.status === 'active' ? <UserX size={14} /> : <UserCheck size={14} />,
       disabled: !!statusDisabledReason(target), disabledReason: statusDisabledReason(target), onClick: () => void beginStatusChange(target) },

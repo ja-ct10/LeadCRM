@@ -169,6 +169,7 @@ model User {
   lastName      String
   mustChangePassword Boolean @default(true)
   passwordChangedAt DateTime?
+  securityLockedAt DateTime?
   onboardingCompletedAt DateTime?
   passwordHash  String? // Legacy passwordless accounts use password recovery.
   phone         String?
@@ -1411,6 +1412,7 @@ model EmailDeliveryLog {
 // Only keyed digests are stored; this state is independent of browser sessions.
 model LoginAttemptState {
   identityKey             String   @id
+  lockoutCycles           Int      @default(0)
   failedAttempts          Int      @default(0)
   lastFailedAt            DateTime?
   lockedUntil             DateTime?
@@ -1853,6 +1855,8 @@ model ProductInterest {
   tenantId  String
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name      String   @db.VarChar(200)
+  category  String   @default("") @db.VarChar(200)
+  description String @default("")
   dealValue Decimal  @db.Decimal(14, 2)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())

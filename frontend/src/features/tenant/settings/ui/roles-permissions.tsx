@@ -5,14 +5,26 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 import React, { useState, useId, useMemo, useCallback, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2 } from 'lucide-react';
+import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
 import type { RoleDefinition, Permission } from '@/store/types';
-import { PERMISSION_GROUPS, togglePermissionSelection } from '@leadcrm/shared';
+import { PERMISSION_GROUPS, PERMISSION_MODULES, PERMISSION_ACTION_LABELS, togglePermissionSelection, type PermissionAction } from '@leadcrm/shared';
 import { Button, CreateButton } from '@/shared/components/ui/button';
+import { Input } from '@/shared/components/ui/input';
+import { Label } from '@/shared/components/ui/label';
+import { Checkbox } from '@/shared/components/ui/checkbox';
+import { Badge } from '@/shared/components/ui/badge';
+import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
+import { ModuleTabs } from '@/shared/components/crm/module-tabs';
+import { ModuleSearchInput } from '@/shared/components/crm/module-search-input';
+import { FilterButton } from '@/shared/components/crm/filter-button';
+import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
+import { matchesSearch } from '@/shared/utils/search';
+import { NAV_ITEMS } from '@/features/tenant/layout/use-layout';
+import { NAV_GROUPS, SETTINGS_TAB_MODULES } from '../settings-navigation';
 import { cn } from '@/lib/utils';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
 
@@ -26,6 +38,12 @@ interface PermGroup {
 }
 
 const PERM_GROUPS: PermGroup[] = PERMISSION_GROUPS;
+const TABLE_ACTIONS: PermissionAction[] = ['canView', 'canCreate', 'canEdit', 'canArchive', 'canImport'];
+const PERMISSION_FILTERS = [
+  { id: 'all', label: 'All Modules' },
+  { id: 'selected', label: 'Has Permissions Selected' },
+  { id: 'unselected', label: 'No Permissions Selected' },
+] as const;
 
 // ── Toggle component ──────────────────────────────────────────────────────────
 
@@ -166,6 +184,22 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
   const [saveError, setSaveError] = useState('');
   const [saving, setSaving] = useState(false);
   const submitting = useRef(false);
+  const [search, setSearch] = useState('');
+  const [permissionFilter, setPermissionFilter] = useState<typeof PERMISSION_FILTERS[number]['id']>('all');
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  const permissionRows = useMemo(() => {
+    const available = new Map(allPerms.map(permission => [permission.id, permission]));
+    return PERM_GROUPS.map(group => ({ ...group, permissions: PERMISSION_MODULES
+      .filter(module => group.modules.includes(module.key))
+      .flatMap(module => module.actions.flatMap(action => {
+        const permission = available.get(`${module.key}.${action}`);
+        return permission ? [{ ...permission, module, action }] : [];
+      })),
+    }));
+  }, [allPerms]);
 
   const isAdmin = !!role?.isSystemRole && role.name === 'Client Admin';
   const isSystemRole = role?.isSystemRole ?? false;
@@ -193,6 +227,98 @@ function RoleEditor({ role, allPerms, allUsers, onSave, onCancel }: RoleEditorPr
 
   const totalEnabled = effectivePermIds.length;
   const totalPerms = allPerms.length;
+  const selected = new Set(activePermIds);
+  const countEnabled = (row: typeof permissionRows[number]) => row.permissions.filter(permission => selected.has(permission.id)).length;
+  const filteredRows = permissionRows.filter(row => matchesSearch(search, row.label) &&
+    (permissionFilter === 'all' || (permissionFilter === 'selected' ? countEnabled(row) > 0 : countEnabled(row) === 0)));
+  const totalPages = Math.max(1, Math.ceil(filteredRows.length / pageSize));
+  useEffect(() => { setPage(current => Math.min(current, totalPages)); }, [totalPages]);
+
+  if (!role) {
+    const availableIds = permissionRows.flatMap(row => row.permissions.map(permission => permission.id));
+    const enabled = availableIds.filter(id => selected.has(id)).length;
+    const currentPage = Math.min(page, totalPages);
+    const clearFilters = () => { setSearch(''); setPermissionFilter('all'); setPage(1); };
+    const permissionControl = (permission: typeof permissionRows[number]['permissions'][number], label?: string) => <span key={permission.id} className="flex min-w-0 items-center gap-2">
+      <Checkbox id={`role-permission-${permission.id}`} aria-label={permission.name} checked={selected.has(permission.id)}
+        disabled={saving} onCheckedChange={checked => handleToggle(permission.id, checked)} />
+      {label && <Label htmlFor={`role-permission-${permission.id}`} className="cursor-pointer text-xs font-normal leading-5">{label}</Label>}
+    </span>;
+    const columns: DataGridColumnDef<typeof permissionRows[number]>[] = [
+      { id: 'selection', header: 'Select permissions', accessor: row => row.id, pinned: 'left', width: 44, minWidth: 44, truncate: false,
+        headerCell: () => <Checkbox aria-label="Select all permissions" checked={availableIds.length > 0 && enabled === availableIds.length}
+          indeterminate={enabled > 0 && enabled < availableIds.length} disabled={saving || availableIds.length === 0}
+          onCheckedChange={checked => handleGroupToggle(availableIds, checked)} />,
+        cell: (_, row) => <Checkbox aria-label={`Select all ${row.label} permissions`} checked={row.permissions.length > 0 && countEnabled(row) === row.permissions.length}
+          indeterminate={countEnabled(row) > 0 && countEnabled(row) < row.permissions.length} disabled={saving || row.permissions.length === 0}
+          onCheckedChange={checked => handleGroupToggle(row.permissions.map(permission => permission.id), checked)} /> },
+      { id: 'module', header: 'Module', accessor: row => row.label, pinned: 'left', width: 180, minWidth: 160, truncate: false,
+        cell: (_, row) => {
+          const Icon = NAV_ITEMS.find(item => item.permission === `${row.modules[0]}.view`)?.icon ??
+            NAV_GROUPS.flatMap(group => group.items).find(item => SETTINGS_TAB_MODULES[item.id] === row.modules[0])?.icon;
+          return <span className="flex min-w-0 items-center gap-2 py-2 font-medium">{Icon && <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-primary" />}<span>{row.label}</span></span>;
+        } },
+      ...TABLE_ACTIONS.map(action => ({ id: action, header: PERMISSION_ACTION_LABELS[action], accessor: (row: typeof permissionRows[number]) => row.id,
+        width: 72, minWidth: 72, align: 'center' as const, truncate: false,
+        headerCell: () => <span className="w-full text-center">{PERMISSION_ACTION_LABELS[action]}</span>,
+        cell: (_: unknown, row: typeof permissionRows[number]) => {
+          const permissions = row.permissions.filter(permission => permission.action === action);
+          return <div className="flex w-full flex-col items-center gap-2 py-2">{permissions.length
+            ? permissions.map(permission => permissionControl(permission, row.modules.length > 1 ? permission.module.label : undefined))
+            : <span className="text-slate-400">—</span>}</div>;
+        },
+      })),
+      { id: 'additional', header: 'Additional Permissions', accessor: row => row.id, width: 280, minWidth: 240, truncate: false,
+        cell: (_, row) => {
+          const permissions = row.permissions.filter(permission => !TABLE_ACTIONS.includes(permission.action));
+          return <div className="flex w-full flex-col gap-1 py-2">{permissions.length ? permissions.map(permission => permissionControl(permission, permission.name)) : <span className="text-center text-slate-400">—</span>}</div>;
+        } },
+      { id: 'enabled', header: 'Enabled', accessor: countEnabled, width: 80, minWidth: 80, truncate: false,
+        cell: (_, row) => <div className="flex w-full justify-center"><Badge variant="secondary">{countEnabled(row)}/{row.permissions.length}</Badge></div> },
+    ];
+
+    return <motion.form onSubmit={handleSave} noValidate initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }}
+      className="flex w-full min-w-0 flex-col gap-5 p-3 sm:p-6">
+      <div className="flex min-w-0 items-start gap-2">
+        <Button type="button" variant="ghost" size="icon" aria-label="Back to roles" disabled={saving} onClick={onCancel} className="shrink-0"><ArrowLeft size={18} /></Button>
+        <PageHeader title="Create Custom Role" subtitle="Define a new set of permissions for your team." actionsInlineWithTitle={false} className="mb-0 flex-1"
+          actions={<><Button type="button" variant="ghost" onClick={onCancel} disabled={saving}>Cancel</Button><Button type="submit" disabled={saving}><Plus aria-hidden="true" />{saving ? 'Saving…' : 'Create Role'}</Button></>} />
+      </div>
+      {saveError && <p role="alert" className="text-sm text-red-600 dark:text-red-400">{saveError}</p>}
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-2">
+        <div className="min-w-0 space-y-1.5">
+          <Label htmlFor="role-name">Role Name <span className="text-red-500">*</span></Label>
+          <Input id="role-name" required aria-invalid={!!nameError} aria-describedby={nameError ? 'role-name-error' : undefined} maxLength={50} type="text"
+            value={name} onChange={event => { setName(event.target.value); if (event.target.value.trim()) setNameError(''); }} placeholder="e.g. Regional Manager" autoFocus disabled={saving} />
+          {nameError && <p id="role-name-error" role="alert" className="text-sm text-red-600 dark:text-red-400">{nameError}</p>}
+        </div>
+        <div className="min-w-0 space-y-1.5">
+          <Label htmlFor="role-description">Description <span className="font-normal text-slate-400">— Optional</span></Label>
+          <Input id="role-description" maxLength={200} disabled={saving} type="text" value={description} onChange={event => setDescription(event.target.value)} placeholder="Brief description of this role" />
+        </div>
+      </div>
+      <div className="flex min-w-0 flex-wrap items-end justify-between gap-2 border-b border-[#E4E9F0] dark:border-slate-700">
+        <ModuleTabs tabs={[{ id: 'all', label: `All Modules ${permissionRows.length}` }]} activeTab="all" ariaLabel="Permission modules" className="w-auto border-b-0" />
+        <span aria-live="polite" className="pb-2 text-xs text-slate-500 dark:text-slate-400">{enabled} / {availableIds.length} permissions enabled</span>
+      </div>
+      <div role="toolbar" aria-label="Module permission controls" className="flex min-w-0 flex-wrap items-center gap-2">
+        <div className="min-w-0 flex-1 sm:flex-none"><ModuleSearchInput value={search} onChange={value => { setSearch(value); setPage(1); }} placeholder="Search modules..." label="Search modules" disabled={saving} /></div>
+        <DropdownMenu open={filterOpen} onOpenChange={setFilterOpen}>
+          <DropdownMenuTrigger asChild><FilterButton title="modules" open={filterOpen} active={permissionFilter !== 'all'} disabled={saving} /></DropdownMenuTrigger>
+          <DropdownMenuContent align="start">{PERMISSION_FILTERS.map(filter => <DropdownMenuItem key={filter.id} role="menuitemradio" aria-checked={permissionFilter === filter.id}
+            onSelect={() => { setPermissionFilter(filter.id); setPage(1); }}>{filter.label}{permissionFilter === filter.id && <Check aria-hidden="true" className="ml-auto h-4 w-4" />}</DropdownMenuItem>)}</DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      <div className="min-w-0">
+        <DataGrid columns={columns} data={filteredRows.slice((currentPage - 1) * pageSize, currentPage * pageSize)} getRowId={row => row.id}
+          height="auto" enableColumnMenu={false} ariaLabel="Module permissions" summaryLabel={`${filteredRows.length} of ${permissionRows.length} modules`}
+          summaryColumns={[{ columnId: 'enabled', content: `${enabled} permissions selected` }]}
+          emptyState={{ variant: 'filtered', title: 'No modules found', description: 'Try another search or permission filter.', onClearFilters: clearFilters }} />
+        <LeadsPagination currentPage={currentPage} totalRecords={filteredRows.length} pageSize={pageSize} onPageChange={setPage}
+          onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={saving} />
+      </div>
+    </motion.form>;
+  }
 
   return (
     <motion.form onSubmit={handleSave} noValidate

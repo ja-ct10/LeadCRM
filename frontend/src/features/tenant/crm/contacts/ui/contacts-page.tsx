@@ -5,6 +5,8 @@ import { assignedAgentName } from '@/shared/utils/assigned-agents';
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { ExportCsvButton } from '@/shared/components/crm/export-csv-button';
+import { moduleListParams } from '@/shared/services/module-list-params';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
@@ -313,6 +315,7 @@ export default function ContactsPage(): React.ReactElement {
     <>
     <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
+        exportAction={<ExportCsvButton module="contacts" params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
       bulkSelection={{ count: contactSelectedIds.size, onClear: () => setContactSelectedIds(new Set()), actions: canDelete && <Button variant="outline" disabled={[...contactSelectedIds].some(id => !recordAccess.canMutate(filteredContacts.find(record => record.id === id)))} onClick={() => confirmArchive([...contactSelectedIds], `${contactSelectedIds.size} contacts`)}>Archive</Button> }}
       moduleId="contacts"
       title="Contacts"

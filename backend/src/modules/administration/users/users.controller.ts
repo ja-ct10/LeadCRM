@@ -3,6 +3,14 @@ import * as deactivation from './user-deactivation.service';
 import { Request, Response, NextFunction } from 'express';
 import * as service from './users.service';
 import { z } from 'zod';
+import { unlockUser } from './user-unlock.service';
+
+export async function unlock(req: Request, res: Response, next: NextFunction) {
+  try {
+    await unlockUser(req.user!.tenantId, req.user!.userId, z.string().uuid().parse(req.params.id));
+    res.json({ success: true });
+  } catch (error) { next(error); }
+}
 
 export async function getAll(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {

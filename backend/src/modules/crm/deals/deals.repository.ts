@@ -58,7 +58,7 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
 
   const [data, total] = await Promise.all([
     (salesContext.getStore() ?? prisma).deal.findMany({
-      where, skip, take: limit, orderBy,
+      where, skip, take: limit, orderBy: [orderBy, { id: 'asc' }],
       include: {
         stage:        true,
         pipeline:     true,

@@ -70,6 +70,7 @@ test('the complete release history deploys reviewed transitions while guarded co
     '20261119000000_notification_utc_timestamps', '20261120000000_password_recovery_security', '20261121000000_mailbox_reply_header',
     '20261121000000_task_creator_sales_group', '20261123000000_campaign_schedule', '20261124000000_crm_content_revisions',
     '20261125000000_crm_assignment_policy', '20261125000000_contact_creation_receipts',
+    '20261214000000_login_security_lock', '20261215000000_password_expiring_notification', '20261216000000_product_metadata',
     '20261125010000_mailbox_operation_recovery', '20261125020000_import_source_identity',
     '20261125030000_durable_workflow_dispatch', '20261125040000_activity_mailbox_authorization',
     '20261126000000_notification_policy', '20261127000000_login_attempt_lockout',

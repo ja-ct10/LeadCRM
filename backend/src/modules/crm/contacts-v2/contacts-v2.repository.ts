@@ -45,6 +45,7 @@ const CONTACT_INCLUDE = {
 } as const;
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
+  const db = salesContext.getStore() ?? prisma;
   const canReadAccount = await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId);
   const { page, limit } = getPaginationParams(query);
   const skip = (page - 1) * limit;

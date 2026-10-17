@@ -1,6 +1,7 @@
 import type { AuthUser } from '@leadcrm/shared';
 import type { Prisma } from '@prisma/client';
 import prisma from '../../config/database.config';
+import { ACCOUNT_LOCKED_CODE, ACCOUNT_LOCKED_MESSAGE } from '@leadcrm/shared';
 import { AppError } from '../../shared/errors/app-error';
 import { isPasswordExpired } from './password-expiration';
 
@@ -88,5 +89,6 @@ export async function readAuthUser(
     include: authUserInclude,
   });
   if (!user) throw new AppError('Authentication required', 401);
+  if (user.securityLockedAt) throw new AppError(ACCOUNT_LOCKED_MESSAGE, 423, ACCOUNT_LOCKED_CODE);
   return buildAuthUserResponse(user);
 }

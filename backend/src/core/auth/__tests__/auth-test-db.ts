@@ -33,7 +33,7 @@ export function resetDb() {
   Object.assign(user, { email: 'alice@camxian.com', mustChangePassword: false, passwordChangedAt: null, passwordHash: 'hash', onboardingCompletedAt: null, role: 'Sales', status: 'ACTIVE', emailVerified: new Date('2026-01-01') });
   db.$transaction.mockImplementation(work => work(db));
   db.$queryRaw.mockImplementation((strings: TemplateStringsArray) => strings.join('').includes('LoginAttemptState')
-    ? [{ identityKey: 'unit-test-identity', failedAttempts: 0, lastFailedAt: null, lockedUntil: null, lockedRejectionLoggedAt: null, updatedAt: new Date() }]
+    ? [{ identityKey: 'unit-test-identity', lockoutCycles: 0, failedAttempts: 0, lastFailedAt: null, lockedUntil: null, lockedRejectionLoggedAt: null, updatedAt: new Date() }]
     : strings.join('').includes('clock_timestamp') ? [{ now: new Date() }] : [{ id: user.id }]);
   db.user.findFirst.mockResolvedValue(user);
   db.user.findMany.mockResolvedValue([user]);

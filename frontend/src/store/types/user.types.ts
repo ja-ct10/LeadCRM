@@ -22,6 +22,7 @@ export interface RoleDefinition {
 }
 
 export interface User {
+  securityLockedAt?: string | null;
   assignableAgent?: boolean;
   assignableModules?: string[];
   createdAt?: string;

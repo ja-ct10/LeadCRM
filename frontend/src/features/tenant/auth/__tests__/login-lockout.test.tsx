@@ -33,6 +33,20 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe('login lockout presentation and lifecycle', () => {
+  it('displays the inactivity notice after the expired session redirects to Login', async () => {
+    sessionStorage.setItem('leadcrm:idle-expired', '1');
+    await form();
+    expect(screen.getByRole('alert').textContent).toBe('Your session expired due to inactivity. Please log in again.');
+    expect(sessionStorage.getItem('leadcrm:idle-expired')).toBeNull();
+  });
+  it('shows a permanent security-lock message without the temporary dialog or countdown', async () => {
+    const message = 'Your account has been locked due to repeated failed login attempts. Please contact your administrator.';
+    const { form: element } = await form();
+    mocks.login.mockRejectedValue(Object.assign(new Error(message), { status: 423, code: 'AUTH_ACCOUNT_LOCKED' }));
+    await submit(element);
+    expect(screen.queryByRole('timer')).toBeNull(); expect(screen.queryByRole('dialog')).toBeNull();
+    expect(mocks.toast.error).toHaveBeenCalledWith(message, { id: 'leadcrm-login-error' });
+  });
   it('keeps five normal errors and opens only on the structured sixth response, without a duplicate toast', async () => {
     const { form: element } = await form();
     mocks.login.mockRejectedValue(new Error('Invalid email or password.'));

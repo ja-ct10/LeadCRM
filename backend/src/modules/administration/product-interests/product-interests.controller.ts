@@ -16,12 +16,16 @@ export async function wonDeals(req: Request, res: Response, next: NextFunction) 
 }
 
 const fieldKey = service.productFieldKey;
+async function categories(tx: Prisma.TransactionClient, tenantId: string) {
+  const rows = await tx.productInterest.findMany({ where: { tenantId }, select: { category: true, name: true }, orderBy: { name: 'asc' } });
+  return [...new Map(rows.map(row => { const label = row.category || row.name; return [label.toLowerCase(), label]; })).values()].sort((a, b) => a.localeCompare(b));
+}
 export async function get(req: Request, res: Response, next: NextFunction) {
   try {
     const tenantId = req.user!.tenantId;
     const result = await salesTransaction(async tx => ({
       data: await productConfiguration(tx, tenantId),
-      meta: { enabled: (await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value !== false },
+      meta: { categories: await categories(tx, tenantId), enabled: (await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value !== false },
     }));
     res.json({ success: true, ...result });
   } catch (error) { next(error); }
@@ -53,7 +57,7 @@ async function mutate(req: Request, res: Response, next: NextFunction, action: '
         await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value }, update: { value } });
       }
       return { data: await productConfiguration(tx, tenantId),
-        meta: { enabled: (await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value !== false } };
+        meta: { categories: await categories(tx, tenantId), enabled: (await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value !== false } };
     });
     await writeAuditLog({ tenantId, userId: req.user!.userId, action: 'product_interests.' + action, entityType: 'ProductInterest', entityId: id ?? tenantId, after: input });
     res.json({ success: true, ...result });

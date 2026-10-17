@@ -9,20 +9,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArchivedData } from './archived-data';
 import { useAuth } from "@/store/AuthContext";
 import {
-  Shield,
-  Building2,
-  Users,
   Save,
-  Layout,
   ChevronDown,
-  Palette,
   Moon,
   Sun,
   Monitor,
-  Archive,
-  User,
-  SlidersHorizontal,
-  Package,
   Check,
 } from "lucide-react";
 import { motion } from "motion/react";
@@ -38,63 +29,13 @@ import { RolesPermissions } from './roles-permissions';
 import { useMediaQuery } from '@/shared/hooks/use-media-query';
 import { useWorkspacePanel } from '@/shared/lib/overlay-state';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
-
-type SettingsTab =
-  | 'profile'
-  | 'appearance'
-  | 'org-general'
-  | 'users'
-  | 'roles'
-  | 'products'
-  | 'custom-fields'
-  | 'archived'
-  | 'forms';
-
-interface NavGroup {
-  label: string;
-  icon?: React.ElementType;
-  isTree?: boolean;
-  items: { id: SettingsTab; label: string; icon?: React.ElementType }[];
-}
-
-const NAV_GROUPS: NavGroup[] = [
-  {
-    label: 'GENERAL',
-    items: [
-      { id: 'profile', label: 'Profile Settings', icon: User },
-      { id: 'appearance', label: 'Appearance', icon: Palette },
-    ],
-  },
-  {
-    label: 'ORGANIZATION',
-    items: [
-      { id: 'org-general', label: 'General', icon: Building2 },
-      { id: 'users', label: 'Team Management', icon: Users },
-      { id: 'roles', label: 'Roles & Permissions', icon: Shield },
-    ],
-  },
-  {
-    label: 'CUSTOMIZATION',
-    items: [
-      { id: 'custom-fields', label: 'Customize Fields', icon: SlidersHorizontal },
-      { id: 'products', label: 'Products', icon: Package },
-      { id: 'archived', label: 'Archived Data', icon: Archive },
-    ],
-  },
-  {
-    label: 'CONNECT',
-    items: [
-      { id: 'forms', label: 'Forms', icon: Layout },
-    ],
-  },
-
-];
+import { NAV_GROUPS, SETTINGS_TAB_MODULES, type SettingsTab } from '../settings-navigation';
 
 export default function SettingsPage(): React.ReactElement {
   useWorkspacePanel(208, useMediaQuery('(min-width: 1280px)'));
   const { tenant, userCan } = useAuth();
 
-  const tabModules: Partial<Record<SettingsTab, string>> = { 'org-general': 'settings', users: 'users', roles: 'roles', products: 'products', 'custom-fields': 'custom_fields', archived: 'archived_data', forms: 'forms' };
+  const tabModules = SETTINGS_TAB_MODULES;
   const canAccessTab = (tab: SettingsTab) => tab === 'users' ? userCan('users', 'canView') || userCan('groups', 'canView') : !tabModules[tab] || userCan(tabModules[tab]!, 'canView');
   const visibleNavGroups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => canAccessTab(item.id)) })).filter(group => group.items.length);
 
@@ -123,7 +64,7 @@ export default function SettingsPage(): React.ReactElement {
   // -- Profile Settings Tab --
   const renderProfileTab = (): React.ReactElement => (
     <div className="space-y-6 w-full max-w-6xl"><ProfileForm />
-      <SecuritySettings />
+      <SecuritySettings openPassword={searchParams?.get('changePassword') === '1'} onPasswordClose={() => { if (searchParams?.has('changePassword')) { const next = new URLSearchParams(searchParams.toString()); next.delete('changePassword'); router.replace('/settings?' + next.toString()); } }} />
     </div>
   );
 

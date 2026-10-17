@@ -162,6 +162,15 @@ it('treats a revoked 401 session as signed out rather than a transport failure',
   expect(auth.authError).toBeNull();
 });
 
+it('retains the inactivity message when restoring an idle-expired session', async () => {
+  mocks.me.mockRejectedValue(Object.assign(new Error('Idle session expired'), { status: 401, code: 'SESSION_IDLE_EXPIRED' }));
+  show();
+  await waitFor(() => expect(auth.isLoading).toBe(false));
+  expect(auth.user).toBeNull();
+  expect(auth.authError).toBeNull();
+  expect(sessionStorage.getItem('leadcrm:idle-expired')).toBe('1');
+});
+
 it('preserves an allowed editor during Group revision refresh and removes it when permissions are revoked', async () => {
   class AccessEvents {
     static current: AccessEvents;

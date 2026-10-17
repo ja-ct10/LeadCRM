@@ -1,4 +1,6 @@
 "use client";
+import { matchesDealView } from '@leadcrm/shared';
+import { ExportCsvButton } from '@/shared/components/crm/export-csv-button';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -29,7 +31,6 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shar
 import ForecastBar from './forecast-bar';
 import { getTenantCurrency } from '@/shared/utils/currency';
 import type { Deal } from '@/store/types';
-import { matchesSearch } from '@/shared/utils/search';
 
 export default function PipelinePage({ navigate }: { navigate?: (path: string) => void }) {
   const router = useRouter();
@@ -135,20 +136,10 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   };
   const all = (USE_MOCK_DATA ? deals : query.data ?? []).filter(d => d.pipelineId === pipeline?.id && !d.isArchived);
   const stageStatus = (deal: Deal) => { const stage = pipeline?.stages.find(s => s.id === deal.stageId); return stage?.isWon ? 'Won' : stage?.isLost ? 'Lost' : 'Open'; };
-  const visible = all.filter(deal => {
-    if (highlightId && target?.id === deal.id) return true;
-    const terms = `${deal.title} ${deal.companyName ?? ''} ${deal.contactPerson ?? ''}`.toLowerCase();
-    return (!searchParams.get('accountId') && !searchParams.get('organizationId') || (deal.accountId ?? deal.organizationId) === (searchParams.get('accountId') || searchParams.get('organizationId')))
-      && (!searchParams.get('leadId') || deal.leadIds?.includes(searchParams.get('leadId')!) || deal.leadId === searchParams.get('leadId'))
-      && (!searchParams.get('contactId') || deal.contactIds?.includes(searchParams.get('contactId')!) || deal.contactId === searchParams.get('contactId'))
-      && matchesSearch(search, terms) && (!myDeals || deal.assignedUserId === user?.id)
-      && (!filters.stage?.length || filters.stage.includes(deal.stageId))
-      && (!filters.owner?.length || filters.owner.includes(deal.assignedUserId || 'unassigned'))
-      && (!filters.priority?.length || filters.priority.includes(deal.priority))
-      && (!filters.product?.length || deal.productInterests?.some(p => filters.product.includes(p)))
-      && (!filters.status?.length || filters.status.includes(stageStatus(deal)))
-      && (!filters.created?.length || filters.created.some(days => new Date(deal.createdAt).getTime() >= Date.now() - Number(days) * 86400000));
-  });
+  const exportView = { search, my: myDeals, filters,
+    accountId: searchParams.get('accountId') || searchParams.get('organizationId') || undefined,
+    leadId: searchParams.get('leadId') || undefined, contactId: searchParams.get('contactId') || undefined };
+  const visible = all.filter(deal => (highlightId && target?.id === deal.id) || matchesDealView({ ...deal, status: stageStatus(deal) }, exportView, user?.id ?? ''));
   const locatedDeal = target && all.find(deal => deal.id === target.id);
   const locatorMessage = targetError || (target && !query.isInitialLoad && !query.isRefreshing && !query.error &&
     (!pipeline || locatedTargetKey === targetKey && (!locatedDeal || !pipeline.stages.some(stage => stage.id === locatedDeal.stageId)))
@@ -183,7 +174,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
       <label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<input aria-label="Pipeline" value={pipeline?.name ?? ''} readOnly className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] cursor-default rounded-lg border border-border bg-card px-2 text-foreground" /></label>
       <div className="relative w-full min-w-0 sm:min-w-32 sm:flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div>
       <div className="flex w-full min-w-0 items-center justify-between gap-2 sm:contents">
-        <FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} />
+        <div className="flex shrink-0 items-center gap-2"><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><ExportCsvButton module="deals" disabled={!pipeline} params={{ pipelineId: pipeline?.id, view: JSON.stringify(exportView) }} /></div>
         <div className="ml-auto shrink-0"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div>
       </div>
     </div>

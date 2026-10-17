@@ -3,6 +3,7 @@ import { AppError } from '../../shared/errors/app-error';
 
 import prisma from '../../config/database.config';
 import type { Prisma } from '@prisma/client';
+import { SESSION_IDLE_MS, SESSION_IDLE_MESSAGE } from '@leadcrm/shared';
 
 /**
  * Hash a JWT token for safe storage.
@@ -24,7 +25,8 @@ export async function createSession(params: {
   expiresInMs: number;
 }, db: Prisma.TransactionClient = prisma): Promise<void> {
   const tokenHash = hashToken(params.token);
-  const expiresAt = new Date(Date.now() + params.expiresInMs);
+  const lastActiveAt = new Date();
+  const expiresAt = new Date(+lastActiveAt + params.expiresInMs);
 
   await db.session.create({
     data: {
@@ -34,6 +36,7 @@ export async function createSession(params: {
       userAgent: params.userAgent,
       ipAddress: params.ipAddress,
       expiresAt,
+      lastActiveAt,
     },
   });
 }
@@ -42,7 +45,7 @@ export async function createSession(params: {
  * Validate a token hash against the session store.
  * Returns the session or throws 401 if invalid/revoked/expired.
  */
-export async function validateSession(token: string): Promise<{ userId: string; tenantId: string }> {
+export async function validateSession(token: string, activityAt?: Date, explicitActivity = false): Promise<{ userId: string; tenantId: string; lastActiveAt: Date; expiresAt: Date }> {
   const tokenHash = hashToken(token);
 
   const session = await prisma.session.findUnique({ where: { tokenHash } });
@@ -51,22 +54,28 @@ export async function validateSession(token: string): Promise<{ userId: string; 
     throw new AppError('Session not found — please log in again', 401);
   }
   if (session.revokedAt) {
+    if (+session.revokedAt - +session.lastActiveAt >= SESSION_IDLE_MS) throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
     throw new AppError('Session has been revoked — please log in again', 401);
   }
-  if (session.expiresAt < new Date()) {
+  const now = new Date();
+  if (session.expiresAt <= now) {
     throw new AppError('Session has expired — please log in again', 401);
   }
 
-  // Throttle lastActiveAt writes to at most once per 5 minutes.
-  // The session record was already fetched above — reuse it to avoid
-  // an extra DB read. Only write if the timestamp is stale.
-  const LAST_ACTIVE_THROTTLE_MS = 5 * 60 * 1000; // 5 minutes
-  if (Date.now() - session.lastActiveAt.getTime() > LAST_ACTIVE_THROTTLE_MS) {
-    prisma.session
-      .update({ where: { tokenHash }, data: { lastActiveAt: new Date() } })
-      .catch(() => {/* non-critical */});
+  const cutoff = new Date(now.getTime() - SESSION_IDLE_MS);
+  if (session.lastActiveAt <= cutoff) {
+    const revoked = await prisma.session.updateMany({ where: { tokenHash, revokedAt: null, lastActiveAt: { lte: cutoff } }, data: { revokedAt: now } });
+    // A concurrent valid activity update won; validate that newer state.
+    if (!revoked.count) return validateSession(token, activityAt, explicitActivity);
+    throw new AppError(SESSION_IDLE_MESSAGE, 401, 'SESSION_IDLE_EXPIRED');
   }
-  return { userId: session.userId, tenantId: session.tenantId };
+  if (activityAt && activityAt > session.lastActiveAt && (explicitActivity || +activityAt - +session.lastActiveAt >= 60000)) {
+    const at = new Date(Math.min(activityAt.getTime(), now.getTime()));
+    // Conditional writes cannot resurrect revoked/expired sessions or move activity backwards.
+    const updated = await prisma.session.updateMany({ where: { tokenHash, revokedAt: null, expiresAt: { gt: now }, lastActiveAt: { gt: cutoff, lt: at } }, data: { lastActiveAt: at } });
+    if (updated.count) session.lastActiveAt = at;
+  }
+  return { userId: session.userId, tenantId: session.tenantId, lastActiveAt: session.lastActiveAt, expiresAt: session.expiresAt };
 }
 
 /**

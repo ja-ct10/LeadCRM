@@ -11,6 +11,7 @@ import * as authController from '../../core/auth/auth.controller';
 import { PasswordChangeRequestSchema } from '../../core/auth/change-password.service';
 import { changePasswordController } from '../../core/auth/change-password.controller';
 import { authorizationEvents } from '../../modules/reporting/reports/dashboard.events';
+import { z } from 'zod';
 
 const router = Router();
 const parseAvatar = raw({ type: ['image/jpeg', 'image/png', 'image/webp'], limit: AVATAR_MAX_BYTES });
@@ -25,6 +26,7 @@ router.post('/login', loginIpRateLimiter, validate(LoginIdentitySchema), authCon
 router.post('/login-lockout', loginIpRateLimiter, validate(LoginLockoutSchema), authController.loginLockout);
 router.post('/logout', authController.logout);
 router.get('/me', authMiddleware, authController.me);
+router.post('/activity', authMiddleware, validate(z.object({ lastActiveAt: z.string().datetime() }).strict()), authController.activity);
 router.get('/events', authMiddleware, tenantMiddleware, authorizationEvents);
 router.post('/forgot-password', passwordResetRateLimiter, validate(ForgotPasswordSchema), passwordRecoveryAddressRateLimiter, authController.forgotPassword);
 router.post('/reset-password', passwordResetRateLimiter, validate(ResetPasswordSchema), authController.resetPassword);

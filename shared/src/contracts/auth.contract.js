@@ -1,7 +1,11 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PASSWORD_RECOVERY_SEND_ERROR = exports.PASSWORD_RECOVERY_RESEND_SECONDS = exports.PASSWORD_RECOVERY_MESSAGE = exports.LOGIN_LOCKOUT_MESSAGE = exports.INVALID_LOGIN_MESSAGE = exports.LOGIN_LOCKOUT_MS = exports.LOGIN_FAILURE_LIMIT = exports.LOGIN_LOCKOUT_CODE = void 0;
+exports.PASSWORD_RECOVERY_SEND_ERROR = exports.PASSWORD_RECOVERY_RESEND_SECONDS = exports.PASSWORD_RECOVERY_MESSAGE = exports.LOGIN_LOCKOUT_MESSAGE = exports.INVALID_LOGIN_MESSAGE = exports.LOGIN_LOCKOUT_MS = exports.LOGIN_FAILURE_LIMIT = exports.SESSION_IDLE_MESSAGE = exports.SESSION_IDLE_MS = exports.ACCOUNT_LOCKED_MESSAGE = exports.ACCOUNT_LOCKED_CODE = exports.LOGIN_LOCKOUT_CODE = void 0;
 exports.LOGIN_LOCKOUT_CODE = 'AUTH_LOGIN_LOCKED';
+exports.ACCOUNT_LOCKED_CODE = 'AUTH_ACCOUNT_LOCKED';
+exports.ACCOUNT_LOCKED_MESSAGE = 'Your account has been locked due to repeated failed login attempts. Please contact your administrator.';
+exports.SESSION_IDLE_MS = 30 * 60 * 1000;
+exports.SESSION_IDLE_MESSAGE = 'Your session expired due to inactivity. Please log in again.';
 exports.LOGIN_FAILURE_LIMIT = 5;
 exports.LOGIN_LOCKOUT_MS = 5 * 60 * 1000;
 exports.INVALID_LOGIN_MESSAGE = 'Invalid email or password.';

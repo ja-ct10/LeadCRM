@@ -74,6 +74,7 @@ export const SmsCampaignNotificationTypes = [
 ] as const;
 
 export const NotificationTypes = [
+  'password_expiring_soon',
   'lead_assigned', 'contact_assigned', 'account_assigned', 'deal_assigned', 'task_assigned',
   'customer_hot', 'customer_cold', 'customer_cancelled', 'deal_progressed', 'deal_won', 'deal_lost',
   'closing_requirements_needed', 'closing_requirements_completed', 'task_due', 'task_overdue',

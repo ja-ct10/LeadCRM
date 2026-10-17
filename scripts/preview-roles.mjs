@@ -6,6 +6,7 @@ const root = resolve('frontend');
 const fixture = resolve(root, 'qa/roles/fixtures.tsx');
 const server = await createServer({
   root,
+  define: { 'process.env': JSON.stringify({ NODE_ENV: 'development' }) },
   plugins: [react()],
   resolve: { extensions: ['.ts', '.tsx', '.mjs', '.js', '.jsx', '.json'], alias: [
     { find: '@/store/AuthContext', replacement: fixture },
@@ -13,7 +14,7 @@ const server = await createServer({
     { find: '@leadcrm/shared', replacement: resolve('shared/src/index.ts') },
     { find: '@', replacement: resolve(root, 'src') },
   ] },
-  server: { host: '127.0.0.1', port: 4318, strictPort: true },
+  server: { host: '127.0.0.1', port: 4318, strictPort: true, watch: { ignored: ['**/.next/**'] } },
 });
 await server.listen();
 console.log('Role editor QA: http://127.0.0.1:4318/qa/roles/index.html');
