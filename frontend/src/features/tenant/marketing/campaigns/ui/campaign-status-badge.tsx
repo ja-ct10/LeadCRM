@@ -12,12 +12,12 @@ const statuses: Record<string, { label: string; variant: BadgeProps['variant'] }
 };
 
 export function formatCampaignStatus(status: string, reviewRequired = false) {
-  if (reviewRequired) return 'Needs review';
+  if (reviewRequired) return ['DELIVERED', 'FAILED'].includes(status.toUpperCase()) ? `${statuses[status.toUpperCase()].label} · Review` : 'Needs review';
   return statuses[status.toUpperCase()]?.label ?? 'â€”';
 }
 
 export function CampaignStatusBadge({ status, reviewRequired = false }: { status: string; reviewRequired?: boolean }) {
-  if (reviewRequired) return <Badge variant="warning">Needs review</Badge>;
+  if (reviewRequired) return <Badge variant="warning">{formatCampaignStatus(status, true)}</Badge>;
   if (!status || !statuses[status.toUpperCase()]) return <span title="No confirmed delivery outcome">â€”</span>;
   return <Badge variant={statuses[status.toUpperCase()].variant}>{formatCampaignStatus(status)}</Badge>;
 }

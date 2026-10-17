@@ -12,6 +12,27 @@ export function campaignLinkDestination(value: string): string | null {
   } catch { return null; }
 }
 
+/** Plain-text URLs share the email linkifier's punctuation rules. */
+export function mapCampaignTextLinks(text: string, replace: (url: string) => string): string {
+  return text.replace(/https?:\/\/[^\s<>"']+/gi, candidate => {
+    let url = candidate;
+    while (/[.,;:!?]$/.test(url)) url = url.slice(0, -1);
+    for (const [open, close] of [['(', ')'], ['[', ']'], ['{', '}']]) {
+      while (url.endsWith(close) && url.split(close).length > url.split(open).length) url = url.slice(0, -1);
+    }
+    return campaignLinkDestination(url) ? replace(url) + candidate.slice(url.length) : candidate;
+  });
+}
+
+export const SMS_LINK_TOKEN_PATTERN = /^[A-Za-z0-9_-]{24}$/;
+export function smsCampaignTrackingUrl(origin: string, token: string): string {
+  const url = new URL(origin);
+  if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password || url.search || url.hash || url.pathname !== '/' || !SMS_LINK_TOKEN_PATTERN.test(token)) {
+    throw new Error('Invalid SMS tracking origin or token.');
+  }
+  return `${url.origin}/s/${token}`;
+}
+
 function decodeEntities(value: string): string {
   return value.replace(/&(?:amp|lt|gt|quot|apos|#39|#\d+|#x[\da-f]+);/gi, entity => {
     const named: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&apos;': "'", '&#39;': "'" };

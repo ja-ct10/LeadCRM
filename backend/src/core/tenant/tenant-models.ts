@@ -17,6 +17,7 @@ for (const model of ['Lead', 'Contact']) tenantChildren[model + 'ProductInterest
 tenantModels.add('DealCreationReceipt');
 tenantModels.add('AccountCreationReceipt');
 tenantModels.add('SmsWebhookReceipt');
+tenantModels.add('SmsCampaignLink');
 tenantModels.add('NotificationEvent');
 tenantModels.add('NotificationDelivery');
 tenantModels.add('DashboardRevision');

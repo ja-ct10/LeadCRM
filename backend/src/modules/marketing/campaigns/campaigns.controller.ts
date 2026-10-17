@@ -4,6 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 import * as service from './campaigns.service';
 import { getSmsSenderIdentity } from '../../../shared/services/sms.service';
 import { getBrevoSenderIdentity } from '../../../shared/services/email.service';
+import { smsTrackingOrigin } from './sms-link-tracking';
 
 export function getEmailSettings(_req: Request, res: Response) {
   res.json({ success: true, data: getBrevoSenderIdentity() });
@@ -11,7 +12,9 @@ export function getEmailSettings(_req: Request, res: Response) {
 
 export async function getSmsSettings(req: Request, res: Response, next: NextFunction) {
   try {
-    res.json({ success: true, data: await getSmsSenderIdentity(req.user!.tenantId) });
+    let trackingOrigin: string | null = null;
+    try { trackingOrigin = smsTrackingOrigin(); } catch { /* Sending supplies the actionable configuration error. */ }
+    res.json({ success: true, data: { ...await getSmsSenderIdentity(req.user!.tenantId), trackingOrigin } });
   } catch (error) { next(error); }
 }
 

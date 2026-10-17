@@ -140,6 +140,8 @@ function deploymentPlan(records, localNames) {
     // Additive provenance and bounded provider diagnostics; no retirements or data deletion.
     '20261214000000_contact_company_provenance',
     '20261215000000_sms_provider_diagnostics',
+    // Additive recipient links and provider evidence; historical SMS remain untracked.
+    '20261216000000_sms_campaign_links',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

@@ -82,7 +82,7 @@ describe('campaign report', () => {
     render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
     await screen.findByText('+639171234567');
     const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
-    expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Submitted', 'Sent', 'Delivered', 'Failed']);
+    expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Submitted', 'Sent', 'Delivered', 'Failed', 'Total Clicks', 'Click rate']);
     expect(metrics.textContent).toContain('Failed1');
     expect(screen.queryByRole('columnheader', { name: 'Email' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Opened' })).toBeNull(); expect(screen.queryByRole('columnheader', { name: 'Clicked' })).toBeNull();
@@ -90,6 +90,21 @@ describe('campaign report', () => {
     select('Pending'); expect(rows()).toHaveLength(1);
     expect(screen.queryByText('Requires review')).toBeNull();
     select('All recipients'); fireEvent.change(screen.getByLabelText('Search recipients'), { target: { value: '63919' } }); expect(rows()).toHaveLength(1);
+  });
+  it('shows tracked SMS clicks, click rate, link totals and conflicting provider evidence without SMS opens', async () => {
+    vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'SMS', status: 'delivered', reviewRequired: true,
+      smsTrackingVersion: 1, sentCount: 4, clickedCount: 1, recipients: [{ ...recipients[1], email: null, phone: '+639171234567', providerConflict: true,
+        providerEvents: [{ status: 'failed', occurredAt: '2026-10-17T03:15:51Z', receivedAt: '2026-10-17T03:16:00Z' }, { status: 'delivered', occurredAt: '2026-10-17T03:15:54Z', receivedAt: '2026-10-17T03:15:55Z' }] }] } } as never);
+    render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
+    await screen.findByText('+639171234567');
+    const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
+    expect(metrics.textContent).toContain('Total Clicks1'); expect(metrics.textContent).toContain('Click rate25%');
+    expect(screen.getByRole('columnheader', { name: 'Clicked' })).toBeTruthy();
+    expect(screen.queryByRole('columnheader', { name: 'Opened' })).toBeNull();
+    expect(screen.getByText('Provider outcomes conflict. Review before sending again.')).toBeTruthy();
+    expect(screen.getAllByText('Delivered · Review')).toHaveLength(2);
+    fireEvent.click(screen.getByText('Provider events')); expect(screen.getByText(/failed:/)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'https://camxian.com/cctv-surveillance-system' })).toBeTruthy();
   });
   it('renders real counts, delivery and engagement values, dates and link data without the retired panels', async () => {
     mount(); await screen.findByText('Doris Testing');

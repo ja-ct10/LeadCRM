@@ -1,5 +1,6 @@
 import { brevoWebhookRouter } from '../../modules/marketing/campaigns/brevo-webhook';
 import { textbeeWebhookRouter } from '../../modules/marketing/campaigns/textbee-webhook';
+import { smsLinkRouter } from '../../modules/marketing/campaigns/sms-link-tracking';
 import { Router } from 'express';
 import authRoutes from './auth.routes';
 import crmRoutes from './crm.routes';
@@ -31,6 +32,7 @@ router.get('/health', (_req, res) => {
 
 router.use('/webhooks/brevo', brevoWebhookRouter);
 router.use('/public/forms', publicFormsRouter);
+router.use('/public/sms-links', smsLinkRouter);
 router.use('/auth', authRoutes);
 router.use('/crm', crmRoutes);
 router.use('/marketing', marketingRoutes);

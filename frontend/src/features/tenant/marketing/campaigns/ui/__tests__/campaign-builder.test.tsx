@@ -60,6 +60,15 @@ function unloadPrevented() {
   return event.defaultPrevented;
 }
 const existingDraft = { id: 'saved-id', name: 'Saved campaign', type: 'Email', status: 'Draft', subject: 'Saved subject', body: 'Saved body', audienceSource: 'LEADS' };
+it('previews tracked SMS length while preserving the original editable URL', async () => {
+  vi.mocked(campaignsApi.smsSettings).mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'info@example.test', trackingOrigin: 'https://crm.example.test' } });
+  render(<CampaignBuilder initialType="SMS" onBack={vi.fn()} />);
+  const body = screen.getByLabelText(/Body/) as HTMLTextAreaElement;
+  fireEvent.change(body, { target: { value: 'Visit https://destination.test/products?a=1&b=2' } });
+  await screen.findByText(/Counts include the tracking URL/);
+  expect(body.value).toBe('Visit https://destination.test/products?a=1&b=2');
+  expect(screen.getAllByText(/https:\/\/crm.example.test\/s\/x{24}/).length).toBeGreaterThan(0);
+});
 function ModuleNavigation({ label, module, onNavigated }: { label: string; module: string; onNavigated?: () => void }) {
   const { navigate } = useLayout();
   return <nav aria-label="Workspace"><button aria-label={label} onClick={() => requestNavigation(() => { navigate(module); onNavigated?.(); })}><span>{label}</span></button></nav>;

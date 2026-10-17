@@ -1,5 +1,6 @@
 import type { CampaignStatus, Prisma } from '@prisma/client';
 import { enqueueSmsCampaignOutcomes, smsSent, smsDelivered } from './sms-campaign-outcomes';
+import { campaignEngagementRate } from '@leadcrm/shared';
 
 type RecipientEvidence = {
   status: string;
@@ -63,19 +64,20 @@ export async function recalculateCampaignDelivery(tx: Prisma.TransactionClient, 
   const submitted = eligible.filter(row => row.submittedAt || (campaign.type === 'EMAIL' && row.sentAt)).length;
   const failed = eligible.filter(recipientDeliveryFailed).length;
   const delivered = eligible.filter(row => (campaign.type === 'SMS' ? smsDelivered(row) : row.deliveredAt) && !recipientDeliveryFailed(row)).length;
-  const opened = eligible.filter(row => row.openedAt).length;
-  const clicked = eligible.filter(row => row.clickedAt).length;
+  const opened = campaign.type === 'SMS' ? 0 : eligible.filter(row => row.openedAt).length;
+  const clicked = campaign.type === 'SMS' && campaign.smsTrackingVersion !== 1 ? 0 : eligible.filter(row => row.clickedAt).length;
   const bounced = eligible.filter(row => row.bouncedAt).length;
   const status = deriveCampaignDeliveryStatus(campaign, evidence);
   if (skipUnchanged && campaign.status === status && campaign.sentCount === submitted && campaign.failedCount === failed && campaign.openedCount === opened && campaign.clickedCount === clicked) return campaign;
   const updated = await tx.campaign.update({ where: { id, tenantId }, data: {
     status, sentCount: submitted, failedCount: failed,
     openedCount: opened, clickedCount: clicked,
+    engagement: campaignEngagementRate({ type: campaign.type, smsTrackingVersion: campaign.smsTrackingVersion, sentCount: submitted, openedCount: opened, clickedCount: clicked }) ?? 0,
   } });
   await tx.campaignMetrics.create({ data: { ...where, sentCount: submitted, deliveredCount: delivered,
     openedCount: opened, clickedCount: clicked, bouncedCount: bounced,
     openRate: delivered ? opened / delivered * 100 : 0,
-    clickRate: delivered ? clicked / delivered * 100 : 0,
+    clickRate: (campaign.type === 'SMS' ? submitted : delivered) ? clicked / (campaign.type === 'SMS' ? submitted : delivered) * 100 : 0,
     deliveryRate: submitted ? delivered / submitted * 100 : 0,
     bounceRate: submitted ? bounced / submitted * 100 : 0,
   } });

@@ -1,4 +1,5 @@
 import type { CampaignRecipient } from '@leadcrm/shared';
+import { campaignEngagementRate } from '@leadcrm/shared';
 import type { CampaignReportResponse } from '@/shared/services/campaigns.api';
 
 const cell = (value: unknown) => {
@@ -12,6 +13,7 @@ const cell = (value: unknown) => {
  */
 export function campaignReportCsv(report: CampaignReportResponse['data'], recipients: CampaignRecipient[], scope: { search: string; filter: string }): string {
   const sms = report.type.toUpperCase() === 'SMS';
+  const trackedSms = sms && report.smsTrackingVersion === 1;
   const rows: unknown[][] = [
     ['Campaign', report.name], ['Metrics scope', 'Entire campaign'],
     ['Recipient search', scope.search], ['Recipient filter', scope.filter],
@@ -19,9 +21,12 @@ export function campaignReportCsv(report: CampaignReportResponse['data'], recipi
     ['Recipients', report.recipientCount], ['Delivered', report.deliveredCount], ['Submitted', report.sentCount],
   ];
   if (!sms) rows.push(['Opened', report.openedCount], ['Total Clicks', report.clickedCount], ['Bounced', report.bouncedCount]);
-  rows.push([], ['Recipient', sms ? 'Phone' : 'Email', 'Delivery Status', ...(sms ? [] : ['Opened', 'Clicked']), 'Last Activity (UTC)']);
-  for (const row of recipients) rows.push([row.name, sms ? row.phone : row.email, row.deliveryStatus, ...(sms ? [] : [row.opened, row.clicked]), row.lastActivity]);
-  if (!sms) {
+  if (sms) rows.push(['SMS opens', 'Unavailable'], ['SMS click tracking', trackedSms ? 'Tracked recipient links; known previews filtered' : 'Unavailable for older SMS'],
+    ...(trackedSms ? [['Total Clicks', report.clickedCount], ['Click rate (%)', campaignEngagementRate(report)]] : []));
+  rows.push([], ['Recipient', sms ? 'Phone' : 'Email', 'Delivery Status', ...(!sms ? ['Opened', 'Clicked'] : trackedSms ? ['Clicked'] : []), 'Last Activity (UTC)', ...(sms ? ['Provider conflict', 'Provider events (UTC)'] : [])]);
+  for (const row of recipients) rows.push([row.name, sms ? row.phone : row.email, row.deliveryStatus, ...(!sms ? [row.opened, row.clicked] : trackedSms ? [row.clicked] : []), row.lastActivity,
+    ...(sms ? [row.providerConflict ?? false, (row.providerEvents ?? []).map(event => `${event.status}: ${event.occurredAt ?? 'time unavailable'} (received ${event.receivedAt})`).join('; ')] : [])]);
+  if (!sms || trackedSms) {
     rows.push([], ['Original Link URL', 'Total Clicks']);
     for (const link of report.topLinks) rows.push([link.url, link.uniqueClicks]);
   }

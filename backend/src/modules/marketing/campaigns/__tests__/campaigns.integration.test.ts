@@ -544,7 +544,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe(status);
     }
     await processTextBeeEvent(event('sent', 'late-sent'));
-    await processTextBeeEvent(event('failed', 'conflicting-failed'));
+    await processTextBeeEvent({ ...event('failed', 'conflicting-failed'), failedAt: '2026-10-07T01:00:30.000Z' });
     await processTextBeeEvent(event('unknown', 'late-unknown'));
     expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: row.id } })).status).toBe('delivered');
     expect(await prisma.smsWebhookReceipt.count({ where: { campaignContactId: row.id } })).toBe(9);
@@ -1260,7 +1260,7 @@ describe.skipIf(!disposable)('campaigns on disposable PostgreSQL and authenticat
       await vi.waitFor(() => expect(sendMail).toHaveBeenLastCalledWith(expect.objectContaining({ subject: 'From Changed Provider', html: expect.stringContaining('changed-sender@example.test') })), { timeout: 10000 });
       expect((await prisma.campaignContact.findUniqueOrThrow({ where: { id: snapshot.id } })).personalization).toEqual(snapshot.personalization);
       await prisma.tenant.update({ where: { id: tenantId }, data: { name: 'Configured Organization', email: 'contact@example.test' } });
-      expect((await request('/marketing/campaigns/sms-settings')).body.data).toEqual({ organizationName: 'Configured Organization', organizationEmail: 'contact@example.test' });
+      expect((await request('/marketing/campaigns/sms-settings')).body.data).toEqual({ organizationName: 'Configured Organization', organizationEmail: 'contact@example.test', trackingOrigin: expect.any(String) });
       const sms = await createCampaign(tenantId, userId, { name: randomUUID(), type: 'SMS', targetAudienceId: audience.id, body: '{{sender_name}} {{sender_email}}' });
       await sendCampaign(sms.id, tenantId, userId);
       expect(sendSms).toHaveBeenLastCalledWith(lead.phone, expect.stringContaining('Configured Organization contact@example.test'), { deviceId: 'device-fixture' });

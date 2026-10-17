@@ -18,4 +18,14 @@ describe('campaign export', () => {
     const csv = campaignReportCsv({ type: 'SMS', topLinks: [] } as never, [], { search: '', filter: 'All recipients' });
     expect(csv).not.toMatch(/Total Clicks|CTR|Original Link URL/);
   });
+  it('exports tracked SMS unique clicks, click rate, destinations and provider conflicts without opens', () => {
+    const csv = campaignReportCsv({ type: 'SMS', name: 'Tracked SMS', smsTrackingVersion: 1, sentCount: 4, clickedCount: 1,
+      topLinks: [{ url: 'https://destination.test/', uniqueClicks: 1 }] } as never,
+    [{ name: 'Recipient', phone: '+639171234567', deliveryStatus: 'Delivered', opened: false, clicked: true, providerConflict: true,
+      providerEvents: [{ status: 'failed', occurredAt: '2026-10-17T03:15:51Z', receivedAt: '2026-10-17T03:16:00Z' }] }] as never, { search: '', filter: 'Clicked' });
+    expect(csv).toContain('"Total Clicks","1"'); expect(csv).toContain('"Click rate (%)","25"');
+    expect(csv).toContain('"SMS opens","Unavailable"'); expect(csv).not.toContain('"Opened"');
+    expect(csv).toContain('"Delivery Status","Clicked"'); expect(csv).toContain('"https://destination.test/","1"');
+    expect(csv).toContain('Provider conflict'); expect(csv).toContain('failed: 2026-10-17T03:15:51Z');
+  });
 });

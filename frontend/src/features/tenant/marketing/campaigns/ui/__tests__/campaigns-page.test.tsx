@@ -5,11 +5,13 @@ import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, type ClosingField } from '@le
 import { clearPageCache } from '@/shared/cache/page-cache';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), templateCreate: vi.fn(), archive: vi.fn(), refresh: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
+const scenario = vi.hoisted(() => ({ sms: false }));
+beforeEach(() => { scenario.sms = false; });
 const templateDefinitions = CUSTOM_FIELD_MODULES.map((module, index): ClosingField => ({ id: `definition-${index}`, version: 1, module, name: `${module} Custom`, technicalAlias: `${module}Custom`, type: 'Text', active: true, required: false, description: '', visibleInForm: true, visibleInDetails: true, group: 'Basic Information', order: 0, options: [] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
-vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [campaign], total: 1, templates: mocks.templates, metrics: { activeCampaigns: 1, sent: 10, emailSent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
+vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [scenario.sms ? { ...campaign, type: 'Sms', smsTrackingVersion: 1 } : campaign], total: 1, templates: mocks.templates, metrics: { activeCampaigns: 1, sent: 10, emailSent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive, variableFields: mocks.variableFields, emailSettings: mocks.emailSettings, smsSettings: mocks.smsSettings } }));
 vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { create: mocks.templateCreate } }));
 vi.mock('../campaign-builder', () => ({ CampaignBuilder: (props: unknown) => { mocks.builder(props); return <div>Campaign editor</div>; } }));
@@ -21,6 +23,13 @@ afterEach(() => { cleanup(); clearPageCache(); });
 it('keeps the email open rate independent of submitted SMS volume', () => {
   render(<CampaignsPage />);
   expect(screen.getByRole('progressbar', { name: 'Average open rate: 50.0%' })).toBeTruthy();
+});
+it('shows tracked SMS unique clicks and click engagement while keeping SMS opens unavailable', () => {
+  scenario.sms = true; render(<CampaignsPage />);
+  expect(screen.getByTitle('Unique clicking recipients').textContent).toBe('1');
+  expect(screen.getByTitle('SMS opens are unavailable').textContent).toBe('—');
+  expect(screen.getByTitle('Unique clicking recipients / SMS submissions; older SMS links are untracked').textContent).toBe('25%');
+  expect(screen.getByText('Email + tracked SMS')).toBeTruthy();
 });
 it('opens View and duplicates the complete saved campaign into a new draft', async () => {
   mocks.get.mockResolvedValue({ data: { ...campaign, subject: 'Saved subject', body: '<p>Saved body</p>', audienceSource: 'LEADS' } });

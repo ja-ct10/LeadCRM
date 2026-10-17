@@ -1,4 +1,5 @@
 'use client';
+import { mapCampaignTextLinks, smsCampaignTrackingUrl } from '@leadcrm/shared';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 
 import React, { useEffect, useRef, useState } from 'react';
@@ -240,6 +241,7 @@ export function CampaignBuilder({
   let smsPreview = '', smsPreviewError = '';
   if (campaignType === 'SMS') {
     smsPreview = buildFinalSms({ body: messageContent, variables: previewVariables });
+    if (smsSettings.data?.trackingOrigin) smsPreview = mapCampaignTextLinks(smsPreview, () => smsCampaignTrackingUrl(smsSettings.data!.trackingOrigin!, 'x'.repeat(24)));
     if (smsPreview.length > SMS_MAX_LENGTH) smsPreviewError = `SMS preview exceeds the ${SMS_MAX_LENGTH}-character limit including personalization and the contact footer.`;
   }
   function openSchedule() {
@@ -543,8 +545,9 @@ export function CampaignBuilder({
                 <textarea ref={bodyRef} onFocus={() => { activeField.current = 'body'; }} id="builder-body" rows={campaignType === 'Email' ? 8 : 10} className="w-full rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-white/3 px-4 py-3 text-sm text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-primary focus-visible:ring-2 focus-visible:ring-primary/20 transition-all duration-200 resize-none leading-relaxed" placeholder={campaignType === 'SMS' ? 'Hi {{firstName}}, ...' : 'Hi {{firstName}},\n\nYour message here...'} value={messageContent} onChange={(e) => setMessageContent(e.target.value)} />
                 <FieldError message={errors.body || (campaignType === 'SMS' ? smsPreviewError : '')} />
                 {campaignType === 'SMS' && (
-                  <div className="flex items-center gap-4 mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="flex flex-col gap-1 mt-2 text-xs text-slate-500 dark:text-slate-400">
                     <span>{smsMessageStats(smsPreview).characters} characters including footer · {smsMessageStats(smsPreview).segments} SMS segment(s) · {smsMessageStats(smsPreview).encoding} (sample recipient)</span>
+                    <span>HTTP/HTTPS links use a recipient tracking URL when sent. Preview tokens are samples. {smsSettings.data?.trackingOrigin ? 'Counts include the tracking URL.' : 'Tracking configuration is unavailable; final link lengths are checked before sending.'}</span>
                   </div>
                 )}
                 <div className="mt-2.5">

@@ -56,7 +56,8 @@ in constant time against `X-Signature`. Delivery updates require matching batch,
 recipient, provider message and the device frozen for that submission. The additive
 `20261107000000_textbee_webhook_receipts` migration stores provider idempotency
 keys with a composite tenant/recipient foreign key. Repeated events do not
-inflate counts, and final delivered/failed states never regress. A callback
+inflate counts. Nonfinal states cannot replace a final delivered/failed state;
+conflicting final states use event timestamps and require review. A callback
 arriving before the submission receipt gets a retryable 503.
 
 Reports distinguish submitted, sent, delivered, failed and pending.
@@ -104,6 +105,45 @@ test recipient for one SMS. Confirm its provider batch, signed status callbacks,
 persisted recipient status and actual receipt. Ask the recipient to verify the
 fixed Camxian phone contact block and single no-reply footer.
 Do not infer receipt or tapping behavior from API acceptance.
+
+## SMS campaign links and conflicting provider evidence
+
+New SMS campaigns replace valid HTTP/HTTPS destinations with opaque, per-recipient
+`APP_URL/s/:token` links after personalization and the contact footer are rendered.
+The preview uses the same URL lengths with sample tokens; the server checks the
+actual final SMS length transactionally before provider submission. `APP_URL`
+must be the public website origin, using HTTPS in production. The frontend's
+existing server-only `API_URL` forwards these public redirects without CRM
+cookies or authorization. No extra service, subscription, or credential is needed.
+
+Forward migration `20261216000000_sms_campaign_links` adds the empty link table and
+nullable tracking metadata without modifying historical SMS. Deploy matching
+backend/shared/frontend builds after that migration; old SMS links remain
+untracked and cannot gain historical clicks. Keep this public route reachable
+when adding ingress authentication or caching rules. Do not cache its redirects.
+Make the new frontend route available before enabling sends from the updated
+backend, or pause Campaign sending during the coordinated rollout. Otherwise a
+new SMS could contain a link that the old frontend cannot serve yet.
+
+Each recipient counts once per campaign and once per destination. Repeated visits
+retain visit totals separately. HEAD and known preview/crawler requests redirect
+without counting; unidentified automation can still count. SMS opens remain
+unavailable. SMS Engagement/Click rate uses unique clicking recipients divided by
+SMS submissions. Total Clicked includes email and tracked SMS; Total Opened remains
+email-only. Clicks never infer Sent or Delivered and never trigger another send.
+
+Signed callback receipts retain status and event time, without message content.
+Conflicting Delivered/Failed facts set a review flag in list, report and CSV. A
+strictly later event timestamp can replace a conflicting terminal result; absent
+or equal timestamps retain the current result for review. Receipt arrival time
+does not determine the outcome. Existing historical receipts have no reconstructed
+event metadata. The CRM cannot repair an inconsistent TextBee dashboard.
+
+Run `npm run test:integration:native -- --filter=campaigns.integration,sms-tracking.integration,sms-links.integration`
+for isolated PostgreSQL/API coverage. Frontend campaign/route/export tests cover
+channel-specific metrics, provider warnings and public redirect forwarding. The
+existing `scripts/campaign-status-preview.cjs` accepts `SMS_LINK_PREVIEW=1` and
+`CAMPAIGN_PREVIEW_PORT` for UI-only verification with no database/provider calls.
 
 ## Official references
 
