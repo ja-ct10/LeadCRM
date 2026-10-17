@@ -167,7 +167,10 @@ export function ProductsPage() {
   return <div className="min-w-0 max-w-full space-y-4">
     <PageHeader title="Products" subtitle="Manage products and their default Deal values."
       actions={canCreate && <CreateButton label="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} />} />
-    <div data-selection-toolbar role="toolbar" aria-label="Products controls" className="flex flex-wrap items-center gap-2"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
+    <div data-selection-toolbar role="toolbar" aria-label="Products controls" className="flex min-w-0 flex-nowrap items-center gap-2">
+      <div className="min-w-0 flex-1 sm:flex-none"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /></div>
+      <div className="shrink-0"><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
+    </div>
     {error && <p role="alert" className="text-destructive">{error}</p>}
     {!enabled && <div className="space-y-2"><p className="text-sm text-muted-foreground">Enable Product Interest to add products.</p>{canCreate && <Button variant="outline" disabled={busy} onClick={() => void enableProducts()}>Enable Product Interest</Button>}</div>}
     {loading && !hasLoaded && !products.length ? <TableLoadingState label="Loading products" /> : <DataGrid isRefreshing={loading} columns={columns} data={filtered.slice((page - 1) * pageSize, page * pageSize)} getRowId={row => row.id} height="auto" selectable={canArchive} selectedIds={selected} onSelectionChange={ids => { if (!busy) setSelected(ids); }} sort={sort} onSortChange={setSort} sortingMode="external" enableColumnMenu={false} ariaLabel="Products table" summaryLabel={`${filtered.length} products`} onRowClick={product => setPanel({ mode: 'view', product })}

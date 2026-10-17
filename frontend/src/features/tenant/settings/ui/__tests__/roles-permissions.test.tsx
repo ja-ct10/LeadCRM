@@ -53,6 +53,17 @@ async function openDelete(userCount = 0) {
   return screen.getByRole('alertdialog');
 }
 
+it('links RBAC guidance to the existing Roles & Permissions Help Center category in the same tab', () => {
+  mount();
+  const link = screen.getByRole('link', { name: 'Learn more about RBAC' });
+  expect(link.getAttribute('href')).toBe('/help/category/roles');
+  expect(link.hasAttribute('target')).toBe(false);
+  expect(link.className).toContain('hover:underline');
+  expect(link.className).toContain('focus-visible:ring-2');
+  link.focus(); expect(document.activeElement).toBe(link);
+  expect(screen.queryByRole('button', { name: 'Learn more about RBAC' })).toBeNull();
+});
+
 it.each([1, 5])('uses the server count to block deletion of a role assigned to %s users without a PATCH', async count => {
   const dialog = await openDelete(count);
   expect(within(dialog).getByText('Role cannot be deleted')).toBeTruthy();

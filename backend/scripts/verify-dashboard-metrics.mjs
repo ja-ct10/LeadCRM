@@ -17,7 +17,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     assert.equal(report.metrics.forecastedRevenue, report.distribution.reduce((sum,row) => sum + row.value,0));
   };
   assert.ok(await page.getByText('No won revenue in the selected period.', { exact: true }).isVisible());
-  assert.ok(await page.getByText('No resolved deals in the selected period.', { exact: true }).isVisible());
+  assert.ok(await page.getByRole('region', { name: 'Pipeline Overview' }).getByText('No open deals.', { exact: true }).isVisible());
   record('Zero revenue, resolved outcomes and current Win Rate have honest empty states');
   async function create(title, value, index = 0) {
     const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: title, dealValue: value } });
@@ -41,10 +41,15 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   const timestamp = new Date();
   const unknown = await prisma.deal.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, stageId: stages[3].id, title: 'Unattributed historical fixture',
     value: 5000, currency: 'PHP', createdAt: new Date(+timestamp - 3600000), closedAt: timestamp, assignedUserId: agent.id, ownerId: agent.id } });
-  await prisma.dealStageHistory.deleteMany({ where: { dealId: unknown.id } });
+  // This disposable legacy fixture intentionally lacks history. Release its
+  // current-entry reference before deletion, preserving the production FK.
+  await prisma.$transaction([
+    prisma.deal.update({ where: { id: unknown.id }, data: { currentStageHistoryId: null } }),
+    prisma.dealStageHistory.deleteMany({ where: { dealId: unknown.id } }),
+  ]);
   await expectValue('Total Revenue', money(6500));
   await expectValue('Win Rate', '42.9%');
-  await page.getByText('2 won deals', { exact: true }).last().waitFor();
+  await page.getByRole('region', { name: 'Sales Leaderboard' }).getByText('2 deals', { exact: true }).waitFor();
   assert.ok(await page.getByText(/1 won deals.*5,000.00 without verified eligible sales credit/).isVisible());
   await page.getByText(/Reporting warnings/).click();
   await page.getByText(/period wins lack verified historical agent attribution/).waitFor();
@@ -54,6 +59,25 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   const initial = await fetchReport('range=thisMonth'); reconcile(initial);
   assert.equal(initial.leaderboard[0].revenue, 1500); assert.equal(initial.leaderboard[0].won, 2);
   assert.equal(initial.conversion.cohort, 7); assert.equal(initial.conversion.qualifiedToWon, null);
+  assert.deepEqual(await page.getByRole('heading', {level:3}).allTextContents(), ['Action Center','Revenue Trend','Pipeline Overview','Conversion Funnel','Sales Leaderboard']);
+  for (const title of ['Avg Deal Velocity','Deals Won vs. Lost','Pipeline Distribution','Pipeline Value by Stage']) assert.equal(await page.getByText(title,{exact:true}).count(),0);
+  const overview=page.getByRole('region',{name:'Pipeline Overview',exact:true});
+  for(const stage of initial.distribution){
+    const row=overview.getByRole('listitem',{name:stage.name,exact:true});
+    assert.equal(await row.getByRole('meter').getAttribute('aria-valuenow'),String(stage.count));
+    assert.equal(await row.getByLabel(money(stage.value),{exact:true}).count(),1);
+    assert.equal(await row.getByRole('meter').locator('div').evaluate((bar,color)=>{const probe=document.createElement('span');probe.style.backgroundColor=color;return probe.style.backgroundColor===bar.style.backgroundColor;},stage.color),true);
+  }
+  const funnel=page.getByRole('region',{name:'Conversion Funnel',exact:true});
+  for(const stage of initial.conversion.stages.slice(0,4)) await funnel.getByRole('listitem',{name:`${stage.name}: ${stage.reached} reached`,exact:true}).waitFor();
+  assert.deepEqual(await funnel.locator('dl dd').allTextContents(),[initial.conversion.leadToContacted,initial.conversion.contactedToQualified,initial.conversion.qualifiedToWon].map(value=>value==null?'Unavailable':`${value}%`));
+  const board=page.getByRole('region',{name:'Sales Leaderboard',exact:true});
+  for(const [index,agent] of initial.leaderboard.entries()){
+    await board.getByLabel(`Rank ${index+1}`,{exact:true}).waitFor();
+    await board.getByText(`${agent.firstName} ${agent.lastName}`,{exact:true}).waitFor();
+    assert.equal(await board.getByLabel(money(agent.revenue),{exact:true}).count(),1);
+  }
+  record('Requested Dashboard structure uses exact API stage values, colors, historical counts/rates and attributed agents');
 
   for (const theme of ['light','dark']) {
     await page.evaluate(theme => { localStorage.setItem('app_theme', theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, mode: theme === 'dark' ? 'Dark' : 'Light' } })); }, theme);
@@ -61,20 +85,21 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     for (const interval of ['Week','Month','Year']) {
       await page.getByRole('button', { name: 'Filter Revenue Trend', exact: true }).click();
       await page.getByRole('menuitem', { name: interval, exact: true }).click();
-      await page.getByRole('heading', { name: `Revenue Trend by ${interval}`, exact: true }).waitFor();
+      await page.getByRole('heading', { name: 'Revenue Trend', exact: true }).waitFor();
       const report = await fetchReport(`range=thisMonth&revenueInterval=${interval.toLowerCase()}`); reconcile(report);
-      for (const width of [320,375,390,768,1024,1440]) {
+      for (const width of [320,375,390,430,768,1024,1440]) {
         await page.setViewportSize({ width, height: 1000 }); await wait(350);
         const dimensions = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
+          overflowingRates: [...document.querySelectorAll('section[aria-label="Conversion Funnel"] dd')].filter(value => value.scrollWidth > value.clientWidth + 1).map(value => value.textContent),
           charts: [...document.querySelectorAll('canvas')].map(canvas => { const bounds = canvas.getBoundingClientRect(); return { width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, labels: canvas.__labels ?? [] }; }) }));
         assert.ok(dimensions.scrollWidth <= width + 1, JSON.stringify(dimensions));
-        assert.equal(dimensions.charts.length, 4);
+        assert.deepEqual(dimensions.overflowingRates, [], 'Unavailable conversion rates fit their cells');
+        assert.equal(dimensions.charts.length, 1);
         for (const canvas of dimensions.charts) {
           assert.ok(canvas.width > 0 && canvas.height > 0 && canvas.left >= 0 && canvas.right <= width + 1, JSON.stringify(canvas));
           assert.ok(!canvas.labels.some(label => /^\d{4}-\d{2}-\d{2}$/.test(label)), 'Human-readable dates');
         }
-        assert.ok(dimensions.charts[3].labels.includes('Lead'), 'Vertical stage category labels');
-        assert.ok(dimensions.charts[3].labels.some(label => label.startsWith('₱')), 'Compact currency scale');
+        assert.ok(dimensions.charts[0].labels.some(label => label.startsWith('₱')), 'Compact currency scale');
         record(`${theme} ${interval} charts, labels and legends fit ${width}px`, dimensions);
       }
     }
@@ -101,7 +126,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   await page.route('**/api/proxy/reporting/dashboard?*', route => failed ? route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Metrics refresh unavailable' } }) }) : route.continue());
   await page.getByRole('button', { name: 'Sync Metrics', exact: true }).click();
   await page.getByRole('alert').filter({ hasText: 'Metrics refresh unavailable' }).waitFor();
-  assert.equal(await page.getByRole('group', { name: 'Total Revenue', exact: true }).locator('.text-base').innerText(), money(6500));
+  assert.equal(await page.getByRole('group', { name: 'Revenue', exact: true }).getByLabel(money(6500), { exact: true }).getAttribute('aria-label'), money(6500));
   failed = false; await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await until(async () => await page.getByRole('alert').filter({ hasText: 'Metrics refresh unavailable' }).count() === 0, 'Refresh recovery');
   await page.unroute('**/api/proxy/reporting/dashboard?*');
@@ -114,13 +139,14 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   await page.getByRole('button', { name: 'Apply dates', exact: true }).click();
   await expectValue('Total Revenue', money(0), false);
   await expectValue('Win Rate', '42.9%', false); await expectValue('Forecasted Revenue', money(225000), false);
-  assert.ok(await page.getByText('No resolved deals in the selected period.').isVisible());
+  assert.ok(await page.getByText('No won revenue in the selected period.').isVisible());
   assert.equal((await fetchReport('range=custom&start=2020-01-01&end=2020-01-02')).conversion.cohort, 7);
   record('Custom global date filter changes period charts while current KPIs and independent cohort stay consistent');
+  await page.getByText('Cohort details', {exact:true}).click();
   for (const label of ['Week','Month','Year','Custom Range']) {
     const range = label === 'Custom Range' ? 'custom' : label.toLowerCase();
     const response = page.waitForResponse(response => response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('funnelRange') === range);
-    await page.getByRole('button', { name: 'Filter Deal Pipeline Conversion Funnel', exact: true }).click();
+    await page.getByRole('button', { name: 'Filter Conversion Funnel', exact: true }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
     if (label === 'Custom Range') {
       await page.getByLabel('Funnel From Date', { exact: true }).fill(today);
@@ -130,7 +156,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     const result = await (await response).json();
     assert.equal(result.data.conversion.period.range, range);
     assert.equal(result.data.metrics.totalRevenue, 0);
-    await page.getByText(/deals in the creation cohort.*Historical milestones/).waitFor({ state: 'visible' });
+    await page.getByText(/deals in the creation cohort.*Historical milestones/).waitFor({ state: 'attached' });
     record(`Independent ${label} cohort filter renders recorded history`);
   }
   await page.getByRole('button', { name: 'Dashboard date range', exact: true }).click();
@@ -139,16 +165,16 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   const invalid = await create('Metrics missing money', 100, 0);
   await prisma.deal.update({ where: { id: invalid.id }, data: { value: null } });
   await expectValue('Forecasted Revenue', 'Unavailable');
-  await page.getByText('Pipeline value unavailable.', { exact: true }).waitFor();
+  await page.getByRole('region', {name:'Pipeline Overview'}).getByText('Unavailable', {exact:true}).waitFor();
   await prisma.deal.update({ where: { id: invalid.id }, data: { value: 1234567890.12 } });
   await expectValue('Forecasted Revenue', money(1234792890.12));
-  for (const width of [320,375,390,768,1024,1440]) {
+  for (const width of [320,375,390,430,768,1024,1440]) {
     await page.setViewportSize({ width, height: 1000 }); await wait(250);
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
   }
   await prisma.deal.update({ where: { id: invalid.id }, data: { isArchived: true } });
   await expectValue('Forecasted Revenue', money(225000));
   record('Missing money is unavailable, long amounts fit all requested widths, and archival updates current metrics through SSE');
-  await staffPage.getByRole('group', { name: 'Forecasted Revenue', exact: true }).waitFor();
+  await staffPage.getByRole('group', { name: 'Forecast', exact: true }).waitFor();
   reconcile(await fetchReport('range=thisMonth'));
 }

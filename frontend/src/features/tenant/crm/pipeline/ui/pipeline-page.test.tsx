@@ -1,6 +1,6 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -52,7 +52,7 @@ it('omits My Deals for Client Admin and keeps All Deals selected for personal-vi
   state.role = 'Client Admin'; state.params = 'tab=my&view=my';
   render(<PipelinePage />);
   expect(screen.queryByRole('button', { name: 'My Deals', hidden: true })).toBeNull();
-  expect(screen.getByRole('button', { name: 'All Deals' }).className).toContain('border-b-2');
+  expect(screen.getByRole('button', { name: 'All Deals', pressed: true })).toBeTruthy();
   expect(screen.getByText('First Deal')).toBeTruthy();
   expect(screen.getByText('Second Deal')).toBeTruthy();
   expect(state.replace).not.toHaveBeenCalled();
@@ -61,9 +61,13 @@ it('omits My Deals for Client Admin and keeps All Deals selected for personal-vi
 it.each(['Sales', 'Account Manager'])('preserves personal Deal filtering for %s', role => {
   state.role = role;
   render(<PipelinePage />);
-  expect(screen.getByRole('button', { name: 'All Deals' }).className).toContain('border-b-2');
+  const tabs = screen.getByRole('group', { name: 'Deals views' });
+  expect(tabs.className).toContain('overflow-x-auto');
+  expect(tabs.className).toContain('flex-nowrap');
+  expect(within(tabs).getAllByRole('button')).toHaveLength(2);
+  expect(within(tabs).getByRole('button', { name: 'All Deals', pressed: true }).querySelector('[aria-hidden]')?.className).toContain('bg-primary');
   fireEvent.click(screen.getByRole('button', { name: 'My Deals' }));
-  expect(screen.getByRole('button', { name: 'My Deals' }).className).toContain('border-b-2');
+  expect(within(tabs).getByRole('button', { name: 'My Deals', pressed: true })).toBeTruthy();
   expect(screen.getByText('First Deal')).toBeTruthy();
   expect(screen.queryByText('Second Deal')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'All Deals' }));
@@ -77,11 +81,11 @@ it('clears a mounted personal Deal selection when the role changes to Client Adm
   state.role = 'Client Admin';
   view.rerender(<PipelinePage />);
   expect(screen.queryByRole('button', { name: 'My Deals', hidden: true })).toBeNull();
-  expect(screen.getByRole('button', { name: 'All Deals' }).className).toContain('border-b-2');
+  expect(screen.getByRole('button', { name: 'All Deals', pressed: true })).toBeTruthy();
   expect(screen.getByText('Second Deal')).toBeTruthy();
   state.role = 'Sales';
   view.rerender(<PipelinePage />);
-  expect(screen.getByRole('button', { name: 'My Deals' }).className).not.toContain('border-b-2');
+  expect(screen.getByRole('button', { name: 'My Deals', pressed: false })).toBeTruthy();
   expect(screen.getByText('Second Deal')).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'My Deals' }));
   expect(screen.queryByText('Second Deal')).toBeNull();

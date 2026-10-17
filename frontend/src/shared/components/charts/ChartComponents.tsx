@@ -78,6 +78,7 @@ interface AreaProps {
   dataKey: string; name?: string; stroke?: string;
   strokeWidth?: number; fill?: string; type?: string; fillOpacity?: number;
   activeDot?: boolean | object;
+  dot?: boolean;
 }
 interface LineItemProps {
   dataKey: string; name?: string; stroke?: string;
@@ -297,7 +298,7 @@ export function AreaChart({ data, children }: BarChartProps) {
       return gradient;
     },
     tension: 0.4,
-    pointRadius: data.length === 1 ? 6 : 0,
+    pointRadius: data.length === 1 ? 6 : area.dot ? 4 : 0,
     pointHitRadius: 12,
     pointHoverRadius: 6,
   }));

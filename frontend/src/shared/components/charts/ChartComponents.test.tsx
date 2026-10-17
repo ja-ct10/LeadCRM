@@ -44,6 +44,12 @@ it('formats the actual area bucket tooltip and leaves multiple observations unch
   expect(captured.line.options.plugins.tooltip.callbacks.title([{ label: '2020-01-01' }])).toBe('Jan 2020');
   expect(captured.line.data.datasets[0].data).toEqual([10,20]);
   expect(captured.line.options.scales.x.offset).toBe(false);
+  expect(captured.line.data.datasets[0].pointRadius).toBe(0);
+});
+it('opts into small multi-observation area markers without altering values', () => {
+  render(<AreaChart data={[{ name: 'Jan', revenue: 10 }, { name: 'Feb', revenue: 20 }]}><Area dataKey="revenue" dot /></AreaChart>);
+  expect(captured.line.data.datasets[0].pointRadius).toBe(4);
+  expect(captured.line.data.datasets[0].data).toEqual([10, 20]);
 });
 it('anchors a zero-only revenue period at zero and formats readable calendar ticks', () => {
   render(<AreaChart data={[{ name: '2020-01-01', revenue: 0 }]}><XAxis dataKey="name" tickFormatter={() => 'Jan 2020'} /><YAxis domain={[0, 'auto']} /><Area dataKey="revenue" /></AreaChart>);

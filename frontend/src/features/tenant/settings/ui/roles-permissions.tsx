@@ -4,6 +4,7 @@ import { PageHeader } from '@/shared/components/ui/page-header';
 
 
 import React, { useState, useId, useMemo, useCallback, useEffect, useRef } from 'react';
+import Link from 'next/link';
 import { ArrowLeft, Plus, Copy, Trash2, Users, Shield, Info, X, MoreHorizontal, Edit2 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useData } from '@/store/DataContext';
@@ -430,7 +431,7 @@ export function RolesPermissions({ onViewActiveChange }: RolesPermissionsProps):
         <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed pt-1">
           Roles allow you to control what users can see and do within the application. System roles provide foundational access levels and cannot be deleted, while Custom roles can be tailored specifically to your organization's unique requirements.{' '}
           A user's effective permissions combine all active assigned custom roles. Disabling a permission here does not remove a grant from another assigned custom role.{' '}
-          <button className="text-slate-900 dark:text-white font-medium hover:underline underline-offset-4 transition-all">Learn more about RBAC</button>
+          <Link href="/help/category/roles" className="text-slate-900 dark:text-white font-medium hover:underline underline-offset-4 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">Learn more about RBAC</Link>
         </p>
       </div>
 

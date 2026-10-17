@@ -16,6 +16,7 @@ import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { ModuleFilterRail, type FilterGroup } from '@/shared/components/crm/module-filter-rail';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
+import { ModuleTabs } from '@/shared/components/crm/module-tabs';
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { DealPanel } from '@/shared/components/crm';
 import { DealFormSheet } from '@/features/tenant/crm/deals/ui/deal-form';
@@ -176,7 +177,8 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
         </TooltipTrigger><TooltipContent>Manage pipeline stages</TooltipContent></Tooltip></TooltipProvider>}
         {canCreate && <CreateButton label="New Deal" disabled={!initialStageId} onClick={() => setCreateStage(initialStageId)} />}
       </div>} />
-    <div className="mb-3 flex gap-1 border-b border-border">{[{ label: 'All Deals', personal: false }, { label: 'My Deals', personal: true }].filter(tab => !isClientAdmin || !tab.personal).map(tab => <button key={tab.label} onClick={() => setMyDeals(tab.personal)} className={`min-h-11 px-3 text-sm ${myDeals === tab.personal ? 'border-b-2 border-primary text-primary' : 'text-muted-foreground'}`}>{tab.label}</button>)}</div>
+    <ModuleTabs tabs={([{ id: 'all', label: 'All Deals' }, { id: 'my', label: 'My Deals' }] as const).filter(tab => !isClientAdmin || tab.id !== 'my')}
+      activeTab={myDeals ? 'my' : 'all'} onTabChange={tab => setMyDeals(tab === 'my')} ariaLabel="Deals views" className="mb-3" />
     <div className="mb-3 flex min-w-0 flex-wrap items-center gap-2"><label className="flex w-full min-w-0 items-center gap-2 text-xs text-muted-foreground sm:w-auto">Pipeline<input aria-label="Pipeline" value={pipeline?.name ?? ''} readOnly className="h-9 min-w-0 flex-1 max-w-[min(18rem,calc(100vw-4rem))] cursor-default rounded-lg border border-border bg-card px-2 text-foreground" /></label><div className="relative min-w-32 flex-1 sm:max-w-64"><Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" /><input aria-label="Search deals" placeholder="Search deals..." value={search} onChange={e => setSearch(e.target.value)} className="h-9 w-full rounded-lg border border-border bg-card pl-9 pr-3 text-xs" /></div><FilterButton title="Deals" open={showFilters} onClick={() => setShowFilters(!showFilters)} /><div className="ml-auto"><RefreshButton onClick={refresh} refreshing={refreshing || query.isRefreshing || query.isInitialLoad} /></div></div>
     <div className="flex min-h-0 min-w-0 flex-1 gap-3">
       <ModuleFilterRail showFilters={showFilters} filterGroups={groups} onToggleFilters={() => setShowFilters(false)} filterSearchTerm={filterSearch} onFilterSearch={setFilterSearch} totalRecords={all.length} onClearFilters={() => setFilters({})} onFilterToggle={(group, item) => setFilters(old => ({ ...old, [group]: old[group]?.includes(item) ? old[group].filter(id => id !== item) : [...(old[group] ?? []), item] }))} />

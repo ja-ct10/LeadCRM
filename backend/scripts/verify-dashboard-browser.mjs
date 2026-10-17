@@ -108,12 +108,18 @@ try {
     });
     await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const tab = await context.newPage(); tab.setDefaultTimeout(25000); tab.on('pageerror', error => pageErrors.push(error.message));
-    await tab.goto(base + '/dashboard', { waitUntil: 'domcontentloaded' }); await tab.getByRole('heading', { name: 'Revenue Trend by Month', exact: true }).waitFor();
+    await tab.goto(base + '/dashboard', { waitUntil: 'domcontentloaded' }); await tab.getByRole('heading', { name: 'Revenue Trend', exact: true }).waitFor();
     await until(async () => (await tab.evaluate(() => window.__dashboardEvents.length)) > 0,'Dashboard subscription established'); return { context, tab };
   }
   const adminSession = await session(adminToken); page = adminSession.tab;
   const staffSession = await session(agentToken);
-  const value = (tab, label) => tab.getByRole('group', { name: label, exact: true }).locator('.text-base').innerText();
+  const value = async (tab, label) => {
+    const names = { 'Total Revenue': 'Revenue', 'Forecasted Revenue': 'Forecast', 'Active Deals': 'Open Deals', 'Total Leads': 'Leads' };
+    const reporting = new URL(tab.url()).pathname === '/reporting';
+    const group = tab.getByRole('group', { name: reporting ? label : names[label] ?? label, exact: true });
+    return reporting ? group.locator('.text-base').innerText() : group.locator('[data-metric-value]').evaluate(node => node.querySelector('[aria-label]')?.getAttribute('aria-label') ?? node.textContent);
+  };
+  const stageCount = async (tab, name) => tab.getByRole('meter', { name: `${name} deal count relative to largest stage`, exact: true }).getAttribute('aria-valuenow');
   async function expectValue(label, expected, both = true) {
     await until(async () => (await value(page, label)) === expected && (!both || (await value(staffSession.tab, label)) === expected), `${label}=${expected}`);
   }
@@ -153,7 +159,7 @@ try {
       const dimensions = await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
       assert.ok(dimensions.scrollWidth<=width+1);
       await page.screenshot({path:resolve(output,`clock-${width}.png`),fullPage:true});
-      await page.getByRole('heading',{name:'Deal Pipeline Conversion Funnel',exact:true}).scrollIntoViewIfNeeded();
+      await page.getByRole('heading',{name:'Conversion Funnel',exact:true}).scrollIntoViewIfNeeded();
       await page.screenshot({path:resolve(output,`clock-${width}-funnel.png`),fullPage:true});
       record(`Clock, requested notes and responsive toolbar ${width}`,dimensions);
     }
@@ -170,7 +176,7 @@ try {
   for (const index of [1,2,0,2]) {
     await mutation(`Stage movement to ${stages[index].name}`, () => http(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[index].id }), async () => {
       await expectValue('Active Deals', '1');
-      await until(() => page.getByText(`${stages[index].name}: 1 (100%)`, { exact: true }).isVisible(), 'Pipeline moved');
+      await until(async () => await stageCount(page, stages[index].name) === '1', 'Pipeline moved');
     });
   }
   const legacy = await prisma.deal.create({data:{tenantId:tenant.id,pipelineId:pipeline.id,stageId:stages[0].id,title:'Legacy amount correction',value:500,assignedUserId:agent.id,ownerId:agent.id}});
@@ -178,7 +184,7 @@ try {
   // committed database correction as an integration write, without weakening it.
   await mutation('Committed integration amount correction updates pipeline and forecast', () => prisma.deal.update({where:{id:legacy.id},data:{value:1800}}), () => expectValue('Forecasted Revenue', '₱2,800.00'));
   await http(`/crm/deals/${legacy.id}/archive`,'PATCH'); await expectValue('Active Deals','1');
-  await mutation('Won closure updates revenue, trend, counts, rate and attribution', () => http(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[3].id }), async () => { await expectValue('Active Deals','0'); await expectValue('Total Revenue','₱1,000.00'); await expectValue('Win Rate','100%'); await page.getByText('1 won deals', { exact: true }).last().waitFor(); });
+  await mutation('Won closure updates revenue, trend, counts, rate and attribution', () => http(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[3].id }), async () => { await expectValue('Active Deals','0'); await expectValue('Total Revenue','₱1,000.00'); await expectValue('Win Rate','100%'); await page.getByRole('region', {name:'Sales Leaderboard',exact:true}).getByText('1 deal', { exact: true }).waitFor(); });
   const closeAt = (await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).closedAt;
   await http(`/crm/deals/${deal.id}/stage`, 'PATCH', { stageId: stages[3].id });
   assert.equal((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).closedAt.toISOString(), closeAt.toISOString());
@@ -196,7 +202,7 @@ try {
     await http(`/crm/deals/${losing.id}`,'PUT',{title:'Workflow Ready'});
     // This API-only fixture explicitly exercises the bounded production consumer.
     await dispatchQueuedWorkflows();
-  }, async () => until(() => page.getByText('Contacted: 1 (100%)',{exact:true}).isVisible(),'Workflow stage visible'));
+  }, async () => until(async () => await stageCount(page, 'Contacted') === '1','Workflow stage visible'));
   await scope(() => workflows.toggleWorkflow(workflow.id,tenant.id,admin.id,false));
   await mutation('Archive changes eligibility', () => http(`/crm/deals/${losing.id}/archive`,'PATCH'), () => expectValue('Active Deals','0'));
   await mutation('Restore changes eligibility', () => http(`/crm/deals/${losing.id}/restore`,'PATCH'), () => expectValue('Active Deals','1'));
@@ -206,19 +212,19 @@ try {
     await http(`/crm/deals/${losing.id}`,'PUT',{assignedUserId:replacement.id});
     await http(`/crm/deals/${losing.id}/stage`,'PATCH',{stageId:stages[2].id});
     await staffSession.context.setOffline(false);
-  }, async () => until(() => staffSession.tab.getByText('Qualified: 1 (100%)',{exact:true}).isVisible(),'Recovered committed stage after offline period'));
+  }, async () => until(async () => await stageCount(staffSession.tab, 'Qualified') === '1','Recovered committed stage after offline period'));
   api.closeAllConnections(); await new Promise(done => api.close(done));
   api = app.listen(port,'127.0.0.1'); await new Promise(done => api.once('listening',done));
   await wait(200);
   await mutation('Server restart preserves revisions and automatically reconnects', async () => {
     await http(`/crm/deals/${losing.id}`,'PUT',{assignedUserId:agent.id});
     await http(`/crm/deals/${losing.id}/stage`,'PATCH',{stageId:stages[1].id});
-  }, async () => until(() => staffSession.tab.getByText('Contacted: 1 (100%)',{exact:true}).isVisible(),'Restart recovered committed stage'));
-  await mutation('Permission revocation hides sensitive Dashboard without reload', () => http(`/administration/roles/${role.id}`,'PUT',{permissions:grants.map(p => p.module === 'dashboard' ? {...p,canView:false} : p)}), async () => until(async () => await staffSession.tab.getByRole('heading',{name:'Revenue Trend by Month',exact:true}).count() === 0,'Dashboard hidden'));
-  await mutation('Permission restoration remounts Dashboard without reload', () => http(`/administration/roles/${role.id}`,'PUT',{permissions:grants}), async () => { await staffSession.tab.getByRole('heading',{name:'Revenue Trend by Month',exact:true}).waitFor(); await until(async () => await value(staffSession.tab,'Active Deals') === '1','Grant visible'); });
+  }, async () => until(async () => await stageCount(staffSession.tab, 'Contacted') === '1','Restart recovered committed stage'));
+  await mutation('Permission revocation hides sensitive Dashboard without reload', () => http(`/administration/roles/${role.id}`,'PUT',{permissions:grants.map(p => p.module === 'dashboard' ? {...p,canView:false} : p)}), async () => until(async () => await staffSession.tab.getByRole('heading',{name:'Revenue Trend',exact:true}).count() === 0,'Dashboard hidden'));
+  await mutation('Permission restoration remounts Dashboard without reload', () => http(`/administration/roles/${role.id}`,'PUT',{permissions:grants}), async () => { await staffSession.tab.getByRole('heading',{name:'Revenue Trend',exact:true}).waitFor(); await until(async () => await value(staffSession.tab,'Active Deals') === '1','Grant visible'); });
   for (const label of ['Today','Last 7 Days','Last 30 Days','This Month','Last Month','Last 3 Months','Last 6 Months','This Year']) {
     await page.getByRole('button',{name:'Dashboard date range',exact:true}).click(); await page.getByRole('menuitem',{name:label,exact:true}).click();
-    await page.getByRole('heading',{name:'Revenue Trend by Month',exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Revenue Trend',exact:true}).waitFor();
     await until(async () => !await page.getByRole('button',{name:'Syncing…',exact:true}).count(),'Date query complete');
   }
   // A live-clock suite may cross Manila midnight after creating/closing its records.
@@ -242,15 +248,16 @@ try {
   for (const interval of ['Week','Month','Year']) {
     await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click();
     await page.getByRole('menuitem',{name:interval,exact:true}).click();
-    await page.getByRole('heading',{name:`Revenue Trend by ${interval}`,exact:true}).waitFor();
+    await page.getByRole('heading',{name:'Revenue Trend',exact:true}).waitFor();
     await expectValue('Total Revenue','₱2,800.00');
   }
   await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click(); await page.getByRole('menuitem',{name:'Month',exact:true}).click();
+  await page.getByText('Cohort details', {exact:true}).click();
   for (const period of ['Week','Month','Year']) {
-    await page.getByRole('button',{name:'Filter Deal Pipeline Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:period,exact:true}).click();
-    await page.getByText(`Deals created during the current ${period.toLowerCase()} · Recorded milestones through today`,{exact:true}).waitFor();
+    await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:period,exact:true}).click();
+    await page.getByText(`Deals created during the current ${period.toLowerCase()} · Recorded milestones through today`,{exact:true}).waitFor({state:'attached'});
   }
-  await page.getByRole('button',{name:'Filter Deal Pipeline Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Range',exact:true}).click();
+  await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Range',exact:true}).click();
   const today = dashboardToday();
   await page.getByLabel('Funnel From Date').fill(fixtureStart); await page.getByLabel('Funnel To Date').fill(today);
   assert.equal(await page.getByLabel('Funnel To Date').getAttribute('max'),today);
@@ -262,15 +269,18 @@ try {
   await page.getByLabel('Funnel From Date').fill(fixtureStart);
 
   await page.getByRole('button',{name:'Apply funnel dates',exact:true}).click();
-  await page.getByText(/Deals created .*Recorded milestones through/).filter({hasNotText:'current'}).waitFor();
+  await page.getByText(/Deals created .*Recorded milestones through/).filter({hasNotText:'current'}).waitFor({state:'attached'});
   assert.equal(await page.getByText('View revenue and outcome data',{exact:true}).count(),0);
   assert.equal(await page.getByText(/Reporting limitations \(/).count(),0);
   assert.equal(await page.getByText(/Automatic updates connected|Assigned records only/).count(),0);
   const cohort = await http(`/reporting/dashboard?range=custom&start=${fixtureStart}&end=${fixtureEnd}&revenueInterval=month&funnelRange=custom&funnelStart=${fixtureStart}&funnelEnd=${today}`);
   for (const [label, rate] of [
     ['Lead → Contacted', cohort.conversion.leadToContacted], ['Contacted → Qualified', cohort.conversion.contactedToQualified],
-    ['Qualified → Closed Won', cohort.conversion.qualifiedToWon], ['Qualified → Closed Lost', cohort.conversion.qualifiedToLost],
-  ]) await page.getByText(`${label}: ${rate === null ? 'Unavailable' : `${rate}%`}`, { exact: true }).waitFor();
+    ['Qualified → Closed Won', cohort.conversion.qualifiedToWon],
+  ]) {
+    const rateRow=page.getByRole('region',{name:'Conversion Funnel',exact:true}).locator('dl > div').filter({has:page.getByText(label,{exact:true})});
+    await rateRow.locator('dd').getByText(rate===null?'Unavailable':`${rate}%`,{exact:true}).waitFor();
+  }
   record('Revenue intervals, independent funnel periods, historical custom date controls and requested cleanup');
   const pipelineSession = await session(adminToken);
   await pipelineSession.tab.goto(base+'/crm/deals',{waitUntil:'domcontentloaded',timeout:60000});
@@ -292,9 +302,10 @@ try {
     await until(async()=>{
       const rows=await Promise.all([http('/reporting/dashboard'),http('/reporting/dashboard','GET',undefined,agentToken)]);
       if(!rows.every(row=>row.pipeline.stages[index].color===color)) return false;
-      const selectors = [page,staffSession.tab].map(tab=>index>2
-        ? tab.locator('p').filter({ hasText: new RegExp(`^${stage.name}$`) }).locator('span').first()
-        : tab.getByText(stage.name+': '+(index===1?'1 (100%)':'0 (0%)'),{exact:true}).locator('span').first());
+      if(index===4) return true; // Closed Lost has no primary Dashboard stage block.
+      const selectors = [page,staffSession.tab].map(tab=>index===3
+        ? tab.getByRole('region',{name:'Conversion Funnel',exact:true}).getByRole('listitem',{name:new RegExp(`^${stage.name}:`)}).locator('div').first()
+        : tab.getByRole('meter',{name:`${stage.name} deal count relative to largest stage`,exact:true}).locator('div'));
       return (await Promise.all(selectors.map(selector=>selector.evaluate(el=>el.style.backgroundColor)))).every(value=>value===`rgb(18, 52, ${80+index})`);
     },'Saved stage color reaches Dashboard');
     const observerColor = observerSession.tab.getByRole('heading',{name:stage.name,exact:true}).locator('..').locator('..').locator('[aria-hidden="true"]').first();
@@ -346,7 +357,7 @@ try {
     }
   }
   await page.setViewportSize({width:1440,height:1000});
-  await mutation('Deactivation clears session and preserves historical credit', () => http(`/administration/users/${agent.id}/deactivate`,'POST',{replacementAgentId:replacement.id}), async () => { await until(async () => await staffSession.tab.getByRole('heading',{name:'Revenue Trend by Month',exact:true}).count() === 0,'Inactive session cleared'); await page.getByText('First Agent',{exact:true}).waitFor(); });
+  await mutation('Deactivation clears session and preserves historical credit', () => http(`/administration/users/${agent.id}/deactivate`,'POST',{replacementAgentId:replacement.id}), async () => { await until(async () => await staffSession.tab.getByRole('heading',{name:'Revenue Trend',exact:true}).count() === 0,'Inactive session cleared'); await page.getByText('First Agent',{exact:true}).waitFor(); });
   for (let i=0;i<5;i++) { const r = await http('/reporting/dashboard?range=thisMonth'); queryTimes.push(r.queryMs); assert.equal(r.metrics.totalRevenue,r.trend.reduce((sum,p)=>sum+p.revenue,0)); assert.equal(r.metrics.activeDeals,r.distribution.reduce((sum,p)=>sum+p.count,0)); assert.equal(r.metrics.openPipelineValue,r.distribution.reduce((sum,p)=>sum+(p.value ?? 0),0)); }
   record('Authoritative reconciliation after all committed mutations',{queryMs:queryTimes});
   }

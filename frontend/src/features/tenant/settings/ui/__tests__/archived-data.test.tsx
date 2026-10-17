@@ -66,6 +66,10 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(filters.className).toContain('border-b');
   expect(within(filters).getByRole('button', { name: 'All', pressed: true }).querySelector('[aria-hidden]')?.className).toContain('bg-primary');
   expect(within(filters).queryByRole('button', { name: 'Role' })).toBeNull();
+  const primary = screen.getByRole('group', { name: 'Archived records search and refresh' });
+  expect(primary.className).toContain('flex-nowrap');
+  expect(within(primary).getByRole('textbox', { name: 'Search archived records' })).toBeTruthy();
+  expect(within(primary).getByRole('button', { name: 'Refresh' })).toBeTruthy();
   await screen.findByText('Saved Lead');
   expect(screen.getByRole('grid')).toBeTruthy();
   expect(screen.getAllByRole('checkbox')).toHaveLength(4);

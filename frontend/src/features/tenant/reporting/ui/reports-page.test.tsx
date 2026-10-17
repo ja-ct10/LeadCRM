@@ -1,12 +1,13 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
-vi.mock('@/features/tenant/dashboard/ui/dashboard', () => ({ default: ({ heading, renderToolbarActions }: any) => <div>{heading}{renderToolbarActions({ query: { range: 'last3', revenueInterval: 'week' }, report: { period: { start: '2026-08-01', end: '2026-10-10' } }, error: null, className: 'existing-toolbar-style' })}</div> }));
+vi.mock('@/features/tenant/dashboard/ui/dashboard', () => ({ default: ({ heading, renderToolbarActions, presentation }: any) => <div data-presentation={presentation}>{heading}{renderToolbarActions({ query: { range: 'last3', revenueInterval: 'week' }, report: { period: { start: '2026-08-01', end: '2026-10-10' } }, error: null, className: 'existing-toolbar-style' })}</div> }));
 import ReportsPage from './reports-page';
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it('uses the canonical reporting UI with its export and report title', () => {
   render(<ReportsPage />);
   expect(screen.getByText('Analytics & Reports')).toBeTruthy();
+  expect(screen.getByText('Analytics & Reports').getAttribute('data-presentation')).toBe('reporting');
   expect(screen.getByRole('button', { name: 'Export CSV' })).toBeTruthy();
 });
 
