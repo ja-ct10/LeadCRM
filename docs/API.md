@@ -107,7 +107,8 @@ All paths are relative to /api/v1. See [authentication and onboarding](authentic
 | POST | /auth/profile/avatar | Authenticated raw JPEG/PNG/WebP body, maximum 5 MB; stores a normalized 512×512 WebP in private persistent storage and returns the canonical user |
 | GET | /auth/profile/avatar/:avatarId | Authenticated retrieval of the current user's saved avatar; private, uncached response |
 | POST | /auth/logout | Revoke session and expire cookie |
-| POST | /auth/change-password | Use authenticated session, store strong password, clear first-login flag and revoke other sessions |
+| POST | /auth/activity | Record authenticated foreground activity with `lastActiveAt`; cannot revive an idle-expired session |
+| POST | /auth/change-password | Verify required `currentPassword`, store strong `password`, clear first-login flag and revoke other sessions |
 | POST | /auth/forgot-password | Request password recovery |
 | POST | /auth/reset-password | Complete password recovery and revoke sessions |
 | GET | /auth/onboarding/status | Canonical account state |
@@ -210,13 +211,27 @@ the same `requestId` does not duplicate the submission or Deals.
 Product configuration uses `GET /administration/product-interests` and
 `PATCH /administration/product-interests/:id` (under `/api/v1`). The update requires
 `products.edit`, a valid product UUID, and a non-empty patch containing a trimmed
-name and/or a non-negative numeric
+name, category, description and/or a non-negative numeric
 amount with at most two decimal places. It returns the updated catalog after the
 transaction commits. `ProductInterest.dealValue` remains the existing decimal
 database field; currency formatting is presentation only.
 The editor accepts `₱25,000.00` and sends `dealValue: 25000`; formatted strings are
 not accepted by the API. See [the normalization report](product-normalization-report.md)
 for migration verification and deployment requirements.
+
+Product create requires `name`, `category` and `dealValue`; `description` defaults
+to empty and is limited to 1,000 characters. Category uses the existing 200-character
+name limit. Catalog responses include `meta.categories`, distinct same-tenant
+categories including archived Products. Inline additions save with the Product.
+Existing names/IDs/prices and historical Deal values are preserved by the additive
+metadata migration. See [implementation and verification](security-export-products-verification.md).
+
+`GET /crm/{leads,contacts,accounts,deals}/export` requires the corresponding existing
+View permission and accepts the list's filters/search/sort/scope while ignoring
+pagination. Deals additionally accepts `view`, a JSON-encoded shared board-filter
+contract. Export uses bounded reads of the same authorized list queries in one
+snapshot and returns UTF-8 CSV with business columns, escaping/formula protection,
+and a Manila-date filename. No tenant/security/database identifiers are exported.
 
 | Method | Path | Description |
 |---|---|---|
@@ -544,6 +559,7 @@ metadata and does not change the registered staff eligibility policy.
 | POST | `/administration/users/bulk-update` | Existing profile/role/status bulk changes; membership changes are individual only | Applicable field grants |
 | GET | `/administration/users/:id/deactivation-impact` | Preview unfinished work and eligible replacement | Client Admin + `users.activate` + `users.view` |
 | POST | `/administration/users/:id/deactivate` | Transactional reassignment and deactivation/session revocation | Client Admin + `users.activate` + `users.view` |
+| POST | `/administration/users/:id/unlock` | Reset login security lock/failures/cooldown/cycles while preserving normal activation status | Client Admin + `users.activate` + `users.view` |
 | PATCH | `/administration/users/:id/archive` | Archive user | `users.archive` |
 | PATCH | `/administration/users/:id/restore` | Restore user | `archived_data.restore` + `users.view` |
 | POST | `/administration/users/:id/password-reset` | Recovery request; no token returned to administrator | `users.edit` |

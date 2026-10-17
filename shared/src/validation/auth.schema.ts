@@ -12,7 +12,7 @@ export const StrongPasswordSchema = z.string().min(8, 'Use at least 8 characters
   'Use uppercase and lowercase letters, a number, and a special character',
 );
 
-export const ChangePasswordSchema = z.object({ password: StrongPasswordSchema }).strict();
+export const ChangePasswordSchema = z.object({ currentPassword: z.string().min(1, 'Old password is required.').max(72), password: StrongPasswordSchema }).strict();
 export type ChangePasswordInput = z.infer<typeof ChangePasswordSchema>;
 
 export const RegisterSchema = z.object({

@@ -5,10 +5,11 @@ import { comparePassword, hashPassword } from '../../shared/helpers/crypto';
 import { AppError } from '../../shared/errors/app-error';
 import { hashToken } from './session.service';
 import { z } from 'zod';
+import { tenantContext } from '../tenant/tenant-context';
 
 export { ChangePasswordSchema } from '@leadcrm/shared';
 // Reuse must be checked before strength: the issued temporary credential is deliberately lowercase.
-export const PasswordChangeRequestSchema = z.object({ password: z.string().min(1).max(72) }).strict();
+export const PasswordChangeRequestSchema = z.object({ currentPassword: z.string().min(1, 'Old password is required.').max(72), password: z.string().min(1).max(72) }).strict();
 
 export async function changePassword(actor: { userId: string; tenantId: string }, input: ChangePasswordInput, currentToken?: string) {
   input = PasswordChangeRequestSchema.parse(input);
@@ -17,6 +18,10 @@ export async function changePassword(actor: { userId: string; tenantId: string }
     if (!user?.passwordHash) {
       throw new AppError('Unable to change password for this account.', 400);
     }
+    await tenantContext.exit(async () => await tx.$queryRaw`SELECT id FROM "User" WHERE id=${actor.userId} AND "tenantId"=${actor.tenantId} FOR UPDATE`);
+    const current = await tx.user.findFirst({ where: { id: actor.userId, tenantId: actor.tenantId } });
+    if (!current || current.passwordHash !== user.passwordHash) throw new AppError('Account changed. Please try again.', 409);
+    if (!await comparePassword(input.currentPassword, user.passwordHash)) throw new AppError('Current password is incorrect.', 400, 'CURRENT_PASSWORD_INCORRECT');
     if (await comparePassword(input.password, user.passwordHash)) {
       throw new AppError(user.mustChangePassword
         ? 'You cannot reuse your temporary password. Please choose a new password.'

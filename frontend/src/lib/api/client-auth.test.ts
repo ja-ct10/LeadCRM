@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { apiClient } from './client';
 import { PASSWORD_CHANGE_REQUIRED_EVENT } from '@/shared/auth/auth-events';
+import { clearPageCache, getPageCacheSize, setPageCache } from '@/shared/cache/page-cache';
 
 afterEach(() => vi.unstubAllGlobals());
 it('signals password-change-required without retrying the protected request', async () => {
@@ -30,6 +31,15 @@ it('preserves authoritative lockout expiry and server time without retrying cred
   vi.stubGlobal('fetch', fetchMock);
   await expect(apiClient.post('/auth/login', {})).rejects.toMatchObject(error);
   expect(fetchMock).toHaveBeenCalledOnce();
+});
+
+it('records activity without discarding cached CRM data', async () => {
+  clearPageCache();
+  setPageCache('leads', 'tenant', {}, { data: [{ id: 'lead' }] });
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('{"success":true}')));
+  await apiClient.post('/auth/activity', { lastActiveAt: new Date().toISOString() });
+  expect(getPageCacheSize()).toBe(1);
+  clearPageCache();
 });
 
 it.each(['/crm/leads', '/crm/contacts', '/crm/accounts', '/crm/deals', '/administration/users', '/administration/users/user/permissions', '/automation/workflows'])('uses the credentialed same-origin path for %s', async path => {

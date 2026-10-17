@@ -10,6 +10,8 @@ import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { Button } from '@/shared/components/ui/button';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { leadsService } from '../services/leads.service';
+import { ExportCsvButton } from '@/shared/components/crm/export-csv-button';
+import { moduleListParams } from '@/shared/services/module-list-params';
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useData } from '@/store/DataContext';
 import { getAssignableAgents } from '@/shared/utils/assigned-agents';
@@ -376,6 +378,7 @@ export default function LeadsPage(): React.ReactElement {
     <>
       <ConfirmActionDialog {...dialogProps} />
       <ModuleWorkspace
+        exportAction={<ExportCsvButton module="leads" params={moduleListParams({ search: debouncedSearch, filter: serverFilters, sort })} />}
         moduleId="leads"
         title="Leads"
         description="Manage and track potential customers and sales opportunities."

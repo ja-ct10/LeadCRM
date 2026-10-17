@@ -157,6 +157,7 @@ export interface ModuleWorkspaceProps {
   kpiCards?: KpiCard[];
   /** Extra toolbar content (e.g. pipeline selector) */
   toolbarExtra?: ReactNode;
+  exportAction?: ReactNode;
   /** Content area — the actual view (table/cards/kanban) */
   children: ReactNode;
   /** Bulk selection bar */
@@ -240,6 +241,7 @@ export function ModuleWorkspace({
   refreshing = false,
   kpiCards,
   toolbarExtra,
+  exportAction,
   children,
   bulkSelection,
   onManageColumns,
@@ -328,6 +330,7 @@ export function ModuleWorkspace({
 
           {/* 2. Filter toggle */}
           <FilterButton title={title} open={showFilters} onClick={onToggleFilters} />
+          {exportAction}
 
           {/* 3. Page-size selector */}
           {!loading && !isDataLoading && onPageSizeChange && (

@@ -5,7 +5,8 @@ import { loginUser } from './auth.service';
 import { createLockoutProof, restoreLoginLockout, LoginLockedError, LOGIN_LOCKOUT_COOKIE, LOGIN_LOCKOUT_COOKIE_OPTIONS } from './login-attempt.service';
 import { requestPasswordReset, resetPasswordWithToken } from './password-reset.service';
 import { ForgotPasswordSchema, ResetPasswordSchema } from './auth.dto';
-import { revokeSession } from './session.service';
+import { revokeSession, validateSession } from './session.service';
+import { SESSION_IDLE_MS } from '@leadcrm/shared';
 import { readAuthUser } from './auth-user';
 import { AUTH_COOKIE_NAME as COOKIE_NAME, AUTH_COOKIE_OPTIONS as COOKIE_OPTIONS } from './auth-session';
 import { ensureSalesGroup } from '../../modules/administration/groups/sales-group';
@@ -28,7 +29,7 @@ export async function login(req: Request, res: Response, next: NextFunction): Pr
     // Token stored in HttpOnly cookie — never accessible from JS
     res.cookie(COOKIE_NAME, result.token, COOKIE_OPTIONS);
 
-    res.json({ success: true, data: { user: result.user } });
+    res.json({ success: true, data: { user: result.user, session: sessionMetadata(await validateSession(result.token)) } });
   } catch (err) {
     if (err instanceof LoginLockedError) {
       res.cookie(LOGIN_LOCKOUT_COOKIE, createLockoutProof(err), { ...LOGIN_LOCKOUT_COOKIE_OPTIONS, expires: new Date(err.retryAt!) });
@@ -56,7 +57,19 @@ export async function logout(req: Request, res: Response, next: NextFunction): P
 export async function me(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { userId, tenantId } = req.user!;
-    res.json({ success: true, data: { user: req.authUser ?? await readAuthUser(userId, tenantId) } });
+    res.json({ success: true, data: { user: req.authUser ?? await readAuthUser(userId, tenantId), session: sessionMetadata(req.authSession!) } });
+  } catch (error) { next(error); }
+}
+
+function sessionMetadata(session: { lastActiveAt: Date; expiresAt: Date }) {
+  return { lastActiveAt: session.lastActiveAt.toISOString(), idleExpiresAt: new Date(+session.lastActiveAt + SESSION_IDLE_MS).toISOString(), expiresAt: session.expiresAt.toISOString(), serverNow: new Date().toISOString() };
+}
+export async function activity(req: Request, res: Response, next: NextFunction) {
+  try {
+    const token = req.cookies?.[COOKIE_NAME] ?? req.headers.authorization?.replace(/^Bearer /, '');
+    const session = await validateSession(token, new Date(req.body.lastActiveAt), true);
+    res.setHeader('Cache-Control', 'no-store');
+    res.json({ success: true, data: { session: sessionMetadata(session) } });
   } catch (error) { next(error); }
 }
 

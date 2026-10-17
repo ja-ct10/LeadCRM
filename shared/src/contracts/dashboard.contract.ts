@@ -1,3 +1,4 @@
+import { csvDocument } from './crm-export';
 import { z } from 'zod';
 
 export const DASHBOARD_TIMEZONE = 'Asia/Manila';
@@ -118,9 +119,5 @@ export function dashboardCsv(report: DashboardReport): string {
     ['Action', 'Due', 'Priority'], ...report.actions.map(row => [row.title, row.dueDate, row.priority]),
     ...report.warnings.map(warning => ['Reporting limitation', warning]),
   ];
-  return '\uFEFF' + rows.map(row => row.map(value => {
-    let cell = value === null ? 'Unavailable' : String(value);
-    if (/^[\s\uFEFF]*[=+\-@]/.test(cell) || /^[\t\r\n]/.test(cell)) cell = `'${cell}`;
-    return `"${cell.replace(/"/g, '""')}"`;
-  }).join(',')).join('\r\n');
+  return csvDocument(rows.map(row => row.map(value => value === null ? 'Unavailable' : value)));
 }

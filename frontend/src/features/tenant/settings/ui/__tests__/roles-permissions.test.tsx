@@ -1,7 +1,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS } from '@leadcrm/shared';
+import { PERMISSION_GROUPS, PERMISSION_MODULES, EMPTY_PERMISSION_FLAGS, permissionLabel } from '@leadcrm/shared';
 import { DataProvider } from '@/store/DataContext';
 import { RolesPermissions } from '../roles-permissions';
 const mocks = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), denied: [] as string[] }));
@@ -15,6 +15,7 @@ let failure = '';
 let pending: Promise<void> | undefined;
 let holdCrm = false;
 let rolesPending: Promise<void> | undefined;
+let permissionModules = PERMISSION_MODULES;
 const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   const path = url.split('?')[0];
   if (path.endsWith('/archive') && options?.method === 'PATCH') {
@@ -23,7 +24,7 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     return { ok: true, json: async () => ({ success: true }) };
   }
   if (holdCrm && path.endsWith('/crm/accounts')) return new Promise<never>(() => {});
-  if (path.endsWith('/administration/permissions')) return { ok: true, json: async () => ({ data: PERMISSION_MODULES }) };
+  if (path.endsWith('/administration/permissions')) return { ok: true, json: async () => ({ data: permissionModules }) };
   if (path.endsWith('/administration/roles')) {
     if (options?.method === 'POST') {
       if (pending) await pending;
@@ -38,7 +39,7 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   }
   return { ok: true, json: async () => ({ data: [], meta: { total: 0, totalPages: 0 } }) };
 });
-beforeEach(() => { localStorage.clear(); mocks.denied = []; savedRoles.length = 0; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
+beforeEach(() => { localStorage.clear(); mocks.denied = []; savedRoles.length = 0; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; permissionModules = PERMISSION_MODULES; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
 async function open() { const view = mount(); const button = await screen.findByRole('button', { name: 'Create Custom Role' }); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button); return view; }
@@ -139,21 +140,25 @@ it('blocks whitespace names with one inline error and no POST', async () => {
   expect(screen.getAllByText('Role name is required.')).toHaveLength(1);
   expect(posts()).toHaveLength(0); expect(mocks.error).not.toHaveBeenCalled();
 });
-it('synchronizes group/individual switches, sends module flags through the real client, waits, and reloads the response', async () => {
+it('synchronizes row/individual checkboxes, sends module flags through the real client, waits, and reloads the response', async () => {
   localStorage.setItem('leadcrm_roles', '[{"name":"Obsolete"}]');
   const view = await open();
   fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: ' Sales Assistant ' } });
-  const contacts = screen.getByRole('switch', { name: 'Contacts' });
+  const contacts = screen.getByRole('checkbox', { name: 'Select all Contacts permissions' });
   expect(contacts.getAttribute('aria-checked')).toBe('false');
   fireEvent.click(contacts);
   expect(screen.getByText('5/5')).toBeTruthy();
-  fireEvent.click(screen.getByRole('switch', { name: 'Edit Contacts' }));
-  expect(screen.getByText('4/5')).toBeTruthy(); expect(screen.getByText('Partially enabled')).toBeTruthy();
-  fireEvent.click(contacts); expect(within(contacts.parentElement!.parentElement!).getByText('0/5')).toBeTruthy(); fireEvent.click(contacts);
-  fireEvent.click(screen.getByRole('switch', { name: 'Deals' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Edit Contacts' }));
+  expect(screen.getByText('4/5')).toBeTruthy(); expect(contacts).toHaveProperty('indeterminate', true);
+  fireEvent.click(contacts); expect(screen.getByText('5/5')).toBeTruthy();
+  fireEvent.click(contacts); expect(within(contacts.closest('tr')!).getByText('0/5')).toBeTruthy(); fireEvent.click(contacts);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Deals permissions' }));
   let finish!: () => void; pending = new Promise(resolve => { finish = resolve; });
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Saving…' }));
+  expect(posts()).toHaveLength(1);
   expect(mocks.success).not.toHaveBeenCalled(); expect(screen.getByRole('button', { name: 'Saving…' })).toBeTruthy();
+  expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).disabled)).toBe(true);
   const [url, options] = posts()[0];
   expect(url).toBe('/api/proxy/administration/roles'); expect(options?.credentials).toBe('include');
   expect(JSON.parse(String(options?.body))).toEqual({ name: 'Sales Assistant', description: '', permissions: ['contacts', 'deals'].map(module => ({ ...EMPTY_PERMISSION_FLAGS, module, ...Object.fromEntries(PERMISSION_MODULES.find(row => row.key === module)!.actions.map(action => [action, true])) })) });
@@ -164,15 +169,178 @@ it('synchronizes group/individual switches, sends module flags through the real 
 it('keeps values and permissions on server failure and allows a zero-permission role', async () => {
   await open(); fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Sales Assistant' } });
   fireEvent.change(screen.getByLabelText(/Description/), { target: { value: 'Retain this' } });
-  fireEvent.click(screen.getByRole('switch', { name: 'Contacts' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Contacts permissions' }));
   failure = 'A role with this name already exists.';
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
   await screen.findByText(failure); expect(screen.getByDisplayValue('Retain this')).toBeTruthy(); expect(screen.getByText('5/5')).toBeTruthy();
   expect(mocks.success).not.toHaveBeenCalled(); expect(savedRoles).toHaveLength(0);
-  failure = ''; fireEvent.click(screen.getByRole('switch', { name: 'Contacts' }));
+  failure = ''; fireEvent.click(screen.getByRole('checkbox', { name: 'Select all Contacts permissions' }));
   fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
   await waitFor(() => expect(savedRoles).toHaveLength(1));
   expect(JSON.parse(String(posts()[1][1]?.body)).permissions).toEqual([]);
+});
+
+const totalPermissions = () => permissionModules.reduce((total, module) => total + module.actions.length, 0);
+const selectModule = (label: string) => screen.getByRole('checkbox', { name: `Select all ${label} permissions` });
+const moduleRow = (label: string) => selectModule(label).closest('tr')!;
+async function filterModules(label: string) {
+  fireEvent.click(screen.getByRole('button', { name: 'Filter modules' }));
+  fireEvent.click(await screen.findByRole('menuitemradio', { name: label }));
+}
+
+it('renders every configured permission once, groups Users/Groups, and uses dashes only for unsupported cells', async () => {
+  await open();
+  expect(screen.getByRole('button', { name: `All Modules ${PERMISSION_GROUPS.length}` })).toBeTruthy();
+  expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  expect(screen.getAllByRole('checkbox')).toHaveLength(1 + PERMISSION_GROUPS.length + totalPermissions());
+  for (const group of PERMISSION_GROUPS) {
+    const row = moduleRow(group.label);
+    const modules = permissionModules.filter(module => group.modules.includes(module.key));
+    expect(within(row).getByText(`0/${modules.reduce((total, module) => total + module.actions.length, 0)}`)).toBeTruthy();
+    expect(row.querySelector('svg')).toBeTruthy();
+    for (const module of modules) for (const action of module.actions) {
+      expect(within(row).getByRole('checkbox', { name: permissionLabel(module, action) })).toBeTruthy();
+    }
+    const cells = row.querySelectorAll('td');
+    (['canView', 'canCreate', 'canEdit', 'canArchive', 'canImport'] as const).forEach((action, index) => {
+      const available = modules.filter(module => module.actions.includes(action));
+      expect(within(cells[index + 2]).queryAllByRole('checkbox')).toHaveLength(available.length);
+      if (!available.length) expect(cells[index + 2].textContent).toBe('—');
+    });
+  }
+  expect(within(moduleRow('Team Management')).getByText('0/9')).toBeTruthy();
+});
+
+it('updates row/global mixed states and counts while retaining View prerequisites', async () => {
+  await open();
+  const contacts = selectModule('Contacts');
+  const all = screen.getByRole('checkbox', { name: 'Select all permissions' });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Edit Contacts' }));
+  expect(screen.getByRole('checkbox', { name: 'View Contacts' })).toHaveProperty('checked', true);
+  expect(contacts).toHaveProperty('indeterminate', true);
+  expect(contacts.getAttribute('aria-checked')).toBe('mixed');
+  expect(all).toHaveProperty('indeterminate', true);
+  expect(within(moduleRow('Contacts')).getByText('2/5')).toBeTruthy();
+  expect(screen.getByText(`2 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  fireEvent.click(contacts);
+  expect(contacts).toHaveProperty('checked', true);
+  expect(contacts).toHaveProperty('indeterminate', false);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'View Contacts' }));
+  expect(within(moduleRow('Contacts')).getAllByRole('checkbox').every(input => !(input as HTMLInputElement).checked)).toBe(true);
+  expect(all).toHaveProperty('indeterminate', false);
+  fireEvent.click(all);
+  expect(screen.getByText(`${totalPermissions()} / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).checked)).toBe(true);
+  fireEvent.click(all);
+  expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+});
+
+it('keeps Users and Groups independent, including additional actions, and submits their existing flags', async () => {
+  await open();
+  fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Team Coordinator' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Create Groups' }));
+  expect(screen.getByRole('checkbox', { name: 'View Groups' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'View Users' })).toHaveProperty('checked', false);
+  expect(within(moduleRow('Team Management')).getByText('2/9')).toBeTruthy();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Activate / Deactivate Users' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Delete Groups' }));
+  expect(within(moduleRow('Team Management')).getByText('5/9')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
+  await screen.findByText('Team Coordinator');
+  const body = JSON.parse(String(posts()[0][1]?.body));
+  expect(body.permissions).toEqual([
+    { ...EMPTY_PERMISSION_FLAGS, module: 'groups', canView: true, canCreate: true, canDelete: true },
+    { ...EMPTY_PERMISSION_FLAGS, module: 'users', canView: true, canActivate: true },
+  ]);
+});
+
+it('searches display names only and selects/clears all permissions even while most rows are hidden', async () => {
+  await open();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Edit Contacts' }));
+  const search = screen.getByRole('textbox', { name: 'Search modules' });
+  fireEvent.change(search, { target: { value: ' LEADS ' } });
+  expect(screen.queryByRole('checkbox', { name: 'Select all Contacts permissions' })).toBeNull();
+  expect(selectModule('Leads')).toBeTruthy();
+  const all = screen.getByRole('checkbox', { name: 'Select all permissions' });
+  expect(all).toHaveProperty('indeterminate', true);
+  fireEvent.click(all);
+  expect(screen.getByText(`${totalPermissions()} / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  fireEvent.click(all);
+  expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  fireEvent.click(selectModule('Leads'));
+  fireEvent.change(search, { target: { value: 'import' } });
+  expect(screen.getByText('No modules found')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
+  expect(selectModule('Leads')).toHaveProperty('checked', true);
+  expect(selectModule('Contacts')).toHaveProperty('checked', false);
+});
+
+it('filters selected/empty modules live and restores dropdown focus without changing grants', async () => {
+  await open();
+  await filterModules('Has Permissions Selected');
+  expect(screen.getByText('No modules found')).toBeTruthy();
+  expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Filter modules' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all permissions' }));
+  expect(selectModule('Dashboard')).toBeTruthy();
+  fireEvent.click(selectModule('Contacts'));
+  expect(screen.queryByRole('checkbox', { name: 'Select all Contacts permissions' })).toBeNull();
+  await filterModules('No Permissions Selected');
+  expect(selectModule('Contacts')).toHaveProperty('checked', false);
+  expect(screen.queryByRole('checkbox', { name: 'Select all Leads permissions' })).toBeNull();
+  await filterModules('All Modules');
+  expect(selectModule('Leads')).toHaveProperty('checked', true);
+  expect(selectModule('Contacts')).toHaveProperty('checked', false);
+});
+
+it('paginates locally without losing grants, clamps after filter changes, and selects across pages', async () => {
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Records per page' }));
+  fireEvent.click(screen.getByRole('option', { name: '10' }));
+  expect(screen.getByText('Page 1 of 2')).toBeTruthy();
+  fireEvent.click(selectModule('Contacts'));
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  expect(screen.getByText('Page 2 of 2')).toBeTruthy();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all permissions' }));
+  expect(screen.getByText(`${totalPermissions()} / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  await filterModules('Has Permissions Selected');
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  for (const group of PERMISSION_GROUPS.slice(10)) fireEvent.click(selectModule(group.label));
+  expect(screen.getByText('Page 1 of 1')).toBeTruthy();
+  expect(selectModule('Contacts')).toHaveProperty('checked', true);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all permissions' }));
+  expect(screen.getByText('Page 1 of 2')).toBeTruthy();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search modules' }), { target: { value: 'Dashboard' } });
+  expect(screen.getByText('Page 1 of 1')).toBeTruthy();
+});
+
+it('uses loaded availability for totals and never enables or submits an unsupported grant', async () => {
+  permissionModules = PERMISSION_MODULES.map(module => module.key === 'leads' ? { ...module, actions: module.actions.filter(action => action !== 'canImport') } : module);
+  await open();
+  expect(screen.queryByRole('checkbox', { name: 'Import Leads' })).toBeNull();
+  expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Catalog Role' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all permissions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create Role' }));
+  await screen.findByText('Catalog Role');
+  const rows = JSON.parse(String(posts()[0][1]?.body)).permissions;
+  for (const row of rows) for (const [action, value] of Object.entries(row)) {
+    if (value === true) expect(permissionModules.find(module => module.key === row.module)?.actions).toContain(action);
+  }
+  expect(rows.find((row: { module: string }) => row.module === 'leads').canImport).toBe(false);
+});
+
+it('preserves the card editor and both create-view exit actions without posting', async () => {
+  await open();
+  fireEvent.click(screen.getByRole('button', { name: 'Back to roles' }));
+  expect(posts()).toHaveLength(0);
+  fireEvent.click(screen.getByRole('button', { name: 'Create Custom Role' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  expect(posts()).toHaveLength(0);
+  cleanup(); savedRoles.push(customRole()); mount();
+  fireEvent.click(await screen.findByRole('button', { name: 'Actions for Staff' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Permissions' }));
+  expect(screen.getByRole('switch', { name: 'Contacts' })).toBeTruthy();
+  expect(screen.queryByRole('grid')).toBeNull();
 });
 
 

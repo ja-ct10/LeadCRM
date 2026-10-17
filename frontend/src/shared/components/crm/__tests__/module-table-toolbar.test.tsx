@@ -3,8 +3,28 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModuleTableToolbar } from '../module-table-toolbar';
 import { FilterButton } from '../filter-button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 
 afterEach(cleanup);
+
+it('forwards the existing Filter button ref, dropdown keyboard attributes, and disabled state', async () => {
+  const ref = React.createRef<HTMLButtonElement>();
+  const select = vi.fn();
+  const view = render(<DropdownMenu><DropdownMenuTrigger asChild><FilterButton ref={ref} title="modules" /></DropdownMenuTrigger>
+    <DropdownMenuContent><DropdownMenuItem onSelect={select}>All Modules</DropdownMenuItem></DropdownMenuContent></DropdownMenu>);
+  const trigger = screen.getByRole('button', { name: 'Filter modules' });
+  expect(ref.current).toBe(trigger);
+  expect(trigger.getAttribute('aria-haspopup')).toBe('menu');
+  trigger.focus(); fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+  const item = await screen.findByRole('menuitem', { name: 'All Modules' });
+  await waitFor(() => expect(document.activeElement).toBe(item));
+  fireEvent.keyDown(item, { key: 'Enter' });
+  expect(select).toHaveBeenCalledOnce(); expect(document.activeElement).toBe(trigger);
+  view.unmount();
+  render(<FilterButton title="modules" disabled onClick={select} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Filter modules' }));
+  expect(select).toHaveBeenCalledOnce();
+});
 
 it('keeps search and the existing refresh action together while secondary controls remain available', async () => {
   const search = vi.fn(), refresh = vi.fn(), filter = vi.fn(), columns = vi.fn();

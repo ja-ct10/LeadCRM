@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { isPasswordExpired, PASSWORD_MAX_AGE_DAYS } from '../password-expiration';
+import { isPasswordExpired, isPasswordExpiryWarningDue, PASSWORD_MAX_AGE_DAYS } from '../password-expiration';
 import { buildAuthUserResponse } from '../auth-user';
 
 const now = new Date('2030-04-01T12:00:00.000Z');
@@ -38,4 +38,12 @@ describe('effective auth password requirement', () => {
     expect(response.mustChangePassword).toBe(required);
     expect(response).not.toHaveProperty('passwordHash');
   });
+});
+
+it('warns only during the final 24 hours before the existing expiration boundary', () => {
+  const changed = new Date('2030-01-01T00:00:00Z'), day89 = +changed + 89 * 86400000;
+  expect(isPasswordExpiryWarningDue(changed, new Date(day89 - 1))).toBe(false);
+  expect(isPasswordExpiryWarningDue(changed, new Date(day89))).toBe(true);
+  expect(isPasswordExpiryWarningDue(changed, new Date(day89 + 86400000))).toBe(false);
+  expect(isPasswordExpiryWarningDue(null, new Date(day89))).toBe(false);
 });

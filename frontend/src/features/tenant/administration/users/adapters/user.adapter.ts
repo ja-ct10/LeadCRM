@@ -1,6 +1,7 @@
 import { User } from '@/store/types';
 
 export interface UserDTO {
+  securityLockedAt?: string | null;
   assignableAgent?: boolean;
   assignableModules?: string[];
   id: string;
@@ -43,6 +44,7 @@ export interface UpdateUserDTO {
 export const userAdapter = {
   toModel: (dto: UserDTO): User => ({
     id: dto.id,
+    securityLockedAt: dto.securityLockedAt,
     assignableAgent: dto.assignableAgent,
     assignableModules: dto.assignableModules,
     createdAt: dto.createdAt,

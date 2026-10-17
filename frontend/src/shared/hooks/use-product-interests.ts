@@ -5,10 +5,11 @@ import { apiClient } from '@/lib/api/client';
 import { useAuth } from '@/store/AuthContext';
 
 export const PRODUCT_INTEREST_ENDPOINT = '/administration/product-interests';
-export type ProductInterestResponse = { data: ProductInterest[]; meta: { enabled: boolean } };
+export type ProductInterestResponse = { data: ProductInterest[]; meta: { enabled: boolean; categories?: string[] } };
 export function useProductInterests() {
   const { user, isLoading: authLoading, authError } = useAuth();
   const [products, setProducts] = useState<ProductInterest[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -17,7 +18,7 @@ export function useProductInterests() {
   const pendingPromise = useRef<Promise<void> | null>(null);
   const refresh = useCallback((): Promise<void> => {
     if (authLoading || authError || !user?.tenantId) {
-      setProducts([]); setLoading(false);
+      setProducts([]); setCategories([]); setLoading(false);
       return Promise.resolve();
     }
     if (pending.current && !pending.current.signal.aborted && pendingPromise.current) return pendingPromise.current;
@@ -25,9 +26,9 @@ export function useProductInterests() {
     pending.current = controller;
     setLoading(true); setError('');
     const promise = apiClient.get<ProductInterestResponse>(PRODUCT_INTEREST_ENDPOINT, { signal: controller.signal })
-      .then(result => { if (!controller.signal.aborted) { setProducts(result.data); setEnabled(result.meta?.enabled !== false); } })
+      .then(result => { if (!controller.signal.aborted) { setProducts(result.data); setCategories(result.meta?.categories ?? [...new Set(result.data.map(row => row.category || row.name))]); setEnabled(result.meta?.enabled !== false); } })
       .catch(e => { if (!controller.signal.aborted) {
-        if ([401, 403, 404].includes(e.status)) setProducts([]);
+        if ([401, 403, 404].includes(e.status)) setProducts([]); setCategories([]);
         setError(e instanceof Error ? e.message : 'Unable to load products.');
       } })
       .finally(() => { if (!controller.signal.aborted) { setLoading(false); setHasLoaded(true); }
@@ -37,7 +38,7 @@ export function useProductInterests() {
     return promise;
   }, [user?.id, user?.tenantId, authLoading, authError]);
   useEffect(() => {
-    setProducts([]); setHasLoaded(false);
+    setProducts([]); setCategories([]); setHasLoaded(false);
     void refresh();
     return () => { pending.current?.abort(); };
   }, [refresh]);
@@ -45,7 +46,7 @@ export function useProductInterests() {
     const onChanged = (event: Event) => {
       pending.current?.abort();
       const result = (event as CustomEvent<ProductInterestResponse>).detail;
-      if (result) { setProducts(result.data); setEnabled(result.meta.enabled); setError(''); }
+      if (result) { setProducts(result.data); setCategories(result.meta?.categories ?? [...new Set(result.data.map(row => row.category || row.name))]); setEnabled(result.meta.enabled); setError(''); }
       void refresh();
     };
     window.addEventListener('product-interests-changed', onChanged);
@@ -53,5 +54,5 @@ export function useProductInterests() {
     window.addEventListener('focus', onFocus);
     return () => { window.removeEventListener('product-interests-changed', onChanged); window.removeEventListener('focus', onFocus); };
   }, [refresh]);
-  return { products, enabled, loading, error, refresh, hasLoaded };
+  return { products, categories, enabled, loading, error, refresh, hasLoaded };
 }

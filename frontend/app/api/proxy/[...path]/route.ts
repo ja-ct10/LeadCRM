@@ -44,6 +44,8 @@ async function proxyRequest(
   const headers: Record<string, string> = {
     'Content-Type': req.headers.get('content-type') ?? 'application/json',
     'Accept': 'application/json',
+    // Same-origin UI background traffic must not renew idle sessions.
+    'X-LeadCRM-Passive': '1',
   };
   const mailboxStream = req.method === 'GET' && ['/integrations/gmail/events', '/reporting/dashboard/events', '/auth/events', '/crm/pipelines/events', '/crm/record-events'].includes(path);
   if (mailboxStream) headers.Accept = 'text/event-stream';

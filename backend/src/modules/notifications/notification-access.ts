@@ -36,6 +36,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
     const load = async (): Promise<{ entityType: string; entityId: string; destination: string } | null> => {
       const id = encodeURIComponent(entityId);
       const scope = { tenantId, id: entityId };
+      if (entityType === 'PasswordSecurity') return entityId === userId ? { entityType, entityId, destination: '/settings?tab=profile&changePassword=1' } : null;
       if (entityType === 'MailboxMessage') {
         try {
           const message = await db.mailboxMessage.findFirst({ where: { ...scope, account: { tenantId, userId, isActive: true }, direction: 'inbound',
@@ -86,6 +87,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
   };
   const eligible = async (type: NotificationType, entityType?: string | null, entityId?: string | null) => {
     if (!active || !entityType || !entityId || !notificationEntities[type]?.includes(entityType) || !await resolve(entityType, entityId)) return false;
+    if (type === 'password_expiring_soon') return entityType === 'PasswordSecurity' && entityId === userId;
     if (admin) return adminNotifications.has(type);
     if (!staffNotifications.has(type)) return false;
     const owned = { tenantId, id: entityId, assignedUserId: userId, isArchived: false, deletedAt: null };

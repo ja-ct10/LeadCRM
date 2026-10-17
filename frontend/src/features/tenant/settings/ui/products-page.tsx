@@ -1,4 +1,5 @@
 'use client';
+import type { ProductInterestInput } from '@leadcrm/shared';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 
@@ -79,6 +80,8 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
     {productError && <p role="alert" className="text-sm text-destructive">{productError}</p>}
     <dl className="space-y-6 text-sm [overflow-wrap:anywhere]">
       <div><dt className={labelClass}>Product Name</dt><dd className="mt-2 text-xl font-semibold leading-snug">{product.name}</dd></div>
+      <div><dt className={labelClass}>Category</dt><dd className="mt-2">{product.category || product.name}</dd></div>
+      <div><dt className={labelClass}>Description</dt><dd className="mt-2 whitespace-pre-wrap">{product.description || '—'}</dd></div>
       <div className="grid grid-cols-1 gap-5 min-[390px]:grid-cols-2">
         <div><dt className={labelClass}>Deal Value</dt><dd className="mt-2 text-xl font-semibold tabular-nums">{php.format(product.dealValue)}</dd></div>
         <div><dt className={labelClass}>Status</dt><dd className="mt-2"><Badge variant={product.active ? 'success' : 'secondary'} className="rounded-full"><span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-current" />{product.active ? 'Active' : 'Archived'}</Badge></dd></div>
@@ -106,7 +109,7 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
 }
 
 export function ProductsPage() {
-  const { products, loading, error, refresh, enabled, hasLoaded } = useProductInterests();
+  const { products, categories, loading, error, refresh, enabled, hasLoaded } = useProductInterests();
   const canEdit = useHasPermission('products.edit'), canCreate = useHasPermission('products.create'), canArchive = useHasPermission('products.archive');
   const { user } = useAuth();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -120,11 +123,11 @@ export function ProductsPage() {
   const [pageSize, setPageSize] = useState(25);
   useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); }, [user?.tenantId]);
   useEffect(() => { setSelected(new Set()); }, [page, pageSize, search]);
-  const filtered = products.filter(product => product.name.toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => {
+  const filtered = products.filter(product => [product.name, product.category, product.description].join(' ').toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => {
     const others = Number(a.name.trim().toLowerCase() === 'others') - Number(b.name.trim().toLowerCase() === 'others');
     if (others) return others;
     if (!sort) return 0;
-    const comparison = sort.field === 'dealValue' ? a.dealValue - b.dealValue : a.name.localeCompare(b.name);
+    const comparison = sort.field === 'dealValue' ? a.dealValue - b.dealValue : String(a[sort.field as keyof ProductInterest] ?? '').localeCompare(String(b[sort.field as keyof ProductInterest] ?? ''));
     return sort.direction === 'desc' ? -comparison : comparison;
   });
   useEffect(() => { setPage(value => Math.min(value, Math.max(1, Math.ceil(filtered.length / pageSize)))); }, [filtered.length, pageSize]);
@@ -138,7 +141,7 @@ export function ProductsPage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to enable products.'); }
     finally { lock.current = false; setBusy(false); }
   }
-  async function save(data: { name: string; dealValue: number }) {
+  async function save(data: ProductInterestInput) {
     if (!(panel?.mode === 'edit' ? canEdit : canCreate) || lock.current) return;
     lock.current = true; setBusy(true);
     try {
@@ -160,6 +163,8 @@ export function ProductsPage() {
   }
   const columns: DataGridColumnDef<ProductInterest>[] = [
     { id: 'name', header: 'Product Name', accessor: row => row.name, sortable: true, width: 330 },
+    { id: 'category', header: 'Category', accessor: row => row.category || row.name, sortable: true, width: 220 },
+    { id: 'description', header: 'Description', accessor: row => row.description || '—', sortable: true, width: 300 },
     { id: 'dealValue', header: 'Deal Value', accessor: row => row.dealValue, sortable: true, width: 190, cell: (_, row) => php.format(row.dealValue) },
     { id: 'status', header: 'Status', accessor: row => row.active ? 'Active' : 'Archived', width: 120 },
     { id: 'actions', header: 'Actions', accessor: () => '', width: 110, cell: (_, row) => <TableIconButton touchFriendly label="Edit product" disabled={!canEdit || busy} onClick={() => setPanel({ mode: 'edit', product: row })}><Edit size={14} /></TableIconButton> },
@@ -181,7 +186,7 @@ export function ProductsPage() {
     <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} loading={loading && !hasLoaded} refreshing={loading && hasLoaded} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
     <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canArchive && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} eyebrow={panel?.mode === 'view' ? 'Product Record' : undefined} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'} subtitle={panel?.mode === 'new' ? 'Complete the product details below.' : undefined}>
-      <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-6 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} initialProduct={panel.product!} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
+      <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-6 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} initialProduct={panel.product!} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} categories={categories} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
     </SlidingDrawer>
     <ConfirmActionDialog open={archiveIds.length > 0} onOpenChange={open => { if (!open && !busy) setArchiveIds([]); }} title={archiveIds.length === 1 ? 'Archive this product?' : `Archive ${archiveIds.length} products?`} description="Archived products are removed from new selections. Historical records and Deal values remain unchanged." confirmLabel="Archive" variant="destructive" isLoading={busy} onConfirm={archive} />
   </div>;

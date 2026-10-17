@@ -10,6 +10,9 @@ export async function authTransaction<T>(
     try {
       return await prisma.$transaction(work, {
         isolationLevel,
+        // Login identity locks serialize bcrypt work; allow queued requests to
+        // reach that lock when the configured connection pool is small.
+        maxWait: 10000,
         timeout: 30000,
       });
     } catch (error) {

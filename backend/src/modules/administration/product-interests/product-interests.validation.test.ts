@@ -9,8 +9,8 @@ import {
 
 describe('new Product Interest validation', () => {
   it('requires a trimmed non-empty name and digit-only integer deal value', () => {
-    expect(ProductInterestCreateSchema.parse({ name: '   CCTV Surveillance System   ', dealValue: 25000 }))
-      .toEqual({ name: 'CCTV Surveillance System', dealValue: 25000 });
+    expect(ProductInterestCreateSchema.parse({ name: '   CCTV Surveillance System   ', category: 'CCTV', dealValue: 25000 }))
+      .toEqual({ name: 'CCTV Surveillance System', category: 'CCTV', description: '', dealValue: 25000 });
     expect(ProductInterestCreateSchema.safeParse({ name: '   ', dealValue: 25000 }).success).toBe(false);
     expect(ProductInterestCreateSchema.safeParse({ name: 'Product', dealValue: undefined }).success).toBe(false);
     expect(ProductInterestCreateSchema.safeParse({ name: 'P'.repeat(201), dealValue: 25000 }).success).toBe(false);
@@ -26,7 +26,7 @@ describe('new Product Interest validation', () => {
   });
 
   it('uses the same active catalog ceiling as creation and restoration', () => {
-    const products = Array.from({ length: MAX_ACTIVE_PRODUCTS }, (_, index) => ({ name: `Product ${index}`, dealValue: 0 }));
+    const products = Array.from({ length: MAX_ACTIVE_PRODUCTS }, (_, index) => ({ name: `Product ${index}`, category: 'Catalog', dealValue: 0 }));
     expect(ProductInterestConfigSchema.safeParse(products).success).toBe(true);
     expect(ProductInterestConfigSchema.safeParse([...products, { name: 'Overflow', dealValue: 0 }]).success).toBe(false);
   });

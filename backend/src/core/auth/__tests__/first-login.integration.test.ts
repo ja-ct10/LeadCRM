@@ -101,7 +101,7 @@ describe.sequential('first login with real sessions and migrated disposable Post
     expect(auth.status).toBe(200);
     const cookie = auth.cookie;
     expect((await call('/crm/leads', undefined, cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
-    expect((await call('/auth/change-password', { password: 'NewPermanent1!' }, cookie)).status).toBe(200);
+    expect((await call('/auth/change-password', { currentPassword: password, password: 'NewPermanent1!' }, cookie)).status).toBe(200);
     expect((await call('/administration/users', undefined, cookie)).body.error.code).toBe('ONBOARDING_REQUIRED');
     expect((await call('/auth/onboarding/complete', {}, cookie)).status).toBe(200);
     expect((await call('/administration/users', undefined, cookie)).status).toBe(403);
@@ -134,13 +134,13 @@ describe.sequential('first login with real sessions and migrated disposable Post
       expect((await call(path, undefined, cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
     }
     expect((await call('/auth/onboarding/complete', {}, cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
-    const reuse = await call('/auth/change-password', { password }, cookie);
+    const reuse = await call('/auth/change-password', { currentPassword: password, password }, cookie);
     expect(reuse.status).toBe(400);
     expect(reuse.body.error).toMatchObject({ code: 'PASSWORD_REUSE', message: 'You cannot reuse your temporary password. Please choose a new password.' });
-    expect((await call('/auth/change-password', { password: 'weak' }, cookie)).status).toBe(400);
+    expect((await call('/auth/change-password', { currentPassword: password, password: 'weak' }, cookie)).status).toBe(400);
     await db.passwordResetToken.create({ data: { userId: id, email: tester.email, token: `old-reset-${id}`, expires: new Date(Date.now() + 60_000) } });
     const permanent = 'DifferentPermanent1!';
-    const changed = await call('/auth/change-password', { password: permanent }, cookie);
+    const changed = await call('/auth/change-password', { currentPassword: password, password: permanent }, cookie);
     expect(changed.status).toBe(200);
     expect(changed.body.data.user).toMatchObject({ mustChangePassword: false, onboardingCompletedAt: null });
     expect((await call('/auth/me', undefined, other.cookie)).status).toBe(401);
@@ -190,8 +190,8 @@ describe.sequential('first login with real sessions and migrated disposable Post
       const auth = await call('/auth/login', { email: tester.email, password }, '');
       expect(auth.status).toBe(200);
       expect((await call('/crm/leads', undefined, auth.cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
-      expect((await call('/auth/change-password', { password }, auth.cookie)).body.error.code).toBe('PASSWORD_REUSE');
-      expect((await call('/auth/change-password', { password: 'ProductionPermanent1!' }, auth.cookie)).status).toBe(200);
+      expect((await call('/auth/change-password', { currentPassword: password, password }, auth.cookie)).body.error.code).toBe('PASSWORD_REUSE');
+      expect((await call('/auth/change-password', { currentPassword: password, password: 'ProductionPermanent1!' }, auth.cookie)).status).toBe(200);
       expect((await call('/crm/leads', undefined, auth.cookie)).body.error.code).toBe('ONBOARDING_REQUIRED');
       expect((await call('/auth/onboarding/complete', {}, auth.cookie)).status).toBe(200);
       expect((await call('/crm/leads', undefined, auth.cookie)).status).toBe(200);
@@ -241,7 +241,7 @@ describe.sequential('first login with real sessions and migrated disposable Post
       const auth = await call('/auth/login', { email, password: credentialFor(email) }, '');
       expect(auth.status).toBe(200);
       expect((await call('/integrations/gmail/authorize', undefined, auth.cookie)).body.error.code).toBe('PASSWORD_CHANGE_REQUIRED');
-      expect((await call('/auth/change-password', { password: 'NewApprovedStaff1!' }, auth.cookie)).status).toBe(200);
+      expect((await call('/auth/change-password', { currentPassword: credentialFor(email), password: 'NewApprovedStaff1!' }, auth.cookie)).status).toBe(200);
       expect((await call('/integrations/gmail/authorize', undefined, auth.cookie)).body.error.code).toBe('ONBOARDING_REQUIRED');
       expect((await call('/auth/onboarding/complete', {}, auth.cookie)).status).toBe(200);
       const started = await call('/integrations/gmail/authorize', undefined, auth.cookie);

@@ -8,7 +8,7 @@ exports.ForgotPasswordSchema = zod_1.z.object({
     email: zod_1.z.string().trim().toLowerCase().max(254).email('Valid email required'),
 }).strict();
 exports.StrongPasswordSchema = zod_1.z.string().min(8, 'Use at least 8 characters.').max(72, 'Use no more than 72 characters.').refine(value => new TextEncoder().encode(value).length <= 72, 'Password must be no more than 72 bytes.').refine(value => /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^a-zA-Z0-9\s])/.test(value), 'Use uppercase and lowercase letters, a number, and a special character');
-exports.ChangePasswordSchema = zod_1.z.object({ password: exports.StrongPasswordSchema }).strict();
+exports.ChangePasswordSchema = zod_1.z.object({ currentPassword: zod_1.z.string().min(1, 'Old password is required.').max(72), password: exports.StrongPasswordSchema }).strict();
 exports.RegisterSchema = zod_1.z.object({
     firstName: zod_1.z.string().trim().min(2, 'First name is required').max(100),
     lastName: zod_1.z.string().trim().min(2, 'Last name is required').max(100),

@@ -1,11 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Prisma, type LoginAttemptState } from '@prisma/client';
-import { LOGIN_LOCKOUT_CODE, LOGIN_LOCKOUT_MESSAGE, type LoginLockoutResponse } from '@leadcrm/shared';
+import { ACCOUNT_LOCKED_CODE, ACCOUNT_LOCKED_MESSAGE, LOGIN_LOCKOUT_CODE, LOGIN_LOCKOUT_MESSAGE, type LoginLockoutResponse } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { authTransaction } from './auth-transaction';
 
 export const LOGIN_LOCKOUT_COOKIE = 'leadcrm_login_lockout';
+export const LOGIN_SECURITY_LOCK_CYCLE_LIMIT = 3;
+export const accountLockedError = () => new AppError(ACCOUNT_LOCKED_MESSAGE, 423, ACCOUNT_LOCKED_CODE);
 export const LOGIN_LOCKOUT_COOKIE_OPTIONS = {
   httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax' as const, path: '/',
 };

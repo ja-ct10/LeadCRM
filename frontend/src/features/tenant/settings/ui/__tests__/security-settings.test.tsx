@@ -12,6 +12,8 @@ it('opens a password dialog without sending a change request and clears fields o
   render(<SecuritySettings />);
   fireEvent.click(screen.getByRole('button', { name: 'Change Password' }));
   const dialog = await screen.findByRole('dialog');
+  fireEvent.change(screen.getByLabelText('Old Password *'), { target: { value: 'Old1!' } });
+  fireEvent.change(screen.getByLabelText('Old Password *'), { target: { value: 'Old1!' } });
   expect(api.changePassword).not.toHaveBeenCalled();
   expect(screen.queryByLabelText('Current Password *')).toBeNull();
   fireEvent.change(within(dialog).getByLabelText('New password *'), { target: { value: 'Camxian1!' } });
@@ -48,6 +50,7 @@ it('requires all rules and confirmation, preserves password characters and block
   api.changePassword.mockReturnValue(new Promise(done => { resolve = done; }));
   render(<SecuritySettings />); fireEvent.click(screen.getByText('Change Password'));
   const dialog = await screen.findByRole('dialog');
+  fireEvent.change(screen.getByLabelText('Old Password *'), { target: { value: 'Old1!' } });
   const submit = within(dialog).getByRole('button', { name: 'Change password' }) as HTMLButtonElement;
   const password = screen.getByLabelText('New password *');
   const confirm = screen.getByLabelText('Confirm new password *');
@@ -71,7 +74,7 @@ it('requires all rules and confirmation, preserves password characters and block
   expect(submit.disabled).toBe(true);
   fireEvent.submit(submit.closest('form')!);
   expect(api.changePassword).toHaveBeenCalledTimes(1);
-  expect(api.changePassword).toHaveBeenCalledWith({ password: value });
+  expect(api.changePassword).toHaveBeenCalledWith({ currentPassword: 'Old1!', password: value });
   resolve({ data: { user: { id: 'me', passwordChangedAt: '2026-09-30T00:00:00Z' } } });
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
 });

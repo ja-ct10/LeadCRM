@@ -9,6 +9,10 @@ import type { User } from '@/store/types';
 import { userAdapter, UserDTO } from '../adapters/user.adapter';
 
 export const usersService = {
+  unlock: async (id: string) => {
+    await apiClient.post(`/administration/users/${id}/unlock`, {});
+    invalidatePageCache('users'); window.dispatchEvent(new Event('leadcrm:users-changed'));
+  },
   getDirectory: async (): Promise<PaginatedResponse<User>> => {
     const data: User[] = [];
     let page = 1;

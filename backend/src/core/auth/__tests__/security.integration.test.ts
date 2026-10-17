@@ -121,7 +121,7 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
   it('logs in and keeps the active session while changing password', async () => {
     const first = await login(initialPassword); cookie = first.cookies.find(c => c.startsWith('leadcrm_token='))!;
     otherCookie = (await login(initialPassword)).cookies.find(c => c.startsWith('leadcrm_token='))!;
-    const result = await call('/auth/change-password', { password: newPassword });
+    const result = await call('/auth/change-password', { currentPassword: initialPassword, password: newPassword });
     expect(result.status).toBe(200);
     expect(result.body.data.user.passwordChangedAt).toBeTruthy();
     expect((await call('/auth/me')).status).toBe(200);
@@ -130,7 +130,7 @@ describe.sequential('security flows on migrated PostgreSQL', () => {
   });
   it.each(['Ab1!', 'camxian2026!', 'CAMXIAN2026!', 'CamxianPassword!', 'Camxian2026'])('rejects invalid password %s without changing the database', async password => {
     const before = await db.user.findUniqueOrThrow({ where: { id: userId } });
-    expect((await call('/auth/change-password', { password })).status).toBe(400);
+    expect((await call('/auth/change-password', { currentPassword: newPassword, password })).status).toBe(400);
     expect((await db.user.findUniqueOrThrow({ where: { id: userId } })).passwordHash).toBe(before.passwordHash);
   });
   it('rejects unauthenticated password changes and password reuse', async () => {

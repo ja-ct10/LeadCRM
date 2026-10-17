@@ -4,6 +4,7 @@ import { clearPageCache, invalidatePageCache } from './page-cache';
 export function invalidateApiPageCache(path: string): void {
   const [area, resource] = path.split('?')[0].split('/').filter(Boolean);
   if (area === 'auth') {
+    if (resource === 'activity') return;
     clearPageCache();
     return;
   }

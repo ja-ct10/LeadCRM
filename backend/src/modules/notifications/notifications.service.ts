@@ -7,6 +7,7 @@ import { getNotificationPreferences, mandatoryNotification } from './notificatio
 import { tenantContext } from '../../core/tenant/tenant-context';
 import { Prisma } from '@prisma/client';
 import { assignmentNotifications } from './notification-policy';
+import { isPasswordExpiryWarningDue } from '../../core/auth/password-expiration';
 
 export interface CreateNotificationParams {
   tenantId: string; userId: string; type: NotificationType; title: string; body?: string;
@@ -30,7 +31,7 @@ export async function deliverNotification(params: CreateNotificationParams): Pro
     // Serialize eligibility against source reassignment and account deactivation.
     // Identifiers come only from this fixed allow-list; tenant/IDs are parameters.
     const tables: Record<string, string> = { Lead: 'Lead', Contact: 'Contact', Account: 'Account', Deal: 'Deal', Task: 'Task',
-      Campaign: 'Campaign', Mailbox: 'EmailAccount', MailboxMessage: 'MailboxMessage', User: 'User', RoleDefinition: 'RoleDefinition', Form: 'MarketingForm', Workflow: 'Workflow' };
+      Campaign: 'Campaign', Mailbox: 'EmailAccount', MailboxMessage: 'MailboxMessage', User: 'User', PasswordSecurity: 'User', RoleDefinition: 'RoleDefinition', Form: 'MarketingForm', Workflow: 'Workflow' };
     const table = tables[params.entityType ?? ''];
     await tenantContext.exit(async () => {
       await tx.$queryRaw`SELECT id FROM "User" WHERE "tenantId"=${params.tenantId} AND id=${params.userId} FOR SHARE`;
@@ -61,6 +62,14 @@ export async function deliverNotification(params: CreateNotificationParams): Pro
       }, select: { id: true } });
     }
     const preferences = await getNotificationPreferences(params.tenantId, params.userId, tx);
+    if (params.type === 'password_expiring_soon') {
+      const event = await tx.notificationEvent.findUnique({ where: { tenantId_eventKey: { tenantId: params.tenantId, eventKey: params.eventKey } } });
+      const changed = (event?.payload as { passwordChangedAt?: string } | undefined)?.passwordChangedAt;
+      const user = await tx.user.findFirst({ where: { tenantId: params.tenantId, id: params.userId }, select: { passwordChangedAt: true, passwordHash: true, mustChangePassword: true } });
+      const stamp = user?.passwordChangedAt?.getTime();
+      authorized = authorized && !!user?.passwordHash && !user.mustChangePassword && stamp !== undefined && Date.parse(changed ?? '') === stamp
+        && isPasswordExpiryWarningDue(user?.passwordChangedAt, params.eligibilityAt);
+    }
     const enabled = mandatoryNotification(params.type) || preferences.data.inAppGeneral;
     let currentTask = true;
     if (params.type === 'task_due' || params.type === 'task_overdue') {

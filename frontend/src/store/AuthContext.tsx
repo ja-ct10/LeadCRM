@@ -1,5 +1,6 @@
 'use client';
 
+import { useIdleSession } from '@/shared/auth/use-idle-session';
 import { normalizeMockUser } from './auth-state';
 import type { AuthUser, PasswordRecoveryResponse } from '@leadcrm/shared';
 import React, {
@@ -177,6 +178,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       applyAuthUser(response.data.user);
     } catch (error) {
       if (generation !== requestGeneration.current) return;
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'SESSION_IDLE_EXPIRED') {
+        sessionStorage.setItem('leadcrm:idle-expired', '1');
+      }
       setUser(null);
       setTenant(null);
       setPermissions({});
@@ -393,13 +397,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
 
   // ── Logout ────────────────────────────────────────────────────────
-  const logout = async (): Promise<void> => {
+  const logout = async (forced = false): Promise<void> => {
     clearNotificationTracking();
     requestGeneration.current += 1;
     if (!USE_MOCK_AUTH) {
       // Revoke the LeadCRM backend session + clear HttpOnly JWT cookie
-      await authApi.logout();
+      try { await authApi.logout(); } catch (error) { if (!forced) throw error; }
     }
+    if (!forced && user) localStorage.setItem('leadcrm:session-activity', JSON.stringify({ userId: user.id, logout: true, idle: false, at: Date.now() }));
     setUser(null);
     setTenant(null);
     setAuthError(null);
@@ -420,6 +425,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // previous session's destination .
     sessionStorage.removeItem('leadcrm_redirect_after_login');
   };
+
+  useIdleSession(USE_MOCK_AUTH ? undefined : user?.id, async idle => {
+    if (idle) sessionStorage.setItem('leadcrm:idle-expired', '1');
+    await logout(true);
+    window.location.replace('/login');
+  });
 
   // ── Password reset ─────────────────────────────────────────────────
   const requestPasswordReset = async (email: string): Promise<PasswordRecoveryResponse> => {

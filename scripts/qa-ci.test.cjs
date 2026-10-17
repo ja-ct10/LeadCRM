@@ -62,6 +62,19 @@ test('Every discovered suite receives one deterministic balanced owner, includin
   } finally { fs.rmSync(directory, { recursive: true }); }
 });
 
+test('Local fixture previews stay outside database acceptance while undeclared browser suites remain rejected', () => {
+  const directory = fixture();
+  try {
+    seed(directory);
+    const before = ci.discovery(directory);
+    const source = '// Rendered UI with intercepted API fixtures; no disposable database';
+    fs.writeFileSync(path.resolve(directory, 'backend/scripts/preview-security-export-products.mjs'), source);
+    assert.deepEqual(ci.discovery(directory), before);
+    fs.writeFileSync(path.resolve(directory, 'backend/scripts/verify-fixture-browser.mjs'), source);
+    assert.throws(() => ci.discovery(directory), /Declare a disposable runtime/);
+  } finally { fs.rmSync(directory, { recursive: true }); }
+});
+
 test('The real repository inventory includes the native Workflow Policy browser suite', () => {
   const inventory = ci.discovery(path.resolve(__dirname, '..'));
   assert.equal(inventory.browser.find(suite => suite.id === 'backend/scripts/verify-workflow-policy-browser.mjs')?.database, 'native');

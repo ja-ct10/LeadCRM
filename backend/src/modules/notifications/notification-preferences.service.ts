@@ -15,5 +15,5 @@ export async function saveNotificationPreferences(tenantId: string, userId: stri
     create: { ...key(tenantId, userId), value }, update: { value } });
   return { data: value, availability };
 }
-export const mandatoryNotification = (type: string) => ['user_created', 'user_status_changed', 'mailbox_disconnected', 'mailbox_sync_failed',
+export const mandatoryNotification = (type: string) => ['password_expiring_soon', 'user_created', 'user_status_changed', 'mailbox_disconnected', 'mailbox_sync_failed',
   'role_created', 'role_archived', 'role_permissions_changed', 'user_role_changed'].includes(type);

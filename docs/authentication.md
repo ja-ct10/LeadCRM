@@ -6,8 +6,13 @@ See [security cleanup](security-cleanup-mfa.md) for password behavior and migrat
 
 Login allows five consecutive failed credential submissions; the **sixth**
 submission activates a durable five-minute account cooldown before checking its
-password. Successful authentication before that submission and cooldown expiry
-reset the counter. See [login lockout implementation and evidence](login-lockout-verification.md)
+password. Cooldown expiry resets consecutive failures but preserves the sequence
+of protection cycles. Cycles one and two receive the existing cooldown; cycle
+three permanently security-locks the account. Genuine successful authentication
+resets both counters. Client Admin with `users.activate` and `users.view` can
+unlock through Team Management without activating an inactive employee. Recovery
+and password reset do not clear the security lock. See [current implementation and verification](security-export-products-verification.md)
+and [original login lockout implementation](login-lockout-verification.md)
 for concurrency, shared IP limits, browser restoration and deployment requirements.
 
 ## Supported flows
@@ -52,7 +57,11 @@ node backend/scripts/backfill-password-timestamps.mjs --target=host:5432/databas
 
 Replace the target with the exact host, port and database from that URL. Only if the audit finds existing users with a password hash, null passwordChangedAt, and mustChangePassword=false, stop old writers and obtain immediately-before-cutover approval for the exact environment and count. Run the same command with `--apply --expected-count=N`, using the verified eligible count. The transaction refuses count drift, initializes only those rows at one UTC database timestamp, verifies preservation, and rolls back on a mismatch. Existing timestamps, temporary/passwordless users, credentials and onboarding remain intact. Repeating the read-only audit must show zero eligible rows; rerunning the backfill with expected count zero changes nothing. No schema migration is required.
 
-POST /auth/change-password accepts `{ password }` from the authenticated session. It compares the current password hash before applying `StrongPasswordSchema` so a lowercase temporary password gets the precise `PASSWORD_REUSE` error: “You cannot reuse your temporary password. Please choose a new password.” Different passwords must meet the shared strength policy. It writes the new hash, clears the flag, revokes other sessions and account-bound reset tokens, and records an audit event in one serializable transaction. The current database session stays valid. The frontend reuses the profile password form, shows field errors and “Password updated successfully.”, and applies the canonical user response to advance to onboarding. Password recovery uses the same strength policy, clears the flag, and revokes sessions; it does not complete onboarding.
+POST /auth/change-password accepts `{ currentPassword, password }` from the authenticated session. It verifies the current credential first, returning `CURRENT_PASSWORD_INCORRECT` with “Current password is incorrect.” on failure. The issued temporary credential is accepted as Old Password. Reusing it as the new password still returns `PASSWORD_REUSE`: “You cannot reuse your temporary password. Please choose a new password.” Different passwords must meet the shared strength policy. It writes the new hash, clears the flag, revokes other sessions and account-bound reset tokens, and records an audit event in one serializable transaction. The current database session stays valid. The frontend reuses the profile password form, shows field errors and “Password updated successfully.”, and applies the canonical user response to advance to onboarding. Password recovery uses its separate token contract and the same new-password strength policy; it does not require Old Password or complete onboarding.
+
+Sessions additionally expire after thirty minutes without activity. Validation checks the existing `lastActiveAt` before renewing it, returning `401 SESSION_IDLE_EXPIRED` and revoking idle sessions. Browser interactions use `/auth/activity` with leading/trailing updates coalesced to once per minute; passive polling, session restoration and SSE do not renew activity. The frontend shares activity/logout across tabs and displays “Your session expired due to inactivity. Please log in again.” Absolute expiration and manual logout retain their existing behavior.
+
+The existing notification outbox schedules a mandatory, self-only `password_expiring_soon` reminder at `passwordChangedAt + 89 days`. The worker checks the current cycle and suppresses stale events and events arriving at day 90. Delivery is deduplicated by the existing ledger, even after notification deletion. The link opens the Settings password dialog. Password changes and resets start the next cycle; null timestamps remain null. No email or SMS reminder is sent.
 
 User update and bulk-update payloads have an explicit allowlist. They cannot inject mustChangePassword, passwordHash, or tenantId. Primary-role changes synchronize User.role and UserRole in the same transaction; custom permission definitions remain unchanged.
 

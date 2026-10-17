@@ -7,7 +7,7 @@ import { ArrowLeft, CheckCircle2, Eye, EyeOff } from 'lucide-react';
 import { toast } from 'sonner';
 import { z } from 'zod';
 import { PasswordStrengthMeter } from '@/shared/components/password-strength-meter';
-import { StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, LOGIN_LOCKOUT_CODE, type PasswordRecoveryResponse } from '@leadcrm/shared';
+import { SESSION_IDLE_MESSAGE, StrongPasswordSchema, ForgotPasswordSchema, PASSWORD_RECOVERY_SEND_ERROR, LOGIN_LOCKOUT_CODE, type PasswordRecoveryResponse } from '@leadcrm/shared';
 import type { ApiRequestError } from '@/lib/api/client';
 import { CamxianBrandPanel } from './camxian-brand-panel';
 import { useLoginLockout } from '../auth/use-login-lockout';
@@ -72,6 +72,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      if (sessionStorage.getItem('leadcrm:idle-expired')) { sessionStorage.removeItem('leadcrm:idle-expired'); setError(SESSION_IDLE_MESSAGE); }
       const params = new URLSearchParams(window.location.search);
       const token = params.get('token');
       if (token) {
@@ -512,6 +513,7 @@ export default function ModernLoginPage({ onNavigate, loginError }: ModernLoginP
 
           {/* Login form */}
           <form onSubmit={handleLogin} className="space-y-5">
+                {error && <p role="alert" className={`${responsiveTypography.body} break-words text-red-600 dark:text-red-400`}>{error}</p>}
                 <div>
                   <label htmlFor="email" className={`${responsiveTypography.body} block font-semibold text-slate-700 dark:text-slate-300 mb-2`}>
                     Email address

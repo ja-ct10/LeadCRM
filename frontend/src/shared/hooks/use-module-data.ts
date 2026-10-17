@@ -1,5 +1,6 @@
 'use client';
 
+import { moduleListParams } from '@/shared/services/module-list-params';
 import { apiClient } from '@/lib/api/client';
 import { useCachedPage } from './use-cached-page';
 import type { ApiResponse, FilterCondition, ModulePaginatedResponse } from '@leadcrm/shared';
@@ -19,16 +20,7 @@ const EMPTY_DATA: never[] = [];
 
 /** List queries cache their response; selected records share the drawer's raw-record cache. */
 export function useModuleData<T extends object = Record<string, unknown>>({ moduleId, page, pageSize, sort, filter, search, recordId, disabled }: UseModuleDataParams) {
-  const params: Record<string, unknown> = { page: String(page), pageSize: String(pageSize) };
-  if (sort) params.sort = `${sort.field}:${sort.direction}`;
-  if (search?.trim()) params.search = search.trim();
-  for (const condition of filter ?? []) {
-    params[`filter[${condition.field}]`] = Array.isArray(condition.value)
-      ? `${condition.operator}:${condition.value.join(',')}`
-      : condition.value == null
-        ? condition.operator
-        : `${condition.operator}:${String(condition.value)}`;
-  }
+  const params = { ...moduleListParams({ search, filter, sort }), page: String(page), pageSize: String(pageSize) };
   const queryParams = recordId ? { recordId } : params;
   const result = useCachedPage<ModulePaginatedResponse<T> | T>({
     module: moduleId,

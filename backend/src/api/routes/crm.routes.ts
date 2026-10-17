@@ -1,4 +1,5 @@
 import { MoveDealPipelineSchema } from '@leadcrm/shared';
+import { exportCrm } from '../../modules/crm/exports/crm-export.controller';
 import { CreateDealBatchSchema } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { resolveCrmActor } from '../../modules/crm/access/crm-record-access.service';
@@ -52,6 +53,7 @@ router.use(authMiddleware);
 router.use(tenantMiddleware);
 router.use(workspaceReadyMiddleware);
 router.use(authorizeArchivedQuery);
+for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) router.get(`/${module}/export`, authorize(`${module}.view`), exportCrm(module));
 router.get('/record-access', async (req, res, next) => {
   try {
     const { permissions: _permissions, ...policy } = await resolveCrmActor(prisma, req.user!);
