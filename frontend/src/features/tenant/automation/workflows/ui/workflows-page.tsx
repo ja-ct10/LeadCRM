@@ -112,7 +112,7 @@ export default function WorkflowsPage() {
     {metadataError && <div role="alert">{metadataError} <Button variant="outline" onClick={() => setRetry(retry + 1)}>Retry options</Button></div>}
     {workflowsError && <div role="alert">{workflowsError} <Button variant="outline" onClick={() => void refreshWorkflows()}>Retry workflows</Button></div>}
     {tableColumns.drawer}
-    <ModuleTableToolbar label="Workflows" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search workflows..."
+    <ModuleTableToolbar stackSearchOnMobile label="Workflows" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search workflows..."
       filter={<FilterButton title="Workflows" open={showFilters} active={!!(statuses.length || triggers.length)} onClick={() => setShowFilters(!showFilters)} />}
       refreshing={workflowsLoading} onRefresh={refreshWorkflows} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
       sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); setPage(1); }} />

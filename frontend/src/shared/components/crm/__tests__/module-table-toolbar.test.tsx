@@ -1,5 +1,5 @@
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModuleTableToolbar } from '../module-table-toolbar';
 import { FilterButton } from '../filter-button';
@@ -45,4 +45,35 @@ it('retains disabled and refreshing states without removing either primary contr
   expect(button).toHaveProperty('disabled', true);
   expect(button.getAttribute('aria-busy')).toBe('true');
   expect(screen.getByRole('group', { name: 'Records search and refresh' }).contains(button)).toBe(true);
+});
+
+it('preserves single controls, callbacks and the refresh guard with stacked mobile search', async () => {
+  const search = vi.fn(), filter = vi.fn(), columns = vi.fn();
+  let finishRefresh: (() => void) | undefined;
+  const refresh = vi.fn(() => new Promise<void>(resolve => { finishRefresh = resolve; }));
+  const view = render(<ModuleTableToolbar stackSearchOnMobile label="Records" search="saved" onSearch={search} placeholder="Search records..." onRefresh={refresh}
+    filter={<FilterButton title="Records" open={false} onClick={filter} />} onManageColumns={columns} />);
+  expect(screen.getAllByRole('textbox', { name: 'Search records' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Refresh' })).toHaveLength(1);
+  expect(screen.getAllByRole('button', { name: 'Table settings' })).toHaveLength(1);
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search records' }), { target: { value: 'CCTV' } });
+  expect(search).toHaveBeenCalledExactlyOnceWith('CCTV');
+  const actions = screen.getByRole('group', { name: 'Records actions' });
+  fireEvent.click(within(actions).getByRole('button', { name: 'Filter Records' }));
+  expect(filter).toHaveBeenCalledOnce();
+  fireEvent.click(within(actions).getByRole('button', { name: 'Table settings' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Columns' }));
+  expect(columns).toHaveBeenCalledOnce();
+  const button = within(actions).getByRole('button', { name: 'Refresh' });
+  fireEvent.click(button);
+  fireEvent.click(button);
+  expect(refresh).toHaveBeenCalledOnce();
+  expect(button).toHaveProperty('disabled', true);
+  expect(button.getAttribute('aria-busy')).toBe('true');
+  await act(async () => { finishRefresh?.(); });
+  expect(button).toHaveProperty('disabled', false);
+
+  view.rerender(<ModuleTableToolbar stackSearchOnMobile label="Records" search="saved" onSearch={search} placeholder="Search records..." onRefresh={refresh} disabled />);
+  expect(screen.getByRole('textbox', { name: 'Search records' })).toHaveProperty('disabled', true);
+  expect(screen.getByRole('button', { name: 'Refresh' })).toHaveProperty('disabled', true);
 });

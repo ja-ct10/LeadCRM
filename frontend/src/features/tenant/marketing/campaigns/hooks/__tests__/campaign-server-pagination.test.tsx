@@ -3,8 +3,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react';
 import { useCampaignsData } from '../use-campaigns-data';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { clearPageCache } from '@/shared/cache/page-cache';
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', } }) }));
-vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { list: vi.fn(), metrics: async () => ({ data: {} }) } }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'user', role: 'Client Admin' } }) }));
+vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { list: vi.fn(), metrics: vi.fn() } }));
 vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { list: async () => ({ data: [] }) } }));
 beforeEach(() => { clearPageCache(); vi.clearAllMocks(); });
 afterEach(() => { cleanup(); clearPageCache(); vi.useRealTimers(); vi.restoreAllMocks(); });
@@ -19,6 +19,7 @@ it('retains backend totals beyond a page and requests each page, size and filter
   rerender({ page: 1, limit: 20, status: 'SENT,DRAFT' });
   await waitFor(() => expect(result.current.total).toBe(45));
   expect(campaignsApi.list).toHaveBeenLastCalledWith({ page: 1, limit: 20, status: 'SENT,DRAFT' });
+  expect(campaignsApi.metrics).not.toHaveBeenCalled();
 });
 it('refreshes the visible list without overlap, pauses while hidden and resumes on visibility', async () => {
   vi.useFakeTimers();
@@ -46,4 +47,14 @@ it('refreshes the visible list without overlap, pauses while hidden and resumes 
   unmount();
   await act(async () => { await vi.advanceTimersByTimeAsync(15000); });
   expect(campaignsApi.list).toHaveBeenCalledTimes(3);
+  expect(campaignsApi.metrics).not.toHaveBeenCalled();
+});
+it('loads and manually refreshes the list without requesting summary metrics', async () => {
+  vi.mocked(campaignsApi.list).mockResolvedValue({ success: true, data: [{ id: 'one' }], meta: { total: 1, page: 1, limit: 25, hasMore: false } } as never);
+  const { result } = renderHook(() => useCampaignsData({ intervalMs: 0, query: { search: 'Saved', type: 'EMAIL' } }));
+  await waitFor(() => expect(result.current.total).toBe(1));
+  await act(async () => { await result.current.refetch(); });
+  expect(campaignsApi.list).toHaveBeenCalledTimes(2);
+  expect(campaignsApi.list).toHaveBeenLastCalledWith({ page: 1, limit: 25, search: 'Saved', type: 'EMAIL' });
+  expect(campaignsApi.metrics).not.toHaveBeenCalled();
 });
