@@ -249,7 +249,7 @@ export function UsersSubTab({ onUsersLoaded, renderHeader }: { renderHeader?: (a
       {renderHeader ? renderHeader(createAction) : <div className="flex justify-end">{createAction}</div>}
       {tableColumns.drawer}
       {rolesError && <div role="alert" className="text-sm text-red-500">{rolesError} <button onClick={() => void refreshRoles()} className="underline">Retry roles</button></div>}
-      <ModuleTableToolbar label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
+      <ModuleTableToolbar stackSearchOnMobile label="Users" search={search} onSearch={setSearch} placeholder="Search users..."
         filter={<FilterButton title="users" open={showFilters} active={!!(roleFilter.length || statusFilter.length || groupFilter.length)} onClick={() => setShowFilters(value => !value)} />}
         refreshing={loading || directory.isRefreshing} onRefresh={directory.refetch} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
         sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); goToPage(1); }} />

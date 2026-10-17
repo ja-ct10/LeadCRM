@@ -1,9 +1,9 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, type ClosingField } from '@leadcrm/shared';
 import { clearPageCache } from '@/shared/cache/page-cache';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), templateCreate: vi.fn(), archive: vi.fn(), refresh: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), templateCreate: vi.fn(), archive: vi.fn(), refresh: vi.fn(), dataOptions: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
 const scenario = vi.hoisted(() => ({ sms: false }));
 beforeEach(() => { scenario.sms = false; });
@@ -11,7 +11,10 @@ const templateDefinitions = CUSTOM_FIELD_MODULES.map((module, index): ClosingFie
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
-vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: () => ({ campaigns: [scenario.sms ? { ...campaign, type: 'Sms', smsTrackingVersion: 1 } : campaign], total: 1, templates: mocks.templates, metrics: { activeCampaigns: 1, sent: 10, emailSent: 4, opened: 2, clicked: 1 }, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh }) }));
+vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: (options: unknown) => {
+  mocks.dataOptions(options);
+  return { campaigns: [scenario.sms ? { ...campaign, type: 'Sms', smsTrackingVersion: 1 } : campaign], total: 1, templates: mocks.templates, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh };
+} }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive, variableFields: mocks.variableFields, emailSettings: mocks.emailSettings, smsSettings: mocks.smsSettings } }));
 vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { create: mocks.templateCreate } }));
 vi.mock('../campaign-builder', () => ({ CampaignBuilder: (props: unknown) => { mocks.builder(props); return <div>Campaign editor</div>; } }));
@@ -20,16 +23,52 @@ vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams()
 import CampaignsPage from '../campaigns-page';
 beforeEach(() => { clearPageCache(); vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} })); vi.clearAllMocks(); mocks.templates = []; mocks.permitted = true; mocks.initial = false; mocks.refreshing = false; mocks.archive.mockResolvedValue({ success: true }); mocks.templateCreate.mockResolvedValue({ success: true }); mocks.refresh.mockResolvedValue(undefined); mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module)) }); mocks.emailSettings.mockResolvedValue({ success: true, data: { senderName: 'Provider sender', senderEmail: 'provider@example.test' } }); mocks.smsSettings.mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'contact@example.test' } }); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); clearPageCache(); });
-it('keeps the email open rate independent of submitted SMS volume', () => {
+it.each(['loaded', 'initial', 'refreshing'] as const)('omits summary KPIs from the %s campaign list', state => {
+  if (state !== 'loaded') mocks[state] = true;
   render(<CampaignsPage />);
-  expect(screen.getByRole('progressbar', { name: 'Average open rate: 50.0%' })).toBeTruthy();
+  for (const label of ['Active Campaigns', 'Total Submitted', 'Total Opened', 'Total Clicked', 'Avg Open Rate']) {
+    expect(screen.queryByText(label, { exact: true })).toBeNull();
+  }
+  expect(screen.queryByRole('progressbar', { name: /Average open rate/ })).toBeNull();
+  expect(screen.getByRole('heading', { name: 'Campaigns' })).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'All Campaigns' })).toBeTruthy();
+  if (state !== 'initial') {
+    const grid = screen.getByRole('grid');
+    expect(within(grid).getByText('Saved campaign')).toBeTruthy();
+    for (const label of ['Submitted', 'Opened', 'Clicked', 'Engagement']) {
+      expect(within(grid).getByRole('columnheader', { name: label })).toBeTruthy();
+    }
+  }
 });
 it('shows tracked SMS unique clicks and click engagement while keeping SMS opens unavailable', () => {
   scenario.sms = true; render(<CampaignsPage />);
   expect(screen.getByTitle('Unique clicking recipients').textContent).toBe('1');
   expect(screen.getByTitle('SMS opens are unavailable').textContent).toBe('—');
   expect(screen.getByTitle('Unique clicking recipients / SMS submissions; older SMS links are untracked').textContent).toBe('25%');
-  expect(screen.getByText('Email + tracked SMS')).toBeTruthy();
+});
+it('passes campaign search and filters to the existing list query and refreshes', async () => {
+  render(<CampaignsPage />);
+  fireEvent.change(screen.getByLabelText('Search campaigns'), { target: { value: 'Saved' } });
+  expect(mocks.dataOptions).toHaveBeenLastCalledWith(expect.objectContaining({ query: expect.objectContaining({ search: 'Saved', page: 1 }) }));
+  fireEvent.click(screen.getByLabelText('Filter campaigns'));
+  const filters = document.querySelector('aside.hidden') as HTMLElement;
+  fireEvent.click(within(filters).getByRole('checkbox', { name: 'Filter by Sent' }));
+  fireEvent.click(within(filters).getByRole('checkbox', { name: 'Filter by SMS' }));
+  expect(mocks.dataOptions).toHaveBeenLastCalledWith(expect.objectContaining({ query: expect.objectContaining({ search: 'Saved', status: 'SENT', type: 'SMS', page: 1 }) }));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(mocks.refresh).toHaveBeenCalledExactlyOnceWith());
+});
+it('opens the existing Manage Columns drawer', async () => {
+  const scroll = vi.spyOn(window, 'scrollTo').mockImplementation(() => {});
+  render(<CampaignsPage />);
+  await act(async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Table settings' }));
+  });
+  await act(async () => {
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Manage Columns' }));
+  });
+  expect(await screen.findByRole('dialog', { name: 'Manage Columns - campaigns' })).toBeTruthy();
+  scroll.mockRestore();
 });
 it('opens View and duplicates the complete saved campaign into a new draft', async () => {
   mocks.get.mockResolvedValue({ data: { ...campaign, subject: 'Saved subject', body: '<p>Saved body</p>', audienceSource: 'LEADS' } });

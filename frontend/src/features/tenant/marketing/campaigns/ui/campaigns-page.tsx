@@ -67,7 +67,6 @@ export default function CampaignsPage() {
   const setPageSize = (size: number) => { updatePageSize(size); goToPage(1); };
   // Route-scoped fetch — replaces DataContext Batch 2 startup load
   const {
-    metrics,
     total: totalItems,
     campaigns: serverCampaigns,
     templates: serverTemplates,
@@ -126,13 +125,6 @@ export default function CampaignsPage() {
     insertVariableAtSelection(input, newTemplate[field], token, value => setNewTemplate(previous => ({ ...previous, [field]: value })));
     setShowVarDropdown(false);
   }
-  // ── KPI computations (real data, no hardcoded numbers) ─────────────────────
-  const activeCampaignCount = metrics.activeCampaigns;
-  const totalMessagesSent = metrics.sent;
-  const totalOpened = metrics.opened;
-  const totalClicked = metrics.clicked;
-  const emailSubmitted = metrics.emailSent ?? totalMessagesSent;
-  const avgOpenRate = emailSubmitted ? totalOpened / emailSubmitted * 100 : 0;
   const canCreateCampaign = useHasPermission('campaigns.create');
   const canEditCampaign = useHasPermission('campaigns.edit');
   const canDeleteCampaign = useHasPermission('campaigns.archive');
@@ -245,58 +237,6 @@ export default function CampaignsPage() {
           setEditingCampaign(undefined); setBuilderInitialType('Email'); setBuilderInitialContent(undefined); setBuilderSubject(''); setShowBuilder(true);
         }} />} />
 
-      {/* 2. Overview Operational KPI Strip */}
-      {canViewReports && <div className="bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-lg p-3 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Active Campaigns</span>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{activeCampaignCount}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span className="text-slate-500 dark:text-slate-400 font-medium">Total Submitted</span>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{totalMessagesSent.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span title="Unique opened recipients summed across email campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Opened</span>
-          <span className="text-[10px] text-muted-foreground">Email only</span>
-          <div className="flex items-baseline gap-1.5 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{totalOpened.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between border-r border-slate-200 dark:border-slate-800/80 pr-3 last:border-0">
-          <span title="Unique clicking recipients summed across email and tracked SMS campaigns" className="text-slate-500 dark:text-slate-400 font-medium">Total Clicked</span>
-          <span className="text-[10px] text-muted-foreground">Email + tracked SMS</span>
-          <div className="flex items-baseline gap-1 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{totalClicked.toLocaleString()}</span>
-          </div>
-        </div>
-
-        <div className="flex flex-col justify-between">
-          <span title="Weighted rate: unique opens / email submissions" className="text-slate-500 dark:text-slate-400 font-medium">Avg Open Rate</span>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-base font-bold text-slate-900 dark:text-white">{avgOpenRate.toFixed(1)}%</span>
-            <div className="w-12 bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-emerald-500 h-full rounded-full transition-all duration-500"
-                style={{ width: `${Math.min(avgOpenRate, 100)}%` }}
-                role="progressbar"
-                aria-valuenow={Math.round(avgOpenRate)}
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-label={`Average open rate: ${avgOpenRate.toFixed(1)}%`}
-              />
-            </div>
-          </div>
-        </div>
-      </div>
-
-      }
       {/* Tabs + contextual action per active tab */}
       <div className="flex items-center justify-between gap-2">
         {/* Tab strip */}
@@ -378,7 +318,7 @@ export default function CampaignsPage() {
 
       {activeTab === 'all' && <>
         {tableColumns.drawer}
-        <ModuleTableToolbar label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
+        <ModuleTableToolbar stackSearchOnMobile label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."
           filter={<FilterButton title="campaigns" open={showFilters} active={!!(statusFilter.length || typeFilter.length)} onClick={() => setShowFilters(!showFilters)} />}
           refreshing={isInitialLoad || isRefreshing} onRefresh={refetchCampaigns} onManageColumns={tableColumns.openColumns} onResetColumnSize={tableColumns.resetColumnWidths}
           sort={sort} sortFields={tableColumns.sortFields} onSortChange={next => { setSort(next); goToPage(1); }} />
