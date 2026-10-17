@@ -120,6 +120,20 @@ migration or deployment was performed.
 Local JSON reports/screenshots are under
 `data/outputs/system-audit/security/` (ignored generated evidence).
 
+## PR CI repair
+
+PR #162 initially stopped both unit jobs before test execution: the local API-fixture
+preview matched the database-backed browser-suite naming convention. It now uses
+the existing `preview-*` convention; the strict runtime guard remains unchanged.
+The CI regression tests verify that previews do not alter acceptance coverage and
+that undeclared database browser suites still fail discovery.
+
+The full backend unit run also found four obsolete Deal sort expectations. The
+property tests now verify the selected primary field/direction plus the unique ID
+tie-breaker required for stable list/export pagination. Tenant-scope assertions
+remain intact. All five sort properties pass, as do all thirteen CI-coordination
+regressions. Live check results are available on [PR #162](https://github.com/reymarkjpanes/LeadCRM/pull/162).
+
 ## Implementation file inventory
 
 ```text

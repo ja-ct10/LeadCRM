@@ -6,8 +6,9 @@ import * as fc from 'fast-check';
  *
  * **Property 2: Sort Ordering Correctness**
  * For any valid `sortBy` field and `sortOrder` (asc/desc), `findAllDeals` SHALL pass
- * the correct `orderBy: { [sortBy]: sortOrder }` to Prisma. When no `sortBy` is provided,
- * it SHALL default to `{ createdAt: 'desc' }`.
+ * the selected primary sort to Prisma followed by a unique ID tie-breaker, so
+ * list/export pages remain stable when primary values match. Without `sortBy`,
+ * the primary sort SHALL default to `{ createdAt: 'desc' }`.
  *
  * **Validates: Requirements 4.1, 4.2, 4.3**
  */
@@ -68,7 +69,7 @@ describe('Feature: deals-module-modernization, Property 2: Sort Ordering Correct
   });
 
   describe('explicit sortBy field passes correct orderBy to Prisma', () => {
-    it('should pass orderBy: { [sortBy]: sortOrder } for any valid sortBy and sortOrder combination', async () => {
+    it('preserves any valid primary sort and a stable ID tie-breaker', async () => {
       await fc.assert(
         fc.asyncProperty(
           sortFieldArb,
@@ -91,7 +92,7 @@ describe('Feature: deals-module-modernization, Property 2: Sort Ordering Correct
             // Verify prisma.deal.findMany was called with the correct orderBy
             expect(mockFindMany).toHaveBeenCalledTimes(1);
             const callArgs = mockFindMany.mock.calls[0][0];
-            expect(callArgs.orderBy).toEqual({ [sortBy]: sortOrder });
+            expect(callArgs.orderBy).toEqual([{ [sortBy]: sortOrder }, { id: 'asc' }]);
           },
         ),
         { numRuns: 100 },
@@ -100,7 +101,7 @@ describe('Feature: deals-module-modernization, Property 2: Sort Ordering Correct
   });
 
   describe('default sort when no sortBy is provided', () => {
-    it('should default to orderBy: { createdAt: "desc" } when sortBy is undefined', async () => {
+    it('defaults to newest first with a stable ID tie-breaker when sortBy is undefined', async () => {
       await fc.assert(
         fc.asyncProperty(tenantIdArb, async (tenantId) => {
           mockFindMany.mockClear();
@@ -118,7 +119,7 @@ describe('Feature: deals-module-modernization, Property 2: Sort Ordering Correct
 
           expect(mockFindMany).toHaveBeenCalledTimes(1);
           const callArgs = mockFindMany.mock.calls[0][0];
-          expect(callArgs.orderBy).toEqual({ createdAt: 'desc' });
+          expect(callArgs.orderBy).toEqual([{ createdAt: 'desc' }, { id: 'asc' }]);
         }),
         { numRuns: 100 },
       );
@@ -144,7 +145,7 @@ describe('Feature: deals-module-modernization, Property 2: Sort Ordering Correct
 
           expect(mockFindMany).toHaveBeenCalledTimes(1);
           const callArgs = mockFindMany.mock.calls[0][0];
-          expect(callArgs.orderBy).toEqual({ [sortBy]: 'asc' });
+          expect(callArgs.orderBy).toEqual([{ [sortBy]: 'asc' }, { id: 'asc' }]);
         }),
         { numRuns: 100 },
       );
@@ -168,7 +169,7 @@ describe('Feature: deals-module-modernization, Property 2: Sort Ordering Correct
 
           expect(mockFindMany).toHaveBeenCalledTimes(1);
           const callArgs = mockFindMany.mock.calls[0][0];
-          expect(callArgs.orderBy).toEqual({ [sortBy]: 'desc' });
+          expect(callArgs.orderBy).toEqual([{ [sortBy]: 'desc' }, { id: 'asc' }]);
         }),
         { numRuns: 100 },
       );
