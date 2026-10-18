@@ -1003,6 +1003,7 @@ export function DataGrid<T = Record<string, unknown>>({
                       </p>
                       {emptyState.onClearFilters && (
                         <button
+                          type="button"
                           onClick={emptyState.onClearFilters}
                           className={cn(
                             'px-3 py-1.5 text-xs font-medium rounded-md border transition-colors',

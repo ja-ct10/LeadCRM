@@ -20,6 +20,8 @@ beforeEach(() => { Element.prototype.scrollIntoView = vi.fn(); fixture.data = { 
 it.each((['create', 'edit'] as const).flatMap(mode => [false, true].flatMap(visibleInForm => [false, true].map(visibleInDetails => ({ mode, visibleInForm, visibleInDetails })))))('$mode Deal uses Forms=$visibleInForm independently of Details=$visibleInDetails', ({ mode, visibleInForm, visibleInDetails }) => {
   fixture.data.fields = [{ id: 'cancellation-reason', name: 'Cancellation Reason', module: 'deals', group: 'Additional Details', type: 'Long Text', required: false, active: true, visibleInForm, visibleInDetails, options: [], description: '', order: 0, version: 1 }];
   render(<DealForm mode={mode} initialData={mode === 'edit' ? { id: 'deal', title: 'History', productInterestId: product.id } : undefined} preselect={{ pipelineId: 'pipeline', stageId: 'stage' }} onSubmit={vi.fn()} onCancel={() => {}} />);
+  expect(screen.queryByLabelText('Industry')).toBeNull();
+  expect(screen.queryByRole('option', { name: 'Uncategorized' })).toBeNull();
   if (visibleInForm) expect(screen.getByLabelText('Cancellation Reason').tagName).toBe('TEXTAREA');
   else expect(screen.queryByLabelText('Cancellation Reason')).toBeNull();
 });
@@ -28,7 +30,7 @@ it('requires a catalog product and submits its ID array without a manual value',
   render(<DealForm mode="create" preselect={{ pipelineId: 'pipeline', stageId: 'stage' }} onSubmit={save} onCancel={() => {}} />);
   const selector = screen.getByRole('button', { name: 'Product Interest' });
   expect(screen.queryByLabelText('Value')).toBeNull();
-  expect(screen.getByLabelText('Industry').tagName).toBe('SELECT');
+  expect(screen.queryByLabelText('Industry')).toBeNull();
   fireEvent.change(screen.getByLabelText(/Title/), { target: { value: 'Installation' } });
   fireEvent.change(screen.getByLabelText(/Associate Deal To/), { target: { value: 'lead' } });
   fireEvent.change(screen.getByRole('combobox', { name: 'Search leads' }), { target: { value: 'leads-1' } });
@@ -44,6 +46,7 @@ it('requires a catalog product and submits its ID array without a manual value',
   await waitFor(() => expect((screen.getByRole('button', { name: 'Create Deal' }) as HTMLButtonElement).disabled).toBe(false));
   fireEvent.click(screen.getByRole('button', { name: 'Create Deal' }));
   await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ productInterestIds: [product.id, 'e47c3b8e-0b85-4f11-b9a6-2aafdd587fe5'], value: undefined, productInterests: undefined, currency: 'PHP' })));
+  expect(save.mock.calls[0][0]).not.toHaveProperty('industry');
 });
 it('does not send a catalog repricing or manual value when editing a historical Deal', async () => {
   const save = vi.fn();

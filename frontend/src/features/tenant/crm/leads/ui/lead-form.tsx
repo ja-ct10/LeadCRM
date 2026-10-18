@@ -82,7 +82,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
   const requestId = useRef<string | undefined>(undefined);
   const saving = useRef(false);
   const [isSaving, setIsSaving] = useState(false);
-  const { products: productRecords, error: productError, loading: productsLoading } = useProductInterests();
+  const { products: productRecords, categories, error: productError, loading: productsLoading } = useProductInterests();
 
   const {
     register,
@@ -317,7 +317,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               </div>
             </FieldWrap>
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
-<ProductInterestSelect products={productRecords} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
+<ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} values={selectedProducts} onChange={values => { setSelectedProducts(values); setValue('productInterest', values, { shouldDirty: true }); }} disabled={productsLoading || !!productError} labels={Object.fromEntries((initialData?.productInterestIds ?? []).map((id: string, i: number) => [id, initialData?.productInterests?.[i] ?? "Unavailable product"]))} />
 {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
 </FieldWrap>
           </div>

@@ -40,7 +40,7 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     ...(accountId             ? { accountId }                           : {}),
     ...(params.contactId      ? { contactDeals: { some: { contactId: params.contactId } } } : {}),
     ...(params.leadId         ? { leadDeals: { some: { leadId: params.leadId } } }          : {}),
-    AND: buildSearchClauses(params.search, ['title', 'leadSource', 'industry'], contains => [
+    AND: buildSearchClauses(params.search, ['title', 'leadSource'], contains => [
       ...(canReadAccount ? [{ organization: { name: contains } }] : []), { stage: { name: contains } },
       ...(['LOW', 'MEDIUM', 'HIGH'].includes(contains.contains.toUpperCase()) ? [{ priority: contains.contains.toUpperCase() }] : []),
     ]),

@@ -41,12 +41,19 @@ try {
   const tenantId = tenant.id;
   const admin = await prisma.user.create({ data: { tenantId, firstName: 'Polish', lastName: 'Admin', email: 'polish-browser@camxian.com', role: 'Client Admin', status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date(), emailVerified: new Date() } });
   const { token } = await issueAuthSession(admin);
+  const salesRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Browser Sales', permissions: { create: ['leads', 'contacts', 'deals', 'inbox'].map(module => ({ module, canView: true, canEdit: true, canCreate: true })) } } });
+  const salesAgent = await prisma.user.create({ data: { tenantId, firstName: 'Catalog', lastName: 'Agent', email: 'catalog-agent@camxian.com', role: 'Browser Sales', status: 'ACTIVE' } });
+  await prisma.userRole.create({ data: { tenantId, userId: salesAgent.id, roleId: salesRole.id } });
+  // Pure Run Check reads this isolated mailbox identity; it never contacts Gmail.
+  await prisma.emailAccount.create({ data: { tenantId, userId: salesAgent.id, email: salesAgent.email, accessToken: 'disposable-fixture', scopes: ['gmail.send'] } });
   const account = await prisma.account.create({ data: { tenantId, name: 'Polish Company', industry: 'Technology', size: '11-50', website: 'https://company.test' } });
-  const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Polish', lastName: 'Lead', email: 'polish-lead@example.test', accountId: account.id, companyName: 'Old company text' } });
+  const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Polish', lastName: 'Lead', email: 'polish-lead@example.test', assignedUserId: salesAgent.id, accountId: account.id, companyName: 'Old company text' } });
   const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Polish', lastName: 'Contact', email: 'polish-contact@example.test', accountId: account.id, companyName: 'Old company text' } });
   const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Polish Pipeline' } });
   const stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0, isDefault: true, requiredFields: [] } });
   const product = await prisma.productInterest.create({ data: { tenantId, name: 'Polish Product', dealValue: 2500 } });
+  await prisma.productInterest.create({ data: { tenantId, name: 'Configured category product', category: 'Services', dealValue: 1500 } });
+  await prisma.tenantPreference.create({ data: { tenantId, module: 'product-interests', key: 'categories', value: ['Services', 'New empty category'] } });
   const deal = await prisma.deal.create({ data: { tenantId, title: 'Polish Deal', pipelineId: pipeline.id, stageId: stage.id, accountId: account.id, productInterestId: product.id, productInterestIds: [product.id], productInterests: [product.name], productsNormalized: true, value: 2500 } });
   await prisma.leadDeal.create({ data: { tenantId, leadId: lead.id, dealId: deal.id, addedById: admin.id } });
   await prisma.contactDeal.create({ data: { tenantId, contactId: contact.id, dealId: deal.id } });
@@ -85,10 +92,10 @@ try {
       await route.abort().catch(() => {});
     }
   });
-  async function layout(label, focus) {
+  async function layout(label, focus, widths = [375, 1440]) {
     for (const theme of ['Light', 'Dark']) {
       await setAcceptanceTheme(page, theme);
-      for (const width of [375, 1440]) {
+      for (const width of widths) {
         await page.setViewportSize({ width, height: 900 });
         if (focus) await focus.scrollIntoViewIfNeeded();
         const dimensions = await page.evaluate(() => ({ width: innerWidth, scroll: document.documentElement.scrollWidth,
@@ -97,6 +104,37 @@ try {
         await page.screenshot({ path: resolve(output, `${label}-${theme}-${width}.png`) }); pass(`${label} ${theme} ${width}px`);
       }
     }
+  }
+  async function categoryForm(form, label, { dealForm = false, editable = true } = {}) {
+    const category = form.getByLabel('Product category filter', { exact: true });
+    await category.waitFor();
+    await category.getByRole('option', { name: 'Services', exact: true }).waitFor({ state: 'attached' });
+    assert.deepEqual(await category.locator('option').allTextContents(), ['All categories', 'New empty category', 'Services']);
+    if (dealForm) {
+      assert.equal(await form.getByLabel('Industry', { exact: true }).count(), 0);
+      await form.getByLabel('Expected Close Date', { exact: true }).waitFor();
+      await form.getByLabel('Lead Source', { exact: true }).waitFor();
+    }
+    if (editable) {
+      const trigger = form.getByRole('button', { name: 'Product Interest', exact: true });
+      const options = page.getByRole('group', { name: 'Product interests', exact: true });
+      const openProducts = async () => { if (!await options.isVisible()) await trigger.click(); };
+      await openProducts();
+      await options.getByRole('checkbox', { name: product.name, exact: true }).waitFor();
+      await category.selectOption('Services');
+      await openProducts();
+      await options.getByRole('checkbox', { name: 'Configured category product', exact: true }).waitFor();
+      assert.equal(await options.getByRole('checkbox', { name: product.name, exact: true }).count(), 0);
+      await category.selectOption('New empty category');
+      await openProducts();
+      await options.getByText('No products match this category.', { exact: true }).waitFor();
+      await category.selectOption('');
+      await openProducts();
+      await options.getByRole('checkbox', { name: product.name, exact: true }).waitFor();
+      await page.keyboard.press('Escape');
+    }
+    await layout(label, category, [320, 375, 390, 430, 768, 1024, 1440]);
+    pass(`${label} catalog categories, legacy Products and Industry contract`);
   }
   const records = { leads: lead, contacts: contact, accounts: account, deals: deal };
   const titles = { leads: 'Polish Lead', contacts: 'Polish Contact', accounts: 'Polish Company', deals: 'Polish Deal' };
@@ -125,6 +163,8 @@ try {
           assert.equal(await group.locator(`a[href="/crm/${kind}/${id}"]`).count(), 1);
         }
         assert.equal(await page.getByRole('button', { name: 'Lead/Contact', exact: true }).count(), 0);
+        assert.equal(await page.getByText('Industry', { exact: true }).count(), 0);
+        assert.equal(await group.getByText(account.industry, { exact: true }).count(), 0);
       } else {
         assert.equal(await page.getByRole('button', { name: 'Notes', exact: true }).count(), 0);
         assert.equal(await page.getByRole('button', { name: 'Edit Internal Notes' }).count(), 0);
@@ -140,34 +180,83 @@ try {
   for (const module of ['leads', 'contacts']) {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.goto(`${base}/crm/${module}`);
+    const row = page.getByRole('row').filter({ hasText: records[module].email });
+    await row.getByRole('button', { name: 'Row actions', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Edit', exact: true }).click();
+    const form = page.locator('form').filter({ has: page.getByLabel('Product category filter', { exact: true }) });
+    await categoryForm(form, `${module}-edit-category`);
+    await form.getByRole('button', { name: 'Cancel', exact: true }).click();
+  }
+  await page.goto(`${base}/crm/deals/${deal.id}`);
+  await page.getByRole('button', { name: 'Record actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Edit deal', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Edit Industry', exact: true }).count(), 0);
+  await layout('deals-inline-edit', page.getByRole('button', { name: 'Edit Expected Close Date', exact: true }), [320, 375, 390, 430, 768, 1024, 1440]);
+  await page.getByRole('button', { name: 'Edit Lead Source', exact: true }).click();
+  await page.getByRole('textbox', { name: 'Lead Source', exact: true }).fill('Referral');
+  const updatedResponse = page.waitForResponse(response => response.url().includes(`/api/proxy/crm/deals/${deal.id}`) && response.request().method() === 'PUT');
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  const updateResult = await updatedResponse;
+  assert.equal(updateResult.status(), 200);
+  assert.equal(Object.hasOwn(updateResult.request().postDataJSON(), 'industry'), false);
+  assert.equal(Object.hasOwn((await updateResult.json()).data, 'industry'), false);
+  assert.equal((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).leadSource, 'Referral');
+  pass('Deal inline edit persists through the real API without Industry');
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.goto(`${base}/crm/deals`);
+  await page.getByRole('button', { name: 'New Deal', exact: true }).click();
+  const newDeal = page.locator('form').filter({ has: page.getByLabel('Title *', { exact: true }) });
+  await categoryForm(newDeal, 'deals-create-category', { dealForm: true });
+  await newDeal.getByLabel('Title *', { exact: true }).fill('Deal without Industry');
+  await newDeal.getByRole('button', { name: 'Product Interest', exact: true }).click();
+  await page.getByRole('group', { name: 'Product interests', exact: true }).getByText(product.name, { exact: true }).click();
+  await page.keyboard.press('Escape');
+  await newDeal.getByLabel('Associate Deal To *', { exact: true }).selectOption('lead');
+  await newDeal.getByRole('combobox', { name: 'Search leads...', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Search leads', exact: true }).fill('Polish');
+  await page.getByRole('option').filter({ hasText: lead.email }).click();
+  await newDeal.getByRole('button', { name: 'Create Deal', exact: true }).click();
+  await newDeal.waitFor({ state: 'hidden' });
+  const createdDeal = await prisma.deal.findFirstOrThrow({ where: { tenantId, title: 'Deal without Industry' }, include: { leadDeals: true, stage: true } });
+  assert.equal(createdDeal.value, 2500); assert.equal(createdDeal.accountId, account.id);
+  assert.equal(createdDeal.assignedUserId, salesAgent.id); assert.equal(createdDeal.stage.name, 'Lead');
+  assert.equal(createdDeal.leadDeals[0].leadId, lead.id); assert.equal(createdDeal.productInterestId, product.id);
+  assert.equal(Object.hasOwn(createdDeal, 'industry'), false);
+  assert.equal((await prisma.account.findUniqueOrThrow({ where: { id: account.id } })).industry, account.industry);
+  pass('New Deal saves without Industry and preserves Product value, agent and Account/Lead relationships');
+  for (const module of ['leads', 'contacts']) {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(`${base}/crm/${module}`);
     await page.getByRole('button', { name: module === 'leads' ? /Create Lead/ : /Create Contact/, exact: true }).click();
     await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
     const form = page.locator('form').filter({ has: page.getByLabel('First Name *') });
+    await categoryForm(form, `${module}-create-category`);
+    const companyLabel = module === 'contacts' ? 'Company *' : 'Company Name *';
     const modes = form.getByRole('group', { name: 'Account options' });
     assert.deepEqual(await modes.getByRole('button').allTextContents(), ['Link existing account', 'Create new account']);
     assert.equal(await modes.getByRole('button', { name: 'Link existing account' }).getAttribute('aria-pressed'), 'true');
-    assert.equal(await form.getByLabel('Company Name *').count(), 0);
+    assert.equal(await form.getByLabel(companyLabel, { exact: true }).count(), 0);
     await form.getByRole('button', { name: 'Create new account', exact: true }).click();
     const companyName = `Created from ${module}`;
     await form.getByLabel('First Name *').fill('Created'); await form.getByLabel('Last Name *').fill(module);
     await form.getByLabel('Email *').fill(`created-${module}@example.test`);
-    await form.getByLabel('Company Name *').fill(companyName); await form.getByLabel(/^Industry/).selectOption('Technology');
+    await form.getByLabel(companyLabel, { exact: true }).fill(companyName); await form.getByLabel(/^Industry/).selectOption('Technology');
     await form.getByLabel('Company Size', { exact: true }).selectOption('51-200'); await form.getByLabel('Website', { exact: true }).fill('https://created.test');
     const accountAddress = form.locator('textarea[name="newAccount.address"]');
     await accountAddress.fill('24 Company Avenue\nManila');
     await form.getByRole('button', { name: 'Link existing account', exact: true }).click();
-    assert.equal(await form.getByLabel('Company Name *').count(), 0);
+    assert.equal(await form.getByLabel(companyLabel, { exact: true }).count(), 0);
     assert.equal(await form.getByLabel('Website', { exact: true }).count(), 0);
     await form.getByRole('button', { name: 'Create new account', exact: true }).click();
-    assert.equal(await form.getByLabel('Company Name *').inputValue(), companyName);
+    assert.equal(await form.getByLabel(companyLabel, { exact: true }).inputValue(), companyName);
     assert.equal(await accountAddress.inputValue(), '24 Company Avenue\nManila');
-    assert.ok((await form.getByLabel('Company Name *').locator('xpath=ancestor::section[1]').innerText()).includes('Organization'));
+    assert.ok((await form.getByLabel(companyLabel, { exact: true }).locator('xpath=ancestor::section[1]').innerText()).includes('Organization'));
     await layout(`${module}-form`, form.getByRole('heading', { name: 'Organization', exact: true }));
-    const positions = await form.evaluate(element => Object.fromEntries(['Company Name *', 'Industry', 'Company Size', 'Website'].map(label => {
+    const positions = await form.evaluate((element, companyLabel) => Object.fromEntries([companyLabel, 'Industry', 'Company Size', 'Website'].map(label => {
       const field = [...element.querySelectorAll('label')].find(item => item.textContent.trim().startsWith(label));
       const input = field?.htmlFor ? document.getElementById(field.htmlFor) : null; const box = input?.getBoundingClientRect(); return [label, box ? { x: box.x, y: box.y } : null];
-    })));
-    assert.ok(Math.abs(positions['Company Name *'].y - positions.Industry.y) < 2 && Math.abs(positions['Company Size'].y - positions.Website.y) < 2);
+    })), companyLabel);
+    assert.ok(Math.abs(positions[companyLabel].y - positions.Industry.y) < 2 && Math.abs(positions['Company Size'].y - positions.Website.y) < 2);
     await form.getByRole('button', { name: module === 'leads' ? 'Create Lead' : 'Create Contact', exact: true }).click();
     await form.waitFor({ state: 'hidden' });
     const created = await prisma.account.findFirst({ where: { tenantId, name: companyName } }); assert.ok(created); assert.equal(created.size, '51-200'); assert.equal(created.address, '24 Company Avenue\nManila');
@@ -192,6 +281,7 @@ try {
   }
   await layout('account-form-address', address);
   await accountForm.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.getByRole('button', { name: 'Discard changes', exact: true }).click();
   pass('Account Full Address spans both desktop columns and remains responsive');
   await page.goto(`${base}/automation/workflows`); await page.getByRole('button', { name: 'View runs', exact: true }).first().click();
   const panel = page.getByRole('dialog', { name: 'Workflow details — Polish Workflow' });
@@ -234,8 +324,8 @@ try {
   await page.keyboard.press('Escape'); assert.equal(await insert.evaluate(element => document.activeElement === element), true);
   pass('Workflow Insert Variable replaces selection, restores cursor and supports keyboard focus');
   await page.getByRole('button', { name: 'Save draft', exact: true }).click();
-  await page.getByRole('button', { name: 'Test', exact: true }).waitFor({ state: 'visible' });
-  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByRole('button', { name: 'Test draft', exact: true }).waitFor({ state: 'visible' });
+  await page.getByRole('button', { name: 'Test draft', exact: true }).click();
   assert.equal(await page.getByRole('dialog', { name: 'Step configuration', exact: true }).count(), 0);
   await page.getByLabel('Sample record', { exact: false }).selectOption(lead.id);
   const countsBefore = await Promise.all([prisma.task.count({ where: { tenantId } }), prisma.emailDeliveryLog.count({ where: { tenantId } }), prisma.workflowExecutionRun.count({ where: { tenantId } })]);
@@ -258,7 +348,7 @@ try {
   await page.getByRole('button', { name: 'Configure action: 1. Create Task', exact: true }).click();
   assert.equal(await page.getByLabel('Associate task with', { exact: true }).inputValue(), 'triggering_deal');
   assert.equal(await page.getByRole('button', { name: 'Pipeline filter', exact: true }).count(), 0);
-  await page.getByRole('button', { name: 'Test', exact: true }).click();
+  await page.getByRole('button', { name: 'Test draft', exact: true }).click();
   await page.getByLabel('Sample record', { exact: false }).selectOption(deal.id);
   await page.getByRole('button', { name: 'Run check', exact: true }).click();
   await page.getByText('Creates 1 task linked to 1 deal.', { exact: true }).waitFor();

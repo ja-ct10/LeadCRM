@@ -224,7 +224,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const statuses = [...CRM_STATUSES];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
-  const productRow: InlineRowDef = { technicalKey: 'productInterestIds', label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
+  const productRow: InlineRowDef = { technicalKey: 'productInterestIds', label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', showUncategorized: false, valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
   const aboutRows: InlineRowDef[] = module === 'deals' ? [
     { label: 'Deal title', value: title, apiField: 'title' },
     { technicalKey: 'value', label: 'Deal value', value: subtitle.split(' · ')[0] },
@@ -236,7 +236,6 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ...(canReadAccounts ? [{ technicalKey: 'accountId', label: 'Account', value: object(record.organization)?.name ?? object(record.account)?.name }] : []),
     { label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
     { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
-    { label: 'Industry', value: record.industry, apiField: 'industry' },
     { label: 'Address', value: record.address, apiField: 'address' },
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ] : [
@@ -272,7 +271,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const relationshipContent = module === 'deals' ? <div className="divide-y divide-border">
     {canReadLeads && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Leads</h3><RelatedRecords records={(record.leadDeals as RecordData[] | undefined)?.map(link => object(link.lead)!).filter(Boolean) ?? []} module="leads" empty="No originating Lead." /></div>}
     {canReadContacts && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Contacts</h3><RelatedRecords records={(record.contactDeals as RecordData[] | undefined)?.map(link => object(link.contact)!).filter(Boolean) ?? []} module="contacts" empty="No Contact linked yet." /></div>}
-    {showAccount && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3><RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." /></div>}
+    {showAccount && <div><h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3><RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." showSubtitle={false} /></div>}
   </div> : (module === 'leads' || module === 'contacts') && showAccount ? <div>
     <h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3>
     <RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." showSubtitle={false} />
