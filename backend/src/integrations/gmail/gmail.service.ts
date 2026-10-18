@@ -221,7 +221,15 @@ export async function fetchUnreadCount(tenantId: string, userId: string): Promis
 }
 export const fetchEmails = (tenantId: string, userId: string, options: MailboxListOptions = {}) => listStoredMailbox(tenantId, userId, options);
 export async function fetchMessageDetail(accessToken: string, messageId: string): Promise<GmailEmail> {
-  return parseGmailMessage(await readGmailJson<GmailApiMessage>(accessToken, 'messages/' + encodeURIComponent(messageId) + '?format=full'));
+  const message = await readGmailJson<GmailApiMessage>(accessToken, 'messages/' + encodeURIComponent(messageId) + '?format=full');
+  if (message.id !== messageId) throw new AppError('Gmail returned a different message.', 502);
+  for (const part of emailBodyParts(message.payload)) {
+    if (!part.body?.attachmentId || part.body.data !== undefined) continue;
+    const result = await readGmailJson<{ data: string; size: number }>(accessToken, `messages/${encodeURIComponent(messageId)}/attachments/${encodeURIComponent(part.body.attachmentId)}`);
+    decodeGmailBody(result);
+    part.body.data = result.data;
+  }
+  return parseGmailMessage(message);
 }
 
 /** A provider-confirmed send is never repeated because local history is delayed. */
@@ -232,7 +240,7 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
       { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true } });
     if (persisted) return;
     const token = await getValidAccessToken(account.tenantId, account.userId);
-    const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(messageId)}?format=metadata&${MAILBOX_METADATA_HEADERS}`));
+    const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(messageId)}?format=metadata&${MAILBOX_METADATA_HEADERS}`), 'metadata');
     current = await authorizeMailboxOperation(account, context);
     if (!messageInScope(metadata, account.email, current.scope) || metadata.labels.some(label => ['DRAFT', 'SPAM', 'TRASH', 'DELETED'].includes(label))) {
       throw new AppError('Sent message access changed during ingestion.', 409, 'MAILBOX_SCOPE_CHANGED');
@@ -386,13 +394,35 @@ export const trashEmails = (tenantId: string, userId: string, ids: string[]) => 
 export const archiveEmails = (tenantId: string, userId: string, ids: string[]) => modifyEmails(tenantId, userId, ids, false);
 
 
-interface GmailPart { filename?: string; mimeType?: string; body?: { data?: string; attachmentId?: string; size?: number }; parts?: GmailPart[] }
+export interface GmailPart { partId?: string; headers?: { name: string; value: string }[]; filename?: string; mimeType?: string; body?: { data?: string; attachmentId?: string; size?: number }; parts?: GmailPart[] }
+export const MAX_MAILBOX_ATTACHMENT_BYTES = 35 * 1024 * 1024;
+export function decodeGmailBody(body: { data?: string; size?: number }): Buffer {
+  if (typeof body.data !== 'string' || !/^[a-zA-Z0-9_-]*={0,2}$/.test(body.data) || body.data.length > Math.ceil(MAX_MAILBOX_ATTACHMENT_BYTES * 4 / 3) + 4) throw new AppError('Gmail returned invalid file data.', 502);
+  const data = Buffer.from(body.data, 'base64url');
+  if (data.length > MAX_MAILBOX_ATTACHMENT_BYTES) throw new AppError('This attachment exceeds the download limit.', 413);
+  if (body.size !== undefined && (!Number.isSafeInteger(body.size) || body.size < 0 || data.length !== body.size)) throw new AppError('Gmail returned an incomplete attachment.', 502);
+  return data;
+}
+const partHeader = (part: GmailPart, name: string) => part.headers?.find(header => header.name.toLowerCase() === name)?.value ?? '';
+export function gmailParts(part: GmailPart): GmailPart[] {
+  return [part, ...((part.mimeType ?? '').toLowerCase() === 'message/rfc822' ? [] : (part.parts ?? []).flatMap(gmailParts))];
+}
+function emailBodyParts(part: GmailPart): GmailPart[] {
+  if (part.filename || /^attachment(?:;|$)/i.test(partHeader(part, 'content-disposition')) || /^message\//i.test(part.mimeType ?? '')) return [];
+  if (/^text\/(html|plain)$/i.test(part.mimeType ?? '')) return [part];
+  let children = part.parts ?? [];
+  if (part.mimeType?.toLowerCase() === 'multipart/related') {
+    const start = partHeader(part, 'content-type').match(/\bstart\s*=\s*"?<?([^";>]+)>?"?/i)?.[1];
+    children = [children.find(child => start && partHeader(child, 'content-id').replace(/[<>]/g, '') === start) ?? children[0]].filter((child): child is GmailPart => !!child);
+  }
+  return children.flatMap(emailBodyParts);
+}
 export interface GmailApiMessage {
   id: string;
   threadId: string;
   labelIds: string[];
   snippet: string;
-  payload: {
+  payload: GmailPart & {
     headers: { name: string; value: string }[];
     body?: { data?: string };
     mimeType?: string;
@@ -417,7 +447,7 @@ export function parseAddressList(value: string): string[] {
   return addresses;
 }
 
-export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
+export function parseGmailMessage(data: GmailApiMessage, format: 'full' | 'metadata' = 'full'): GmailEmail {
   const headers = data.payload?.headers ?? [];
   const getHeader = (name: string): string =>
     headers.find((h) => h.name.toLowerCase() === name.toLowerCase())?.value ?? '';
@@ -433,14 +463,18 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
   const isRead = !(data.labelIds ?? []).includes('UNREAD');
 
   // Extract body from parts or direct body
-  const parts: GmailPart[] = [];
-  const visit = (part: GmailPart) => { parts.push(part); part.parts?.forEach(visit); };
-  visit(data.payload);
-  const decode = (part?: GmailPart) => part?.body?.data ? Buffer.from(part.body.data, 'base64url').toString('utf-8') : '';
-  const plainText = decode(parts.find(part => part.mimeType === 'text/plain'));
-  const html = decode(parts.find(part => part.mimeType === 'text/html'));
+  const parts = gmailParts(data.payload), candidates = emailBodyParts(data.payload);
+  const decode = (part?: GmailPart) => {
+    if (!part?.body?.data) return '';
+    const bytes = decodeGmailBody(part.body);
+    const charset = partHeader(part, 'content-type').match(/charset\s*=\s*["']?([^;\s"']+)/i)?.[1] ?? 'utf-8';
+    try { return new TextDecoder(charset).decode(bytes); } catch { return bytes.toString('utf-8'); }
+  };
+  const preferred = [...candidates].reverse();
+  const plainText = decode(preferred.find(part => part.mimeType?.toLowerCase() === 'text/plain'));
+  const html = decode(preferred.find(part => part.mimeType?.toLowerCase() === 'text/html'));
   const escape = (text: string) => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  const body = html || `<pre>${escape(plainText || decode(parts.find(part => part.body?.data)))}</pre>`;
+  const body = html || `<pre>${escape(plainText)}</pre>`;
 
   return {
     id: data.id,
@@ -460,7 +494,13 @@ export function parseGmailMessage(data: GmailApiMessage): GmailEmail {
     rfcMessageId: getHeader('Message-ID'),
     rfcInReplyTo: /^<[^\s<>]+>$/.test(getHeader('In-Reply-To')) && getHeader('In-Reply-To').length <= 500 ? getHeader('In-Reply-To') : null,
     rfcReferences: /[\r\n]/.test(getHeader('References')) ? [] : [...new Set((getHeader('References').match(/<[^\s<>]+>/g) ?? []).filter(id => id.length <= 500))],
-    attachments: parts.filter(part => part.filename && part.body?.attachmentId).map(part => ({ id: part.body!.attachmentId!, filename: part.filename!, mimeType: part.mimeType ?? 'application/octet-stream', size: part.body?.size ?? 0 })),
+    attachments: format === 'metadata' ? undefined : parts.filter(part => (part.filename || partHeader(part, 'content-id') || /^attachment(?:;|$)/i.test(partHeader(part, 'content-disposition'))) && (part.body?.attachmentId || part.body?.data !== undefined && part.partId !== undefined)).map(part => ({
+      id: part.body!.attachmentId ?? `part:${part.partId}`, filename: part.filename ?? '', mimeType: part.mimeType ?? 'application/octet-stream',
+      ...(part.body?.size !== undefined ? { size: part.body.size } : {}),
+      ...(part.partId !== undefined ? { partId: part.partId } : {}),
+      ...(partHeader(part, 'content-id') ? { contentId: partHeader(part, 'content-id').trim().replace(/^<|>$/g, '') } : {}),
+      ...(/^(inline|attachment)(?:;|$)/i.test(partHeader(part, 'content-disposition')) ? { disposition: partHeader(part, 'content-disposition').split(';')[0].toLowerCase() as 'inline' | 'attachment' } : {}),
+    })),
     automated: /^(?:mailer-daemon|postmaster)@/i.test(normalizeEmail(from)) || getHeader('Return-Path').trim() === '<>' || parts.some(part => /message\/(?:delivery-status|disposition-notification)/i.test(part.mimeType ?? '')) || /multipart\/report/i.test(data.payload.mimeType ?? '') || (!!getHeader('Auto-Submitted') && getHeader('Auto-Submitted').toLowerCase() !== 'no') || !!getHeader('List-Id') || /bulk|list|junk/i.test(getHeader('Precedence')),
   };
 }
@@ -472,7 +512,7 @@ async function verifiedReplyHeaders(accessToken: string, source: { providerMessa
     // source's metadata, never infer relationships from its subject/participants.
     const message = await readGmailJson<GmailApiMessage>(accessToken, `messages/${encodeURIComponent(source.providerMessageId)}?format=metadata&metadataHeaders=Message-ID&metadataHeaders=References`);
     if (message.threadId !== source.threadId) throw new AppError('Conversation changed. Refresh before replying.', 409);
-    const parsed = parseGmailMessage(message);
+    const parsed = parseGmailMessage(message, 'metadata');
     rfcMessageId = parsed.rfcMessageId ?? null; rfcReferences = parsed.rfcReferences ?? [];
   }
   if (!rfcMessageId || !/^<[^\s<>]+>$/.test(rfcMessageId)) throw new AppError('The original email reply headers are unavailable. Sync your mailbox before replying.', 409);

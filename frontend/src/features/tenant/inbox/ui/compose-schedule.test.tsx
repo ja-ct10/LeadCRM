@@ -6,7 +6,7 @@ import EmailConversationView from './email-conversation-view';
 import { ManilaDateTimePicker } from '@/shared/components/ui/manila-date-time-picker';
 
 const mocks = vi.hoisted(() => ({ schedule: vi.fn(), send: vi.fn(), save: vi.fn(), remove: vi.fn(), thread: vi.fn(), read: vi.fn(), associate: vi.fn() }));
-vi.mock('../services/gmail.service', () => ({ associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
+vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: () => new Promise(() => {}), fetchGmailAttachment: vi.fn(), associateThreadDeal: mocks.associate, scheduleGmailEmail: mocks.schedule, sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, deleteGmailDraft: mocks.remove, fetchGmailThread: mocks.thread, setGmailThreadReadState: mocks.read }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const email = { id: 'message1', threadId: 'thread1', from: 'Customer <customer@example.test>', to: ['staff@camxian.com'], subject: 'Telephone inquiry', body: '<p>Question</p><script>bad()</script>', snippet: 'Question', date: '2026-10-07T00:00:00Z', labels: ['INBOX'], isRead: false, direction: 'inbound' as const };
 beforeEach(() => { vi.clearAllMocks(); mocks.schedule.mockResolvedValue({ id: 'scheduled', status: 'pending' }); mocks.read.mockResolvedValue({ success: true }); mocks.thread.mockResolvedValue({ emails: [email], dealOptions: [], canAssociateDeal: false }); });

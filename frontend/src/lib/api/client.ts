@@ -108,7 +108,7 @@ async function request<T>(
 }
 
 export const apiClient = {
-  download: (path: string, params?: Record<string, unknown>) => request<Blob>('GET', path, undefined, params, undefined, 'blob'),
+  download: (path: string, params?: Record<string, unknown>, signal?: AbortSignal) => request<Blob>('GET', path, undefined, params, signal, 'blob'),
   upload: <T>(path: string, body: Blob) => request<T>('POST', path, body),
   get:    <T>(path: string, config?: { params?: Record<string, unknown>; signal?: AbortSignal }) => request<T>('GET', path, undefined, config?.params, config?.signal),
   post:   <T>(path: string, body: unknown)   => request<T>('POST',   path, body),

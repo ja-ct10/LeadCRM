@@ -25,6 +25,7 @@ import {
   scheduledDetail,
   cancelScheduled,
   attachment,
+  messageContent,
 } from '../../integrations/gmail/gmail.controller';
 
 import { workspaceReadyMiddleware } from '../middleware/tenant.middleware';
@@ -50,6 +51,7 @@ router.get('/gmail/conversations/:conversationId', correspondent);
 router.patch('/gmail/conversations/:conversationId/read-state', conversationReadState);
 router.patch('/gmail/messages/:messageId/read-state', messageReadState);
 router.get('/gmail/messages/:messageId/attachments/:attachmentId', attachment);
+router.get('/gmail/messages/:messageId/content', messageContent);
 router.patch('/gmail/threads/:threadId/read-state', threadReadState);
 router.post('/gmail/threads/:threadId/archive', threadArchive);
 router.post('/gmail/threads/:threadId/trash', threadTrash);

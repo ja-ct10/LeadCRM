@@ -715,6 +715,9 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const parsed = parseGmailMessage(payload);
     await scope(() => ingestMailboxMessages(account, [parsed], permissions));
     await scope(() => ingestMailboxMessages(account, [parsed], permissions));
+    const metadata = apiMail(mail(leadEmail, 'file-source'));
+    delete (metadata.payload as { body?: unknown }).body;
+    await scope(() => ingestMailboxMessages(account, [parseGmailMessage(metadata, 'metadata')], permissions));
     const detail = (await call('/threads/file-source')).body.emails[0];
     expect(detail.attachments).toEqual([{ id: attachmentId, filename: 'proposal.pdf', mimeType: 'application/pdf', size: 4 }]);
     expect(detail.body).toBe(parsed.body); expect(await prisma.mailboxMessage.count({ where: { accountId: account.id } })).toBe(1);
@@ -734,6 +737,53 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
       return Response.json({ data: 'YQ', size: 1 });
     }));
     expect((await call('/messages/file-race/attachments/file-id')).status).toBe(404);
+  });
+  it('recovers original HTML and quotation attachments without replaying activities, and serves original preview bytes', async () => {
+    const original = mail(leadEmail, 'original-content');
+    await scope(() => ingestMailboxMessages(account, [original], permissions));
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { accessToken: encryptToken('original-mailbox-token') } });
+    const payload = apiMail({ ...original, body: '<h1 style="color:blue">Original quotation</h1>' });
+    const pdf = Buffer.from('%PDF-1.7\nOriginal quotation bytes\n%%EOF');
+    Object.assign(payload.payload, { mimeType: 'multipart/mixed', parts: [{ mimeType: 'text/html', body: payload.payload.body }, { filename: 'QT-2026-00124.pdf', mimeType: 'application/pdf', body: { attachmentId: 'original-pdf', size: pdf.length } }, { partId: '2', filename: 'notes.txt', mimeType: 'text/plain', body: { data: Buffer.from('Exact notes').toString('base64url'), size: 11 } }] });
+    const provider = vi.fn(async (input: string | URL, init?: RequestInit) => {
+      expect((init?.headers as Record<string, string>).Authorization).toBe('Bearer original-mailbox-token');
+      return String(input).includes('/attachments/') ? Response.json({ data: pdf.toString('base64url'), size: pdf.length }) : Response.json(payload);
+    }); vi.stubGlobal('fetch', provider);
+    const activities = await prisma.activity.count({ where: { tenantId, mailboxMessage: { accountId: account.id } } });
+    const recovered = await call('/messages/original-content/content');
+    expect(recovered.status).toBe(200); expect(recovered.body.body).toContain('<h1 style="color:blue">');
+    expect(recovered.body.attachments.map((file: { filename: string }) => file.filename)).toEqual(['QT-2026-00124.pdf', 'notes.txt']);
+    expect(await prisma.activity.count({ where: { tenantId, mailboxMessage: { accountId: account.id } } })).toBe(activities);
+    const response = await realFetch(base + '/messages/original-content/attachments/original-pdf', { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.headers.get('content-type')).toContain('application/pdf'); expect(response.headers.get('x-content-type-options')).toBe('nosniff');
+    expect(Buffer.from(await response.arrayBuffer())).toEqual(pdf);
+    const notes = await realFetch(base + '/messages/original-content/attachments/part%3A2', { headers: { Authorization: `Bearer ${token}` } });
+    expect(await notes.text()).toBe('Exact notes'); expect(notes.headers.get('content-type')).toContain('application/octet-stream');
+  });
+  it('denies content and attachments across users and tenants before any provider read', async () => {
+    await scope(() => ingestMailboxMessages(account, [{ ...mail(leadEmail, 'private-content'), attachments: [{ id: 'private-file', filename: 'private.pdf', mimeType: 'application/pdf' }] }], permissions));
+    const other = await prisma.user.findUniqueOrThrow({ where: { id: otherId } });
+    await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId: other.id, provider: 'gmail' } }, create: { tenantId, userId: other.id, email: other.email, accessToken: encryptToken('other-token'), tokenExpiresAt: new Date(Date.now() + 3600000) }, update: { isActive: true } });
+    const foreignTenant = await prisma.tenant.create({ data: { name: 'Foreign mailbox', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
+    const foreign = await prisma.user.create({ data: { tenantId: foreignTenant.id, email: `${randomUUID()}@camxian.com`, firstName: 'Foreign', lastName: 'Agent', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
+    await prisma.emailAccount.create({ data: { tenantId: foreignTenant.id, userId: foreign.id, email: foreign.email, accessToken: encryptToken('foreign-token'), tokenExpiresAt: new Date(Date.now() + 3600000) } });
+    const otherToken = (await issueAuthSession(other)).token, foreignToken = (await issueAuthSession(foreign)).token;
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    for (const auth of [otherToken, foreignToken]) {
+      expect((await call('/messages/private-content/content', 'GET', undefined, `Bearer ${auth}`)).status).toBe(404);
+      expect((await call('/messages/private-content/attachments/private-file', 'GET', undefined, `Bearer ${auth}`)).status).toBe(404);
+    }
+    expect(provider).not.toHaveBeenCalled();
+  });
+  it('does not persist recovered content after assignment is revoked during the Gmail read', async () => {
+    const original = mail(leadEmail, 'content-race');
+    await scope(() => ingestMailboxMessages(account, [original], permissions));
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      await crmActor.exit(async () => await prisma.lead.update({ where: { id: leadId }, data: { assignedUserId: otherId } }));
+      return Response.json(apiMail({ ...original, body: '<p>Revoked body</p>' }));
+    }));
+    expect((await call('/messages/content-race/content')).status).toBe(404);
+    expect((await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: original.id } } })).body).toBe(original.body);
   });
   it('retains the References chain in authorized replies without unsafe header values', async () => {
     const incoming = { ...mail(leadEmail, 'references-source'), rfcMessageId: '<parent@example.test>', rfcReferences: ['<original@example.test>', '<previous@example.test>'] };
