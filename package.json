@@ -27,6 +27,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "dev:local": "node scripts/dev-local.cjs",
+    "dev:isolated": "node scripts/dev-isolated.cjs",
     "build": "turbo run build",
     "lint": "turbo run lint",
     "qa:local": "node scripts/qa-local.mjs all",
