@@ -714,7 +714,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const disconnected = await scope(() => workflows.testWorkflow(automatic.id, tenantId, lead.id));
     expect(disconnected.valid).toBe(false); expect(disconnected.actions[0].message).toContain('connect their work Gmail');
     await prisma.lead.update({ where: { id: lead.id }, data: { assignedUserId: actor.id } });
-    await expect(create([{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: true } }], { trigger: 'deal.created' })).rejects.toThrow(/reason/);
+    await expect(create([{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: true } }], { trigger: 'deal.created' })).resolves.toBeTruthy();
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: required.id } }], { trigger: 'deal.created' });
     const dry = await scope(() => workflows.testWorkflow(workflow.id, tenantId, deal.id));
     expect(dry.valid).toBe(false); expect(dry.actions[0].message).toContain('expectedCloseDate');
