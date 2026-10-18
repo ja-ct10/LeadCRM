@@ -98,7 +98,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
       orderBy: [{ [dateSort ? sortField : 'createdAt']: sortDirection }, { id: 'asc' }],
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
+        account:      { select: { id: true, name: true, industry: true, size: true, website: true, address: true } },
         createdBy:    { select: { id: true, firstName: true, lastName: true } },
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
@@ -126,7 +126,7 @@ export async function findContactById(id: string, tenantId: string) {
     where: { id, tenantId, isArchived: false, deletedAt: null },
     include: {
       assignedUser: { select: { id: true, firstName: true, lastName: true, email: true } },
-      account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
+      account:      { select: { id: true, name: true, industry: true, size: true, website: true, address: true } },
       createdBy:    { select: { id: true, firstName: true, lastName: true } },
       updatedBy:    { select: { id: true, firstName: true, lastName: true } },
     },
@@ -232,7 +232,7 @@ export async function updateContact(
       data,
       include: {
         assignedUser: { select: { id: true, firstName: true, lastName: true } },
-        account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
+        account:      { select: { id: true, name: true, industry: true, size: true, website: true, address: true } },
         createdBy:    { select: { id: true, firstName: true, lastName: true } },
         updatedBy:    { select: { id: true, firstName: true, lastName: true } },
       },
@@ -253,7 +253,7 @@ export async function updateContact(
       if (updated.status === 'Closed' && updatedById) {
         await convertClosedLead(tx, tenantId, id, updatedById, { previousLead: current, emitLeadEvents: !onCommitted });
         return finish(await tx.lead.findFirstOrThrow({ where: { id, tenantId }, include: {
-          assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true } },
+          assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true, address: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } }, updatedBy: { select: { id: true, firstName: true, lastName: true } },
         } }));
       }

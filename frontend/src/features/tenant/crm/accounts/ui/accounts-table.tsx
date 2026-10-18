@@ -34,7 +34,7 @@ export default function AccountsTable({
             <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Account</th>
             <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Industry</th>
             <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Size</th>
-            <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Full Address</th>
+            <th className="pb-3 pr-4 font-medium text-slate-500 dark:text-slate-400">Company Address</th>
             <th className="pb-3 font-medium text-slate-500 dark:text-slate-400">Actions</th>
           </tr>
         </thead>

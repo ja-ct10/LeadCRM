@@ -1,3 +1,4 @@
+import { assertDealAddressSource } from './deal-address';
 import { refreshDealClassification } from '../customer-classification.service';
 import { changeDealAssociation, readDealAssociation, resolveManualDealAssociation } from './deal-association';
 import { salesContext } from '../leads/sales-context';
@@ -64,6 +65,7 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
   return salesTransaction(async tx => {
   let dto = ManualCreateDealSchema.parse(input);
   dto = { ...dto, ...await resolveManualDealAssociation(tx, tenantId, dto) };
+  await assertDealAddressSource(tx, tenantId, dto.addressSource, dto);
   const stage = await (salesContext.getStore() ?? prisma).stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage) throw new ValidationError('Stage must belong to the selected pipeline.');
   const initial = await (salesContext.getStore() ?? prisma).stage.findMany({ where: { tenantId, pipelineId: dto.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
@@ -105,6 +107,7 @@ export async function updateDeal(id: string, tenantId: string, userId: string, d
     await readDealAssociation(salesContext.getStore() ?? prisma, tenantId, primaryAssociation);
     Object.assign(updates, changeDealAssociation(before.leadDeals.map(link => link.leadId), before.contactDeals.map(link => link.contactId), primaryAssociation));
   }
+  if (updates.addressSource !== undefined) await assertDealAddressSource(salesContext.getStore() ?? prisma, tenantId, updates.addressSource, { accountId: updates.accountId !== undefined ? updates.accountId : before.accountId, leadIds: updates.leadIds ?? before.leadDeals.map(link => link.leadId), contactIds: updates.contactIds ?? before.contactDeals.map(link => link.contactId) });
   dto = updates;
   const withCustomChanges = await customFieldChangeTracker(tenantId, 'deals', id, dto.customFieldValues);
 

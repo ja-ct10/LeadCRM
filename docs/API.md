@@ -281,6 +281,8 @@ the entered portion shortened to fit 255 characters. A single title is preserved
 All relationships, audit records, Deals and the tenant-scoped receipt commit together.
 The existing single-Deal endpoint and response remain supported.
 
+Deal `address` remains an optional project/service location override. Create, batch-create and update accept optional `addressSource: { type: "lead" | "contact" | "account", id: string } | null`. The source must be an authorized active record linked through the Deal's existing relationships. Clearing it returns to automatic selection; omitting it preserves an existing choice. Deal responses include read-only `addressContext` (effective address, customer address/status, source and authorized options). One available source resolves automatically; several remain unresolved until chosen. Values are read live, never copied into Deal overrides. Source address changes do not update Deal rows or trigger Deal workflows. Existing quotation recipient/Account address roles and finalized document snapshots are unchanged.
+
 New manual single and batch Deals require exactly one `leadIds` or `contactIds`
 entry, referencing an active same-tenant record the actor can view. The server
 inherits its eligible assigned agent and valid linked Account. Unassigned sources

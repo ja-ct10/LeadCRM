@@ -126,7 +126,7 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
   dealData.currency = 'PHP';
   normalizeProductOther(dealData, [product.name]);
   const deal = await db.deal.create({
-    data: { ...dealData, tenantId, ownerId, productsNormalized: true } as never,
+    data: { ...dealData, ...(dealData.addressSource === null ? { addressSource: Prisma.DbNull } : {}), tenantId, ownerId, productsNormalized: true } as never,
   });
   await saveRecordValues(db, tenantId, 'deals', deal.id, customFieldValues, ownerId, batchFiles);
 
@@ -190,7 +190,7 @@ export async function updateDeal(id: string, tenantId: string, dto: UpdateDealDt
         if (dto.currency !== undefined && dto.currency !== existing.currency) throw new ValidationError('Deal currency cannot be overridden.');
       }
       normalizeProductOther(updateData, updateData.productInterests ?? existing.productInterests, existing.productInterestOther);
-      await tx.deal.update({ where: { id, tenantId }, data: updateData as never });
+      await tx.deal.update({ where: { id, tenantId }, data: { ...updateData, ...(updateData.addressSource === null ? { addressSource: Prisma.DbNull } : {}) } as never });
       // A rejected relationship rolls back the scalar edit too. Ordered
       // junctions are the only mutable relationship authority.
       if (dto.contactIds !== undefined) await syncContactAssociations(id, tenantId, dto.contactIds, actorId, tx);

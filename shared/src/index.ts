@@ -57,3 +57,5 @@ export * from './contracts/quotation.contract';
 export * from './utils/currency';
 
 export * from './contracts/customer-classification';
+
+export * from './contracts/deal-address';

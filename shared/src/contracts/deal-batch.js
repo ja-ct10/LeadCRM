@@ -5,6 +5,7 @@ exports.dealAssociationPatch = dealAssociationPatch;
 exports.validateManualDealAssociation = validateManualDealAssociation;
 exports.productDealTitle = productDealTitle;
 const zod_1 = require("zod");
+const deal_address_1 = require("./deal-address");
 const closing_requirements_1 = require("./closing-requirements");
 const company_industries_1 = require("../constants/company-industries");
 const product_interests_contract_1 = require("./product-interests.contract");
@@ -28,6 +29,7 @@ function validateManualDealAssociation(data, ctx) {
     }
 }
 exports.CreateDealBatchSchema = zod_1.z.object({
+    addressSource: deal_address_1.DealAddressSourceSchema.nullable().optional(),
     customFieldValues: closing_requirements_1.CustomFieldValuesSchema.optional(),
     idempotencyKey: zod_1.z.string().uuid(),
     pipelineId: id,
