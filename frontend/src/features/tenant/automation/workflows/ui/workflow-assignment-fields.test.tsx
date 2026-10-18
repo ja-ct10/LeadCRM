@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { getAvailableActions, type WorkflowAction, type WorkflowOptions } from '@leadcrm/shared';
 import { ActionFields } from './workflow-fields';
 import { actionIssues, actionSummary, toDraft } from '../services/workflow-editor';
@@ -11,7 +11,7 @@ const options: WorkflowOptions = { users: [], taskAssignees: [{ id: userId, name
   roles: [{ id: groupId, name: 'Support', memberCount: 3, eligibleMemberCounts: { task_assignee: 2, crm_owner: 0 } }],
   groups: [{ id: groupId, name: 'Follow-up team', memberCount: 4, eligibleMemberCounts: { task_assignee: 2, crm_owner: 1 }, members: [{ id: userId, name: 'Task specialist', purposes: ['task_assignee'] }] }],
   pipelines: [], templates: [], campaigns: [] };
-function Editor({ initial, entity = initial.type === 'create_task' ? 'deal' : 'lead' }: { initial: WorkflowAction; entity?: 'lead' | 'account' | 'deal' }) {
+function Editor({ initial, entity = initial.type === 'create_task' ? 'deal' : 'lead' }: { initial: WorkflowAction; entity?: 'lead' | 'contact' | 'account' | 'deal' }) {
   const [action, setAction] = useState(initial);
   return <><ActionFields action={action} entity={entity} definition={getAvailableActions().find(definition => definition.type === action.type)} options={options} onChange={config => setAction({ ...action, config })} />
     <output data-testid="config">{JSON.stringify(action.config)}</output></>;
@@ -35,13 +35,22 @@ describe('workflow assignment editor', () => {
     expect(screen.getByText('4 members · 2 eligible')).toBeTruthy();
     expect(JSON.parse(screen.getByTestId('config').textContent!)).toEqual({ title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin' } });
   });
-  it.each(['create_task', 'assign_owner'] as const)('offers only round-robin for %s and explains active-user eligibility', type => {
+  it.each(['create_task', 'assign_owner'] as const)('offers the supported %s strategies and explains active-user eligibility', type => {
     render(<Editor initial={{ type, config: { assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin' } } }} />);
     const method = screen.getByLabelText('Assignment method') as HTMLSelectElement;
-    expect(within(method).getAllByRole('option').map(option => option.textContent)).toEqual(['Round-robin']);
+    expect(Array.from(method.options).map(option => option.value)).toEqual(type === 'assign_owner' ? ['round_robin', 'weighted_workload'] : ['round_robin']);
     expect(method.value).toBe('round_robin');
     expect(screen.getByText(/Inactive users are skipped/)).toBeTruthy();
     expect(screen.queryByLabelText('Sticky fallback method')).toBeNull();
+    if (type === 'assign_owner') {
+      fireEvent.change(method, { target: { value: 'weighted_workload' } });
+      expect(JSON.parse(screen.getByTestId('config').textContent!).assignmentTarget.strategy).toBe('weighted_workload');
+    }
+  });
+  it.each(['contact', 'deal'] as const)('keeps weighted Lead assignment out of %s owner strategies', entity => {
+    render(<Editor entity={entity} initial={{ type: 'assign_owner', config: { assignmentTarget: { type: 'group', id: groupId, strategy: 'round_robin' } } }} />);
+    const method = screen.getByLabelText('Assignment method') as HTMLSelectElement;
+    expect(Array.from(method.options).map(option => option.value)).toEqual(['round_robin']);
   });
   it.each(['least_workload', 'random', 'availability', 'capacity', 'sticky'])('loads and saves a retired %s method as round-robin', strategy => {
     const draft = toDraft({ name: 'Saved', trigger: 'deal.created', isActive: false, actions: [{ type: 'create_task', config: { title: 'Call', assignmentTarget: { type: 'group', id: groupId, strategy, ...(strategy === 'sticky' ? { sticky: { fallback: 'random', preferCurrentOwner: true } } : {}) } } }] });
