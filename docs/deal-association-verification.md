@@ -67,7 +67,7 @@ classification code was not changed.
 
 Run the focused suites through the existing workspace test commands. After a
 frontend production build, run
-`node backend/scripts/verify-deal-association-browser.mjs` for the isolated UI
+`node backend/scripts/preview-deal-association.mjs` for the isolated UI
 matrix. It writes screenshots and results under the ignored
 `data/outputs/system-audit/deal-association/` directory.
 

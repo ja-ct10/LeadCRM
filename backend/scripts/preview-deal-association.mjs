@@ -1,4 +1,4 @@
-// Render the real production UI against isolated API fixtures. SQL/RBAC are
+// Local preview: render the production UI against intercepted API fixtures. SQL/RBAC are
 // exercised separately by deal-association.integration.test.ts.
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
