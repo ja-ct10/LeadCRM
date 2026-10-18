@@ -1,4 +1,4 @@
-// Shared Files UI fixture. Gmail/record authorization is tested separately in disposable DB tests.
+// Local shared Files UI preview. Gmail/record authorization is tested separately in disposable DB tests.
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';

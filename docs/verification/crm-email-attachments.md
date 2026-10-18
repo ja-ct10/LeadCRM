@@ -20,7 +20,7 @@ the newer Deal address behavior from upstream `main` at `ad09b8e5`.
 | Existing preview extraction | `frontend/src/shared/components/attachment-preview.tsx`, `frontend/src/features/tenant/inbox/ui/email-message-content.tsx` |
 | Gmail client | `frontend/src/features/tenant/inbox/services/gmail.service.ts` |
 | Focused tests | `backend/src/integrations/gmail/scoped-mailbox.integration.test.ts`, `frontend/src/shared/components/crm/record-files-tab.test.tsx`, `crm-record-view.realtime.test.tsx` |
-| Browser verification | `backend/scripts/verify-record-email-attachments-browser.mjs`, `.gitignore` for generated fixture evidence |
+| Local browser preview | `backend/scripts/preview-record-email-attachments.mjs`, `.gitignore` for generated fixture evidence |
 | Documentation | [API reference](../API.md) and this report |
 
 No schema, migration, dependency manifest, storage provider, sending,
@@ -123,7 +123,7 @@ npm run lint -- --concurrency=1
 npm --prefix backend run typecheck:tests
 npm --prefix shared run build
 node node_modules/typescript/bin/tsc -p backend/tsconfig.json
-node backend/scripts/verify-record-email-attachments-browser.mjs
+node backend/scripts/preview-record-email-attachments.mjs
 $env:API_URL='https://leadcrm-build.example/api/v1'
 $env:NEXT_PUBLIC_USE_MOCK_AUTH='false'
 $env:NEXT_PUBLIC_USE_MOCK_DATA='false'
