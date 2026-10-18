@@ -20,9 +20,10 @@ const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/lead
 describe.skipIf(!disposable)('persisted Workflow stage entry identity and Task preview', { timeout: 30000 }, () => {
   let tenantId: string, actorId: string, ownerId: string, replacementId: string, pipelineId: string, initialId: string, qualifiedId: string, lostId: string, wonId: string, contactedId: string, customId: string, productId: string;
   const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
-  const newDeal = (title = 'Stage entry opportunity') => scope(() => createDeal(tenantId, actorId, {
-    title, pipelineId, stageId: initialId, productInterestIds: [productId], assignedUserId: ownerId,
-  }));
+  const newDeal = (title = 'Stage entry opportunity') => scope(async () => {
+    const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Entry', lastName: 'Fixture', assignedUserId: ownerId } });
+    return createDeal(tenantId, actorId, { title, pipelineId, stageId: initialId, productInterestIds: [productId], assignedUserId: ownerId, leadIds: [lead.id] });
+  });
   const move = (id: string, stageId: string) => scope(() => moveDealStage(id, tenantId, actorId, { stageId,
     ...(stageId === lostId ? { lostReason: 'Controlled stage-entry scenario' } : {}) }));
   const create = (active = true, title = 'Persisted stage follow-up') => scope(() => workflows.createWorkflow(tenantId, actorId, {

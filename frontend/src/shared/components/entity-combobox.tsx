@@ -24,6 +24,8 @@ interface EntityOption {
 }
 
 interface EntityComboboxBaseProps {
+  id?: string;
+  required?: boolean;
   /** Entity type for data fetching */
   entityType: EntityType;
   /** Placeholder text */
@@ -453,6 +455,8 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
       {/* Trigger / Search Input */}
       {!isOpen ? (
         <div
+          id={props.id}
+          aria-required={props.required}
           role="combobox"
           tabIndex={disabled ? -1 : 0}
           aria-expanded={isOpen}
@@ -494,6 +498,8 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
           <input
             ref={inputRef}
             type="text"
+            id={props.id}
+            aria-required={props.required}
             role="combobox"
             aria-expanded={isOpen}
             aria-controls={listId}

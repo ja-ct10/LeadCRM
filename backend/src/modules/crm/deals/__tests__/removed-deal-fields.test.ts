@@ -2,7 +2,7 @@ import { expect, it } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { CreateDealSchema, ManualCreateDealSchema, UpdateDealSchema } from '../deals.dto';
 
-const create = { title: 'CCTV installation', pipelineId: 'sales', stageId: 'lead', productInterestIds: ['11111111-1111-4111-8111-111111111111'] };
+const create = { leadIds: ['lead'], title: 'CCTV installation', pipelineId: 'sales', stageId: 'lead', productInterestIds: ['11111111-1111-4111-8111-111111111111'] };
 it('accepts create and update without retired fields', () => {
   expect(ManualCreateDealSchema.parse(create).priority).toBe('MEDIUM');
   expect(UpdateDealSchema.parse({ title: 'Updated installation', priority: 'HIGH' })).toEqual({ title: 'Updated installation', priority: 'HIGH' });

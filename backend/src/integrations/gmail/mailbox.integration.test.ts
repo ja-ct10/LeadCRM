@@ -300,8 +300,9 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Linked', lastName: 'Contact', email: `${randomUUID()}@example.test` } });
     const accountRecord = await prisma.account.create({ data: { tenantId, name: 'Batch account', tags: [] } });
     const products = await Promise.all([25000, 15000].map((value, index) => prisma.productInterest.create({ data: { tenantId, name: `Batch product ${index} ${randomUUID()}`, dealValue: value } })));
+    await prisma.lead.update({ where: { id: c.lead.id }, data: { assignedUserId: agent.id, accountId: accountRecord.id } });
     const dto = { idempotencyKey: randomUUID(), title: 'Installation', pipelineId, stageId: stages.Lead,
-      productInterestIds: products.map(p => p.id), leadIds: [c.lead.id], contactIds: [contact.id], accountId: accountRecord.id,
+      productInterestIds: products.map(p => p.id), leadIds: [c.lead.id], accountId: accountRecord.id,
       assignedUserId: agent.id, industry: 'Technology', address: '123 Main Street', priority: 'HIGH', leadSource: 'Referral', expectedCloseDate: '2026-12-01T00:00:00.000Z' };
     const responses = await Promise.all([call('/crm/deals/batch', 'POST', dto), call('/crm/deals/batch', 'POST', dto)]);
     expect(responses.map(r => r.status).sort()).toEqual([200, 201]);
@@ -313,6 +314,8 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
         industry: 'Technology', address: dto.address, assignedUserId: agent.id, priority: 'HIGH', stageId: stages.Lead,
         title: `Installation — ${products[index].name}` });
       expect(await prisma.leadDeal.count({ where: { tenantId, dealId: deal.id, leadId: c.lead.id } })).toBe(1);
+      expect(await prisma.contactDeal.count({ where: { tenantId, dealId: deal.id } })).toBe(0);
+      expect((await call(`/crm/deals/${deal.id}`, 'PUT', { contactIds: [contact.id] })).status).toBe(200);
       expect(await prisma.contactDeal.count({ where: { tenantId, dealId: deal.id, contactId: contact.id } })).toBe(1);
       expect(await prisma.auditLog.count({ where: { tenantId, entityId: deal.id, action: 'deal.created' } })).toBe(1);
     }
@@ -365,7 +368,10 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
   });
   it('preserves single titles, creates three independent Deals, and rolls back a failure after the first insert', async () => {
     const products = await Promise.all([11, 22, 33].map((value, index) => prisma.productInterest.create({ data: { tenantId, name: `Set ${index} ${randomUUID()}`, dealValue: value } })));
-    const dto = { idempotencyKey: randomUUID(), pipelineId, stageId: stages.Lead, title: 'Original title', productInterestIds: [products[0].id] };
+    const batchRole = await prisma.roleDefinition.create({ data: { tenantId, name: `Batch owner ${randomUUID()}`, permissions: { create: { module: 'deals', canView: true, canEdit: true } } } });
+    const batchAgent = await prisma.user.create({ data: { tenantId, email: `${randomUUID()}@example.test`, firstName: 'Batch', lastName: 'Owner', role: 'Custom', userRoles: { create: { roleId: batchRole.id } } } });
+    const batchLead = await prisma.lead.create({ data: { tenantId, firstName: 'Batch', lastName: 'Lead', assignedUserId: batchAgent.id } });
+    const dto = { idempotencyKey: randomUUID(), pipelineId, stageId: stages.Lead, title: 'Original title', productInterestIds: [products[0].id], leadIds: [batchLead.id] };
     const single = await call('/crm/deals/batch', 'POST', dto);
     expect(single.body.data.deals[0]).toMatchObject({ title: dto.title, value: 11 });
     const three = await call('/crm/deals/batch', 'POST', { ...dto, idempotencyKey: randomUUID(), title: 'A'.repeat(255), productInterestIds: products.map(p => p.id) });

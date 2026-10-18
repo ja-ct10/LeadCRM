@@ -1,4 +1,5 @@
 import { refreshDealClassification } from '../customer-classification.service';
+import { changeDealAssociation, readDealAssociation, resolveManualDealAssociation } from './deal-association';
 import { salesContext } from '../leads/sales-context';
 import { resolveProducts, salesTransaction } from '../leads/lead-automation.service';
 import { validateSalesOwner } from '../leads/lead-automation.service';
@@ -59,9 +60,10 @@ export async function getDealById(id: string, tenantId: string) {
 }
 
 export async function createDeal(tenantId: string, userId: string, dto: CreateDealDto) {
+  const input = dto;
   return salesTransaction(async tx => {
-  dto = ManualCreateDealSchema.parse(dto);
-  if (dto.assignedUserId) await validateSalesOwner(salesContext.getStore() ?? prisma, tenantId, dto.assignedUserId, ['deals']);
+  let dto = ManualCreateDealSchema.parse(input);
+  dto = { ...dto, ...await resolveManualDealAssociation(tx, tenantId, dto) };
   const stage = await (salesContext.getStore() ?? prisma).stage.findFirst({ where: { id: dto.stageId, tenantId, pipelineId: dto.pipelineId } });
   if (!stage) throw new ValidationError('Stage must belong to the selected pipeline.');
   const initial = await (salesContext.getStore() ?? prisma).stage.findMany({ where: { tenantId, pipelineId: dto.pipelineId, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
@@ -91,10 +93,19 @@ export async function createDeal(tenantId: string, userId: string, dto: CreateDe
 }
 
 export async function updateDeal(id: string, tenantId: string, userId: string, dto: UpdateDealDto) {
+  const input = dto;
   return salesTransaction(async () => {
+  let dto = input;
   if (dto.assignedUserId) await validateSalesOwner(salesContext.getStore() ?? prisma, tenantId, dto.assignedUserId, ['deals']);
   const before = await repo.findDealById(id, tenantId);
   if (!before) throw new NotFoundError('Deal');
+  const { primaryAssociation, ...updates } = dto;
+  if (primaryAssociation) {
+    if (dto.leadIds !== undefined || dto.contactIds !== undefined) throw new ValidationError('Change the primary association separately from additional relationships.');
+    await readDealAssociation(salesContext.getStore() ?? prisma, tenantId, primaryAssociation);
+    Object.assign(updates, changeDealAssociation(before.leadDeals.map(link => link.leadId), before.contactDeals.map(link => link.contactId), primaryAssociation));
+  }
+  dto = updates;
   const withCustomChanges = await customFieldChangeTracker(tenantId, 'deals', id, dto.customFieldValues);
 
   let deal;

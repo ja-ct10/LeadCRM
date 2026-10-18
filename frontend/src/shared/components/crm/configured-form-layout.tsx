@@ -5,7 +5,7 @@ import { PanelSectionHeading } from '@/shared/components/side-panel-styles';
 import { CustomFieldInput, CustomFieldGroup, CustomFieldExtraGroups, type useRecordCustomFields } from './record-custom-fields';
 
 /** Reorders the existing native input controls; their validation and state stay with the form. */
-export function ConfiguredFormLayout({ form, children, module = form.module }: { form: ReturnType<typeof useRecordCustomFields>; children: React.ReactNode; module?: CustomFieldModule }) {
+export function ConfiguredFormLayout({ form, children, module = form.module, groupContent = {} }: { form: ReturnType<typeof useRecordCustomFields>; children: React.ReactNode; module?: CustomFieldModule; groupContent?: Record<string, React.ReactNode> }) {
   const controls = new Map<string, React.ReactElement>();
   const collect = (nodes: React.ReactNode): React.ReactNode => React.Children.map(nodes, node => {
     if (!React.isValidElement(node)) return node;
@@ -28,7 +28,7 @@ export function ConfiguredFormLayout({ form, children, module = form.module }: {
       if (!control || renderedControls.has(control)) return false;
       renderedControls.add(control); return true;
     });
-    return entries.length ? <section key={group.id} className="min-w-0 space-y-4"><PanelSectionHeading number={index + 1}>{group.label}</PanelSectionHeading><div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">{entries.map(field => {
+    return entries.length || groupContent[group.id] ? <section key={group.id} className="min-w-0 space-y-4"><PanelSectionHeading number={index + 1}>{group.label}</PanelSectionHeading>{groupContent[group.id]}<div className="grid min-w-0 grid-cols-1 gap-4 sm:grid-cols-2">{entries.map(field => {
       if (field.customFieldId) { const definition = form.fields.find(item => item.id === field.customFieldId)!; return <CustomFieldInput key={field.technicalKey} field={definition} form={form} />; }
       const original = controls.get(field.technicalKey)! as React.ReactElement<{ label?: string }>;
       if (!layout.fields[field.technicalKey]) return React.cloneElement(original, { key: field.technicalKey });

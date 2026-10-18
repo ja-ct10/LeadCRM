@@ -1,6 +1,6 @@
 'use client';
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
-import { LEAD_SOURCES } from '@leadcrm/shared';
+import { LEAD_SOURCES, defaultFieldGroupId, type DealAssociationChange } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
 import { useRecordCustomFields, CustomFieldGroup, CustomFieldExtraGroups } from '@/shared/components/crm/record-custom-fields';
 import { PanelSectionHeading, panelBodyClass, panelFooterClass, panelInputClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
@@ -18,20 +18,29 @@ import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useData } from '@/store/DataContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
-import { DealAccountField } from './deal-account-field';
-import { DealContactsField } from './deal-contacts-field';
-import { DealLeadsField } from './deal-leads-field';
+import { Label } from '@/shared/components/ui/label';
 import { EntityCombobox } from '@/shared/components/entity-combobox';
-import { AlertCircle, ChevronDown, Plus, X } from 'lucide-react';
+import { AlertCircle, ChevronDown } from 'lucide-react';
 import { Button } from '@/shared/components/ui/button';
 import { cn } from '@/lib/utils';
 import type { Deal } from '@/store/types';
+
+const associationFields = {
+  associationType: z.enum(['', 'lead', 'contact']).optional(),
+  associationId: z.string().optional(),
+  associationChanged: z.boolean().optional(),
+};
+function validateAssociation(data: { associationType?: string; associationId?: string }, ctx: z.RefinementCtx) {
+  if (!data.associationType) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['associationType'], message: 'Choose Lead or Contact.' });
+  if (data.associationType && !data.associationId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['associationId'], message: `Select a ${data.associationType === 'lead' ? 'Lead' : 'Contact'}.` });
+}
 
 // ── Zod schemas mirroring backend CreateDealSchema / UpdateDealSchema ──────
 // Backend: CreateDealSchema requires pipelineId, stageId, title
 // Backend: UpdateDealSchema = CreateDealSchema.omit({ stageId, pipelineId }).partial()
 
 const CreateDealFormSchema = z.object({
+  ...associationFields,
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
@@ -46,9 +55,10 @@ const CreateDealFormSchema = z.object({
   industry: z.union([DealIndustrySchema, z.literal('')]).optional(),
   address: z.string().optional(),
   productInterests: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.').max(100),
-});
+}).superRefine(validateAssociation);
 
 const UpdateDealFormSchema = z.object({
+  ...associationFields,
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
   value: z.number().finite().nonnegative('Must be zero or greater').max(999_999_999_999, 'Value exceeds maximum').optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
@@ -61,10 +71,10 @@ const UpdateDealFormSchema = z.object({
   industry: z.string().optional(),
   address: z.string().optional(),
   productInterests: z.array(z.string()).min(1, 'Select at least one Product Interest.').optional(),
-});
+}).superRefine((data, ctx) => { if (data.associationChanged) validateAssociation(data, ctx); });
 
-export type CreateDealFormData = z.infer<typeof CreateDealFormSchema> & { customFieldValues?: import('@leadcrm/shared').ClosingValues }
-export type UpdateDealFormData = z.infer<typeof UpdateDealFormSchema> & { customFieldValues?: import('@leadcrm/shared').ClosingValues }
+export type CreateDealFormData = z.infer<typeof CreateDealFormSchema> & { customFieldValues?: import('@leadcrm/shared').ClosingValues; primaryAssociation?: DealAssociationChange }
+export type UpdateDealFormData = z.infer<typeof UpdateDealFormSchema> & { customFieldValues?: import('@leadcrm/shared').ClosingValues; primaryAssociation?: DealAssociationChange }
 type DealFormData = CreateDealFormData | UpdateDealFormData;
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -85,7 +95,7 @@ export interface DealFormProps {
   mode: 'create' | 'edit';
   initialData?: Partial<Deal>;
   /** Pre-fill pipeline/stage when creating from a Kanban column */
-  preselect?: { pipelineId?: string; stageId?: string };
+  preselect?: { pipelineId?: string; stageId?: string; leadId?: string; contactId?: string };
   onSubmit: (data: DealFormData) => Promise<void>;
   onCancel: () => void;
   isLoading?: boolean;
@@ -96,7 +106,7 @@ export interface DealFormSheetProps {
   onClose: () => void;
   mode: 'create' | 'edit';
   initialData?: Partial<Deal>;
-  preselect?: { pipelineId?: string; stageId?: string };
+  preselect?: { pipelineId?: string; stageId?: string; leadId?: string; contactId?: string };
   onSubmit: (data: DealFormData) => Promise<void>;
   isLoading?: boolean;
 }
@@ -122,11 +132,21 @@ export function DealForm({
   const recordAccess = useCrmRecordAccess();
   const hasPermission = isCreateMode ? canCreate : canEdit && recordAccess.canMutate(initialData);
 
+  const initialAssociation = useMemo(() => {
+    const leadIds = initialData?.leadIds ?? (initialData?.leadId ? [initialData.leadId] : preselect?.leadId ? [preselect.leadId] : []);
+    const contactIds = initialData?.contactIds ?? (initialData?.contactId ? [initialData.contactId] : preselect?.contactId ? [preselect.contactId] : []);
+    if (leadIds.length + contactIds.length !== 1) return undefined;
+    return leadIds.length ? { type: 'lead' as const, id: leadIds[0] } : { type: 'contact' as const, id: contactIds[0] };
+  }, [initialData, preselect?.leadId, preselect?.contactId]);
+
   // Build default values from initialData (edit) or preselect (create)
   const defaultValues = useMemo(() => {
     if (isCreateMode) {
       const initialPipeline = pipelines.find(p => p.id === preselect?.pipelineId) ?? pipelines.find(p => p.name.trim().toLowerCase() === 'sales pipeline') ?? pipelines[0];
       return {
+        associationType: initialAssociation?.type ?? '',
+        associationId: initialAssociation?.id ?? '',
+        associationChanged: false,
         pipelineId: initialPipeline?.id || '',
         stageId: initialPipeline?.stages.find(s => s.name.toLowerCase() === 'lead' && !s.isWon && !s.isLost)?.id || '',
         title: '',
@@ -143,8 +163,11 @@ export function DealForm({
         productInterests: [] as string[],
       };
     }
-    // Edit mode — pre-fill from initialData
+    // Edit mode — only a single relationship proves an unambiguous primary.
     return {
+      associationType: initialAssociation?.type ?? '',
+      associationId: initialAssociation?.id ?? '',
+      associationChanged: false,
       title: initialData?.title || '',
       value: initialData?.value || undefined,
       priority: (normalizedPriority(initialData?.priority) || 'MEDIUM') as 'LOW' | 'MEDIUM' | 'HIGH',
@@ -160,7 +183,7 @@ export function DealForm({
       address: initialData?.address || '',
       productInterests: initialData?.productInterestIds?.length ? initialData.productInterestIds : initialData?.productInterestId ? [initialData.productInterestId] : undefined,
     };
-  }, [isCreateMode, initialData, preselect, pipelines]);
+  }, [isCreateMode, initialData, preselect, pipelines, initialAssociation]);
 
   const {
     register,
@@ -183,6 +206,7 @@ export function DealForm({
   const submitting = useRef(false);
   const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
+  const associationType = watch('associationType');
   const selectedPipelineId = watch('pipelineId');
   const selectedProductIds = watch('productInterests') ?? [];
   const selectedProducts = products.filter(product => selectedProductIds.includes(product.id));
@@ -217,9 +241,10 @@ export function DealForm({
     if (!customFields.validate()) return;
     // Clean optional empty strings before submission.
     // currency is always PHP — not user-editable, injected here for backend compatibility.
+    const { associationType, associationId, associationChanged, organizationId: _account, assignedUserId: _agent, leadIds: _leads, contactIds: _contacts, ...values } = data;
     const cleaned = {
       customFieldValues: customFields.payload(),
-      ...data,
+      ...values,
       currency: 'PHP',
       value: undefined,
       productInterestIds: data.productInterests?.length ? data.productInterests : undefined,
@@ -229,10 +254,10 @@ export function DealForm({
           : `${data.expectedCloseDate}T00:00:00.000Z`
         : isCreateMode ? undefined : '',
       leadSource: isCreateMode ? data.leadSource || undefined : data.leadSource,
-      organizationId: isCreateMode ? data.organizationId || undefined : data.organizationId,
-      assignedUserId: isCreateMode ? data.assignedUserId || undefined : data.assignedUserId,
-      contactIds: isCreateMode ? data.contactIds?.length ? data.contactIds : undefined : data.contactIds,
-      leadIds: isCreateMode ? data.leadIds?.length ? data.leadIds : undefined : data.leadIds,
+      ...(isCreateMode ? {
+        leadIds: associationType === 'lead' ? [associationId!] : undefined,
+        contactIds: associationType === 'contact' ? [associationId!] : undefined,
+      } : associationChanged ? { primaryAssociation: { type: associationType as 'lead' | 'contact', id: associationId!, previous: initialAssociation } } : {}),
       industry: isCreateMode ? data.industry || undefined : data.industry,
       address: isCreateMode ? data.address || undefined : data.address,
       productInterests: undefined,
@@ -241,7 +266,7 @@ export function DealForm({
     submitting.current = true; setSubmitError('');
     setIsSaving(true);
     try { await onSubmit(cleaned as DealFormData); }
-    catch (error) { if ((error as { status?: number })?.status === 403) showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
+    catch (error) { showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
     finally { submitting.current = false; setIsSaving(false); }
   };
 
@@ -252,6 +277,28 @@ export function DealForm({
 
   const isSubmitDisabled = !isValid || isSubmitting || isLoading || !hasPermission || (isCreateMode && (productsLoading || !!productsError || !selectedProductIds.length));
 
+  const relationshipFields = <div className="min-w-0 space-y-4">
+    <FieldWrap label="Associate Deal To *" htmlFor={`${fieldId}-association-type`} error={errors.associationType?.message}>
+      <Controller name="associationType" control={control} render={({ field }) => <div className="relative">
+        <select {...field} value={field.value ?? ''} id={`${fieldId}-association-type`} aria-required aria-invalid={!!errors.associationType} aria-describedby={errors.associationType ? `${fieldId}-association-type-error` : undefined} disabled={isSubmitting || isLoading} className={cn(selectCls, errors.associationType && errorInputCls)} onChange={event => {
+          field.onChange(event.target.value);
+          setValue('associationId', '', { shouldDirty: true, shouldValidate: true });
+          setValue('associationChanged', true, { shouldDirty: true, shouldValidate: true });
+        }}>
+          <option value="">Select Lead or Contact...</option><option value="lead">Lead</option><option value="contact">Contact</option>
+        </select>
+        <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
+      </div>} />
+    </FieldWrap>
+    {associationType && <FieldWrap label={`${associationType === 'lead' ? 'Lead' : 'Contact'} *`} htmlFor={`${fieldId}-association`} >
+      <Controller name="associationId" control={control} render={({ field }) => <EntityCombobox key={associationType} id={`${fieldId}-association`} required entityType={associationType === 'lead' ? 'leads' : 'contacts'} multiple={false} value={field.value || null} onChange={id => {
+        field.onChange(id || '');
+        setValue('associationChanged', true, { shouldDirty: true, shouldValidate: true });
+      }} placeholder={`Search ${associationType === 'lead' ? 'leads' : 'contacts'}...`} error={errors.associationId?.message} disabled={isSubmitting || isLoading} />} />
+    </FieldWrap>}
+    {!isCreateMode && !initialAssociation && <p className="text-xs text-muted-foreground">This Deal has no single Lead or Contact association. You can save unrelated edits without choosing one. Selecting a record here preserves existing relationships; manage additional links in Deal Details.</p>}
+  </div>;
+
   return (
     <form
       ref={formRef}
@@ -261,7 +308,7 @@ export function DealForm({
     >
       {/* Scrollable Body */}
       <div className={panelBodyClass + " space-y-6"}>
-        <ConfiguredFormLayout form={customFields} module="deals">
+        <ConfiguredFormLayout form={customFields} module="deals" groupContent={{ [defaultFieldGroupId('deals', 'Relationships')]: relationshipFields }}>
         {/* Section 1: Pipeline & Stage (Create mode only — edit does not change pipeline/stage here) */}
         {isCreateMode && (
           <div className="space-y-4">
@@ -294,13 +341,13 @@ export function DealForm({
                 <ProductInterestSelect products={products} disabled={!isCreateMode || productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
               )}
             />
-          </FieldWrap>
           {productsError && <Button type="button" variant="ghost" onClick={refreshProducts}>Retry products</Button>}
           {isCreateMode ? <div aria-live="polite" className="min-w-0 rounded-xl border border-border p-3 text-sm">
             <p className="font-semibold">{selectedProducts.length} {selectedProducts.length === 1 ? 'Deal' : 'Deals'} will be created</p>
             <ul className="mt-2 space-y-2">{selectedProducts.map(product => <li key={product.id} className="flex min-w-0 flex-wrap justify-between gap-2"><span className="min-w-0 [overflow-wrap:anywhere]">{product.name}</span><span>{new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(product.dealValue)}</span></li>)}</ul>
             <p className="mt-2 text-xs text-muted-foreground">Each Deal keeps its own Product value. Multiple Deal titles include the Product name.</p>
           </div> : <FieldWrap fieldKey="value" label="Value" htmlFor={`${fieldId}-value`}><input id={`${fieldId}-value`} readOnly value={new Intl.NumberFormat('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(initialData?.value ?? 0)} className={inputCls} /></FieldWrap>}
+          </FieldWrap>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <FieldWrap fieldKey="priority" label="Priority" htmlFor={`${fieldId}-priority`} error={errors.priority?.message}>
               <div className="relative">
@@ -328,56 +375,6 @@ export function DealForm({
         {/* Section 3: Relationships */}
         <div className="space-y-4">
           <SectionHeader num={isCreateMode ? 3 : 2} title="Relationships" />
-          <div data-crm-field-key="accountId"><Controller
-            name="organizationId"
-            control={control}
-            render={({ field }) => (
-              <DealAccountField
-                value={field.value || null}
-                onChange={(id) => field.onChange(id || '')}
-                error={errors.organizationId?.message}
-              />
-            )}
-          /></div>
-          <Controller
-            name="contactIds"
-            control={control}
-            render={({ field }) => (
-              <DealContactsField
-                values={field.value || []}
-                onChange={(ids) => field.onChange(ids)}
-                error={errors.contactIds?.message}
-              />
-            )}
-          />
-          <Controller
-            name="leadIds"
-            control={control}
-            render={({ field }) => (
-              <DealLeadsField
-                values={field.value || []}
-                onChange={(ids) => field.onChange(ids)}
-              />
-            )}
-          />
-          <FieldWrap fieldKey="assignedUserId" label="Assigned Agent">
-            <Controller
-              name="assignedUserId"
-              control={control}
-              render={({ field }) => (
-                <EntityCombobox
-                  entityType="users"
-                  assignmentModules={['deals']}
-                  disabled={!recordAccess.policy || !recordAccess.canReassign}
-                  multiple={false}
-                  value={field.value || null}
-                  onChange={(id) => field.onChange(id || '')}
-                  placeholder="Search users..."
-                  error={errors.assignedUserId?.message}
-                />
-              )}
-            />
-          </FieldWrap>
           <CustomFieldGroup form={customFields} group="Relationships" />
         </div>
 
@@ -424,16 +421,17 @@ export function DealForm({
       {submitError && <p role="alert" className="px-4 py-2 text-sm text-destructive [overflow-wrap:anywhere]">{submitError}</p>}
       {/* Sticky Footer */}
       <div className={panelFooterClass + " justify-end"}>
-        <button
+        <Button
+          variant="outline"
           type="button"
           onClick={requestClose ?? onCancel}
           disabled={isSubmitting || isLoading || customFields.uploadCount > 0}
           className={panelSecondaryActionClass}
         >
           Cancel
-        </button>
+        </Button>
         {hasPermission && (
-          <button
+          <Button
             type="submit"
             disabled={customFields.blocked || isSubmitDisabled}
             className={cn(
@@ -444,7 +442,7 @@ export function DealForm({
             )}
           >
             {isLoading || isSubmitting ? 'Saving...' : isCreateMode ? 'Create Deal' : 'Update Deal'}
-          </button>
+          </Button>
         )}
       </div>
     </form>
@@ -472,15 +470,15 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, fieldKey, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 
   return (
-    <div className="space-y-1.5">
-      <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
+    <div className={cn("min-w-0 space-y-1.5", (fieldKey === 'title' || fieldKey === 'productInterestIds') && 'sm:col-span-2')}>
+      <Label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>
-      </label>
+      </Label>
       {children}
       {error && (
         <p id={htmlFor ? `${htmlFor}-error` : undefined} role="alert" className="text-[11px] text-red-500 flex items-center gap-1">

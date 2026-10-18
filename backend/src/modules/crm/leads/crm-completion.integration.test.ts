@@ -174,7 +174,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
       body: 'We want to proceed with the product purchase.', snippet: 'Purchase request', date: new Date().toISOString(), isRead: false, labels: ['INBOX'] });
     const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Hot');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Warm');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);
@@ -183,7 +183,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => ingestMailboxMessages(account, [message('Product quotation')], rights));
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
     await scope(() => ingestMailboxMessages(account, [{ ...message('Camera cancellation'), body: 'Please cancel my order. We are no longer interested.' }], rights));
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Hot');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Warm');
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
   });
   it('delivers role/owner notifications, deduplicates retries and never creates a foreign recipient', async () => {

@@ -103,6 +103,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
  */
 export function toBackendUpdateDeal(data: Partial<any>): any {
   const updateData: any = {};
+  if (data.primaryAssociation !== undefined) updateData.primaryAssociation = data.primaryAssociation;
   if (data.customFieldValues !== undefined) updateData.customFieldValues = data.customFieldValues;
 
   // Note: stageId and pipelineId are intentionally excluded.
