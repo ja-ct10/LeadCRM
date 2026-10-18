@@ -3,7 +3,7 @@ vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () 
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import type { CustomFieldState } from '@leadcrm/shared';
+import { resolveDealAddress, type CustomFieldState } from '@leadcrm/shared';
 const fixture = vi.hoisted(() => ({ addressOptions: [] as import('@leadcrm/shared').DealAddressOption[], data: { fields: [], values: {}, files: [] } as CustomFieldState }));
 const product = { id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'CCTV', dealValue: 5000 };
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: [{ id: 'pipeline', name: 'Sales Pipeline', stages: [{ id: 'stage', name: 'Lead' }] }] }) }));
@@ -185,4 +185,17 @@ it('rejects a stale changed selection before submitting and allows returning to 
   fireEvent.change(screen.getByLabelText('Customer Address'), { target: { value: '' } });
   fireEvent.submit(screen.getByLabelText(/Title/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
+});
+
+
+it('explicitly clears a redacted unavailable source without copying the automatic address', async () => {
+  fixture.addressOptions = [{ type: 'account', id: 'account', label: 'Company: Customer', address: 'Current office' }];
+  const save = vi.fn();
+  render(<DealForm mode="edit" initialData={{ title: 'Legacy source', addressSource: null, addressContext: { ...resolveDealAddress('', { type: 'lead', id: 'unavailable' }, fixture.addressOptions), source: null } }} onSubmit={save} onCancel={() => {}} />);
+  expect(screen.getByLabelText('Customer Address')).toHaveProperty('value', '__unavailable__');
+  fireEvent.change(screen.getByLabelText('Customer Address'), { target: { value: '' } });
+  expect(screen.getByText('Current office')).toBeTruthy();
+  fireEvent.submit(screen.getByLabelText(/Title/).closest('form')!);
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  expect(save.mock.calls[0][0]).toMatchObject({ addressSource: null, address: '' });
 });

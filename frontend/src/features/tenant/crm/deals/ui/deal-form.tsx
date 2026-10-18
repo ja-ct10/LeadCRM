@@ -197,7 +197,7 @@ export function DealForm({
     control,
     watch,
     setValue,
-    formState: { errors, isValid, isSubmitting: isValidatingSubmission, isDirty, dirtyFields },
+    formState: { errors, isValid, isSubmitting: isValidatingSubmission, isDirty, touchedFields },
     setFocus,
     setError,
   } = useForm<CreateDealFormData>({
@@ -207,7 +207,7 @@ export function DealForm({
     mode: 'onChange',
   });
   const isSubmitting = isValidatingSubmission || isSaving;
-  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty, busy: isSubmitting || isLoading || customFields.uploadCount > 0 });
+  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty || !!touchedFields.addressSource, busy: isSubmitting || isLoading || customFields.uploadCount > 0 });
 
   const [submitError, setSubmitError] = useState('');
   const submitting = useRef(false);
@@ -217,6 +217,7 @@ export function DealForm({
   const associationId = watch('associationId');
   const addressSource = watch('addressSource');
   const addressOptions = useDealAddressOptions({ dealId: initialData?.id, accountId: initialData?.accountId ?? initialData?.organizationId, association: associationType && associationId ? { type: associationType, id: associationId } : undefined, previous: initialAssociation, changed: watch('associationChanged') });
+  const unavailableSavedSource = !isCreateMode && !touchedFields.addressSource && initialData?.addressContext?.customerStatus === 'unavailable';
   const addressContext = resolveDealAddress(watch('address'), addressSource, addressOptions.data ?? initialData?.addressContext?.options ?? []);
   const selectedPipelineId = watch('pipelineId');
   const selectedProductIds = watch('productInterests') ?? [];
@@ -250,7 +251,7 @@ export function DealForm({
   const onFormSubmit = async (data: CreateDealFormData): Promise<void> => {
     if (!hasPermission) return;
     if (!customFields.validate()) return;
-    if (data.addressSource && (isCreateMode || dirtyFields.addressSource) && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(data.addressSource!))) {
+    if (data.addressSource && (isCreateMode || touchedFields.addressSource) && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(data.addressSource!))) {
       setError('addressSource', { message: 'Choose an available linked customer address or return to Automatic.' }); return;
     }
     // Clean optional empty strings before submission.
@@ -259,7 +260,7 @@ export function DealForm({
     const cleaned = {
       customFieldValues: customFields.payload(),
       ...values,
-      addressSource: isCreateMode || dirtyFields.addressSource ? data.addressSource : undefined,
+      addressSource: isCreateMode || touchedFields.addressSource ? data.addressSource : undefined,
       currency: 'PHP',
       value: undefined,
       productInterestIds: data.productInterests?.length ? data.productInterests : undefined,
@@ -418,16 +419,17 @@ export function DealForm({
           <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Deal Address (override)" beforeLabel={
             <div className="space-y-2">
               <Label htmlFor={`${fieldId}-address-source`}>Customer Address</Label>
-              <select id={`${fieldId}-address-source`} aria-invalid={!!errors.addressSource} aria-describedby={errors.addressSource ? `${fieldId}-address-source-error` : undefined} className={selectCls} disabled={isSubmitting || isLoading || addressOptions.isInitialLoad} value={addressSource ? dealAddressKey(addressSource) : ''} onChange={event => {
+              <select id={`${fieldId}-address-source`} aria-invalid={!!errors.addressSource} aria-describedby={errors.addressSource ? `${fieldId}-address-source-error` : undefined} className={selectCls} disabled={isSubmitting || isLoading || addressOptions.isInitialLoad} value={addressSource ? dealAddressKey(addressSource) : unavailableSavedSource ? '__unavailable__' : ''} onChange={event => {
                 const option = addressContext.options.find(option => dealAddressKey(option) === event.target.value);
-                setValue('addressSource', option ? { type: option.type, id: option.id } : null, { shouldDirty: true, shouldValidate: true });
+                setValue('addressSource', option ? { type: option.type, id: option.id } : null, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
               }}>
-                <option value="">Automatic / choose later</option>
+                <option value="">{!addressSource && !unavailableSavedSource && addressContext.options.length === 1 ? `Automatic: ${addressContext.options[0].label}` : 'Automatic / choose later'}</option>
+                {unavailableSavedSource && !addressSource && <option value="__unavailable__" disabled>Selected address unavailable</option>}
                 {addressSource && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(addressSource)) && <option value={dealAddressKey(addressSource)}>Selected address unavailable</option>}
                 {addressContext.options.map(option => <option key={dealAddressKey(option)} value={dealAddressKey(option)}>{option.label}</option>)}
               </select>
               {errors.addressSource?.message && <p id={`${fieldId}-address-source-error`} role="alert" className="text-xs text-destructive">{errors.addressSource.message}</p>}
-              <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground" role="status">{addressOptions.isInitialLoad ? 'Loading customer addresses…' : addressOptions.error || dealCustomerAddressMessage(!dirtyFields.addressSource && !watch('associationChanged') && initialData?.addressContext?.customerStatus === 'unavailable' ? initialData.addressContext : addressContext)}</p>
+              <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground" role="status">{addressOptions.isInitialLoad ? 'Loading customer addresses…' : addressOptions.error || dealCustomerAddressMessage(!touchedFields.addressSource && initialData?.addressContext?.customerStatus === 'unavailable' ? initialData.addressContext : addressContext)}</p>
               {addressOptions.error && <Button type="button" variant="ghost" size="sm" onClick={() => void addressOptions.refetch()}>Retry addresses</Button>}
               <p className="text-xs text-muted-foreground">Leave the override blank to use the linked customer address. Changes here affect only this Deal.</p>
             </div>
