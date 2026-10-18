@@ -7,9 +7,9 @@ import { RefreshButton } from './refresh-button';
 import { TableSettingsMenu } from './table-settings-menu';
 
 /** The Leads control layout for standalone module tables and lists. */
-export function ModuleTableToolbar({ search, onSearch, placeholder, label, filter, refreshing, onRefresh, onManageColumns, onResetColumnSize, disabled, sort, sortFields, onSortChange, stackSearchOnMobile = false }: {
+export function ModuleTableToolbar({ search, onSearch, placeholder, label, filter, beforeRefresh, refreshing, onRefresh, onManageColumns, onResetColumnSize, disabled, sort, sortFields, onSortChange, stackSearchOnMobile = false }: {
   search: string; onSearch: (value: string) => void; placeholder: string; label: string;
-  filter?: ReactNode; refreshing?: boolean; onRefresh: () => void | Promise<unknown>;
+  filter?: ReactNode; beforeRefresh?: ReactNode; refreshing?: boolean; onRefresh: () => void | Promise<unknown>;
   onManageColumns?: () => void; disabled?: boolean; silentRefresh?: boolean;
   onResetColumnSize?: () => void | Promise<unknown>;
   sort?: RecordSort | null; sortFields?: TableSortOption[]; onSortChange?: (sort: RecordSort | null) => void;
@@ -17,6 +17,7 @@ export function ModuleTableToolbar({ search, onSearch, placeholder, label, filte
 }) {
   const searchInput = <ModuleSearchInput value={search} onChange={onSearch} placeholder={placeholder} label={`Search ${label.toLowerCase()}`} disabled={disabled} />;
   const actions = <div className="ml-auto flex shrink-0 items-center gap-2 sm:order-1">
+    {beforeRefresh}
     <RefreshButton onClick={onRefresh} disabled={disabled} refreshing={refreshing} />
     <TableSettingsMenu onManageColumns={onManageColumns} onResetColumnSize={onResetColumnSize} sort={sort} sortFields={sortFields} onSortChange={onSortChange} />
   </div>;

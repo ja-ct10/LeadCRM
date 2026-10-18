@@ -7,8 +7,8 @@ import type { ArchivedRecord } from '@leadcrm/shared';
 import { ARCHIVE_TYPES } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 
-const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), tenantId: 'tenant-a', canRestore: true }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: state.tenantId }, userCan: () => state.canRestore, user: { id: 'user-a', tenantId: state.tenantId, role: 'Client Admin' } }) }));
+const state = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn(), tenantId: 'tenant-a', userId: 'user-a', canRestore: true }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: state.tenantId }, userCan: () => state.canRestore, user: { id: state.userId, tenantId: state.tenantId, role: 'Client Admin' } }) }));
 vi.mock('sonner', () => ({ toast: { success: state.success, error: state.error } }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ refreshRoles: vi.fn(), refreshPipelines: vi.fn(), refreshDeals: vi.fn(), refreshOrganizations: vi.fn() }) }));
 let rows: ArchivedRecord[];
@@ -35,7 +35,7 @@ const request = vi.fn(async (url: string, options: RequestInit) => {
 beforeEach(() => {
   clearPageCache(); failIds = new Set(); failFetch = false;
   failureStatus = 403; failureMessage = 'Permission denied'; activeProducts = [];
-  state.tenantId = 'tenant-a'; state.canRestore = true;
+  state.tenantId = 'tenant-a'; state.userId = 'user-a'; state.canRestore = true;
   rows = (['Lead', 'Contact', 'Account'] as const).map(type => ({ id: type.toLowerCase() + '-id', type, name: 'Saved ' + type, detail: type + '@example.com', archivedAt: type === 'Lead' ? '2026-09-01T00:00:00.000Z' : null, canRestore: true }));
   vi.clearAllMocks(); vi.stubGlobal('fetch', request);
   vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} });
@@ -43,6 +43,9 @@ beforeEach(() => {
 afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 const confirm = () => fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /^Restore/ }));
 const writes = () => request.mock.calls.filter(([, options]) => options.method === 'PATCH');
+const removeButton = () => screen.getByRole('button', { name: 'Remove selected archived records from view' });
+const confirmDelete = () => fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
+const mutations = () => request.mock.calls.filter(([, options]) => options.method !== 'GET');
 
 it.each(ARCHIVE_TYPES)('filters %s and returns to all supported records through the shared tabs', async type => {
   rows = ARCHIVE_TYPES.map(kind => ({ type: kind, id: kind.toLowerCase(), name: `Saved ${kind}`, detail: '', archivedAt: null, canRestore: true }));
@@ -66,8 +69,7 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(filters.className).toContain('border-b');
   expect(within(filters).getByRole('button', { name: 'All', pressed: true }).querySelector('[aria-hidden]')?.className).toContain('bg-primary');
   expect(within(filters).queryByRole('button', { name: 'Role' })).toBeNull();
-  const primary = screen.getByRole('group', { name: 'Archived records search and refresh' });
-  expect(primary.className).toContain('flex-nowrap');
+  const primary = screen.getByRole('toolbar', { name: 'Archived records controls' });
   expect(within(primary).getByRole('textbox', { name: 'Search archived records' })).toBeTruthy();
   expect(within(primary).getByRole('button', { name: 'Refresh' })).toBeTruthy();
   await screen.findByText('Saved Lead');
@@ -75,6 +77,212 @@ it('uses the shared grid, actual timestamp and one scrolling filter row', async 
   expect(screen.getAllByRole('checkbox')).toHaveLength(4);
   expect(screen.getByRole('columnheader', { name: 'Archived On' })).toBeTruthy();
   expect(screen.getAllByRole('button', { name: 'Restore' })[0].textContent).toBe('');
+});
+
+it('places the red shared icon button immediately before Refresh and enables it only for selected rows', async () => {
+  render(<ArchivedData />);
+  expect(removeButton()).toHaveProperty('disabled', true);
+  await screen.findByText('Saved Lead');
+  const button = removeButton(), refresh = screen.getByRole('button', { name: 'Refresh' });
+  expect(button.nextElementSibling).toBe(refresh);
+  expect(button.getAttribute('title')).toBe('Remove from list');
+  expect(button.querySelector('svg')?.classList.contains('text-destructive')).toBe(true);
+  for (const control of [button, refresh]) {
+    expect(control.className).toContain('min-w-11');
+    expect(control.className).toContain('min-h-11');
+    expect(control.className).toContain('p-1.5');
+    expect(control.className).toContain('rounded-lg');
+  }
+  fireEvent.click(button);
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
+  expect(button).toHaveProperty('disabled', false);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
+  expect(button).toHaveProperty('disabled', true);
+});
+
+it('uses standard singular Delete confirmation, cancels unchanged, and removes only the selected UI row', async () => {
+  const original = structuredClone(rows);
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
+  fireEvent.click(removeButton());
+  let dialog = screen.getByRole('alertdialog');
+  expect(within(dialog).getByRole('heading', { name: 'Delete archived record?' })).toBeTruthy();
+  expect(within(dialog).getByText('Are you sure you want to delete this archived record?')).toBeTruthy();
+  expect(dialog.textContent).not.toContain('cannot be undone');
+  expect(within(dialog).getByRole('button', { name: 'Delete' }).className).toContain('bg-red-600');
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+  expect(screen.getByText('Saved Lead')).toBeTruthy();
+  expect(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' })).toHaveProperty('checked', true);
+  fireEvent.click(removeButton());
+  dialog = screen.getByRole('alertdialog');
+  const readsBefore = request.mock.calls.length;
+  confirmDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(screen.queryByText('Saved Lead')).toBeNull();
+  expect(screen.getByText('Saved Contact')).toBeTruthy();
+  expect(screen.getByText('Saved Account')).toBeTruthy();
+  expect(screen.queryByRole('toolbar', { name: 'Selected row actions' })).toBeNull();
+  expect(screen.getAllByRole('checkbox').every(checkbox => !(checkbox as HTMLInputElement).checked)).toBe(true);
+  expect(removeButton()).toHaveProperty('disabled', true);
+  expect(screen.getByRole('columnheader', { name: 'Archived On' })).toBeTruthy();
+  expect(rows).toEqual(original);
+  expect(request.mock.calls).toHaveLength(readsBefore);
+  expect(mutations()).toHaveLength(0);
+  expect(state.success).not.toHaveBeenCalled();
+});
+
+it('removes multiple selected records using plural wording and keeps matching IDs of other types', async () => {
+  rows = rows.map(record => ({ ...record, id: 'same-id' }));
+  const original = structuredClone(rows);
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-same-id' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Account-same-id' }));
+  fireEvent.click(removeButton());
+  expect(screen.getByText('Are you sure you want to delete the selected archived records?')).toBeTruthy();
+  expect(screen.getByRole('heading', { name: 'Delete archived records?' })).toBeTruthy();
+  confirmDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(screen.queryByText('Saved Lead')).toBeNull();
+  expect(screen.queryByText('Saved Account')).toBeNull();
+  expect(screen.getByText('Saved Contact')).toBeTruthy();
+  expect(rows).toEqual(original);
+  expect(mutations()).toHaveLength(0);
+});
+
+it.each(['All', ...ARCHIVE_TYPES] as const)('temporarily removes selected records from the %s tab', async type => {
+  rows = ARCHIVE_TYPES.map(kind => ({ type: kind, id: kind.toLowerCase(), name: `Saved ${kind}`, detail: '', archivedAt: null, canRestore: true }));
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  if (type !== 'All') {
+    fireEvent.click(screen.getByRole('button', { name: type }));
+    await waitFor(() => expect(within(screen.getByRole('grid')).getAllByRole('button', { name: 'Restore' })).toHaveLength(1));
+  }
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await screen.findByText('No archived records found.');
+  expect(screen.getByRole('button', { name: type, pressed: true })).toBeTruthy();
+  expect(screen.queryByRole('toolbar', { name: 'Selected row actions' })).toBeNull();
+  expect(rows).toHaveLength(ARCHIVE_TYPES.length);
+  expect(mutations()).toHaveLength(0);
+});
+
+it('retains hidden rows through tabs, search, toolbar refresh and background refresh', async () => {
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: 'Contact' }));
+  await screen.findByText('Saved Contact');
+  fireEvent.click(screen.getByRole('button', { name: 'All' }));
+  await screen.findByText('Saved Account');
+  expect(screen.queryByText('Saved Lead')).toBeNull();
+  const input = screen.getByRole('textbox', { name: 'Search archived records' });
+  fireEvent.change(input, { target: { value: 'Lead' } });
+  await screen.findByText('No archived records found.');
+  expect(input).toHaveProperty('value', 'Lead');
+  fireEvent.change(input, { target: { value: 'Saved' } });
+  await screen.findByText('Saved Contact');
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toHaveProperty('disabled', false));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toHaveProperty('disabled', false));
+  const readsBeforeFocus = request.mock.calls.length;
+  fireEvent(window, new Event('focus'));
+  await waitFor(() => expect(request.mock.calls.length).toBeGreaterThan(readsBeforeFocus));
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Refresh' })).toHaveProperty('disabled', false));
+  expect(screen.queryByText('Saved Lead')).toBeNull();
+  expect(screen.getByText('Saved Contact')).toBeTruthy();
+  expect(input).toHaveProperty('value', 'Saved');
+  expect(screen.getByRole('button', { name: 'All', pressed: true })).toBeTruthy();
+  expect(request.mock.calls.every(([url]) => url.includes('sortBy=archivedAt') && url.includes('sortOrder=desc'))).toBe(true);
+  expect(mutations()).toHaveLength(0);
+});
+
+it('keeps server page boundaries after partial removal and steps backward through emptied pages', async () => {
+  rows = Array.from({ length: 51 }, (_, index) => ({ ...rows[0], id: String(index), name: `Lead ${index}` }));
+  render(<ArchivedData />); await screen.findByText('Lead 0');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-0' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  expect(screen.getByText('Page 1 of 3')).toBeTruthy();
+  expect(screen.getAllByRole('checkbox')).toHaveLength(25);
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByText('Lead 25');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await screen.findByText('Lead 1');
+  expect(screen.getByText('Page 1 of 3')).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Records per page' })).toHaveProperty('disabled', false));
+  expect(screen.queryByText('Lead 0')).toBeNull();
+  // Empty server pages remain navigable so later, unhidden rows stay reachable.
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByText('No archived records found.');
+  expect(screen.getByText('Page 2 of 3')).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Next page' })).toHaveProperty('disabled', false));
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByText('Lead 50');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await screen.findByText('Lead 1');
+  expect(screen.getByText('Page 1 of 3')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Records per page' }));
+  fireEvent.click(screen.getByRole('option', { name: '10' }));
+  await screen.findByText('Page 1 of 6');
+  await screen.findByText('Lead 1');
+  expect(screen.queryByText('Lead 0')).toBeNull();
+  expect(rows).toHaveLength(51);
+  expect(mutations()).toHaveLength(0);
+});
+
+it.each(['tenant', 'user', 'remount'] as const)('resets exclusions and pending Delete confirmation on %s change', async change => {
+  const view = render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Contact-contact-id' }));
+  fireEvent.click(removeButton());
+  if (change === 'remount') { view.unmount(); render(<ArchivedData />); }
+  else {
+    if (change === 'tenant') state.tenantId = 'tenant-b';
+    else state.userId = 'user-b';
+    view.rerender(<ArchivedData />);
+  }
+  await screen.findByText('Saved Lead');
+  expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(removeButton()).toHaveProperty('disabled', true);
+  expect(mutations()).toHaveLength(0);
+});
+
+it('keeps removal separate from Restore permissions and disables removal while refreshing or restoring', async () => {
+  state.canRestore = false;
+  const view = render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
+  expect(removeButton()).toHaveProperty('disabled', false);
+  let finish!: (response: Response) => void;
+  request.mockReturnValueOnce(new Promise(done => { finish = done; }));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  expect(removeButton()).toHaveProperty('disabled', true);
+  await act(async () => finish(new Response(JSON.stringify({ data: rows, meta: { total: rows.length, page: 1, limit: 25 } }))));
+  expect(removeButton()).toHaveProperty('disabled', false);
+  state.canRestore = true; view.rerender(<ArchivedData />);
+  const remove = removeButton();
+  request.mockReturnValueOnce(new Promise(done => { finish = done; }));
+  fireEvent.click(within(screen.getByRole('grid')).getAllByRole('button', { name: 'Restore' })[0]); confirm();
+  expect(remove).toHaveProperty('disabled', true);
+  await act(async () => finish(new Response(JSON.stringify({ success: true }))));
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+});
+
+it('restores the remaining visible rows after UI removal without restoring the hidden row', async () => {
+  render(<ArchivedData />); await screen.findByText('Saved Lead');
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
+  fireEvent.click(removeButton()); confirmDelete();
+  await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all records' }));
+  fireEvent.click(screen.getByText('Restore', { selector: 'button' })); confirm();
+  await screen.findByText('No archived records found.');
+  expect(writes()).toHaveLength(2);
+  expect(writes().every(([url]) => !url.includes('/leads/'))).toBe(true);
+  expect(rows.map(record => record.name)).toEqual(['Saved Lead']);
 });
 
 it.each([
