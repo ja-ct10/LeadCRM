@@ -224,6 +224,7 @@ it('keeps server page boundaries after partial removal and steps backward throug
   fireEvent.click(removeButton()); confirmDelete();
   await screen.findByText('Lead 1');
   expect(screen.getByText('Page 1 of 3')).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Records per page' })).toHaveProperty('disabled', false));
   fireEvent.click(screen.getByRole('button', { name: 'Records per page' }));
   fireEvent.click(screen.getByRole('option', { name: '10' }));
   await screen.findByText('Page 1 of 6');

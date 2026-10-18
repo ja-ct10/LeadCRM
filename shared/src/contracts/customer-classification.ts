@@ -36,10 +36,3 @@ export function classifyCustomer(record: CustomerClassificationEvidence, now = n
   if (status === 'Hot' && days >= 8) return 'Warm';
   return status;
 }
-
-export function leadWorkQueueRank(record: { status: string; firstStaffOutreachAt?: string | Date | null }): number {
-  const status = normalizeCrmStatus(record.status);
-  if (status === 'Closed' || status === 'Cancelled') return 9;
-  if (!record.firstStaffOutreachAt) return 0;
-  return { Hot: 1, Warm: 2, Inquiry: 3, Cold: 4 }[status];
-}

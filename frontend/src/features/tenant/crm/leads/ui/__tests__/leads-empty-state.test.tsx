@@ -63,6 +63,21 @@ it('omits My Leads for Client Admin while preserving All and Active Leads', () =
   expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: [{ field: 'scope', operator: 'equals', value: 'active' }] }));
 });
 
+it.each(['Sales', 'Client Admin'])('removes Work Queue and normalizes an old tab URL for %s', role => {
+  mocks.role = role; mocks.params = { tab: 'work_queue', search: 'retained' };
+  const view = render(<LeadsPage />);
+  expect(screen.queryByRole('button', { name: /Work queue/i, hidden: true })).toBeNull();
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  expect(mocks.query.mock.calls.every(([query]) => query.filter === undefined)).toBe(true);
+  expect(mocks.updateParams).toHaveBeenCalledWith(expect.objectContaining({ tab: null, search: 'retained' }));
+  mocks.params = {}; view.rerender(<LeadsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Active Leads' }));
+  expect(mocks.query).toHaveBeenLastCalledWith(expect.objectContaining({ filter: [{ field: 'scope', operator: 'equals', value: 'active' }] }));
+  mocks.params = { tab: 'work_queue', highlight: 'selected-lead' }; view.rerender(<LeadsPage />);
+  expect(screen.getByRole('button', { name: 'All Leads', pressed: true })).toBeTruthy();
+  expect(mocks.updateParams).toHaveBeenLastCalledWith({ tab: null });
+});
+
 it.each(['Sales', 'Account Manager'])('preserves personal and shared Lead scopes for %s', role => {
   mocks.role = role;
   render(<LeadsPage />);
