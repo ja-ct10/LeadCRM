@@ -7,10 +7,9 @@ describes local source and disposable verification, not a production deployment.
 
 ## Behavior and component reuse
 
-- The Settings → Products gear sits immediately left of the existing blue Add
-  Product action. It uses the same `Button` outline/icon variant, 44px sizing,
-  `Settings` icon and Tooltip primitives as Manage Field Groups. Its accessible
-  label is “Manage Product Categories”; its tooltip is “Manage Categories”.
+- The Product category control reuses the `Settings` icon and Tooltip primitives
+  from Manage Field Groups. Its accessible label is “Manage Product Categories”;
+  its tooltip is “Manage Categories”.
 - The feature-local manager uses existing `Dialog`, header/title/close behavior,
   `Input`, `Label`, `Button`, `panelInputClass`, typography, bordered group-row
   styling, scrolling and category-count footer. No new shared component was added.
