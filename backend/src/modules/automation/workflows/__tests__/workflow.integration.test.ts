@@ -220,10 +220,15 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(await prisma.task.count({ where: { tenantId, title: 'Saved admin rejected' } })).toBe(0);
   });
 
+  async function manualDeal(data: Record<string, unknown>) {
+    const customer = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Workflow', lastName: 'Deal customer', assignedUserId: owner.id } }));
+    return call('/crm/deals', 'POST', { ...data, leadIds: [customer.id] });
+  }
+
   it('runs the real Deal-created path through cookie-authenticated HTTP with ordered actions and persisted history', async () => {
     const workflow = await create([{ type: 'assign_owner', config: { userId: owner.id } }, { type: 'create_task', config: { title: 'Call Deal', dueDaysFromNow: 0 } },
       { type: 'update_field', config: { field: 'title', value: 'Follow up requested' } }], { trigger: 'deal.created' });
-    const response = await call('/crm/deals', 'POST', { title: 'Created via HTTP', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id], assignedUserId: owner.id });
+    const response = await manualDeal({ title: 'Created via HTTP', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id], assignedUserId: owner.id });
     expect(response.status, JSON.stringify(response.body)).toBe(201);
     const record = await prisma.deal.findUniqueOrThrow({ where: { id: response.body.data.id } });
     expect(record.assignedUserId).toBe(owner.id); expect(record.title).toBe('Follow up requested');
@@ -432,13 +437,13 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   it('fires Deal creation, stage change, won and lost through governed HTTP transitions', { timeout: 60000 }, async () => {
     const triggers = ['deal.created', 'deal.stage_changed', 'deal.closed_won', 'deal.closed_lost'];
     const definitions = await Promise.all(triggers.map(trigger => create([{ type: 'create_task', config: { title: trigger, assignedUserId: owner.id } }], { trigger })));
-    const created = await call('/crm/deals', 'POST', { title: 'Event coverage deal', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id], assignedUserId: owner.id });
+    const created = await manualDeal({ title: 'Event coverage deal', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id], assignedUserId: owner.id });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
     await prepareQualified(id);
     expect((await call('/crm/deals/' + id + '/stage', 'PATCH', { stageId: won.id })).status).toBe(200);
     expect((await call('/crm/deals/' + id + '/stage', 'PATCH', { stageId: lost.id, lostReason: 'Acceptance scenario' })).status).toBe(400);
-    const second = await call('/crm/deals', 'POST', { title: 'Lost event coverage', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id], assignedUserId: owner.id });
+    const second = await manualDeal({ title: 'Lost event coverage', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id], assignedUserId: owner.id });
     expect(second.status, JSON.stringify(second.body)).toBe(201);
     expect((await call('/crm/deals/' + second.body.data.id + '/stage', 'PATCH', { stageId: lost.id, lostReason: 'Acceptance scenario' })).status).toBe(200);
     for (let index = 0; index < definitions.length; index++) {
@@ -465,7 +470,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
   it('runs bulk Deal transitions through the same stage service, without repeated events for unchanged stages', async () => {
     const workflow = await create([{ type: 'create_task', config: { title: 'Bulk qualified follow-up', assignedUserId: owner.id } }], { trigger: 'deal.stage_changed',
       conditions: { operator: 'AND', conditions: [{ field: 'deal.stageId', operator: 'equals', value: required.id }] } });
-    const created = await call('/crm/deals', 'POST', { title: 'Bulk transition', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id] });
+    const created = await manualDeal({ title: 'Bulk transition', pipelineId: deal.pipelineId, stageId: deal.stageId, productInterestIds: [product.id] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
     expect((await call('/crm/deals/' + id, 'PUT', { expectedCloseDate: '2026-10-10T00:00:00.000Z' })).status).toBe(200);
@@ -500,7 +505,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const converted = await call('/crm/leads/' + id + '/convert', 'POST', { accountName: 'Conversion account', createContact: true, dealId: completedDeal.id });
     expect(converted.status, JSON.stringify(converted.body)).toBe(200);
     const record = await prisma.lead.findUniqueOrThrow({ where: { id } });
-    expect(record.status).toBe('Warm');
+    expect(record.status).toBe('Inquiry');
     expect(await prisma.workflowTriggerRecord.count({ where: { tenantId, entityId: id, triggerType: 'lead.status_changed' } })).toBe(0);
     expect(record.convertedAt).toBeInstanceOf(Date);
     for (const workflow of [leadWorkflow, contactWorkflow]) {
@@ -545,7 +550,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     expect(await runs(leadWorkflow.id)).toHaveLength(1);
     expect(await prisma.contact.count({ where: { tenantId, firstName: 'Rollback' } })).toBe(0);
     expect(await prisma.account.count({ where: { tenantId, name: 'Rolled back account' } })).toBe(0);
-    expect(await prisma.lead.findUniqueOrThrow({ where: { id: failedSource.body.data.id } })).toMatchObject({ status: 'Warm', contactId: null, companyName: null, convertedAt: null });
+    expect(await prisma.lead.findUniqueOrThrow({ where: { id: failedSource.body.data.id } })).toMatchObject({ status: 'Inquiry', contactId: null, companyName: null, convertedAt: null });
   });
   it('emits Deal created for duplication after copying CRM associations', async () => {
     await scope(async () => {

@@ -115,6 +115,7 @@ try {
   checks.push('Deal Details has no document overflow at all seven target and intermediate widths');
   await page.setViewportSize({ width: 1440, height: 960 });
   await page.goto(`${base}/crm/deals`);
+  await page.getByText('Linked address Deal', { exact: true }).waitFor();
   await page.getByRole('button', { name: 'New Deal', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'New Deal', exact: true });
   await dialog.getByLabel('Associate Deal To', { exact: false }).selectOption('lead');
@@ -124,6 +125,7 @@ try {
   assert.equal(await dialog.getByLabel('Deal Address (override)', { exact: true }).inputValue(), '');
   for (const width of [320, 375, 480, 640, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 960 });
+    await dialog.getByLabel('Customer Address', { exact: true }).scrollIntoViewIfNeeded();
     assert.ok(await dialog.getByLabel('Customer Address', { exact: true }).isVisible());
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
     await page.screenshot({ path: resolve(output, `deal-form-${width}.png`), fullPage: true });
