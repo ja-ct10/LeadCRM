@@ -1,4 +1,6 @@
 'use client';
+import { DealAddressSourceSchema, dealAddressKey, resolveDealAddress, dealAddressMessage, dealCustomerAddressMessage } from '@leadcrm/shared';
+import { useDealAddressOptions } from '@/shared/hooks/use-deal-address-options';
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { LEAD_SOURCES, defaultFieldGroupId, type DealAssociationChange } from '@leadcrm/shared';
 import { ConfiguredFormLayout } from '@/shared/components/crm/configured-form-layout';
@@ -41,6 +43,7 @@ function validateAssociation(data: { associationType?: string; associationId?: s
 
 const CreateDealFormSchema = z.object({
   ...associationFields,
+  addressSource: DealAddressSourceSchema.nullable().optional(),
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
@@ -53,12 +56,13 @@ const CreateDealFormSchema = z.object({
   contactIds: z.array(z.string()).optional(),
   leadIds: z.array(z.string()).optional(),
   industry: z.union([DealIndustrySchema, z.literal('')]).optional(),
-  address: z.string().optional(),
+  address: z.string().max(2000, 'Max 2000 characters').optional(),
   productInterests: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.').max(100),
 }).superRefine(validateAssociation);
 
 const UpdateDealFormSchema = z.object({
   ...associationFields,
+  addressSource: DealAddressSourceSchema.nullable().optional(),
   title: z.string().min(1, 'Title is required').max(255, 'Max 255 characters'),
   value: z.number().finite().nonnegative('Must be zero or greater').max(999_999_999_999, 'Value exceeds maximum').optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']).optional(),
@@ -69,7 +73,7 @@ const UpdateDealFormSchema = z.object({
   contactIds: z.array(z.string()).optional(),
   leadIds: z.array(z.string()).optional(),
   industry: z.string().optional(),
-  address: z.string().optional(),
+  address: z.string().max(2000, 'Max 2000 characters').optional(),
   productInterests: z.array(z.string()).min(1, 'Select at least one Product Interest.').optional(),
 }).superRefine((data, ctx) => { if (data.associationChanged) validateAssociation(data, ctx); });
 
@@ -160,6 +164,7 @@ export function DealForm({
         leadIds: [] as string[],
         industry: '',
         address: '',
+        addressSource: null,
         productInterests: [] as string[],
       };
     }
@@ -181,6 +186,7 @@ export function DealForm({
       leadIds: (initialData as any)?.leadIds || [],
       industry: initialData?.industry || '',
       address: initialData?.address || '',
+      addressSource: initialData?.addressSource ?? null,
       productInterests: initialData?.productInterestIds?.length ? initialData.productInterestIds : initialData?.productInterestId ? [initialData.productInterestId] : undefined,
     };
   }, [isCreateMode, initialData, preselect, pipelines, initialAssociation]);
@@ -191,8 +197,9 @@ export function DealForm({
     control,
     watch,
     setValue,
-    formState: { errors, isValid, isSubmitting: isValidatingSubmission, isDirty },
+    formState: { errors, isValid, isSubmitting: isValidatingSubmission, isDirty, touchedFields },
     setFocus,
+    setError,
   } = useForm<CreateDealFormData>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any -- RHF v7.82 + resolvers v5.4 type mismatch with optional number
     resolver: zodResolver(isCreateMode ? CreateDealFormSchema : UpdateDealFormSchema) as never,
@@ -200,13 +207,18 @@ export function DealForm({
     mode: 'onChange',
   });
   const isSubmitting = isValidatingSubmission || isSaving;
-  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty, busy: isSubmitting || isLoading || customFields.uploadCount > 0 });
+  const requestClose = usePanelDraft({ dirty: isDirty || customFields.dirty || !!touchedFields.addressSource, busy: isSubmitting || isLoading || customFields.uploadCount > 0 });
 
   const [submitError, setSubmitError] = useState('');
   const submitting = useRef(false);
   const fieldId = React.useId();
   const formRef = useRef<HTMLFormElement>(null);
   const associationType = watch('associationType');
+  const associationId = watch('associationId');
+  const addressSource = watch('addressSource');
+  const addressOptions = useDealAddressOptions({ dealId: initialData?.id, accountId: initialData?.accountId ?? initialData?.organizationId, association: associationType && associationId ? { type: associationType, id: associationId } : undefined, previous: initialAssociation, changed: watch('associationChanged') });
+  const unavailableSavedSource = !isCreateMode && !touchedFields.addressSource && initialData?.addressContext?.customerStatus === 'unavailable';
+  const addressContext = resolveDealAddress(watch('address'), addressSource, addressOptions.data ?? initialData?.addressContext?.options ?? []);
   const selectedPipelineId = watch('pipelineId');
   const selectedProductIds = watch('productInterests') ?? [];
   const selectedProducts = products.filter(product => selectedProductIds.includes(product.id));
@@ -239,12 +251,16 @@ export function DealForm({
   const onFormSubmit = async (data: CreateDealFormData): Promise<void> => {
     if (!hasPermission) return;
     if (!customFields.validate()) return;
+    if (data.addressSource && (isCreateMode || touchedFields.addressSource) && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(data.addressSource!))) {
+      setError('addressSource', { message: 'Choose an available linked customer address or return to Automatic.' }); return;
+    }
     // Clean optional empty strings before submission.
     // currency is always PHP — not user-editable, injected here for backend compatibility.
     const { associationType, associationId, associationChanged, organizationId: _account, assignedUserId: _agent, leadIds: _leads, contactIds: _contacts, ...values } = data;
     const cleaned = {
       customFieldValues: customFields.payload(),
       ...values,
+      addressSource: isCreateMode || touchedFields.addressSource ? data.addressSource : undefined,
       currency: 'PHP',
       value: undefined,
       productInterestIds: data.productInterests?.length ? data.productInterests : undefined,
@@ -266,7 +282,7 @@ export function DealForm({
     submitting.current = true; setSubmitError('');
     setIsSaving(true);
     try { await onSubmit(cleaned as DealFormData); }
-    catch (error) { showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
+    catch (error) { if (error instanceof Error && error.message.startsWith('Customer Address:')) setError('addressSource', { type: 'server', message: error.message }); showCrmMutationError(error, 'Unable to save Deal.'); setSubmitError(error instanceof Error ? error.message : 'Unable to save. Retry this submission.'); }
     finally { submitting.current = false; setIsSaving(false); }
   };
 
@@ -400,7 +416,25 @@ export function DealForm({
               {isCreateMode ? <select {...register('industry')} id={`${fieldId}-industry`} className={selectCls}><option value="">Select industry...</option>{COMPANY_INDUSTRIES.map(industry => <option key={industry} value={industry}>{industry}</option>)}</select> : <input {...register('industry')} id={`${fieldId}-industry`} className={inputCls} />}
             </FieldWrap>
           </div>
-          <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Address">
+          <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Deal Address (override)" beforeLabel={
+            <div className="space-y-2">
+              <Label htmlFor={`${fieldId}-address-source`}>Customer Address</Label>
+              <select id={`${fieldId}-address-source`} aria-invalid={!!errors.addressSource} aria-describedby={errors.addressSource ? `${fieldId}-address-source-error` : undefined} className={selectCls} disabled={isSubmitting || isLoading || addressOptions.isInitialLoad} value={addressSource ? dealAddressKey(addressSource) : unavailableSavedSource ? '__unavailable__' : ''} onChange={event => {
+                const option = addressContext.options.find(option => dealAddressKey(option) === event.target.value);
+                setValue('addressSource', option ? { type: option.type, id: option.id } : null, { shouldDirty: true, shouldTouch: true, shouldValidate: true });
+              }}>
+                <option value="">{!addressSource && !unavailableSavedSource && addressContext.options.length === 1 ? `Automatic: ${addressContext.options[0].label}` : 'Automatic / choose later'}</option>
+                {unavailableSavedSource && !addressSource && <option value="__unavailable__" disabled>Selected address unavailable</option>}
+                {addressSource && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(addressSource)) && <option value={dealAddressKey(addressSource)}>Selected address unavailable</option>}
+                {addressContext.options.map(option => <option key={dealAddressKey(option)} value={dealAddressKey(option)}>{option.label}</option>)}
+              </select>
+              {errors.addressSource?.message && <p id={`${fieldId}-address-source-error`} role="alert" className="text-xs text-destructive">{errors.addressSource.message}</p>}
+              <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground" role="status">{addressOptions.isInitialLoad ? 'Loading customer addresses…' : addressOptions.error || dealCustomerAddressMessage(!touchedFields.addressSource && initialData?.addressContext?.customerStatus === 'unavailable' ? initialData.addressContext : addressContext)}</p>
+              {addressOptions.error && <Button type="button" variant="ghost" size="sm" onClick={() => void addressOptions.refetch()}>Retry addresses</Button>}
+              <p className="text-xs text-muted-foreground">Leave the override blank to use the linked customer address. Changes here affect only this Deal.</p>
+            </div>
+          }>
+
             <textarea
               {...register('address')}
               id={`${fieldId}-address`}
@@ -408,7 +442,7 @@ export function DealForm({
               aria-describedby={errors.address ? `${fieldId}-address-error` : undefined}
               rows={2}
               className={cn(inputCls, 'resize-none')}
-              placeholder="Enter address..."
+              placeholder="Optional project or service location..."
             />
           </FieldWrap>
 
@@ -470,12 +504,13 @@ function SectionHeader({ num, title }: { num: number; title: string }): React.Re
   return <PanelSectionHeading number={num}>{title}</PanelSectionHeading>;
 }
 
-function FieldWrap({ label, fieldKey, error, htmlFor, children }: { label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
+function FieldWrap({ label, fieldKey, error, htmlFor, children, beforeLabel }: { beforeLabel?: React.ReactNode; label: string; fieldKey?: string; error?: string; htmlFor?: string; children: React.ReactNode }): React.ReactElement {
   const isRequired = label.endsWith(' *');
   const displayText = isRequired ? label.slice(0, -2) : label;
 
   return (
-    <div className={cn("min-w-0 space-y-1.5", (fieldKey === 'title' || fieldKey === 'productInterestIds') && 'sm:col-span-2')}>
+    <div className={cn("min-w-0 space-y-1.5", (fieldKey === 'title' || fieldKey === 'productInterestIds' || fieldKey === 'address') && 'sm:col-span-2')}>
+      {beforeLabel}
       <Label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-600 dark:text-slate-400">
         <span>{displayText}{isRequired && <span className="text-red-500"> *</span>}</span>
       </Label>

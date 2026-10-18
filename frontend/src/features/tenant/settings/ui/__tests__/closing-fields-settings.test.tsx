@@ -181,7 +181,7 @@ it.each(['leads', 'contacts'] as const)('projects canonical %s groups without ch
   const expected = [
     ['First Name', 'Basic Information'], ['Last Name', 'Basic Information'], ['Email', 'Basic Information'], ['Phone', 'Basic Information'], ['Created', 'Basic Information'],
     ['Status', 'Status & Interest'], ['Product Interest', 'Status & Interest'], ['Company Name', 'Organization'], ['Account', 'Organization'],
-    [module === 'contacts' ? 'Source' : 'Lead Source', 'Additional Information'], [module === 'leads' ? 'Lead Address' : 'Full Address', 'Additional Information'], ['Assigned Agent', 'Assigned Agent'],
+    [module === 'contacts' ? 'Source' : 'Lead Source', 'Additional Information'], [module === 'leads' ? 'Lead Address' : 'Contact Address', 'Additional Information'], ['Assigned Agent', 'Assigned Agent'],
     ...(module === 'contacts' ? [['Notes', 'Additional Information']] : []),
   ];
   for (const [label, group] of expected) expect(screen.getByRole('button', { name: `Edit ${label}` }).closest('tr')!.cells[5].textContent).toBe(group);

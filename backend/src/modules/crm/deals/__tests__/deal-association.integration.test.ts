@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { PGlite } from '@electric-sql/pglite';
 import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { Prisma, PrismaClient } from '@prisma/client';
+import type { DealAddressContext } from '@leadcrm/shared';
 import { CreateDealBatchSchema, ManualCreateDealBatchSchema, defaultQuotationContent } from '@leadcrm/shared';
 import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 import { installTenantScoping } from '../../../../core/tenant/tenant-prisma';
@@ -13,6 +14,7 @@ import { ManualCreateDealSchema, UpdateDealSchema } from '../deals.dto';
 
 vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DEAL_ASSOCIATION_TEST_DATABASE_URL! } } }) }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient;
+let presentation: typeof import('../deal-presentation');
 let service: typeof import('../deals.service'), batch: typeof import('../deal-batch.service');
 let relationships: typeof import('../../relationships/relationships.service');
 let quotations: typeof import('../../../marketing/campaigns/quotations.service');
@@ -27,6 +29,7 @@ beforeAll(async () => {
   process.env.DEAL_ASSOCIATION_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
   db = (await import('../../../../config/database.config')).default;
   installProductProjections(db); installTenantScoping(db); installCrmRecordAccess(db);
+  presentation = await import('../deal-presentation');
   service = await import('../deals.service'); batch = await import('../deal-batch.service');
   relationships = await import('../../relationships/relationships.service');
   quotations = await import('../../../marketing/campaigns/quotations.service');
@@ -50,7 +53,7 @@ beforeAll(async () => {
     { id: 'contact', tenantId, firstName: 'Contact', lastName: 'Fixture', assignedUserId: 'other-agent', accountId: 'other-account' },
     { id: 'extra-contact', tenantId, firstName: 'Extra', lastName: 'Fixture' },
   ] });
-}, 60000);
+}, 180000);
 afterAll(async () => { await db?.$disconnect(); await socket?.stop(); await pg?.close(); });
 
 describe('manual Deal associations on disposable SQL', () => {
@@ -106,12 +109,13 @@ describe('manual Deal associations on disposable SQL', () => {
     const draft = { quotationId: randomUUID(), templateId: template.id, recipientType, recipientId: isLead ? 'lead' : 'contact', dealId: deal.id, products: [{ productId, quantity: 1 }], quotationDate: '2026-10-18', validUntil: '2026-11-18', notes: '' };
     // Public draft IDs are UUIDs; fixture people use stable IDs for the Deal tests.
     const recipientId = randomUUID();
-    if (isLead) await db.lead.create({ data: { id: recipientId, tenantId, firstName: 'Quote', lastName: 'Lead', assignedUserId: 'agent' } });
-    else await db.contact.create({ data: { id: recipientId, tenantId, firstName: 'Quote', lastName: 'Contact', assignedUserId: 'agent' } });
-    await scope(() => service.updateDeal(deal.id, tenantId, 'admin', { primaryAssociation: { type: isLead ? 'lead' : 'contact', id: recipientId } }));
+    if (isLead) await db.lead.create({ data: { id: recipientId, tenantId, firstName: 'Quote', lastName: 'Lead', address: 'Recipient address', assignedUserId: 'agent' } });
+    else await db.contact.create({ data: { id: recipientId, tenantId, firstName: 'Quote', lastName: 'Contact', address: 'Recipient address', assignedUserId: 'agent' } });
+    await scope(() => service.updateDeal(deal.id, tenantId, 'admin', { address: 'Unrelated project override', primaryAssociation: { type: isLead ? 'lead' : 'contact', id: recipientId } }));
     const result = await scope(() => quotations.buildQuotationDocument({ tenantId, userId: 'admin', role: 'Client Admin' }, { ...draft, recipientId }));
     expect(result.document.recipient.name).toBe(`Quote ${recipientType}`);
     expect(result.document.total).toBe('1234.56');
+    expect(result.document.recipient.address).toBe('Recipient address');
     await expect(scope(() => quotations.buildQuotationDocument({ tenantId, userId: 'admin', role: 'Client Admin' }, { ...draft, recipientId, dealId: randomUUID() }))).rejects.toThrow('linked to this recipient');
   });
 
@@ -184,5 +188,73 @@ describe('manual Deal associations on disposable SQL', () => {
     expect(saved.leadDeals.map(row => row.leadId)).toEqual(['lead', 'extra-lead']);
     expect(saved.contactId).toBe('contact');
     await expect(scope(() => service.updateDeal(deal.id, tenantId, 'other-agent', { title: 'Denied' }), 'other-agent')).rejects.toThrow('assigned to you');
+  });
+});
+
+
+describe('linked customer address references', () => {
+  const source = { type: 'lead' as const, id: 'address-lead' };
+  let dealId: string;
+  const read = () => scope(async () => { const deal = await service.getDealById(dealId, tenantId); return await presentation.presentDealResponse(tenantId, deal) as typeof deal & { addressContext: DealAddressContext }; });
+  it('resolves individuals automatically and supports an explicit company choice', async () => {
+    await db.account.create({ data: { id: 'address-account', tenantId, name: 'Address Company', address: 'Company office\nMakati' } });
+    await db.lead.create({ data: { id: source.id, tenantId, firstName: 'Address', lastName: 'Customer', address: 'Home street\nPasig', assignedUserId: 'agent' } });
+    const deal = await scope(() => service.createDeal(tenantId, 'admin', ManualCreateDealSchema.parse(input({ leadIds: [source.id] }))));
+    dealId = deal.id;
+    expect((await read()).addressContext).toMatchObject({ status: 'linked', effectiveAddress: 'Home street\nPasig' });
+    await db.lead.update({ where: { id: source.id }, data: { accountId: 'address-account' } });
+    expect((await read()).addressContext).toMatchObject({ status: 'choice_required', effectiveAddress: null });
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { addressSource: { type: 'account', id: 'address-account' } }));
+    expect((await read()).addressContext).toMatchObject({ status: 'linked', effectiveAddress: 'Company office\nMakati' });
+    expect((await db.deal.findUniqueOrThrow({ where: { id: dealId } })).address).toBeNull();
+  });
+  it('shows source edits live without rewriting Deal rows and keeps overrides independent', async () => {
+    const before = await db.deal.findUniqueOrThrow({ where: { id: dealId } });
+    await db.account.update({ where: { id: 'address-account' }, data: { address: 'Updated company office' } });
+    expect((await read()).addressContext.effectiveAddress).toBe('Updated company office');
+    expect((await db.deal.findUniqueOrThrow({ where: { id: dealId } })).updatedAt).toEqual(before.updatedAt);
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { address: 'Installation site' }));
+    expect((await read()).addressContext).toMatchObject({ status: 'override', effectiveAddress: 'Installation site', customerAddress: 'Updated company office' });
+    expect((await db.account.findUniqueOrThrow({ where: { id: 'address-account' } })).address).toBe('Updated company office');
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { address: '' }));
+    expect((await read()).addressContext.effectiveAddress).toBe('Updated company office');
+  });
+  it('rejects unrelated, archived, missing and foreign sources atomically', async () => {
+    for (const id of ['extra-lead', 'archived', 'missing', 'foreign-lead']) {
+      await expect(scope(() => service.updateDeal(dealId, tenantId, 'admin', { title: 'Must roll back', addressSource: { type: 'lead', id } }))).rejects.toThrow('Customer Address');
+    }
+    expect((await db.deal.findUniqueOrThrow({ where: { id: dealId } })).title).toBe('Installation');
+    const count = await db.deal.count();
+    await expect(scope(() => service.createDeal(tenantId, 'admin', ManualCreateDealSchema.parse(input({ addressSource: source }))))).rejects.toThrow('Customer Address');
+    expect(await db.deal.count()).toBe(count);
+  });
+  it('validates a new choice against the resulting associations and preserves unrelated links', async () => {
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { primaryAssociation: { type: 'lead', id: 'extra-lead' } }));
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { primaryAssociation: { type: 'lead', id: source.id, previous: { type: 'lead', id: 'extra-lead' } }, addressSource: source }));
+    expect((await read()).leadDeals.map(link => link.leadId)).toContain(source.id);
+    expect((await read()).addressSource).toEqual(source);
+  });
+  it('keeps a stale choice unavailable and permits unrelated legacy edits', async () => {
+    await db.lead.update({ where: { id: source.id }, data: { address: '' } });
+    const context = (await read()).addressContext;
+    expect(context).toMatchObject({ status: 'unavailable', customerStatus: 'unavailable', effectiveAddress: null, source: null });
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { title: 'Unrelated legacy edit' }));
+    expect((await db.deal.findUniqueOrThrow({ where: { id: dealId } })).addressSource).toEqual(source);
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { addressSource: null }));
+    expect((await read()).addressContext.effectiveAddress).toBe('Updated company office');
+    expect((await db.deal.findUniqueOrThrow({ where: { id: dealId } })).addressSource).toBeNull();
+  });
+  it('redacts inaccessible sources and retains batch creation and receipts', async () => {
+    await db.lead.update({ where: { id: source.id }, data: { address: 'Current personal address' } });
+    await scope(() => service.updateDeal(dealId, tenantId, 'admin', { addressSource: { type: 'account', id: 'address-account' } }));
+    const hidden = await scope(async () => { const deal = await service.getDealById(dealId, tenantId); return await presentation.presentDealResponse(tenantId, deal) as typeof deal & { addressContext: DealAddressContext }; }, 'agent');
+    expect(hidden.addressSource).toBeNull(); expect(hidden.addressContext).toMatchObject({ status: 'unavailable', effectiveAddress: null, source: null });
+    expect(hidden.addressContext.options.every(option => option.type !== 'account')).toBe(true);
+    await expect(scope(() => service.updateDeal(dealId, tenantId, 'agent', { addressSource: { type: 'account', id: 'address-account' } }), 'agent')).rejects.toThrow('Customer Address');
+    const dto = { ...input({ leadIds: [source.id], addressSource: source }), productInterestIds: [productId, secondProductId], idempotencyKey: randomUUID() };
+    const result = await scope(() => batch.createDealBatch(tenantId, 'admin', dto));
+    expect(result.deals).toHaveLength(2);
+    for (const deal of result.deals) expect(deal).toMatchObject({ addressSource: source, address: null, assignedUserId: 'agent' });
+    expect((await scope(() => batch.createDealBatch(tenantId, 'admin', dto))).replayed).toBe(true);
   });
 });

@@ -106,7 +106,7 @@ describe.skipIf(!disposable)('Lead conversion Account linking with authenticated
     expect(await prisma.contactProductInterest.findMany({ where: { contactId: result.body.data.contact.id } })).toMatchObject([{ productInterestId: retired.id, interested: true, activeProduct: false }]);
   });
   it('preserves original Deal ownership, stage, product, history and Lead association while adding authorized links', async () => {
-    const existing = await account(); const source = await lead(); const original = await deal(source.id);
+    const existing = await account(); const source = await lead({ address: 'Original personal address' }); const original = await deal(source.id, { addressSource: { type: 'lead', id: source.id }, address: 'Project override' });
     const histories = await prisma.dealStageHistory.findMany({ where: { dealId: original.id }, orderBy: { id: 'asc' } });
     const result = await convert(source.id, { accountId: existing.id });
     expect(result.status, JSON.stringify(result.body)).toBe(200);

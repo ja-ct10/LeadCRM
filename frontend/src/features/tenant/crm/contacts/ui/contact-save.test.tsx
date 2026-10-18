@@ -63,7 +63,7 @@ it('keeps a failed nested Account draft, separates addresses and reuses its curr
   fireEvent.change(within(organization).getByLabelText('Company *'), { target: { value: 'Nora Company' } });
   fireEvent.change(within(organization).getByLabelText('Company Address'), { target: { value: 'Company office\nMakati' } });
   const additional = screen.getByRole('heading', { name: 'Additional Information' }).closest('section')!;
-  fireEvent.change(within(additional).getByLabelText('Full Address'), { target: { value: 'Personal address' } });
+  fireEvent.change(within(additional).getByLabelText('Contact Address'), { target: { value: 'Personal address' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
   await screen.findByText('Unable to save the account. Please retry.');
   expect((within(organization).getByLabelText('Company *') as HTMLInputElement).value).toBe('Nora Company');

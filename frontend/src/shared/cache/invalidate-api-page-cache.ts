@@ -43,7 +43,7 @@ export function invalidateApiPageCache(path: string): void {
         ['leads', 'contacts', 'accounts', 'counts-leads', 'counts-contacts', 'counts-accounts'].forEach(module => modules.add(module));
       }
     }
-    if (resource === 'accounts' || resource === 'organizations') modules.add('accounts');
+    if (resource === 'accounts' || resource === 'organizations') ['accounts', 'leads', 'contacts', 'deals'].forEach(module => modules.add(module));
     if (resource === 'deals' || resource === 'pipelines') modules.add('pipeline');
   }
   if (area === 'marketing') modules.add('campaigns');

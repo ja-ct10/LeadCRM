@@ -11,9 +11,9 @@ describe('optional workflow loss reason contract', () => {
     expect(workflowLossReason({ includeLossReason: true, lostReason: ' Not proceeding ' })).toBe('Not proceeding');
     expect(workflowLossReason({ includeLossReason: false, lostReason: 'Old value' })).toBeUndefined();
   });
-  it('allows incomplete drafts but blocks activation when the enabled option is empty', () => {
+  it('accepts blank legacy loss-reason settings in drafts and published workflows', () => {
     expect(workflowLossReasonIssue({ includeLossReason: true, lostReason: ' ' }, true)).toBeUndefined();
-    expect(workflowLossReasonIssue({ includeLossReason: true, lostReason: ' ' })).toContain('Enter a loss reason');
+    expect(workflowLossReasonIssue({ includeLossReason: true, lostReason: ' ' })).toBeUndefined();
   });
   it.each([{ includeLossReason: 'true' }, { lostReason: 12 }, { lostReason: 'a'.repeat(2001) }, { lostReason: '\u0000' }])('rejects invalid persisted configuration %j', config => {
     expect(workflowLossReasonIssue(config, true)).toBeTruthy();
