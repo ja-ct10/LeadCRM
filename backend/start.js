@@ -25,6 +25,12 @@ Module._resolveFilename = function (request, parent, isMain, options) {
 };
 
 // --- Boot server ---
-require(process.argv.includes('--notifications-worker')
-  ? './backend/src/modules/notifications/notification-worker.js'
-  : './backend/src/server.js');
+const seedIndex = process.argv.indexOf('--seed-campaign-templates');
+if (seedIndex !== -1) {
+  process.argv.splice(seedIndex, 1);
+  require('./backend/src/scripts/seed-campaign-templates.js');
+} else {
+  require(process.argv.includes('--notifications-worker')
+    ? './backend/src/modules/notifications/notification-worker.js'
+    : './backend/src/server.js');
+}
