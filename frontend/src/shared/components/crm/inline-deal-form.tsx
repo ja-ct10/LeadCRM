@@ -84,7 +84,7 @@ export function InlineDealForm({
   onError,
 }: InlineDealFormProps): React.ReactElement {
   const submitting = useRef(false);
-  const { products, loading, error } = useProductInterests();
+  const { products, categories, loading, error } = useProductInterests();
   const customFields = useRecordCustomFields('deals');
   const { pipelines: allPipelines } = useData();
   const pipelines = useMemo(() => allPipelines.filter(p => p.name.trim().toLowerCase() === 'sales pipeline'), [allPipelines]);
@@ -205,7 +205,7 @@ export function InlineDealForm({
 
       <div data-crm-field-key="productInterestIds">
         <label htmlFor={productFieldId} className={labelCls}>Product Interest</label>
-        <ProductInterestSelect single id={productFieldId} products={products} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
+        <ProductInterestSelect single id={productFieldId} products={products} categories={categories} showUncategorized={false} values={selectedProductIds} onChange={values => setValue('productInterestIds', values, { shouldValidate: true })} disabled={loading || !!error} />
         {error && <p role="alert" className="text-xs text-destructive">{error}</p>}
       </div>
       <div data-crm-field-key="value">

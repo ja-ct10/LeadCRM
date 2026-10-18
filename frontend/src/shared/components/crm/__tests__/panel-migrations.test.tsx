@@ -235,10 +235,25 @@ beforeEach(() => {
     if (path.includes('/closing-requirements')) return { data: { fields: [], values: {}, errors: {}, files: [], locked: false } };
     if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
     if (path.includes('/activities')) return { data: [] };
+    if (path.endsWith('/email-attachments')) return { data: { attachments: [] } };
     if (path.includes('/files')) return { data: [] };
     const module = path.split('/')[2] as CrmRecordModule;
     return { data: records[module] };
   });
+});
+
+it.each(['page', 'panel'])('hides native and Account Industry in Deal Details while keeping Relationships on the %s', async surface => {
+  const original = mocks.get.getMockImplementation()!;
+  const account = { id: 'account-one', name: 'Linked Company', industry: 'Account industry stays private to Account views' };
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, industry: 'Retired Deal value', organization: account } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} /> : <CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { level: 1 });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(await screen.findByRole('link', { name: 'Linked Company' })).toHaveProperty('href', expect.stringContaining('/crm/accounts/account-one'));
+  expect(screen.getByRole('button', { name: 'Relationships' })).toBeTruthy();
+  expect(screen.queryByText('Industry', { exact: true })).toBeNull();
+  expect(screen.queryByText('Retired Deal value')).toBeNull();
+  expect(screen.queryByText(account.industry)).toBeNull();
 });
 
 it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>

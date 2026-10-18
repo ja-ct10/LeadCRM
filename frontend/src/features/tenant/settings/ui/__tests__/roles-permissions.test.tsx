@@ -11,6 +11,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('sonner', () => ({ toast: mocks }));
 const savedRoles: object[] = [];
+let directoryUsers: object[] = [];
 let failure = '';
 let pending: Promise<void> | undefined;
 let holdCrm = false;
@@ -24,7 +25,18 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
     return { ok: true, json: async () => ({ success: true }) };
   }
   if (holdCrm && path.endsWith('/crm/accounts')) return new Promise<never>(() => {});
+  if (path.endsWith('/administration/users')) return { ok: true, json: async () => ({ data: directoryUsers }) };
   if (path.endsWith('/administration/permissions')) return { ok: true, json: async () => ({ data: permissionModules }) };
+  if (path.includes('/administration/roles/') && options?.method === 'PUT') {
+    if (pending) await pending;
+    if (failure) return { ok: false, status: 409, json: async () => ({ error: failure }) };
+    const id = path.split('/').pop();
+    const index = savedRoles.findIndex(role => (role as { id: string }).id === id);
+    const body = JSON.parse(String(options.body));
+    const data = { ...savedRoles[index], ...body, permissions: body.permissions.map((row: object) => ({ ...row, id: 'database-permission', roleId: id })) };
+    savedRoles[index] = data;
+    return { ok: true, json: async () => ({ success: true, data }) };
+  }
   if (path.endsWith('/administration/roles')) {
     if (options?.method === 'POST') {
       if (pending) await pending;
@@ -39,13 +51,28 @@ const fetcher = vi.fn(async (url: string, options?: RequestInit) => {
   }
   return { ok: true, json: async () => ({ data: [], meta: { total: 0, totalPages: 0 } }) };
 });
-beforeEach(() => { localStorage.clear(); mocks.denied = []; savedRoles.length = 0; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; permissionModules = PERMISSION_MODULES; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
+beforeEach(() => { localStorage.clear(); mocks.denied = []; savedRoles.length = 0; directoryUsers = []; failure = ''; pending = undefined; rolesPending = undefined; holdCrm = false; permissionModules = PERMISSION_MODULES; fetcher.mockClear(); vi.clearAllMocks(); vi.stubGlobal('fetch', fetcher); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 const mount = () => render(<DataProvider><RolesPermissions /></DataProvider>);
 async function open() { const view = mount(); const button = await screen.findByRole('button', { name: 'Create Custom Role' }); await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false)); fireEvent.click(button); return view; }
 const posts = () => fetcher.mock.calls.filter(([url, options]) => url.endsWith('/administration/roles') && options?.method === 'POST');
+const puts = () => fetcher.mock.calls.filter(([, options]) => options?.method === 'PUT');
 const deletes = () => fetcher.mock.calls.filter(([url, options]) => url.endsWith('/archive') && options?.method === 'PATCH');
 const customRole = (userCount = 0) => ({ id: 'staff-role', name: 'Staff', tenantId: 'tenant-a', isSystemRole: false, isArchived: false, userCount, permissions: [] });
+const permissionRows = (ids: string[]) => PERMISSION_MODULES.filter(module => ids.some(id => id.startsWith(`${module.key}.`)))
+  .map(module => ({ ...EMPTY_PERMISSION_FLAGS, module: module.key, ...Object.fromEntries(module.actions.map(action => [action, ids.includes(`${module.key}.${action}`)])) }));
+async function enterEdit(name = 'Staff') {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Permissions' }));
+  await screen.findByRole('heading', { name: 'Edit Role' });
+}
+async function openEdit(ids: string[] = [], userCount = 0) {
+  savedRoles.push({ ...customRole(userCount), description: 'Saved description', permissions: permissionRows(ids) });
+  const view = mount();
+  await enterEdit();
+  return view;
+}
+const openTable = (mode: 'create' | 'edit') => mode === 'create' ? open() : openEdit();
 async function openDelete(userCount = 0) {
   savedRoles.push(customRole(userCount)); mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Actions for Staff' }));
@@ -188,8 +215,8 @@ async function filterModules(label: string) {
   fireEvent.click(await screen.findByRole('menuitemradio', { name: label }));
 }
 
-it('renders every configured permission once, groups Users/Groups, and uses dashes only for unsupported cells', async () => {
-  await open();
+it.each(['create', 'edit'] as const)('renders every configured permission once, groups Users/Groups, and uses dashes only for unsupported cells (%s)', async mode => {
+  await openTable(mode);
   expect(screen.getByRole('button', { name: `All Modules ${PERMISSION_GROUPS.length}` })).toBeTruthy();
   expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
   expect(screen.getAllByRole('checkbox')).toHaveLength(1 + PERMISSION_GROUPS.length + totalPermissions());
@@ -211,8 +238,8 @@ it('renders every configured permission once, groups Users/Groups, and uses dash
   expect(within(moduleRow('Team Management')).getByText('0/9')).toBeTruthy();
 });
 
-it('updates row/global mixed states and counts while retaining View prerequisites', async () => {
-  await open();
+it.each(['create', 'edit'] as const)('updates row/global mixed states and counts while retaining View prerequisites (%s)', async mode => {
+  await openTable(mode);
   const contacts = selectModule('Contacts');
   const all = screen.getByRole('checkbox', { name: 'Select all permissions' });
   fireEvent.click(screen.getByRole('checkbox', { name: 'Edit Contacts' }));
@@ -254,8 +281,8 @@ it('keeps Users and Groups independent, including additional actions, and submit
   ]);
 });
 
-it('searches display names only and selects/clears all permissions even while most rows are hidden', async () => {
-  await open();
+it.each(['create', 'edit'] as const)('searches display names only and selects/clears all permissions even while most rows are hidden (%s)', async mode => {
+  await openTable(mode);
   fireEvent.click(screen.getByRole('checkbox', { name: 'Edit Contacts' }));
   const search = screen.getByRole('textbox', { name: 'Search modules' });
   fireEvent.change(search, { target: { value: ' LEADS ' } });
@@ -273,10 +300,13 @@ it('searches display names only and selects/clears all permissions even while mo
   fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
   expect(selectModule('Leads')).toHaveProperty('checked', true);
   expect(selectModule('Contacts')).toHaveProperty('checked', false);
+  expect(puts()).toHaveLength(0);
+  expect(posts()).toHaveLength(0);
+  expect(screen.queryByRole('alert')).toBeNull();
 });
 
-it('filters selected/empty modules live and restores dropdown focus without changing grants', async () => {
-  await open();
+it.each(['create', 'edit'] as const)('filters selected/empty modules live and restores dropdown focus without changing grants (%s)', async mode => {
+  await openTable(mode);
   await filterModules('Has Permissions Selected');
   expect(screen.getByText('No modules found')).toBeTruthy();
   expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Filter modules' }));
@@ -292,8 +322,8 @@ it('filters selected/empty modules live and restores dropdown focus without chan
   expect(selectModule('Contacts')).toHaveProperty('checked', false);
 });
 
-it('paginates locally without losing grants, clamps after filter changes, and selects across pages', async () => {
-  await open();
+it.each(['create', 'edit'] as const)('paginates locally without losing grants, clamps after filter changes, and selects across pages (%s)', async mode => {
+  await openTable(mode);
   fireEvent.click(screen.getByRole('button', { name: 'Records per page' }));
   fireEvent.click(screen.getByRole('option', { name: '10' }));
   expect(screen.getByText('Page 1 of 2')).toBeTruthy();
@@ -329,7 +359,7 @@ it('uses loaded availability for totals and never enables or submits an unsuppor
   expect(rows.find((row: { module: string }) => row.module === 'leads').canImport).toBe(false);
 });
 
-it('preserves the card editor and both create-view exit actions without posting', async () => {
+it('uses the table in Edit and preserves both create-view exit actions without posting', async () => {
   await open();
   fireEvent.click(screen.getByRole('button', { name: 'Back to roles' }));
   expect(posts()).toHaveLength(0);
@@ -339,10 +369,126 @@ it('preserves the card editor and both create-view exit actions without posting'
   cleanup(); savedRoles.push(customRole()); mount();
   fireEvent.click(await screen.findByRole('button', { name: 'Actions for Staff' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit Permissions' }));
-  expect(screen.getByRole('switch', { name: 'Contacts' })).toBeTruthy();
-  expect(screen.queryByRole('grid')).toBeNull();
+  expect(within(screen.getByRole('region', { name: 'Module permissions' })).getByRole('grid')).toBeTruthy();
+  expect(screen.queryByRole('switch')).toBeNull();
 });
 
+
+it.each(['empty', 'partial', 'full'])('loads saved role fields, assigned users, checkboxes and counts (%s)', async selection => {
+  const ids = PERMISSION_MODULES.filter(module => selection === 'full' || selection === 'partial' && module.key !== 'forms')
+    .flatMap(module => module.actions.map(action => `${module.key}.${action}`));
+  directoryUsers = [
+    { id: 'active-staff', role: 'Staff', status: 'ACTIVE' },
+    { id: 'archived-staff', role: 'Staff', status: 'INACTIVE' },
+    { id: 'other-staff', role: 'Other', status: 'ACTIVE' },
+  ];
+  await openEdit(ids, 1);
+  expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', 'Staff');
+  expect(screen.getByLabelText('Description — Optional')).toHaveProperty('value', 'Saved description');
+  expect(screen.getByText('Custom Role')).toBeTruthy();
+  await screen.findByText('1 user assigned');
+  expect(screen.getByText(`${ids.length} of ${totalPermissions()}`)).toBeTruthy();
+  expect(screen.getByText(`${ids.length} / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  const checkboxes = new Map(screen.getAllByRole('checkbox').map(input => [input.getAttribute('aria-label'), input]));
+  for (const module of permissionModules) for (const action of module.actions) {
+    expect(checkboxes.get(permissionLabel(module, action))).toHaveProperty('checked', ids.includes(`${module.key}.${action}`));
+  }
+  for (const group of PERMISSION_GROUPS) {
+    const moduleIds = permissionModules.filter(module => group.modules.includes(module.key)).flatMap(module => module.actions.map(action => `${module.key}.${action}`));
+    expect(within(moduleRow(group.label)).getByText(`${moduleIds.filter(id => ids.includes(id)).length}/${moduleIds.length}`)).toBeTruthy();
+  }
+  expect(puts()).toHaveLength(0);
+  expect(screen.queryByRole('switch')).toBeNull();
+});
+
+it('saves the complete edited permission payload once, including hidden and additional grants, and reopens the response', async () => {
+  await openEdit(['leads.canView', 'contacts.canView', 'contacts.canEdit', 'roles.canView', 'roles.canEdit'], 2);
+  fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: ' Staff Updated ' } });
+  fireEvent.change(screen.getByLabelText('Description — Optional'), { target: { value: ' Updated description ' } });
+  fireEvent.click(screen.getByRole('checkbox', { name: 'View Leads' }));
+  fireEvent.click(selectModule('Contacts'));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Manage Pipeline Stages' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Delete Groups' }));
+  expect(screen.getByRole('checkbox', { name: 'View Groups' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'View Users' })).toHaveProperty('checked', false);
+  expect(within(moduleRow('Team Management')).getByText('2/9')).toBeTruthy();
+  fireEvent.change(screen.getByRole('textbox', { name: 'Search modules' }), { target: { value: 'Contacts' } });
+  let finish!: () => void; pending = new Promise(resolve => { finish = resolve; });
+  const submit = screen.getByRole('button', { name: 'Save Changes' });
+  const form = submit.closest('form')!;
+  fireEvent.click(submit); fireEvent.submit(form);
+  await waitFor(() => expect(puts()).toHaveLength(1));
+  expect(screen.getByRole('button', { name: 'Saving…' })).toHaveProperty('disabled', true);
+  expect(screen.getAllByRole('checkbox').every(input => (input as HTMLInputElement).disabled)).toBe(true);
+  for (const label of ['Role Name *', 'Description — Optional', 'Search modules']) expect(screen.getByLabelText(label)).toHaveProperty('disabled', true);
+  for (const name of ['Cancel', 'Back to roles', 'Filter modules', 'Records per page']) expect(screen.getByRole('button', { name })).toHaveProperty('disabled', true);
+  expect(mocks.success).not.toHaveBeenCalled();
+  const [url, options] = puts()[0];
+  expect(url).toMatch(/\/administration\/roles\/staff-role$/);
+  const body = JSON.parse(String(options?.body));
+  expect(body).toEqual({ name: 'Staff Updated', description: 'Updated description', permissions: expect.any(Array) });
+  expect(body.permissions).toHaveLength(4);
+  expect(body.permissions).toEqual(expect.arrayContaining([
+    { ...EMPTY_PERMISSION_FLAGS, module: 'contacts', canView: true, canCreate: true, canEdit: true, canArchive: true, canImport: true },
+    { ...EMPTY_PERMISSION_FLAGS, module: 'roles', canView: true, canEdit: true },
+    { ...EMPTY_PERMISSION_FLAGS, module: 'deals', canView: true, canManageStages: true },
+    { ...EMPTY_PERMISSION_FLAGS, module: 'groups', canView: true, canDelete: true },
+  ]));
+  await act(async () => finish());
+  await screen.findByRole('heading', { name: 'Roles & Permissions' });
+  expect(mocks.success).toHaveBeenCalledExactlyOnceWith('Role updated');
+  expect(savedRoles[0]).toMatchObject({ id: 'staff-role', tenantId: 'tenant-a', userCount: 2, isSystemRole: false, isArchived: false });
+  await enterEdit('Staff Updated');
+  expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', body.name);
+  expect(screen.getByLabelText('Description — Optional')).toHaveProperty('value', body.description);
+  expect(screen.getByText(`11 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+  expect(selectModule('Contacts')).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'Delete Groups' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'View Leads' })).toHaveProperty('checked', false);
+  expect(screen.getByRole('textbox', { name: 'Search modules' })).toHaveProperty('value', '');
+});
+
+it('validates edits, retains the draft on failure, and supports saving an empty permission replacement', async () => {
+  await openEdit(['contacts.canView', 'contacts.canEdit']);
+  const name = screen.getByLabelText('Role Name *');
+  for (const [value, message] of [['   ', 'Role name is required.'], ['X', 'Name must be at least 2 characters']]) {
+    fireEvent.change(name, { target: { value } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+    expect(screen.getByRole('alert').textContent).toBe(message);
+    expect(puts()).toHaveLength(0);
+  }
+  fireEvent.change(name, { target: { value: 'Retain edited draft' } });
+  failure = 'A role with this name already exists.';
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await screen.findByText(failure);
+  expect(name).toHaveProperty('value', 'Retain edited draft');
+  expect(screen.getByRole('checkbox', { name: 'Edit Contacts' })).toHaveProperty('checked', true);
+  expect(mocks.success).not.toHaveBeenCalled();
+  failure = '';
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all permissions' }));
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Select all permissions' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await screen.findByRole('heading', { name: 'Roles & Permissions' });
+  expect(JSON.parse(String(puts()[1][1]?.body)).permissions).toEqual([]);
+  await enterEdit('Retain edited draft');
+  expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+});
+
+it.each(['Cancel', 'Back to roles'])('discards only the edit draft with %s and opens Create with its empty selection', async action => {
+  await openEdit(['contacts.canView', 'contacts.canEdit']);
+  fireEvent.change(screen.getByLabelText('Role Name *'), { target: { value: 'Unsaved name' } });
+  fireEvent.click(selectModule('Contacts'));
+  fireEvent.click(screen.getByRole('button', { name: action }));
+  expect(puts()).toHaveLength(0);
+  await enterEdit();
+  expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', 'Staff');
+  expect(screen.getByRole('checkbox', { name: 'Edit Contacts' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'Create Contacts' })).toHaveProperty('checked', false);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Create Custom Role' }));
+  expect(screen.getByLabelText('Role Name *')).toHaveProperty('value', '');
+  expect(screen.getByText(`0 / ${totalPermissions()} permissions enabled`)).toBeTruthy();
+});
 
 it('keeps protected actions visible and disabled without navigation or requests', async () => {
   savedRoles.push({ id: 'admin-role', name: 'Client Admin', tenantId: 'tenant-a', isSystemRole: true, isArchived: false, permissions: [] });

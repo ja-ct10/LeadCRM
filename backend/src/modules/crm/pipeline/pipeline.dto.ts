@@ -20,7 +20,7 @@ export const CreateStageSchema = z.object({
   description:     z.string().optional(),
   isWon:           z.boolean().default(false),
   isLost:          z.boolean().default(false),
-  requiredFields:  z.array(z.string()).default([]),
+  requiredFields:  z.array(z.string().refine(field => field !== 'industry' && field !== 'deal.industry', 'Deal Industry is retired.')).default([]),
   rottenAfterDays: z.number().int().positive().optional(),
 });
 

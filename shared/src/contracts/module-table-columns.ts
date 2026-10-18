@@ -37,14 +37,14 @@ export const DEALS_TABLE_COLUMNS: ColumnDefinition[] = [
   { id: 'accountId', label: 'Account', required: false, defaultVisible: true, defaultOrder: 5, group: 'Relationships', priority: 'medium' },
   { id: 'expectedCloseDate', label: 'Expected Close', required: false, defaultVisible: true, defaultOrder: 6, group: 'Deal Info', priority: 'low' },
   { id: 'leadSource', label: 'Lead Source', required: false, defaultVisible: false, defaultOrder: 7, group: 'Deal Info', priority: 'medium' },
-  { id: 'industry', label: 'Industry', required: false, defaultVisible: false, defaultOrder: 8, group: 'Deal Info', priority: 'low' },
-  { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: false, defaultOrder: 9, group: 'System', priority: 'low' },
+  { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: false, defaultOrder: 8, group: 'System', priority: 'low' },
 ];
 export const DEALS_TABLE_SORT_FIELDS = ['title', 'value', 'stageId', 'priority', 'expectedCloseDate', 'createdAt'];
 
 /** Preserve saved visibility/order when an existing table column is renamed. */
 export function normalizeModuleColumns(module: string, columns: ColumnConfigItem[]): ColumnConfigItem[] {
   if (module === 'leads') return normalizeLeadColumns(columns);
+  if (module === 'deals') return columns.filter(column => column.id !== 'industry');
   if (module === 'accounts') {
     const legacyAddressIds = ['city', 'province', 'country'];
     const removedIds = ['assignedUserId', 'assignedUser', 'productInterestIds', 'productInterests', 'productInterest', 'activeProductIds', 'activeProducts', 'internalNotes', ...legacyAddressIds];

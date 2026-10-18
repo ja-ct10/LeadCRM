@@ -61,7 +61,7 @@ try {
   const qualified = allStages.find(stage=>stage.name==='Qualified'), won = allStages.find(stage=>stage.isWon), lost = allStages.find(stage=>stage.isLost);
   const destination = await prisma.pipeline.create({data:{tenantId:tenant.id,name:'Renewals',type:'Sales',isArchived:true}});
   const target = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Lead',order:0,isDefault:true}});
-  const required = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Review',order:1,requiredFields:['industry']}});
+  const required = await prisma.stage.create({data:{tenantId:tenant.id,pipelineId:destination.id,name:'Review',order:1,requiredFields:['leadSource']}});
   const product = await prisma.productInterest.create({ data: { tenantId: tenant.id, name: 'Acceptance product', dealValue: 25000 } });
   const account = await prisma.account.create({ data: { tenantId: tenant.id, name: 'Acceptance Account',  } });
   const lead = await prisma.lead.create({ data: { tenantId: tenant.id, firstName: 'Acceptance', lastName: 'Lead', email: 'lead@example.test', source: 'Website', accountId: account.id, assignedUserId: admin.id } });
@@ -338,7 +338,7 @@ try {
   assert.equal(await movedLocation.getByRole('option',{name:'Qualified',exact:true}).count(),0);
   await movedLocation.getByLabel('Choose the target stage',{exact:true}).selectOption(required.id);
   await movedLocation.getByRole('button',{name:'Move deal',exact:true}).click();
-  await movedLocation.getByRole('alert').filter({hasText:/industry/}).waitFor();
+  await movedLocation.getByRole('alert').filter({hasText:/leadSource/}).waitFor();
   assert.equal(await movedLocation.getByLabel('Choose the target stage',{exact:true}).inputValue(),required.id);
   assert.equal((await stored('Action Deal')).pipelineId,destination.id);
   await movedLocation.getByRole('button',{name:'Cancel',exact:true}).click();

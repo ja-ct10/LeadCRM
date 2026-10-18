@@ -29,6 +29,7 @@ export interface InlineRowDef {
   valueMode?: 'id' | 'name';
   displayValue?: unknown;
   productLabels?: Record<string, string>;
+  showUncategorized?: boolean;
   options?: string[];
 }
 
@@ -90,7 +91,7 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
 
   return (
     <dl className="divide-y divide-border/60">
-      {rows.filter(({ value, displayValue, apiField, label, technicalKey, required, alwaysVisible }) => alwaysVisible || required || present(displayValue ?? value) || (canEdit && !!apiField) || editingKey === (technicalKey ?? label)).map(({ technicalKey, label, value, apiField, type, options, valueMode, displayValue, productLabels, required, maxLength, renderEditor, renderValue, editorDisabled, editorError, editorFullWidth, valueHref }) => {
+      {rows.filter(({ value, displayValue, apiField, label, technicalKey, required, alwaysVisible }) => alwaysVisible || required || present(displayValue ?? value) || (canEdit && !!apiField) || editingKey === (technicalKey ?? label)).map(({ technicalKey, label, value, apiField, type, options, valueMode, displayValue, productLabels, showUncategorized, required, maxLength, renderEditor, renderValue, editorDisabled, editorError, editorFullWidth, valueHref }) => {
         const isEditing = canEdit && editingKey === (technicalKey ?? label);
         const editable = canEdit && !!apiField;
         return (
@@ -99,7 +100,7 @@ export function InlineEditRows({ rows, canEdit, onSave, disabled = false, onEdit
             <dd className="min-w-0">
               {isEditing && apiField ? (
                 <div className="flex flex-col gap-1.5">
-                  {renderEditor ? renderEditor({ values: Array.isArray(editValue) ? editValue : [], onValuesChange: next => { setEditValue(next); setFieldError(''); }, value: String(editValue), onChange: next => { setEditValue(next); setFieldError(''); }, disabled: blocked, error: fieldError, onSave: () => void commitEdit(apiField), onCancel: cancelEdit }) : type === 'products' ? <CatalogProductInterestSelect values={Array.isArray(editValue) ? editValue : []} onChange={setEditValue} valueMode={valueMode} labels={productLabels} disabled={blocked} /> : type === 'users' || type === 'accounts' ? <EntityCombobox entityType={type} multiple={false} disabled={blocked} value={String(editValue) || null} onChange={value => setEditValue(value || '')} /> : type === 'contacts' || type === 'leads' ? <EntityCombobox entityType={type} multiple disabled={blocked} values={Array.isArray(editValue) ? editValue : []} onMultiChange={setEditValue} /> : type === 'select' ? (
+                  {renderEditor ? renderEditor({ values: Array.isArray(editValue) ? editValue : [], onValuesChange: next => { setEditValue(next); setFieldError(''); }, value: String(editValue), onChange: next => { setEditValue(next); setFieldError(''); }, disabled: blocked, error: fieldError, onSave: () => void commitEdit(apiField), onCancel: cancelEdit }) : type === 'products' ? <CatalogProductInterestSelect showUncategorized={showUncategorized} values={Array.isArray(editValue) ? editValue : []} onChange={setEditValue} valueMode={valueMode} labels={productLabels} disabled={blocked} /> : type === 'users' || type === 'accounts' ? <EntityCombobox entityType={type} multiple={false} disabled={blocked} value={String(editValue) || null} onChange={value => setEditValue(value || '')} /> : type === 'contacts' || type === 'leads' ? <EntityCombobox entityType={type} multiple disabled={blocked} values={Array.isArray(editValue) ? editValue : []} onMultiChange={setEditValue} /> : type === 'select' ? (
                     <select aria-label={label} disabled={blocked} value={Array.isArray(editValue) ? editValue.join(', ') : editValue} onChange={e => setEditValue(e.target.value)} autoFocus className="w-full rounded-md border border-input bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring">
                       {options?.map(o => <option key={o} value={o}>{o}</option>)}
                     </select>

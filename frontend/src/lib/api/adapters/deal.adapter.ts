@@ -78,7 +78,6 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     expectedCloseDate: toISODatetime(data.expectedCloseDate),
     leadSource: data.leadSource || undefined,
     accountId: data.accountId || data.companyId || data.organizationId || undefined,
-    industry: data.industry || undefined,
     address: data.address || undefined,
     addressSource: data.addressSource ?? undefined,
     productInterests: data.productInterests,
@@ -124,7 +123,6 @@ export function toBackendUpdateDeal(data: Partial<any>): any {
   if (data.productInterests !== undefined) updateData.productInterests = data.productInterests;
 
   if (data.assignedUserId !== undefined) updateData.assignedUserId = data.assignedUserId || null;
-  if (data.industry !== undefined) updateData.industry = data.industry;
   if (data.address !== undefined) updateData.address = data.address;
   if (data.leadIds !== undefined) updateData.leadIds = data.leadIds.filter(Boolean);
 
@@ -253,7 +251,6 @@ export function toFrontendDeal(backendDeal: any): any {
     addressSource: backendDeal.addressSource,
     addressContext: backendDeal.addressContext,
     leadSource: backendDeal.leadSource || undefined,
-    industry: backendDeal.industry || undefined,
     
     // Frontend-only or unmapped backend fields default setups
     location: undefined,

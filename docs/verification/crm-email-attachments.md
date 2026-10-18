@@ -4,6 +4,11 @@ Implemented locally on `codex/crm-email-attachments`, based on verified upstream
 `main` at `e3dead29f78f020d03beaa570fcabc9a68638c19`. Date: October 19, 2026.
 The original checkout and its unrelated uncommitted source changes are preserved.
 
+This report covers the Gmail Files implementation. The consolidated workspace PR
+also includes the existing [Deal Industry retirement](../deal-industry-retirement.md),
+CRM product category selectors, and shared role permission table work. It preserves
+the newer Deal address behavior from upstream `main` at `ad09b8e5`.
+
 ## 1. Files changed
 
 | Area | Files |
