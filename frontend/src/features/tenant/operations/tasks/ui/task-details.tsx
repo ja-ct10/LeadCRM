@@ -22,7 +22,7 @@ import { InlineEditRows, type InlineEditState, type InlineRowDef } from '@/share
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
-import { panelBodyClass, panelCloseClass, panelFooterClass, panelHeaderClass, panelInputClass, panelSecondaryButtonClass, panelSurfaceClass, panelTitleClass } from '@/shared/components/side-panel-styles';
+import { panelBodyClass, panelCloseClass, panelHeaderClass, panelInputClass, panelSurfaceClass, panelTitleClass } from '@/shared/components/side-panel-styles';
 import { isTaskOwner, taskRecordHref, taskRecordOptions } from '../task-relations';
 import { isPastManilaTaskDueDateTime, manilaCurrentDate, manilaLocalDateTime, manilaTaskDueInstant, resolveManilaTaskDueDateTime } from '../task-data';
 import { TaskSelector } from './task-selector';
@@ -186,7 +186,6 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
             </>}
           </>}
         </div>
-        <footer className={panelFooterClass + ' justify-end'}><Button variant="outline" className={panelSecondaryButtonClass} disabled={pending} onClick={requestClose}>Close</Button></footer>
       </div>
       <ConfirmActionDialog open={confirmArchive} onOpenChange={setConfirmArchive} title="Archive task?" description="This task will leave active views and can be restored from Archived Data." variant="destructive" confirmLabel="Archive" isLoading={pending} confirmDisabled={!mutable || !canArchive || !!inline.field || !ready} onConfirm={archive} />
     </SheetContent>{closeGuard.confirmation}

@@ -24,6 +24,7 @@ const contact = { ...lead, id: randomUUID(), firstName: 'Maria', lastName: 'Cont
 const product = { id: randomUUID(), name: 'Technical Service', category: 'Services', description: 'Setup and support', dealValue: 1234.56, active: true, createdAt: now, updatedAt: now };
 const deal = { id: randomUUID(), title: 'Technical Service Deal', productInterestId: product.id, value: 99999 };
 const emptyDeal = { id: randomUUID(), title: 'Deal without Product', productInterestId: null };
+const task = { id: randomUUID(), tenantId: user.tenantId, title: 'Template UI preview task', description: 'Task notes remain visible. '.repeat(50), status: 'pending', priority: 'High', createdById: user.id, createdBy: user, assignedUserId: user.id, assignedUser: user, createdAt: now, dueDate: '2030-01-01T12:00:00Z', dealIds: [deal.id], deals: [deal] };
 const permissions = Object.fromEntries(['campaigns','leads','contacts','accounts','deals','products','settings','users','groups','roles','custom_fields','archived_data','tasks','forms','notifications','dashboard','reporting'].map(module => [module, Object.fromEntries(['canView','canCreate','canEdit','canArchive','canSend','canViewReports'].map(flag => [flag, true]))]));
 const names = ['Standard Sales Quotation','Service Quotation','Software Implementation','Annual Maintenance','Product Quotation','Custom Quotation'];
 const pdf = readFileSync(resolve(root, 'data/outputs/quotations/lead.pdf'));
@@ -31,6 +32,79 @@ async function fits(page, label, width) {
   await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"]')].every(element => { const box = element.getBoundingClientRect(); return box.left >= -1 && box.right <= innerWidth + 1; }));
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${label}: page overflow at ${width}`);
   assertions.push(`${width}: ${label}`);
+}
+async function templateVariablePicker(page, editor, trigger, field, key, label, width) {
+  await page.locator('[data-sonner-toast]').last().waitFor({ state: 'hidden' });
+  await field.fill('Hello customer!'); await field.focus();
+  await field.evaluate(node => node.setSelectionRange(6, 14));
+  await trigger.scrollIntoViewIfNeeded(); await page.mouse.move(0, 0);
+  await trigger.evaluate(node => Promise.all(node.getAnimations().map(animation => animation.finished)));
+  const style = await trigger.evaluate(node => {
+    const computed = getComputedStyle(node);
+    return Object.fromEntries(['height', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft', 'borderRadius', 'borderColor', 'fontSize', 'fontWeight', 'color', 'backgroundColor'].map(key => [key, computed[key]]));
+  });
+  assert.equal(await trigger.locator('svg').getAttribute('width'), '14');
+  await trigger.focus(); await trigger.press('ArrowDown');
+  const search = page.getByLabel('Search variables', { exact: true });
+  const picker = page.getByRole('group').filter({ has: search });
+  const bounds = async () => {
+    await page.waitForFunction(node => {
+      const box = node.getBoundingClientRect();
+      return getComputedStyle(node).opacity === '1' && box.left >= 7 && box.right <= innerWidth - 7 && box.top >= 7 && box.bottom <= innerHeight - 7;
+    }, await picker.elementHandle());
+    assert.equal(await search.evaluate(node => {
+      const box = node.getBoundingClientRect();
+      return node.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    }), true, `${label}: searchable picker is above sheet content`);
+    await fits(page, label, width);
+  };
+  await search.waitFor(); await bounds();
+  assert.equal(await picker.evaluate(node => !!node.closest('[data-theme-portal]') && !node.closest('[role="dialog"]')), true);
+  await page.waitForFunction(node => document.activeElement === node, await search.elementHandle());
+  const list = picker.locator('.max-h-80');
+  assert.equal(await list.evaluate(node => { node.scrollTop = 60; const moved = node.scrollTop > 0; node.scrollTop = 0; return moved; }), true, `${label}: variable list scrolls`);
+  await page.screenshot({ path: resolve(output, `picker-${label}-${width}.png`) });
+  await search.fill(key); await search.press('Tab'); await page.keyboard.press('Enter');
+  const token = `{{${key}}}`, expected = `Hello ${token}!`;
+  assert.equal(await field.inputValue(), expected);
+  await search.waitFor({ state: 'detached' });
+  await page.waitForFunction(({ node, caret }) => document.activeElement === node && node.selectionStart === caret && node.selectionEnd === caret, { node: await field.elementHandle(), caret: 6 + token.length });
+  await trigger.click(); await search.waitFor(); await search.press('Escape');
+  await search.waitFor({ state: 'detached' }); assert.equal(await editor.isVisible(), true);
+  assert.equal(await trigger.evaluate(node => document.activeElement === node), true);
+  await trigger.click(); await search.waitFor(); await editor.getByRole('heading', { level: 2 }).click();
+  await search.waitFor({ state: 'detached' });
+  await page.setViewportSize({ width, height: 480 });
+  await trigger.scrollIntoViewIfNeeded(); await trigger.click(); await search.waitFor(); await bounds();
+  const moved = await field.evaluate(node => {
+    let parent = node.parentElement;
+    while (parent && !(parent.scrollHeight > parent.clientHeight && /auto|scroll/.test(getComputedStyle(parent).overflowY))) parent = parent.parentElement;
+    if (!parent) return false;
+    const before = parent.scrollTop; parent.scrollTop += before > 0 ? -20 : 20;
+    return parent.scrollTop !== before;
+  });
+  assert.equal(moved, true, `${label}: side-panel scrolling remains available with picker open`);
+  await bounds(); await page.screenshot({ path: resolve(output, `picker-${label}-short-${width}.png`) });
+  await search.press('Escape'); await search.waitFor({ state: 'detached' });
+  await page.setViewportSize({ width, height: 960 });
+  assertions.push(`${width}: ${label} portal, bounds, search, scroll, keyboard insertion, caret, outside click, Escape and short viewport`);
+  return style;
+}
+
+async function taskDetails(page, width) {
+  await page.goto(`${base}/operations/taskboard?taskId=${task.id}`);
+  const editor = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: task.title, exact: true }) });
+  await editor.waitFor();
+  assert.equal(await editor.getByRole('button', { name: 'Close', exact: true }).count(), 0);
+  assert.equal(await editor.locator('footer').count(), 0);
+  for (const section of ['Task Information', 'Schedule & Assignment', 'Additional Information', 'Associated Deals', 'Task History']) assert.equal(await editor.getByRole('button', { name: new RegExp(`^${section}`) }).count(), 1);
+  const body = editor.locator('div.overflow-y-auto.space-y-3');
+  assert.equal(await body.evaluate(node => { node.scrollTop = node.scrollHeight; return node.scrollTop > 0 && Math.abs(node.getBoundingClientRect().bottom - innerHeight) <= 1; }), true, 'Task content fills the space formerly used by the footer');
+  await editor.getByRole('button', { name: 'Task History', exact: true }).scrollIntoViewIfNeeded();
+  await fits(page, 'Task Details without footer', width);
+  await page.screenshot({ path: resolve(output, `task-details-${width}.png`) });
+  await editor.getByRole('button', { name: 'Close record', exact: true }).click(); await editor.waitFor({ state: 'detached' });
+  assertions.push(`${width}: Task Details content, history scrolling, no footer, full-height body and header X dismissal`);
 }
 async function pdfReady(page, title) {
   await page.getByTitle(title).waitFor();
@@ -103,7 +177,9 @@ async function templateControls(page, type, width) {
 try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  for (const width of [320,375,390,430,639,640,768,1024,1440]) {
+  const widths = process.env.TEMPLATE_PREVIEW_WIDTHS ? process.env.TEMPLATE_PREVIEW_WIDTHS.split(',').map(Number) : [320,375,390,430,639,640,768,1024,1440];
+  assert.ok(widths.length && widths.every(width => Number.isInteger(width) && width >= 320));
+  for (const width of widths) {
     const recipientType = [375, 1024].includes(width) ? 'Contact' : 'Lead', selectedRecipient = recipientType === 'Contact' ? contact : lead;
     const context = await createAcceptanceContext(browser, { viewport: { width, height: 960 }, reducedMotion: 'reduce', sandboxedFrames: true });
     // Permit only Chrome's built-in PDF viewer and its internal resources;
@@ -115,7 +191,7 @@ try {
       { id: randomUUID(), tenantId: user.tenantId, name: 'CCTV Quotation', category: 'Custom', type: 'Quotation', content: JSON.stringify(shared.defaultQuotationContent()) },
       ...['Email', 'SMS'].flatMap(type => Array.from({ length: 23 }, (_, index) => ({ id: randomUUID(), tenantId: user.tenantId, name: `${type} Follow ${index + 1}`, type,
         category: index % 2 ? 'Support' : 'Sales', subject: type === 'Email' ? 'Hello {{firstName}}' : undefined, content: `Hello {{firstName}}, ${type} message ${index + 1}.` })))];
-    const templateRequests = [], messageControlStyles = [];
+    const templateRequests = [], messageControlStyles = [], variableTriggerStyles = [];
     let sends = 0, pdfRequests = 0, pdfFailure = false;
     await context.route('**/api/proxy/**', async route => {
       const url = new URL(route.request().url()), path = url.pathname.replace('/api/proxy', ''), method = route.request().method();
@@ -129,6 +205,9 @@ try {
       if (path === '/marketing/campaigns/variable-fields') return json({ success: true, data: shared.CUSTOM_FIELD_MODULES.flatMap(module => shared.getCrmFieldCatalog(module)) });
       if (path === '/marketing/campaigns/email-settings') return json({ success: true, data: { senderName: 'Preview Sender', senderEmail: 'preview@example.test' } });
       if (path === '/marketing/campaigns/sms-settings') return json({ success: true, data: { organizationName: 'Preview Organization', organizationEmail: 'preview@example.test' } });
+      if (path === '/operations/tasks') return list([task]);
+      if (path === `/operations/tasks/${task.id}`) return json({ success: true, data: task });
+      if (path === '/operations/tasks/summary') return json({ success: true, data: { total: 1, active: 1, completed: 0, overdue: 0, byStatus: { pending: 1, in_progress: 0, blocked: 0, completed: 0 }, workload: [] } });
       if (path === '/administration/product-interests') return json({ success: true, data: [product], meta: { enabled: true, categories: ['Services'] } });
       if (path === '/crm/leads') return list([lead]);
       if (path === '/crm/contacts') return list([contact]);
@@ -193,9 +272,15 @@ try {
         await page.getByRole('heading', { name: `${type} Follow 1`, exact: true }).waitFor();
         await page.getByRole('button', { name: `New ${type} Template`, exact: true }).click();
         const editor = page.getByRole('dialog', { name: `Create ${type} Template`, exact: true }); await editor.waitFor();
-        await editor.getByLabel('Message Content', { exact: false }).fill('');
-        await editor.getByRole('button', { name: 'Insert Variable', exact: true }).click(); await page.getByLabel('Search variables').fill('firstName');
-        await page.getByRole('button', { name: /First Name.*firstName/ }).click(); assert.equal(await editor.getByLabel('Message Content', { exact: false }).inputValue(), '{{firstName}}');
+        const trigger = editor.getByRole('button', { name: 'Insert Variable', exact: true });
+        const pickerStyle = await templateVariablePicker(page, editor, trigger, editor.getByLabel('Message Content', { exact: false }), 'firstName', type, width);
+        if (type === 'SMS') assert.deepEqual(pickerStyle, variableTriggerStyles[0], 'Email/SMS variable triggers match');
+        variableTriggerStyles.push(pickerStyle);
+        if (type === 'Email') {
+          const bodyValue = await editor.getByLabel('Message Content', { exact: false }).inputValue();
+          await templateVariablePicker(page, editor, trigger, editor.getByLabel('Subject Line', { exact: false }), 'firstName', 'Email-subject', width);
+          assert.equal(await editor.getByLabel('Message Content', { exact: false }).inputValue(), bodyValue, 'Subject insertion preserves the body');
+        }
         await fits(page, `${type} existing creation and variable insertion`, width); await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
         const savedTemplates = templates;
         templates = templates.filter(template => template.type !== type);
@@ -232,8 +317,12 @@ try {
       await page.getByLabel('Filter quotation templates', { exact: true }).click(); await page.getByRole('button', { name: 'Clear filters', exact: true }).click(); await page.getByRole('button', { name: 'Close filters', exact: true }).click(); await page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }).waitFor();
       await page.getByRole('button', { name: 'New Quotation Template', exact: true }).click();
       await page.getByLabel('Template Name', { exact: false }).fill('Saved Preview Template');
-      await page.getByLabel('Insert Variable into Introduction / Message').click(); await page.getByLabel('Search variables').fill('organizationName'); await page.getByRole('button', { name: /Organization Name.*organizationName/ }).click();
-      assert.match(await page.getByLabel('Introduction / Message', { exact: true }).inputValue(), /{{organizationName}}/);
+      const quotationFields = [['Header / Company Information', 'organizationName'], ['Introduction / Message', 'firstName'], ['Footer / Terms', 'quotationNumber']];
+      for (const [label, key] of quotationFields) {
+        const editor = page.getByRole('dialog', { name: 'Create Quotation Template', exact: true });
+        const style = await templateVariablePicker(page, editor, editor.getByLabel(`Insert Variable into ${label}`, { exact: true }), editor.getByLabel(label, { exact: true }), key, `Quotation-create-${key}`, width);
+        assert.deepEqual(style, variableTriggerStyles[0], `${label}: shares Email/SMS variable trigger appearance`);
+      }
       await fits(page, 'editor and variable picker', width); await page.screenshot({ path: resolve(output, `editor-${width}.png`) });
       await page.getByRole('button', { name: 'Save Template', exact: true }).click(); await page.getByRole('heading', { name: 'Saved Preview Template' }).waitFor();
       const savedCard = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Saved Preview Template', level: 3 }) });
@@ -244,6 +333,10 @@ try {
       assert.equal(savedDownload.suggestedFilename(), 'Saved Preview Template.pdf'); assert.equal(pdfRequests, 5);
       await page.getByRole('button', { name: 'Actions for Saved Preview Template' }).click(); await page.getByRole('menuitem', { name: 'Edit Template' }).click();
       assert.equal(await page.getByLabel('Template Name', { exact: false }).inputValue(), 'Saved Preview Template');
+      for (const [label, key] of quotationFields) {
+        const editor = page.getByRole('dialog', { name: 'Edit Quotation Template', exact: true });
+        await templateVariablePicker(page, editor, editor.getByLabel(`Insert Variable into ${label}`, { exact: true }), editor.getByLabel(label, { exact: true }), key, `Quotation-edit-${key}`, width);
+      }
       await page.getByLabel('Quotation Title', { exact: false }).fill('UPDATED QUOTATION'); await page.getByRole('button', { name: 'Cancel', exact: true }).click(); await page.getByRole('button', { name: 'Keep editing', exact: true }).click(); await page.getByRole('button', { name: 'Save Template', exact: true }).click();
       await page.locator('article').filter({ has: page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }) }).getByRole('button', { name: 'Use Template' }).click();
       await page.getByLabel('Send To', { exact: false }).selectOption(recipientType);
@@ -280,6 +373,7 @@ try {
       await page.getByRole('button', { name: 'Refresh', exact: true }).click();
       await page.getByText('No quotation templates found.', { exact: true }).waitFor();
       await templateControls(page, 'Quotation', width);
+      await taskDetails(page, width);
       assert.deepEqual(errors, []); assertions.push(`${width}: Email/SMS creation access, create/edit/discard guard, new-template PDF preview/download, PDF error handling and request counts, cursor picker, recipient, Products, details, preview, download, single send`);
       console.log(`${width}px: Email, SMS, and Quotation template preview checks passed`);
     } catch (error) {

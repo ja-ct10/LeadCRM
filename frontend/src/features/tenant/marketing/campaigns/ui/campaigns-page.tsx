@@ -15,7 +15,7 @@ import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCampaignsData } from '../hooks/use-campaigns-data';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { templatesApi } from '@/shared/services/templates.api';
-import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues } from './campaign-variable-picker';
+import { CampaignVariablePicker, useCampaignVariableFields, campaignSampleValues, campaignVariableTriggerClassName } from './campaign-variable-picker';
 import { MarketingTemplateSchema, renderEmailVariables, campaignVariableChoices, type CampaignEmailSettings, type CampaignSmsSettings } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { FieldError } from './audience-panel';
@@ -28,6 +28,7 @@ import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/shared/components/ui/dropdown-menu';
 import { Button, CreateButton } from '@/shared/components/ui/button';
 import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
@@ -162,6 +163,7 @@ export default function CampaignsPage() {
     return contactChoice.personalizationAvailable || choice.origins.every(origin => origin.module === 'contacts') ? contactChoice : choice;
   });
   const [showVarDropdown, setShowVarDropdown] = useState(false);
+  useEffect(() => { if (!isTemplateModalOpen) setShowVarDropdown(false); }, [isTemplateModalOpen]);
 
 
   useEffect(() => { setShowBuilder(false); setEditingCampaign(undefined); setSelectedCampaignForReport(null); setIsTemplateModalOpen(false); setPreviewTemplate(null); setNewTemplate({ name: '', subject: '', content: '', category: 'Marketing' }); }, [user?.tenantId]);
@@ -534,20 +536,17 @@ export default function CampaignsPage() {
           <div>
             <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
               <label htmlFor="template-content" className={panelLabelClass}>Message Content <span className="text-red-500">*</span></label>
-              <div className="relative">
-                <button
+              <DropdownMenu open={showVarDropdown} onOpenChange={setShowVarDropdown}>
+                <DropdownMenuTrigger asChild><button
                   type="button"
-                  onClick={() => setShowVarDropdown(!showVarDropdown)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary dark:text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors duration-200 border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  className={campaignVariableTriggerClassName}
                 >
                   <Wand2 size={14} /> Insert Variable
-                </button>
-                {showVarDropdown && (
-                  <div className="absolute right-0 bottom-full mb-1 bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden z-50 backdrop-blur-xl">
-                    <CampaignVariablePicker choices={templateChoices} onInsert={insertTemplateVariable} />
-                  </div>
-                )}
-              </div>
+                </button></DropdownMenuTrigger>
+                <DropdownMenuContent formContent align="end" role="group" aria-label="Template variables" className="w-auto p-0">
+                  <CampaignVariablePicker choices={templateChoices} onInsert={insertTemplateVariable} />
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
             <textarea
               ref={templateBodyRef} onFocus={() => { templateActiveField.current = 'content'; }} id="template-content" rows={8}

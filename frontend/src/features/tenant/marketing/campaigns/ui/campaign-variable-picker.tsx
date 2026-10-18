@@ -5,6 +5,8 @@ import { useCachedPage } from '@/shared/hooks/use-cached-page';
 import { audiencesApi } from '@/shared/services/audiences.api';
 import { campaignsApi } from '@/shared/services/campaigns.api';
 
+export const campaignVariableTriggerClassName = 'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-primary dark:text-primary bg-primary/10 rounded-md hover:bg-primary/20 transition-colors duration-200 border border-primary/20 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary';
+
 export function useCampaignFields(source?: 'LEADS' | 'CONTACTS') {
   const query = useCachedPage<CrmFieldCatalogEntry[]>({ module: source === 'LEADS' ? 'leads' : 'contacts', params: { fieldCatalog: source }, disabled: !source, revalidateOnInvalidation: true, fetchFn: async () => (await audiencesApi.fields(source!)).data });
   const fallback = useMemo(() => source ? campaignFields(source) : [], [source]);

@@ -22,6 +22,7 @@ vi.mock('../campaign-builder', () => ({ CampaignBuilder: (props: unknown) => { m
 vi.mock('../campaign-report-view', () => ({ CampaignReportView: () => <div>Campaign report</div> }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ replace: vi.fn() }) }));
 import CampaignsPage from '../campaigns-page';
+import { campaignVariableTriggerClassName } from '../campaign-variable-picker';
 beforeEach(() => { clearPageCache(); vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} })); vi.clearAllMocks(); mocks.templates = []; mocks.permitted = true; mocks.initial = false; mocks.refreshing = false; mocks.archive.mockResolvedValue({ success: true }); mocks.templateCreate.mockResolvedValue({ success: true }); mocks.refresh.mockResolvedValue(undefined); mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module)) }); mocks.emailSettings.mockResolvedValue({ success: true, data: { senderName: 'Provider sender', senderEmail: 'provider@example.test' } }); mocks.smsSettings.mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'contact@example.test' } }); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); clearPageCache(); });
 beforeEach(() => {
@@ -161,6 +162,35 @@ it('replaces the active template selection with the exact catalog token and rest
   expect(content.value).toBe('Keep {{sender_email}} body.');
   expect(screen.queryByLabelText('Search variables')).toBeNull();
   await waitFor(() => expect(document.activeElement).toBe(content));
+});
+
+it.each(['Email', 'SMS'] as const)('portals the %s picker outside the sheet scroller and preserves keyboard and dismissal behavior', async type => {
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  fireEvent.click(await screen.findByRole('button', { name: `New ${type} Template` }));
+  const panel = screen.getByRole('dialog', { name: `Create ${type} Template` });
+  const trigger = within(panel).getByRole('button', { name: 'Insert Variable' });
+  expect(trigger.className).toBe(campaignVariableTriggerClassName);
+  expect(trigger.querySelector('svg')?.getAttribute('width')).toBe('14');
+  trigger.focus(); fireEvent.keyDown(trigger, { key: 'ArrowDown' });
+  const picker = screen.getByRole('group', { name: 'Template variables' });
+  const search = within(picker).getByLabelText('Search variables');
+  expect(panel.contains(picker)).toBe(false);
+  expect(picker.closest('[data-theme-portal]')?.getAttribute('data-overlay-owner')).toBe(panel.closest('[data-theme-portal]')?.getAttribute('data-overlay-owner'));
+  await waitFor(() => expect(document.activeElement).toBe(search));
+  fireEvent.keyDown(search, { key: 'Tab' });
+  expect(document.activeElement).toBe(within(picker).getAllByRole('button')[0]);
+  fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+  expect(screen.queryByLabelText('Search variables')).toBeNull();
+  expect(document.activeElement).toBe(trigger);
+  expect(screen.getByRole('dialog', { name: `Create ${type} Template` })).toBe(panel);
+  fireEvent.click(trigger); fireEvent.mouseDown(within(panel).getByLabelText(/Template Name/));
+  expect(screen.queryByLabelText('Search variables')).toBeNull();
+  fireEvent.click(trigger); fireEvent.click(within(panel).getByRole('button', { name: 'Close sheet' }));
+  await waitFor(() => expect(screen.queryByLabelText('Search variables')).toBeNull());
+  await waitFor(() => expect(screen.queryByRole('dialog', { name: `Create ${type} Template` })).toBeNull());
+  fireEvent.click(screen.getByRole('button', { name: `New ${type} Template` }));
+  expect(screen.queryByLabelText('Search variables')).toBeNull();
 });
 
 it.each(['Email', 'SMS'] as const)('renders the %s template fields consecutively without a field filter', async type => {

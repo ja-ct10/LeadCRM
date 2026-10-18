@@ -257,10 +257,19 @@ it('adapts array-valued Deal editing, preserves legacy links and validates requi
   await waitFor(() => expect(mocks.updateTask).toHaveBeenCalledWith(task.id, { dealIds: ['second'], expectedUpdatedAt: task.updatedAt }));
 });
 
-it.each(['header', 'footer', 'escape', 'backdrop'])('protects an inline draft on %s close until Discard is confirmed', async source => {
+it('has no details footer and closes through the header X', () => {
+  const close = vi.fn(); render(<TaskEditor task={task} onClose={close} />);
+  const dialog = screen.getByRole('dialog');
+  expect(within(dialog).queryByRole('button', { name: 'Close' })).toBeNull();
+  expect(dialog.querySelector('footer')).toBeNull();
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Close record' }));
+  expect(close).toHaveBeenCalledOnce();
+});
+
+it.each(['header', 'escape', 'backdrop'])('protects an inline draft on %s close until Discard is confirmed', async source => {
   const close = vi.fn(); render(<TaskEditor task={task} onClose={close} />); editField('Title');
   fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Unsaved title' } });
-  const request = () => { const dialog = screen.getByRole('dialog'); if (source === 'header') fireEvent.click(screen.getByRole('button', { name: 'Close record' })); else if (source === 'footer') fireEvent.click(screen.getByRole('button', { name: 'Close' })); else if (source === 'escape') fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' }); else fireEvent.click(dialog.previousElementSibling!); };
+  const request = () => { const dialog = screen.getByRole('dialog'); if (source === 'header') fireEvent.click(screen.getByRole('button', { name: 'Close record' })); else if (source === 'escape') fireEvent.keyDown(screen.getByRole('textbox'), { key: 'Escape' }); else fireEvent.click(dialog.previousElementSibling!); };
   request(); fireEvent.click(await screen.findByRole('button', { name: 'Keep editing' }));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull()); expect(screen.getByRole('textbox')).toHaveProperty('value', 'Unsaved title'); expect(close).not.toHaveBeenCalled();
   request(); fireEvent.click(await screen.findByRole('button', { name: 'Discard changes' })); await waitFor(() => expect(close).toHaveBeenCalledOnce());

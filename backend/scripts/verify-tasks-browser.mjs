@@ -113,7 +113,9 @@ try {
         assert.equal(await editor.getByRole('button', { name: /Associate task to deal/ }).isEnabled(), module === 'deals');
         for (const kind of ['lead','contact','account']) assert.equal(await editor.getByText(`Associate task to ${kind}`, { exact: true }).count(), 0);
         await capture(`${module}-${theme}-${width}`);
-        await editor.getByRole('button', { name: 'Close', exact: true }).click();
+        assert.equal(await editor.getByRole('button', { name: 'Close', exact: true }).count(), 0);
+        assert.equal(await editor.locator('footer').count(), 0);
+        await editor.getByRole('button', { name: 'Close record', exact: true }).click();
         await page.getByText('Task Created', { exact: true }).first().waitFor();
         checks.push(`${module} ${theme} ${width}: count, refresh, pagination, details policy, history, overflow`);
       }

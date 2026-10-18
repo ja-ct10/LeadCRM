@@ -149,7 +149,7 @@ try {
   await details.getByRole('textbox', { name: /^Title/ }).waitFor();
   await page.waitForFunction(() => [...document.querySelectorAll('input')].some(input => input.value === 'Clean server refresh'));
   passed('A clean read-only Task destination refreshes after a real committed update');
-  await details.getByRole('button', { name: 'Close', exact: true }).click();
+  await details.getByRole('button', { name: 'Close record', exact: true }).click();
   await page.goto(base + `/crm/deals/${deal.id}`);
   await page.getByRole('tab', { name: /^Activity/ }).click();
   await page.getByRole('button', { name: /Clean server refresh/ }).click();
@@ -176,7 +176,7 @@ try {
   }
   await page.setViewportSize({ width: 1440, height: 900 });
   // Observe every DOM mutation from hard navigation until permission resolution.
-  await details.getByRole('button', { name: 'Close', exact: true }).click();
+  await details.getByRole('button', { name: 'Close record', exact: true }).click();
   await page.goto(base + '/operations/taskboard');
   await page.getByRole('checkbox', { name: `Select record ${task.id}`, exact: true }).check();
   await page.getByRole('button', { name: 'Assign', exact: true }).click();
