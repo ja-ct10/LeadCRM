@@ -56,9 +56,9 @@ describe('assignment and typed filters', () => {
     expect(lowestWorkloadRotation(users, new Map([['a', 9], ['b', 2], ['c', 2]]), 'c')?.id).toBe('b');
     expect(lowestWorkloadRotation([], new Map(), '')).toBeUndefined();
   });
-  it('supports optional categories and rejects control characters', () => {
-    expect(ProductInterestPatchSchema.parse({ category: '' }).category).toBe('');
-    expect(ProductInterestPatchSchema.parse({ category: null }).category).toBe('');
+  it('requires nonblank supplied categories and rejects control characters', () => {
+    for (const category of ['', '   ', null]) expect(ProductInterestPatchSchema.safeParse({ category }).success).toBe(false);
+    expect(ProductInterestPatchSchema.parse({ description: 'Updated description' })).toEqual({ description: 'Updated description' });
     expect(ProductInterestPatchSchema.parse({ category: ' Security ' }).category).toBe('Security');
     expect(ProductInterestPatchSchema.safeParse({ category: 'Bad\u0000category' }).success).toBe(false);
   });
