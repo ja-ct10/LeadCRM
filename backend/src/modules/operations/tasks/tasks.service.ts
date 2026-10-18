@@ -450,3 +450,9 @@ export async function restoreTask(id: string, tenantId: string, userId: string) 
     return task;
   });
 }
+
+export async function getTaskOptionsPage(tenantId: string, input: Record<string, unknown>) {
+  requireScope(tenantId);
+  const query = parseInput(TaskOptionsQuerySchema, input);
+  return repo.findFilteredDealOptions(tenantId, query);
+}

@@ -3,9 +3,11 @@ import { Prisma } from '@prisma/client';
 import type { WorkflowDraft } from '@leadcrm/shared';
 import { cleanWorkflowName, workflowNameKey, suggestWorkflowCopyName, WORKFLOW_NAME_CONFLICT } from '../workflow-names';
 
-vi.mock('../../../../config/database.config', () => ({ default: {
-  workflow: { findMany: vi.fn(), create: vi.fn(), update: vi.fn() },
-} }));
+vi.mock('../../../../config/database.config', () => {
+  const client = { workflow: { findMany: vi.fn(), create: vi.fn(), update: vi.fn() }, $transaction: vi.fn() };
+  client.$transaction.mockImplementation(work => work(client));
+  return { default: client };
+});
 import prisma from '../../../../config/database.config';
 import { createWorkflow, updateWorkflow } from '../workflows.repository';
 

@@ -62,7 +62,7 @@ export function ClientFilters({
     label: v
   }));
 
-  const statusOptions: FilterOption[] = ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'].map(st => ({
+  const statusOptions: FilterOption[] = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'].map(st => ({
     id: st,
     label: st
   }));

@@ -1,3 +1,4 @@
+import { recordStaffOutreach } from '../customer-classification.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { assertCrmRecordMutation, type CrmModule } from '../access/crm-record-access.service';
@@ -25,7 +26,12 @@ export async function createActivity(tenantId: string, createdById: string, dto:
   // Can add specific logic here later, like validation or side-effects based on activity type
   return salesTransaction(async tx => {
     await authorizeLinks(tx, dto);
-    return activitiesRepository.createActivity(tenantId, createdById, dto, tx);
+    const activity = await activitiesRepository.createActivity(tenantId, createdById, dto, tx);
+    if (dto.type === 'call' || dto.type === 'sms' && dto.metadata?.direction === 'outbound' && dto.metadata?.status === 'sent') {
+      if (dto.leadId) await recordStaffOutreach(tx, tenantId, { leadId: dto.leadId }, activity.createdAt);
+      if (dto.contactId) await recordStaffOutreach(tx, tenantId, { contactId: dto.contactId }, activity.createdAt);
+    }
+    return activity;
   });
 }
 

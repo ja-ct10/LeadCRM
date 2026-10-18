@@ -117,9 +117,12 @@ export async function createWorkflow(tenantId: string, draft: WorkflowDraft, act
   const name = cleanWorkflowName(draft.name);
   await assertNameAvailable(tenantId, name);
   try {
-    return await prisma.workflow.create({ data: { ...draft, name, tenantId, status: draft.isActive ? 'ACTIVE' : 'DRAFT', activatedById,
-      conditions: draft.conditions == null ? Prisma.DbNull : draft.conditions,
-      actions: draft.actions as Prisma.InputJsonValue } });
+    return await prisma.$transaction(async tx => {
+      const created = await tx.workflow.create({ data: { ...draft, name, tenantId, status: draft.isActive ? 'ACTIVE' : 'DRAFT', activatedById,
+        conditions: draft.conditions == null ? Prisma.DbNull : draft.conditions, actions: draft.actions as Prisma.InputJsonValue } });
+      if (draft.isActive) await tx.workflowPublication.create({ data: { tenantId, workflowId: created.id, version: created.version, activatedById, definition: draft as unknown as Prisma.InputJsonValue } });
+      return created;
+    });
   } catch (error) { rethrowNameConflict(error); }
 }
 export async function updateWorkflow(id: string, tenantId: string, draft: Partial<WorkflowDraft> & { isArchived?: boolean; status?: string; activatedById?: string }, definitionChanged = false) {
@@ -128,7 +131,14 @@ export async function updateWorkflow(id: string, tenantId: string, draft: Partia
     await assertNameAvailable(tenantId, draft.name!, id);
   }
   try {
-    return await prisma.workflow.update({ where: { id, tenantId }, data: { ...workflowData(draft), ...(definitionChanged ? { version: { increment: 1 } } : {}) } });
+    return await prisma.$transaction(async tx => {
+      const updated = await tx.workflow.update({ where: { id, tenantId }, data: { ...workflowData(draft), ...(definitionChanged ? { version: { increment: 1 } } : {}) } });
+      if (updated.isActive) {
+        const definition = { name: updated.name, description: updated.description, trigger: updated.trigger, conditions: updated.conditions, actions: updated.actions, isActive: true };
+        await tx.workflowPublication.upsert({ where: { workflowId_tenantId_version: { workflowId: id, tenantId, version: updated.version } }, create: { tenantId, workflowId: id, version: updated.version, activatedById: updated.activatedById, definition }, update: {} });
+      }
+      return updated;
+    });
   } catch (error) { rethrowNameConflict(error); }
 }
 export function activeWorkflows(tenantId: string, trigger: string) {

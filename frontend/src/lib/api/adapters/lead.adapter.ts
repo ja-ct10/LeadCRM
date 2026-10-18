@@ -14,6 +14,7 @@ export function toFrontendLead(lead: LeadRead): Lead {
     status: normalizeCrmStatus(lead.status), createdAt: lead.createdAt, updatedAt: lead.updatedAt,
     createdById: lead.createdById ?? undefined, updatedById: lead.updatedById ?? undefined,
     createdByUser: lead.createdBy ?? undefined, updatedByUser: lead.updatedBy ?? undefined,
+    firstStaffOutreachAt: lead.firstStaffOutreachAt,
     lastStatusChangedAt: lead.lastStatusChangedAt ?? undefined,
     contactId: lead.contactId ?? undefined, convertedAt: lead.convertedAt ?? undefined, convertedById: lead.convertedById ?? undefined,
     isArchived: lead.isArchived, deletedAt: lead.deletedAt, deletedBy: lead.deletedBy,

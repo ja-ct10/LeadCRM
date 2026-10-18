@@ -32,6 +32,7 @@ enum UserStatus {
 }
 
 enum ContactStatus {
+  INQUIRY
   HOT
   WARM
   COLD
@@ -434,13 +435,14 @@ model Lead {
   productInterestIds  String[] @default([])
   source              String?
   assignedUserId      String?
-  status              String    @default("Warm")
+  status              String    @default("Inquiry")
   accountId           String?
   createdById         String?
   updatedById         String?
   lastStatusChangedAt DateTime?
   lastCustomerReplyAt DateTime? @map("lastMeaningfulInboundAt")
   firstUnansweredOutboundAt DateTime?
+  firstStaffOutreachAt DateTime?
   engagementEvaluatedAt DateTime?
   isArchived          Boolean   @default(false)
   deletedAt           DateTime?
@@ -450,6 +452,7 @@ model Lead {
   convertedAt         DateTime?
   convertedById       String?
   @@index([tenantId, convertedAt, isArchived])
+  @@index([tenantId, firstStaffOutreachAt])
 
   tenant           Tenant   @relation(fields: [tenantId], references: [id])
   account          Account? @relation(fields: [accountId], references: [id])
@@ -509,12 +512,13 @@ model Contact {
   company             String?
   // Retain provenance even after unlinking; copied Account text keeps its View boundary.
   companyFromAccount  Boolean              @default(false)
-  status              ContactStatus        @default(WARM)
+  status              ContactStatus        @default(INQUIRY)
   source              String?
   notes               String?
   lastStatusChangedAt DateTime?
   lastCustomerReplyAt DateTime? @map("lastMeaningfulInboundAt")
   firstUnansweredOutboundAt DateTime?
+  firstStaffOutreachAt DateTime?
   engagementEvaluatedAt DateTime?
   convertedAt         DateTime?
   doNotContact        Boolean              @default(false)
@@ -1247,6 +1251,9 @@ model Workflow {
   trigger     String // e.g. "deal.stage_changed" | "contact.created" | "task.overdue"
   conditions  Json? // WorkflowCondition[] typed JSON
   actions     Json // WorkflowAction[] typed JSON
+  draftDefinition Json?
+  draftRevision Int @default(0)
+  publications WorkflowPublication[]
   isActive    Boolean  @default(false)
   isArchived  Boolean  @default(false)
   createdAt   DateTime @default(now())
@@ -1854,6 +1861,7 @@ model ProductInterest {
   tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   name      String   @db.VarChar(200)
   dealValue Decimal  @db.Decimal(14, 2)
+  category  String? @db.VarChar(100)
   active    Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1864,6 +1872,7 @@ model ProductInterest {
   @@unique([id, tenantId])
 
   @@index([tenantId, active])
+  @@index([tenantId, category])
 }
 
 model LeadProductInterest {
@@ -1938,4 +1947,31 @@ model ContactCreationReceipt {
   contact Contact @relation(fields: [contactId, tenantId], references: [id, tenantId], onDelete: Restrict)
   @@id([tenantId, requestId])
   @@index([contactId, tenantId])
+}
+
+model WorkflowPublication {
+  id String @id @default(uuid())
+  tenantId String
+  workflowId String
+  version Int
+  definition Json
+  activatedById String?
+  createdAt DateTime @default(now())
+  workflow Workflow @relation(fields: [workflowId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  @@unique([workflowId, tenantId, version])
+  @@index([tenantId, workflowId])
+}
+model SmsInboundReceipt {
+  id String @id @default(uuid())
+  deviceId String
+  smsId String
+  tenantId String?
+  sender String
+  message String @default("") @db.Text
+  receivedAt DateTime
+  status String @default("review")
+  reason String?
+  createdAt DateTime @default(now())
+  @@unique([deviceId, smsId])
+  @@index([tenantId, status])
 }

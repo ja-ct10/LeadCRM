@@ -744,6 +744,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const newLead: Contact = {
       ...leadData,
+      status: leadData.status ?? "Inquiry",
       id: uuid(),
       tenantId: tenant.id,
       score: calculateScore(leadData.status),

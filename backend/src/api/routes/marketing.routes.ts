@@ -1,3 +1,5 @@
+import { processSmsReply } from '../../integrations/sms/sms-replies';
+import prisma from '../../config/database.config';
 import rateLimit from 'express-rate-limit';
 import * as audienceController from '../../modules/marketing/campaigns/audiences.controller';
 import { Router } from 'express';
@@ -20,6 +22,22 @@ router.use(authorizeArchivedQuery);
 const writeLimiter = rateLimit({ windowMs: 60000, limit: 30, standardHeaders: true, legacyHeaders: false });
 const sendLimiter = rateLimit({ windowMs: 60000, limit: 5, standardHeaders: true, legacyHeaders: false });
 router.get('/campaigns/metrics', authorize('campaigns.view_reports'), campaignController.getCampaignMetrics);
+router.post('/campaigns/sms-replies/:id/retry', authorize('campaigns.edit'), async (req, res, next) => {
+  try {
+    if (req.user!.role !== 'Client Admin') { res.status(403).json({ success: false, error: 'Client Admin access required.' }); return; }
+    const row = await prisma.smsInboundReceipt.findFirst({ where: { id: String(req.params.id), tenantId: req.user!.tenantId, status: 'review' } });
+    if (!row) { res.status(404).json({ success: false, error: 'Review reply not found.' }); return; }
+    await processSmsReply({ webhookEvent: 'MESSAGE_RECEIVED', smsId: row.smsId, deviceId: row.deviceId, sender: row.sender, message: row.message, receivedAt: row.receivedAt.toISOString() }, new Date(), true);
+    res.json({ success: true });
+  } catch (error) { next(error); }
+});
+router.get('/campaigns/sms-replies', authorize('campaigns.view'), async (req, res, next) => {
+  try {
+    if (req.user!.role !== 'Client Admin') { res.status(403).json({ success: false, error: 'Client Admin access required.' }); return; }
+    const data = await prisma.smsInboundReceipt.findMany({ where: { tenantId: req.user!.tenantId, status: 'review' }, take: 100, orderBy: [{ createdAt: 'desc' }, { id: 'asc' }], select: { id: true, sender: true, receivedAt: true, reason: true, message: true } });
+    res.json({ success: true, data });
+  } catch (error) { next(error); }
+});
 router.get('/campaigns/sms-settings', authorize('campaigns.view'), campaignController.getSmsSettings);
 router.get('/campaigns/email-settings', authorize('campaigns.view'), campaignController.getEmailSettings);
 router.get('/campaigns/variable-fields', authorize('campaigns.view'), audienceController.campaignVariableFields);

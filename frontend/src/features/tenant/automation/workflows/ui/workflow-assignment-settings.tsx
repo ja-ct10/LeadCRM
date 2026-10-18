@@ -25,8 +25,8 @@ export function WorkflowAssignmentSettings({ target, members, entity, task, clas
   const unavailable = [...configuredIds].filter(id => !members.some(member => member.id === id));
   return <div className="min-w-0 space-y-3 border-t border-[var(--border)] pt-3">
     <label className="block space-y-1">Assignment method
-      <select aria-label="Assignment method" className={className} value={target.strategy} onChange={() => onChange({ ...target, strategy: 'round_robin' })}>
-        {Object.entries(WORKFLOW_ASSIGNMENT_METHODS).map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      <select aria-label="Assignment method" className={className} value={target.strategy} onChange={event => onChange({ ...target, strategy: event.target.value as Pool['strategy'] })}>
+        {Object.entries(WORKFLOW_ASSIGNMENT_METHODS).filter(([value]) => value !== 'weighted_workload' || !task && entity === 'lead').map(([value, label]) => <option key={value} value={value}>{label}</option>)}
       </select>
     </label>
     <p className="text-xs text-[var(--muted-foreground)]">Rotate through active users with the required permissions, assigning one person per run. Inactive users are skipped.</p>

@@ -1,3 +1,4 @@
+import { hasQualifiedDeal, recordStaffOutreach } from '../../modules/crm/customer-classification.service';
 import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
@@ -75,9 +76,9 @@ async function evaluateCustomer(tx: Tx, account: EmailAccount, link: CustomerLin
     { isActive: false }, { lastSyncAt: null }, { lastSyncAt: { lt: new Date(+now - DAY_MS) } }, { syncCursor: null },
     { syncPageToken: { not: null } }, { syncBaselineHistoryId: { not: null } }, { syncError: { not: null } },
   ] } }, select: { id: true } });
-  // A newly observed reply can prove Hot even while older history is incomplete.
-  const status = engagementStatus({ ...data, status: customer.status }, now);
-  const canEvaluate = (!pending && !stale) || (immediateReply && status === 'Hot');
+  // A newly observed reply can prove engagement while older history is incomplete.
+  const status = engagementStatus({ ...data, status: customer.status, firstStaffOutreachAt: customer.firstStaffOutreachAt, qualified: await hasQualifiedDeal(tx, tenantId, link) }, now);
+  const canEvaluate = (!pending && !stale) || (immediateReply && (status === 'Warm' || status === 'Hot'));
   const timestamps = { ...data, ...(canEvaluate ? { engagementEvaluatedAt: now } : {}) };
   if (link.leadId) await tx.lead.update({ where: { tenantId, id: link.leadId }, data: timestamps });
   else await tx.contact.update({ where: { tenantId, id: link.contactId }, data: timestamps });
@@ -152,6 +153,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       await persistEmailActivity(tx, account, stored);
       if (email.labels.includes('DRAFT') || !link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) return;
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
+      if (direction === 'outbound' && await tx.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, providerMessageId: email.id, operation: 'send', status: 'sent' }, select: { id: true } })) await recordStaffOutreach(tx, account.tenantId, link, new Date(email.date));
       const change = await evaluateCustomer(tx, account, link, permissions, now, !existing && genuineReply);
       // Workflow trigger enqueueing shares the CRM transaction through salesContext.
       await emitStatus(account, link, change);

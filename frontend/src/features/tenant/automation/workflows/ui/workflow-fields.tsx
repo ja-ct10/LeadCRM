@@ -201,7 +201,7 @@ export function ConditionFields({
             </label>
             <label className="block">
               Operator
-              <ConditionOperatorSelect label={`Condition ${index + 1} operator`} aria-invalid={!!field && !supported} aria-describedby={issue ? issueId : undefined} disabled={!field} className={workflowControl} value={rule.operator} operators={operators.map(key => ({ key, label: conditionOperatorLabel(key) }))} onChange={operator => update({ ...transitionConditionOperator(rule, operator, field?.type, 'workflow'), operator: operator as typeof rule.operator, incompleteValue: undefined })} />
+              <ConditionOperatorSelect label={`Condition ${index + 1} operator`} aria-invalid={!!field && !supported} aria-describedby={issue ? issueId : undefined} disabled={!field} className={workflowControl} value={rule.operator} operators={operators.map(key => ({ key, label: conditionOperatorLabel(key, 'dropdown', field?.type === 'date' ? 'date' : undefined) }))} onChange={operator => update({ ...transitionConditionOperator(rule, operator, field?.type, 'workflow'), operator: operator as typeof rule.operator, incompleteValue: undefined })} />
             </label>
             {conditionOperatorValueShape(rule.operator) !== 'none' && (
               <label className="block">

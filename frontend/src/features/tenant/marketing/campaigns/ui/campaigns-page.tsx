@@ -1,4 +1,5 @@
 'use client';
+import { SmsReplyReviews } from './sms-reply-reviews';
 import { campaignEngagementRate } from '@leadcrm/shared';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
@@ -237,6 +238,7 @@ export default function CampaignsPage() {
           setEditingCampaign(undefined); setBuilderInitialType('Email'); setBuilderInitialContent(undefined); setBuilderSubject(''); setShowBuilder(true);
         }} />} />
 
+      <SmsReplyReviews />
       {/* Tabs + contextual action per active tab */}
       <div className="flex items-center justify-between gap-2">
         {/* Tab strip */}

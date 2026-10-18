@@ -54,7 +54,7 @@ export async function createStage(tenantId: string, userId: string, dto: CreateS
 }
 
 export async function updateStage(id: string, tenantId: string, userId: string, dto: UpdateStageDto) {
-  const stage = await repo.updateStage(id, tenantId, dto);
+  const stage = await repo.updateStage(id, tenantId, dto, userId);
   if (!stage) throw new NotFoundError('Stage');
   await writeAuditLog({ tenantId, userId, action: 'stage.updated', entityType: 'Stage', entityId: id, after: dto as Record<string, unknown> });
   return stage;

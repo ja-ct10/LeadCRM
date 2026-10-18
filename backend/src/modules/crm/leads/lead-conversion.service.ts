@@ -109,6 +109,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, company: lead.companyName, companyFromAccount: lead.companyFromAccount, address: lead.address,
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
     ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
+    lastCustomerReplyAt: lead.lastCustomerReplyAt, firstUnansweredOutboundAt: lead.firstUnansweredOutboundAt, firstStaffOutreachAt: lead.firstStaffOutreachAt,
     customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });
   else {
     const current = contact;

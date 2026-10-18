@@ -138,7 +138,7 @@ export function ProductsPage() {
     } catch (e) { toast.error(e instanceof Error ? e.message : 'Unable to enable products.'); }
     finally { lock.current = false; setBusy(false); }
   }
-  async function save(data: { name: string; dealValue: number }) {
+  async function save(data: { name: string; dealValue: number; category?: string | null }) {
     if (!(panel?.mode === 'edit' ? canEdit : canCreate) || lock.current) return;
     lock.current = true; setBusy(true);
     try {
@@ -160,6 +160,7 @@ export function ProductsPage() {
   }
   const columns: DataGridColumnDef<ProductInterest>[] = [
     { id: 'name', header: 'Product Name', accessor: row => row.name, sortable: true, width: 330 },
+    { id: 'category', header: 'Category', accessor: row => row.category || 'Uncategorized', width: 180 },
     { id: 'dealValue', header: 'Deal Value', accessor: row => row.dealValue, sortable: true, width: 190, cell: (_, row) => php.format(row.dealValue) },
     { id: 'status', header: 'Status', accessor: row => row.active ? 'Active' : 'Archived', width: 120 },
     { id: 'actions', header: 'Actions', accessor: () => '', width: 110, cell: (_, row) => <TableIconButton touchFriendly label="Edit product" disabled={!canEdit || busy} onClick={() => setPanel({ mode: 'edit', product: row })}><Edit size={14} /></TableIconButton> },

@@ -172,16 +172,16 @@ describe('visual workflow editor', () => {
     let resolve!: () => void;
     const save = vi.fn().mockImplementation(() => new Promise<void>(done => { resolve = done; }));
     setup({ save });
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     fireEvent.click(button('Keep editing'));
     expect(save).not.toHaveBeenCalled();
     expect(toast.success).not.toHaveBeenCalled();
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     fireEvent.click(button('Confirm activation'));
     fireEvent.click(button('Working…'));
     expect(save).toHaveBeenCalledOnce();
     await act(async () => resolve());
-    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Workflow saved and activated.');
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Workflow published.');
   });
   it('reports a rejected validation without saving or announcing success', async () => {
     const { save } = setup();
@@ -192,12 +192,12 @@ describe('visual workflow editor', () => {
     expect(toast.success).not.toHaveBeenCalled();
     expect(screen.getByRole('alert').textContent).toContain('Reconnect');
   });
-  it('describes saving an active workflow as paused rather than a new draft', async () => {
+  it('saves a draft while keeping the published workflow active', async () => {
     const { save } = setup({ initial: { ...initial, isActive: true } });
-    fireEvent.click(button('Save and pause'));
+    fireEvent.click(button('Save draft'));
     await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ isActive: false })));
-    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Workflow saved and paused.');
-    expect(screen.getByText('Changes saved. This workflow is paused.')).toBeTruthy();
+    expect(toast.success).toHaveBeenCalledExactlyOnceWith('Draft saved; published version remains active.');
+    expect(screen.getByText('Draft saved. The published version remains active.')).toBeTruthy();
   });
   it('updates condition summaries immediately and serializes numeric ALL rules', async () => {
     const { save } = setup();
@@ -206,7 +206,7 @@ describe('visual workflow editor', () => {
       target: { value: '25000' },
     });
     expect(screen.getByText('Deal Value is greater than 25000')).toBeTruthy();
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     expect(save).not.toHaveBeenCalled();
     fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
@@ -275,7 +275,7 @@ describe('visual workflow editor', () => {
     expect(
       screen.getByText('Disabled · skipped during execution'),
     ).toBeTruthy();
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith(
@@ -301,7 +301,7 @@ describe('visual workflow editor', () => {
         conditions: null,
       },
     });
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     expect(screen.getByRole('alert').textContent).toContain(
       'Enable at least one action',
     );
@@ -327,7 +327,7 @@ describe('visual workflow editor', () => {
         .fn()
         .mockRejectedValue(new Error('Choose an active workspace user.')),
     });
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     fireEvent.click(button('Confirm activation'));
     await waitFor(() =>
       expect(screen.getByRole('alertdialog').textContent).toContain(
@@ -489,12 +489,12 @@ describe('visual workflow editor', () => {
     fireEvent.click(button(/Configure action: 1. Create Task/));
     fireEvent.change(screen.getByLabelText('Task title'), { target: { value: 'Another title' } });
     fireEvent.click(button('Duplicate action 1')); fireEvent.click(button('Undo'));
-    expect(button('Test')).toHaveProperty('disabled', true); fireEvent.click(button('Test'));
+    expect(button('Test draft')).toHaveProperty('disabled', true); fireEvent.click(button('Test draft'));
     vi.mocked(workflowsApi.validate).mockResolvedValue({ success: true, data: { valid: true, message: 'Configuration valid. No actions executed.' } });
     fireEvent.click(button('Validate'));
     await screen.findByText('Configuration valid. No actions executed.');
     expect(workflowsApi.validate).toHaveBeenCalledOnce();
-    fireEvent.click(button('Save and activate'));
+    fireEvent.click(button('Publish workflow'));
     expect(screen.getByRole('alertdialog', { name: 'Activate workflow?' })).toBeTruthy();
     fireEvent.click(button('Keep editing'));
     expect(screen.queryByRole('alertdialog', { name: 'Discard unsaved changes?' })).toBeNull();

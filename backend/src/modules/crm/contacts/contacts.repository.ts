@@ -6,7 +6,7 @@ import { formatAssignmentChange } from '@leadcrm/shared';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
-import { normalizeCrmStatus, formatLeadName, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { normalizeCrmStatus, formatLeadName, leadWorkQueueRank, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { readRecordValues, saveRecordValues } from '../closing-requirements/custom-field-values.repository';
@@ -25,7 +25,7 @@ import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../
 const CONTACT_FILTER_FIELDS: FilterFields = {
   status: { kind: 'choice', operators: ['equals', 'in', 'not_in'] },
   source: { kind: 'choice' }, assignedUserId: { kind: 'reference' }, accountId: { kind: 'reference' },
-  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my', 'active'], handled: true },
+  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my', 'active', 'work_queue'], handled: true },
   system: { kind: 'choice', operators: ['in'], options: ['touched', 'untouched'], handled: true },
   related: { kind: 'choice', operators: ['in'], options: ['has_email', 'has_phone'], handled: true },
   createdAt: { kind: 'date', operators: ['gte', 'lte', 'between'], handled: true },
@@ -60,12 +60,12 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   filterClauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'source'], contains => [
     { companyName: contains, ...(!canReadAccount ? { companyFromAccount: false } : {}) },
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
-    ...(['Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
+    ...(['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
       .map(status => ({ status: { in: [status, status.toUpperCase()] } }))),
   ]));
   const scope = parsedFilters.find(filter => filter.field === 'scope')?.value;
   if (scope === 'my') filterClauses.push({ assignedUserId: String(query.currentUserId ?? '') });
-  if (scope === 'active') filterClauses.push({ status: { in: ['Hot','Warm','HOT','WARM'] } });
+  if (scope === 'active') filterClauses.push({ status: { in: ['Inquiry','Hot','Warm','INQUIRY','HOT','WARM'] } });
 
   for (const field of ['email', 'phone']) if (related.includes('has_' + field)) filterClauses.push({ [field]: { not: null } }, { [field]: { not: '' } });
   if (systemValues.includes('touched') !== systemValues.includes('untouched')) filterClauses.push({ updatedAt: systemValues.includes('touched') ? { gt: prisma.lead.fields.createdAt } : { lte: prisma.lead.fields.createdAt } });
@@ -81,12 +81,14 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
+  const workQueue = scope === 'work_queue';
+  if (workQueue) Object.assign(where, { isArchived: false, deletedAt: null, convertedAt: null, status: { notIn: ['Closed', 'Cancelled', 'CLOSED', 'CANCELLED'] } });
   const [sortKey, direction] = String(query.sort ?? 'createdAt:desc').split(':');
   const allowed = new Set(LEADS_TABLE_SORT_FIELDS);
   const sortField = allowed.has(sortKey) ? sortKey : 'createdAt';
   const sortDirection = direction === 'asc' ? 'asc' as const : 'desc' as const;
   const dateSort = ['createdAt', 'updatedAt'].includes(sortField);
-  const ids = dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
+  const ids = workQueue ? (await prisma.lead.findMany({ where, select: { id: true, status: true, firstStaffOutreachAt: true, createdAt: true } })).sort((a, b) => leadWorkQueueRank(a) - leadWorkQueueRank(b) || +a.createdAt - +b.createdAt || a.id.localeCompare(b.id)).slice(skip, skip + limit).map(row => row.id) : dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
     async () => (await prisma.lead.findMany({ where,
       select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, companyFromAccount: true, status: true, source: true },
     })).map(row => ({ ...presentContactAccount(row, canReadAccount), name: row.firstName?.trim() || row.lastName?.trim() ? formatLeadName(row) : null, status: normalizeCrmStatus(row.status) })));

@@ -1,6 +1,7 @@
+import { weightedLeadScores, lowestWorkloadRotation } from '../../crm/leads/lead-workload';
 import { Prisma } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { WorkflowAssignmentTargetSchema, workflowAssignmentTarget, type WorkflowAction, type WorkflowAssignmentPurpose, type WorkflowAssignmentTarget, type WorkflowEntity } from '@leadcrm/shared';
+import { WorkflowAssignmentTargetSchema, workflowAssignmentTarget, LEAD_WORKLOAD_WEIGHTS, normalizeCrmStatus, type WorkflowAction, type WorkflowAssignmentPurpose, type WorkflowAssignmentTarget, type WorkflowEntity } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { ValidationError } from '../../../shared/errors/http-error';
 import { assignmentCandidates, assignmentPool, assignmentWorkloads } from './workflow-assignment.repository';
@@ -56,6 +57,7 @@ export async function validateAssignment(action: WorkflowAction, entity: Workflo
     if (check.success && check.data.type !== 'record_owner') return;
   }
   const target = parseAssignment(action);
+  if ((target.type === 'role' || target.type === 'group') && target.strategy === 'weighted_workload' && (action.type !== 'assign_owner' || entity !== 'lead')) throw new ValidationError('Weighted workload is available for Lead owner assignment only.');
   if (target.type === 'record_owner' && !context) return;
   await candidates(prisma, { tenantId, target, purpose: assignmentPurpose(action), entity, recordOwnerId: context?.[`${entity}.assignedUserId`] as string | undefined });
 }
@@ -77,7 +79,9 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
       const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
       let available = target.availability ? users.filter(candidate => memberAvailable(candidate.id, target.availability!)) : users;
       if (!available.length) throw new ValidationError(`${targetName} has no eligible members available during the configured shifts.`);
-      const needsWorkload = !!target.capacity;
+      const weighted = target.strategy === 'weighted_workload';
+      if (weighted && (request.purpose !== 'crm_owner' || request.entity !== 'lead')) throw new ValidationError('Weighted workload requires Lead owner assignment.');
+      const needsWorkload = !!target.capacity || weighted;
       const metric = request.purpose === 'task_assignee' ? 'task' : request.entity;
       if (needsWorkload && !metric) throw new ValidationError('The triggering record type is required for workload assignment.');
       const counts = needsWorkload ? await assignmentWorkloads(client, request.tenantId, available.map(candidate => candidate.id), request.purpose, request.entity, request.entityId) : new Map<string, number>();
@@ -88,8 +92,13 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
       available = available.filter(candidate => limit(candidate.id) === undefined || load(candidate.id) < limit(candidate.id)!);
       if (!available.length) throw new ValidationError(`${targetName} has no eligible members below their configured capacity. Complete or reassign work, or adjust the limits.`);
       candidateCount = available.length;
-      user = available.find(candidate => candidate.id > lastId) ?? available[0];
-      reason = 'Next active eligible member in rotation';
+      const incoming = weighted && request.entityId ? await client.lead.findFirst({ where: { tenantId: request.tenantId, id: request.entityId }, select: { status: true } }) : null;
+      const incomingWeight = LEAD_WORKLOAD_WEIGHTS[normalizeCrmStatus(incoming?.status ?? 'Inquiry')];
+      const scores = weighted ? await weightedLeadScores(client, request.tenantId, available.map(candidate => candidate.id), request.entityId) : new Map<string, number>();
+      if (weighted) for (const candidate of available) scores.set(candidate.id, (scores.get(candidate.id) ?? 0) + (pending.get(`lead:${candidate.id}`) ?? []).filter(row => row.entityId !== request.entityId).reduce((sum, row) => sum + (typeof row.weight === 'number' && Number.isFinite(row.weight) && row.weight >= 0 ? row.weight : 1), 0) + (request.previewLoads?.get(`weighted-lead:${candidate.id}`) ?? 0));
+      user = weighted ? lowestWorkloadRotation(available, scores, lastId)! : available.find(candidate => candidate.id > lastId) ?? available[0];
+      reason = weighted ? `Lowest weighted Lead workload (${scores.get(user.id) ?? 0}); round-robin resolves ties` : 'Next active eligible member in rotation';
+      if (weighted && request.dryRun) request.previewLoads?.set(`weighted-lead:${user.id}`, (request.previewLoads.get(`weighted-lead:${user.id}`) ?? 0) + incomingWeight);
       if (needsWorkload) {
         workload = load(user.id); capacityLimit = limit(user.id);
         if (!request.dryRun) {
@@ -97,7 +106,7 @@ export async function resolveWorkflowAssignee(request: AssignmentRequest) {
           const token = randomUUID();
           // A short durable lease bridges the reservation and the existing domain-service commit.
           // Concurrent workflow actions include these leases in their workload, across workflows/pools.
-          const value = [...(pending.get(pendingKey) ?? []), { token, expiresAt: Date.now() + 300000, ...(request.entityId ? { entityId: request.entityId } : {}) }];
+          const value = [...(pending.get(pendingKey) ?? []), { token, expiresAt: Date.now() + 300000, weight: weighted ? incomingWeight : 1, ...(request.entityId ? { entityId: request.entityId } : {}) }];
           const scoped = { tenantId: request.tenantId, module: 'workflow-assignment-pending', key: pendingKey };
           await client.tenantPreference.upsert({ where: { tenantId_module_key: scoped }, create: { ...scoped, value }, update: { value } });
           reservation = { key: pendingKey, token };

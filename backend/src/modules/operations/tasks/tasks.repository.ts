@@ -1,3 +1,4 @@
+import { AppError } from '../../../shared/errors/app-error';
 import { setNotificationActor } from '../../notifications/notification-actor';
 import { Prisma } from "@prisma/client";
 import {
@@ -335,6 +336,30 @@ export async function findTaskOptions(
     select: { id: true, name: true },
   });
   return rows.map((row) => ({ id: row.id, label: row.name }));
+}
+
+export async function findFilteredDealOptions(tenantId: string, query: import('zod').z.infer<typeof import('@leadcrm/shared').TaskOptionsQuerySchema>) {
+  const actor = crmActor.getStore();
+  const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
+  if (!policy) throw new AppError('Authenticated workspace context required.', 403);
+  if (query.accountId && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'accounts', 'canView')) throw new AppError('Account access required.', 403);
+  if ((query.productInterestId || query.category) && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'products', 'canView')) throw new AppError('Product access required.', 403);
+  const related = await relatedOptionFilters(tenantId, query.leadIds);
+  const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null,
+    AND: [...buildSearchClauses(query.search, ['title']), related.deal],
+    ...(policy.assignmentRestricted ? { assignedUserId: policy.userId } : {}),
+    ...(query.accountId ? { accountId: query.accountId } : {}),
+    ...(query.productInterestId ? { productInterestId: query.productInterestId } : {}),
+    ...(query.category ? { productInterestRecord: { tenantId, category: query.category === '__uncategorized' ? null : { equals: query.category, mode: 'insensitive' } } } : {}),
+  };
+  return prisma.$transaction(async tx => {
+    const [total, rows] = await Promise.all([tx.deal.count({ where }), tx.deal.findMany({ where,
+      take: query.selectAll ? 51 : query.limit, skip: query.selectAll ? 0 : (query.page - 1) * query.limit,
+      orderBy: [{ title: 'asc' }, { id: 'asc' }], select: { id: true, title: true },
+    })]);
+    if (query.selectAll && total > 50) throw new AppError('More than 50 deals match. Narrow your filters before selecting all.', 400);
+    return { data: rows.map(row => ({ id: row.id, label: row.title })), meta: { total, page: query.page, limit: query.limit, hasMore: query.page * query.limit < total } };
+  }, { isolationLevel: 'RepeatableRead' });
 }
 
 export function findTaskAccounts(tenantId: string, ids: string[]) {

@@ -1,3 +1,4 @@
+import { processSmsReply } from '../../../integrations/sms/sms-replies';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
@@ -123,8 +124,11 @@ textbeeWebhookRouter.post('/', rateLimit({ windowMs: 60000, limit: 1000, standar
     verifyTextBeeSignature(req.body, req.get('X-Signature'));
     let input: unknown;
     try { input = JSON.parse(req.body.toString('utf8')); } catch { throw new AppError('Invalid outbound SMS event.', 400); }
-    // Never process inbound content or reserved events, even if subscribed externally.
-    if (input && typeof input === 'object' && 'webhookEvent' in input && ['MESSAGE_RECEIVED', 'SMS_STATUS_UPDATED'].includes(String(input.webhookEvent))) {
+    if (input && typeof input === 'object' && 'webhookEvent' in input && input.webhookEvent === 'MESSAGE_RECEIVED') {
+      await processSmsReply(input); res.json({ success: true }); return;
+    }
+    // Reserved outbound events have no classification effect.
+    if (input && typeof input === 'object' && 'webhookEvent' in input && ['SMS_STATUS_UPDATED'].includes(String(input.webhookEvent))) {
       res.json({ success: true }); return;
     }
     await processTextBeeEvent(input);

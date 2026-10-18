@@ -31,6 +31,7 @@ const productNameSchema = z.string().trim().min(1, 'Product name is required').m
 
 export const ProductInterestSchema = z.object({
   name: productNameSchema,
+  category: z.string().trim().max(100).refine(value => !/[\u0000-\u001f\u007f]/.test(value), 'Control characters are not allowed').nullable().optional().transform(value => value === '' ? null : value),
   dealValue: z.number().finite().min(0).max(999_999_999_999).multipleOf(0.01),
 }).strict();
 export const ProductInterestCreateSchema = ProductInterestSchema.extend({
@@ -46,6 +47,7 @@ export const ProductInterestConfigSchema = z.array(ProductInterestSchema).max(MA
 export interface ProductInterest {
   id: string;
   name: string;
+  category?: string | null;
   dealValue: number;
   active: boolean;
   createdAt: string;

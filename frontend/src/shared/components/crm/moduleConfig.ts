@@ -70,10 +70,11 @@ export interface CustomFieldItem {
 // ── Default Status Configurations ─────────────────────────────────────────────
 
 const LEAD_STATUS_DETAILS: Record<typeof LEAD_STATUSES[number], Omit<StatusOption, 'label'>> = {
-  Hot: { tone: 'warning', description: 'High purchase intent, urgent' },
-  Warm: { tone: 'warning', description: 'Engaged, evaluating solutions' },
+  Inquiry: { tone: 'muted', description: 'New inquiry; awaiting a customer reply' },
+  Hot: { tone: 'warning', description: 'Related Deal is Qualified; ready for closing' },
+  Warm: { tone: 'warning', description: 'Customer replied; awaiting qualification' },
   Cold: { tone: 'muted', description: 'Unresponsive or low priority' },
-  Closed: { tone: 'success', description: 'Converted or deal finalized' },
+  Closed: { tone: 'success', description: 'Sale confirmed through Closed Won' },
   Cancelled: { tone: 'muted', description: 'Disqualified or canceled' },
 };
 export const DEFAULT_LEAD_STATUSES: StatusOption[] = LEAD_STATUSES.map(label => ({ label, ...LEAD_STATUS_DETAILS[label] }));

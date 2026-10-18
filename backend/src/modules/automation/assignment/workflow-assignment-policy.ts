@@ -12,7 +12,7 @@ export function memberAvailable(userId: string, availability: WorkflowAvailabili
   // An overnight shift belongs to its starting day, including the hours after midnight.
   return (schedule.days.includes(day) && time >= schedule.start) || (schedule.days.includes((day + 6) % 7) && time < schedule.end);
 }
-export type AssignmentReservation = { token: string; expiresAt: number; entityId?: string };
+export type AssignmentReservation = { token: string; expiresAt: number; entityId?: string; weight?: number };
 export function liveReservations(value: unknown, now: number): AssignmentReservation[] {
   return Array.isArray(value) ? value.filter((row): row is AssignmentReservation => !!row && typeof row === 'object' &&
     typeof row.token === 'string' && typeof row.expiresAt === 'number' && row.expiresAt > now) : [];

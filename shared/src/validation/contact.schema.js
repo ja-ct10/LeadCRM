@@ -10,7 +10,7 @@ exports.ContactSchema = zod_1.z.object({
     email: crm_email_1.CrmEmailSchema,
     phone: zod_1.z.string().optional(),
     company: zod_1.z.string().optional(),
-    status: record_experience_1.CrmStatusSchema.default('Warm'),
+    status: record_experience_1.CrmStatusSchema.default('Inquiry'),
     source: zod_1.z.string().optional(),
     notes: zod_1.z.string().optional(),
 });

@@ -39,7 +39,7 @@ const contactIdSetArb = fc.uniqueArray(fc.uuid(), { minLength: 0, maxLength: 20 
 
 function setupMocksForIteration(currentIds: string[], targetIds: string[], currentSet: Set<string>): void {
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
-    const txClient = { deal: { findFirstOrThrow: vi.fn().mockResolvedValue({}) }, contactDeal: mockContactDeal, contact: mockContact };
+    const txClient = { deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) }, contactDeal: mockContactDeal, contact: mockContact };
     return cb(txClient);
   });
   mockContactDeal.findMany.mockResolvedValue(currentIds.map((id) => ({ contactId: id })));
@@ -119,7 +119,7 @@ describe('Feature: deal-contact-association-fix, Contact Junction Sync Set Equal
           const leadDeal = { findMany: vi.fn(), deleteMany: vi.fn(), createMany: vi.fn() };
           const lead = { findMany: vi.fn() };
           mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) =>
-            cb({ deal: { findFirstOrThrow: vi.fn().mockResolvedValue({}) }, contactDeal: mockContactDeal, contact: mockContact, leadDeal, lead }));
+            cb({ deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) }, contactDeal: mockContactDeal, contact: mockContact, leadDeal, lead }));
 
           await syncContactAssociations(dealId, tenantId, targetIds, userId);
 

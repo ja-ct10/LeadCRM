@@ -75,7 +75,7 @@ export async function testWorkflow(req: Request, res: Response, next: NextFuncti
       action && typeof action === 'object' && !Array.isArray(action) && action.type === 'move_deal_stage' && action.enabled !== false)) {
       await assertPermissions(req.user!, [workflow.trigger.startsWith('lead.') ? 'leads.view' : 'contacts.view', 'deals.view', 'deals.edit']);
     }
-    res.json({ success: true, data: await service.testWorkflow(String(req.params.id), req.user!.tenantId, req.body.entityId, req.user!.userId, req.body.stageHistoryId) });
+    res.json({ success: true, data: await service.testWorkflow(String(req.params.id), req.user!.tenantId, req.body.entityId, req.user!.userId, req.body.stageHistoryId, req.body.useDraft === true) });
   } catch (err) { next(err); }
 }
 
@@ -92,4 +92,17 @@ async function presentWorkflow<T extends object>(req: Request, workflow: T): Pro
 }
 async function presentWorkflows<T extends { data: object[] }>(req: Request, page: T): Promise<T> {
   return { ...page, data: await Promise.all(page.data.map(row => presentWorkflow(req, row))) };
+}
+
+export async function saveDraft(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.saveWorkflowDraft(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) }); } catch (error) { next(error); }
+}
+export async function publishDraft(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.publishWorkflowDraft(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body) }); } catch (error) { next(error); }
+}
+export async function publications(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.workflowPublications(String(req.params.id), req.user!.tenantId) }); } catch (error) { next(error); }
+}
+export async function restorePublication(req: Request, res: Response, next: NextFunction) {
+  try { res.json({ success: true, data: await service.restoreWorkflowPublication(String(req.params.id), req.user!.tenantId, req.user!.userId, req.params.version, req.body) }); } catch (error) { next(error); }
 }

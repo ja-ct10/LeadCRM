@@ -4,17 +4,18 @@ import { useState } from 'react';
 import { isProductCreateAmountInput, ProductInterestCreateSchema, ProductInterestSchema, parseProductAmount, parseProductCreateAmount, PRODUCT_DEAL_VALUE_DIGITS_ERROR, PRODUCT_DEAL_VALUE_NEGATIVE_ERROR, PRODUCT_DEAL_VALUE_REQUIRED_ERROR, PRODUCT_INTEREST_NAME_MAX_ERROR, PRODUCT_INTEREST_NAME_MAX_LENGTH, type ProductInterest } from '@leadcrm/shared';
 import { Button } from '@/shared/components/ui/button';
 const inputClass = panelInputClass;
-export function ProductEditor({ product, busy, onSave, onCancel }: { product?: ProductInterest; busy: boolean; onSave: (data: { name: string; dealValue: number }) => Promise<void>; onCancel: () => void }) {
+export function ProductEditor({ product, busy, onSave, onCancel }: { product?: ProductInterest; busy: boolean; onSave: (data: { name: string; dealValue: number; category?: string | null }) => Promise<void>; onCancel: () => void }) {
   const [name, setName] = useState(product?.name ?? '');
+  const [category, setCategory] = useState(product?.category ?? '');
   const [amount, setAmount] = useState(product ? String(product.dealValue) : '');
-  const [fieldErrors, setFieldErrors] = useState<{ name?: string; dealValue?: string }>({});
+  const [fieldErrors, setFieldErrors] = useState<{ name?: string; dealValue?: string; category?: string }>({});
   return <form noValidate className="flex h-full min-h-0 flex-col" onSubmit={async event => {
     event.preventDefault();
     if (busy) return;
     if (Object.values(fieldErrors).some(Boolean)) return;
     const dealValue = product ? parseProductAmount(amount) : parseProductCreateAmount(amount);
     const parsedName = ProductInterestSchema.shape.name.safeParse(name);
-    const errors: { name?: string; dealValue?: string } = {};
+    const errors: { name?: string; dealValue?: string; category?: string } = {};
     if (!parsedName.success) errors.name = parsedName.error.issues[0].message;
     if (dealValue === null) {
       errors.dealValue = amount.length === 0 || amount.trim().length === 0 ? PRODUCT_DEAL_VALUE_REQUIRED_ERROR : product ? 'Enter a non-negative amount with up to two decimal places.' : /^-\d+$/.test(amount) ? PRODUCT_DEAL_VALUE_NEGATIVE_ERROR : PRODUCT_DEAL_VALUE_DIGITS_ERROR;
@@ -22,7 +23,7 @@ export function ProductEditor({ product, busy, onSave, onCancel }: { product?: P
       return;
     }
     if (Object.keys(errors).length > 0) { setFieldErrors(errors); return; }
-    const parsed = (product ? ProductInterestSchema : ProductInterestCreateSchema).safeParse({ name, dealValue });
+    const parsed = (product ? ProductInterestSchema : ProductInterestCreateSchema).safeParse({ name, dealValue, ...(category.trim() || product?.category ? { category } : {}) });
     if (!parsed.success) {
       setFieldErrors(Object.fromEntries(parsed.error.issues.map(issue => [String(issue.path[0]), issue.message])));
       return;
@@ -54,6 +55,7 @@ export function ProductEditor({ product, busy, onSave, onCancel }: { product?: P
           : result?.success === false ? result.error.issues[0].message : '' }));
       }} required /></span>{fieldErrors.dealValue && <span id="product-deal-value-error" role="alert" className="block text-xs font-normal text-red-600">{fieldErrors.dealValue}</span>}</label>
     </div>
+    <label className={panelLabelClass + " block space-y-1.5"}>Category<input aria-label="Product category" className={inputClass} value={category} maxLength={100} disabled={busy} placeholder="Uncategorized" aria-invalid={!!fieldErrors.category} aria-describedby={fieldErrors.category ? 'product-category-error' : undefined} onChange={event => { setCategory(event.target.value); const parsed = ProductInterestSchema.shape.category.safeParse(event.target.value); setFieldErrors(current => ({ ...current, category: parsed.success ? '' : parsed.error.issues[0].message })); }} />{fieldErrors.category && <span id="product-category-error" role="alert" className="text-xs text-destructive">{fieldErrors.category}</span>}</label>
     </div><div className={panelFooterClass + " justify-end"}><Button type="button" variant="outline" className={panelSecondaryButtonClass} disabled={busy} onClick={onCancel}>Cancel</Button><Button type="submit" className={panelPrimaryButtonClass} disabled={busy}>{busy ? 'Saving…' : 'Save Product'}</Button></div>
   </form>;
 }

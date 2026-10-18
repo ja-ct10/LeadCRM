@@ -70,7 +70,7 @@ it.each(['all', 'my', 'active'])('keeps %s Leads filters when sorting by Last Na
   expect(where.tenantId).toBe('tenant');
   expect(where.AND).toContainEqual({ status: { in: ['Hot', 'HOT', 'Warm', 'WARM'] } });
   if (scope === 'my') expect(where.AND).toContainEqual({ assignedUserId: 'agent' });
-  if (scope === 'active') expect(where.AND).toContainEqual({ status: { in: ['Hot', 'Warm', 'HOT', 'WARM'] } });
+  if (scope === 'active') expect(where.AND).toContainEqual({ status: { in: ['Inquiry', 'Hot', 'Warm', 'INQUIRY', 'HOT', 'WARM'] } });
 });
 
 it('continues rejecting arbitrary sort fields through the existing allowlist', async () => {

@@ -60,3 +60,4 @@ __exportStar(require("./contracts/crm-record-access"), exports);
 __exportStar(require("./contracts/condition-operators"), exports);
 __exportStar(require("./contracts/account-retirement"), exports);
 __exportStar(require("./contracts/organization"), exports);
+__exportStar(require("./contracts/customer-classification"), exports);

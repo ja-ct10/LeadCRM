@@ -41,8 +41,12 @@ function conditionOperatorLabel(key, context = 'dropdown', kind) {
     const semantic = semanticConditionOperator(key);
     if (!semantic)
         return 'Unavailable operator';
-    if (kind === 'date' && (semantic === 'gte' || semantic === 'lte'))
-        return semantic === 'gte' ? 'On or after' : 'On or before';
+    if (kind === 'date') {
+        const dates = { equals: 'On', not_equals: 'Not on', gt: 'After', after: 'After', gte: 'On or after', lt: 'Before', before: 'Before', lte: 'On or before', between: 'Between', any: 'Any date' };
+        const label = dates[semantic];
+        if (label)
+            return context === 'summary' && semantic !== 'any' ? `is ${label.toLowerCase()}` : label;
+    }
     const descriptor = exports.CONDITION_OPERATOR_METADATA[semantic];
     return context === 'summary' ? descriptor.summary : descriptor.label;
 }

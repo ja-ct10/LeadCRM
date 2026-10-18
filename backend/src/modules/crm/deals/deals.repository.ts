@@ -1,3 +1,4 @@
+import { refreshDealClassification } from '../customer-classification.service';
 import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
 import { salesContext } from '../leads/sales-context';
 import { participantOrder, withDealParticipants } from './deal-participants';
@@ -289,6 +290,7 @@ export async function moveDealStage(
       await tx.activity.create({ data: { ...scope, dealId: id, createdById: movedById, type: 'stage_change',
         title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`, description: note ?? lostReason ?? 'Staff changed the Deal stage.' } });
     }
+    if (stageHistory && (deal.stage.name.trim().toLowerCase() === 'qualified' || newStage.name.trim().toLowerCase() === 'qualified')) await refreshDealClassification(tx, tenantId, id, movedById);
     const fullDeal = await tx.deal.findFirstOrThrow({ where: { id, ...scope }, include: {
       stage: true, pipeline: true, organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
       leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } },
@@ -342,13 +344,18 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
     const deal = await tx.deal.findFirstOrThrow({ where: { id, tenantId }, include: { stage: true, pipeline: true,
       organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
       leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } } } });
+    if (previousDeal.stage.name.trim().toLowerCase() === 'qualified' || stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, id, actorId);
     return { deal: withDealParticipants(deal), previousDeal, stageHistory };
   });
 }
 
-export async function archiveDeal(id: string, tenantId: string, archiveReason?: string) {
+export async function archiveDeal(id: string, tenantId: string, archiveReason?: string, actorId?: string) {
   try {
-    return await (salesContext.getStore() ?? prisma).deal.update({ where: { id, tenantId }, data: { isArchived: true, archiveReason: archiveReason ?? null } });
+    return await salesTransaction(async tx => {
+      const updated = await tx.deal.update({ where: { id, tenantId }, data: { isArchived: true, archiveReason: archiveReason ?? null }, include: { stage: true } });
+      if (actorId && updated.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, id, actorId);
+      return updated;
+    });
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
       return null;
@@ -428,7 +435,7 @@ export async function syncContactAssociations(
 ): Promise<void> {
   const work = async (tx: Prisma.TransactionClient) => {
     await assertCrmRecordMutation(tx, 'deals', dealId);
-    await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true } });
+    const classificationDeal = await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true, stage: { select: { name: true } } } });
     // Current ContactDeal associations for this deal
     const current = await tx.contactDeal.findMany({
       where: { dealId, tenantId },
@@ -468,6 +475,7 @@ export async function syncContactAssociations(
     for (const [position, contactId] of [...targetIds].entries()) {
       if (currentIds.has(contactId)) await tx.contactDeal.updateMany({ where: { dealId, tenantId, contactId }, data: { position } });
     }
+    if (userId && classificationDeal?.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, dealId, userId, current);
   };
   if (client) await work(client);
   else await salesTransaction(work);
@@ -482,7 +490,7 @@ export async function syncLeadAssociations(
 ): Promise<void> {
   const work = async (tx: Prisma.TransactionClient) => {
     await assertCrmRecordMutation(tx, 'deals', dealId);
-    await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true } });
+    const classificationDeal = await tx.deal.findFirstOrThrow({ where: { id: dealId, tenantId }, select: { id: true, stage: { select: { name: true } } } });
     // Current LeadDeal associations for this deal
     const current = await tx.leadDeal.findMany({
       where: { dealId, tenantId },
@@ -522,6 +530,7 @@ export async function syncLeadAssociations(
     for (const [position, leadId] of [...targetIds].entries()) {
       if (currentIds.has(leadId)) await tx.leadDeal.updateMany({ where: { dealId, tenantId, leadId }, data: { position } });
     }
+    if (userId && classificationDeal?.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, dealId, userId, current);
   };
   if (client) await work(client);
   else await salesTransaction(work);

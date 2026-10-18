@@ -1,3 +1,5 @@
+import { recordStaffOutreach } from '../../modules/crm/customer-classification.service';
+import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { randomUUID } from 'node:crypto';
 import { SendMailboxEmailSchema, SaveMailboxDraftSchema } from '@leadcrm/shared';
 import { z } from 'zod';
@@ -23,6 +25,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
   if (claim.terminal) {
     if (claim.receipt.status !== 'sent' || !claim.receipt.providerMessageId || !claim.receipt.providerThreadId) throw new AppError('This operation is not a completed send.', 409);
     await ingestConfirmedMailboxSend(account, claim.receipt.providerMessageId, context);
+    await recordPersonalOutreach(account.id, tenantId, claim.receipt.providerMessageId);
     await authorizeMailboxOperation(account, context);
     return { messageId: claim.receipt.providerMessageId, threadId: claim.receipt.providerThreadId };
   }
@@ -33,6 +36,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
       : await sendEmail(tenantId, userId, recipients, data.subject, data.body, source.replyToMessageId, data.draftId, source.forwardSourceMessageId,
         { messageId: claim.receipt.rfcMessageId!, receiptId: claim.receipt.id, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     await finishMailboxOperation(claim, { status: 'sent', providerMessageId: result.messageId, providerThreadId: result.threadId });
+    await recordPersonalOutreach(account.id, tenantId, result.messageId);
     if (claim.recover) await ingestConfirmedMailboxSend(account, result.messageId, context);
     await requestMailboxIngestion(account).catch(() => undefined);
     // Do not disclose a recovered result after a reassignment that occurred during provider I/O.
@@ -102,4 +106,12 @@ export async function deleteMailboxDraft(tenantId: string, userId: string, draft
     } else await deleteDraft(tenantId, userId, draftId, { receiptId: claim.receipt.id, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     await finishMailboxOperation(claim, { status: 'deleted', providerDraftId: draftId });
   } catch (error) { await failMailboxOperation(claim, error, attempted); throw error; }
+}
+
+async function recordPersonalOutreach(accountId: string, tenantId: string, providerMessageId: string) {
+  await salesTransaction(async tx => {
+    const message = await tx.mailboxMessage.findFirst({ where: { accountId, tenantId, providerMessageId, direction: 'outbound' }, select: { leadId: true, contactId: true, sentAt: true } });
+    if (message?.leadId) await recordStaffOutreach(tx, tenantId, { leadId: message.leadId }, message.sentAt);
+    if (message?.contactId) await recordStaffOutreach(tx, tenantId, { contactId: message.contactId }, message.sentAt);
+  });
 }

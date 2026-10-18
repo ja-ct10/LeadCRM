@@ -82,7 +82,7 @@ export const leadImportConfig: ImportModuleConfig = {
       label: 'Status',
       required: false,
       type: 'select',
-      options: ['Hot', 'Warm', 'Cold', 'Cancelled'],
+      options: ['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled'],
       autoMapPatterns: ['status', 'lead status', 'lead_status', 'stage'],
     },
   ],
