@@ -25,7 +25,7 @@ const fields = {
 };
 /** The manual Lead API accepts only the final form fields and a retry receipt. */
 export const LeadFieldsSchema = z.object(fields).strict();
-export const CreateLeadSchema = LeadFieldsSchema.extend({ status: LeadStatusSchema.default('Warm'), requestId: z.string().uuid().optional() })
+export const CreateLeadSchema = LeadFieldsSchema.extend({ status: LeadStatusSchema.default('Inquiry'), requestId: z.string().uuid().optional() })
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 export const UpdateLeadSchema = LeadFieldsSchema.partial()
   .refine(exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });

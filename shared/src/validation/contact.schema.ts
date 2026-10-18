@@ -8,7 +8,7 @@ export const ContactSchema = z.object({
   email: CrmEmailSchema,
   phone: z.string().optional(),
   companyName: z.string().optional(),
-  status: CrmStatusSchema.default('Warm'),
+  status: CrmStatusSchema.default('Inquiry'),
   source: z.string().optional(),
   notes: z.string().optional(),
 }).strict();

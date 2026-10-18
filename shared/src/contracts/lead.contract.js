@@ -27,7 +27,7 @@ const fields = {
 };
 /** The manual Lead API accepts only the final form fields and a retry receipt. */
 exports.LeadFieldsSchema = zod_1.z.object(fields).strict();
-exports.CreateLeadSchema = exports.LeadFieldsSchema.extend({ status: record_experience_1.LeadStatusSchema.default('Warm'), requestId: zod_1.z.string().uuid().optional() })
+exports.CreateLeadSchema = exports.LeadFieldsSchema.extend({ status: record_experience_1.LeadStatusSchema.default('Inquiry'), requestId: zod_1.z.string().uuid().optional() })
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });
 exports.UpdateLeadSchema = exports.LeadFieldsSchema.partial()
     .refine(organization_1.exclusiveAccountInput, { path: ['newAccount'], message: 'Select an Account or create a new one, not both.' });

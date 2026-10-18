@@ -119,10 +119,11 @@ it('validates money and persists only trimmed names and numeric amounts through 
   await waitFor(() => expect(apiClient.post).toHaveBeenCalledWith('/administration/product-interests', { name: 'Biometrics', category: product.category, description: '', dealValue: 30000 }));
 });
 
-it('requires the new product fields, trims the name and shows length errors inline', async () => {
+it('requires name and value, allows Uncategorized and shows name length errors inline', async () => {
   render(<ProductsPage />); await screen.findByRole('grid');
   fireEvent.click(screen.getByRole('button', { name: 'Add Product' }));
-  expect(screen.getAllByText('*')).toHaveLength(3);
+  expect(screen.getAllByText('*')).toHaveLength(2);
+  expect((screen.getByRole('combobox', { name: 'Category' }) as HTMLSelectElement).required).toBe(false);
   fireEvent.click(screen.getByRole('button', { name: 'Save Product' }));
   expect(await screen.findByText('Product name is required')).toBeTruthy();
   expect(screen.getByText('Deal value is required.')).toBeTruthy();

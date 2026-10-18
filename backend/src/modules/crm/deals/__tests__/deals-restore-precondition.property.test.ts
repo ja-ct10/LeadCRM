@@ -17,14 +17,15 @@ import * as fc from 'fast-check';
 // ─────────────────────────────────────────────────────
 
 vi.mock('../../../../config/database.config', () => {
-  return {
-    default: {
+  const client = {
       deal: {
         findFirst: vi.fn(),
         update: vi.fn(),
       },
-    },
+      $transaction: vi.fn(),
   };
+  client.$transaction.mockImplementation(work => work(client));
+  return { default: client };
 });
 
 vi.mock('../../../../core/audit/audit.service', () => {
@@ -56,7 +57,7 @@ const userIdArb = fc.uuid();
  * Generate a deal object in an archived state (isArchived: true)
  * with a random archiveReason string.
  */
-const archivedDealArb = fc.record({ leadDeals: fc.constant([]), contactDeals: fc.constant([]),
+const archivedDealArb = fc.record({ stage: fc.constant({ name: 'Lead' }), leadDeals: fc.constant([]), contactDeals: fc.constant([]),
   id: fc.uuid(),
   title: fc.string({ minLength: 1, maxLength: 100 }),
   isArchived: fc.constant(true),
@@ -75,7 +76,7 @@ const archivedDealArb = fc.record({ leadDeals: fc.constant([]), contactDeals: fc
 /**
  * Generate a deal object in a non-archived state (isArchived: false).
  */
-const nonArchivedDealArb = fc.record({ leadDeals: fc.constant([]), contactDeals: fc.constant([]),
+const nonArchivedDealArb = fc.record({ stage: fc.constant({ name: "Lead" }), leadDeals: fc.constant([]), contactDeals: fc.constant([]),
   id: fc.uuid(),
   title: fc.string({ minLength: 1, maxLength: 100 }),
   isArchived: fc.constant(false),
@@ -183,7 +184,7 @@ describe('Feature: deals-module-modernization, Property 16: Restore Precondition
 
   describe('isArchived state determines behavior — combined property', () => {
     it('should reject non-archived and accept archived for any random isArchived state', async () => {
-      const dealWithRandomArchiveState = fc.record({ leadDeals: fc.constant([]), contactDeals: fc.constant([]),
+      const dealWithRandomArchiveState = fc.record({ stage: fc.constant({ name: "Lead" }), leadDeals: fc.constant([]), contactDeals: fc.constant([]),
         id: fc.uuid(),
         title: fc.string({ minLength: 1, maxLength: 100 }),
         isArchived: fc.boolean(),

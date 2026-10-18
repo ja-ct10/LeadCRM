@@ -17,8 +17,8 @@ export async function wonDeals(req: Request, res: Response, next: NextFunction) 
 
 const fieldKey = service.productFieldKey;
 async function categories(tx: Prisma.TransactionClient, tenantId: string) {
-  const rows = await tx.productInterest.findMany({ where: { tenantId }, select: { category: true, name: true }, orderBy: { name: 'asc' } });
-  return [...new Map(rows.map(row => { const label = row.category || row.name; return [label.toLowerCase(), label]; })).values()].sort((a, b) => a.localeCompare(b));
+  const rows = await tx.productInterest.findMany({ where: { tenantId, category: { not: '' } }, select: { category: true }, orderBy: { category: 'asc' } });
+  return [...new Map(rows.map(row => [row.category.toLowerCase(), row.category])).values()].sort((a, b) => a.localeCompare(b));
 }
 export async function get(req: Request, res: Response, next: NextFunction) {
   try {

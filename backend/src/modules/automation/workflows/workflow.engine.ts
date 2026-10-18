@@ -119,7 +119,7 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
             continue;
           }
           const current = await repo.findWorkflowById(workflow.id, params.tenantId);
-          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived || current.updatedAt.getTime() !== workflow.updatedAt.getTime())) { status = 'skipped'; errorMessage = 'Workflow authorization or definition changed before the action.'; }
+          if (status === 'completed' && (!current?.isActive || current.status !== 'ACTIVE' || current.isArchived)) { status = 'skipped'; errorMessage = 'Workflow authorization or definition changed before the action.'; }
           const freshContext = await repo.entityContext(trigger.entity, params.entityId, params.tenantId);
           // A stage follow-up belongs to this entry into the stage. Do not continue after moving away.
           if (status === 'completed' && stageHistoryId) try { await assertCurrentStageEntry(params.tenantId, params.entityId, stageHistoryId); }

@@ -12,6 +12,10 @@ export function withWorkflowTimeout<T>(request: Promise<T>): Promise<T> {
   })]).finally(() => clearTimeout(timer));
 }
 export const workflowsApi = {
+  saveDraft: (id: string, draft: WorkflowDraft, expectedDraftRevision: number, expectedVersion: number) => apiClient.put<WorkflowResponse>(`/automation/workflows/${id}/draft`, { draft, expectedDraftRevision, expectedVersion }),
+  publishDraft: (id: string, draft: WorkflowDraft, expectedDraftRevision: number, expectedVersion: number) => apiClient.post<WorkflowResponse>(`/automation/workflows/${id}/publish`, { draft, expectedDraftRevision, expectedVersion }),
+  versions: (id: string) => apiClient.get<{ success: boolean; data: Array<{ version: number; createdAt: string; activatedById: string | null; definition: WorkflowDraft }> }>(`/automation/workflows/${id}/versions`),
+  restoreVersion: (id: string, version: number, expectedDraftRevision: number, expectedVersion: number) => apiClient.post<WorkflowResponse>(`/automation/workflows/${id}/versions/${version}/restore`, { expectedDraftRevision, expectedVersion }),
   duplicate: (id: string) => apiClient.post(`/automation/workflows/${id}/duplicate`, {}),
   nameAvailability: (name: string, excludeId?: string) => apiClient.get<{success:boolean;data:{available:boolean;suggestedName?:string}}>(`/automation/workflow-name-availability?${new URLSearchParams({ name, ...(excludeId ? { excludeId } : {}) })}`),
   options: () => apiClient.get<{success:boolean;data:WorkflowOptions}>('/automation/workflow-options'),
@@ -32,7 +36,7 @@ export const workflowsApi = {
   toggle: (id: string, isActive: boolean) => apiClient.patch<WorkflowResponse>(`/automation/workflows/${id}/toggle`, { isActive }),
   archive: (id: string) => apiClient.patch<{success:boolean}>(`/automation/workflows/${id}/archive`),
   getExecutions: (id: string, page = 1, limit = 25) => apiClient.get<WorkflowExecutionsResponse>(`/automation/workflows/${id}/executions?page=${page}&limit=${limit}`),
-  test: (id: string, entityId: string, stageHistoryId?: string) => withWorkflowTimeout(apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId, ...(stageHistoryId ? { stageHistoryId } : {}) })),
+  test: (id: string, entityId: string, stageHistoryId?: string) => withWorkflowTimeout(apiClient.post<{ success:boolean; data:WorkflowTestResult }>(`/automation/workflows/${id}/test`, { entityId, useDraft: true, ...(stageHistoryId ? { stageHistoryId } : {}) })),
   getActions: () => apiClient.get<{success:boolean;data:ActionDefinition[]}>('/automation/actions'),
   getTriggers: () => apiClient.get<{success:boolean;data:TriggerDefinition[]}>('/automation/triggers'),
 };

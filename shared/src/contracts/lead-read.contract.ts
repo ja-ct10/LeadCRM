@@ -15,6 +15,7 @@ export type LeadRead = {
   productInterestIds: string[];
   productInterest: string[];
   productInterests: string[];
+  firstStaffOutreachAt?: string | null;
   createdAt: string;
   updatedAt: string;
   createdById: string | null;

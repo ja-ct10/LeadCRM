@@ -149,6 +149,8 @@ function deploymentPlan(records, localNames) {
     '20261216000000_product_metadata',
     // Breaking Contact column/token rename: drain jobs and stop old writers first.
     '20261217000000_contact_company_name',
+    // Additive classification evidence, catalog categories, SMS receipts and published revisions.
+    '20261217000000_inquiry_status', '20261218000000_crm_classification_and_revisions',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

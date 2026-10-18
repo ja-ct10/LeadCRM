@@ -1,3 +1,4 @@
+import { weightedLeadScores, lowestWorkloadRotation } from './lead-workload';
 import { setNotificationActor, withAssignmentReason } from '../../notifications/notification-actor';
 import { assertCrmCreateAssignment, isCrmTransactionConflict, runCrmAutomaticCreation } from '../access/crm-record-access.service';
 import { cancelOpenDeals } from '../engagement.service';
@@ -117,8 +118,8 @@ export async function resolveSalesAgent(tx: Tx, tenantId: string, assignedUserId
     const key = { tenantId, module: modules.includes('leads') ? 'lead-assignment' : `${modules[0]}-assignment`, key: 'default' };
     const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
     const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
-    agent = agents[(agents.findIndex(user => user.id === lastId) + 1) % agents.length];
-    await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent.id }, update: { value: agent.id } });
+    agent = modules.includes('leads') ? lowestWorkloadRotation(agents, await weightedLeadScores(tx, tenantId, agents.map(user => user.id)), lastId) : agents[(agents.findIndex(user => user.id === lastId) + 1) % agents.length];
+    await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent!.id }, update: { value: agent!.id } });
   }
   return agent;
 }
@@ -134,8 +135,8 @@ export async function resolveFormSalesAgent(tx: Tx, tenantId: string) {
   const cursor = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
   const lastId = typeof cursor?.value === 'string' ? cursor.value : '';
   // A removed cursor member still has a stable position in the ordered pool.
-  const agent = agents.find(user => user.id > lastId) ?? agents[0];
-  await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent.id }, update: { value: agent.id } });
+  const agent = lowestWorkloadRotation(agents, await weightedLeadScores(tx, tenantId, agents.map(user => user.id)), lastId)!;
+  await tx.tenantPreference.upsert({ where: { tenantId_module_key: key }, create: { ...key, value: agent!.id }, update: { value: agent!.id } });
   return agent;
 }
 
@@ -154,17 +155,18 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     : await tx.productInterest.findMany({ where: { tenantId: scope.tenantId, active: true, name: { in: (input.productInterest ?? []) as string[] } } });
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
   const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
-  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null } });
+  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, status: input.status ?? 'Inquiry' } });
   const agent = assignment === 'public-form'
     ? await resolveFormSalesAgent(tx, scope.tenantId)
     : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
   if (agent) {
+    const score = (await weightedLeadScores(tx, scope.tenantId, [agent.id])).get(agent.id) ?? 0;
     await withAssignmentReason(tx, 'record_creation', () => tx.lead.update({ where: { id: lead.id, ...scope }, data: { assignedUserId: agent.id, updatedAt: lead.createdAt } }));
-    await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId ?? agent.id, type: 'assignment',
-      title: `Lead assigned to ${agent.firstName} ${agent.lastName}`, description: assignment === 'public-form' ? 'Default Sales group round-robin assignment.' : `${input.assignedUserId ? 'Explicit' : 'System round-robin'} assignment.` } });
-  } else if (assignment === 'public-form' && actorId) {
+    await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId ?? agent.id, type: 'assignment', metadata: { method: input.assignedUserId ? 'explicit' : 'weighted_workload', workloadScore: score, tieBreaker: 'round_robin' },
+      title: `Lead assigned to ${agent.firstName} ${agent.lastName}`, description: assignment === 'public-form' ? 'Default Sales group weighted workload assignment; round-robin resolves ties.' : `${input.assignedUserId ? 'Explicit' : 'Weighted workload'} assignment.` } });
+  } else if (actorId) {
     await tx.activity.create({ data: { ...scope, leadId: lead.id, createdById: actorId, type: 'assignment',
-      title: 'Lead awaiting assignment', description: 'The default Sales group has no eligible active members. The inquiry was saved as Unassigned.' } });
+      title: 'Lead awaiting assignment', description: assignment === 'public-form' ? 'The default Sales group has no eligible active members. The inquiry was saved as Unassigned.' : 'No eligible active agents are available. The inquiry was saved as Unassigned.' } });
     await tx.auditLog.create({ data: { ...scope, userId: actorId, action: 'lead.assignment_unavailable', entityType: 'Lead', entityId: lead.id,
       changeset: { after: { assignedUserId: null, assignment: 'public-form', reason: 'sales_group_empty' } } } });
   }

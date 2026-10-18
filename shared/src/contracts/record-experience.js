@@ -4,7 +4,7 @@ exports.RECORD_FILE_MAX_BYTES = exports.LeadStatusSchema = exports.LEAD_STATUSES
 exports.isAssignableAgent = isAssignableAgent;
 exports.normalizeCrmStatus = normalizeCrmStatus;
 const zod_1 = require("zod");
-exports.CRM_STATUSES = ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'];
+exports.CRM_STATUSES = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'];
 exports.LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'];
 exports.LeadSourceSchema = zod_1.z.enum(exports.LEAD_SOURCES);
 exports.COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'];

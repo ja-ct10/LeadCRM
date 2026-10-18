@@ -23,7 +23,7 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   for (const field of ['productInterestIds', 'productInterests']) {
     if (Array.isArray(intent[field])) intent[field] = [...new Set(intent[field] as string[])].sort();
   }
-  intent.status ??= 'Warm';
+  intent.status ??= 'Inquiry';
   const requestHash = createHash('sha256').update(JSON.stringify(canonical(intent))).digest('hex');
   const receipt = await tx.contactCreationReceipt.findUnique({ where: { tenantId_requestId: { tenantId, requestId } } });
   if (receipt) {
@@ -34,7 +34,7 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   }
   await assertCrmCreateAssignment(tx, tenantId, dto.assignedUserId);
   await assertContactAccountSelection(tx, tenantId, dto.accountId);
-  const status = CrmStatusSchema.parse(dto.status ?? 'Warm');
+  const status = CrmStatusSchema.parse(dto.status ?? 'Inquiry');
   if (status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
   const selectedAccount = dto.accountId ? await tx.account.findFirst({ where: { tenantId, id: String(dto.accountId), isArchived: false, deletedAt: null }, select: { name: true } }) : null;
   if (dto.accountId && !selectedAccount) throw new NotFoundError('Account');

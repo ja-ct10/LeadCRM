@@ -60,11 +60,11 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   clauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'source'], contains => [
     { companyName: contains, ...(!canReadAccount ? { companyFromAccount: false } : {}) },
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
-    ...(['HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'].includes(contains.contains.toUpperCase()) ? [{ status: contains.contains.toUpperCase() }] : []),
+    ...(['INQUIRY', 'HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'].includes(contains.contains.toUpperCase()) ? [{ status: contains.contains.toUpperCase() }] : []),
   ]));
   const scope = filters.find(filter => filter.field === 'scope')?.value;
   if (scope === 'my') clauses.push({ assignedUserId: String(query.currentUserId ?? '') });
-  if (scope === 'active') clauses.push({ status: { in: ['HOT', 'WARM'] } });
+  if (scope === 'active') clauses.push({ status: { in: ['INQUIRY', 'HOT', 'WARM'] } });
   const system = filters.find(filter => filter.field === 'system')?.value;
   const systemValues = Array.isArray(system) ? system : [];
   if (systemValues.includes('touched') !== systemValues.includes('untouched')) {

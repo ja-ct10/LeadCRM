@@ -128,7 +128,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
     hasMoreDeals: contactDeals.length > limit,
     activities: (await presentActivities(tenantId, activities)).map(activity => {
       // Normalize historical enum labels only in system-generated status events.
-      const match = activity.type === 'stage_change' && /^Status changed from (HOT|WARM|COLD|CLOSED|CANCELLED) to (HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
+      const match = activity.type === 'stage_change' && /^Status changed from (INQUIRY|HOT|WARM|COLD|CLOSED|CANCELLED) to (INQUIRY|HOT|WARM|COLD|CLOSED|CANCELLED)$/.exec(activity.title);
       return match ? { ...activity, title: `Status changed from ${normalizeCrmStatus(match[1])} to ${normalizeCrmStatus(match[2])}` } : activity;
     }),
     tasks,

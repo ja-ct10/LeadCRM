@@ -152,7 +152,7 @@ export default function LeadsPage(): React.ReactElement {
   const serverFilters = useMemo((): import('@leadcrm/shared').FilterCondition[] => {
     const conditions: import('@leadcrm/shared').FilterCondition[] = [];
 
-    if (activeTab === 'my' || activeTab === 'active') conditions.push({ field: 'scope', operator: 'equals', value: activeTab });
+    if (activeTab === 'my' || activeTab === 'active' || activeTab === 'work_queue') conditions.push({ field: 'scope', operator: 'equals', value: activeTab });
 
     // Status filter
     if (selectedStatuses.length > 0) {
@@ -265,7 +265,7 @@ export default function LeadsPage(): React.ReactElement {
   };
 
   // ── Filter groups for the rail ───────────────────────────────────────
-  const statusCounts = useMemo(() => Object.fromEntries(['Hot','Warm','Cold','Closed','Cancelled'].map(status => [status, facets?.['status:' + status] ?? 0])), [facets]);
+  const statusCounts = useMemo(() => Object.fromEntries(['Inquiry','Hot','Warm','Cold','Closed','Cancelled'].map(status => [status, facets?.['status:' + status] ?? 0])), [facets]);
   const touchedCount = facets?.touched ?? 0, untouchedCount = facets?.untouched ?? 0;
   const distinctSources = LEAD_SOURCES;
 
@@ -392,6 +392,7 @@ export default function LeadsPage(): React.ReactElement {
         onViewChange={() => {}}
         savedTabs={[
           { id: 'all', label: 'All Leads' },
+          { id: 'work_queue', label: 'Work queue' },
           { id: 'my', label: 'My Leads' },
           { id: 'active', label: 'Active Leads' },
         ].filter(tab => !isClientAdmin || tab.id !== 'my')}

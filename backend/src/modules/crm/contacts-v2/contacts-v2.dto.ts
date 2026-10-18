@@ -10,7 +10,7 @@ const ContactFields = ContactCreationIdentitySchema.extend({
   phone: recordText(100).optional(), companyName: recordText().optional(),
   address: recordText().optional(),
   source: recordText().optional(), notes: recordText(10000).optional(),
-  status: CrmStatusSchema.default('Warm'),
+  status: CrmStatusSchema.default('Inquiry'),
   accountId: z.string().uuid().nullable().optional(),
   newAccount: NewAccountSchema.optional(),
   assignedUserId: z.string().uuid().nullable().optional(),

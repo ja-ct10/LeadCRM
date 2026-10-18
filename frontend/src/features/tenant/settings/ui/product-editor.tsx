@@ -6,7 +6,7 @@ import { Button } from '@/shared/components/ui/button';
 const inputClass = panelInputClass;
 export function ProductEditor({ product, categories = [], busy, onSave, onCancel }: { product?: ProductInterest; categories?: string[]; busy: boolean; onSave: (data: ProductInterestInput) => Promise<void>; onCancel: () => void }) {
   const [name, setName] = useState(product?.name ?? '');
-  const [category, setCategory] = useState(product?.category || product?.name || '');
+  const [category, setCategory] = useState(product?.category ?? '');
   const [description, setDescription] = useState(product?.description ?? '');
   const [addingCategory, setAddingCategory] = useState(false);
   const [amount, setAmount] = useState(product ? String(product.dealValue) : '');
@@ -43,12 +43,12 @@ export function ProductEditor({ product, categories = [], busy, onSave, onCancel
         const result = ProductInterestSchema.shape.name.safeParse(value);
         setFieldErrors(current => ({ ...current, name: result.success ? '' : result.error.issues[0].message }));
       }} required />{fieldErrors.name && <span id="product-name-error" role="alert" className="block text-xs font-normal text-red-600">{fieldErrors.name}</span>}</label>
-      <label className={panelLabelClass + " min-w-0 space-y-1.5"}>Category <span className="text-destructive">*</span>
-        <select aria-label="Category" className={inputClass} required disabled={busy} value={addingCategory ? '__add__' : category} aria-invalid={!!fieldErrors.category} onChange={event => { const add = event.target.value === '__add__'; setAddingCategory(add); setCategory(add ? '' : event.target.value); setFieldErrors(current => ({ ...current, category: '' })); }}>
-          <option value="">Select category</option>{[...new Set([...categories, ...(product ? [product.category || product.name] : [])])].map(label => <option key={label} value={label}>{label}</option>)}<option value="__add__">Add category…</option>
+      <label className={panelLabelClass + " min-w-0 space-y-1.5"}>Category
+        <select aria-label="Category" className={inputClass} disabled={busy} value={addingCategory ? '__add__' : category} aria-invalid={!!fieldErrors.category} onChange={event => { const add = event.target.value === '__add__'; setAddingCategory(add); setCategory(add ? '' : event.target.value); setFieldErrors(current => ({ ...current, category: '' })); }}>
+          <option value="">Uncategorized</option>{[...new Set([...categories, ...(product?.category ? [product.category] : [])])].filter(Boolean).map(label => <option key={label} value={label}>{label}</option>)}<option value="__add__">Add category…</option>
         </select>{fieldErrors.category && <span role="alert" className="block text-xs text-destructive">{fieldErrors.category}</span>}
       </label>
-      {addingCategory && <label className={panelLabelClass + " min-w-0 space-y-1.5"}>New Category <span className="text-destructive">*</span><input aria-label="New Category" className={inputClass} required disabled={busy} maxLength={PRODUCT_INTEREST_NAME_MAX_LENGTH} value={category} onChange={event => { setCategory(event.target.value); setFieldErrors(current => ({ ...current, category: '' })); }} /></label>}
+      {addingCategory && <label className={panelLabelClass + " min-w-0 space-y-1.5"}>New Category<input aria-label="New Category" className={inputClass} disabled={busy} maxLength={PRODUCT_INTEREST_NAME_MAX_LENGTH} value={category} onChange={event => { setCategory(event.target.value); setFieldErrors(current => ({ ...current, category: '' })); }} /></label>}
       <label className={panelLabelClass + " min-w-0 space-y-1.5"}>Product Description<textarea aria-label="Product Description" className={inputClass} rows={4} disabled={busy} maxLength={PRODUCT_DESCRIPTION_MAX_LENGTH} value={description} onChange={event => { setDescription(event.target.value); setFieldErrors(current => ({ ...current, description: '' })); }} />{fieldErrors.description && <span role="alert" className="block text-xs text-destructive">{fieldErrors.description}</span>}</label>
       <label className={panelLabelClass + " min-w-0 space-y-1.5"}>Deal Value (PHP) {!product && <span aria-hidden="true" className="ml-1 text-red-500">*</span>}<span className="relative block"><span className="absolute left-3 top-3 text-sm">₱</span><input className={`${inputClass} pl-7 ${fieldErrors.dealValue ? 'border-red-500' : ''}`} aria-label="Deal Value (PHP)" aria-invalid={!!fieldErrors.dealValue} aria-describedby={fieldErrors.dealValue ? 'product-deal-value-error' : undefined} inputMode={product ? 'decimal' : 'numeric'} value={amount} disabled={busy} onChange={e => {
         const value = e.target.value;

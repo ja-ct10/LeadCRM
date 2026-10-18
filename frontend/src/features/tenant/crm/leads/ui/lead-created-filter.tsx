@@ -18,10 +18,10 @@ export function LeadCreatedFilter({ value, onChange }: { value: CreatedFilterDra
   const format = (date: string) => new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'Asia/Manila' }).format(new Date(date + 'T00:00:00+08:00'));
   const label = parsed.success ? parsed.data.operator === 'between'
     ? 'Created ' + format(parsed.data.from) + ' – ' + format(parsed.data.to)
-    : 'Created ' + (parsed.data.operator === 'lte' ? '≤ ' : '≥ ') + format(parsed.data.date) : '';
+    : 'Created ' + (parsed.data.operator === 'lte' ? 'on or before ' : 'on or after ') + format(parsed.data.date) : '';
   const cls = 'min-h-11 w-full min-w-0 max-w-full rounded-lg border border-border bg-background px-2 text-xs';
   return <section className="mb-3 space-y-2 px-1">
-    <label className="block text-xs font-semibold text-muted-foreground">Lead Created<select aria-label="Lead Created condition" className={cls + ' mt-2'} value={value.operator} onChange={e => onChange({ ...value, operator: e.target.value as CreatedFilterDraft['operator'] })}><option value="">Any date</option><option value="lte">≤ Less than or equal</option><option value="gte">≥ Greater than or equal</option><option value="between">Range</option></select></label>
+    <label className="block text-xs font-semibold text-muted-foreground">Lead Created<select aria-label="Lead Created condition" className={cls + ' mt-2'} value={value.operator} onChange={e => onChange({ ...value, operator: e.target.value as CreatedFilterDraft['operator'] })}><option value="">Any date</option><option value="lte">On or before</option><option value="gte">On or after</option><option value="between">Between</option></select></label>
     {value.operator && <label className="block text-xs">{value.operator === 'between' ? 'From' : 'Date'}<input aria-label={value.operator === 'between' ? 'Created From' : 'Created Date'} className={cls + ' mt-1'} type="date" value={value.from} onChange={e => onChange({ ...value, from: e.target.value })} /></label>}
     {value.operator === 'between' && <label className="block text-xs">To<input aria-label="Created To" className={cls + ' mt-1'} type="date" value={value.to} min={value.from || undefined} onChange={e => onChange({ ...value, to: e.target.value })} /></label>}
     {value.operator && value.from && (value.operator !== 'between' || value.to) && !parsed.success && <p role="alert" className="text-xs text-red-600">Enter valid dates with From on or before To.</p>}

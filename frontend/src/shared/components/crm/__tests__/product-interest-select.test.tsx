@@ -86,3 +86,13 @@ it('retains the Product Interest placeholder, empty message and disabled state',
   fireEvent.click(trigger);
   expect(screen.queryByRole('checkbox')).toBeNull();
 });
+
+it('filters by category while retaining previously selected products', () => {
+  render(<ProductInterestSelect products={[{ ...products[0], category: 'Services' }, products[1]]} values={['a']} onChange={vi.fn()} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
+  fireEvent.change(screen.getByLabelText('Product category'), { target: { value: '__uncategorized' } });
+  expect(screen.getByRole('checkbox', { name: 'Network' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'CCTV' })).toBeTruthy();
+  fireEvent.change(screen.getByLabelText('Product category'), { target: { value: 'Services' } });
+  expect(screen.queryByRole('checkbox', { name: 'CCTV' })).toBeNull();
+});

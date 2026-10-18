@@ -1,3 +1,4 @@
+import { refreshDealClassification } from '../customer-classification.service';
 import { salesContext } from '../leads/sales-context';
 import { resolveProducts, salesTransaction } from '../leads/lead-automation.service';
 import { validateSalesOwner } from '../leads/lead-automation.service';
@@ -215,7 +216,7 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
 export async function archiveDeal(id: string, tenantId: string, userId: string, archiveReason?: string) {
   let deal;
   try {
-    deal = await repo.archiveDeal(id, tenantId, archiveReason);
+    deal = await repo.archiveDeal(id, tenantId, archiveReason, userId);
   } catch (error) {
     mapRepositoryError(error, 'archiveDeal');
   }
@@ -231,11 +232,12 @@ export async function archiveDeal(id: string, tenantId: string, userId: string, 
 }
 
 export async function restoreDeal(id: string, tenantId: string, userId: string) {
+  return salesTransaction(async tx => {
   const deal = await repo.findDealById(id, tenantId);
   if (!deal) throw new NotFoundError('Deal');
   if (!deal.isArchived) throw new ValidationError('Deal is not archived');
 
-  const restored = await (salesContext.getStore() ?? prisma).deal.update({
+  const restored = await tx.deal.update({
     where: { id },
     data: { isArchived: false, archiveReason: null },
   });
@@ -247,7 +249,9 @@ export async function restoreDeal(id: string, tenantId: string, userId: string) 
     after: { isArchived: false, archiveReason: null },
   });
 
+  if (deal.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, id, userId);
   return { ...restored, leadId: deal.leadId, contactId: deal.contactId };
+  });
 }
 
 export async function duplicateDeal(id: string, tenantId: string, userId: string) {

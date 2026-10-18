@@ -1,4 +1,5 @@
 'use client';
+import { SmsReplyReviews } from './sms-reply-reviews';
 import { campaignEngagementRate } from '@leadcrm/shared';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
@@ -239,6 +240,7 @@ export default function CampaignsPage() {
           setEditingCampaign(undefined); setBuilderInitialType('Email'); setBuilderInitialContent(undefined); setBuilderSubject(''); setShowBuilder(true);
         }} />} />
 
+      <SmsReplyReviews />
       <ModuleTabs<'all' | 'email' | 'sms' | 'quotation'> ariaLabel="Campaign views" activeTab={activeTab} onTabChange={setActiveTab} tabs={[
         { id: 'all', label: 'All Campaigns' }, { id: 'email', label: 'Email Templates' },
         { id: 'sms', label: 'SMS Templates' }, { id: 'quotation', label: 'Quotation Templates' },

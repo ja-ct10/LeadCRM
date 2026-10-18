@@ -11,10 +11,10 @@ it('updates the visible condition and structured query, and clears both', () => 
   render(<Filter />);
   fireEvent.change(screen.getByLabelText('Lead Created condition'), { target: { value: 'lte' } });
   fireEvent.change(screen.getByLabelText('Created Date'), { target: { value: '2026-09-25' } });
-  expect(screen.getByText('Created ≤ Sep 25, 2026')).toBeTruthy();
+  expect(screen.getByText('Created on or before Sep 25, 2026')).toBeTruthy();
   expect(screen.getByTestId('query').textContent).toBe('[{"field":"createdAt","operator":"lte","value":"2026-09-25"}]');
   fireEvent.change(screen.getByLabelText('Lead Created condition'), { target: { value: 'gte' } });
-  expect(screen.getByText('Created ≥ Sep 25, 2026')).toBeTruthy();
+  expect(screen.getByText('Created on or after Sep 25, 2026')).toBeTruthy();
   fireEvent.change(screen.getByLabelText('Lead Created condition'), { target: { value: 'between' } });
   fireEvent.change(screen.getByLabelText('Created From'), { target: { value: '2026-09-01' } });
   fireEvent.change(screen.getByLabelText('Created To'), { target: { value: '2026-09-25' } });

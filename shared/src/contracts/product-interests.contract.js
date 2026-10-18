@@ -35,7 +35,7 @@ const productNameSchema = zod_1.z.string().trim().min(1, 'Product name is requir
     .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed');
 exports.ProductInterestSchema = zod_1.z.object({
     name: productNameSchema,
-    category: zod_1.z.string().trim().min(1, 'Category is required.').max(exports.PRODUCT_INTEREST_NAME_MAX_LENGTH).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.'),
+    category: zod_1.z.string().trim().max(exports.PRODUCT_INTEREST_NAME_MAX_LENGTH).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').nullable().optional().transform(value => value ?? ''),
     description: zod_1.z.string().trim().max(exports.PRODUCT_DESCRIPTION_MAX_LENGTH).refine(v => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').default(''),
     dealValue: zod_1.z.number().finite().min(0).max(999999999999).multipleOf(0.01),
 }).strict();

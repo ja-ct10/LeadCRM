@@ -48,6 +48,7 @@ export default function WorkflowBuilderPage() {
     canCreate = userCan('workflows', 'canCreate');
   const id = params.id === 'new' ? undefined : params.id,
     recipe = query.get('template');
+  const revisionTokens = useRef({ draft: 0, version: 1 });
   const createdId = useRef<string | undefined>(undefined);
   const triggerCatalog = useRef<TriggerDefinition[]>([]);
   const retryOptions = useRef<() => void>(() => {});
@@ -124,17 +125,19 @@ export default function WorkflowBuilderPage() {
         if (cancelled || currentScope.current !== scope) return;
         triggerCatalog.current = metadata.triggers;
         const saved = response?.data;
+        revisionTokens.current = { draft: saved?.draftRevision ?? 0, version: saved?.version ?? 1 };
+        const editing = saved?.draftDefinition ?? saved;
         const selected = recipe === null ? undefined : resolveWorkflowTemplate(recipe, options.data);
         if (!saved && recipe !== null && !selected) {
           throw new Error('This workflow template is unavailable. Return to workflows and choose another template.');
         }
         const initial: WorkflowDraft = saved
           ? {
-              name: saved.name,
-              description: saved.description,
-              trigger: saved.trigger,
-              conditions: saved.conditions,
-              actions: saved.actions,
+              name: editing!.name,
+              description: editing!.description,
+              trigger: editing!.trigger,
+              conditions: editing!.conditions,
+              actions: editing!.actions,
               isActive: saved.isActive,
             }
           : selected
@@ -208,12 +211,14 @@ export default function WorkflowBuilderPage() {
       canActivate={userCan('workflows', 'canActivate')}
       readOnly={!!id && (!canEdit || query.get('view') === 'true')}
       onClose={() => router.push('/automation/workflows')}
-      onPause={id ? () => updateWorkflow(id, { isActive: false }) : undefined}
+      onPause={id ? async () => (await workflowsApi.toggle(id, false)).data : undefined}
+      onRestoreVersion={id ? async version => { await workflowsApi.restoreVersion(id, version, revisionTokens.current.draft, revisionTokens.current.version); setRetry(value => value + 1); } : undefined}
       onSave={async (draft) => {
         const targetId = id ?? createdId.current;
         const saved = targetId
-          ? await updateWorkflow(targetId, draft)
+          ? (await (draft.isActive ? workflowsApi.publishDraft(targetId, draft, revisionTokens.current.draft, revisionTokens.current.version) : workflowsApi.saveDraft(targetId, draft, revisionTokens.current.draft, revisionTokens.current.version))).data
           : await addWorkflow(draft);
+        revisionTokens.current = { draft: saved.draftRevision ?? 0, version: saved.version ?? 1 };
         createdId.current = saved.id;
         if (!id) router.replace(`/automation/workflows/${saved.id}/edit`);
         return saved;
