@@ -44,6 +44,9 @@ async function pdfReady(page, title) {
   throw new Error(`Native PDF viewer did not load: ${title}`);
 }
 async function templateControls(page, type, width) {
+  // Compare resting styles after the previous view's hover transition has ended.
+  await page.mouse.move(0, 0);
+  await page.waitForFunction(() => [...document.querySelectorAll('[role="toolbar"] button')].every(button => button.getAnimations().length === 0));
   const controls = [page.getByLabel('Search templates', { exact: true }), page.getByLabel(`Filter ${type.toLowerCase()} templates`, { exact: true }),
     page.getByRole('button', { name: 'Refresh', exact: true }), page.getByRole('button', { name: `New ${type} Template`, exact: true })];
   const boxes = [];
@@ -56,10 +59,37 @@ async function templateControls(page, type, width) {
     const a = boxes[i], b = boxes[j];
     assert.ok(a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1 || a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1, `${type}: toolbar controls overlap at ${width}`);
   }
-  if (width >= 1024) {
-    const container = await page.getByRole('button', { name: `New ${type} Template`, exact: true }).locator('..').boundingBox();
-    assert.ok(Math.abs(boxes[3].x + boxes[3].width - container.x - container.width) < 2, `${type}: right-aligned create action`);
+  assert.equal(await controls[3].count(), 1, `${type}: single create action`);
+  assert.equal(await page.getByRole('button', { name: /Create First .* Template|Create a quotation template/i }).count(), 0);
+  assert.equal(await controls[3].getAttribute('title'), `New ${type} Template`);
+  const heading = page.getByRole('heading', { name: `${type} Templates`, level: 2, exact: true });
+  const subtitle = page.getByText(type === 'Quotation' ? 'Create reusable PDF-formatted quotations for your customers.' : `Create and reuse ${type === 'Email' ? 'email' : 'SMS'} templates for your campaigns.`, { exact: true });
+  const headingBox = await heading.boundingBox(), subtitleBox = await subtitle.boundingBox();
+  const toolbar = await page.getByRole('toolbar', { name: 'templates controls' }).boundingBox();
+  const container = await controls[3].locator('..').boundingBox();
+  const [search, filter, refresh, create] = boxes;
+  const right = box => box.x + box.width, center = box => box.y + box.height / 2;
+  assert.ok(Math.abs(right(create) - right(container)) < 2, `${type}: right-aligned create action`);
+  assert.ok(Math.abs(headingBox.x - container.x) < 2, `${type}: left-aligned heading`);
+  assert.ok(await heading.evaluate(element => element.scrollWidth <= element.clientWidth), `${type}: readable heading`);
+  const textVisible = await controls[3].locator('span').evaluate(element => getComputedStyle(element).display !== 'none');
+  if (width < 640) {
+    assert.equal(textVisible, false, `${type}: icon-only mobile action`);
+    assert.equal(create.width, 44); assert.equal(create.height, 44);
+    assert.ok(Math.abs(center(headingBox) - center(create)) < 2, `${type}: Add beside heading`);
+    assert.ok(subtitleBox.y >= Math.max(headingBox.y + headingBox.height, create.y + create.height) - 1, `${type}: subtitle below heading row`);
+    assert.ok(Math.abs(search.width - toolbar.width) < 2 && Math.abs(search.x - toolbar.x) < 2, `${type}: full-width Search`);
+    assert.ok(filter.y >= search.y + search.height - 1 && Math.abs(center(filter) - center(refresh)) < 2, `${type}: Filter and Refresh share second row`);
+    assert.ok(Math.abs(filter.x - toolbar.x) < 2 && Math.abs(right(refresh) - right(toolbar)) < 2, `${type}: Filter left and Refresh far right`);
+  } else {
+    assert.equal(textVisible, true, `${type}: full desktop label`);
+    assert.equal(create.height, 36, `${type}: original desktop button height`);
+    assert.ok(Math.abs(toolbar.y - create.y) < 2, `${type}: create action stays in desktop toolbar`);
+    assert.ok(Math.abs(center(search) - center(filter)) < 2 && Math.abs(center(filter) - center(refresh)) < 2, `${type}: desktop controls share a row`);
+    assert.ok(filter.x - right(search) < 12 && refresh.x - right(filter) < 12, `${type}: desktop controls retain their original spacing`);
+    assert.ok(headingBox.y >= toolbar.y + toolbar.height, `${type}: section heading below desktop toolbar`);
   }
+  assertions.push(`${width}: ${type} section copy, single responsive creation action and toolbar alignment`);
   const styles = [];
   for (const control of [...controls, page.getByRole('navigation', { name: 'Pagination' }), page.getByRole('button', { name: 'Records per page' })]) {
     styles.push(await control.evaluate(element => {
@@ -73,7 +103,7 @@ async function templateControls(page, type, width) {
 try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  for (const width of [320,375,390,430,768,1024,1440]) {
+  for (const width of [320,375,390,430,639,640,768,1024,1440]) {
     const recipientType = [375, 1024].includes(width) ? 'Contact' : 'Lead', selectedRecipient = recipientType === 'Contact' ? contact : lead;
     const context = await createAcceptanceContext(browser, { viewport: { width, height: 960 }, reducedMotion: 'reduce', sandboxedFrames: true });
     // Permit only Chrome's built-in PDF viewer and its internal resources;
@@ -167,6 +197,15 @@ try {
         await editor.getByRole('button', { name: 'Insert Variable', exact: true }).click(); await page.getByLabel('Search variables').fill('firstName');
         await page.getByRole('button', { name: /First Name.*firstName/ }).click(); assert.equal(await editor.getByLabel('Message Content', { exact: false }).inputValue(), '{{firstName}}');
         await fits(page, `${type} existing creation and variable insertion`, width); await editor.getByRole('button', { name: 'Cancel', exact: true }).click();
+        const savedTemplates = templates;
+        templates = templates.filter(template => template.type !== type);
+        await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+        await page.getByRole('heading', { name: `No ${type} Templates Found`, exact: true }).waitFor();
+        await templateControls(page, type, width);
+        if (width === 320) await page.screenshot({ path: resolve(output, `${type.toLowerCase()}-empty-${width}.png`), fullPage: true });
+        templates = savedTemplates;
+        await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+        await page.getByRole('heading', { name: `${type} Follow 1`, exact: true }).waitFor();
       }
       await page.getByRole('button', { name: 'Quotation Templates', exact: true }).click();
       await page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }).waitFor();
@@ -237,6 +276,10 @@ try {
         await card.getByRole('button', { name: 'Use Template', exact: true }).click(); await page.getByRole('combobox', { name: 'Associated Deal', exact: true }).waitFor();
         await page.getByRole('button', { name: 'Cancel', exact: true }).click(); assertions.push(`${name}: existing Preview, Download and Use Template actions`);
       }
+      templates = templates.filter(template => template.type !== 'Quotation');
+      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+      await page.getByText('No quotation templates found.', { exact: true }).waitFor();
+      await templateControls(page, 'Quotation', width);
       assert.deepEqual(errors, []); assertions.push(`${width}: Email/SMS creation access, create/edit/discard guard, new-template PDF preview/download, PDF error handling and request counts, cursor picker, recipient, Products, details, preview, download, single send`);
       console.log(`${width}px: Email, SMS, and Quotation template preview checks passed`);
     } catch (error) {

@@ -6,15 +6,15 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 import { matchesSearch } from '@/shared/utils/search';
 const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), templateCreate: vi.fn(), templateList: vi.fn(), archive: vi.fn(), refresh: vi.fn(), dataOptions: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
-const scenario = vi.hoisted(() => ({ sms: false }));
-beforeEach(() => { scenario.sms = false; });
+const scenario = vi.hoisted(() => ({ sms: false, smsTrackingVersion: 1 as number | null | undefined, metricCount: 1 as number | undefined }));
+beforeEach(() => { scenario.sms = false; scenario.smsTrackingVersion = 1; scenario.metricCount = 1; });
 const templateDefinitions = CUSTOM_FIELD_MODULES.map((module, index): ClosingField => ({ id: `definition-${index}`, version: 1, module, name: `${module} Custom`, technicalAlias: `${module}Custom`, type: 'Text', active: true, required: false, description: '', visibleInForm: true, visibleInDetails: true, group: 'Basic Information', order: 0, options: [] }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace: vi.fn() }), useSearchParams: () => new URLSearchParams() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'user', tenantId: 'tenant', role: 'Client Admin' }, tenant: { id: 'tenant' }, isLoading: false }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => mocks.permitted }));
 vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: (options: unknown) => {
   mocks.dataOptions(options);
-  return { campaigns: [scenario.sms ? { ...campaign, type: 'Sms', smsTrackingVersion: 1 } : campaign], total: 1, templates: mocks.templates, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh };
+  return { campaigns: [scenario.sms ? { ...campaign, type: 'Sms', smsTrackingVersion: scenario.smsTrackingVersion, openedCount: scenario.metricCount, clickedCount: scenario.metricCount } : campaign], total: 1, templates: mocks.templates, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh };
 } }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive, variableFields: mocks.variableFields, emailSettings: mocks.emailSettings, smsSettings: mocks.smsSettings } }));
 vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { create: mocks.templateCreate, list: mocks.templateList } }));
@@ -48,11 +48,20 @@ it.each(['loaded', 'initial', 'refreshing'] as const)('omits summary KPIs from t
     }
   }
 });
-it('shows tracked SMS unique clicks and click engagement while keeping SMS opens unavailable', () => {
+it.each([undefined, null, 1].flatMap(smsTrackingVersion => [undefined, 0, 7].map(metricCount => ({ smsTrackingVersion, metricCount }))))('shows unavailable SMS engagement with tracking version $smsTrackingVersion and stored count $metricCount', ({ smsTrackingVersion, metricCount }) => {
+  scenario.smsTrackingVersion = smsTrackingVersion; scenario.metricCount = metricCount;
   scenario.sms = true; render(<CampaignsPage />);
+  for (const metric of ['opens', 'clicks', 'engagement']) {
+    const cell = screen.getByTitle(`SMS ${metric} ${metric === 'engagement' ? 'is' : 'are'} unavailable`);
+    expect(cell.textContent).toBe('—');
+    expect(cell.className).toContain('dark:text-slate-400');
+  }
+});
+it('retains Email opened and clicked counts and its existing engagement calculation', () => {
+  render(<CampaignsPage />);
+  expect(screen.getByTitle('Unique opened recipients').textContent).toBe('2');
   expect(screen.getByTitle('Unique clicking recipients').textContent).toBe('1');
-  expect(screen.getByTitle('SMS opens are unavailable').textContent).toBe('—');
-  expect(screen.getByTitle('Unique clicking recipients / SMS submissions; older SMS links are untracked').textContent).toBe('25%');
+  expect(screen.getByTitle('Unique opens / email submissions').textContent).toBe('50%');
 });
 it('passes campaign search and filters to the existing list query and refreshes', async () => {
   render(<CampaignsPage />);
@@ -106,6 +115,7 @@ it('retains View without exposing forbidden mutations', () => {
   mocks.permitted = false;
   render(<CampaignsPage />);
   expect(screen.queryByRole('checkbox', { name: 'Select all records' })).toBeNull();
+  for (const name of ['Submitted', 'Opened', 'Clicked', 'Engagement']) expect(screen.queryByRole('columnheader', { name })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
   expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['View']);
 });
@@ -132,7 +142,7 @@ it('offers persisted outcome statuses including interrupted submissions and Emai
 it('replaces the active template selection with the exact catalog token and restores focus', async () => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'Email Templates' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Create First Email Template' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'New Email Template' }));
   const subject = screen.getByLabelText(/Subject Line/) as HTMLInputElement;
   const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
   fireEvent.change(subject, { target: { value: 'Hello customer!' } });
@@ -156,7 +166,7 @@ it('replaces the active template selection with the exact catalog token and rest
 it.each(['Email', 'SMS'] as const)('renders the %s template fields consecutively without a field filter', async type => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `New ${type} Template` }));
   const panel = await screen.findByRole('dialog', { name: `Create ${type} Template` });
   expect(within(panel).queryByText('Field filter')).toBeNull();
   expect(within(panel).queryByLabelText('Template field source')).toBeNull();
@@ -173,7 +183,7 @@ it.each(['Email', 'SMS'] as const)('searches and inserts approved Lead/Contact f
   mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module, [...templateDefinitions, inactive])) });
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `New ${type} Template` }));
   fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
   await screen.findByRole('button', { name: /leads Custom.*customFieldValues.leadsCustom/ });
   const picker = screen.getByLabelText('Search variables').closest('.max-h-80')! as HTMLElement;
@@ -220,7 +230,7 @@ it.each(['Email', 'SMS'] as const)('keeps hidden and unsupported fields unavaila
   mocks.variableFields.mockResolvedValue({ success: true, data: catalog });
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `New ${type} Template` }));
   fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
   await screen.findByRole('button', { name: /Hidden leads/ });
   for (const module of ['leads', 'contacts']) {
@@ -259,7 +269,7 @@ it.each(['Email', 'SMS'] as const)('previews canonical standard and custom field
 it.each(['Email', 'SMS'] as const)('validates and saves a new %s template through the existing template API', async type => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `New ${type} Template` }));
   const panel = screen.getByRole('dialog', { name: `Create ${type} Template` });
   fireEvent.click(within(panel).getByRole('button', { name: 'Save Template' }));
   expect(mocks.templateCreate).not.toHaveBeenCalled();
@@ -318,7 +328,7 @@ it.each(persistedDefaults)('displays canonical persisted $name content in its ca
 it('inserts a canonical variable in a new SMS template', async () => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'SMS Templates' }));
-  fireEvent.click(await screen.findByRole('button', { name: 'Create First SMS Template' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'New SMS Template' }));
   const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
   fireEvent.focus(content);
   fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
@@ -329,7 +339,7 @@ it('inserts a canonical variable in a new SMS template', async () => {
 it.each(['Email', 'SMS'] as const)('inserts canonical first-name and source-specific company keys in new %s templates', async type => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `New ${type} Template` }));
   const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
   expect(content.placeholder).toContain('{{firstName}}');
   expect(content.placeholder).not.toContain('{{first_name}}');
@@ -352,7 +362,7 @@ it.each(['Email', 'SMS'] as const)('uses the shared primary New %s Template butt
   render(<CampaignsPage />);
   expect(mocks.templateList).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  await screen.findByRole('button', { name: `Create First ${type} Template` });
+  await screen.findByRole('heading', { name: `No ${type} Templates Found` });
   const button = screen.getByRole('button', { name: `New ${type} Template` });
   expect(button.style.backgroundColor).toBe('var(--primary)');
   expect(button.className).toContain('text-white');
@@ -365,6 +375,22 @@ it.each(['Email', 'SMS'] as const)('uses the shared primary New %s Template butt
   fireEvent.click(button);
   expect(screen.getByRole('dialog', { name: `Create ${type} Template` })).toBeTruthy();
   expect(!!screen.queryByLabelText(/Subject Line/)).toBe(type === 'Email');
+});
+
+it.each(['Email', 'SMS'] as const)('shows the %s section copy and one create action in empty and populated views', async type => {
+  const view = render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await screen.findByRole('heading', { name: `No ${type} Templates Found` });
+  expect(screen.getByRole('heading', { level: 2, name: `${type} Templates` })).toBeTruthy();
+  expect(screen.getByText(`Create and reuse ${type === 'Email' ? 'email' : 'SMS'} templates for your campaigns.`)).toBeTruthy();
+  expect(screen.getAllByRole('button', { name: new RegExp(`(?:New|Create First) ${type} Template`) })).toHaveLength(1);
+  expect(within(screen.getByRole('group', { name: 'templates actions' })).getByRole('button', { name: 'Refresh' })).toBeTruthy();
+  view.unmount(); clearPageCache();
+  mocks.templates = messageTemplates(type, 1);
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await screen.findByRole('heading', { name: `${type} Follow 1` });
+  expect(screen.getAllByRole('button', { name: new RegExp(`(?:New|Create First) ${type} Template`) })).toHaveLength(1);
 });
 
 it.each(['Email', 'SMS'] as const)('searches %s names and categories with isolated typed requests and clears empty results', async type => {

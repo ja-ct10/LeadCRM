@@ -5,7 +5,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Copy, Download, Link2, Mail, Send, Target, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CampaignClickedLink, CampaignRecipient } from '@leadcrm/shared';
-import { campaignEngagementRate } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
 import { campaignsApi, type CampaignReportResponse } from '@/shared/services/campaigns.api';
 import { Card } from '@/shared/components/ui/card';
@@ -141,12 +140,11 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const current = report ?? campaign;
   const status = formatCampaignStatus(current.status, current.reviewRequired);
   const isSms = current.type.toUpperCase() === 'SMS';
-  const trackedSms = isSms && current.smsTrackingVersion === 1;
-  const columns: DataGridColumnDef<CampaignRecipient>[] = isSms ? recipientColumns.filter(c => c.id !== 'opened' && (c.id !== 'clicked' || trackedSms)).map(c => c.id === 'email' ? { ...c, id: 'phone', header: 'Phone', accessor: row => row.phone || '—' } : c.id === 'actions' ? { ...c, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.phone} aria-label={`Copy phone for ${row.name}`} title="Copy phone" onClick={async () => { try { await navigator.clipboard.writeText(row.phone || ''); toast.success('Phone copied.'); } catch { toast.error('Unable to copy phone.'); } }}><Copy size={14} /></Button> } : c) : recipientColumns;
+  const columns: DataGridColumnDef<CampaignRecipient>[] = isSms ? recipientColumns.filter(c => c.id !== 'opened' && c.id !== 'clicked').map(c => c.id === 'email' ? { ...c, id: 'phone', header: 'Phone', accessor: row => row.phone || '—' } : c.id === 'actions' ? { ...c, cell: (_, row) => <Button variant="ghost" size="icon" disabled={!row.phone} aria-label={`Copy phone for ${row.name}`} title="Copy phone" onClick={async () => { try { await navigator.clipboard.writeText(row.phone || ''); toast.success('Phone copied.'); } catch { toast.error('Unable to copy phone.'); } }}><Copy size={14} /></Button> } : c) : recipientColumns;
   const filterGroups: FilterGroup[] = [{ id: 'delivery', label: 'Delivery Status', items:
     deliveryFilters.filter(value => !isSms || value !== 'Bounced').map(value => ({ id: value, label: value,
       count: recipients.filter(row => row.deliveryStatus === value).length, isChecked: deliveryFilter.includes(value) })) },
-    ...(!isSms || trackedSms ? [{ id: 'engagement', label: 'Engagement', items: engagementFilters.filter(value => !isSms || value === 'Clicked').map(value => ({ id: value, label: value,
+    ...(!isSms ? [{ id: 'engagement', label: 'Engagement', items: engagementFilters.map(value => ({ id: value, label: value,
       count: recipients.filter(row => value === 'Opened' ? row.opened : row.clicked).length, isChecked: engagementFilter.includes(value) })) }] : [])];
   const toggleFilter = (group: string, value: string) => {
     const update = group === 'delivery' ? setDeliveryFilter : setEngagementFilter;
@@ -154,13 +152,11 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   };
   const initialLoading = loading && !report;
   const count = report?.recipientCount ?? 0;
-  const metrics: { label: string; value: number | string }[] = isSms ? [
+  const metrics: { label: string; value: number }[] = isSms ? [
     { label: 'Recipients', value: count }, { label: 'Submitted', value: report?.sentCount ?? 0 },
     { label: 'Sent', value: recipients.filter(r => ['Sent', 'Delivered'].includes(r.deliveryStatus)).length },
     { label: 'Delivered', value: report?.deliveredCount ?? 0 },
     { label: 'Failed', value: report?.failedCount ?? 0 },
-    { label: 'Total Clicks', value: trackedSms ? report?.clickedCount ?? 0 : '—' },
-    { label: 'Click rate', value: trackedSms && campaignEngagementRate(current) !== null ? `${Math.round(campaignEngagementRate(current)!)}%` : '—' },
   ] : [
     { label: 'Recipients', value: count },
     { label: 'Delivered', value: report?.deliveredCount ?? 0 },
@@ -171,7 +167,6 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   ];
   const trackingMessage = report?.trackingStatus === 'draft' ? 'Save and send this draft to begin tracking.'
     : report?.trackingStatus === 'not_sent' ? 'This campaign has not been submitted.'
-    : isSms && report?.trackingStatus === 'historical_unavailable' ? 'This SMS was sent before recipient link tracking was available. Its original links cannot be tracked retroactively.'
     : report?.trackingStatus === 'no_links' ? 'This campaign contains no trackable HTTP or HTTPS links.'
     : (report?.clickedCount ?? 0) > 0 ? 'Clicks were recorded, but their destination URLs are unavailable.'
     : 'No links have been clicked yet.';
@@ -215,13 +210,12 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     {current.reviewRequired && <p role="status" className="rounded border border-amber-300 p-3 text-sm">Some SMS outcomes are unconfirmed or the provider reported conflicting outcomes. Review the recipient details and TextBee history before sending again. No uncertain message is automatically resent. Refresh this report to check for later provider evidence.</p>}
     {current.submissionInterruptedAt && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-200">Submission was interrupted. Recipients marked as not sent were never submitted. Unconfirmed recipients may have been accepted. Review recipient failure reasons and provider history before sending again; no recipients were automatically retried.</div>}
     {(report || initialLoading) && <>
-      {isSms && <p className="text-xs text-muted-foreground">SMS opens are unavailable. Click rate counts unique clicking recipients / SMS submissions. Known link previews are filtered; unidentified automated visits may still count.</p>}
-      <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-4' : 'xl:grid-cols-6'} gap-3`}>
+      <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-5' : 'xl:grid-cols-6'} gap-3`}>
         {metrics.map((metric, index) => <Card key={metric.label} className="min-w-0 rounded-lg p-4 shadow-sm">
           <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{metric.label}</h2>
           {initialLoading ? <div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /> :
             <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-2xl font-semibold text-slate-900 dark:text-white">{metric.value.toLocaleString()}</span>
-              {isSms && index > 0 && index < 5 && typeof metric.value === 'number' && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
+              {isSms && index > 0 && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
             </div>}
         </Card>)}
       </section>
@@ -253,13 +247,13 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           </div>
         </div>
       </section>
-      <section aria-labelledby="top-links-title" className="min-w-0 space-y-3">
+      {!isSms && <section aria-labelledby="top-links-title" className="min-w-0 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 id="top-links-title" className="text-sm font-semibold text-slate-900 dark:text-white">Top Clicked Links</h2><p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Each recipient counts once per link.</p></div>
           {(report?.topLinks.length ?? 0) > 5 && <Button variant="outline" size="sm" onClick={() => setShowAllLinks(value => !value)}>{showAllLinks ? 'Show Top Five' : 'Show All'}</Button>}</div>
         {initialLoading ? <div aria-hidden="true"><DataLoadingSkeleton rowCount={1} columnCount={2} /></div> : report?.topLinks.length ?
           <DataGrid isRefreshing={loading && !initialLoading} ariaLabel="Top links clicked table" columns={linkColumns} data={showAllLinks ? report.topLinks : report.topLinks.slice(0, 5)} getRowId={row => row.url} height="auto" /> :
           <Card className="rounded-lg p-4 shadow-none text-xs text-slate-500 dark:text-slate-400">{trackingMessage}</Card>}
-      </section>
+      </section>}
     </>}
   </div>;
 }

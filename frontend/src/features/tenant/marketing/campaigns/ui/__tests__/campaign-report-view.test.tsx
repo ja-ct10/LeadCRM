@@ -3,6 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CampaignReportView } from '../campaign-report-view';
 import { campaignsApi } from '@/shared/services/campaigns.api';
+import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { report: vi.fn() } }));
 const campaign = { id: 'campaign', name: 'Autumn update', type: 'Email', status: 'sent', targetAudience: 'Customers', sentCount: 4, engagement: 0, createdAt: '2026-10-02', sentAt: '2026-10-02T02:10:00Z' } as const;
 const recipients = [
@@ -82,29 +83,55 @@ describe('campaign report', () => {
     render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
     await screen.findByText('+639171234567');
     const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
-    expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Submitted', 'Sent', 'Delivered', 'Failed', 'Total Clicks', 'Click rate']);
+    expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Submitted', 'Sent', 'Delivered', 'Failed']);
     expect(metrics.textContent).toContain('Failed1');
     expect(screen.queryByRole('columnheader', { name: 'Email' })).toBeNull();
     expect(screen.queryByRole('columnheader', { name: 'Opened' })).toBeNull(); expect(screen.queryByRole('columnheader', { name: 'Clicked' })).toBeNull();
-    expect(screen.queryByText('No clicked links recorded for this campaign.')).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Top Clicked Links' })).toBeNull();
+    expect(screen.queryByText(/SMS opens|Click rate|link previews/)).toBeNull();
     select('Pending'); expect(rows()).toHaveLength(1);
+    expect(within(filterPanel()).queryByRole('checkbox', { name: 'Filter by Clicked' })).toBeNull();
+    expect(within(filterPanel()).queryByRole('checkbox', { name: 'Filter by Opened' })).toBeNull();
     expect(screen.queryByText('Requires review')).toBeNull();
     select('All recipients'); fireEvent.change(screen.getByLabelText('Search recipients'), { target: { value: '63919' } }); expect(rows()).toHaveLength(1);
   });
-  it('shows tracked SMS clicks, click rate, link totals and conflicting provider evidence without SMS opens', async () => {
+  it('omits tracked SMS engagement while preserving delivery counts, activity, actions and conflicting provider evidence', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
     vi.mocked(campaignsApi.report).mockResolvedValue({ success: true, data: { ...response().data, type: 'SMS', status: 'delivered', reviewRequired: true,
-      smsTrackingVersion: 1, sentCount: 4, clickedCount: 1, recipients: [{ ...recipients[1], email: null, phone: '+639171234567', providerConflict: true,
+      smsTrackingVersion: 1, recipientCount: 1, sentCount: 1, deliveredCount: 1, failedCount: 0, clickedCount: 1, recipients: [{ ...recipients[1], email: null, phone: '+639171234567', providerConflict: true,
         providerEvents: [{ status: 'failed', occurredAt: '2026-10-17T03:15:51Z', receivedAt: '2026-10-17T03:16:00Z' }, { status: 'delivered', occurredAt: '2026-10-17T03:15:54Z', receivedAt: '2026-10-17T03:15:55Z' }] }] } } as never);
     render(<CampaignReportView campaign={{ ...campaign, type: 'SMS' } as never} onBack={vi.fn()} />);
     await screen.findByText('+639171234567');
     const metrics = screen.getByRole('region', { name: 'Campaign metrics' });
-    expect(metrics.textContent).toContain('Total Clicks1'); expect(metrics.textContent).toContain('Click rate25%');
-    expect(screen.getByRole('columnheader', { name: 'Clicked' })).toBeTruthy();
-    expect(screen.queryByRole('columnheader', { name: 'Opened' })).toBeNull();
+    expect(within(metrics).getAllByRole('heading').map(el => el.textContent)).toEqual(['Recipients', 'Submitted', 'Sent', 'Delivered', 'Failed']);
+    for (const [label, count] of [['Recipients', 1], ['Submitted', 1], ['Sent', 1], ['Delivered', 1], ['Failed', 0]]) {
+      expect(within(metrics).getByRole('heading', { name: String(label) }).parentElement?.querySelector('.text-2xl')?.textContent).toBe(String(count));
+    }
+    expect(screen.getAllByRole('columnheader').map(el => el.textContent)).toEqual(['Recipient', 'Phone', 'Delivery Status', 'Last Activity', 'Actions']);
+    expect(screen.getByText(formatDateTime(recipients[1].lastActivity))).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Copy phone for Luis Reyes' }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith('+639171234567'));
     expect(screen.getByText('Provider outcomes conflict. Review before sending again.')).toBeTruthy();
     expect(screen.getAllByText('Delivered · Review')).toHaveLength(2);
     fireEvent.click(screen.getByText('Provider events')); expect(screen.getByText(/failed:/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'https://camxian.com/cctv-surveillance-system' })).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Top Clicked Links' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Top links clicked table' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'https://camxian.com/cctv-surveillance-system' })).toBeNull();
+    select('Delivered');
+    expect(within(filterPanel()).queryByText('Engagement')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await waitFor(() => expect(campaignsApi.report).toHaveBeenCalledTimes(2));
+    expect(screen.getByText(formatDateTime(recipients[1].lastActivity))).toBeTruthy();
+  });
+  it.each([401, 403, 404])('clears protected report data and disables exports after a %s response', async status => {
+    mount(); await screen.findByText('Doris Testing');
+    vi.mocked(campaignsApi.report).mockRejectedValueOnce(Object.assign(new Error('Report access denied.'), { status }));
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    await screen.findByRole('alert');
+    await waitFor(() => expect(screen.queryByText('Doris Testing')).toBeNull());
+    expect((screen.getByRole('button', { name: 'Export report' }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByRole('grid')).toBeNull();
   });
   it('renders real counts, delivery and engagement values, dates and link data without the retired panels', async () => {
     mount(); await screen.findByText('Doris Testing');

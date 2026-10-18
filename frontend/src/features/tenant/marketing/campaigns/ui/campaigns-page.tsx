@@ -22,13 +22,13 @@ import { FieldError } from './audience-panel';
 import { TableLoadingState } from '@/shared/components/crm/table-loading-state';
 import { useAuth } from '@/store/AuthContext';
 import { toast } from 'sonner';
-import { Archive, Plus, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
+import { Archive, Send, X, Mail, MessageSquare, Megaphone, BarChart2, Eye, MousePointerClick, Edit2, Trash2, Play, Pause, Search, Filter, TrendingUp, TrendingDown, Copy, Calendar, ArrowLeft, SplitSquareHorizontal, ListOrdered, Monitor, Smartphone, Tags, Wand2, LayoutTemplate, Zap, Trophy, MoreVertical, Sparkles, Users, Loader2 } from 'lucide-react';
 import EmptyState from '@/shared/components/empty-state';
 import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
@@ -235,9 +235,9 @@ export default function CampaignsPage() {
     { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} reviewRequired={row.reviewRequired} /> },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },
     { id: 'submitted', header: 'Submitted', accessor: row => row.sentCount, width: 120 },
-    { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span title={row.type.toUpperCase() === 'SMS' ? 'SMS opens are unavailable' : 'Unique opened recipients'}>{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },
-    { id: 'clicked', header: 'Clicked', accessor: row => row.type.toUpperCase() === 'SMS' && row.smsTrackingVersion !== 1 ? '—' : row.clickedCount ?? 0, width: 110, cell: (_, row) => <span title={row.type.toUpperCase() === 'SMS' && row.smsTrackingVersion !== 1 ? 'Older SMS links were not tracked' : 'Unique clicking recipients'}>{row.type.toUpperCase() === 'SMS' && row.smsTrackingVersion !== 1 ? '—' : row.clickedCount ?? 0}</span> },
-    { id: 'engagement', header: 'Engagement', accessor: row => campaignEngagementRate(row) === null ? '—' : `${Math.round(campaignEngagementRate(row)!)}%`, width: 130, cell: (_, row) => <span title={row.type.toUpperCase() === 'SMS' ? 'Unique clicking recipients / SMS submissions; older SMS links are untracked' : 'Unique opens / email submissions'}>{campaignEngagementRate(row) === null ? '—' : `${Math.round(campaignEngagementRate(row)!)}%`}</span> },
+    { id: 'opened', header: 'Opened', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0, width: 110, cell: (_, row) => <span className={row.type.toUpperCase() === 'SMS' ? 'text-[#5A6B85] dark:text-slate-400' : undefined} title={row.type.toUpperCase() === 'SMS' ? 'SMS opens are unavailable' : 'Unique opened recipients'}>{row.type.toUpperCase() === 'SMS' ? '—' : row.openedCount ?? 0}</span> },
+    { id: 'clicked', header: 'Clicked', accessor: row => row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0, width: 110, cell: (_, row) => <span className={row.type.toUpperCase() === 'SMS' ? 'text-[#5A6B85] dark:text-slate-400' : undefined} title={row.type.toUpperCase() === 'SMS' ? 'SMS clicks are unavailable' : 'Unique clicking recipients'}>{row.type.toUpperCase() === 'SMS' ? '—' : row.clickedCount ?? 0}</span> },
+    { id: 'engagement', header: 'Engagement', accessor: row => row.type.toUpperCase() === 'SMS' || campaignEngagementRate(row) === null ? '—' : `${Math.round(campaignEngagementRate(row)!)}%`, width: 130, cell: (_, row) => <span className={row.type.toUpperCase() === 'SMS' ? 'text-[#5A6B85] dark:text-slate-400' : undefined} title={row.type.toUpperCase() === 'SMS' ? 'SMS engagement is unavailable' : 'Unique opens / email submissions'}>{row.type.toUpperCase() === 'SMS' || campaignEngagementRate(row) === null ? '—' : `${Math.round(campaignEngagementRate(row)!)}%`}</span> },
     { id: 'createdAt', sortable: true, header: 'Created', accessor: row => row.createdAt, width: 210, cell: (_, row) => <span title={formatDateTime(row.createdAt)}>{formatDateTime(row.createdAt)}</span> },
   ];
   const tableColumns = useModuleTableColumns('campaigns', CAMPAIGNS_TABLE_COLUMNS, campaignColumns.filter(column => canViewReports || !['submitted', 'opened', 'clicked', 'engagement'].includes(column.id)));
@@ -381,11 +381,13 @@ export default function CampaignsPage() {
       )}
 
       {templateType && <section className="min-w-0 space-y-4">
-        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-          <ModuleTableToolbar label="templates" search={templateSearch} onSearch={value => { setTemplateSearch(value); setTemplatePage(1); }} placeholder="Search templates…"
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 sm:items-start">
+          <div className="col-span-2 mb-4 min-w-0 sm:col-span-1 sm:justify-self-start"><ModuleTableToolbar stackSearchOnMobile label="templates" search={templateSearch} onSearch={value => { setTemplateSearch(value); setTemplatePage(1); }} placeholder="Search templates…"
             onRefresh={refreshTemplates} refreshing={templateList.isInitialLoad || templateList.isRefreshing || templateCategories.isRefreshing}
-            filter={<FilterButton title={`${templateType.toLowerCase()} templates`} open={showTemplateFilters} active={!!templateCategory} onClick={() => setShowTemplateFilters(value => !value)} />} />
-          <Button onClick={() => { setNewTemplateType(templateType); setIsTemplateModalOpen(true); }}><Plus size={16} aria-hidden="true" /> New {templateType} Template</Button>
+            filter={<FilterButton title={`${templateType.toLowerCase()} templates`} open={showTemplateFilters} active={!!templateCategory} onClick={() => setShowTemplateFilters(value => !value)} />} /></div>
+          <CreateButton label={`New ${templateType} Template`} className="col-start-2 row-start-2 sm:row-start-1 sm:mb-4 sm:min-h-9" onClick={() => { setNewTemplateType(templateType); setIsTemplateModalOpen(true); }} />
+          <h2 className="col-start-1 row-start-2 min-w-0 text-lg font-semibold sm:col-span-2">{templateType} Templates</h2>
+          <p className="col-span-2 row-start-3 text-sm text-muted-foreground">Create and reuse {templateType === 'Email' ? 'email' : 'SMS'} templates for your campaigns.</p>
         </div>
         <ModuleFilterRail showFilters={showTemplateFilters} onToggleFilters={() => setShowTemplateFilters(false)} totalRecords={templateList.data?.meta.total ?? 0}
           onClearFilters={() => { setTemplateCategory(''); setTemplatePage(1); }}
@@ -435,8 +437,6 @@ export default function CampaignsPage() {
                 type="email"
                 title="No Email Templates Found"
                 description="Save reusable drafts for follow-ups, newsletters, and announcements to establish consistent client touchpoints."
-                actionLabel="Create First Email Template"
-                onAction={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
               />
             </div>
           )}
@@ -482,8 +482,6 @@ export default function CampaignsPage() {
                 type="sms"
                 title="No SMS Templates Found"
                 description="Draft quick SMS templates with dynamic placeholders like {{firstName}} to let your representatives reply to prospects instantly."
-                actionLabel="Create First SMS Template"
-                onAction={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
               />
             </div>
           )}

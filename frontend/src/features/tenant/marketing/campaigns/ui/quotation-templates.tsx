@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useRef, useState } from 'react';
-import { Plus, FileDown, MoreVertical, Edit2 } from 'lucide-react';
+import { FileDown, MoreVertical, Edit2 } from 'lucide-react';
 import { MarketingTemplateSchema, QUOTATION_CATEGORIES, QuotationTemplateContentSchema,
   defaultQuotationContent, parseQuotationTemplate, quotationVariableChoices, type QuotationTemplateContent } from '@leadcrm/shared';
 import type { Template } from '@/store/types';
@@ -13,7 +13,7 @@ import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
-import { Button } from '@/shared/components/ui/button';
+import { Button, CreateButton } from '@/shared/components/ui/button';
 import { Badge } from '@/shared/components/ui/badge';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/shared/components/ui/dropdown-menu';
@@ -83,13 +83,16 @@ export function QuotationTemplates() {
     finally { setBusyId(''); }
   }
   return <section className="min-w-0 space-y-4">
-    <div className="flex min-w-0 flex-wrap items-start justify-between gap-3"><ModuleTableToolbar label="templates" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search templates…" onRefresh={result.refetch} refreshing={result.isRefreshing}
-      filter={<FilterButton title="quotation templates" open={filters} active={!!category} onClick={() => setFilters(value => !value)} />} />
-      {canCreate && <Button onClick={() => setEditor({ template: null })}><Plus size={16} /> New Quotation Template</Button>}</div>
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 sm:items-start">
+      <div className="col-span-2 mb-4 min-w-0 sm:col-span-1 sm:justify-self-start"><ModuleTableToolbar stackSearchOnMobile label="templates" search={search} onSearch={value => { setSearch(value); setPage(1); }} placeholder="Search templates…" onRefresh={result.refetch} refreshing={result.isRefreshing}
+        filter={<FilterButton title="quotation templates" open={filters} active={!!category} onClick={() => setFilters(value => !value)} />} /></div>
+      {canCreate && <CreateButton label="New Quotation Template" className="col-start-2 row-start-2 sm:row-start-1 sm:mb-4 sm:min-h-9" onClick={() => setEditor({ template: null })} />}
+      <h2 className="col-start-1 row-start-2 min-w-0 text-lg font-semibold sm:col-span-2">Quotation Templates</h2>
+      <p className="col-span-2 row-start-3 text-sm text-muted-foreground">Create reusable PDF-formatted quotations for your customers.</p>
+    </div>
     <ModuleFilterRail showFilters={filters} onToggleFilters={() => setFilters(false)} totalRecords={result.data?.meta.total ?? 0} onClearFilters={() => { setCategory(''); setPage(1); }} filterGroups={[{ id: 'category', label: 'Category', isExpanded: true, items: categories.map(value => ({ id: value, label: value, isChecked: category === value })) }]} onFilterToggle={(_group, value) => { setCategory(previous => previous === value ? '' : value); setPage(1); }} />
-    <div><h2 className="text-lg font-semibold">Quotation Templates</h2><p className="text-sm text-muted-foreground">Create reusable PDF-formatted quotations for your customers.</p></div>
     {result.error && <p role="alert" className="text-sm text-destructive">{result.error}</p>}
-    {result.isInitialLoad ? <p role="status">Loading quotation templates…</p> : !templates.length ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No quotation templates found.{canCreate && <Button variant="outline" className="ml-2" onClick={() => setEditor({ template: null })}>Create a quotation template</Button>}</div> :
+    {result.isInitialLoad ? <p role="status">Loading quotation templates…</p> : !templates.length ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No quotation templates found.</div> :
       <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{templates.map(template => {
         let description = 'Reusable quotation template';
         try { description = parseQuotationTemplate(template.content).introduction.replace(/^Dear[^\n]*\n*/i, '').trim(); } catch { /* Existing malformed records remain visible for a clear API error. */ }
