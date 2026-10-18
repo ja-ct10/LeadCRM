@@ -3,7 +3,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { CUSTOM_FIELD_MODULES, getCrmFieldCatalog, type ClosingField } from '@leadcrm/shared';
 import { clearPageCache } from '@/shared/cache/page-cache';
-const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), templateCreate: vi.fn(), archive: vi.fn(), refresh: vi.fn(), dataOptions: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
+import { matchesSearch } from '@/shared/utils/search';
+const mocks = vi.hoisted(() => ({ get: vi.fn(), duplicate: vi.fn(), create: vi.fn(), templateCreate: vi.fn(), templateList: vi.fn(), archive: vi.fn(), refresh: vi.fn(), dataOptions: vi.fn(), builder: vi.fn(), variableFields: vi.fn(), emailSettings: vi.fn(), smsSettings: vi.fn(), templates: [] as Array<{ id: string; name: string; type: 'Email' | 'SMS'; content: string; subject?: string; category: string }>, permitted: true, initial: false, refreshing: false }));
 const campaign = { id: 'campaign', name: 'Saved campaign', type: 'Email', status: 'sent', targetAudience: 'All Leads', sentCount: 4, openedCount: 2, clickedCount: 1, createdAt: '2026-09-30' };
 const scenario = vi.hoisted(() => ({ sms: false }));
 beforeEach(() => { scenario.sms = false; });
@@ -16,13 +17,20 @@ vi.mock('../../hooks/use-campaigns-data', () => ({ useCampaignsData: (options: u
   return { campaigns: [scenario.sms ? { ...campaign, type: 'Sms', smsTrackingVersion: 1 } : campaign], total: 1, templates: mocks.templates, isInitialLoad: mocks.initial, isRefreshing: mocks.refreshing, refetch: mocks.refresh };
 } }));
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { get: mocks.get, duplicate: mocks.duplicate, create: mocks.create, archive: mocks.archive, variableFields: mocks.variableFields, emailSettings: mocks.emailSettings, smsSettings: mocks.smsSettings } }));
-vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { create: mocks.templateCreate } }));
+vi.mock('@/shared/services/templates.api', () => ({ templatesApi: { create: mocks.templateCreate, list: mocks.templateList } }));
 vi.mock('../campaign-builder', () => ({ CampaignBuilder: (props: unknown) => { mocks.builder(props); return <div>Campaign editor</div>; } }));
 vi.mock('../campaign-report-view', () => ({ CampaignReportView: () => <div>Campaign report</div> }));
 vi.mock('next/navigation', () => ({ useSearchParams: () => new URLSearchParams(), useRouter: () => ({ replace: vi.fn() }) }));
 import CampaignsPage from '../campaigns-page';
 beforeEach(() => { clearPageCache(); vi.stubGlobal('matchMedia', () => ({ matches: false, addEventListener() {}, removeEventListener() {} })); vi.clearAllMocks(); mocks.templates = []; mocks.permitted = true; mocks.initial = false; mocks.refreshing = false; mocks.archive.mockResolvedValue({ success: true }); mocks.templateCreate.mockResolvedValue({ success: true }); mocks.refresh.mockResolvedValue(undefined); mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module)) }); mocks.emailSettings.mockResolvedValue({ success: true, data: { senderName: 'Provider sender', senderEmail: 'provider@example.test' } }); mocks.smsSettings.mockResolvedValue({ success: true, data: { organizationName: 'SMS organization', organizationEmail: 'contact@example.test' } }); vi.stubGlobal('ResizeObserver', class { observe() {} unobserve() {} disconnect() {} }); });
 afterEach(() => { cleanup(); clearPageCache(); });
+beforeEach(() => {
+  mocks.templateList.mockImplementation(async (query: Record<string, unknown>) => {
+    const data = mocks.templates.filter(template => (!query.type || template.type === query.type) && (!query.category || template.category === query.category) && matchesSearch(String(query.search ?? ''), template.name, template.category));
+    const page = Number(query.page ?? 1), limit = Number(query.limit ?? 10);
+    return { success: true, data: data.slice((page - 1) * limit, page * limit), meta: { total: data.length, page, limit, hasMore: page * limit < data.length } };
+  });
+});
 it.each(['loaded', 'initial', 'refreshing'] as const)('omits summary KPIs from the %s campaign list', state => {
   if (state !== 'loaded') mocks[state] = true;
   render(<CampaignsPage />);
@@ -124,7 +132,7 @@ it('offers persisted outcome statuses including interrupted submissions and Emai
 it('replaces the active template selection with the exact catalog token and restores focus', async () => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'Email Templates' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Create First Email Template' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Create First Email Template' }));
   const subject = screen.getByLabelText(/Subject Line/) as HTMLInputElement;
   const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
   fireEvent.change(subject, { target: { value: 'Hello customer!' } });
@@ -148,7 +156,7 @@ it('replaces the active template selection with the exact catalog token and rest
 it.each(['Email', 'SMS'] as const)('renders the %s template fields consecutively without a field filter', async type => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
   const panel = await screen.findByRole('dialog', { name: `Create ${type} Template` });
   expect(within(panel).queryByText('Field filter')).toBeNull();
   expect(within(panel).queryByLabelText('Template field source')).toBeNull();
@@ -165,7 +173,7 @@ it.each(['Email', 'SMS'] as const)('searches and inserts approved Lead/Contact f
   mocks.variableFields.mockResolvedValue({ success: true, data: CUSTOM_FIELD_MODULES.flatMap(module => getCrmFieldCatalog(module, [...templateDefinitions, inactive])) });
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
   fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
   await screen.findByRole('button', { name: /leads Custom.*customFieldValues.leadsCustom/ });
   const picker = screen.getByLabelText('Search variables').closest('.max-h-80')! as HTMLElement;
@@ -212,7 +220,7 @@ it.each(['Email', 'SMS'] as const)('keeps hidden and unsupported fields unavaila
   mocks.variableFields.mockResolvedValue({ success: true, data: catalog });
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
   fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
   await screen.findByRole('button', { name: /Hidden leads/ });
   for (const module of ['leads', 'contacts']) {
@@ -230,7 +238,7 @@ it.each(['Email', 'SMS'] as const)('previews %s templates with current configure
   mocks.templates = [{ id: 'template', name: 'Sender template', type, category: 'Marketing', subject: 'Hello {{firstName}}', content: '{{firstName}} {{first_name}} {{sender_name}} {{sender_email}}' }];
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: type === 'Email' ? 'Email Templates' : 'SMS Templates' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview' }));
   const text = type === 'Email' ? 'John John Provider sender provider@example.test' : 'John John SMS organization contact@example.test';
   await screen.findByText(text);
 });
@@ -240,7 +248,7 @@ it.each(['Email', 'SMS'] as const)('previews canonical standard and custom field
   mocks.templates = [{ id: 'template', name: 'Combined variables', type, category: 'Marketing', subject: 'Hello {{firstName}} {{lastName}} at {{companyName}}', content: '{{firstName}} {{lastName}} | {{email}} | {{phone}} | {{companyName}} | {{companyName}} | {{customFieldValues.leadsCustom}} | {{customFieldValues.contactsCustom}} | {{customFieldValues.definition-0}} | {{customFieldValues.definition-1}} | {{sender_name}} {{sender_email}}' }];
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview' }));
   const preview = screen.getByRole('dialog', { name: 'Template Preview' });
   const sender = type === 'Email' ? 'Provider sender provider@example.test' : 'SMS organization contact@example.test';
   await waitFor(() => expect(preview.textContent).toContain(`John Doe | Example Email | Example Phone | Example Company | Example Company | Example leads Custom | Example contacts Custom | Example leads Custom | Example contacts Custom | ${sender}`));
@@ -251,7 +259,7 @@ it.each(['Email', 'SMS'] as const)('previews canonical standard and custom field
 it.each(['Email', 'SMS'] as const)('validates and saves a new %s template through the existing template API', async type => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
   const panel = screen.getByRole('dialog', { name: `Create ${type} Template` });
   fireEvent.click(within(panel).getByRole('button', { name: 'Save Template' }));
   expect(mocks.templateCreate).not.toHaveBeenCalled();
@@ -289,7 +297,7 @@ it.each(persistedDefaults)('displays canonical persisted $name content in its ca
   mocks.templates = [template];
   const page = render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  expect(screen.getByText(template.content)).toBeTruthy();
+  expect(await screen.findByText(template.content)).toBeTruthy();
   if (template.subject) expect(screen.getByText(template.subject)).toBeTruthy();
   expect(page.container.textContent).not.toMatch(/{{(?:first_name|company_name)}}/);
   fireEvent.click(screen.getByRole('button', { name: 'Use Template' }));
@@ -298,7 +306,7 @@ it.each(persistedDefaults)('displays canonical persisted $name content in its ca
   page.unmount();
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Preview' }));
   const preview = screen.getByRole('dialog', { name: 'Template Preview' });
   const sender = type === 'Email' ? 'Provider sender provider@example.test' : 'SMS organization contact@example.test';
   await waitFor(() => expect(preview.textContent).toContain(`Hi John, please call us tomorrow for Example Company. ${sender}`));
@@ -310,7 +318,7 @@ it.each(persistedDefaults)('displays canonical persisted $name content in its ca
 it('inserts a canonical variable in a new SMS template', async () => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: 'SMS Templates' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Create First SMS Template' }));
+  fireEvent.click(await screen.findByRole('button', { name: 'Create First SMS Template' }));
   const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
   fireEvent.focus(content);
   fireEvent.click(screen.getByRole('button', { name: 'Insert Variable' }));
@@ -321,7 +329,7 @@ it('inserts a canonical variable in a new SMS template', async () => {
 it.each(['Email', 'SMS'] as const)('inserts canonical first-name and source-specific company keys in new %s templates', async type => {
   render(<CampaignsPage />);
   fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
-  fireEvent.click(screen.getByRole('button', { name: `Create First ${type} Template` }));
+  fireEvent.click(await screen.findByRole('button', { name: `Create First ${type} Template` }));
   const content = screen.getByLabelText(/Message Content/) as HTMLTextAreaElement;
   expect(content.placeholder).toContain('{{firstName}}');
   expect(content.placeholder).not.toContain('{{first_name}}');
@@ -334,4 +342,177 @@ it.each(['Email', 'SMS'] as const)('inserts canonical first-name and source-spec
     expect(content.value).toBe(`{{${key}}}`);
     expect(content.value).not.toMatch(/{{(?:first_name|company_name)}}/);
   }
+});
+
+function messageTemplates(type: 'Email' | 'SMS', count: number) {
+  return Array.from({ length: count }, (_, index) => ({ id: `${type}-${index}`, name: `${type} Follow ${index + 1}`, type, category: index % 2 ? 'Support' : 'Sales', subject: type === 'Email' ? 'Saved subject' : undefined, content: `Saved ${type} content ${index + 1}` }));
+}
+
+it.each(['Email', 'SMS'] as const)('uses the shared primary New %s Template button and existing creation panel', async type => {
+  render(<CampaignsPage />);
+  expect(mocks.templateList).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await screen.findByRole('button', { name: `Create First ${type} Template` });
+  const button = screen.getByRole('button', { name: `New ${type} Template` });
+  expect(button.style.backgroundColor).toBe('var(--primary)');
+  expect(button.className).toContain('text-white');
+  expect(button.className).toContain('h-9');
+  expect(button.className).toContain('rounded-xl');
+  expect(screen.getByRole('toolbar', { name: 'templates controls' })).toBeTruthy();
+  expect(screen.getByLabelText('Search templates')).toBeTruthy();
+  expect(screen.getByLabelText(`Filter ${type.toLowerCase()} templates`)).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Refresh' }).getAttribute('title')).toBe('Refresh');
+  fireEvent.click(button);
+  expect(screen.getByRole('dialog', { name: `Create ${type} Template` })).toBeTruthy();
+  expect(!!screen.queryByLabelText(/Subject Line/)).toBe(type === 'Email');
+});
+
+it.each(['Email', 'SMS'] as const)('searches %s names and categories with isolated typed requests and clears empty results', async type => {
+  const otherType = type === 'Email' ? 'SMS' : 'Email';
+  mocks.templates = [...messageTemplates(type, 2), ...messageTemplates(otherType, 2)];
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await screen.findByRole('heading', { name: `${type} Follow 1` });
+  expect(screen.queryByRole('heading', { name: `${otherType} Follow 1` })).toBeNull();
+  const search = screen.getByLabelText('Search templates');
+  fireEvent.change(search, { target: { value: 'fOlLoW 2' } });
+  await waitFor(() => expect(screen.queryByRole('heading', { name: `${type} Follow 1` })).toBeNull());
+  await screen.findByRole('heading', { name: `${type} Follow 2` });
+  expect(mocks.templateList).toHaveBeenCalledWith({ type, search: 'fOlLoW 2', category: '', page: 1, limit: 10 });
+  fireEvent.change(search, { target: { value: 'sAlEs' } });
+  await screen.findByRole('heading', { name: `${type} Follow 1` });
+  expect(screen.queryByRole('heading', { name: `${type} Follow 2` })).toBeNull();
+  fireEvent.change(search, { target: { value: 'no matching template' } });
+  await screen.findByRole('heading', { name: 'No templates match your search or filters' });
+  expect(screen.getByText('Page 1 of 1')).toBeTruthy();
+  expect(screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Clear search and filters' }));
+  await screen.findByRole('heading', { name: `${type} Follow 2` });
+  expect((search as HTMLInputElement).value).toBe('');
+});
+
+it.each(['Email', 'SMS'] as const)('paginates %s results and resets pages for search, category, and size changes', async type => {
+  mocks.templates = messageTemplates(type, 25);
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await screen.findByText('Page 1 of 3');
+  expect(screen.getAllByRole('button', { name: 'Preview' })).toHaveLength(10);
+  expect(screen.getByRole('button', { name: 'Previous page' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByRole('heading', { name: `${type} Follow 11` });
+  fireEvent.change(screen.getByLabelText('Search templates'), { target: { value: 'Follow' } });
+  await screen.findByRole('heading', { name: `${type} Follow 1` });
+  expect(screen.getByText('Page 1 of 3')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByRole('heading', { name: `${type} Follow 11` });
+  fireEvent.click(screen.getByLabelText(`Filter ${type.toLowerCase()} templates`));
+  const rail = document.querySelector('aside.hidden') as HTMLElement;
+  fireEvent.click(within(rail).getByRole('checkbox', { name: 'Filter by Sales' }));
+  await screen.findByText('Page 1 of 2');
+  expect(screen.queryByRole('heading', { name: `${type} Follow 2` })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByRole('heading', { name: `${type} Follow 21` });
+  expect(screen.getAllByRole('button', { name: 'Preview' })).toHaveLength(3);
+  expect(screen.getByRole('button', { name: 'Next page' }).hasAttribute('disabled')).toBe(true);
+  fireEvent.click(screen.getByRole('button', { name: 'Records per page' }));
+  expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['10', '20', '25', '50', '100']);
+  fireEvent.click(screen.getByRole('option', { name: '20' }));
+  await screen.findByText('Page 1 of 1');
+  expect(screen.getAllByRole('button', { name: 'Preview' })).toHaveLength(13);
+  fireEvent.click(within(rail).getByRole('button', { name: 'Clear filters' }));
+  await screen.findByText('Page 1 of 2');
+  expect((screen.getByLabelText('Search templates') as HTMLInputElement).value).toBe('Follow');
+  expect(mocks.templateList).toHaveBeenCalledWith({ type, search: 'Follow', category: '', page: 1, limit: 20 });
+});
+
+it.each(['Email', 'SMS'] as const)('loads all %s categories across API pages and toggles a single category', async type => {
+  mocks.templates = [...messageTemplates(type, 100), { ...messageTemplates(type, 1)[0], id: 'last', name: 'Last template', category: 'Rare category' },
+    { ...messageTemplates(type === 'Email' ? 'SMS' : 'Email', 1)[0], category: 'Other type category' }];
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await waitFor(() => expect(mocks.templateList).toHaveBeenCalledWith({ type, page: 2, limit: 100 }));
+  fireEvent.click(screen.getByLabelText(`Filter ${type.toLowerCase()} templates`));
+  const rail = document.querySelector('aside.hidden') as HTMLElement;
+  const rare = await within(rail).findByRole('checkbox', { name: 'Filter by Rare category' });
+  expect(within(rail).queryByRole('checkbox', { name: 'Filter by Other type category' })).toBeNull();
+  fireEvent.click(rare);
+  await screen.findByRole('heading', { name: 'Last template' });
+  expect(screen.getByText('Page 1 of 1')).toBeTruthy();
+  fireEvent.click(within(rail).getByRole('checkbox', { name: 'Filter by Sales' }));
+  await screen.findByText('Page 1 of 5');
+  expect((rare as HTMLInputElement).checked).toBe(false);
+  fireEvent.click(within(rail).getByRole('checkbox', { name: 'Filter by Sales' }));
+  await screen.findByText('Page 1 of 11');
+});
+
+it.each(['Email', 'SMS'] as const)('refreshes only %s templates, retains filters, and clamps a shrinking last page', async type => {
+  mocks.templates = messageTemplates(type, 25);
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  await screen.findByText('Page 1 of 3');
+  fireEvent.change(screen.getByLabelText('Search templates'), { target: { value: 'Follow' } });
+  await screen.findByText('Page 1 of 3');
+  fireEvent.click(screen.getByLabelText(`Filter ${type.toLowerCase()} templates`));
+  const rail = document.querySelector('aside.hidden') as HTMLElement;
+  fireEvent.click(await within(rail).findByRole('checkbox', { name: 'Filter by Sales' }));
+  await screen.findByText('Page 1 of 2');
+  fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+  await screen.findByRole('heading', { name: `${type} Follow 21` });
+  mocks.templates = messageTemplates(type, 5);
+  const requestsBeforeRefresh = mocks.templateList.mock.calls.length;
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await screen.findByRole('heading', { name: `${type} Follow 1` });
+  await waitFor(() => expect(screen.getAllByRole('button', { name: 'Preview' })).toHaveLength(3));
+  expect(screen.getByText('Page 1 of 1')).toBeTruthy();
+  expect((screen.getByLabelText('Search templates') as HTMLInputElement).value).toBe('Follow');
+  expect(mocks.templateList.mock.calls.slice(requestsBeforeRefresh).map(([query]) => query)).toEqual(expect.arrayContaining([
+    { type, search: 'Follow', category: 'Sales', page: 2, limit: 10 }, { type, page: 1, limit: 100 }, { type, search: 'Follow', category: 'Sales', page: 1, limit: 10 },
+  ]));
+  expect(mocks.refresh).not.toHaveBeenCalled();
+});
+
+it('resets message list controls on tab switches and keeps template types separate', async () => {
+  mocks.templates = [...messageTemplates('Email', 25), ...messageTemplates('SMS', 2)];
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: 'Email Templates' }));
+  await screen.findByText('Page 1 of 3');
+  fireEvent.change(screen.getByLabelText('Search templates'), { target: { value: 'Email' } });
+  await screen.findByText('Page 1 of 3');
+  fireEvent.click(screen.getByRole('button', { name: 'Records per page' }));
+  fireEvent.click(screen.getByRole('option', { name: '20' }));
+  await screen.findByText('Page 1 of 2');
+  fireEvent.click(screen.getByLabelText('Filter email templates'));
+  fireEvent.click(within(document.querySelector('aside.hidden') as HTMLElement).getByRole('checkbox', { name: 'Filter by Sales' }));
+  await screen.findByText('Page 1 of 1');
+  fireEvent.click(screen.getByRole('button', { name: 'SMS Templates' }));
+  await screen.findByRole('heading', { name: 'SMS Follow 1' });
+  expect((screen.getByLabelText('Search templates') as HTMLInputElement).value).toBe('');
+  expect(screen.getByLabelText('Filter sms templates').getAttribute('aria-expanded')).toBe('false');
+  expect(screen.getByRole('button', { name: 'Records per page' }).textContent).toBe('10');
+  expect(screen.queryByRole('heading', { name: 'Email Follow 1' })).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Email Templates' }));
+  await screen.findByText('Page 1 of 3');
+  expect(screen.getAllByRole('button', { name: 'Preview' })).toHaveLength(10);
+});
+
+it.each(['Email', 'SMS'] as const)('preserves %s cards during refresh errors and exposes loading and retry states', async type => {
+  mocks.templates = messageTemplates(type, 1);
+  let resolve!: (value: unknown) => void;
+  const normalList = mocks.templateList.getMockImplementation()!;
+  mocks.templateList.mockImplementation((query: Record<string, unknown>) => query.limit === 100 ? normalList(query) : new Promise(done => { resolve = done; }));
+  render(<CampaignsPage />);
+  fireEvent.click(screen.getByRole('button', { name: `${type} Templates` }));
+  expect(screen.getByText(`Loading ${type.toLowerCase()} templates…`)).toBeTruthy();
+  expect(screen.queryByRole('navigation', { name: 'Pagination' })).toBeNull();
+  await act(async () => resolve(await normalList({ type, page: 1, limit: 10 })));
+  await screen.findByRole('heading', { name: `${type} Follow 1` });
+  if (type === 'SMS') expect(screen.getByText(`${mocks.templates[0].content.length} characters`)).toBeTruthy();
+  mocks.templateList.mockImplementation((query: Record<string, unknown>) => query.limit === 100 ? normalList(query) : Promise.reject(new Error('Template refresh failed')));
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await screen.findByRole('alert');
+  expect(screen.getByRole('alert').textContent).toBe('Template refresh failed');
+  expect(screen.getByRole('heading', { name: `${type} Follow 1` })).toBeTruthy();
+  mocks.templateList.mockImplementation(normalList);
+  fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+  await waitFor(() => expect(screen.queryByRole('alert')).toBeNull());
 });

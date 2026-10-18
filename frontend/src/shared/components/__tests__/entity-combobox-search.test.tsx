@@ -11,6 +11,16 @@ vi.mock('@/shared/services/contacts-v2.api', () => ({ contactsV2Api: { list: sta
 import { EntityCombobox } from '../entity-combobox';
 beforeEach(() => { vi.clearAllMocks(); state.leads.mockResolvedValue({ data: [] }); state.contacts.mockResolvedValue({ data: [] }); state.accounts.mockResolvedValue({ data: [] }); });
 afterEach(cleanup);
+it('keeps its linked required label and validation accessible while opening search', () => {
+  render(<><label id="recipient-label" htmlFor="recipient-input">Recipient <span aria-hidden="true">*</span></label>
+    <EntityCombobox id="recipient-input" aria-labelledby="recipient-label" aria-required="true" error="Choose a recipient." entityType="leads" value={null} onChange={vi.fn()} debounceMs={0} /></>);
+  const trigger = screen.getByRole('combobox', { name: 'Recipient' });
+  expect(trigger.id).toBe('recipient-input'); expect(trigger.getAttribute('aria-required')).toBe('true'); expect(trigger.getAttribute('aria-invalid')).toBe('true');
+  expect(document.getElementById(trigger.getAttribute('aria-describedby')!)?.textContent).toBe('Choose a recipient.');
+  fireEvent.click(trigger);
+  const search = screen.getByRole('combobox', { name: 'Recipient' });
+  expect(search.tagName).toBe('INPUT'); expect(search.id).toBe('recipient-input'); expect(search.getAttribute('aria-required')).toBe('true');
+});
 it('uses canonical Contact IDs and searches past unloaded context pages', async () => {
   state.contacts.mockImplementation(({ search }) => Promise.resolve({ data: search ? [{ id: 'contact-id', firstName: 'Mary Jane', lastName: 'Cruz', email: 'mary@example.test' }] : [] }));
   const select = vi.fn(); render(<EntityCombobox entityType="contacts" value={null} onChange={select} debounceMs={0} />);
