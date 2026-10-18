@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ProductInterestConfigSchema = exports.ProductInterestPatchSchema = exports.ProductInterestIdSchema = exports.ProductInterestCreateSchema = exports.ProductInterestSchema = exports.PRODUCT_INTEREST_NAME_MAX_ERROR = exports.MAX_ACTIVE_PRODUCTS = exports.PRODUCT_DESCRIPTION_MAX_LENGTH = exports.PRODUCT_INTEREST_NAME_MAX_LENGTH = exports.PRODUCT_DEAL_VALUE_NEGATIVE_ERROR = exports.PRODUCT_DEAL_VALUE_DIGITS_ERROR = exports.PRODUCT_DEAL_VALUE_REQUIRED_ERROR = void 0;
+exports.ProductInterestConfigSchema = exports.ProductInterestPatchSchema = exports.ProductInterestIdSchema = exports.ProductInterestCreateSchema = exports.ProductInterestSchema = exports.ProductCategoryMutationSchema = exports.ProductCategoryNameSchema = exports.PRODUCT_INTEREST_NAME_MAX_ERROR = exports.MAX_ACTIVE_PRODUCTS = exports.PRODUCT_DESCRIPTION_MAX_LENGTH = exports.PRODUCT_INTEREST_NAME_MAX_LENGTH = exports.PRODUCT_DEAL_VALUE_NEGATIVE_ERROR = exports.PRODUCT_DEAL_VALUE_DIGITS_ERROR = exports.PRODUCT_DEAL_VALUE_REQUIRED_ERROR = void 0;
 exports.parseProductAmount = parseProductAmount;
 exports.isProductCreateAmountInput = isProductCreateAmountInput;
 exports.parseProductCreateAmount = parseProductCreateAmount;
@@ -33,9 +33,16 @@ exports.MAX_ACTIVE_PRODUCTS = 100;
 exports.PRODUCT_INTEREST_NAME_MAX_ERROR = `Product name must not exceed ${exports.PRODUCT_INTEREST_NAME_MAX_LENGTH} characters.`;
 const productNameSchema = zod_1.z.string().trim().min(1, 'Product name is required').max(exports.PRODUCT_INTEREST_NAME_MAX_LENGTH, exports.PRODUCT_INTEREST_NAME_MAX_ERROR)
     .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed');
+exports.ProductCategoryNameSchema = zod_1.z.string().trim().min(1, 'Category is required.').max(exports.PRODUCT_INTEREST_NAME_MAX_LENGTH)
+    .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.');
+exports.ProductCategoryMutationSchema = zod_1.z.discriminatedUnion('action', [
+    zod_1.z.object({ action: zod_1.z.literal('add'), name: exports.ProductCategoryNameSchema }).strict(),
+    zod_1.z.object({ action: zod_1.z.literal('rename'), name: exports.ProductCategoryNameSchema, newName: exports.ProductCategoryNameSchema }).strict(),
+    zod_1.z.object({ action: zod_1.z.literal('delete'), name: exports.ProductCategoryNameSchema }).strict(),
+]);
 exports.ProductInterestSchema = zod_1.z.object({
     name: productNameSchema,
-    category: zod_1.z.string().trim().max(exports.PRODUCT_INTEREST_NAME_MAX_LENGTH).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').nullable().optional().transform(value => value ?? ''),
+    category: exports.ProductCategoryNameSchema,
     description: zod_1.z.string().trim().max(exports.PRODUCT_DESCRIPTION_MAX_LENGTH).refine(v => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').default(''),
     dealValue: zod_1.z.number().finite().min(0).max(999999999999).multipleOf(0.01),
 }).strict();

@@ -48,6 +48,7 @@ router.get('/product-interests/:id/closed-won', authorize('products.view_closed_
 router.post('/product-interests', authorize('products.create'), productInterests.create);
 router.post('/product-interests/field', authorize('products.create'), productInterests.enableField);
 router.delete('/product-interests', authorize('products.archive'), productInterests.removeField);
+router.patch('/product-interests/categories', (req, res, next) => authorize(req.body?.action === 'add' ? 'products.create' : req.body?.action === 'delete' ? 'products.archive' : 'products.edit')(req, res, next), productInterests.manageCategories);
 router.patch('/product-interests/:id', authorize('products.edit'), productInterests.update);
 router.delete('/product-interests/:id', authorize('products.archive'), productInterests.remove);
 router.patch('/organization-settings', authorize('settings.edit'), validate(UpdateOrganizationSettingsSchema), organizationSettings.update);

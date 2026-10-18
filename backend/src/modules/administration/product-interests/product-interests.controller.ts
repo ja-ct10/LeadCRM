@@ -1,5 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
-import { ProductInterestCreateSchema, ProductInterestPatchSchema, ProductInterestIdSchema } from '@leadcrm/shared';
+import { ProductCategoryMutationSchema, ProductInterestCreateSchema, ProductInterestPatchSchema, ProductInterestIdSchema } from '@leadcrm/shared';
 import { productConfiguration, salesTransaction } from '../../crm/leads/lead-automation.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { writeAuditLog } from '../../../core/audit/audit.service';
@@ -16,10 +16,7 @@ export async function wonDeals(req: Request, res: Response, next: NextFunction) 
 }
 
 const fieldKey = service.productFieldKey;
-async function categories(tx: Prisma.TransactionClient, tenantId: string) {
-  const rows = await tx.productInterest.findMany({ where: { tenantId, category: { not: '' } }, select: { category: true }, orderBy: { category: 'asc' } });
-  return [...new Map(rows.map(row => [row.category.toLowerCase(), row.category])).values()].sort((a, b) => a.localeCompare(b));
-}
+const categories = service.productCategories;
 export async function get(req: Request, res: Response, next: NextFunction) {
   try {
     const tenantId = req.user!.tenantId;
@@ -31,22 +28,39 @@ export async function get(req: Request, res: Response, next: NextFunction) {
   } catch (error) { next(error); }
 }
 
+export async function manageCategories(req: Request, res: Response, next: NextFunction) {
+  try {
+    const tenantId = req.user!.tenantId;
+    const input = ProductCategoryMutationSchema.parse(req.body);
+    const result = await salesTransaction(async tx => {
+      const before = await categories(tx, tenantId);
+      await service.mutateProductCategory(tx, tenantId, input);
+      const after = await categories(tx, tenantId);
+      await writeAuditLog({ tenantId, userId: req.user!.userId, action: 'product_categories.' + input.action, entityType: 'TenantPreference', entityId: tenantId, before: { categories: before }, after: { categories: after } });
+      return { data: await productConfiguration(tx, tenantId), meta: { categories: after, enabled: (await tx.tenantPreference.findUnique({ where: { tenantId_module_key: fieldKey(tenantId) } }))?.value !== false } };
+    });
+    res.json({ success: true, ...result });
+  } catch (error) { next(error); }
+}
+
 async function mutate(req: Request, res: Response, next: NextFunction, action: 'create' | 'update' | 'remove' | 'removeField' | 'enableField') {
   try {
     const tenantId = req.user!.tenantId;
     const id = ['update', 'remove'].includes(action) ? ProductInterestIdSchema.parse(req.params.id) : undefined;
     const input = action === 'create' ? ProductInterestCreateSchema.parse(req.body) : action === 'update' ? ProductInterestPatchSchema.parse(req.body) : undefined;
     const result = await salesTransaction(async tx => {
-      if (id && !await tx.productInterest.findFirst({ where: { id, tenantId, active: true } })) throw new AppError('Product not found.', 404);
+      const existing = id ? await tx.productInterest.findFirst({ where: { id, tenantId, active: true } }) : null;
+      if (id && !existing) throw new AppError('Product not found.', 404);
+      const category = input ? await service.resolveProductCategory(tx, tenantId, input.category ?? existing?.category ?? '') : undefined;
       if (input?.name && await tx.productInterest.findFirst({ where: { tenantId, active: true, name: { equals: input.name, mode: 'insensitive' }, ...(id ? { id: { not: id } } : {}) } })) throw new AppError('Product names must be unique.', 409);
       if (action === 'create') {
         await service.assertProductCatalogEnabled(tx, tenantId);
         await service.assertProductCatalogCapacity(tx, tenantId);
-        await tx.productInterest.create({ data: { tenantId, ...ProductInterestCreateSchema.parse(input) } });
+        await tx.productInterest.create({ data: { tenantId, ...ProductInterestCreateSchema.parse(input), category } });
       }
       if (action === 'update') {
         const updated = await tx.productInterest.update({ where: { id, tenantId }, data: {
-          ...input!, ...(input!.dealValue === undefined ? {} : { dealValue: new Prisma.Decimal(input!.dealValue.toFixed(2)) }),
+          ...input!, category, ...(input!.dealValue === undefined ? {} : { dealValue: new Prisma.Decimal(input!.dealValue.toFixed(2)) }),
         } });
         if (input!.dealValue !== undefined && !updated.dealValue.equals(input!.dealValue)) throw new AppError('Product value was not saved. Retry the update.', 409);
       }

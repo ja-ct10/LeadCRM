@@ -30,9 +30,18 @@ export const PRODUCT_INTEREST_NAME_MAX_ERROR = `Product name must not exceed ${P
 const productNameSchema = z.string().trim().min(1, 'Product name is required').max(PRODUCT_INTEREST_NAME_MAX_LENGTH, PRODUCT_INTEREST_NAME_MAX_ERROR)
   .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed');
 
+export const ProductCategoryNameSchema = z.string().trim().min(1, 'Category is required.').max(PRODUCT_INTEREST_NAME_MAX_LENGTH)
+  .refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.');
+export const ProductCategoryMutationSchema = z.discriminatedUnion('action', [
+  z.object({ action: z.literal('add'), name: ProductCategoryNameSchema }).strict(),
+  z.object({ action: z.literal('rename'), name: ProductCategoryNameSchema, newName: ProductCategoryNameSchema }).strict(),
+  z.object({ action: z.literal('delete'), name: ProductCategoryNameSchema }).strict(),
+]);
+export type ProductCategoryMutation = z.infer<typeof ProductCategoryMutationSchema>;
+
 export const ProductInterestSchema = z.object({
   name: productNameSchema,
-  category: z.string().trim().max(PRODUCT_INTEREST_NAME_MAX_LENGTH).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').nullable().optional().transform(value => value ?? ''),
+  category: ProductCategoryNameSchema,
   description: z.string().trim().max(PRODUCT_DESCRIPTION_MAX_LENGTH).refine(v => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').default(''),
   dealValue: z.number().finite().min(0).max(999_999_999_999).multipleOf(0.01),
 }).strict();

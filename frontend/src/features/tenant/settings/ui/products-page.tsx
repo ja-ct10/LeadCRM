@@ -1,10 +1,10 @@
 'use client';
-import type { ProductInterestInput } from '@leadcrm/shared';
+import type { ProductCategoryMutation, ProductInterestInput } from '@leadcrm/shared';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Plus, Eye, Edit, Archive } from 'lucide-react';
+import { Settings, Eye, Edit, Archive } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ProductInterest, ProductWonDeal, PaginatedResponse } from '@leadcrm/shared';
 import { apiClient } from '@/lib/api/client';
@@ -26,7 +26,9 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { RefreshButton } from '@/shared/components/crm/refresh-button';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { Button, CreateButton } from '@/shared/components/ui/button';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { ProductEditor } from './product-editor';
+import { ManageProductCategories } from './manage-product-categories';
 
 const php = new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' });
 
@@ -116,12 +118,13 @@ export function ProductsPage() {
   const [panel, setPanel] = useState<{ mode: 'view' | 'edit' | 'new'; product?: ProductInterest } | null>(null);
   const [archiveIds, setArchiveIds] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
+  const [manageCategories, setManageCategories] = useState(false);
   const lock = useRef(false);
   const [search, setSearch] = useState('');
   const [sort, setSort] = useState<SortState | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); }, [user?.tenantId]);
+  useEffect(() => { setSelected(new Set()); setPanel(null); setArchiveIds([]); setManageCategories(false); }, [user?.tenantId]);
   useEffect(() => { setSelected(new Set()); }, [page, pageSize, search]);
   const filtered = products.filter(product => [product.name, product.category, product.description].join(' ').toLowerCase().includes(search.trim().toLowerCase())).sort((a, b) => {
     const others = Number(a.name.trim().toLowerCase() === 'others') - Number(b.name.trim().toLowerCase() === 'others');
@@ -132,6 +135,15 @@ export function ProductsPage() {
   });
   useEffect(() => { setPage(value => Math.min(value, Math.max(1, Math.ceil(filtered.length / pageSize)))); }, [filtered.length, pageSize]);
   const changed = (result: ProductInterestResponse) => window.dispatchEvent(new CustomEvent('product-interests-changed', { detail: result }));
+  async function changeCategory(input: ProductCategoryMutation) {
+    const allowed = input.action === 'add' ? canCreate : input.action === 'rename' ? canEdit : canArchive;
+    if (!allowed || lock.current) throw new Error('This action is unavailable.');
+    lock.current = true; setBusy(true);
+    try {
+      changed(await apiClient.patch<ProductInterestResponse>(endpoint + '/categories', input));
+      toast.success(input.action === 'add' ? 'Category added successfully.' : input.action === 'rename' ? 'Category updated successfully.' : 'Category deleted successfully.');
+    } finally { lock.current = false; setBusy(false); }
+  }
   async function enableProducts() {
     if (!canCreate || lock.current) return;
     lock.current = true; setBusy(true);
@@ -171,7 +183,10 @@ export function ProductsPage() {
   ];
   return <div className="min-w-0 max-w-full space-y-4">
     <PageHeader title="Products" subtitle="Manage products and their default Deal values."
-      actions={canCreate && <CreateButton label="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} />} />
+      actions={<>
+        {(canCreate || canEdit || canArchive) && <TooltipProvider><Tooltip><TooltipTrigger asChild><Button variant="outline" size="icon" className="h-11 w-11 shrink-0" aria-label="Manage Product Categories" title="Manage Categories" disabled={busy} onClick={() => setManageCategories(true)}><Settings size={16} aria-hidden="true" /></Button></TooltipTrigger><TooltipContent>Manage Categories</TooltipContent></Tooltip></TooltipProvider>}
+        {canCreate && <CreateButton label="Add Product" disabled={busy || !enabled} onClick={() => setPanel({ mode: 'new' })} />}
+      </>} />
     <div data-selection-toolbar role="toolbar" aria-label="Products controls" className="flex min-w-0 flex-nowrap items-center gap-2">
       <div className="min-w-0 flex-1 sm:flex-none"><ModuleSearchInput label="Search products" placeholder="Search products..." value={search} onChange={value => { setSearch(value); setPage(1); }} /></div>
       <div className="shrink-0"><RefreshButton label="Refresh products" refreshing={loading} disabled={busy || loading} onClick={refresh} /></div>
@@ -186,8 +201,9 @@ export function ProductsPage() {
     <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={filtered.length} loading={loading && !hasLoaded} refreshing={loading && hasLoaded} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} disabled={busy} />
     <SelectedRowsBar count={selected.size} onClear={() => setSelected(new Set())} disabled={busy}>{canArchive && <Button variant="outline" disabled={busy} onClick={() => setArchiveIds([...selected])}>Archive</Button>}</SelectedRowsBar>
     <SlidingDrawer isOpen={!!panel} onClose={() => { if (!busy) setPanel(null); }} eyebrow={panel?.mode === 'view' ? 'Product Record' : undefined} title={panel?.mode === 'new' ? 'New Product' : panel?.mode === 'edit' ? 'Edit Product' : 'Product details'} subtitle={panel?.mode === 'new' ? 'Complete the product details below.' : undefined}>
-      <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-6 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} initialProduct={panel.product!} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={panel.product} categories={categories} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
+      <div className={panel?.mode === 'view' ? 'min-w-0 px-4 py-6 sm:px-6' : 'h-full min-h-0 min-w-0'}>{panel?.mode === 'view' ? <ProductView key={panel.product!.id} initialProduct={panel.product!} /> : panel && <ProductEditor key={panel.product?.id ?? 'new'} product={products.find(product => product.id === panel.product?.id) ?? panel.product} categories={categories} canCreateCategory={canCreate} onCreateCategory={name => changeCategory({ action: 'add', name })} busy={busy} onSave={save} onCancel={() => setPanel(null)} />}</div>
     </SlidingDrawer>
+    <ManageProductCategories key={user?.tenantId} open={manageCategories} onOpenChange={setManageCategories} categories={categories} pending={busy} ready={hasLoaded && !error} canCreate={canCreate} canEdit={canEdit} canDelete={canArchive} mutate={changeCategory} />
     <ConfirmActionDialog open={archiveIds.length > 0} onOpenChange={open => { if (!open && !busy) setArchiveIds([]); }} title={archiveIds.length === 1 ? 'Archive this product?' : `Archive ${archiveIds.length} products?`} description="Archived products are removed from new selections. Historical records and Deal values remain unchanged." confirmLabel="Archive" variant="destructive" isLoading={busy} onConfirm={archive} />
   </div>;
 }
