@@ -61,7 +61,7 @@ it('keeps a failed nested Account draft, separates addresses and reuses its curr
   fireEvent.click(screen.getByRole('button', { name: 'Create new account' }));
   const organization = screen.getByRole('heading', { name: 'Organization' }).closest('section')!;
   fireEvent.change(within(organization).getByLabelText('Company *'), { target: { value: 'Nora Company' } });
-  fireEvent.change(within(organization).getByLabelText('Full Address'), { target: { value: 'Company office\nMakati' } });
+  fireEvent.change(within(organization).getByLabelText('Company Address'), { target: { value: 'Company office\nMakati' } });
   const additional = screen.getByRole('heading', { name: 'Additional Information' }).closest('section')!;
   fireEvent.change(within(additional).getByLabelText('Full Address'), { target: { value: 'Personal address' } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));

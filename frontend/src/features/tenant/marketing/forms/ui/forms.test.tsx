@@ -20,7 +20,8 @@ it.each([true, false])('excludes native Lead Source from palette drag/tap contro
   expect(paletteFieldsFromCatalog(catalog).some(field => field.mapToField === 'source')).toBe(false);
   expect(screen.queryByTitle('Add Lead Source' + (dragEnabled ? ' — or drag onto canvas' : ''))).toHaveProperty('textContent', expect.stringContaining('Lead Source'));
   expect(screen.getAllByText('Lead Source')).toHaveLength(1);
-  for (const label of ['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Product Interest', 'Full Address', 'Header', 'Paragraph', 'Separator line']) expect(screen.getByText(label)).toBeTruthy();
+  for (const label of ['First Name', 'Last Name', 'Email', 'Phone', 'Company Name', 'Product Interest', 'Lead Address', 'Header', 'Paragraph', 'Separator line']) expect(screen.getByText(label)).toBeTruthy();
+  expect(paletteFieldsFromCatalog(catalog).some(field => field.mapToField === 'address')).toBe(true);
   expect(getCrmFieldCatalog('leads').find(field => field.technicalKey === 'source')).toEqual(source);
 });
 it.each(['draft', 'published'] as const)('keeps saved native Lead Source identity, options and settings when editing a %s Form', async status => {

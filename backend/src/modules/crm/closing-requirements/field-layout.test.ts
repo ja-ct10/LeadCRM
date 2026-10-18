@@ -1,6 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CLOSED_WON_GROUP_ID, CUSTOM_FIELD_MODULES, DEFAULT_CLOSING_FIELDS, upgradeAssignmentLayout, defaultFieldLayout, getCrmFieldCatalog, getWorkflowConditionFields, getWorkflowUpdateFields, isClosedWonField, isSystemClosingField, type ClosingField } from '@leadcrm/shared';
 
+it('clarifies the default and legacy Lead address label while preserving custom labels and address keys', () => {
+  const address = (layout = defaultFieldLayout('leads')) => getCrmFieldCatalog('leads', [], layout).find(field => field.technicalKey === 'address');
+  expect(address()).toMatchObject({ technicalKey: 'address', label: 'Lead Address' });
+  const layout = defaultFieldLayout('leads');
+  layout.fields.address = { label: 'Full Address', groupId: 'leads:section:3', order: 0, visibleInForm: true, visibleInDetails: true };
+  expect(address(layout)?.label).toBe('Lead Address');
+  layout.fields.address.label = 'Home Location';
+  expect(address(layout)?.label).toBe('Home Location');
+  expect(getCrmFieldCatalog('accounts').some(field => field.technicalKey === 'address')).toBe(true);
+  expect(getCrmFieldCatalog('contacts').find(field => field.technicalKey === 'address')?.label).toBe('Full Address');
+});
+
 const state = vi.hoisted(() => ({ definitions: [] as Array<{ tenantId: string; id: string; definition: unknown }>, preferences: [] as Array<{ tenantId: string; module: string; key: string; value: unknown }>, values: [] as Array<{ fieldId: string; value: unknown }>, workflows: [] as unknown[], forms: [] as unknown[], audiences: [] as unknown[], templates: [] as unknown[], campaigns: [] as unknown[], audits: [] as unknown[] }));
 const tx = vi.hoisted(() => ({
   $queryRaw: vi.fn(async () => []),

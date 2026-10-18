@@ -7,7 +7,7 @@ import { COMPANY_INDUSTRIES, COMPANY_SIZE_OPTIONS } from '@leadcrm/shared';
 import { panelInputClass } from '@/shared/components/side-panel-styles';
 
 export type AccountNativeFieldKey = 'name' | 'industry' | 'size' | 'website' | 'address';
-const labels: Record<AccountNativeFieldKey, string> = { name: 'Account Name', industry: 'Industry', size: 'Company Size', website: 'Website', address: 'Full Address' };
+const labels: Record<AccountNativeFieldKey, string> = { name: 'Account Name', industry: 'Industry', size: 'Company Size', website: 'Website', address: 'Company Address' };
 
 /** One set of Account controls for standalone forms and nested person creation. */
 export function AccountNativeField({ fieldKey, id, label = labels[fieldKey], registration, value, onChange, error, disabled = false }: {

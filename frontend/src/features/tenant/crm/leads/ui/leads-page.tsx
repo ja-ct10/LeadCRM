@@ -98,11 +98,12 @@ export default function LeadsPage(): React.ReactElement {
   // ── State ────────────────────────────────────────────────────────────
   const activeView: ViewType = 'table';
   const tabParam = getParam('tab');
-  const [selectedTab, setActiveTab] = useState(() => isClientAdmin && tabParam === 'my' ? 'all' : tabParam || 'all');
-  const activeTab = isClientAdmin && (selectedTab === 'my' || tabParam === 'my') ? 'all' : selectedTab;
+  const unavailableTab = !!tabParam && (!['all', 'my', 'active'].includes(tabParam) || isClientAdmin && tabParam === 'my');
+  const [selectedTab, setActiveTab] = useState(() => unavailableTab ? 'all' : tabParam || 'all');
+  const activeTab = unavailableTab || isClientAdmin && selectedTab === 'my' ? 'all' : selectedTab;
   useEffect(() => {
-    if (isClientAdmin && (selectedTab === 'my' || tabParam === 'my')) setActiveTab('all');
-  }, [isClientAdmin, selectedTab, tabParam]);
+    if (activeTab !== selectedTab) setActiveTab('all');
+  }, [activeTab, selectedTab]);
   const [showFilters, setShowFilters] = useState(false);
   const [searchTerm, setSearchTerm] = useState(() => getParam('search'));
   const highlightId = getParam('highlight') ?? undefined;
@@ -152,7 +153,7 @@ export default function LeadsPage(): React.ReactElement {
   const serverFilters = useMemo((): import('@leadcrm/shared').FilterCondition[] => {
     const conditions: import('@leadcrm/shared').FilterCondition[] = [];
 
-    if (activeTab === 'my' || activeTab === 'active' || activeTab === 'work_queue') conditions.push({ field: 'scope', operator: 'equals', value: activeTab });
+    if (activeTab === 'my' || activeTab === 'active') conditions.push({ field: 'scope', operator: 'equals', value: activeTab });
 
     // Status filter
     if (selectedStatuses.length > 0) {
@@ -204,7 +205,7 @@ export default function LeadsPage(): React.ReactElement {
   // Sync to URL
   useEffect(() => {
     if (highlightId) {
-      if (isClientAdmin && tabParam === 'my') updateParams({ tab: null });
+      if (unavailableTab) updateParams({ tab: null });
       return;
     }
     updateParams({
@@ -218,7 +219,7 @@ export default function LeadsPage(): React.ReactElement {
       related: selectedRelated,
       createdOperator: createdFilter.operator || null, createdFrom: createdFilter.from || null, createdTo: createdFilter.to || null,
     });
-  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, createdFilter, highlightId, isClientAdmin, tabParam, updateParams]);
+  }, [activeTab, debouncedSearch, activeView, selectedSystemFilters, selectedStatuses, selectedSources, selectedOwners, selectedRelated, createdFilter, highlightId, unavailableTab, updateParams]);
 
   // -- Persist filter selections (fire-and-forget) ------------------------
   useEffect(() => {
@@ -392,7 +393,6 @@ export default function LeadsPage(): React.ReactElement {
         onViewChange={() => {}}
         savedTabs={[
           { id: 'all', label: 'All Leads' },
-          { id: 'work_queue', label: 'Work queue' },
           { id: 'my', label: 'My Leads' },
           { id: 'active', label: 'Active Leads' },
         ].filter(tab => !isClientAdmin || tab.id !== 'my')}

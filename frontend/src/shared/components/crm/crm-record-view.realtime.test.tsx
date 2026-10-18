@@ -63,7 +63,7 @@ it.each(['leads', 'contacts', 'deals'] as const)('pauses a disconnected %s timel
     if (index === 0) act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
     else fireEvent.click(within(timeline).getByRole('button', { name: 'Retry activities' }));
     await waitFor(() => expect(within(timeline).getByRole('alert').textContent).toBe(failure));
-    expect(streams[0].close).toHaveBeenCalled();
+    await waitFor(() => expect(streams[0].close).toHaveBeenCalled());
     expect(streams).toHaveLength(1);
     expect(within(timeline).queryByText('No activities match your filter.')).toBeNull();
   }

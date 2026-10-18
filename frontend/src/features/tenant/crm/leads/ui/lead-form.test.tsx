@@ -10,7 +10,12 @@ vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: ()
 vi.mock('@/shared/hooks/use-scroll-to-error', () => ({ useScrollToError: () => {} }));
 vi.mock('@/shared/components/entity-combobox', () => ({ EntityCombobox: () => <select aria-label="Account"><option value="">No account</option></select> }));
 vi.mock('@/shared/hooks/use-duplicate-check', () => ({ useDuplicateCheck: () => ({ matches: [], hasDuplicates: false, isChecking: false, dismiss: vi.fn() }) }));
-vi.mock('@/shared/components/crm/record-custom-fields', () => ({ useRecordCustomFields: () => ({ fields: [], blocked: false, validate: () => true, payload: () => ({}), query: {} }), CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null }));
+vi.mock('@/shared/components/crm/record-custom-fields', async () => {
+  const { defaultFieldLayout } = await import('@leadcrm/shared');
+  const layout = defaultFieldLayout('leads');
+  layout.fields.address = { label: 'Full Address', groupId: 'leads:section:3', order: 0, visibleInForm: true, visibleInDetails: true };
+  return { useRecordCustomFields: () => ({ layout, fields: [], blocked: false, validate: () => true, payload: () => ({}), query: {} }), CustomFieldGroup: () => null, CustomFieldExtraGroups: () => null, CustomFieldInput: () => null };
+});
 afterEach(cleanup);
 it('groups all company fields under Organization and submits one nested Account draft', async () => {
   const save = vi.fn(); render(<AddLeadForm onSave={save} onCancel={vi.fn()} />);
@@ -25,9 +30,12 @@ it('groups all company fields under Organization and submits one nested Account 
   fireEvent.change(screen.getByLabelText('Industry'), { target: { value: 'Technology' } });
   fireEvent.change(screen.getByLabelText('Company Size'), { target: { value: '11-50' } });
   fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'https://new.test' } });
-  fireEvent.change(within(organization).getByLabelText('Full Address'), { target: { value: 'Company street\nMakati' } });
+  fireEvent.change(within(organization).getByLabelText('Company Address'), { target: { value: 'Company street\nMakati' } });
+  const additional = screen.getByRole('heading', { name: 'Additional Information' }).closest('section')!;
+  fireEvent.change(within(additional).getByLabelText('Lead Address'), { target: { value: 'Personal street\nPasig' } });
+  expect(screen.queryByLabelText('Full Address')).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Create Lead' }));
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
-  expect(save.mock.calls[0][0]).toMatchObject({ firstName: 'Lina', address: '', newAccount: { name: 'New lead company', industry: 'Technology', size: '11-50', website: 'https://new.test', address: 'Company street\nMakati' } });
+  expect(save.mock.calls[0][0]).toMatchObject({ firstName: 'Lina', address: 'Personal street\nPasig', newAccount: { name: 'New lead company', industry: 'Technology', size: '11-50', website: 'https://new.test', address: 'Company street\nMakati' } });
   expect(save.mock.calls[0][0]).not.toHaveProperty('accountId');
 });

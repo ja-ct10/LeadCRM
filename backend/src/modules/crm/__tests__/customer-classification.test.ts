@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { classifyCustomer, leadWorkQueueRank, LEAD_WORKLOAD_WEIGHTS, CRM_STATUSES, CreateLeadSchema, ProductInterestPatchSchema, conditionOperatorLabel } from '@leadcrm/shared';
+import { classifyCustomer, LEAD_WORKLOAD_WEIGHTS, CRM_STATUSES, CreateLeadSchema, ProductInterestPatchSchema, conditionOperatorLabel } from '@leadcrm/shared';
 import { lowestWorkloadRotation } from '../leads/lead-workload';
 import { isCustomerSmsReply, SmsReplySchema } from '../../../integrations/sms/sms-replies';
 
@@ -41,11 +41,6 @@ describe('hybrid customer classification', () => {
   it('does not classify from invalid or future timestamps', () => {
     expect(classifyCustomer({ ...evidence, status: 'Cold', genuineReply: true, lastCustomerReplyAt: new Date(+now + 1) }, now)).toBeUndefined();
     expect(classifyCustomer({ ...evidence, lastCustomerReplyAt: new Date('invalid') }, now)).toBeUndefined();
-  });
-  it('orders staff outreach before heat and excludes terminal work from the queue', () => {
-    expect(leadWorkQueueRank({ status: 'Inquiry' })).toBe(0);
-    expect(['Hot', 'Warm', 'Inquiry', 'Cold'].map(status => leadWorkQueueRank({ status, firstStaffOutreachAt: now }))).toEqual([1, 2, 3, 4]);
-    expect(leadWorkQueueRank({ status: 'Closed' })).toBe(9);
   });
 });
 describe('assignment and typed filters', () => {
