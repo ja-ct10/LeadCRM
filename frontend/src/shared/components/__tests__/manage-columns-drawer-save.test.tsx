@@ -16,12 +16,12 @@ import { LEADS_TABLE_COLUMNS, ACCOUNTS_TABLE_COLUMNS, reconcileTableColumns } fr
 
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: undefined }) }));
 
-it('offers Full Address and excludes removed Account columns after saved preference reconciliation', async () => {
+it('offers Company Address and excludes removed Account columns after saved preference reconciliation', async () => {
   const columns = reconcileTableColumns('accounts', [{ id: 'name', visible: true, order: 0 }, { id: 'city', visible: true, order: 1, width: 245 }, { id: 'internalNotes', visible: true, order: 2 }, { id: 'activeProductIds', visible: true, order: 3 }], ACCOUNTS_TABLE_COLUMNS);
   const save = vi.fn().mockResolvedValue(undefined);
   renderDrawer({ module: 'accounts', registry: ACCOUNTS_TABLE_COLUMNS, effectiveColumns: columns, onSave: save });
   for (const label of ['Active Products', 'Internal Notes', 'City', 'Province', 'Country']) expect(screen.queryByText(label)).toBeNull();
-  fireEvent.click(screen.getByRole('switch', { name: 'Toggle Full Address visibility' }));
+  fireEvent.click(screen.getByRole('switch', { name: 'Toggle Company Address visibility' }));
   fireEvent.click(screen.getByRole('button', { name: 'Save' }));
   await waitFor(() => expect(save).toHaveBeenCalledOnce());
   expect(save.mock.calls[0][0].find((column: ColumnConfigItem) => column.id === 'address')).toMatchObject({ visible: false, width: 245 });

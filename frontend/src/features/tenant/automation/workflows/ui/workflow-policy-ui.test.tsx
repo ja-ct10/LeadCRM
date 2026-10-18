@@ -12,21 +12,27 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }));
 
 afterEach(cleanup);
 const options = { users: [], pipelines: [], templates: [], campaigns: [] };
-it('makes loss reasons optional and validates an enabled empty reason before activation', () => {
+it('removes loss-reason controls and defaults target stages to Sales Pipeline', () => {
   const definition = getAvailableActions().find(action => action.type === 'move_deal_stage');
   const change = vi.fn();
-  const initial = { type: 'move_deal_stage' as const, config: { stageId: 'lost' } };
-  const rendered = render(<ActionFields entity="deal" action={initial} definition={definition} options={options} onChange={change} />);
+  const salesOptions = { ...options, pipelines: [{ id: 'sales', name: 'Sales Pipeline', stages: [{ id: 'qualified', name: 'Qualified' }] }, { id: 'other', name: 'Legacy', stages: [{ id: 'other-stage', name: 'Other stage' }] }] };
+  render(<ActionFields entity="deal" action={{ type: 'move_deal_stage', config: {} }} definition={definition} options={salesOptions} onChange={change} />);
+  expect(screen.queryByLabelText('Include a loss reason')).toBeNull();
   expect(screen.queryByLabelText('Loss reason')).toBeNull();
-  fireEvent.click(screen.getByLabelText('Include a loss reason'));
-  expect(change).toHaveBeenLastCalledWith({ stageId: 'lost', includeLossReason: true, lostReason: '' });
-  const enabled = { ...initial, config: change.mock.calls[0][0] };
-  rendered.rerender(<ActionFields entity="deal" action={enabled} definition={definition} options={options} onChange={change} />);
-  expect(screen.getByLabelText('Loss reason').getAttribute('aria-required')).toBe('true');
-  expect(actionIssues(enabled, definition, 'deal', options)).toContain('Enter a loss reason or turn off Include a loss reason.');
-  fireEvent.change(screen.getByLabelText('Loss reason'), { target: { value: 'Budget changed' } });
-  fireEvent.click(screen.getByLabelText('Include a loss reason'));
-  expect(change).toHaveBeenLastCalledWith({ stageId: 'lost', includeLossReason: false });
+  expect(screen.queryByRole('combobox', { name: 'Pipeline' })).toBeNull();
+  expect(screen.getByText('Sales Pipeline')).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'Qualified' })).toBeTruthy();
+  expect(screen.queryByRole('option', { name: 'Other stage' })).toBeNull();
+  fireEvent.change(screen.getByLabelText(/Target stage/), { target: { value: 'qualified' } });
+  expect(change).toHaveBeenCalledWith({ stageId: 'qualified' });
+});
+it('preserves a saved legacy stage and reason without changing its pipeline', () => {
+  const definition = getAvailableActions().find(action => action.type === 'move_deal_stage');
+  const change = vi.fn();
+  render(<ActionFields entity="deal" action={{ type: 'move_deal_stage', config: { stageId: 'lost', lostReason: 'Saved reason' } }} definition={definition} options={{ ...options, pipelines: [{ id: 'legacy', name: 'Legacy pipeline', stages: [{ id: 'lost', name: 'Lost' }] }] }} onChange={change} />);
+  expect(screen.getByText('Legacy pipeline')).toBeTruthy();
+  expect(change).not.toHaveBeenCalled();
+  expect(screen.queryByLabelText('Include a loss reason')).toBeNull();
 });
 it.each(WORKFLOW_TRIGGERS)('shows the correct actions for $label', trigger => {
   render(<WorkflowLibrary triggers={WORKFLOW_TRIGGERS} actions={getAvailableActions()} trigger={trigger} disabled={false} dragEnabled={false} onChoose={vi.fn()} />);

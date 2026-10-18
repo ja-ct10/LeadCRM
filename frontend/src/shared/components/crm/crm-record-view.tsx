@@ -1,4 +1,5 @@
 'use client';
+import { dealAddressKey, dealAddressMessage, dealCustomerAddressMessage, resolveDealAddress, type DealAddressContext } from '@leadcrm/shared';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
 import { InlineEditRows, type InlineRowDef } from './inline-edit-rows';
@@ -100,7 +101,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const [lostReason, setLostReason] = useState('');
   const [taskCount, setTaskCount] = useState<number>();
   const [savingField, setSavingField] = useState<string | null>(null);
-  const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, revalidateOnInvalidation: true,
+  const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, intervalMs: 30000, pauseWhenHidden: true, revalidateOnInvalidation: true,
     fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { signal })).data });
   const [activityFilters, setActivityFilters] = useState<RecordActivityFilters>({});
   const relatedQuery = useRecordRelationships<Relationships>(module, id, module === 'deals' || USE_MOCK_DATA || !detailsVisited || !recordQuery.data);
@@ -158,7 +159,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const trimmed = typeof value === 'string' ? value.trim() : value;
         if (apiField === 'email' && (module === 'leads' || module === 'contacts')) CrmEmailSchema.parse(trimmed);
         const normalized = apiField === 'website' && module === 'accounts' && typeof trimmed === 'string' && trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
-        const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
+        const addressOption = apiField === 'addressSource' ? addressContext.options.find(option => dealAddressKey(option) === normalized) : undefined;
+        const sourceValue = addressOption ? { type: addressOption.type, id: addressOption.id } : null;
+        const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'addressSource' ? sourceValue : module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
         if (response.data) recordQuery.setData(response.data);
       }
       toast.success('Field updated');
@@ -178,7 +181,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
   const owner = personName(object(record.assignedUser)) || 'Unassigned';
   const company = text(object(record.account)?.name) || text(object(record.organization)?.name) || text(person?.companyName) || text(record.companyName) || text(object(record.account)?.name);
-  const location = module === 'accounts' ? text(record.address)
+  const addressContext = (record.addressContext as DealAddressContext | undefined) ?? resolveDealAddress(text(record.address), record.addressSource, []);
+  const location = module === 'deals' ? addressContext.effectiveAddress ?? '' : module === 'accounts' ? text(record.address)
     : [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
   const email = text(person?.email);
@@ -237,7 +241,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     { label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
     { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
     { label: 'Industry', value: record.industry, apiField: 'industry' },
-    { label: 'Address', value: record.address, apiField: 'address' },
+    { label: 'Deal Address (override)', value: record.address, apiField: 'address', type: 'textarea' },
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ] : [
     ...(module === 'accounts' ? [
@@ -265,7 +269,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const catalog = getCrmFieldCatalog(module, customFields.fields.map(field => ({ ...field, deletedAt: undefined })), detailLayout);
   const accountField = catalog.find(field => field.technicalKey === 'accountId');
   const showAccount = canReadAccounts && accountField?.visibleInDetails !== false;
-  const linkedAccount = showAccount ? relationships?.account ?? object(record.account) ?? object(record.organization) : null;
+  const linkedAccount = showAccount ? object(record.account) ?? object(record.organization) ?? relationships?.account : null;
   const configuredRows = aboutRows.filter(row => row.technicalKey !== 'accountId')
     .map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
   const relationshipGroupId = accountField?.groupId ?? `${module}:section:${module === 'deals' ? 1 : 2}`;
@@ -276,7 +280,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   </div> : (module === 'leads' || module === 'contacts') && showAccount ? <div>
     <h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3>
     <RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." showSubtitle={false} />
-    {linkedAccount && <RecordRows rows={[["Industry", linkedAccount.industry], ["Size", linkedAccount.size], ["Website", linkedAccount.website]]} />}
+    {linkedAccount && <RecordRows rows={[["Company Address", linkedAccount.address], ["Industry", linkedAccount.industry], ["Size", linkedAccount.size], ["Website", linkedAccount.website]]} />}
   </div> : null;
   const showRelationships = module === 'deals' ? canReadLeads || canReadContacts || showAccount : isPerson &&
     (showAccount || Boolean(relationships && canReadDeals) || Boolean(module === 'contacts' && relationships?.sourceLead && canReadLeads));
@@ -303,7 +307,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
     {relationships?.hasMoreDeals && <Button variant="ghost" size="sm" onClick={relatedQuery.loadMore} disabled={relatedQuery.isRefreshing}>Load older deals</Button>}
     {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-      await apiClient.post('/crm/deals', { customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(values.leadId ? { leadIds: [values.leadId] } : { contactIds: [values.contactId!] }) });
+      await apiClient.post('/crm/deals', { address: values.address, addressSource: values.addressSource, customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(values.leadId ? { leadIds: [values.leadId] } : { contactIds: [values.contactId!] }) });
       setCreatingDeal(false);
     }} /></div>}
   </>;
@@ -395,7 +399,13 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               {fields.map(field => {
                 if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldInlineRow key={field.customFieldId} details={customFields} fieldId={field.customFieldId} canEdit={canEdit} />;
                 const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
-                return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label, apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
+                return row ? <InlineEditRows key={field.technicalKey} rows={[...(module === 'deals' && field.technicalKey === 'address' ? [{
+                  label: 'Customer Address', apiField: 'addressSource', alwaysVisible: true,
+                  value: record.addressSource ? dealAddressKey(record.addressSource as import('@leadcrm/shared').DealAddressSource) : '',
+                  displayValue: dealCustomerAddressMessage(addressContext),
+                  renderValue: () => <span className="block whitespace-pre-wrap break-words">{dealCustomerAddressMessage(addressContext)}<span className="block text-xs text-muted-foreground">{addressContext.options.find(option => option.type === addressContext.source?.type && option.id === addressContext.source?.id)?.label}</span></span>,
+                  renderEditor: ({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) => <select aria-label="Customer Address" className="w-full min-w-0 rounded-md border border-input bg-background px-2 py-1 text-xs" value={value} disabled={disabled} onChange={event => onChange(event.target.value)}><option value="">Automatic / choose later</option>{value && !addressContext.options.some(option => dealAddressKey(option) === value) && <option value={value}>Selected address unavailable</option>}{addressContext.options.map(option => <option key={dealAddressKey(option)} value={dealAddressKey(option)}>{option.label}</option>)}</select>,
+                }] : []), { ...row, label: field.label, alwaysVisible: field.technicalKey === 'address', apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
               })}
               {hasRelationships && isPerson && <>
                 {relationshipContent}

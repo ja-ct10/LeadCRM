@@ -34,7 +34,7 @@ export function WorkflowTemplateFields({ draft, templateIndex, templateIdentity,
   draft: WorkflowDraft; templateIndex?: number; templateIdentity?: number | string; options: WorkflowOptions;
   onChange: (patch: WorkflowTemplateBindingPatch) => void; onDetach: () => void;
 }) {
-  const [localPipelineId, setLocalPipelineId] = useState(() => options.pipelines.length === 1 ? options.pipelines[0].id : '');
+  const localPipelineId = options.pipelines.find(pipeline => pipeline.name.trim().toLowerCase() === 'sales pipeline')?.id ?? (options.pipelines.length === 1 ? options.pipelines[0].id : '');
   const identity = templateIdentity ?? templateIndex;
   const descriptor = workflowTemplateDescriptor(identity);
   const binding = workflowTemplateBinding(draft, identity, options, localPipelineId);
@@ -57,13 +57,7 @@ export function WorkflowTemplateFields({ draft, templateIndex, templateIdentity,
   return <fieldset className="space-y-3 rounded-xl border border-[var(--border)] p-3 text-sm">
     <legend className="px-1 font-semibold">Template stage setup</legend>
     <p className="text-xs text-[var(--muted-foreground)]">{routing ? 'Choose different open source and target stages in the same pipeline. These selections update the workflow rules and stage action together.' : descriptor?.setup === 'initial-entry' ? 'Create the first follow-up when a new Deal is created in this pipeline’s open Lead stage.' : descriptor?.setup === 'reopen-entry' ? 'Only a never-Won Deal with verified history can reopen from Lost to an open Qualified stage.' : descriptor?.setup === 'won-entry' || descriptor?.setup === 'lost-entry' ? 'Create an outcome Task after governed closure into the selected terminal stage.' : 'Select the pipeline and entry stage. A new task is created for each matching current stage-entry event; superseded queued entries skip.'}</p>
-    <label className="block space-y-1">Template pipeline
-      <select aria-label="Template pipeline" aria-required="true" className={workflowControl} value={binding.pipelineId} onChange={event => { setLocalPipelineId(event.target.value); onChange({ pipelineId: event.target.value }); }}>
-        <option value="">Choose a pipeline</option>
-        {binding.pipelineId && !options.pipelines.some(pipeline => pipeline.id === binding.pipelineId) && <option value={binding.pipelineId}>Unavailable pipeline — repair required</option>}
-        {options.pipelines.map(pipeline => <option key={pipeline.id} value={pipeline.id}>{pipeline.name}</option>)}
-      </select>
-    </label>
+    <div className="space-y-1"><p className="text-xs text-muted-foreground">Pipeline</p><p>{options.pipelines.find(pipeline => pipeline.id === binding.pipelineId)?.name ?? 'Sales Pipeline unavailable'}</p></div>
     {(routing || descriptor?.setup === 'reopen-entry') && stageSelect('sourceStageId', 'Template source stage')}
     {stageSelect('targetStageId', routing ? 'Template target stage' : 'Template entry stage')}
     {descriptor?.setup === 'related-deal-routing' && <p className="text-xs text-[var(--muted-foreground)]">The default moves one matching related open Deal. Multiple matches need more filters or an explicit All matching selection.</p>}
@@ -285,11 +279,9 @@ export function ActionFields({
   onChange: (config: Record<string, unknown>) => void;
   stageSetup?: ReactNode;
 }) {
-  const [pipeline, setPipeline] = useState('');
-  const selectedPipeline =
-    options.pipelines.find((entry) =>
-      entry.stages.some((stage) => stage.id === action.config.stageId),
-    )?.id ?? pipeline;
+  const savedPipeline = options.pipelines.find(entry => entry.stages.some(stage => stage.id === action.config.stageId));
+  const defaultPipeline = options.pipelines.find(entry => entry.name.trim().toLowerCase() === 'sales pipeline') ?? (options.pipelines.length === 1 ? options.pipelines[0] : undefined);
+  const selectedPipeline = (savedPipeline ?? defaultPipeline)?.id;
   if (retiredActionLabels[action.type]) return <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">{action.type === 'create_notification' ? 'Notifications are automatic.' : 'Send Campaign is no longer available in workflows.'} This saved step is preserved. Disable or remove it before activating the workflow.</p>;
   if (action.type === 'update_field') return <UpdateFieldFields action={action} options={options} entity={entity} onChange={onChange} />;
   return (
@@ -300,37 +292,11 @@ export function ActionFields({
       {action.type === 'send_email' && <p className="text-xs text-muted-foreground">Email uses the triggering record’s assigned agent and their authorized Gmail connection. For a Deal, select its primary Lead or Contact; the agent must also have permission to email that recipient.</p>}
       {action.type === 'send_sms' && options.smsConfigured === false && <p role="status" className="rounded-lg border border-amber-300 p-3 text-sm">SMS is not configured. You can save this draft and connect SMS before activating it.</p>}
       {action.type === 'move_deal_stage' && stageSetup}
-      {action.type === 'move_deal_stage' && <fieldset className="space-y-2">
-        <label className="flex min-h-10 items-center gap-2"><input type="checkbox" checked={action.config.includeLossReason === true || action.config.includeLossReason === undefined && !!String(action.config.lostReason ?? '').trim()} onChange={event => {
-          const { lostReason: _reason, ...config } = action.config;
-          onChange({ ...config, includeLossReason: event.target.checked, ...(event.target.checked ? { lostReason: '' } : {}) });
-        }} />Include a loss reason</label>
-        {(action.config.includeLossReason === true || action.config.includeLossReason === undefined && !!String(action.config.lostReason ?? '').trim()) && <label className="block space-y-1">Loss reason<textarea aria-label="Loss reason" aria-required="true" maxLength={2000} rows={3} className={workflowControl} value={String(action.config.lostReason ?? '')} onChange={event => onChange({ ...action.config, lostReason: event.target.value })} /></label>}
-        <p className="text-xs text-muted-foreground">Used when the target stage is Lost. Turn this off to close automatically without a reason. No dialog opens during execution.</p>
-      </fieldset>}
-      {action.type === 'move_deal_stage' && !stageSetup && (
-        <label className="block space-y-1">
-          Pipeline
-          <select
-            className={workflowControl}
-            value={selectedPipeline}
-            onChange={(event) => {
-              setPipeline(event.target.value);
-              onChange({ ...action.config, stageId: '', currentStageId: '' });
-            }}
-          >
-            <option value="">All pipelines</option>
-            {options.pipelines.map((entry) => (
-              <option key={entry.id} value={entry.id}>
-                {entry.name}
-              </option>
-            ))}
-          </select>
-          <span className="block text-xs text-[var(--muted-foreground)]">
-            The deal must meet the selected stage’s entry requirements.
-          </span>
-        </label>
-      )}
+      {action.type === 'move_deal_stage' && !stageSetup && <div className="space-y-1">
+        <p className="text-xs text-muted-foreground">Pipeline</p>
+        <p>{(savedPipeline ?? defaultPipeline)?.name ?? 'Sales Pipeline unavailable'}</p>
+        <p className="text-xs text-muted-foreground">The Deal must meet the selected stage’s entry requirements, including configured custom fields.</p>
+      </div>}
       {Object.entries(definition?.configSchema ?? {}).map(([key, field]) => {
         if (action.type === 'move_deal_stage' && ['includeLossReason', 'lostReason'].includes(key)) return null;
         if (action.type === 'create_task' && ['targetMode', 'pipelineId', 'currentStageId', 'productInterestId', 'dealId'].includes(key)) return null;
@@ -340,7 +306,7 @@ export function ActionFields({
         if (action.type === 'move_deal_stage' && entity === 'deal' && ['targetMode', 'productInterestId', 'currentStageId'].includes(key)) return null;
         let choices = references(field.type, options) ??
           field.options?.map((option) => ({ id: option, name: option }));
-        if (['stageId', 'currentStageId'].includes(key) && selectedPipeline)
+        if (['stageId', 'currentStageId'].includes(key))
           choices =
             options.pipelines.find((entry) => entry.id === selectedPipeline)
               ?.stages ?? [];

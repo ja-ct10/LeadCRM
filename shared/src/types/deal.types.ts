@@ -6,6 +6,7 @@
  * detection of field name mismatches via TypeScript strict mode.
  */
 
+import type { DealAddressSource, DealAddressContext } from '../contracts/deal-address';
 import type { DealAssociationChange } from '../contracts/deal-batch';
 
 /** Possible priority values for a Deal. */
@@ -16,6 +17,7 @@ export type DealPriority = 'LOW' | 'MEDIUM' | 'HIGH';
  * Maps to the Prisma `Deal` model in the backend.
  */
 export interface Deal {
+  addressContext?: DealAddressContext;
   productInterestIds?: string[];
   id: string;
   tenantId: string;
@@ -34,6 +36,7 @@ export interface Deal {
   leadIds?: string[];
   industry?: string;
   address?: string;
+  addressSource?: DealAddressSource | null;
   productInterests?: string[];
   productInterestId?: string;
   productInterestRecord?: { id: string; name: string } | null;
@@ -70,6 +73,7 @@ export interface CreateDealRequest {
   leadIds?: string[];
   industry?: string;
   address?: string;
+  addressSource?: DealAddressSource | null;
   productInterests?: string[];
 }
 
@@ -92,6 +96,7 @@ export interface UpdateDealRequest {
   leadIds?: string[];
   industry?: string;
   address?: string;
+  addressSource?: DealAddressSource | null;
   productInterests?: string[];
 }
 

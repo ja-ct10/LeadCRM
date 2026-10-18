@@ -177,9 +177,9 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     await expect(scope(() => moveDealStage(manual.id, tenantId, actor.id, { stageId: lost.id }))).rejects.toThrow('Lost reason');
     await expect(scope(() => moveDealStage(manual.id, tenantId, actor.id, { stageId: lost.id, lostReason: 'Manual reason' }))).resolves.toBeTruthy();
   });
-  it('saves an incomplete loss-reason draft but rejects empty enabled reasons at activation', async () => {
+  it('publishes a legacy blank loss-reason draft without the retired UI requirement', async () => {
     const draft = await create({ trigger: 'deal.created', isActive: false, actions: [{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: true, lostReason: '' } }] });
-    await expect(scope(() => workflows.toggleWorkflow(draft.id, tenantId, actor.id, true))).rejects.toThrow('Enter a loss reason');
+    await expect(scope(() => workflows.toggleWorkflow(draft.id, tenantId, actor.id, true))).resolves.toBeTruthy();
     expect((await scope(() => workflows.updateWorkflow(draft.id, tenantId, actor.id, { actions: [{ type: 'move_deal_stage', config: { stageId: lost.id, includeLossReason: false } }], isActive: true }))).isActive).toBe(true);
   });
   it('activates automatic stage routing, responds to real priority changes and cannot loop or transfer pipelines', async () => {
@@ -311,7 +311,10 @@ describe.skipIf(!disposable)('workflow polish with real persisted CRM records', 
     await scope(() => updateDeal(deal.id, tenantId, actor.id, { priority: 'HIGH' }));
     const saved = await scope(() => prisma.deal.findFirstOrThrow({ where: { id: deal.id, tenantId } }));
     expect(saved.value).toBe(deal.value); expect(saved.title).toBe(deal.title); expect(saved.priority).toBe('HIGH');
-    expect((await runs(workflow.id))[0].status).toBe('failed');
+    const rejectedRun = (await runs(workflow.id))[0];
+    // The queue interrupts a retired published definition before dispatch; it is never replayed automatically.
+    expect(rejectedRun).toMatchObject({ status: 'interrupted', steps: [] });
+    expect(rejectedRun.errorMessage).toContain('automatic replay is disabled');
     await expect(create({ trigger: 'deal.updated', actions: [{ type: 'update_field', config: { field: 'id', value: 'bad' } }] })).rejects.toThrow(/editable/);
   });
   it('sends SMS once for an event and reports a missing phone without submission', async () => {

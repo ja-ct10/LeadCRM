@@ -1,3 +1,4 @@
+vi.mock('@/shared/hooks/use-deal-address-options', () => ({ useDealAddressOptions: () => ({ data: [], isInitialLoad: false, error: null, refetch: vi.fn() }) }));
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';

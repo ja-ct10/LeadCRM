@@ -74,7 +74,7 @@ export function AccountFormInner({ initialData, onSave, onCancel }: AccountFormI
         <AccountNativeField fieldKey="industry" label="Industry" id={`${fieldId}-industry`} registration={register('industry')} error={errors.industry?.message} disabled={isSubmitting} />
         <AccountNativeField fieldKey="size" label="Company Size" id={`${fieldId}-size`} registration={register('size')} error={errors.size?.message} disabled={isSubmitting} />
         <AccountNativeField fieldKey="website" label="Website" id={`${fieldId}-website`} registration={register('website')} error={errors.website?.message} disabled={isSubmitting} />
-        <AccountNativeField fieldKey="address" label="Full Address" id={`${fieldId}-address`} registration={register('address')} error={errors.address?.message} disabled={isSubmitting} />
+        <AccountNativeField fieldKey="address" label="Company Address" id={`${fieldId}-address`} registration={register('address')} error={errors.address?.message} disabled={isSubmitting} />
       </ConfiguredFormLayout>
     </div>
     <div className={`${panelFooterClass} justify-end`}>

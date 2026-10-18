@@ -64,3 +64,4 @@ __exportStar(require("./contracts/crm-export"), exports);
 __exportStar(require("./contracts/quotation.contract"), exports);
 __exportStar(require("./utils/currency"), exports);
 __exportStar(require("./contracts/customer-classification"), exports);
+__exportStar(require("./contracts/deal-address"), exports);

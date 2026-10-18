@@ -14,7 +14,7 @@ it('removes legacy columns from user/tenant preferences while preserving placeme
 it('upgrades the old address label and excludes retired Notes from the Account field catalog', () => {
   const layout = defaultFieldLayout('accounts');
   layout.fields.address = { label: 'Street Address', groupId: 'accounts:section:1', order: 0, visibleInForm: true, visibleInDetails: true };
-  expect(getCrmFieldCatalog('accounts', [], layout).find(field => field.technicalKey === 'address')?.label).toBe('Full Address');
+  expect(getCrmFieldCatalog('accounts', [], layout).find(field => field.technicalKey === 'address')?.label).toBe('Company Address');
   expect(getCrmFieldCatalog('accounts').some(field => field.technicalKey === 'notes')).toBe(false);
   layout.fields.address.label = 'Delivery location';
   expect(getCrmFieldCatalog('accounts', [], layout).find(field => field.technicalKey === 'address')?.label).toBe('Delivery location');

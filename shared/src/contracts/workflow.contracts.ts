@@ -47,7 +47,7 @@ export function workflowLossReason(config: Record<string, unknown>): string | un
 export function workflowLossReasonIssue(config: Record<string, unknown>, incomplete = false): string | undefined {
   if (config.includeLossReason !== undefined && typeof config.includeLossReason !== 'boolean') return 'Include a loss reason must be Yes or No.';
   if (config.lostReason !== undefined && (typeof config.lostReason !== 'string' || config.lostReason.length > 2000 || /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(config.lostReason))) return 'Loss reason must be text of at most 2000 characters without control characters.';
-  if (!incomplete && config.includeLossReason === true && !workflowLossReason(config)) return 'Enter a loss reason or turn off Include a loss reason.';
+  // Retired UI flag: blank legacy reasons are optional; stage evidence still applies.
 }
 const optionalWorkflowReference = z.preprocess(value => value === '' ? undefined : value, z.string().uuid().optional());
 export const WorkflowTaskAssociationSchema = z.object({

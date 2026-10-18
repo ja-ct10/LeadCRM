@@ -1,3 +1,4 @@
+import { assertDealAddressSource } from './deal-address';
 import { createHash } from 'node:crypto';
 import { resolveManualDealAssociation } from './deal-association';
 import type { BatchFiles } from '../closing-requirements/custom-field-values.repository';
@@ -32,6 +33,7 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
     const leadIds = [...new Set(dto.leadIds ?? [])], contactIds = [...new Set(dto.contactIds ?? [])];
     if (await tx.lead.count({ where: { tenantId, id: { in: leadIds }, isArchived: false, deletedAt: null } }) !== leadIds.length) throw new ValidationError('A selected Lead is unavailable.');
     if (await tx.contact.count({ where: { tenantId, id: { in: contactIds }, isArchived: false, deletedAt: null } }) !== contactIds.length) throw new ValidationError('A selected Contact is unavailable.');
+    await assertDealAddressSource(tx, tenantId, dto.addressSource, { ...dto, ...association });
     const products = await resolveProducts(tx, tenantId, dto.productInterestIds);
     const { idempotencyKey, productInterestIds: _ids, ...common } = dto;
     const deals = [];
