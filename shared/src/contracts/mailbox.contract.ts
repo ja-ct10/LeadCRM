@@ -61,7 +61,14 @@ export const ScheduleMailboxEmailSchema = SendMailboxEmailSchema.extend({
   draftId: z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200).optional(),
 }).strict();
 
-export interface MailboxAttachment { id: string; filename: string; mimeType: string; size: number }
+export interface MailboxAttachment {
+  id: string; filename: string; mimeType: string; size?: number;
+  contentId?: string;
+  disposition?: 'inline' | 'attachment';
+  /** Gmail MIME part locator; bytes remain in Gmail, never in this metadata. */
+  partId?: string;
+}
+export interface MailboxMessageContent { body: string; attachments: MailboxAttachment[] }
 
 export interface MailboxEmail {
   id: string;

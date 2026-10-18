@@ -647,6 +647,8 @@ New consent requests use `gmail.modify` and `userinfo.email`. The backend derive
 | POST | `/integrations/gmail/sync`, `/integrations/gmail/disconnect` | Request sync/disconnect |
 | GET | `/integrations/gmail/emails`, `/integrations/gmail/unread-count`, `/integrations/gmail/events` | Persisted mailbox reads/counts/events |
 | GET | `/integrations/gmail/threads/:threadId` | Scoped thread |
+| GET | `/integrations/gmail/messages/:messageId/content` | Refresh an expanded authorized message's original body and attachment metadata |
+| GET | `/integrations/gmail/messages/:messageId/attachments/:attachmentId` | Download original Gmail attachment bytes, including validated MIME part locators |
 | GET | `/integrations/gmail/conversations/:conversationId` | Scoped correspondent history, bounded message pages |
 | PATCH | `/integrations/gmail/messages/:messageId/read-state` | Read/unread one currently authorized message |
 | POST | `/integrations/gmail/send`, `/integrations/gmail/drafts` | Send/save draft |
