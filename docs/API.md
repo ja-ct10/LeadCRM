@@ -317,6 +317,23 @@ Record file history uses `GET`/`POST /crm/{module}/:id/files` and
 `GET /crm/{module}/:id/files/:fileId/download` for `leads`, `contacts`, `accounts`,
 and `deals`. These reuse the existing scoped file service and storage provider.
 
+Lead, Contact and Deal Files also read `GET /crm/{module}/:id/email-attachments`
+with an optional `cursor`. The response's `data` contains `attachments`, optional
+`nextCursor`, and an optional recovery `error`. Each page examines at most 20
+stored, authorized, record-linked messages. References contain the original
+mailbox/message/attachment identity, filename, MIME type, optional size, and
+sent/received timestamp. Contact history includes converted source Leads.
+Deal reads require a validated stored message or thread association and the
+existing customer relationship. Viewing a CRM record never grants access to
+another employee's Gmail account.
+
+Gmail references remain read-only and use the existing
+`GET /integrations/gmail/messages/:messageId/attachments/:attachmentId` endpoint.
+CRM actions supply `recordModule`, `recordId`, and `accountId` query parameters;
+record, association and mailbox access are rechecked before and after provider
+I/O. Existing Inbox callers may omit this context. No uploaded-file row or
+attachment bytes are persisted by this feature.
+
 ### CRM CSV imports
 
 Paths below are relative to `/api/v1`. Replace `{module}` with `leads`, `contacts`,

@@ -4,14 +4,14 @@ import { Download, File, FileText, Image as ImageIcon, Loader2 } from 'lucide-re
 import { toast } from 'sonner';
 import type { MailboxAttachment, MailboxMessageContent } from '@leadcrm/shared';
 import type { ApiRequestError } from '@/lib/api/client';
-import { SideSheet } from '@/shared/components/side-sheet';
+import { AttachmentPreview, isPreviewableAttachment } from '@/shared/components/attachment-preview';
 import { Button } from '@/shared/components/ui/button';
 import { fetchGmailMessageContent, fetchGmailAttachment, type GmailEmail } from '../services/gmail.service';
 import { mailboxReferencedContentIds } from '../services/email-html';
 import { EmailHtmlFrame } from './email-html-frame';
 
 const rasterImage = (type: string) => /^image\/(png|jpeg|gif|webp)$/i.test(type);
-const previewable = (type: string) => type === 'application/pdf' || rasterImage(type);
+const previewable = isPreviewableAttachment;
 type Resource = { url: string; blob: Blob };
 function sizeLabel(bytes?: number) {
   if (bytes === undefined) return '';
@@ -143,11 +143,7 @@ export function EmailMessageContent({ email, onUnavailable, afterBody }: { email
         </li>;
       })}</ul>
     </section>}
-    <SideSheet isOpen={!!selected} onClose={closePreview} title={preview?.filename || 'Attachment Preview'} width="w-full max-w-3xl">
-      {selected && preview && <div className="flex min-h-[65vh] min-w-0 flex-col gap-3 p-4">
-        <Button variant="outline" className="self-start" onClick={() => void fileAction(preview, true)}><Download size={16} />Download</Button>
-        {selected.blob.type === 'application/pdf' ? <><iframe title="Email attachment PDF preview" src={selected.url + '#view=FitH'} className="min-h-[65vh] w-full flex-1 rounded border border-border" /><a className="text-sm text-primary underline" href={selected.url} target="_blank" rel="noopener noreferrer">Open PDF in a new tab</a></> : <img src={selected.url} alt={preview.filename || 'Attached image'} className="max-h-[75vh] max-w-full self-center object-contain" />}
-      </div>}
-    </SideSheet>
+    <AttachmentPreview file={selected && preview ? { name: preview.filename, url: selected.url, type: selected.blob.type } : null}
+      onClose={closePreview} onDownload={() => { if (preview) void fileAction(preview, true); }} />
   </>;
 }

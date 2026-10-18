@@ -29,3 +29,27 @@ export interface RecordFileMetadata {
   uploadedBy?: string;
   url: string;
 }
+
+export const RecordEmailAttachmentContextSchema = z.object({
+  recordModule: z.enum(['leads', 'contacts', 'deals']),
+  recordId: z.string().uuid(),
+  accountId: z.string().uuid().optional(),
+}).strict();
+export type RecordEmailAttachmentContext = z.infer<typeof RecordEmailAttachmentContextSchema>;
+
+/** A reference to the original Gmail part; no uploaded-file row or bytes. */
+export interface RecordEmailAttachmentReference {
+  id: string;
+  accountId: string;
+  messageId: string;
+  attachmentId: string;
+  name: string;
+  type: string;
+  size?: number;
+  sentAt: string;
+}
+export interface RecordEmailAttachmentsPage {
+  attachments: RecordEmailAttachmentReference[];
+  nextCursor?: string;
+  error?: string;
+}

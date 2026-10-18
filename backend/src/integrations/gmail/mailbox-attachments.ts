@@ -1,4 +1,5 @@
-import type { MailboxAttachment, MailboxMessageContent } from '@leadcrm/shared';
+import type { MailboxAttachment, MailboxMessageContent, RecordEmailAttachmentContext } from '@leadcrm/shared';
+import { assertRecordMailboxMessage } from './mailbox-record-scope';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox } from './mailbox-store';
@@ -37,7 +38,8 @@ function previewContentType(data: Buffer, mimeType: string) {
   return 'application/octet-stream';
 }
 
-export async function readMailboxAttachment(tenantId: string, userId: string, messageId: string, attachmentId: string) {
+export async function readMailboxAttachment(tenantId: string, userId: string, messageId: string, attachmentId: string, recordContext?: RecordEmailAttachmentContext) {
+  if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
   const { account, scope } = await authorizedMailbox(tenantId, userId);
   await assertStoredMessages(account, scope, [messageId], true);
   const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { attachments: true, threadId: true } });
@@ -60,5 +62,6 @@ export async function readMailboxAttachment(tenantId: string, userId: string, me
   const current = await authorizedMailbox(tenantId, userId);
   if (current.account.id !== account.id) throw new AppError('Mailbox changed during download.', 409);
   await assertStoredMessages(current.account, current.scope, [messageId], true);
+  if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
   return { data, filename: attachment.filename, mimeType: previewContentType(data, attachment.mimeType) };
 }

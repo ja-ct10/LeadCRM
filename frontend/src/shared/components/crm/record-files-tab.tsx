@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Loader2,
   Upload,
@@ -10,6 +10,7 @@ import {
   Trash2,
   File as FileIcon,
   Plus,
+  Eye,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { RECORD_FILE_MAX_BYTES } from '@leadcrm/shared';
@@ -20,17 +21,21 @@ import { Button } from '@/shared/components/ui/button';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
 import type { PermissionKey } from '@leadcrm/shared';
+import type { RecordEmailAttachmentContext, RecordEmailAttachmentReference } from '@leadcrm/shared';
+import { fetchGmailAttachment } from '@/features/tenant/inbox/services/gmail.service';
+import { AttachmentPreview, isPreviewableAttachment } from '@/shared/components/attachment-preview';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface FileRecord {
   id: string;
   name: string;
-  size: number;
+  size?: number;
   type: string;
   uploadedAt: string;
   uploadedBy?: string;
   url?: string;
+  emailAttachment?: RecordEmailAttachmentReference;
 }
 
 export interface RecordFilesTabProps {
@@ -45,6 +50,12 @@ export interface RecordFilesTabProps {
   onUpload?: (file: File) => Promise<void>;
   /** Callback when a file is deleted */
   onDelete?: (fileId: string) => Promise<void>;
+  emailContext?: RecordEmailAttachmentContext;
+  attachmentAccessKey?: string;
+  onEmailUnavailable?: () => void;
+  hasMore?: boolean;
+  loadingMore?: boolean;
+  onLoadMore?: () => void;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -155,9 +166,12 @@ interface FileRowProps {
   file: FileRecord;
   canDelete: boolean;
   onDelete?: (fileId: string) => Promise<void>;
+  onPreview?: () => void;
+  onDownload?: () => void;
+  busy?: boolean;
 }
 
-function FileRow({ file, canDelete, onDelete }: FileRowProps): React.ReactElement {
+function FileRow({ file, canDelete, onDelete, onPreview, onDownload, busy }: FileRowProps): React.ReactElement {
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const Icon = getFileIcon(file.type);
@@ -193,16 +207,19 @@ function FileRow({ file, canDelete, onDelete }: FileRowProps): React.ReactElemen
 
         {/* File info */}
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-foreground truncate">{file.name}</p>
+          <p className="text-sm font-medium text-foreground truncate" title={file.name}>{file.name}</p>
           <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">
-            {formatFileSize(file.size)} · {formatDate(file.uploadedAt)}
+            {file.emailAttachment && `${file.type === 'application/pdf' ? 'PDF Document' : file.type.startsWith('image/') ? file.type.slice(6).toUpperCase() + ' Image' : file.type} · `}
+            {file.size !== undefined && `${formatFileSize(file.size)} · `}{formatDate(file.uploadedAt)}
             {file.uploadedBy && ` · ${file.uploadedBy}`}
+            {file.emailAttachment && ' · Email Attachment'}
           </p>
         </div>
 
         {/* Actions */}
         <div className="flex items-center gap-1 shrink-0">
-          {file.url && (
+          {onPreview && <button type="button" onClick={onPreview} disabled={busy} className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent disabled:opacity-50" aria-label={`Preview ${file.name}`} title="Preview file"><Eye className="h-3.5 w-3.5 text-muted-foreground" /></button>}
+          {onDownload ? <button type="button" onClick={onDownload} disabled={busy} className="h-8 w-8 rounded-md flex items-center justify-center hover:bg-accent disabled:opacity-50" aria-label={`Download ${file.name}`} title="Download file">{busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5 text-muted-foreground" />}</button> : file.url && (
             <TooltipProvider><Tooltip><TooltipTrigger asChild><a
               href={file.url}
               download={file.name}
@@ -212,7 +229,7 @@ function FileRow({ file, canDelete, onDelete }: FileRowProps): React.ReactElemen
               <Download className="h-3.5 w-3.5 text-muted-foreground" />
             </a></TooltipTrigger><TooltipContent>Download file</TooltipContent></Tooltip></TooltipProvider>
           )}
-          {canDelete && onDelete && (
+          {!file.emailAttachment && canDelete && onDelete && (
             <button
               type="button"
               onClick={handleDeleteClick}
@@ -251,8 +268,58 @@ export function RecordFilesTab({
   deletePermission,
   onUpload,
   onDelete,
+  emailContext,
+  attachmentAccessKey,
+  onEmailUnavailable,
+  hasMore,
+  loadingMore,
+  onLoadMore,
 }: RecordFilesTabProps): React.ReactElement {
   const canDelete = useHasPermission(deletePermission ?? 'contacts.archive' as PermissionKey);
+  const [preview, setPreview] = useState<{ file: FileRecord; url: string; type: string; identity: string } | null>(null);
+  const previewIdentity = JSON.stringify([attachmentAccessKey, emailContext?.recordModule, emailContext?.recordId]);
+  const [busy, setBusy] = useState('');
+  const request = useRef<AbortController | null>(null), previewUrl = useRef(''), generation = useRef(0);
+  const closePreview = () => {
+    if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+    previewUrl.current = ''; setPreview(null);
+  };
+  useEffect(() => {
+    setPreview(null); setBusy('');
+    return () => {
+      generation.current++; request.current?.abort(); request.current = null;
+      if (previewUrl.current) URL.revokeObjectURL(previewUrl.current);
+      previewUrl.current = '';
+    };
+  }, [previewIdentity]);
+  const visiblePreview = preview?.identity === previewIdentity && files.some(file => file.id === preview.file.id && file.emailAttachment) ? preview : null;
+  useEffect(() => { if (preview && !visiblePreview) closePreview(); }, [preview, visiblePreview]);
+  const emailAction = async (file: FileRecord, download: boolean) => {
+    if (!file.emailAttachment || !emailContext || request.current) return;
+    const controller = new AbortController(), current = generation.current;
+    request.current = controller; setBusy(file.id);
+    try {
+      const reference = file.emailAttachment;
+      const blob = await fetchGmailAttachment(reference.messageId, reference.attachmentId, controller.signal, { ...emailContext, accountId: reference.accountId });
+      if (controller.signal.aborted || current !== generation.current) return;
+      if (download) {
+        const url = URL.createObjectURL(blob), link = document.createElement('a');
+        link.href = url; link.download = file.name || 'attachment'; link.click();
+        setTimeout(() => URL.revokeObjectURL(url), 0);
+      } else if (isPreviewableAttachment(blob.type)) {
+        closePreview(); const url = URL.createObjectURL(blob); previewUrl.current = url;
+        setPreview({ file, url, type: blob.type, identity: previewIdentity });
+      } else toast.error('Preview is unavailable for this file. Use Download to save the original attachment.');
+    } catch (error) {
+      if (controller.signal.aborted || current !== generation.current) return;
+      closePreview();
+      const failure = error as { status?: number; message?: string };
+      if ([401, 403, 404, 409].includes(failure.status ?? 0)) onEmailUnavailable?.();
+      toast.error(failure.message || 'This attachment is unavailable. Please try again.');
+    } finally {
+      if (request.current === controller) { request.current = null; setBusy(''); }
+    }
+  };
 
   return (
     <div className="w-full min-w-0 p-4 space-y-4">
@@ -266,10 +333,13 @@ export function RecordFilesTab({
         <div className="border border-border rounded-xl bg-card overflow-hidden divide-y divide-border/50">
           {files.map((file) => (
             <FileRow
-              key={file.id}
+              key={`${file.emailAttachment ? 'gmail' : 'upload'}:${file.id}`}
               file={file}
               canDelete={canDelete}
               onDelete={onDelete}
+              busy={!!busy}
+              onPreview={file.emailAttachment && emailContext && isPreviewableAttachment(file.type) ? () => void emailAction(file, false) : undefined}
+              onDownload={file.emailAttachment && emailContext ? () => void emailAction(file, true) : undefined}
             />
           ))}
         </div>
@@ -279,6 +349,9 @@ export function RecordFilesTab({
           <p className="text-sm text-muted-foreground">No files uploaded yet.</p>
         </div>
       ) : null}
+      {hasMore && <Button variant="ghost" size="sm" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? 'Loading older attachments…' : 'Load older attachments'}</Button>}
+      <AttachmentPreview key={previewIdentity + ':' + !!visiblePreview} file={visiblePreview ? { name: visiblePreview.file.name, url: visiblePreview.url, type: visiblePreview.type } : null}
+        onClose={closePreview} onDownload={() => { if (preview) void emailAction(preview.file, true); }} downloading={!!busy} />
     </div>
   );
 }

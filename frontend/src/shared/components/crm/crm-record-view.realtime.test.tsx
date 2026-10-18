@@ -5,7 +5,9 @@ import { clearPageCache } from '@/shared/cache/page-cache';
 import { CrmRecordPanel, CrmRecordView } from './crm-record-view';
 import type { TimelineActivity } from '@/shared/hooks/use-record-activities';
 
-const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false, status: { isConnected: true, syncError: null as string | null } }));
+const mocks = vi.hoisted(() => ({ get: vi.fn(), getAll: vi.fn(), navigate: vi.fn(), close: vi.fn(), edit: false,
+  files: [] as any[], emailFiles: [] as any[], emailDenied: false,
+  status: { isConnected: true, syncError: null as string | null } }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { id: 'owner', role: 'Sales', tenantId: 'tenant' }, isLoading: false, authError: null }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ activities: [], users: [], pipelines: [], deals: [], contacts: [], organizations: [] }) }));
@@ -18,7 +20,6 @@ vi.mock('@/shared/hooks/use-field-layout', async () => {
 });
 vi.mock('./record-custom-fields', () => ({ useRecordCustomFieldDetails: () => ({ fields: [], query: { error: null } }), RecordCustomFieldInlineRow: () => null }));
 vi.mock('./deal-closing-requirements', () => ({ DealClosingRequirements: () => null }));
-vi.mock('./record-files-tab', () => ({ RecordFilesTab: () => null }));
 vi.mock('./inline-deal-form', () => ({ InlineDealForm: () => null }));
 vi.mock('./deal-card-menu', () => ({ DealCardMenu: () => null }));
 vi.mock('@/features/tenant/operations/tasks/ui/related-tasks', () => ({ RelatedTasks: () => null }));
@@ -40,7 +41,10 @@ let rows: TimelineActivity[];
 beforeEach(() => {
   clearPageCache(); vi.clearAllMocks(); mocks.edit = false; streams.length = 0; rows = [note]; vi.stubGlobal('EventSource', FakeSource);
   mocks.status = { isConnected: true, syncError: null };
-  mocks.get.mockImplementation(async (path: string) => path === '/integrations/gmail/status' ? mocks.status : path.endsWith('/files') ? { data: [] } : { data: {
+  mocks.files = []; mocks.emailFiles = []; mocks.emailDenied = false;
+  mocks.get.mockImplementation(async (path: string) => path.endsWith('/email-attachments')
+    ? mocks.emailDenied ? Promise.reject(Object.assign(new Error('Mailbox access revoked'), { status: 403 })) : { data: { attachments: mocks.emailFiles } }
+    : path === '/integrations/gmail/status' ? mocks.status : path.endsWith('/files') ? { data: mocks.files } : { data: {
     id: 'record', firstName: 'Customer', lastName: 'Test', email: 'customer@example.test', title: 'Customer Deal', status: 'Warm', assignedUserId: 'owner',
     createdAt: note.createdAt, stage: { name: 'Lead' }, productInterests: [], leadDeals: [], contactDeals: [],
   } });
@@ -134,4 +138,58 @@ it('clears revoked email immediately while preserving the selected Emails filter
   await act(async () => release());
   await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity0'));
   expect((screen.getByLabelText('Note') as HTMLTextAreaElement).value).toBe('Keep my unfinished note');
+});
+
+const fileCases = (['leads', 'contacts', 'deals'] as const).flatMap(module => (['panel', 'page'] as const).map(surface => ({ module, surface })));
+it('retains visible email files while older attachments load and reuses the cached first page', async () => {
+  const originalGet = mocks.get.getMockImplementation()!;
+  const file = { id: 'first', accountId: 'account', messageId: 'sent', attachmentId: 'part', name: 'first.pdf', type: 'application/pdf', sentAt: '2026-10-18T00:00:00Z' };
+  const reads: (string | undefined)[] = [];
+  let finish!: () => void;
+  mocks.get.mockImplementation(async (path: string, options?: { params?: { cursor?: string } }) => {
+    if (!path.endsWith('/email-attachments')) return originalGet(path);
+    reads.push(options?.params?.cursor);
+    if (!options?.params?.cursor) return { data: { attachments: [file], nextCursor: 'older-page' } };
+    await new Promise<void>(resolve => { finish = resolve; });
+    return { data: { attachments: [{ ...file, id: 'older', name: 'older.pdf', messageId: 'older' }] } };
+  });
+  render(<CrmRecordView module="contacts" id="record" />);
+  await screen.findByRole('tab', { name: 'Files' });
+  fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+  await screen.findByText('first.pdf');
+  fireEvent.click(screen.getByRole('button', { name: 'Load older attachments' }));
+  await waitFor(() => expect(reads).toEqual([undefined, 'older-page']));
+  expect(screen.getByText('first.pdf')).toBeTruthy();
+  expect((screen.getByRole('button', { name: 'Loading older attachments…' }) as HTMLButtonElement).disabled).toBe(true);
+  await act(async () => finish());
+  await screen.findByText('older.pdf'); expect(screen.getAllByText('first.pdf')).toHaveLength(1);
+  expect(reads).toHaveLength(2);
+  expect(screen.queryByRole('button', { name: 'Load older attachments' })).toBeNull();
+});
+
+it.each(fileCases)('combines original file rows in the $module $surface, refreshes without duplicates and removes revoked Gmail entries', async ({ module, surface }) => {
+  mocks.files = [{ id: 'manual', name: 'manual.pdf', size: 1024, type: 'application/pdf', uploadedAt: '2026-10-01T00:00:00Z', url: '/manual-download' }];
+  const quotation = { id: 'same-original', accountId: 'account', messageId: 'sent-message', attachmentId: 'pdf-part', name: 'quotation.pdf', type: 'application/pdf', size: 20173, sentAt: '2026-10-18T00:00:00Z' };
+  mocks.emailFiles = [quotation, quotation];
+  render(surface === 'panel' ? <CrmRecordPanel module={module} id="record" open onOpenChange={mocks.close} /> : <CrmRecordView module={module} id="record" />);
+  await waitFor(() => expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1'));
+  fireEvent.click(screen.getByRole('tab', { name: 'Files' }));
+  await screen.findByText('manual.pdf'); await screen.findByText('quotation.pdf');
+  expect(screen.getAllByText('quotation.pdf')).toHaveLength(1);
+  expect(screen.getByRole('link', { name: 'Download manual.pdf' }).getAttribute('href')).toBe('/manual-download');
+  expect(screen.getByRole('button', { name: 'Preview quotation.pdf' })).toBeTruthy();
+  expect(screen.queryByRole('button', { name: 'Delete quotation.pdf' })).toBeNull();
+  mocks.emailFiles = [quotation, { ...quotation, id: 'received', messageId: 'received-message', name: 'received.pdf' }];
+  await waitFor(() => expect(streams).toHaveLength(1));
+  act(() => streams[0].dispatchEvent(new Event('mailbox-change')));
+  await screen.findByText('received.pdf');
+  expect(screen.getAllByText('quotation.pdf')).toHaveLength(1);
+  mocks.emailDenied = true;
+  act(() => streams[0].dispatchEvent(new Event('mailbox-access-changed')));
+  await waitFor(() => expect(screen.queryByText('quotation.pdf')).toBeNull());
+  expect(screen.queryByText('received.pdf')).toBeNull();
+  expect(screen.getByText('manual.pdf')).toBeTruthy();
+  expect(screen.getByRole('alert').textContent).toContain('Mailbox access revoked');
+  expect(screen.getByRole('tab', { name: /^Activity/ }).textContent).toBe('Activity1');
+  expect(mocks.get.mock.calls.some(([path]) => path === `/crm/${module}/record/email-attachments`)).toBe(true);
 });
