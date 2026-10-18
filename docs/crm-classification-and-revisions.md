@@ -8,7 +8,9 @@ New Leads and Contacts default to Inquiry. Existing statuses are retained by the
 
 Unqualified historical/manual Hot records retain eight-day aging; verified reply/outreach evidence becomes Cold at 30 days. Untouched Inquiry records remain Inquiry. A bounded five-minute sweep evaluates up to 50 Leads and 50 Contacts per active workspace per pass, using an active Client Admin and durable cursors. Mailbox ingestion and qualification changes also evaluate immediately. Workspaces without an active Client Admin cannot run the independent sweep.
 
-The Work queue sorts untouched records first, then Hot, Warm, contacted Inquiry and Cold; each group uses oldest creation and stable ID order. A logged staff call or a confirmed personal send establishes first outreach. Scheduled messages, notes and campaigns do not. The migration backfills only explicit staff calls and confirmed personal mailbox send receipts.
+Use All Leads, My Leads (for staff) and Active Leads with the existing filters and table sorting. A logged staff call or a confirmed personal send establishes first outreach for classification. Scheduled messages, notes and campaigns do not. The migration backfills only explicit staff calls and confirmed personal mailbox send receipts.
+
+Organization fields label the linked Account's address as Company Address; Additional Information labels the person's address as Lead Address. Both addresses retain their existing storage, validation and save behavior. Existing default address labels are clarified when rendering; customized Lead address labels are preserved.
 
 New Lead assignment uses Inquiry=1, Warm=2, Hot=3, Cold=1 and terminal=0. Only current nonarchived, unconverted Leads count; automatically created Deals do not. Eligible agents with the minimum score rotate by stable ID. Existing permissions, Sales group rules for forms, explicit owners and transaction/retry guards remain in force. Workflow Lead-owner assignment additionally offers `weighted_workload`, using its existing availability and capacity settings. Assignment activities contain the method and chosen workload score.
 

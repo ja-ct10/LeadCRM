@@ -2,7 +2,6 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CUSTOMER_STATUS_HELP = exports.LEAD_WORKLOAD_WEIGHTS = void 0;
 exports.classifyCustomer = classifyCustomer;
-exports.leadWorkQueueRank = leadWorkQueueRank;
 const record_experience_1 = require("./record-experience");
 exports.LEAD_WORKLOAD_WEIGHTS = { Inquiry: 1, Warm: 2, Hot: 3, Cold: 1, Closed: 0, Cancelled: 0 };
 exports.CUSTOMER_STATUS_HELP = {
@@ -38,12 +37,4 @@ function classifyCustomer(record, now = new Date()) {
     if (status === 'Hot' && days >= 8)
         return 'Warm';
     return status;
-}
-function leadWorkQueueRank(record) {
-    const status = (0, record_experience_1.normalizeCrmStatus)(record.status);
-    if (status === 'Closed' || status === 'Cancelled')
-        return 9;
-    if (!record.firstStaffOutreachAt)
-        return 0;
-    return { Hot: 1, Warm: 2, Inquiry: 3, Cold: 4 }[status];
 }

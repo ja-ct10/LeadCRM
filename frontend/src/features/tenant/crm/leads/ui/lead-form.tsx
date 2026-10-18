@@ -374,7 +374,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
               />
             </FieldWrap>
           </div>
-          <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Full Address">
+          <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Lead Address">
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea

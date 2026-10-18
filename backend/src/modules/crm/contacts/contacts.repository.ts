@@ -7,7 +7,7 @@ import { formatAssignmentChange } from '@leadcrm/shared';
 import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
-import { normalizeCrmStatus, formatLeadName, leadWorkQueueRank, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
+import { normalizeCrmStatus, formatLeadName, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { readRecordValues, saveRecordValues } from '../closing-requirements/custom-field-values.repository';
@@ -26,7 +26,7 @@ import { parseFilterParams, buildPrismaFilters, type FilterFields } from '../../
 const CONTACT_FILTER_FIELDS: FilterFields = {
   status: { kind: 'choice', operators: ['equals', 'in', 'not_in'] },
   source: { kind: 'choice' }, assignedUserId: { kind: 'reference' }, accountId: { kind: 'reference' },
-  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my', 'active', 'work_queue'], handled: true },
+  scope: { kind: 'choice', operators: ['equals'], options: ['all', 'my', 'active'], handled: true },
   system: { kind: 'choice', operators: ['in'], options: ['touched', 'untouched'], handled: true },
   related: { kind: 'choice', operators: ['in'], options: ['has_email', 'has_phone'], handled: true },
   createdAt: { kind: 'date', operators: ['gte', 'lte', 'between'], handled: true },
@@ -83,14 +83,12 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(filterClauses.length > 0 ? { AND: filterClauses } : {}),
   };
 
-  const workQueue = scope === 'work_queue';
-  if (workQueue) Object.assign(where, { isArchived: false, deletedAt: null, convertedAt: null, status: { notIn: ['Closed', 'Cancelled', 'CLOSED', 'CANCELLED'] } });
   const [sortKey, direction] = String(query.sort ?? 'createdAt:desc').split(':');
   const allowed = new Set(LEADS_TABLE_SORT_FIELDS);
   const sortField = allowed.has(sortKey) ? sortKey : 'createdAt';
   const sortDirection = direction === 'asc' ? 'asc' as const : 'desc' as const;
   const dateSort = ['createdAt', 'updatedAt'].includes(sortField);
-  const ids = workQueue ? (await db.lead.findMany({ where, select: { id: true, status: true, firstStaffOutreachAt: true, createdAt: true } })).sort((a, b) => leadWorkQueueRank(a) - leadWorkQueueRank(b) || +a.createdAt - +b.createdAt || a.id.localeCompare(b.id)).slice(skip, skip + limit).map(row => row.id) : dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
+  const ids = dateSort ? null : await sortedPageIds(`${sortField}:${sortDirection}`, LEADS_TABLE_SORT_FIELDS, skip, limit,
     async () => (await db.lead.findMany({ where,
       select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, companyFromAccount: true, status: true, source: true },
     })).map(row => ({ ...presentContactAccount(row, canReadAccount), name: row.firstName?.trim() || row.lastName?.trim() ? formatLeadName(row) : null, status: normalizeCrmStatus(row.status) })));

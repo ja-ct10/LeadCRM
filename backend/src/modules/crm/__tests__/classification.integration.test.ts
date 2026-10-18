@@ -155,15 +155,31 @@ describe.skipIf(!disposable)('hybrid classification, selection and revisions on 
     const explicit = await scope(() => salesTransaction(tx => createAssignedLead(tx, person(), admin.id)));
     expect(explicit.assignedUserId).toBe(owner.id);
   });
-  it('orders the Work queue globally before pagination and records real staff outreach', async () => {
-    const a = await lead({ createdAt: new Date('2001-01-01'), status: 'Inquiry' });
-    const b = await lead({ createdAt: new Date('2001-01-02'), status: 'Hot', firstStaffOutreachAt: new Date() });
-    const page = await scope(() => findAllContacts(tenantId, { page: 1, limit: 1, 'filter[scope]': 'equals:work_queue' }));
-    expect(page.data[0].id).toBe(a.id);
+  it('preserves Active and My Leads scopes, tenant isolation and explicit sorting before pagination', async () => {
+    const firstName = randomUUID();
+    const a = await lead({ firstName, createdAt: new Date('2001-01-01'), status: 'Inquiry' });
+    const b = await lead({ firstName, createdAt: new Date('2000-01-01'), status: 'Hot', firstStaffOutreachAt: new Date(), assignedUserId: second.id });
+    const cold = await lead({ firstName, createdAt: new Date('1999-01-01'), status: 'Cold' });
+    await prisma.lead.create({ data: { tenantId: otherTenantId, firstName, lastName: 'Foreign', createdAt: new Date('1998-01-01') } });
+    const query = { page: 1, limit: 1, search: firstName, sort: 'createdAt:asc' };
+    const active = await scope(() => findAllContacts(tenantId, { ...query, 'filter[scope]': 'equals:active' }));
+    expect(active.data.map(row => row.id)).toEqual([b.id]); expect(active.total).toBe(2);
+    const next = await scope(() => findAllContacts(tenantId, { ...query, page: 2, 'filter[scope]': 'equals:active' }));
+    expect(next.data.map(row => row.id)).toEqual([a.id]);
+    const mine = await scope(() => findAllContacts(tenantId, { ...query, currentUserId: second.id, 'filter[scope]': 'equals:my' }));
+    expect(mine.data.map(row => row.id)).toEqual([b.id]); expect(mine.total).toBe(1);
+    const all = await scope(() => findAllContacts(tenantId, { ...query, 'filter[scope]': 'equals:all' }));
+    expect(all.data.map(row => row.id)).toEqual([cold.id]); expect(all.total).toBe(3);
+  });
+  it('rejects the removed scope through existing API validation', async () => {
+    const result = await call('/crm/leads?filter%5Bscope%5D=equals%3Awork_queue');
+    expect(result.status).toBe(400);
+    expect(JSON.stringify(result.body)).toContain('Choose a supported filter value.');
+  });
+  it('continues recording real staff outreach for customer classification', async () => {
+    const a = await lead();
     await scope(() => salesTransaction(tx => recordStaffOutreach(tx, tenantId, { leadId: a.id }, new Date())));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).firstStaffOutreachAt).toBeTruthy();
-    const next = await scope(() => findAllContacts(tenantId, { page: 1, limit: 1, 'filter[scope]': 'equals:work_queue', search: b.email }));
-    expect(next.data[0].id).toBe(b.id);
   });
   it('selects all matching authorized deals across pages and rejects 51 matches', async () => {
     const account = await prisma.account.create({ data: { tenantId, name: randomUUID() } });

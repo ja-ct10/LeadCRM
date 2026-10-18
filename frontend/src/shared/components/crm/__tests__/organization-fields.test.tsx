@@ -31,7 +31,7 @@ it('shows exactly two exclusive modes and only the account picker when linking',
   expect(existing.getAttribute('aria-pressed')).toBe('true');
   expect(create.getAttribute('aria-pressed')).toBe('false');
   expect(screen.queryByText('Company name only')).toBeNull();
-  for (const label of ['Company Name', 'Industry', 'Company Size', 'Website', 'Full Address']) expect(screen.queryByLabelText(label)).toBeNull();
+  for (const label of ['Company Name', 'Industry', 'Company Size', 'Website', 'Company Address']) expect(screen.queryByLabelText(label)).toBeNull();
   fireEvent.click(screen.getByText('Save'));
   expect(save).toHaveBeenLastCalledWith({ accountId: null });
   fireEvent.click(screen.getByText('Choose Company'));
@@ -48,7 +48,7 @@ it('validates new Account fields, preserves required custom values and reuses th
   fireEvent.change(screen.getByLabelText('Company Name *'), { target: { value: 'New company' } });
   fireEvent.change(screen.getByLabelText('Industry'), { target: { value: 'Retail' } });
   fireEvent.change(screen.getByLabelText('Company Size'), { target: { value: '51-200' } });
-  fireEvent.change(screen.getByLabelText('Full Address'), { target: { value: '42 Main Street\nMakati, Philippines' } });
+  fireEvent.change(screen.getByLabelText('Company Address'), { target: { value: '42 Main Street\nMakati, Philippines' } });
   fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'bad url' } });
   fireEvent.click(screen.getByText('Save')); expect(save).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('Website'), { target: { value: 'https://new.test' } });
@@ -60,7 +60,7 @@ it('validates new Account fields, preserves required custom values and reuses th
   expect(save.mock.calls[0][0]).toMatchObject({ newAccount: { name: 'New company', industry: 'Retail', size: '51-200', website: 'https://new.test', address: '42 Main Street\nMakati, Philippines', customFieldValues: { context: 'Required context' } } });
   expect(save.mock.calls[0][0]).not.toHaveProperty('accountId');
   expect(save.mock.calls[0][0]).not.toHaveProperty('companyName');
-  expect(screen.getByLabelText('Full Address').closest('.space-y-1\\.5')?.className).toContain('sm:col-span-2');
+  expect(screen.getByLabelText('Company Address').closest('.space-y-1\\.5')?.className).toContain('sm:col-span-2');
 });
 it('requires Account permissions for both linking and new company creation', () => {
   fixture.denied = ['accounts.view', 'accounts.create']; render(<Form save={vi.fn()} />);

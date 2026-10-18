@@ -19,7 +19,7 @@ require('../../scripts/qa-network-guard.cjs');
 mkdirSync(output, { recursive: true });
 let pg, prisma, api, frontend, browser, log, failure, currentPage, closing = false;
 const checks = [], pageErrors = [], serverErrors = [];
-const expectedChecks = 6;
+const expectedChecks = 7;
 const resultPath = resolve(output, 'results.json');
 writeFileSync(resultPath, JSON.stringify({ status: 'RUNNING', success: false, cleanup: 'pending', checks, pageErrors }, null, 2));
 const Module = require('node:module'), originalResolve = Module._resolveFilename;
@@ -88,12 +88,39 @@ try {
   });
   const page = currentPage = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(60000);
   page.on('pageerror', error => pageErrors.push(error.message));
-  await page.goto(`${base}/crm/leads`);
-  await page.getByRole('button', { name: /^Work queue/ }).click();
+  await page.goto(`${base}/crm/leads?tab=work_queue`);
+  assert.equal(await page.getByRole('button', { name: /^Work queue/i }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: 'All Leads', exact: true }).getAttribute('aria-pressed'), 'true');
+  await page.getByRole('button', { name: /^Active Leads/ }).click();
   await page.getByText('Untouched Inquiry', { exact: true }).first().waitFor();
   assert.equal((await prisma.lead.findUniqueOrThrow({ where: { id: inquiry.id } })).status, 'Inquiry');
-  checks.push('Work queue shows an untouched Inquiry with the persisted default');
-  await page.screenshot({ path: resolve(output, 'inquiry-work-queue.png') });
+  checks.push('Active Leads shows an untouched Inquiry and retired tab links fall back safely');
+  await page.screenshot({ path: resolve(output, 'inquiry-active-leads.png') });
+
+  await page.getByRole('button', { name: 'Create Lead', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Create New', exact: true }).click();
+  const leadDialog = page.getByRole('dialog', { name: 'New Lead', exact: true });
+  const leadEmail = `${randomUUID()}@example.test`;
+  await leadDialog.getByLabel('First Name', { exact: false }).fill('Address');
+  await leadDialog.getByLabel('Last Name', { exact: false }).fill('Fixture');
+  await leadDialog.getByLabel('Email', { exact: false }).fill(leadEmail);
+  await leadDialog.getByRole('button', { name: 'Create new account', exact: true }).click();
+  await leadDialog.getByLabel('Company Name', { exact: false }).fill('Separate address company');
+  await leadDialog.getByLabel('Company Address', { exact: true }).fill('Company street\nMakati');
+  await leadDialog.getByLabel('Lead Address', { exact: true }).fill('Personal street\nPasig');
+  for (const width of [320, 375, 768, 1440]) {
+    await page.setViewportSize({ width, height: 960 });
+    assert.ok(await leadDialog.getByLabel('Company Address', { exact: true }).isVisible());
+    assert.ok(await leadDialog.getByLabel('Lead Address', { exact: true }).isVisible());
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+  }
+  await page.screenshot({ path: resolve(output, 'separate-addresses.png') });
+  await leadDialog.getByRole('button', { name: 'Create Lead', exact: true }).click();
+  await leadDialog.waitFor({ state: 'hidden' });
+  const addressLead = await prisma.lead.findFirstOrThrow({ where: { tenantId: tenant.id, email: leadEmail }, include: { account: true } });
+  assert.equal(addressLead.address, 'Personal street\nPasig');
+  assert.equal(addressLead.account?.address, 'Company street\nMakati');
+  checks.push('Company and Lead Address remain separately editable and persist to their existing records at responsive widths');
 
   await page.goto(`${base}/automation/workflows/${workflow.id}/edit`);
   await page.getByRole('button', { name: 'Workflow details', exact: true }).click();
