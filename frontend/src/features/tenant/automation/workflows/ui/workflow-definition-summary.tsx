@@ -51,7 +51,7 @@ export function WorkflowDefinitionSummary({ definition, options = emptySnapshotO
     <section aria-label="Saved conditions"><h4 className="font-semibold">Conditions</h4>
       {historicalConditions ? <div className="mt-2"><p className="mb-2 text-xs text-muted-foreground">Historical condition settings</p><SnapshotValue value={definition.conditions} options={options} /></div> : rules.length ? <><p className="mt-1 text-xs text-muted-foreground">{definition.conditions?.operator === 'OR' ? 'Match any condition' : 'Match all conditions'}</p><ul className="mt-2 space-y-2">{rules.map((rule, index) => {
         const field = fields.find(field => field.field === rule.field);
-        return <li key={index} className="rounded-lg border border-border bg-card p-2 [overflow-wrap:anywhere]"><span className="font-medium">{field?.label ?? `Unavailable field (${rule.field})`}</span>{' '}{conditionOperatorLabel(rule.operator, 'summary')}{' '}
+        return <li key={index} className="rounded-lg border border-border bg-card p-2 [overflow-wrap:anywhere]"><span className="font-medium">{field?.label ?? `Unavailable field (${rule.field})`}</span>{' '}{conditionOperatorLabel(rule.operator, 'summary', field?.type === 'date' ? 'date' : undefined)}{' '}
           {!['is_empty', 'is_not_empty'].includes(rule.operator) && <SnapshotValue value={field?.optionLabels?.[String(rule.value)] ?? rule.value} referenceType={field?.type && references(field.type, options) ? field.type : undefined} options={options} />}</li>;
       })}</ul></> : <p className="mt-1 text-muted-foreground">No conditions. Runs whenever the trigger matches.</p>}
     </section>

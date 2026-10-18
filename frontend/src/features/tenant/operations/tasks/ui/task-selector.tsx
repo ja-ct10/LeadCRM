@@ -1,4 +1,6 @@
 "use client";
+import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { ChevronDown, Search, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
@@ -47,9 +49,19 @@ export function TaskSelector(props: TaskSelectorProps) {
   const id = useId();
   const { users, contacts, deals, organizations } = useData();
   const { user, tenant } = useAuth();
+  const { products } = useProductInterests();
+  const canAccounts = useHasPermission('accounts.view'), canProducts = useHasPermission('products.view');
+  const [accountId, setAccountId] = useState(''), [category, setCategory] = useState(''), [productInterestId, setProductInterestId] = useState('');
+  const [page, setPage] = useState(1), [total, setTotal] = useState(0), [hasMore, setHasMore] = useState(false);
+  const [selectingAll, setSelectingAll] = useState(false);
+  const categories = [...new Set(products.map(product => product.category).filter((value): value is string => !!value))].sort();
+  const selectionAbort = useRef<AbortController | null>(null);
   const [open, setOpen] = useState(false);
   const [above, setAbove] = useState(false);
   const [search, setSearch] = useState("");
+  const filters = { search, ...(accountId ? { accountId } : {}), ...(category ? { category } : {}), ...(productInterestId ? { productInterestId } : {}), ...(leadIds.length ? { leadIds: leadIds.join(',') } : {}) };
+
+  useEffect(() => () => { selectionAbort.current?.abort(); }, [open, search, accountId, category, productInterestId, leadKey]);
   const [options, setOptions] = useState<TaskOption[]>([]);
   const [selected, setSelected] = useState<Record<string, string>>({});
   const [error, setError] = useState("");
@@ -127,7 +139,15 @@ export function TaskSelector(props: TaskSelectorProps) {
             .filter((row) =>
               matchesSearch(search, row.label),
             )
-            .slice(0, 50);
+            ;
+          if (kind === 'deal') {
+            rows = rows.filter(row => { const deal = deals.find(deal => deal.id === row.id); const product = products.find(product => product.id === deal?.productInterestId); return (!accountId || deal?.accountId === accountId || deal?.organizationId === accountId) && (!productInterestId || deal?.productInterestId === productInterestId) && (!category || (category === '__uncategorized' ? !product?.category : product?.category === category)); });
+            setTotal(rows.length); setHasMore(page * 25 < rows.length); rows = rows.slice((page - 1) * 25, page * 25);
+          } else rows = rows.slice(0, 50);
+        } else if (kind === 'deal') {
+          const result = await tasksApi.dealOptions({ ...filters, page }, abort.signal);
+          rows = result.data;
+          if (!abort.signal.aborted) { setTotal(result.meta.total); setHasMore(result.meta.hasMore); }
         } else
           rows = (
             await (leadIds.length
@@ -152,6 +172,7 @@ export function TaskSelector(props: TaskSelectorProps) {
     search,
     retry,
     leadKey,
+    accountId, category, productInterestId, page, products,
     tenant?.id,
     user?.id,
     selfAssignmentOnly,
@@ -173,7 +194,7 @@ export function TaskSelector(props: TaskSelectorProps) {
   const visible = !search.trim()
     ? [
         ...selectedIds
-          .filter((id) => kind !== "user" && !options.some((option) => option.id === id))
+          .filter((id) => kind !== "user" && kind !== "deal" && !options.some((option) => option.id === id))
           .map((id) => ({ id, label: labelFor(id) })),
         ...options,
       ]
@@ -252,9 +273,29 @@ export function TaskSelector(props: TaskSelectorProps) {
               placeholder={"Search for " + singular}
               className={inputClass + " pl-9"}
               value={search}
-              onChange={(event) => setSearch(event.target.value)}
+              onChange={(event) => { setSearch(event.target.value); setPage(1); }}
             />
           </div>
+          {kind === 'deal' && <div className="space-y-2 border-b border-border p-3">
+            {canAccounts && <TaskSelector kind="account" label="Account (Company)" value={accountId} disabled={selectingAll} onChange={value => { setAccountId(value); setPage(1); }} />}
+            {canProducts && <><label className="block text-xs">Product category<select aria-label="Filter deals by category" className={inputClass} value={category} disabled={selectingAll} onChange={event => { setCategory(event.target.value); setProductInterestId(''); setPage(1); }}><option value="">All categories</option><option value="__uncategorized">Uncategorized</option>{categories.map(value => <option key={value} value={value}>{value}</option>)}</select></label>
+            <label className="block text-xs">Product<select aria-label="Filter deals by product" className={inputClass} value={productInterestId} disabled={selectingAll} onChange={event => { setProductInterestId(event.target.value); setPage(1); }}><option value="">All products</option>{products.filter(product => !category || (category === '__uncategorized' ? !product.category : product.category === category)).map(product => <option key={product.id} value={product.id}>{product.name}</option>)}</select></label></>}
+            <p role="status" className="text-xs text-muted-foreground">{selectedIds.length} selected · {total} matching deals</p>
+            {props.multiple && <Button type="button" size="sm" variant="outline" disabled={loading || selectingAll || total === 0} onClick={async () => {
+              if (selectingAll) return;
+              const abort = new AbortController(); selectionAbort.current = abort; setSelectingAll(true); setError('');
+              try {
+                const rows = USE_MOCK_DATA ? deals.filter(deal => (!accountId || (deal.accountId ?? deal.organizationId) === accountId) && (!leadIds.length || deal.leadIds?.some(id => leadIds.includes(id)) || leadIds.includes(deal.leadId ?? '')) && (!productInterestId || deal.productInterestId === productInterestId) && (!category || (category === '__uncategorized' ? !products.find(product => product.id === deal.productInterestId)?.category : products.find(product => product.id === deal.productInterestId)?.category === category)) && matchesSearch(search, deal.title)).map(deal => ({ id: deal.id, label: deal.title })) : (await tasksApi.dealOptions({ ...filters, selectAll: true }, abort.signal)).data;
+                if (abort.signal.aborted) return;
+                const combined = [...new Set([...selectedIds, ...rows.map(row => row.id)])];
+                if (combined.length > 50 || rows.length > 50) throw new Error('More than 50 deals would be selected. Narrow your filters or deselect deals.');
+                setSelected(previous => ({ ...previous, ...Object.fromEntries(rows.map(row => [row.id, row.label])) })); props.onChange(combined);
+              } catch (failure) { if (!abort.signal.aborted) setError(failure instanceof Error ? failure.message : 'Unable to select matching deals.'); }
+              finally { setSelectingAll(false); }
+            }}>Select all matching deals</Button>}
+            {total > 50 && <p className="text-xs text-muted-foreground">Narrow your filters to 50 or fewer deals to select all.</p>}
+            {selectedIds.length > 0 && <details><summary className="cursor-pointer text-xs">Selected deals ({selectedIds.length})</summary><ul className="max-h-24 overflow-auto text-xs">{selectedIds.map(value => <li key={value} className="flex items-center justify-between gap-2"><span>{labelFor(value)}</span>{props.multiple && <button type="button" disabled={selectingAll} className="shrink-0 underline" aria-label={`Remove ${labelFor(value)}`} onClick={() => props.onChange(selectedIds.filter(id => id !== value))}>Remove</button>}</li>)}</ul></details>}
+          </div>}
           <div className="max-h-48 overflow-y-auto p-2" aria-busy={loading}>
             {loading ? (
               <p
@@ -292,7 +333,7 @@ export function TaskSelector(props: TaskSelectorProps) {
                       className="mt-0.5 accent-primary"
                       checked={selectedIds.includes(option.id)}
                       disabled={
-                        props.multiple &&
+                        selectingAll || props.multiple &&
                         selectedIds.length >= 50 &&
                         !selectedIds.includes(option.id)
                       }
@@ -324,6 +365,7 @@ export function TaskSelector(props: TaskSelectorProps) {
               </>
             )}
           </div>
+          {kind === 'deal' && <div className="flex items-center justify-between border-t border-border px-3 py-2"><Button type="button" size="sm" variant="ghost" disabled={page <= 1 || loading || selectingAll} onClick={() => setPage(value => value - 1)}>Previous</Button><span className="text-xs">Page {page}</span><Button type="button" size="sm" variant="ghost" disabled={!hasMore || loading || selectingAll} onClick={() => setPage(value => value + 1)}>Next</Button></div>}
           <div className="flex items-center justify-between gap-2 border-t border-border p-3">
             {onCreate ? (
               <Button

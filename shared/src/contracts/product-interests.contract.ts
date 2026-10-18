@@ -32,7 +32,7 @@ const productNameSchema = z.string().trim().min(1, 'Product name is required').m
 
 export const ProductInterestSchema = z.object({
   name: productNameSchema,
-  category: z.string().trim().min(1, 'Category is required.').max(PRODUCT_INTEREST_NAME_MAX_LENGTH).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.'),
+  category: z.string().trim().max(PRODUCT_INTEREST_NAME_MAX_LENGTH).refine(v => !/[\u0000-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').nullable().optional().transform(value => value ?? ''),
   description: z.string().trim().max(PRODUCT_DESCRIPTION_MAX_LENGTH).refine(v => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/.test(v), 'Control characters are not allowed.').default(''),
   dealValue: z.number().finite().min(0).max(999_999_999_999).multipleOf(0.01),
 }).strict();
@@ -50,7 +50,7 @@ export const ProductInterestConfigSchema = z.array(ProductInterestSchema).max(MA
 export interface ProductInterest {
   id: string;
   name: string;
-  /** Optional only for older cached catalog responses during rollout. New writes require category. */
+  /** Blank categories display as Uncategorized; older cached responses may omit this field. */
   category?: string;
   description?: string;
   dealValue: number;

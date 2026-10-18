@@ -60,8 +60,9 @@ export const WorkflowTaskAssociationSchema = z.object({
 export type WorkflowTaskAssociation = z.infer<typeof WorkflowTaskAssociationSchema>;
 export const WORKFLOW_ASSIGNMENT_METHODS = {
   round_robin: 'Round-robin',
+  weighted_workload: 'Weighted workload assignment',
 } as const;
-export const WorkflowAssignmentStrategySchema = z.enum(['round_robin']);
+export const WorkflowAssignmentStrategySchema = z.enum(['round_robin', 'weighted_workload']);
 export type WorkflowAssignmentStrategy = z.infer<typeof WorkflowAssignmentStrategySchema>;
 const assignmentDays = z.array(z.number().int().min(0).max(6)).min(1).max(7).refine(days => new Set(days).size === days.length, 'Choose each day only once.');
 const assignmentTime = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid time.');
@@ -152,6 +153,8 @@ export interface WorkflowOptions {
   smsConfigured?: boolean;
 }
 export interface Workflow extends WorkflowDraft {
+  draftDefinition?: WorkflowDraft | null;
+  draftRevision?: number;
   repairReason?: string;
   id: string; tenantId: string;
   version?: number;
@@ -191,7 +194,7 @@ export interface WorkflowExecutionRun {
   definitionSnapshot?: WorkflowDraft | null;
   trigger: { triggerType: string; entityType: string; triggeredAt: string; payload?: { recordName?: string } | null };
 }
-export const WorkflowTestInputSchema = z.object({ entityId: z.string().uuid(), stageHistoryId: z.string().uuid().optional() }).strict();
+export const WorkflowTestInputSchema = z.object({ entityId: z.string().uuid(), stageHistoryId: z.string().uuid().optional(), useDraft: z.boolean().optional() }).strict();
 export type WorkflowTestInput = z.infer<typeof WorkflowTestInputSchema>;
 export interface WorkflowTaskPreview {
   title: string; description?: string | null; priority: 'Low' | 'Medium' | 'High'; status: 'pending';
@@ -208,3 +211,8 @@ export interface WorkflowTestResult {
   valid: boolean;
 }
 export interface WorkflowNameAvailability { available: boolean; suggestedName?: string }
+
+export const WorkflowRevisionWriteSchema = z.object({ draft: WorkflowDraftSchema, expectedDraftRevision: z.number().int().min(0), expectedVersion: z.number().int().min(1) }).strict();
+export const WorkflowRevisionTokenSchema = WorkflowRevisionWriteSchema.omit({ draft: true });
+export type WorkflowRevisionWrite = z.infer<typeof WorkflowRevisionWriteSchema>;
+export type WorkflowRevisionToken = z.infer<typeof WorkflowRevisionTokenSchema>;

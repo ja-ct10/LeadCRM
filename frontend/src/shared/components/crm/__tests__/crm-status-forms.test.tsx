@@ -35,7 +35,7 @@ it.each(CRM_STATUSES)('submits the New Lead side panel with %s and both selected
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Test' } });
   fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'lead@example.test' } });
   const select = screen.getByLabelText('Status') as HTMLSelectElement;
-  expect(select.value).toBe('Warm');
+  expect(select.value).toBe('Inquiry');
   expect(Array.from(select.options).map(option => option.value)).toEqual(CRM_STATUSES);
   fireEvent.change(select, { target: { value: status } });
   fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
@@ -55,7 +55,7 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
   fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Contact' } });
   fireEvent.change(screen.getByLabelText(/Email/), { target: { value: 'contact@example.test' } });
   const select = screen.getByLabelText('Status') as HTMLSelectElement;
-  expect(select.value).toBe('Warm');
+  expect(select.value).toBe('Inquiry');
   expect(Array.from(select.options).map(option => option.value)).toEqual(CRM_STATUSES);
   fireEvent.change(select, { target: { value: status } });
   fireEvent.click(screen.getByRole('button', { name: 'Create Contact' }));
@@ -77,7 +77,7 @@ it.each([
   expect(container.textContent).not.toContain(status.toUpperCase());
 });
 
-it('rejects invalid write statuses instead of silently changing them to Warm', () => {
+it('rejects invalid write statuses instead of silently changing them to Inquiry', () => {
   expect(() => toBackendCreateContact({ status: 'WARM' })).toThrow();
   expect(toBackendUpdateContact({ email: 'test@example.test' })).not.toHaveProperty('status');
 });

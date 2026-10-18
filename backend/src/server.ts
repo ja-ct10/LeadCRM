@@ -1,3 +1,5 @@
+import { startCustomerClassificationScheduler } from './modules/crm/customer-classification.scheduler';
+import { startSmsReplyScheduler } from './integrations/sms/sms-replies';
 import 'dotenv/config';
 import app from './app';
 import { startNotificationScheduler } from './modules/notifications/notification-events.service';
@@ -13,6 +15,7 @@ import { startSmsStatusReconciliation } from './modules/marketing/campaigns/sms-
 validateEnvironment();
 
 const PORT = process.env.PORT ?? 4000;
+const HOST = process.env.HOST ?? '0.0.0.0';
 
 /**
  * Schedule periodic session table cleanup.
@@ -52,8 +55,10 @@ let stopNotifications: (() => Promise<void>) | undefined;
 let stopCampaignSchedule: (() => Promise<void>) | undefined;
 let stopCampaignRecovery: (() => Promise<void>) | undefined;
 let stopSmsReconciliation: (() => Promise<void>) | undefined;
+let stopCustomerClassification: (() => Promise<void>) | undefined;
+let stopSmsReplies: (() => Promise<void>) | undefined;
 let stopWorkflows: (() => Promise<void>) | undefined;
-const server = app.listen(PORT, () => {
+const server = app.listen(Number(PORT), HOST, () => {
   console.log(`[server] LeadCRM API running on http://localhost:${PORT}`);
   console.log(`[server] Environment: ${process.env.NODE_ENV ?? 'development'}`);
 
@@ -61,6 +66,8 @@ const server = app.listen(PORT, () => {
   stopCampaignRecovery = startCampaignRecoveryScheduler();
   stopSmsReconciliation = startSmsStatusReconciliation();
   stopWorkflows = startWorkflowScheduler();
+  stopSmsReplies = startSmsReplyScheduler();
+  stopCustomerClassification = startCustomerClassificationScheduler();
   stopCampaignSchedule = startCampaignScheduleScheduler();
   stopMailbox = startMailboxScheduler();
   if (process.env.NOTIFICATION_WORKER_ENABLED !== 'false') stopNotifications = startNotificationScheduler();
@@ -69,13 +76,13 @@ const server = app.listen(PORT, () => {
 
 
 });
-server.on('close', () => { void stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); void stopSmsReconciliation?.(); void stopCampaignSchedule?.(); void stopWorkflows?.(); });
+server.on('close', () => { void stopMailbox?.(); void stopNotifications?.(); void stopCampaignRecovery?.(); void stopSmsReconciliation?.(); void stopCampaignSchedule?.(); void stopWorkflows?.(); void stopSmsReplies?.(); void stopCustomerClassification?.(); });
 for (const signal of ['SIGTERM', 'SIGINT'] as const) process.once(signal, () => {
   const mailbox = stopMailbox?.();
   const schedules = stopCampaignSchedule?.();
   const drain = drainCampaignSubmissions();
   const workflows = stopWorkflows?.();
-  server.close(() => { void Promise.allSettled([mailbox, schedules, drain, workflows, stopNotifications?.(), stopCampaignRecovery?.(), stopSmsReconciliation?.()]).finally(() => process.exit(0)); });
+  server.close(() => { void Promise.allSettled([mailbox, schedules, drain, workflows, stopNotifications?.(), stopCampaignRecovery?.(), stopSmsReconciliation?.(), stopSmsReplies?.(), stopCustomerClassification?.()]).finally(() => process.exit(0)); });
   // Interrupted mailbox pages and scheduled claims resume from durable leases.
   setTimeout(() => process.exit(0), 30000).unref();
 });

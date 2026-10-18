@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.WorkflowTestInputSchema = exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowTaskAssociationSchema = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
+exports.WorkflowRevisionTokenSchema = exports.WorkflowRevisionWriteSchema = exports.WorkflowTestInputSchema = exports.WorkflowValidationSchema = exports.WorkflowDraftSchema = exports.WorkflowAssignmentTargetSchema = exports.WorkflowCapacitySchema = exports.WorkflowAvailabilitySchema = exports.WorkflowAssignmentStrategySchema = exports.WORKFLOW_ASSIGNMENT_METHODS = exports.WorkflowTaskAssociationSchema = exports.WorkflowActionSchema = exports.WorkflowConditionSchema = exports.WorkflowConditionRuleSchema = exports.WorkflowConditionOperatorSchema = void 0;
 exports.missingWorkflowConditionValues = missingWorkflowConditionValues;
 exports.workflowLossReason = workflowLossReason;
 exports.workflowLossReasonIssue = workflowLossReasonIssue;
@@ -65,8 +65,9 @@ exports.WorkflowTaskAssociationSchema = zod_1.z.object({
 });
 exports.WORKFLOW_ASSIGNMENT_METHODS = {
     round_robin: 'Round-robin',
+    weighted_workload: 'Weighted workload assignment',
 };
-exports.WorkflowAssignmentStrategySchema = zod_1.z.enum(['round_robin']);
+exports.WorkflowAssignmentStrategySchema = zod_1.z.enum(['round_robin', 'weighted_workload']);
 const assignmentDays = zod_1.z.array(zod_1.z.number().int().min(0).max(6)).min(1).max(7).refine(days => new Set(days).size === days.length, 'Choose each day only once.');
 const assignmentTime = zod_1.z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Use a valid time.');
 const assignmentSchedule = zod_1.z.object({ days: assignmentDays, start: assignmentTime, end: assignmentTime }).strict()
@@ -143,4 +144,6 @@ function workflowOperators(type) {
     const keys = { gt: 'greater_than', gte: 'greater_than_or_equal', lt: 'less_than', lte: 'less_than_or_equal' };
     return (0, condition_operators_1.conditionOperators)('workflow', (0, condition_operators_1.conditionFieldKind)(type)).map(key => keys[key] ?? key);
 }
-exports.WorkflowTestInputSchema = zod_1.z.object({ entityId: zod_1.z.string().uuid(), stageHistoryId: zod_1.z.string().uuid().optional() }).strict();
+exports.WorkflowTestInputSchema = zod_1.z.object({ entityId: zod_1.z.string().uuid(), stageHistoryId: zod_1.z.string().uuid().optional(), useDraft: zod_1.z.boolean().optional() }).strict();
+exports.WorkflowRevisionWriteSchema = zod_1.z.object({ draft: exports.WorkflowDraftSchema, expectedDraftRevision: zod_1.z.number().int().min(0), expectedVersion: zod_1.z.number().int().min(1) }).strict();
+exports.WorkflowRevisionTokenSchema = exports.WorkflowRevisionWriteSchema.omit({ draft: true });

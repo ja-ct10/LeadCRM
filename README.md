@@ -48,6 +48,10 @@ Use the project-pinned npm version from `package.json` and a supported Node vers
 
 For a connected UI preview, use `npm run dev:local`. It builds the current backend/shared code, starts the existing API-only launcher on loopback port 4000, and starts the frontend on port 3000 with its proxy explicitly pointing to that local API. It uses the database configured in `backend/.env`, keeps normal authentication/RBAC, and starts no seeders or scheduled jobs. Existing local previews must be stopped first. This avoids testing new frontend contracts against an older hosted API, which can expose legacy UUID keys and reject drag-and-drop layout commands. See [Custom Fields](docs/custom-fields.md#metadata-rollout).
 
+For a persistent, isolated local app, run `npm run dev:isolated`. PostgreSQL tools (`pg_config`, `initdb`, `pg_ctl`, and `psql`) must be installed; set `POSTGRES_BIN` to their directory if it is absent from PATH. The launcher creates its own password-protected database on loopback port 55434, applies migrations, builds the backend, and starts the full API with background workers on port 4000 and the frontend on port 3000. It provisions a local admin and sample records once. Sign in at `http://localhost:3000/login` with the credentials in `.env.local-development/LOGIN.txt`.
+
+The ignored `.env.local-development` folder holds the database, private uploads, and credentials. Records survive restarts. The launcher supplies its own backend configuration; it does not use the database or provider secrets in `backend/.env`. Email/SMS delivery and Gmail connection require separate local provider setup. Stop with Ctrl+C, or run `npm run dev:isolated -- --stop` from another terminal. After a clean stop, use the same start command to resume; add `-- --skip-build` only when the current backend is already built. Ports 3000 and 4000 must be free.
+
 Mock auth and data are separate development-only switches, `NEXT_PUBLIC_USE_MOCK_AUTH` and `NEXT_PUBLIC_USE_MOCK_DATA`. They are disabled in production. Mocks support UI work; they do not verify database, permission, or provider behavior.
 
 ## Checks

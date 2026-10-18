@@ -1,3 +1,7 @@
+import { WorkflowRevisionWriteSchema, WorkflowRevisionTokenSchema } from '@leadcrm/shared';
+import prisma from '../../../config/database.config';
+import { Prisma } from '@prisma/client';
+import { ConflictError } from '../../../shared/errors/http-error';
 import { compatibleWorkflow, accountWorkflowRetirementReferences } from './workflow-fields';
 import { retiredContactReferences, retiredAccountWorkflowReferences, ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 import { tenantContext } from '../../../core/tenant/tenant-context';
@@ -157,10 +161,10 @@ export async function getWorkflowExecutionPage(id: string, tenantId: string, pag
   const [data, total] = await Promise.all([repo.listExecutions(id, tenantId, page, limit), repo.countExecutions(id, tenantId)]);
   return paginate(data, total, { page, limit });
 }
-export async function testWorkflow(id: string, tenantId: string, entityId: string, userId?: string, stageHistoryId?: string): Promise<WorkflowTestResult> {
+export async function testWorkflow(id: string, tenantId: string, entityId: string, userId?: string, stageHistoryId?: string, useDraft = false): Promise<WorkflowTestResult> {
   requireScope(tenantId);
   const existing = await getWorkflowById(id, tenantId);
-  const draft = parseDraft({ name: existing.name, description: existing.description, trigger: existing.trigger,
+  const draft = parseDraft(useDraft && existing.draftDefinition ? existing.draftDefinition : { name: existing.name, description: existing.description, trigger: existing.trigger,
     conditions: existing.conditions, actions: existing.actions, isActive: false });
   const trigger = findTrigger(draft.trigger);
   if (!trigger) throw new ValidationError('Choose a supported trigger.');
@@ -263,4 +267,66 @@ export async function duplicateWorkflow(id: string, tenantId: string, userId: st
   const copy = await repo.createWorkflow(tenantId, sanitizeDraft(draft));
   await writeAuditLog({ tenantId, userId, action: 'workflow.duplicated', entityType: 'Workflow', entityId: copy.id, metadata: { sourceId: id } });
   return copy;
+}
+
+
+function workingCopyResponse(workflow: Awaited<ReturnType<typeof repo.findWorkflowById>>) {
+  if (!workflow) throw new NotFoundError('Workflow');
+  const definition = WorkflowDraftSchema.safeParse(workflow.draftDefinition);
+  return { ...workflow, ...(definition.success ? definition.data : {}), isActive: workflow.isActive, status: workflow.status, draftDefinition: definition.success ? definition.data : null };
+}
+export async function saveWorkflowDraft(id: string, tenantId: string, userId: string, input: unknown) {
+  requireScope(tenantId);
+  const { draft, expectedDraftRevision, expectedVersion } = WorkflowRevisionWriteSchema.parse(input);
+  const existing = await getWorkflowById(id, tenantId);
+  if (existing.isArchived) throw new ValidationError('Archived workflows cannot be edited.');
+  if (!findTrigger(draft.trigger)) throw new ValidationError('Choose a supported trigger.');
+  await assertAssignmentReferencePermissions(draft, tenantId, userId);
+  const sanitized = sanitizeDraft({ ...draft, isActive: false }, existing.conditions);
+  return prisma.$transaction(async tx => {
+    const changed = await tx.workflow.updateMany({ where: { id, tenantId, isArchived: false, draftRevision: expectedDraftRevision, version: expectedVersion },
+      data: { draftDefinition: sanitized as unknown as Prisma.InputJsonValue, draftRevision: { increment: 1 } } });
+    if (!changed.count) throw new ConflictError('This workflow changed in another editor. Reload before saving your draft.');
+    await tx.auditLog.create({ data: { tenantId, userId, action: 'workflow.draft_saved', entityType: 'Workflow', entityId: id } });
+    return workingCopyResponse(await tx.workflow.findFirst({ where: { id, tenantId } }));
+  });
+}
+export async function publishWorkflowDraft(id: string, tenantId: string, userId: string, input: unknown) {
+  requireScope(tenantId);
+  const { draft, expectedDraftRevision, expectedVersion } = WorkflowRevisionWriteSchema.parse(input);
+  const existing = await getWorkflowById(id, tenantId);
+  if (existing.isArchived) throw new ValidationError('Archived workflows cannot be published.');
+  const active = sanitizeDraft({ ...draft, isActive: true }, existing.conditions);
+  if (!(await getWorkflowNameAvailability(tenantId, active.name, id)).available) throw new ConflictError('A workflow with this name already exists.');
+  if ((await accountWorkflowRetirementReferences(active, tenantId)).length || retiredContactReferences([active.conditions, active.actions], findTrigger(active.trigger)?.entity).length) throw new ValidationError('Repair retired workflow references before publishing.');
+  await assertAssignmentReferencePermissions(active, tenantId, userId);
+  await validateWorkflow(active, tenantId, existing.conditions);
+  await assertWorkflowPermissions(active, tenantId, userId);
+  return prisma.$transaction(async tx => {
+    const published = await tx.workflowPublication.findFirst({ where: { workflowId: id, tenantId }, select: { id: true } });
+    const version = published ? expectedVersion + 1 : expectedVersion;
+    const changed = await tx.workflow.updateMany({ where: { id, tenantId, isArchived: false, version: expectedVersion, draftRevision: expectedDraftRevision },
+      data: { name: active.name, description: active.description ?? null, trigger: active.trigger, conditions: active.conditions == null ? Prisma.DbNull : active.conditions as unknown as Prisma.InputJsonValue,
+        actions: active.actions as unknown as Prisma.InputJsonValue, isActive: true, status: 'ACTIVE', activatedById: userId, version,
+        draftDefinition: Prisma.DbNull, draftRevision: { increment: 1 } } });
+    if (!changed.count) throw new ConflictError('This workflow changed in another editor. Reload before publishing.');
+    await tx.workflowPublication.create({ data: { tenantId, workflowId: id, version, definition: active as unknown as Prisma.InputJsonValue, activatedById: userId } });
+    await tx.auditLog.create({ data: { tenantId, userId, action: 'workflow.published', entityType: 'Workflow', entityId: id, changeset: { after: { version } } } });
+    return workingCopyResponse(await tx.workflow.findFirst({ where: { id, tenantId } }));
+  }, { isolationLevel: 'Serializable' }).catch((error: unknown) => {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && ['P2034', 'P2002'].includes(error.code)) throw new ConflictError('This workflow changed in another editor. Reload before publishing.');
+    throw error;
+  });
+}
+export async function workflowPublications(id: string, tenantId: string) {
+  requireScope(tenantId);
+  await getWorkflowById(id, tenantId);
+  return prisma.workflowPublication.findMany({ where: { tenantId, workflowId: id }, orderBy: { version: 'desc' }, select: { version: true, createdAt: true, activatedById: true, definition: true } });
+}
+export async function restoreWorkflowPublication(id: string, tenantId: string, userId: string, version: unknown, input: unknown) {
+  requireScope(tenantId);
+  const target = z.coerce.number().int().min(1).parse(version), tokens = WorkflowRevisionTokenSchema.parse(input);
+  const revision = await prisma.workflowPublication.findFirst({ where: { tenantId, workflowId: id, version: target } });
+  if (!revision) throw new NotFoundError('Published workflow version');
+  return saveWorkflowDraft(id, tenantId, userId, { ...tokens, draft: WorkflowDraftSchema.parse(revision.definition) });
 }

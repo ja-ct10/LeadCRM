@@ -55,6 +55,7 @@ vi.mock("@/lib/config", () => ({ USE_MOCK_DATA: false }));
 vi.mock("@/shared/services/tasks.api", () => ({
   tasksApi: {
     options: mocks.options,
+    dealOptions: async (filters: { search?: string }, signal?: AbortSignal) => { const result = await mocks.options('deal', filters.search ?? '', signal); return { ...result, meta: { total: result.data.length, page: 1, limit: 25, hasMore: false } }; },
   },
 }));
 import { TaskEditor } from "../ui/task-editor";

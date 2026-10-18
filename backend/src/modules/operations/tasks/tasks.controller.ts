@@ -158,6 +158,10 @@ export async function getOptions(
   next: NextFunction,
 ): Promise<void> {
   try {
+    if (req.query.kind === 'deal' && ['page', 'selectAll', 'accountId', 'category', 'productInterestId'].some(key => req.query[key] !== undefined)) {
+      res.json({ success: true, ...await service.getTaskOptionsPage(req.user!.tenantId, req.query as Record<string, unknown>) });
+      return;
+    }
     res.json({
       success: true,
       data: await service.getTaskOptions(

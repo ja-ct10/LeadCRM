@@ -12,7 +12,7 @@ export const CreateContactFormSchema = z.object({
   phone: z.string().optional(),
   companyName: z.string().optional(),
   notes: z.string().max(10000).optional(),
-  status: CrmStatusSchema.default('Warm'),
+  status: CrmStatusSchema.default('Inquiry'),
   source: z.string().optional(),
   accountId: z.string().min(1).optional().or(z.literal('')),
   assignedUserId: z.string().min(1).optional().or(z.literal('')),

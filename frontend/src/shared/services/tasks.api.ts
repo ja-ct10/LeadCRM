@@ -20,6 +20,8 @@ export interface TaskResponse {
   data: TaskRecord;
 }
 export const tasksApi = {
+  dealOptions: (filters: { search?: string; accountId?: string; category?: string; productInterestId?: string; page?: number; selectAll?: boolean; leadIds?: string }, signal?: AbortSignal) =>
+    apiClient.get<{ success: boolean; data: TaskOption[]; meta: { total: number; page: number; limit: number; hasMore: boolean } }>("/operations/tasks/options", { params: { kind: 'deal', page: 1, ...filters }, signal }),
   list: (query: TaskListQuery = {}) =>
     apiClient.get<TasksResponse>("/operations/tasks", { params: query }),
   summary: (query: TaskListQuery = {}) =>

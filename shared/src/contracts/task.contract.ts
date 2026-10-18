@@ -242,6 +242,12 @@ export const TaskOptionsQuerySchema = z
       )
       .default([]),
     search: z.string().trim().max(255).default(""),
+    accountId: recordId.optional(),
+    productInterestId: z.string().uuid().optional(),
+    category: z.string().trim().max(100).optional(),
+    page: z.coerce.number().int().min(1).max(100000).default(1),
+    limit: z.coerce.number().int().min(1).max(50).default(25),
+    selectAll: queryBoolean.default(false),
   })
   .strict();
 export type TaskOptionKind = z.infer<typeof TaskOptionsQuerySchema>["kind"];

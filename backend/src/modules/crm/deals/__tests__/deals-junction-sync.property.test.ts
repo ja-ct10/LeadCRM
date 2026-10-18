@@ -72,7 +72,7 @@ const contactIdSetArb = fc.uniqueArray(fc.uuid(), { minLength: 0, maxLength: 20 
 function setupMocksForIteration(currentIds: string[], targetIds: string[], currentSet: Set<string>): void {
   mockTransaction.mockImplementation(async (cb: (tx: unknown) => Promise<void>) => {
     const txClient = {
-      deal: { findFirstOrThrow: vi.fn().mockResolvedValue({}) },
+      deal: { findFirstOrThrow: vi.fn().mockResolvedValue({ stage: { name: "Lead" } }) },
       leadDeal: mockLeadDeal,
       lead: mockLead,
     };

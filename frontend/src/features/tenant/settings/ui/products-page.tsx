@@ -80,7 +80,7 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
     {productError && <p role="alert" className="text-sm text-destructive">{productError}</p>}
     <dl className="space-y-6 text-sm [overflow-wrap:anywhere]">
       <div><dt className={labelClass}>Product Name</dt><dd className="mt-2 text-xl font-semibold leading-snug">{product.name}</dd></div>
-      <div><dt className={labelClass}>Category</dt><dd className="mt-2">{product.category || product.name}</dd></div>
+      <div><dt className={labelClass}>Category</dt><dd className="mt-2">{product.category || 'Uncategorized'}</dd></div>
       <div><dt className={labelClass}>Description</dt><dd className="mt-2 whitespace-pre-wrap">{product.description || '—'}</dd></div>
       <div className="grid grid-cols-1 gap-5 min-[390px]:grid-cols-2">
         <div><dt className={labelClass}>Deal Value</dt><dd className="mt-2 text-xl font-semibold tabular-nums">{php.format(product.dealValue)}</dd></div>
@@ -163,7 +163,7 @@ export function ProductsPage() {
   }
   const columns: DataGridColumnDef<ProductInterest>[] = [
     { id: 'name', header: 'Product Name', accessor: row => row.name, sortable: true, width: 330 },
-    { id: 'category', header: 'Category', accessor: row => row.category || row.name, sortable: true, width: 220 },
+    { id: 'category', header: 'Category', accessor: row => row.category || 'Uncategorized', sortable: true, width: 220 },
     { id: 'description', header: 'Description', accessor: row => row.description || '—', sortable: true, width: 300 },
     { id: 'dealValue', header: 'Deal Value', accessor: row => row.dealValue, sortable: true, width: 190, cell: (_, row) => php.format(row.dealValue) },
     { id: 'status', header: 'Status', accessor: row => row.active ? 'Active' : 'Archived', width: 120 },

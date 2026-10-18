@@ -222,7 +222,7 @@ export function conditionSummary(
   const value = references(field?.type ?? '', options)
     ? referenceName(field!.type, rule.value, options)
     : field?.optionLabels?.[String(rule.value)] ?? (field?.type === 'boolean' ? typeof rule.value === 'boolean' ? rule.value ? 'Yes' : 'No' : '' : String(rule.value ?? ''));
-  return `${field?.label ?? (rule.field ? 'Unavailable field' : 'Choose a field')} ${operatorLabels[rule.operator]}${['is_empty', 'is_not_empty'].includes(rule.operator) ? '' : ` ${value || '…'}`}`;
+  return `${field?.label ?? (rule.field ? 'Unavailable field' : 'Choose a field')} ${conditionOperatorLabel(rule.operator, 'summary', field?.type === 'date' ? 'date' : undefined)}${['is_empty', 'is_not_empty'].includes(rule.operator) ? '' : ` ${value || '…'}`}`;
 }
 export function actionSummary(
   action: WorkflowAction,

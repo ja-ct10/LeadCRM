@@ -1,4 +1,5 @@
 'use client';
+import { WorkflowVersionHistory } from './workflow-version-history';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
@@ -84,6 +85,7 @@ interface Props {
   readOnly?: boolean;
   onSave: (draft: WorkflowDraft) => Promise<Workflow | void>;
   onPause?: () => Promise<Workflow>;
+  onRestoreVersion?: (version: number) => Promise<void>;
   onClose: () => void;
 }
 interface History {
@@ -107,6 +109,7 @@ export default function WorkflowBuilder({
   readOnly,
   onSave,
   onPause,
+  onRestoreVersion,
   onClose,
 }: Props) {
   const router = useRouter();
@@ -481,7 +484,7 @@ export default function WorkflowBuilder({
       }
       else {
         const result = await onSave(parsed.data),
-          persisted = result ? toDraft(result) : parsed.data;
+          persisted = result ? toDraft(result) : { ...parsed.data, isActive: activate || saved.isActive };
         const paused = !persisted.isActive && (result?.status === 'PAUSED' || saved.isActive || savedStatus === 'PAUSED');
         setSaved(persisted);
         setSavedStatus(result?.status ?? (persisted.isActive ? 'ACTIVE' : paused ? 'PAUSED' : 'DRAFT'));
@@ -492,11 +495,13 @@ export default function WorkflowBuilder({
           future: [],
         });
         setMessage(
-          persisted.isActive
-            ? 'Saved and active. Matching CRM events will run this workflow.'
+          !activate && persisted.isActive
+            ? 'Draft saved. The published version remains active.'
+            : persisted.isActive
+            ? 'Published and active. New CRM events use this version.'
             : paused ? 'Changes saved. This workflow is paused.' : 'Draft saved. This workflow is inactive.',
         );
-        toast.success(persisted.isActive ? 'Workflow saved and activated.' : paused ? 'Workflow saved and paused.' : 'Draft saved.');
+        toast.success(!activate && persisted.isActive ? 'Draft saved; published version remains active.' : persisted.isActive ? 'Workflow published.' : paused ? 'Workflow saved and paused.' : 'Draft saved.');
       }
     } catch (failure) {
       reportError(
@@ -699,7 +704,7 @@ export default function WorkflowBuilder({
         </ul>
       )}
       <p className="text-xs text-[var(--muted-foreground)]">
-        Changes update the canvas immediately. Save the workflow to apply them.
+        Changes update the canvas immediately. Save a draft, then publish when ready.
       </p>
       <Button onClick={closeInspector}>
         Done
@@ -753,6 +758,7 @@ export default function WorkflowBuilder({
               </p>
             </div>
           </div>
+          {savedId && <WorkflowVersionHistory workflowId={savedId} version={savedVersion} dirty={dirty} options={options} onRestore={readOnly ? undefined : onRestoreVersion} />}
           {!readOnly && (
             <div className="flex flex-wrap gap-2">
               <Button
@@ -779,7 +785,7 @@ export default function WorkflowBuilder({
                 disabled={busy}
                 onClick={() => void submit(false)}
               >
-                {saved.isActive ? 'Save and pause' : savedStatus === 'PAUSED' ? 'Save changes' : 'Save draft'}
+                Save draft
               </Button>
               {canActivate && (
                 <Button
@@ -790,8 +796,8 @@ export default function WorkflowBuilder({
                   {busy
                     ? 'Working…'
                     : saved.isActive
-                      ? 'Save active workflow'
-                      : 'Save and activate'}
+                      ? 'Publish changes'
+                      : 'Publish workflow'}
                 </Button>
               )}
             </div>
@@ -855,14 +861,14 @@ export default function WorkflowBuilder({
               onClick={() => { setSelected(null); setShowLibrary(false); setShowTest(true); }}
             >
               <FlaskConical size={15} />
-              Test
+              Test draft
             </Button>
           </div>
         </div>
       </header>
       {mobile && view === 'builder' && <p className="border-b border-border px-4 py-2 text-xs text-muted-foreground">Tap each step to configure it. Use Add steps to insert steps and the arrow buttons to reorder actions.</p>}
       {retiredAccountWorkflowReferences(draft).length > 0 && <p role="alert" className="border-b border-border px-5 py-3 text-sm text-destructive">{ACCOUNT_RETIREMENT_REASON}</p>}
-      {dirty && savedId && <p className="border-b border-[var(--border)] px-5 py-2 text-sm text-[var(--muted-foreground)]">Testing uses the last saved version of this workflow. Save changes before running the check.</p>}
+      {dirty && savedId && <p className="border-b border-[var(--border)] px-5 py-2 text-sm text-[var(--muted-foreground)]">Testing uses the last saved draft. Save changes before running the check.</p>}
       {error && (
         <p
           role="alert"
@@ -878,8 +884,7 @@ export default function WorkflowBuilder({
       )}
       {saved.isActive && dirty && (
         <p className="border-b border-[var(--border)] px-5 py-2 text-xs text-[var(--muted-foreground)]">
-          The saved version is still active. Save to apply your changes, or
-          pause it while editing.
+          The published version is still active. Save your draft while editing, then publish changes when ready.
         </p>
       )}
       {(pending || insertAt !== null) && (
@@ -1033,7 +1038,7 @@ export default function WorkflowBuilder({
       )}
       {showTest && savedId && trigger && !dirty && (
         <WorkflowDialog
-          title="Test saved workflow"
+          title="Test saved draft"
           onClose={() => setShowTest(false)}
         >
           <WorkflowTestPanel workflowId={savedId} trigger={trigger} />

@@ -1,3 +1,4 @@
+import { refreshDealClassification } from './customer-classification.service';
 import { ContactStatus, Prisma } from '@prisma/client';
 import { CrmStatus, normalizeCrmStatus } from '@leadcrm/shared';
 import { ValidationError } from '../../shared/errors/http-error';
@@ -9,7 +10,7 @@ import { salesContext } from './leads/sales-context';
 export type CustomerLink = { leadId: string; contactId?: never } | { contactId: string; leadId?: never };
 type Tx = Prisma.TransactionClient;
 // Keep the existing database enum adapter; public contracts and histories use canonical labels.
-const contactStatuses: Record<CrmStatus, ContactStatus> = { Hot: ContactStatus.HOT, Warm: ContactStatus.WARM, Cold: ContactStatus.COLD, Closed: ContactStatus.CLOSED, Cancelled: ContactStatus.CANCELLED };
+const contactStatuses: Record<CrmStatus, ContactStatus> = { Inquiry: ContactStatus.INQUIRY, Hot: ContactStatus.HOT, Warm: ContactStatus.WARM, Cold: ContactStatus.COLD, Closed: ContactStatus.CLOSED, Cancelled: ContactStatus.CANCELLED };
 export const contactStatusValue = (value: CrmStatus) => contactStatuses[value];
 export const customerDealWhere = (tenantId: string, link: CustomerLink): Prisma.DealWhereInput => ({ tenantId, isArchived: false, deletedAt: null,
   ...(link.leadId ? { leadDeals: { some: { tenantId, leadId: link.leadId } } } : { contactDeals: { some: { tenantId, contactId: link.contactId } } }),
@@ -49,6 +50,7 @@ export async function changeCustomerStatus(tx: Tx, tenantId: string, actorId: st
   const activity = await tx.activity.create({ data: { tenantId, createdById: actorId, ...link, type: 'stage_change',
     title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: reason,
     metadata: { source: 'customer_engagement', occurredAt: changedAt.toISOString() } } });
+  await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'customer.status_changed', entityType: link.leadId ? 'Lead' : 'Contact', entityId: current.id, changeset: { before: { status: normalizeCrmStatus(current.status) }, after: { status }, reason } } });
   if (link.leadId && status === 'Closed') await convertClosedLead(tx, tenantId, link.leadId, actorId, { previousLead: current, ...conversionEvents });
   if (link.contactId && status === 'Closed') {
     const contact = await tx.contact.findFirstOrThrow({ where: { tenantId, id: link.contactId } });
@@ -76,6 +78,7 @@ export async function cancelOpenDeals(tx: Tx, tenantId: string, actorId: string,
     await fireDealStageChanged({ tenantId, actorId, eventId: history.id, deal: updated, prevStageId: deal.stageId, newStageId: lost[0].id, newStageName: lost[0].name, isWon: false, isLost: true });
     const changes = recordChanges(deal, updated);
     await fireDealUpdated({ tenantId, actorId, eventId: history.id, record: updated, changedFields: changes.changedFields, changes });
+    if (deal.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, deal.id, actorId);
   }
 }
 

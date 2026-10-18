@@ -1,3 +1,4 @@
+import { refreshDealClassification } from '../customer-classification.service';
 import { Prisma } from '@prisma/client';
 import { SALES_PIPELINE_STAGES } from '@leadcrm/shared';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
@@ -61,7 +62,7 @@ export async function createStage(tenantId: string, dto: CreateStageDto) {
   return prisma.stage.create({ data: { ...dto, tenantId } });
 }
 
-export async function updateStage(id: string, tenantId: string, dto: UpdateStageDto) {
+export async function updateStage(id: string, tenantId: string, dto: UpdateStageDto, actorId?: string) {
   return salesTransaction(async tx => {
     const stage = await tx.stage.findFirst({ where: { id, tenantId } });
     if (!stage) return null;
@@ -78,7 +79,12 @@ export async function updateStage(id: string, tenantId: string, dto: UpdateStage
     if (changesTerminalMeaning && (await tx.deal.count({ where: { tenantId, stageId: id } }) || await tx.dealStageHistory.count({ where: { tenantId, OR: [{ previousStageId: id }, { newStageId: id }] } }))) {
       throw new ValidationError('A stage referenced by Deals or history cannot change its Won/Lost meaning. Confirm each Deal through its stage action.');
     }
-    return tx.stage.update({ where: { id, tenantId }, data: dto });
+    const updated = await tx.stage.update({ where: { id, tenantId }, data: dto });
+    if (actorId && stage.name.trim().toLowerCase() !== updated.name.trim().toLowerCase() && [stage.name, updated.name].some(name => name.trim().toLowerCase() === 'qualified')) {
+      const deals = await tx.deal.findMany({ where: { tenantId, stageId: id, isArchived: false, deletedAt: null }, select: { id: true } });
+      for (const deal of deals) await refreshDealClassification(tx, tenantId, deal.id, actorId);
+    }
+    return updated;
   });
 }
 

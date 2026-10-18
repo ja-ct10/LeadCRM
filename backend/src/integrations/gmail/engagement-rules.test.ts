@@ -5,13 +5,13 @@ import { parseGmailMessage } from './gmail.service';
 
 describe('reply timestamp engagement', () => {
   const now = new Date('2026-10-06T12:00:00Z');
-  it.each([[0, 'Hot'], [7, 'Hot'], [7.5, 'Hot'], [8, 'Warm'], [29, 'Warm'], [30, 'Cold'], [60, 'Cold']] as const)('reply %s days ago is %s', (days, status) => {
+  it.each([[0, 'Warm'], [7, 'Warm'], [7.5, 'Warm'], [8, 'Warm'], [29, 'Warm'], [30, 'Cold'], [60, 'Cold']] as const)('reply %s days ago is %s', (days, status) => {
     expect(engagementStatus({ status: 'Cold', lastCustomerReplyAt: new Date(+now - days * DAY_MS), firstUnansweredOutboundAt: null }, now)).toBe(status);
   });
-  it.each([[8 * DAY_MS - 1, 'Hot'], [8 * DAY_MS, 'Warm'], [30 * DAY_MS - 1, 'Warm'], [30 * DAY_MS, 'Cold']] as const)('has exact elapsed millisecond boundaries %s', (age, status) => {
+  it.each([[8 * DAY_MS - 1, 'Warm'], [8 * DAY_MS, 'Warm'], [30 * DAY_MS - 1, 'Warm'], [30 * DAY_MS, 'Cold']] as const)('has exact elapsed millisecond boundaries %s', (age, status) => {
     expect(engagementStatus({ status: 'Warm', lastCustomerReplyAt: new Date(+now - age), firstUnansweredOutboundAt: now }, now)).toBe(status);
   });
-  it.each([[0, 'Warm'], [10, 'Warm'], [30, 'Cold'], [60, 'Cold']] as const)('never replied after %s days is %s', (days, status) => {
+  it.each([[0, 'Hot'], [10, 'Warm'], [30, 'Cold'], [60, 'Cold']] as const)('never replied after %s days is %s', (days, status) => {
     expect(engagementStatus({ status: 'Hot', lastCustomerReplyAt: null, firstUnansweredOutboundAt: new Date(+now - days * DAY_MS) }, now)).toBe(status);
   });
   it('preserves no-history and terminal records and rejects future timestamps', () => {
