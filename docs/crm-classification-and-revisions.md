@@ -14,7 +14,7 @@ New Lead assignment uses Inquiry=1, Warm=2, Hot=3, Cold=1 and terminal=0. Only c
 
 ## Products and Tasks
 
-Products accept one optional `category` (200 characters); existing Product permissions apply. The integration reuses main's Product metadata column and description field. Blank/null API categories normalize to the existing empty-string storage value and display as Uncategorized. Product IDs, descriptions, existing category labels and historical Deal values remain unchanged.
+Products require one nonblank `category` (up to 200 characters) when creating or saving a Product; existing Product permissions apply. The integration reuses main's Product metadata column and description field. Blank/null API categories are rejected. Historical Products without a category remain intact and display as Uncategorized until a category is selected when editing. See [Product Category management](product-category-management.md) for the shared category source and mutation rules. Product IDs, descriptions, existing category labels and historical Deal values remain unchanged.
 
 Task Deal options accept `accountId`, `category`, `productInterestId`, `search`, `page`, `limit` and `selectAll`. Category uses `__uncategorized` for products without a category. Filters intersect; the server checks permissions and tenant scope. Paginated responses return `data` and `meta` including the total. `selectAll=true` returns all matching authorized IDs up to 50; 51 matches returns a validation error. The UI also checks the union with prior selections. Saving validates all selected associations in one transaction and creates one Task.
 

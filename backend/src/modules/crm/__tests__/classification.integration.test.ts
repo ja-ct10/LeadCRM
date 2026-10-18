@@ -182,13 +182,20 @@ describe.skipIf(!disposable)('hybrid classification, selection and revisions on 
     const empty = await scope(() => findFilteredDealOptions(tenantId, { ...query, category: 'Different' })); expect(empty.meta.total).toBe(0);
     expect((await prisma.productInterest.findUniqueOrThrow({ where: { id: product.id } })).dealValue.toNumber()).toBe(12345);
   });
-  it('keeps description and price while clearing a category and filtering Uncategorized', async () => {
+  it('rejects clearing a category while preserving the Product and its Deal assignment', async () => {
     const product = await prisma.productInterest.create({ data: { tenantId, name: randomUUID(), category: 'Security', description: 'Historical description', dealValue: 12345.67 } });
     const deal = await linkedDeal(undefined, undefined, { productInterestId: product.id });
-    const response = await call(`/administration/product-interests/${product.id}`, 'PATCH', { category: null });
-    expect(response.status).toBe(200);
+    for (const category of [null, '', '   ']) {
+      const response = await call(`/administration/product-interests/${product.id}`, 'PATCH', { category });
+      expect(response.status).toBe(400);
+    }
     const saved = await prisma.productInterest.findUniqueOrThrow({ where: { id: product.id } });
-    expect(saved.category).toBe(''); expect(saved.description).toBe('Historical description'); expect(saved.dealValue.toNumber()).toBe(12345.67);
+    expect(saved.category).toBe('Security'); expect(saved.description).toBe('Historical description'); expect(saved.dealValue.toNumber()).toBe(12345.67);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).productInterestId).toBe(product.id);
+  });
+  it('retains Uncategorized filtering for historical Products without a category', async () => {
+    const product = await prisma.productInterest.create({ data: { tenantId, name: randomUUID(), category: '', dealValue: 12345.67 } });
+    const deal = await linkedDeal(undefined, undefined, { productInterestId: product.id });
     const query = TaskOptionsQuerySchema.parse({ kind: 'deal', category: '__uncategorized', productInterestId: product.id });
     const result = await scope(() => findFilteredDealOptions(tenantId, query));
     expect(result.data.map(row => row.id)).toEqual([deal.id]);

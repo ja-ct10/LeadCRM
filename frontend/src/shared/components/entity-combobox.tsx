@@ -25,7 +25,8 @@ interface EntityOption {
 
 interface EntityComboboxBaseProps {
   id?: string;
-  required?: boolean;
+  'aria-labelledby'?: string;
+  'aria-required'?: React.AriaAttributes['aria-required'];
   /** Entity type for data fetching */
   entityType: EntityType;
   /** Placeholder text */
@@ -456,13 +457,14 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
       {!isOpen ? (
         <div
           id={props.id}
-          aria-required={props.required}
           role="combobox"
           tabIndex={disabled ? -1 : 0}
           aria-expanded={isOpen}
           aria-haspopup="listbox"
           aria-controls={listId}
           aria-label={displayPlaceholder}
+          aria-labelledby={props['aria-labelledby']}
+          aria-required={props['aria-required']}
           aria-disabled={disabled}
           aria-invalid={!!error}
           aria-describedby={error ? errorId : undefined}
@@ -496,15 +498,16 @@ export function EntityCombobox(props: EntityComboboxProps): React.ReactElement {
         <div className="relative w-full flex items-center">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" size={16} />
           <input
+            id={props.id}
             ref={inputRef}
             type="text"
-            id={props.id}
-            aria-required={props.required}
             role="combobox"
             aria-expanded={isOpen}
             aria-controls={listId}
             aria-autocomplete="list"
             aria-label={`Search ${entityType}`}
+            aria-labelledby={props['aria-labelledby']}
+            aria-required={props['aria-required']}
             aria-invalid={!!error}
             aria-describedby={error ? errorId : undefined}
             className="w-full pl-9 pr-10 bg-white dark:bg-slate-900 border-2 border-[var(--primary)] rounded-lg py-2 text-sm text-slate-900 dark:text-white placeholder-slate-400 outline-none shadow-sm transition-all"

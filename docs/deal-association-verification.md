@@ -1,7 +1,8 @@
 # Deal association verification
 
 Based on fetched `origin/main` at `f2bbf069`, implemented on
-`codex/deal-primary-association`. No schema migration is required.
+`codex/deal-primary-association` and integrated with `main` at `56fa9a63`.
+No schema migration is required.
 
 ## Behavior and compatibility
 
@@ -26,8 +27,9 @@ Based on fetched `origin/main` at `f2bbf069`, implemented on
 - Existing automatic Product creation retains its contract. Committed legacy
   batch receipts replay without imposing new relationships on old Deals.
 - The quotation wizard requires a linked Deal and uses the existing recipient
-  relationship lookup for Leads and Contacts. The legacy quotation API still
-  accepts omitted Deal context; supplied Deal links retain server validation.
+  relationship lookup for Leads and Contacts. The latest `main` quotation
+  validation and Deal-bound Product behavior are preserved, along with its
+  shared entity selector accessibility properties.
 - Mock edits use the same shared junction patch. Mock creation inherits an
   eligible source agent, or an eligible current user when unassigned; otherwise
   it requests a corrected source assignment. Production uses server-side rotation.

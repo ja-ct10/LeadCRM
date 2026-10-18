@@ -26,7 +26,7 @@ export function useProductInterests() {
     pending.current = controller;
     setLoading(true); setError('');
     const promise = apiClient.get<ProductInterestResponse>(PRODUCT_INTEREST_ENDPOINT, { signal: controller.signal })
-      .then(result => { if (!controller.signal.aborted) { setProducts(result.data); setCategories(result.meta?.categories ?? [...new Set(result.data.map(row => row.category || row.name))]); setEnabled(result.meta?.enabled !== false); } })
+      .then(result => { if (!controller.signal.aborted) { setProducts(result.data); setCategories(result.meta?.categories ?? [...new Set(result.data.map(row => row.category).filter((category): category is string => !!category))]); setEnabled(result.meta?.enabled !== false); } })
       .catch(e => { if (!controller.signal.aborted) {
         if ([401, 403, 404].includes(e.status)) setProducts([]); setCategories([]);
         setError(e instanceof Error ? e.message : 'Unable to load products.');
@@ -46,7 +46,7 @@ export function useProductInterests() {
     const onChanged = (event: Event) => {
       pending.current?.abort();
       const result = (event as CustomEvent<ProductInterestResponse>).detail;
-      if (result) { setProducts(result.data); setCategories(result.meta?.categories ?? [...new Set(result.data.map(row => row.category || row.name))]); setEnabled(result.meta.enabled); setError(''); }
+      if (result) { setProducts(result.data); setCategories(result.meta?.categories ?? [...new Set(result.data.map(row => row.category).filter((category): category is string => !!category))]); setEnabled(result.meta.enabled); setError(''); }
       void refresh();
     };
     window.addEventListener('product-interests-changed', onChanged);

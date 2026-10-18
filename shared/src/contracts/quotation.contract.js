@@ -32,7 +32,7 @@ const calendarDate = zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value 
 }, 'Choose a valid calendar date.');
 exports.QuotationDraftSchema = zod_1.z.object({
     quotationId: zod_1.z.string().uuid(), templateId: zod_1.z.string().uuid(), recipientType: zod_1.z.enum(['Lead', 'Contact']), recipientId: zod_1.z.string().uuid(),
-    dealId: zod_1.z.string().uuid().optional(), products: zod_1.z.array(zod_1.z.object({ productId: zod_1.z.string().uuid(), quantity: zod_1.z.number().int().positive().max(1000000) }).strict()).min(1, 'Add at least one product.').max(100),
+    dealId: zod_1.z.string().uuid('Select an associated Deal.'), products: zod_1.z.array(zod_1.z.object({ productId: zod_1.z.string().uuid(), quantity: zod_1.z.number().int().positive().max(1000000) }).strict()).length(1, 'Review the Product associated with this Deal.'),
     quotationDate: calendarDate, validUntil: calendarDate, notes: section,
 }).strict().superRefine((value, context) => {
     if (value.validUntil < value.quotationDate)

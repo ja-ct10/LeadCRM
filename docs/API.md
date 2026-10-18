@@ -222,8 +222,23 @@ for migration verification and deployment requirements.
 
 Product create requires `name`, `category` and `dealValue`; `description` defaults
 to empty and is limited to 1,000 characters. Category uses the existing 200-character
-name limit. Catalog responses include `meta.categories`, distinct same-tenant
-categories including archived Products. Inline additions save with the Product.
+name limit. Creating or editing a Product requires an available, nonblank category;
+an edit that omits category validates the existing assignment. Existing Uncategorized
+Products remain readable and must be classified when edited.
+Catalog responses include `meta.categories` from the tenant's `product-interests`
+`categories` preference, initialized once from existing nonblank assignments,
+including archived Products. No schema migration is required.
+
+`PATCH /administration/product-interests/categories` accepts `{ action: 'add', name }`,
+`{ action: 'rename', name, newName }`, or `{ action: 'delete', name }` and requires
+`products.create`, `products.edit`, or `products.archive`, respectively. Names are
+trimmed, required, limited to 200 characters and unique without regard to case.
+Renaming updates same-tenant active and archived Product category text in the same
+serializable transaction. Deleting a category assigned to any Product returns 409.
+Mutations return the updated catalog and category options; the existing Product
+change event refreshes open views. The editor's inline Add category flow uses the
+same add mutation before saving the Product. A failed Product save can leave its
+new category available for retry.
 Existing names/IDs/prices and historical Deal values are preserved by the additive
 metadata migration. See [implementation and verification](security-export-products-verification.md).
 

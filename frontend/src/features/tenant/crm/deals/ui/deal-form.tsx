@@ -291,7 +291,7 @@ export function DealForm({
       </div>} />
     </FieldWrap>
     {associationType && <FieldWrap label={`${associationType === 'lead' ? 'Lead' : 'Contact'} *`} htmlFor={`${fieldId}-association`} >
-      <Controller name="associationId" control={control} render={({ field }) => <EntityCombobox key={associationType} id={`${fieldId}-association`} required entityType={associationType === 'lead' ? 'leads' : 'contacts'} multiple={false} value={field.value || null} onChange={id => {
+      <Controller name="associationId" control={control} render={({ field }) => <EntityCombobox key={associationType} id={`${fieldId}-association`} aria-required="true" entityType={associationType === 'lead' ? 'leads' : 'contacts'} multiple={false} value={field.value || null} onChange={id => {
         field.onChange(id || '');
         setValue('associationChanged', true, { shouldDirty: true, shouldValidate: true });
       }} placeholder={`Search ${associationType === 'lead' ? 'leads' : 'contacts'}...`} error={errors.associationId?.message} disabled={isSubmitting || isLoading} />} />

@@ -5,6 +5,7 @@ import {
   ProductInterestPatchSchema,
   ProductInterestConfigSchema,
   MAX_ACTIVE_PRODUCTS,
+  ProductCategoryMutationSchema,
 } from '@leadcrm/shared';
 
 describe('new Product Interest validation', () => {
@@ -23,6 +24,17 @@ describe('new Product Interest validation', () => {
 
   it('retains decimal numeric updates for existing products', () => {
     expect(ProductInterestPatchSchema.safeParse({ dealValue: 25000.5 }).success).toBe(true);
+  });
+
+  it.each([undefined, null, '', ' '])('requires category on create and rejects empty supplied update categories: %s', category => {
+    expect(ProductInterestCreateSchema.safeParse({ name: 'Camera', category, dealValue: 25 }).success).toBe(false);
+    if (category !== undefined) expect(ProductInterestPatchSchema.safeParse({ category }).success).toBe(false);
+  });
+
+  it('shares required category validation across add and rename', () => {
+    expect(ProductCategoryMutationSchema.parse({ action: 'add', name: '  CCTV  ' })).toEqual({ action: 'add', name: 'CCTV' });
+    expect(ProductCategoryMutationSchema.safeParse({ action: 'rename', name: 'CCTV', newName: ' ' }).success).toBe(false);
+    expect(ProductCategoryMutationSchema.safeParse({ action: 'add', name: 'x'.repeat(201) }).success).toBe(false);
   });
 
   it('uses the same active catalog ceiling as creation and restoration', () => {

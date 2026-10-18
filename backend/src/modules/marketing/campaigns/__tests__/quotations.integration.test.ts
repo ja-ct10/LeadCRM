@@ -16,13 +16,14 @@ import { createRawMessage } from '../../../../integrations/gmail/gmail.service';
 import { renderQuotationPdf } from '../quotation-pdf';
 import { AppError } from '../../../../shared/errors/app-error';
 import { seedCampaignTemplates } from '../../templates/default-templates';
+import { sendMailboxEmail } from '../../../../integrations/gmail/mailbox-send.service';
 import app from '../../../../app';
 const database = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = database.hostname === '127.0.0.1' && /^\/leadcrm_quotation_test_\d+$/.test(database.pathname);
 describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreSQL', () => {
   const seedDb = new PrismaClient();
   let tenantId: string, otherTenant: string, userId: string, token: string, denied: string, base: string, server: Server;
-  let templateId: string, productId: string, leadId: string, contactId: string, accountId: string;
+  let templateId: string, productId: string, leadId: string, contactId: string, accountId: string, dealId: string, pipelineId: string, stageId: string;
   const output = resolve(__dirname, '../../../../../../data/outputs/quotations');
   const scope = <T>(fn: () => T) => tenantContext.run({ tenantId }, fn);
   async function call(path: string, method = 'GET', body?: unknown, authorization = token) {
@@ -30,7 +31,7 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
     return { status: response.status, data: await response.json() };
   }
   const draft = (recipientType: 'Lead' | 'Contact' = 'Lead'): QuotationDraft => ({ quotationId: randomUUID(), templateId, recipientType, recipientId: recipientType === 'Lead' ? leadId : contactId,
-    products: [{ productId, quantity: 3 }], quotationDate: '2026-10-18', validUntil: '2026-11-18', notes: '{{fullName}} / {{organizationName}} / {{sender_email}} / {{total}}' });
+    dealId, products: [{ productId, quantity: 3 }], quotationDate: '2026-10-18', validUntil: '2026-11-18', notes: '{{fullName}} / {{organizationName}} / {{sender_email}} / {{total}}' });
   async function preview(value = draft()) { const result = await call('/marketing/campaigns/quotations/preview', 'POST', value); expect(result.status, JSON.stringify(result.data)).toBe(200); return result.data.data as QuotationPreview; }
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Quotation Issuer', slug: randomUUID(), status: 'SANDBOX', email: 'issuer@example.test', phone: '+639123456789', address: 'Issuer Address', onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
@@ -40,26 +41,47 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
     const blocked = await prisma.user.create({ data: { tenantId, firstName: 'Denied', lastName: 'Agent', email: `${randomUUID()}@camxian.com`, role: 'Sales', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     denied = (await issueAuthSession(blocked)).token;
     await scope(async () => {
+      await prisma.template.create({ data: { tenantId, name: 'CCTV Quotation', type: 'Quotation', category: 'Custom', content: JSON.stringify({ ...defaultQuotationContent(), footer: 'CCTV terms {{sender_name}}' }) } });
       await seedCampaignTemplates(seedDb, tenantId, true);
-      templateId = (await prisma.template.findFirstOrThrow({ where: { tenantId, type: 'Quotation' } })).id;
+      templateId = (await prisma.template.findFirstOrThrow({ where: { tenantId, type: 'Quotation', name: 'Standard Sales Quotation' } })).id;
       productId = (await prisma.productInterest.create({ data: { tenantId, name: 'Technical Service', category: 'Services', description: 'Professional setup', dealValue: '1234.56' } })).id;
       accountId = (await prisma.account.create({ data: { tenantId, name: 'Customer Account', address: 'Account Address' } })).id;
       leadId = (await prisma.lead.create({ data: { tenantId, firstName: 'Juan', lastName: 'Dela Cruz', email: 'juan@example.test', companyName: 'Lead Company', assignedUserId: userId, accountId } })).id;
       contactId = (await prisma.contact.create({ data: { tenantId, firstName: 'Maria', lastName: 'Santos', email: 'maria@example.test', companyName: 'Contact Company', assignedUserId: userId, accountId } })).id;
+      pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Quotation pipeline' } })).id;
+      stageId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Lead', order: 0, requiredFields: [] } })).id;
+      dealId = (await prisma.deal.create({ data: { tenantId, pipelineId, stageId, title: 'Linked quotation Deal', productInterestId: productId, value: 99999,
+        leadDeals: { create: { tenantId, leadId } }, contactDeals: { create: { tenantId, contactId } } } })).id;
       await prisma.emailAccount.create({ data: { tenantId, userId, email: user.email, accessToken: encryptToken('fixture-access-token'), tokenExpiresAt: new Date(Date.now() + 3600000), scopes: ['https://www.googleapis.com/auth/gmail.modify'] } });
     });
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done)); base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
     mkdirSync(output, { recursive: true });
   }, 30000);
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await seedDb.$disconnect(); await prisma.$disconnect(); });
+  it('lists all six starters plus CCTV across pages, searches, filters and renders every template', async () => {
+    const all = [];
+    for (let page = 1; page <= 4; page++) {
+      const result = await call(`/marketing/templates?type=Quotation&limit=2&page=${page}`);
+      expect(result.data.meta.total).toBe(7); all.push(...result.data.data);
+    }
+    expect(new Set(all.map(row => row.id)).size).toBe(7);
+    for (const row of all) {
+      expect((await call(`/marketing/templates?type=Quotation&search=${encodeURIComponent(row.name)}&category=${row.category}`)).data.data.map((item: { id: string }) => item.id)).toContain(row.id);
+      const response = await fetch(base + `/marketing/templates/${row.id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+      expect(response.status).toBe(200); expect(response.headers.get('content-type')).toContain('application/pdf');
+      const pdf = Buffer.from(await response.arrayBuffer()); expect(pdf.subarray(0, 5).toString()).toBe('%PDF-');
+      expect((await preview({ ...draft(), templateId: row.id })).document.products[0].name).toBe('Technical Service');
+    }
+    expect((await call('/marketing/templates?type=Quotation')).data.meta.total).toBe(7);
+  });
   it('persists six starters idempotently and retains edited/archived content', async () => {
     const listed = await call('/marketing/templates?type=Quotation');
-    expect(listed.status).toBe(200); expect(listed.data.meta.total).toBe(6); expect(listed.data.data).toHaveLength(6);
+    expect(listed.status).toBe(200); expect(listed.data.meta.total).toBe(7); expect(listed.data.data).toHaveLength(7);
     await scope(async () => {
-      const saved = await prisma.template.findFirstOrThrow({ where: { tenantId, type: 'Quotation', id: { not: templateId } } });
+      const saved = await prisma.template.findFirstOrThrow({ where: { tenantId, type: 'Quotation', name: 'Annual Maintenance' } });
       await prisma.template.update({ where: { id: saved.id }, data: { content: JSON.stringify({ ...defaultQuotationContent(), footer: 'User terms' }), isArchived: true } });
       expect(await seedCampaignTemplates(seedDb, tenantId, true)).toBe(0);
-      expect(await prisma.template.count({ where: { tenantId, type: 'Quotation' } })).toBe(6);
+      expect(await prisma.template.count({ where: { tenantId, type: 'Quotation' } })).toBe(7);
       expect(await prisma.template.findUnique({ where: { id: saved.id } })).toMatchObject({ isArchived: true, content: expect.stringContaining('User terms') });
     });
   });
@@ -139,8 +161,58 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
     expect((await call('/marketing/campaigns/quotations/preview', 'POST', value)).status).toBe(400);
     await scope(() => prisma.lead.update({ where: { id: leadId }, data: { accountId } }));
   });
-  it('rejects an unrelated optional Deal', async () => {
+  it('requires a related Deal and rejects forged, unrelated and archived Deal/Product combinations', async () => {
+    expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), dealId: undefined })).status).toBe(400);
     expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), dealId: randomUUID() })).status).toBe(400);
+    const unrelated = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId, stageId, title: 'Unrelated', productInterestId: productId } }));
+    expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), dealId: unrelated.id })).status).toBe(400);
+    const otherProduct = await scope(() => prisma.productInterest.create({ data: { tenantId, name: 'Other catalog Product', dealValue: 5 } }));
+    expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), products: [{ productId: otherProduct.id, quantity: 1 }] })).status).toBe(400);
+    await scope(() => prisma.deal.update({ where: { id: dealId }, data: { isArchived: true } }));
+    expect((await call('/marketing/campaigns/quotations/preview', 'POST', draft())).status).toBe(400);
+    await scope(() => prisma.deal.update({ where: { id: dealId }, data: { isArchived: false, productInterestId: null } }));
+    const missing = await call('/marketing/campaigns/quotations/preview', 'POST', draft());
+    expect(missing.status).toBe(400); expect(JSON.stringify(missing.data)).toContain('No product is associated with this Deal. Please select a Deal with an assigned product.');
+    await scope(() => prisma.deal.update({ where: { id: dealId }, data: { productInterestId: productId } }));
+  });
+  it('accepts a converted Lead relationship for a Contact and permits a real zero-priced Product', async () => {
+    const converted = await scope(() => prisma.lead.create({ data: { tenantId, firstName: 'Converted', lastName: 'Customer', convertedAt: new Date(), contactId } }));
+    const free = await scope(() => prisma.productInterest.create({ data: { tenantId, name: 'Included Service', dealValue: 0 } }));
+    const linked = await scope(() => prisma.deal.create({ data: { tenantId, pipelineId, stageId, title: 'Converted relationship', productInterestId: free.id } }));
+    await scope(() => prisma.leadDeal.create({ data: { tenantId, leadId: converted.id, dealId: linked.id } }));
+    expect((await preview({ ...draft('Contact'), dealId: linked.id, products: [{ productId: free.id, quantity: 2 }] })).document.total).toBe('0.00');
+  });
+  it('requires a new preview if the canonical Product changes before first send', async () => {
+    const value = draft(), prepared = await preview(value), before = vi.mocked(writeGmailJson).mock.calls.length;
+    await scope(() => prisma.deal.update({ where: { id: dealId }, data: { productInterestId: null } }));
+    const result = await call('/marketing/campaigns/quotations/send', 'POST', { draft: value, fingerprint: prepared.fingerprint, requestId: randomUUID() });
+    expect(result.status).toBe(409); expect(JSON.stringify(result.data)).toContain('QUOTATION_PREVIEW_CHANGED');
+    expect(vi.mocked(writeGmailJson).mock.calls.length).toBe(before);
+    await scope(() => prisma.deal.update({ where: { id: dealId }, data: { productInterestId: productId } }));
+  });
+  it('revalidates a reserved receipt that never attempted delivery', async () => {
+    const value = draft(), prepared = await preview(value), requestId = randomUUID(), before = vi.mocked(writeGmailJson).mock.calls.length;
+    const account = await scope(() => prisma.emailAccount.findFirstOrThrow({ where: { tenantId, userId } }));
+    await scope(() => prisma.mailboxSendReceipt.create({ data: { tenantId, accountId: account.id, requestId, status: 'reserved', payloadHash: 'fixture-reservation',
+      authorizationContext: { quotation: { draft: value, document: prepared.document, fingerprint: prepared.fingerprint, subject: 'Reserved', body: '<p>Quotation</p>' } } } }));
+    await scope(() => prisma.productInterest.update({ where: { id: productId }, data: { description: 'Updated setup' } }));
+    const result = await call('/marketing/campaigns/quotations/send', 'POST', { draft: value, requestId, fingerprint: prepared.fingerprint });
+    expect(result.status).toBe(409); expect(JSON.stringify(result.data)).toContain('QUOTATION_PREVIEW_CHANGED');
+    expect(vi.mocked(writeGmailJson).mock.calls.length).toBe(before);
+    await scope(() => prisma.productInterest.update({ where: { id: productId }, data: { description: 'Professional setup' } }));
+  });
+  it('rejects a cross-tenant Deal and a user who lacks only Deals View', async () => {
+    const foreignDeal = await tenantContext.run({ tenantId: otherTenant }, async () => {
+      const pipeline = await prisma.pipeline.create({ data: { tenantId: otherTenant, name: 'Private pipeline' } });
+      const stage = await prisma.stage.create({ data: { tenantId: otherTenant, pipelineId: pipeline.id, name: 'Lead', order: 0, requiredFields: [] } });
+      return prisma.deal.create({ data: { tenantId: otherTenant, pipelineId: pipeline.id, stageId: stage.id, title: 'Private Deal' } });
+    });
+    expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), dealId: foreignDeal.id })).status).toBe(400);
+    const role = await scope(() => prisma.roleDefinition.create({ data: { tenantId, name: `No Deals ${randomUUID()}` } }));
+    await scope(() => prisma.rolePermission.createMany({ data: ['campaigns', 'products', 'leads'].map(module => ({ tenantId, roleId: role.id, module, canView: true })) }));
+    const user = await scope(() => prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'No', lastName: 'Deals', role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } }));
+    await scope(() => prisma.userRole.create({ data: { tenantId, userId: user.id, roleId: role.id } }));
+    expect((await call('/marketing/campaigns/quotations/preview', 'POST', draft(), (await issueAuthSession(user)).token)).status).toBe(403);
   });
   it('rejects changed previews before Gmail is called', async () => {
     const value = draft(), prepared = await preview(value); const before = vi.mocked(writeGmailJson).mock.calls.length;
@@ -173,12 +245,27 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
     expect(Buffer.from(createRawMessage('to@example.test', 'Subject', '<p>Body</p>', 'from@example.test'), 'base64url').toString()).toContain('Content-Type: text/html; charset=utf-8\r\n\r\n<p>Body</p>');
     expect(() => createRawMessage('to@example.test', 'Subject', 'Body', 'from@example.test', undefined, undefined, [], [{ filename: 'bad\r\nheader.pdf', mimeType: 'application/pdf', data: Buffer.from('%PDF-') }])).toThrow('Invalid generated PDF attachment');
   });
+  it('recovers a previously attempted legacy quotation without a Deal using its frozen attachment', async () => {
+    const value = draft(), prepared = await preview(value), requestId = randomUUID();
+    const { dealId: _dealId, ...legacy } = value;
+    // Match the canonical JSON used by the pre-Deal quotation sender, rather
+    // than seeding a receipt with a different mailbox intent key order.
+    const quotation = JSON.parse(JSON.stringify({ draft: legacy, document: prepared.document, fingerprint: prepared.fingerprint, subject: 'Legacy quotation', body: '<p>Frozen quotation</p>' },
+      (_key, value) => value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.keys(value).sort().map(key => [key, value[key]])) : value));
+    const before = vi.mocked(writeGmailJson).mock.calls.length;
+    await scope(() => sendMailboxEmail(tenantId, userId, { requestId, to: prepared.document.recipient.email, subject: quotation.subject, body: quotation.body },
+      { quotation, attachments: [{ filename: `${prepared.document.number}.pdf`, mimeType: 'application/pdf', data: Buffer.from(prepared.pdfBase64, 'base64') }] }));
+    await scope(() => prisma.productInterest.update({ where: { id: productId }, data: { dealValue: '1300' } }));
+    expect((await call('/marketing/campaigns/quotations/send', 'POST', { draft: legacy, fingerprint: prepared.fingerprint, requestId })).status).toBe(200);
+    expect(vi.mocked(writeGmailJson).mock.calls.length).toBe(before + 1);
+    expect((await call('/marketing/campaigns/quotations/send', 'POST', { draft: legacy, fingerprint: prepared.fingerprint, requestId: randomUUID() })).status).toBe(400);
+  });
   it('blocks foreign tenant recipients/templates and Account data without Accounts View', async () => {
     const foreign = await tenantContext.run({ tenantId: otherTenant }, () => prisma.lead.create({ data: { tenantId: otherTenant, firstName: 'Private', lastName: 'Recipient' } }));
     expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), recipientId: foreign.id })).status).toBe(404);
     expect((await call('/marketing/campaigns/quotations/preview', 'POST', { ...draft(), templateId: randomUUID() })).status).toBe(404);
     const role = await scope(() => prisma.roleDefinition.create({ data: { tenantId, name: `Quote Reader ${randomUUID()}` } }));
-    await scope(() => prisma.rolePermission.createMany({ data: ['campaigns', 'products', 'leads'].map(module => ({ tenantId, roleId: role.id, module, canView: true })) }));
+    await scope(() => prisma.rolePermission.createMany({ data: ['campaigns', 'products', 'leads', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true })) }));
     const user = await scope(() => prisma.user.create({ data: { tenantId, email: `${randomUUID()}@camxian.com`, firstName: 'Limited', lastName: 'Reader', role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } }));
     await scope(() => prisma.userRole.create({ data: { tenantId, userId: user.id, roleId: role.id } }));
     const limitedToken = (await issueAuthSession(user)).token;

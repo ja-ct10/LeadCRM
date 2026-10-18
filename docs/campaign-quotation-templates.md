@@ -46,8 +46,13 @@ placeholders are preserved in reusable-template PDFs; final documents reject
 unknown variables and missing required Account relationships.
 
 The four steps are Recipient, Products, Quotation Details and Preview. Deal is
-optional and must be an authorized existing recipient relationship. Product prices
-come from active tenant Product records. Quantities are positive whole numbers;
+required and must be an authorized existing recipient relationship, including
+a converted Lead's Deal when selecting its Contact. The Products review step
+loads the Deal's canonical `productInterestId`; it does not offer manual Product
+selection. Name, category, description and price come from that active tenant
+Product record, rather than the Deal's historical value. A Deal without an
+available Product blocks progression; a valid zero-priced Product remains allowed.
+Quantities are positive whole numbers;
 the backend uses decimal arithmetic for line totals and the grand total. There
 are no taxes, discounts, shipping charges or editable price overrides.
 
@@ -79,6 +84,15 @@ attachment identity are kept in the existing mailbox receipt for retries; JSONB
 key ordering cannot change the send identity. Changed previews require regeneration
 before the first attempt. Provider-confirmed sends remain sent if local history
 ingestion is delayed.
+
+New drafts require exactly one Product matching the selected Deal. Recipient or
+Deal changes clear dependent Product/preview state; cache identity and aborted
+requests prevent an old Deal response from replacing the current selection.
+Unchanged Deal/Product selections retain quantities during Back/Next navigation.
+The existing five-column PDF layout is retained; category is displayed in the
+wizard's Product review table. Previously attempted receipts from before the
+required-Deal contract recover their exact frozen draft and attachment; a new
+send still requires current Deal/Product validation.
 
 ## Six starter templates
 
@@ -214,3 +228,72 @@ Repair files:
   `frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts`.
 - This document. Concurrent Export CSV, table-settings and TableIconButton edits
   were preserved and are outside the quotation repair.
+
+## Required Deal and canonical Product repair (2026-10-18)
+
+The wizard previously saved an optional Deal ID without loading its Product;
+the Products step depended on manual selection, and preview accepted any active
+tenant Product. The existing Deal has one canonical `productInterestId` reference
+to `ProductInterest`. Legacy arrays do not provide another quotation relationship.
+
+The wizard now requires the related Deal and loads its Product through the
+existing Deal detail API, identity-scoped cache and Product catalog hook. Existing
+Label, red required markers, EntityCombobox and FieldError are reused. Optional
+label/required attributes were added to EntityCombobox and optional cancellation
+to `dealsApi.get`; no new components or endpoints were introduced. Only quantity
+is editable. Missing/inactive Products block progression and do not become empty
+zero-value quotations. Backend validation binds the single Product to that Deal,
+uses existing active-Product validation and Decimal arithmetic, and checks the
+reviewed data before a first send. Previously attempted legacy receipts retain
+their frozen document and attachment identity.
+
+The existing quotation-only seed and listing were verified with disposable
+database/API tests. A tenant containing CCTV Quotation received the six starters;
+all seven appeared across paginated reads and search/category queries. Repeated
+seeding added nothing. Separate edited/archived retention checks left those rows
+and Email/SMS content unchanged. Every starter and CCTV supported reusable PDF
+generation and completed Deal/Product preview. This is not evidence that Camxian's
+production database has been seeded.
+
+Local verification passed 43 backend/API tests, 277 frontend regressions, all 13
+final wizard tests (including cached Deals sharing one Product) and two compiled-
+runtime checks. Workspace lint/typechecks and sequential builds passed. The final
+frontend build also passed after an authorized retry outside the Windows sandbox;
+its initial sandbox run failed creating a generated Next.js output directory.
+The rendered browser fixture passed 182 checks across 320, 375, 390, 430, 768,
+1024 and 1440px, including required-Deal errors, automatic Product metadata,
+quantity validation, retained navigation, template actions and native Chrome PDF
+preview. Browser responses are fixtures; Gmail transport is mocked in API tests.
+PDF extraction verified Product details, decimal totals, placeholders and the peso
+glyph; visual inspection covered a completed quotation, reusable template and
+repeated headings in a ten-page long-text sample.
+
+Current upstream was inspected at `f2bbf069f8b108dd009d4ba4a9c4c816d381a80a`;
+its relevant Deal/Product relationship and quotation implementation were unchanged.
+Public frontend, proxied backend and direct backend release/health responses all
+reported that same revision during the final check. The local changes in this
+repair have not been deployed.
+Concurrent Campaigns/search edits in this checkout were preserved. The existing
+Deal selector still exposes its first 50 authorized recipient relationships.
+
+Files changed for this repair:
+
+- `frontend/src/features/tenant/marketing/campaigns/ui/quotation-wizard.tsx` and
+  its new `ui/__tests__/quotation-wizard.test.tsx`.
+- `frontend/src/shared/components/entity-combobox.tsx` and
+  `components/__tests__/entity-combobox-search.test.tsx`.
+- `frontend/src/shared/services/deals.api.ts`.
+- `shared/src/contracts/quotation.contract.ts` and its generated `.js` companion.
+- `backend/src/modules/marketing/campaigns/quotations.service.ts` and
+  `campaigns/__tests__/quotations.test.ts` / `quotations.integration.test.ts`.
+- The existing `backend/scripts/preview-quotations-browser.mjs` fixture and this
+  report. Its concurrent Email/SMS control checks remain intact.
+
+Live completion remains blocked: browser inventory still reports browser access
+disabled in Work settings. Camxian's production UUID, actual template inventory,
+seed execution and serving PDF requests are unverified; no production rows were
+changed. An initial automatic approval review failed on an account usage limit;
+the authorized public release check subsequently completed successfully. Verify
+authenticated production identity and existing rows before using the already
+available tenant-scoped quotation-only seed, then repeat it and verify API/UI
+counts and PDFs against matching deployed revisions.

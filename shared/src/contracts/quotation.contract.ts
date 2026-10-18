@@ -28,7 +28,7 @@ const calendarDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/).refine(value => {
 }, 'Choose a valid calendar date.');
 export const QuotationDraftSchema = z.object({
   quotationId: z.string().uuid(), templateId: z.string().uuid(), recipientType: z.enum(['Lead', 'Contact']), recipientId: z.string().uuid(),
-  dealId: z.string().uuid().optional(), products: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive().max(1000000) }).strict()).min(1, 'Add at least one product.').max(100),
+  dealId: z.string().uuid('Select an associated Deal.'), products: z.array(z.object({ productId: z.string().uuid(), quantity: z.number().int().positive().max(1000000) }).strict()).length(1, 'Review the Product associated with this Deal.'),
   quotationDate: calendarDate, validUntil: calendarDate, notes: section,
 }).strict().superRefine((value, context) => {
   if (value.validUntil < value.quotationDate) context.addIssue({ code: 'custom', path: ['validUntil'], message: 'Valid Until cannot be earlier than Quotation Date.' });

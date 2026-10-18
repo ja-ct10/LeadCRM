@@ -28,6 +28,7 @@ import { FilterButton } from '@/shared/components/crm/filter-button';
 import { ModuleFilterRail } from '@/shared/components/crm/module-filter-rail';
 import { SideSheet } from '@/shared/components/side-sheet';
 import { Dialog, DialogContent } from '@/shared/components/ui/dialog';
+import { Button } from '@/shared/components/ui/button';
 import { CreateActionDropdown } from '@/shared/components/crm/module-workspace';
 import { CampaignReportView } from './campaign-report-view';
 import { CampaignBuilder } from './campaign-builder';
@@ -104,6 +105,50 @@ export default function CampaignsPage() {
   const [newTemplate, setNewTemplate] = useState({ name: '', subject: '', content: '', category: 'Marketing' });
   const [previewTemplate, setPreviewTemplate] = useState<Template | null>(null);
 
+  const [templateSearch, setTemplateSearch] = useState('');
+  const [templateCategory, setTemplateCategory] = useState('');
+  const [showTemplateFilters, setShowTemplateFilters] = useState(false);
+  const [templatePage, setTemplatePage] = useState(1);
+  const [templatePageSize, setTemplatePageSize] = useState(10);
+  const templateType = activeTab === 'email' ? 'Email' : activeTab === 'sms' ? 'SMS' : null;
+  const templateListDisabled = !templateType || showBuilder || !!selectedCampaignForReport;
+  const templateList = useCachedPage({
+    module: 'campaigns',
+    params: { messageTemplates: true, type: templateType, search: templateSearch, category: templateCategory, page: templatePage, limit: templatePageSize },
+    disabled: templateListDisabled, revalidateOnInvalidation: true,
+    fetchFn: () => templatesApi.list({ type: templateType, search: templateSearch, category: templateCategory, page: templatePage, limit: templatePageSize }),
+  });
+  const templateCategories = useCachedPage({
+    module: 'campaigns', params: { templateCategories: true, type: templateType },
+    disabled: templateListDisabled, revalidateOnInvalidation: true,
+    fetchFn: async signal => {
+      const categories = new Set<string>();
+      let page = 1;
+      do {
+        signal.throwIfAborted();
+        const response = await templatesApi.list({ type: templateType, page, limit: 100 });
+        for (const template of response.data) if (template.category?.trim()) categories.add(template.category);
+        if (!response.meta.hasMore) break;
+        page++;
+      } while (true);
+      return [...categories].sort();
+    },
+  });
+  const resetTemplateControls = () => {
+    setTemplateSearch(''); setTemplateCategory(''); setShowTemplateFilters(false); setTemplatePage(1); setTemplatePageSize(10);
+  };
+  const changeTab = (tab: typeof activeTab) => {
+    if (tab !== activeTab) resetTemplateControls();
+    setActiveTab(tab);
+  };
+  useEffect(resetTemplateControls, [user?.tenantId]);
+  useEffect(() => {
+    if (templateListDisabled || templateList.isInitialLoad || templateList.isRefreshing || templateList.error || !templateList.data) return;
+    const lastPage = Math.max(1, Math.ceil(templateList.data.meta.total / templatePageSize));
+    if (templatePage > lastPage) setTemplatePage(lastPage);
+  }, [templateListDisabled, templateList.isInitialLoad, templateList.isRefreshing, templateList.error, templateList.data, templatePage, templatePageSize]);
+  const refreshTemplates = () => Promise.all([templateList.refetch(), templateCategories.refetch()]);
+
   const templateCatalog = useCampaignVariableFields(isTemplateModalOpen || !!previewTemplate);
   const templateEmailSettings = useCachedPage<CampaignEmailSettings>({ module: 'settings', params: { campaignSender: 'EMAIL' }, disabled: !(isTemplateModalOpen && newTemplateType === 'Email' || previewTemplate?.type === 'Email'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.emailSettings()).data });
   const templateSmsSettings = useCachedPage<CampaignSmsSettings>({ module: 'settings', params: { campaignSender: 'SMS' }, disabled: !(isTemplateModalOpen && newTemplateType === 'SMS' || previewTemplate?.type === 'SMS'), revalidateOnInvalidation: true, fetchFn: async () => (await campaignsApi.smsSettings()).data });
@@ -173,8 +218,8 @@ export default function CampaignsPage() {
   };
 
 
-  const emailTemplates = templates.filter(t => t.type === 'Email');
-  const smsTemplates = templates.filter(t => t.type === 'SMS');
+  const emailTemplates = (templateList.data?.data ?? []).filter(t => t.type === 'Email');
+  const smsTemplates = (templateList.data?.data ?? []).filter(t => t.type === 'SMS');
 
   const filteredCampaigns = campaigns;
   useNotificationRecordLink('campaignId', user?.id ?? '', !!user,
@@ -241,7 +286,7 @@ export default function CampaignsPage() {
         }} />} />
 
       <SmsReplyReviews />
-      <ModuleTabs<'all' | 'email' | 'sms' | 'quotation'> ariaLabel="Campaign views" activeTab={activeTab} onTabChange={setActiveTab} tabs={[
+      <ModuleTabs<'all' | 'email' | 'sms' | 'quotation'> ariaLabel="Campaign views" activeTab={activeTab} onTabChange={changeTab} tabs={[
         { id: 'all', label: 'All Campaigns' }, { id: 'email', label: 'Email Templates' },
         { id: 'sms', label: 'SMS Templates' }, { id: 'quotation', label: 'Quotation Templates' },
       ]} />
@@ -264,7 +309,7 @@ export default function CampaignsPage() {
               actionLabel={canCreateCampaign ? 'Create Campaign' : undefined}
               onAction={canCreateCampaign ? () => setShowBuilder(true) : undefined}
               secondaryActionLabel={templates.filter(t => t.type === 'Email').length === 0 ? undefined : "Browse Templates"}
-              onSecondaryAction={templates.filter(t => t.type === 'Email').length === 0 ? undefined : () => setActiveTab('email')}
+              onSecondaryAction={templates.filter(t => t.type === 'Email').length === 0 ? undefined : () => changeTab('email')}
             />
           </div>
         ) : (
@@ -335,16 +380,24 @@ export default function CampaignsPage() {
         )
       )}
 
+      {templateType && <section className="min-w-0 space-y-4">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <ModuleTableToolbar label="templates" search={templateSearch} onSearch={value => { setTemplateSearch(value); setTemplatePage(1); }} placeholder="Search templates…"
+            onRefresh={refreshTemplates} refreshing={templateList.isInitialLoad || templateList.isRefreshing || templateCategories.isRefreshing}
+            filter={<FilterButton title={`${templateType.toLowerCase()} templates`} open={showTemplateFilters} active={!!templateCategory} onClick={() => setShowTemplateFilters(value => !value)} />} />
+          <Button onClick={() => { setNewTemplateType(templateType); setIsTemplateModalOpen(true); }}><Plus size={16} aria-hidden="true" /> New {templateType} Template</Button>
+        </div>
+        <ModuleFilterRail showFilters={showTemplateFilters} onToggleFilters={() => setShowTemplateFilters(false)} totalRecords={templateList.data?.meta.total ?? 0}
+          onClearFilters={() => { setTemplateCategory(''); setTemplatePage(1); }}
+          filterGroups={[{ id: 'category', label: 'Category', isExpanded: true, items: (templateCategories.data ?? []).map(value => ({ id: value, label: value, isChecked: templateCategory === value })) }]}
+          onFilterToggle={(_group, value) => { setTemplateCategory(previous => previous === value ? '' : value); setTemplatePage(1); }} />
+        {templateList.error && <p role="alert" className="text-sm text-destructive">{templateList.error}</p>}
+        {templateCategories.error && <p role="alert" className="text-sm text-destructive">{templateCategories.error}</p>}
+        {templateList.isInitialLoad ? <p role="status">Loading {templateType.toLowerCase()} templates…</p> : templateList.data && !templateList.data.data.length && (templateSearch || templateCategory) ?
+          <div className="py-8"><EmptyState type={activeTab === 'email' ? 'email' : 'sms'} title="No templates match your search or filters" description="Try a different search or clear your filters."
+            actionLabel="Clear search and filters" onAction={() => { setTemplateSearch(''); setTemplateCategory(''); setTemplatePage(1); }} /></div> : templateList.data && <>
       {activeTab === 'email' && (
         <div>
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={() => { setNewTemplateType('Email'); setIsTemplateModalOpen(true); }}
-              className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-            >
-              <Plus size={16} aria-hidden="true" /> New Email Template
-            </button>
-          </div>
           {emailTemplates.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {emailTemplates.map(template => (
@@ -392,14 +445,6 @@ export default function CampaignsPage() {
 
       {activeTab === 'sms' && (
         <div>
-          <div className="flex justify-end mb-4">
-            <button
-              onClick={() => { setNewTemplateType('SMS'); setIsTemplateModalOpen(true); }}
-              className="flex items-center gap-2 bg-gray-50 dark:bg-white/5 border border-gray-300 dark:border-white/10 text-slate-900 dark:text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-100 dark:hover:bg-white/10 transition-colors"
-            >
-              <Plus size={16} aria-hidden="true" /> New SMS Template
-            </button>
-          </div>
           {smsTemplates.length > 0 ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {smsTemplates.map(template => (
@@ -444,6 +489,10 @@ export default function CampaignsPage() {
           )}
         </div>
       )}
+        </>}
+        <LeadsPagination currentPage={templatePage} totalRecords={templateList.data?.meta.total ?? 0} pageSize={templatePageSize} onPageChange={setTemplatePage}
+          onPageSizeChange={size => { setTemplatePageSize(size); setTemplatePage(1); }} refreshing={templateList.isRefreshing} loading={templateList.isInitialLoad} disabled={!!templateList.error && !templateList.data} />
+      </section>}
 
       {/* Create Campaign Side Panel */}
       {/* Create Template Side Panel */}

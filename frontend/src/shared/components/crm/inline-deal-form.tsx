@@ -226,7 +226,7 @@ export function InlineDealForm({
         </div>
         {associationType && <div>
           <Label htmlFor={`${productFieldId}-association`} className={labelCls}>{associationType === 'lead' ? 'Lead' : 'Contact'} <span className="text-red-500">*</span></Label>
-          <EntityCombobox key={associationType} id={`${productFieldId}-association`} required entityType={associationType === 'lead' ? 'leads' : 'contacts'} value={associationId || null} onChange={id => setValue('associationId', id || '', { shouldDirty: true, shouldValidate: true })} error={errors.associationId?.message} disabled={isSubmitting || isLoading} />
+          <EntityCombobox key={associationType} id={`${productFieldId}-association`} aria-required="true" entityType={associationType === 'lead' ? 'leads' : 'contacts'} value={associationId || null} onChange={id => setValue('associationId', id || '', { shouldDirty: true, shouldValidate: true })} error={errors.associationId?.message} disabled={isSubmitting || isLoading} />
         </div>}
       </div>
       {/* Actions */}

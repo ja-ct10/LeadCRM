@@ -15,10 +15,10 @@ afterEach(cleanup);
 
 it.each(['Lead', 'Contact'])('requires a linked Deal for a %s recipient and clears the stale Deal when the recipient changes', type => {
   render(<QuotationWizard template={{ id: 'template', name: 'Quotation' } as Template} onClose={() => {}} />);
-  if (type === 'Contact') fireEvent.change(screen.getByLabelText('Send To *'), { target: { value: type } });
+  if (type === 'Contact') fireEvent.change(screen.getByLabelText(/Send To/), { target: { value: type } });
   fireEvent.change(screen.getByRole('combobox', { name: `Search ${type.toLowerCase()}s` }), { target: { value: 'person' } });
   fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-  expect(screen.getByRole('alert').textContent).toContain('Select an Associated Deal');
+  expect(screen.getByRole('alert').textContent).toContain('Associated Deal is required.');
   const deals = screen.getByLabelText(/Associated Deal/);
   fireEvent.change(deals, { target: { value: 'linked-deal' } });
   fireEvent.change(screen.getByRole('combobox', { name: `Search ${type.toLowerCase()}s` }), { target: { value: 'another' } });
