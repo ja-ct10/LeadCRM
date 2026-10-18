@@ -314,7 +314,8 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it('commits product edits and snapshots the database price for each manual Deal', async () => {
     const product = await prisma.productInterest.create({ data: { tenantId, name: 'Manual price test', dealValue: 5000 } });
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
-    const body = { pipelineId: pipeline.id, stageId: initial.id, title: 'Manual snapshot', productInterestId: product.id, value: 1, currency: 'USD' };
+    const source = await create([]);
+    const body = { leadIds: [source.id], pipelineId: pipeline.id, stageId: initial.id, title: 'Manual snapshot', productInterestId: product.id, value: 1, currency: 'USD' };
     const first = await request('/crm/deals', 'POST', body);
     expect(first.status, JSON.stringify(first.body)).toBe(201);
     expect(first.body.data).toMatchObject({ value: 5000, currency: 'PHP', productInterestId: product.id, productInterests: [product.name] });
@@ -492,8 +493,8 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
     expect(filtered.body.data.every((row: { status: string }) => row.status === status)).toBe(true);
   });
 
-  it('defaults Contacts to Warm and rejects noncanonical statuses on both APIs', async () => {
-    expect((await request('/crm/contacts', 'POST', { requestId: randomUUID(), email: 'fixture@example.test', firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Warm');
+  it('defaults Contacts to Inquiry and rejects noncanonical statuses on both APIs', async () => {
+    expect((await request('/crm/contacts', 'POST', { requestId: randomUUID(), email: 'fixture@example.test', firstName: 'Default', lastName: 'Status' })).body.data.status).toBe('Inquiry');
     for (const module of ['leads', 'contacts']) {
       for (const status of ['WARM', 'HOT', 'COLD', 'CLOSED', 'CANCELLED', 'Unknown']) {
         const response = await request(`/crm/${module}`, 'POST', { firstName: 'Invalid', lastName: 'Status', status });
@@ -518,7 +519,8 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
   it('requires one Product for new Deals and preserves the original snapshot on every edit', async () => {
     const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
     const products = await Promise.all([12.25, 9.5].map(dealValue => prisma.productInterest.create({ data: { tenantId, name: randomUUID(), dealValue } })));
-    const input = { title: 'One product', pipelineId: pipeline.id, stageId: initial.id };
+    const source = await create([]);
+    const input = { leadIds: [source.id], title: 'One product', pipelineId: pipeline.id, stageId: initial.id };
     expect((await request('/crm/deals', 'POST', { ...input, productInterestIds: products.map(p => p.id) })).status).toBe(400);
     expect((await request('/crm/deals', 'POST', { ...input, productInterestId: products[1].id, productInterestIds: [products[0].id] })).status).toBe(400);
     const result = await request('/crm/deals', 'POST', { ...input, productInterestIds: [products[0].id, products[0].id], value: 999 });

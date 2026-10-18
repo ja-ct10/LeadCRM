@@ -1,9 +1,11 @@
 'use client';
 
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { useRecordCustomFields } from './record-custom-fields';
 import { ConfiguredFormLayout } from './configured-form-layout';
 import type { ClosingValues } from '@leadcrm/shared';
+import { EntityCombobox } from '@/shared/components/entity-combobox';
+import { Label } from '@/shared/components/ui/label';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -26,12 +28,17 @@ function getDatePlusDays(days: number): string {
 // ── Zod Schema ─────────────────────────────────────────────────────────────
 
 const InlineDealSchema = z.object({
+  associationType: z.enum(['', 'lead', 'contact']).optional(),
+  associationId: z.string().optional(),
   title: z.string().trim().min(1, 'Title is required').max(255),
   productInterestIds: z.array(z.string().uuid()).length(1, 'Select exactly one Product Interest.'),
   pipelineId: z.string().min(1, 'Pipeline is required'),
   stageId: z.string().min(1, 'Stage is required'),
   expectedCloseDate: z.string().optional(),
   priority: z.enum(['LOW', 'MEDIUM', 'HIGH']),
+}).superRefine((data, ctx) => {
+  if (!data.associationType) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['associationType'], message: 'Choose Lead or Contact.' });
+  if (data.associationType && !data.associationId) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['associationId'], message: `Select a ${data.associationType === 'lead' ? 'Lead' : 'Contact'}.` });
 });
 
 type InlineDealFormData = z.infer<typeof InlineDealSchema>;
@@ -70,6 +77,7 @@ export function InlineDealForm({
   isLoading = false,
   onError,
 }: InlineDealFormProps): React.ReactElement {
+  const submitting = useRef(false);
   const { products, loading, error } = useProductInterests();
   const customFields = useRecordCustomFields('deals');
   const { pipelines: allPipelines } = useData();
@@ -89,6 +97,8 @@ export function InlineDealForm({
   } = useForm<InlineDealFormData>({
     resolver: zodResolver(InlineDealSchema),
     defaultValues: {
+      associationType: relatedRecord?.type === 'lead' || relatedRecord?.type === 'contact' ? relatedRecord.type : '',
+      associationId: relatedRecord?.type === 'lead' || relatedRecord?.type === 'contact' ? relatedRecord.id : '',
       title: '',
       productInterestIds: [],
       pipelineId: defaultPipeline?.id || '',
@@ -104,6 +114,8 @@ export function InlineDealForm({
     if (defaultStage) setValue('stageId', defaultStage.id, { shouldValidate: true });
   }, [defaultPipeline?.id, defaultStage?.id, setValue]);
 
+  const associationType = watch('associationType');
+  const associationId = watch('associationId');
   const selectedProductIds = watch('productInterestIds');
   const productValue = products.filter(p => selectedProductIds.includes(p.id)).reduce((sum, p) => sum + Math.round(p.dealValue * 100), 0) / 100;
   const productFieldId = React.useId();
@@ -120,17 +132,8 @@ export function InlineDealForm({
       expectedCloseDate: formData.expectedCloseDate || undefined,
     };
 
-    // Auto-link from relatedRecord
-    if (relatedRecord) {
-      if (relatedRecord.type === 'lead') {
-        payload.leadId = relatedRecord.id;
-      } else if (relatedRecord.type === 'contact') {
-        payload.contactId = relatedRecord.id;
-      }
-      if (relatedRecord.organizationId) {
-        payload.organizationId = relatedRecord.organizationId;
-      }
-    }
+    if (formData.associationType === 'lead') payload.leadId = formData.associationId;
+    else payload.contactId = formData.associationId;
 
     try {
       await onSubmit(payload);
@@ -155,7 +158,11 @@ export function InlineDealForm({
   const isSubmitDisabled = !defaultPipeline || !defaultStage || !isValid || loading || !!error || !selectedProductIds.length || isSubmitting || isLoading;
 
   return (
-    <form onSubmit={handleSubmit(onFormSubmit)} className="space-y-3" noValidate>
+    <form onSubmit={event => {
+      if (submitting.current) { event.preventDefault(); return; }
+      submitting.current = true;
+      void handleSubmit(onFormSubmit)(event).finally(() => { submitting.current = false; });
+    }} className="space-y-3" noValidate>
       <ConfiguredFormLayout form={customFields} module="deals">
       {/* Title */}
       <div data-crm-field-key="title">
@@ -208,6 +215,20 @@ export function InlineDealForm({
       {defaultPipeline && !defaultStage && <p role="alert" className="text-xs text-destructive">The Lead starting stage is unavailable.</p>}
 
       </ConfiguredFormLayout>
+      <div className="min-w-0 space-y-3">
+        <div>
+          <Label htmlFor={`${productFieldId}-association-type`} className={labelCls}>Associate Deal To <span className="text-red-500">*</span></Label>
+          <select id={`${productFieldId}-association-type`} aria-required aria-invalid={!!errors.associationType} value={associationType ?? ''} disabled={isSubmitting || isLoading} className={selectCls} onChange={event => {
+            setValue('associationType', event.target.value as 'lead' | 'contact' | '', { shouldDirty: true, shouldValidate: true });
+            setValue('associationId', '', { shouldDirty: true, shouldValidate: true });
+          }}><option value="">Select Lead or Contact...</option><option value="lead">Lead</option><option value="contact">Contact</option></select>
+          {errors.associationType && <p role="alert" className="text-xs text-destructive">{errors.associationType.message}</p>}
+        </div>
+        {associationType && <div>
+          <Label htmlFor={`${productFieldId}-association`} className={labelCls}>{associationType === 'lead' ? 'Lead' : 'Contact'} <span className="text-red-500">*</span></Label>
+          <EntityCombobox key={associationType} id={`${productFieldId}-association`} aria-required="true" entityType={associationType === 'lead' ? 'leads' : 'contacts'} value={associationId || null} onChange={id => setValue('associationId', id || '', { shouldDirty: true, shouldValidate: true })} error={errors.associationId?.message} disabled={isSubmitting || isLoading} />
+        </div>}
+      </div>
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">
         <Button

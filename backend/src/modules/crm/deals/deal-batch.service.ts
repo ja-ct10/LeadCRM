@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
+import { resolveManualDealAssociation } from './deal-association';
 import type { BatchFiles } from '../closing-requirements/custom-field-values.repository';
-import { CreateDealBatchSchema, productDealTitle } from '@leadcrm/shared';
+import { CreateDealBatchSchema, ManualCreateDealBatchSchema, productDealTitle } from '@leadcrm/shared';
 import { ConflictError, ValidationError } from '../../../shared/errors/http-error';
-import { resolveProducts, salesTransaction, validateSalesOwner } from '../leads/lead-automation.service';
+import { resolveProducts, salesTransaction } from '../leads/lead-automation.service';
 import * as repo from './deals.repository';
 import { participantOrder, withDealParticipants } from './deal-participants';
 import { fireDealCreated } from '../../automation/triggers/triggers.service';
@@ -20,11 +21,13 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
       } })));
       return { deals: deals.map(withDealParticipants), replayed: true };
     }
+    // Already committed legacy requests can replay without rewriting their relationships.
+    ManualCreateDealBatchSchema.parse(dto);
     const pipeline = await tx.pipeline.findFirst({ where: { tenantId, id: dto.pipelineId, isArchived: false } });
     if (!pipeline) throw new ValidationError('Choose an available pipeline.');
     const stages = await tx.stage.findMany({ where: { tenantId, pipelineId: pipeline.id, name: { equals: 'Lead', mode: 'insensitive' }, isWon: false, isLost: false } });
     if (stages.length !== 1 || stages[0].id !== dto.stageId) throw new ValidationError('New Deals must start at the Lead stage.');
-    if (dto.assignedUserId) await validateSalesOwner(tx, tenantId, dto.assignedUserId, ['deals']);
+    const association = await resolveManualDealAssociation(tx, tenantId, dto);
     if (dto.accountId && !await tx.account.findFirst({ where: { tenantId, id: dto.accountId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable.');
     const leadIds = [...new Set(dto.leadIds ?? [])], contactIds = [...new Set(dto.contactIds ?? [])];
     if (await tx.lead.count({ where: { tenantId, id: { in: leadIds }, isArchived: false, deletedAt: null } }) !== leadIds.length) throw new ValidationError('A selected Lead is unavailable.');
@@ -34,7 +37,7 @@ export async function createDealBatch(tenantId: string, actorId: string, input: 
     const deals = [];
     const batchFiles: BatchFiles = new Map();
     for (const product of products) {
-      const deal = await repo.createDeal(tenantId, actorId, { ...common, leadIds, contactIds, currency: 'PHP',
+      const deal = await repo.createDeal(tenantId, actorId, { ...common, ...association, leadIds, contactIds, currency: 'PHP',
         productInterestId: product.id, title: productDealTitle(dto.title, product.name, products.length > 1) }, tx, batchFiles);
       deals.push(deal);
       await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.created', entityType: 'Deal', entityId: deal.id,

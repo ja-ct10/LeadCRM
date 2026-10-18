@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { CustomFieldValuesSchema } from '@leadcrm/shared';
+import { CustomFieldValuesSchema, DealAssociationChangeSchema, validateManualDealAssociation } from '@leadcrm/shared';
 import { recordName, recordText } from '../record-validation';
 import { ProductInterestIdSchema, ClosedWonConfirmationSchema, DealIndustrySchema } from '@leadcrm/shared';
 
@@ -33,7 +33,7 @@ export const CreateDealSchema = z.object({
 export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional(), industry: DealIndustrySchema.optional() }).refine(data => {
   const ids = [...new Set(data.productInterestIds ?? (data.productInterestId ? [data.productInterestId] : []))];
   return ids.length === 1 && (!data.productInterestId || data.productInterestId === ids[0]);
-}, { path: ['productInterestIds'], message: 'Select exactly one Product Interest per Deal.' });
+}, { path: ['productInterestIds'], message: 'Select exactly one Product Interest per Deal.' }).superRefine(validateManualDealAssociation);
 
 // DI-2 fix: stageId is explicitly excluded from updates.
 // Stage changes MUST go through PATCH /deals/:id/stage (moveDealStage) to ensure
@@ -42,6 +42,9 @@ export const UpdateDealSchema = CreateDealSchema.omit({ stageId: true, pipelineI
   accountId: id().nullable().optional(),
   assignedUserId: id().nullable().optional(),
   expectedCloseDate: z.string().datetime().nullable().optional(),
+  primaryAssociation: DealAssociationChangeSchema.optional(),
+}).superRefine((data, ctx) => {
+  if (data.primaryAssociation && (data.leadIds !== undefined || data.contactIds !== undefined)) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['primaryAssociation'], message: 'Change the primary association separately from additional relationships.' });
 });
 
 export const DealHandoffSchema = z.object({

@@ -6,6 +6,24 @@ import { ProductInterestIdSchema } from './product-interests.contract';
 export const DealIndustrySchema = z.enum(COMPANY_INDUSTRIES);
 const text = (max: number) => z.string().trim().max(max).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Unsupported control characters.');
 const id = z.string().min(1);
+export const DealAssociationSchema = z.object({ type: z.enum(['lead', 'contact']), id }).strict();
+export const DealAssociationChangeSchema = DealAssociationSchema.extend({ previous: DealAssociationSchema.optional() }).strict();
+export type DealAssociationChange = z.infer<typeof DealAssociationChangeSchema>;
+
+/** Target the selected junction only; null means its previous link is stale. */
+export function dealAssociationPatch(leadIds: string[], contactIds: string[], change: DealAssociationChange) {
+  if (change.previous && !(change.previous.type === 'lead' ? leadIds : contactIds).includes(change.previous.id)) return null;
+  const remaining = (type: 'lead' | 'contact', ids: string[]) => ids.filter(id => !(change.previous?.type === type && change.previous.id === id));
+  const leads = remaining('lead', leadIds), contacts = remaining('contact', contactIds);
+  return { leadIds: [...new Set(change.type === 'lead' ? [change.id, ...leads] : leads)], contactIds: [...new Set(change.type === 'contact' ? [change.id, ...contacts] : contacts)] };
+}
+
+/** Manual entry points require one person; internal product creation keeps its existing contract. */
+export function validateManualDealAssociation(data: { leadIds?: string[]; contactIds?: string[] }, ctx: z.RefinementCtx) {
+  if ((data.leadIds?.length ?? 0) + (data.contactIds?.length ?? 0) !== 1) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['leadIds'], message: 'Select one Lead or Contact to associate with this Deal.' });
+  }
+}
 export const CreateDealBatchSchema = z.object({
   customFieldValues: CustomFieldValuesSchema.optional(),
   idempotencyKey: z.string().uuid(),
@@ -20,6 +38,7 @@ export const CreateDealBatchSchema = z.object({
   leadSource: text(255).optional(), industry: DealIndustrySchema.optional(), address: text(10000).optional(),
   productInterestOther: text(1000).nullable().optional(),
 }).strict();
+export const ManualCreateDealBatchSchema = CreateDealBatchSchema.superRefine(validateManualDealAssociation);
 export type CreateDealBatchInput = z.input<typeof CreateDealBatchSchema>;
 export interface DealBatchResult<T> { deals: T[]; replayed: boolean }
 export function productDealTitle(title: string, product: string, multiple: boolean): string {

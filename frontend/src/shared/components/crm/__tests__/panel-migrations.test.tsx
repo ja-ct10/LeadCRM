@@ -31,7 +31,7 @@ import { CrmRecordPanel, CrmRecordView, type CrmRecordModule } from '../crm-reco
 import { clearPageCache } from '@/shared/cache/page-cache';
 import { toast } from 'sonner';
 import { DEFAULT_CLOSING_FIELDS, defaultFieldLayout, getCrmFieldCatalog, type CustomFieldState } from '@leadcrm/shared';
-vi.mock('../inline-deal-form', () => ({ InlineDealForm: ({ onSubmit, onCancel }: { onSubmit: (values: object) => Promise<void>; onCancel: () => void }) => <form aria-label="New related Deal" onSubmit={event => { event.preventDefault(); void onSubmit({ title: 'Created deal', productInterestIds: ['product'], pipelineId: 'sales', stageId: 'lead', priority: 'MEDIUM', expectedCloseDate: '2026-10-20', customFieldValues: { evidence: 'Kept' } }); }}><button>Create Deal</button><button type="button" onClick={onCancel}>Cancel Deal</button></form> }));
+vi.mock('../inline-deal-form', () => ({ InlineDealForm: ({ onSubmit, onCancel, relatedRecord }: { onSubmit: (values: object) => Promise<void>; onCancel: () => void; relatedRecord: { type: string; id: string } }) => <form aria-label="New related Deal" onSubmit={event => { event.preventDefault(); void onSubmit({ ...(relatedRecord.type === 'lead' ? { leadId: relatedRecord.id } : { contactId: relatedRecord.id }), title: 'Created deal', productInterestIds: ['product'], pipelineId: 'sales', stageId: 'lead', priority: 'MEDIUM', expectedCloseDate: '2026-10-20', customFieldValues: { evidence: 'Kept' } }); }}><button>Create Deal</button><button type="button" onClick={onCancel}>Cancel Deal</button></form> }));
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 
 const records = {

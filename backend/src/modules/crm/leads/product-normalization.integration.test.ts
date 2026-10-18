@@ -22,6 +22,9 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     otherTenant = (await prisma.tenant.create({ data: { name: 'Other', slug: randomUUID() } })).id;
     const actor = await prisma.user.create({ data: { tenantId, email: 'normalization@camxian.com', firstName: 'Test', lastName: 'Admin', role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date() } });
     actorId = actor.id; token = (await issueAuthSession(actor)).token;
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Eligible snapshot agent' } });
+    await prisma.rolePermission.createMany({ data: ['leads', 'deals'].map(module => ({ tenantId, roleId: role.id, module, canView: true, canEdit: true })) });
+    await prisma.user.create({ data: { tenantId, firstName: 'Snapshot', lastName: 'Agent', email: 'snapshot-agent@example.test', role: role.name, userRoles: { create: { roleId: role.id } } } });
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
   });
@@ -46,7 +49,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const audience = await tenantContext.run({ tenantId }, () => resolveAudience(tenantId, { source: 'LEADS', conditions: [{ field: 'productInterest', operator: 'equals', value: [cctv.id] }] }));
     expect(audience.breakdown.matched).toBe(1);
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).value).toBe(25000);
-    const next = await request('/crm/deals', 'POST', { title: 'Deal B', pipelineId: deals[0].pipelineId, stageId: deals[0].stageId, productInterestId: cctv.id, value: 1 });
+    const next = await request('/crm/deals', 'POST', { title: 'Deal B', leadIds: [lead.body.data.id], pipelineId: deals[0].pipelineId, stageId: deals[0].stageId, productInterestId: cctv.id, value: 1 });
     expect(next.status, JSON.stringify(next.body)).toBe(201); expect(next.body.data.value).toBe(30000);
     const copy = await request('/crm/deals/' + deals[0].id + '/duplicate', 'POST', {});
     expect(copy.status, JSON.stringify(copy.body)).toBe(201); expect(copy.body.data.value).toBe(30000);

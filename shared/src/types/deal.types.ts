@@ -6,6 +6,8 @@
  * detection of field name mismatches via TypeScript strict mode.
  */
 
+import type { DealAssociationChange } from '../contracts/deal-batch';
+
 /** Possible priority values for a Deal. */
 export type DealPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 
@@ -29,6 +31,7 @@ export interface Deal {
   assignedUserId?: string;
   contactId?: string;
   contactIds?: string[];
+  leadIds?: string[];
   industry?: string;
   address?: string;
   productInterests?: string[];
@@ -64,6 +67,7 @@ export interface CreateDealRequest {
   organizationId?: string;
   assignedUserId?: string;
   contactIds?: string[];
+  leadIds?: string[];
   industry?: string;
   address?: string;
   productInterests?: string[];
@@ -75,6 +79,7 @@ export interface CreateDealRequest {
  * Stage changes must go through PATCH /deals/:id/stage.
  */
 export interface UpdateDealRequest {
+  primaryAssociation?: DealAssociationChange;
   title?: string;
   value?: number;
   currency?: string;
@@ -84,6 +89,7 @@ export interface UpdateDealRequest {
   organizationId?: string;
   assignedUserId?: string;
   contactIds?: string[];
+  leadIds?: string[];
   industry?: string;
   address?: string;
   productInterests?: string[];

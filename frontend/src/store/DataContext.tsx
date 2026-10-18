@@ -1,7 +1,8 @@
 'use client';
 import dynamic from 'next/dynamic';
 const ClosingRecordPanel = dynamic(() => import('@/shared/components/crm/crm-record-view').then(module => module.CrmRecordPanel), { ssr: false });
-import {taskAssociationIds, taskAssociationPatch, CreateDealBatchSchema, productDealTitle, type ProductInterest} from "@leadcrm/shared";
+import {taskAssociationIds, taskAssociationPatch, CreateDealBatchSchema, ManualCreateDealBatchSchema, dealAssociationPatch, productDealTitle, type ProductInterest, type DealAssociationChange} from "@leadcrm/shared";
+import { getAssignableAgents } from '@/shared/utils/assigned-agents';
 
 import { isOnboardingComplete, WorkflowDraftSchema, type WorkflowDraft } from "@leadcrm/shared";
 import React, {
@@ -842,6 +843,14 @@ export function DataProvider({ children }: { children: ReactNode }) {
         const saved = sessionStorage.getItem(receiptKey);
         if (saved) created = JSON.parse(saved) as Deal[];
         else {
+          ManualCreateDealBatchSchema.parse(dto);
+          const sourceId = dto.leadIds?.[0] ?? dto.contactIds?.[0];
+          const source = contacts.find(record => record.id === sourceId && record.tenantId === tenant.id && !record.isArchived);
+          if (!source) throw new Error('The selected Lead or Contact is unavailable.');
+          const agents = getAssignableAgents(users, ['deals']);
+          const assignedUserId = source.assignedUserId || agents.find(agent => agent.id === user.id)?.id;
+          if (!agents.some(agent => agent.id === assignedUserId)) throw new Error('The selected Lead or Contact needs an eligible Deal agent. Ask an administrator to correct its assignment.');
+          const accountId = organizations.find(account => account.id === source.accountId && account.tenantId === tenant.id && !account.isArchived)?.id;
           const catalog = await apiClient.get<{ data: ProductInterest[] }>('/administration/product-interests');
           const products = dto.productInterestIds.map(id => catalog.data.find(product => product.id === id && product.active));
           if (products.some(product => !product)) throw new Error('A selected Product is unavailable.');
@@ -849,7 +858,8 @@ export function DataProvider({ children }: { children: ReactNode }) {
           created = products.map(product => ({ ...values, id: crypto.randomUUID(), tenantId: tenant.id,
             title: productDealTitle(dto.title, product!.name, products.length > 1), productInterestId: product!.id,
             productInterestIds: [product!.id], productInterests: [product!.name], value: product!.dealValue, currency: 'PHP',
-            accountId: dto.accountId, organizationId: dto.accountId, contactIds: dto.contactIds ?? [], leadIds: dto.leadIds ?? [],
+            accountId, organizationId: accountId, assignedUserId, assignedUser: users.find(agent => agent.id === assignedUserId),
+            contactIds: dto.contactIds ?? [], leadIds: dto.leadIds ?? [], leadId: dto.leadIds?.[0], contactId: dto.contactIds?.[0],
             createdAt: timestamp, history: [{ stageId: dto.stageId, timestamp, userId: user.id, note: 'Deal created' }],
           } as unknown as Deal));
           sessionStorage.setItem(receiptKey, JSON.stringify(created));
@@ -979,6 +989,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
 
     const original = deals.find((d) => d.id === id && !d.isArchived);
     if (!original) throw new Error('Deal is no longer active.');
+    const { primaryAssociation, ...mockUpdates } = updates as Partial<Deal> & { primaryAssociation?: DealAssociationChange };
+    if (primaryAssociation) {
+      const patch = dealAssociationPatch(original.leadIds ?? (original.leadId ? [original.leadId] : []), original.contactIds ?? (original.contactId ? [original.contactId] : []), primaryAssociation);
+      if (!patch) throw new Error('This Deal’s relationships changed. Reopen the form before changing its association.');
+      updates = { ...mockUpdates, ...patch, leadId: patch.leadIds[0], contactId: patch.contactIds[0] };
+    }
     const newDeals = deals.map((d) => {
       if (d.id === id) {
         const updated = { ...d, ...updates, ...(updates.assignedUserId !== undefined ? { assignedUser: users.find(u => u.id === updates.assignedUserId) } : {}) };

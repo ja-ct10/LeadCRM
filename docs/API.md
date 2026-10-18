@@ -281,6 +281,26 @@ the entered portion shortened to fit 255 characters. A single title is preserved
 All relationships, audit records, Deals and the tenant-scoped receipt commit together.
 The existing single-Deal endpoint and response remain supported.
 
+New manual single and batch Deals require exactly one `leadIds` or `contactIds`
+entry, referencing an active same-tenant record the actor can view. The server
+inherits its eligible assigned agent and valid linked Account. Unassigned sources
+use the existing authorized assignment fallback; unresolved ownership fails
+validation. Conflicting explicit initial agents or Accounts are rejected.
+Committed legacy batch receipts remain replayable without rewriting their Deals.
+Internal automatic Product creation retains its existing contract.
+
+`PUT /crm/deals/:id` additionally accepts
+`primaryAssociation: { type: "lead" | "contact", id, previous?: { type, id } }`.
+This is a targeted operation on the existing ordered junctions, not a stored
+primary field. It removes only the explicitly identified previous link, prepends
+the chosen link, and preserves other current relationships. A missing previous
+link returns 409. Do not combine this operation with `leadIds`/`contactIds` array
+replacement in one request. Omit it for unrelated legacy edits. Association
+changes do not implicitly reassign the Deal or replace its Account. Existing
+authorized additional relationship and reassignment operations remain available.
+See [Deal association verification](deal-association-verification.md).
+
+
 Mailbox reply timing, related-Deal Workflow options, Custom Fields and migration
 instructions are documented in [engagement and Deal creation](engagement-deal-creation.md).
 
