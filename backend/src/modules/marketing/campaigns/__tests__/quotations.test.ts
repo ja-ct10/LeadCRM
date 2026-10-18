@@ -3,7 +3,12 @@ import { randomUUID } from 'node:crypto';
 import { campaignFields, campaignVariableChoices, defaultQuotationContent, MarketingTemplateSchema, QuotationDraftSchema, quotationVariableChoices, renderEmailVariables } from '@leadcrm/shared';
 import { DEFAULT_QUOTATION_TEMPLATES } from '../../templates/default-templates';
 
-const draft = () => ({ quotationId: randomUUID(), templateId: randomUUID(), recipientType: 'Lead', recipientId: randomUUID(), products: [{ productId: randomUUID(), quantity: 2 }], quotationDate: '2026-10-18', validUntil: '2026-11-18', notes: '' });
+const draft = () => ({ quotationId: randomUUID(), templateId: randomUUID(), recipientType: 'Lead', recipientId: randomUUID(), dealId: randomUUID(), products: [{ productId: randomUUID(), quantity: 2 }], quotationDate: '2026-10-18', validUntil: '2026-11-18', notes: '' });
+it('requires a Deal and exactly one Product without accepting prices', () => {
+  expect(QuotationDraftSchema.safeParse(draft()).success).toBe(true);
+  for (const value of [{ ...draft(), dealId: undefined }, { ...draft(), dealId: '' }, { ...draft(), products: [] },
+    { ...draft(), products: [{ productId: randomUUID(), quantity: 1, unitPrice: 1 }] }]) expect(QuotationDraftSchema.safeParse(value).success).toBe(false);
+});
 it('validates all six starters without changing Email/SMS requirements', () => {
   expect(DEFAULT_QUOTATION_TEMPLATES).toHaveLength(6);
   expect(DEFAULT_QUOTATION_TEMPLATES.map(({ name, category }) => [name, category])).toEqual([

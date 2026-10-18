@@ -1,13 +1,16 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
+import { z } from 'zod';
 import { campaignVariableKeys, renderEmailVariables, escapeEmailHtml, formatMoney, parseQuotationTemplate, quotationNumber, quotationVariableChoices,
   QuotationDraftSchema, QuotationSendSchema, type QuotationDraft, type QuotationDocument, type QuotationPreview } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import { AppError } from '../../../shared/errors/app-error';
+import { ValidationError } from '../../../shared/errors/http-error';
 import { campaignFieldsForAudienceSource, campaignVariableFields, campaignScope, personalized } from './audiences.service';
 import { presentContactAccount } from '../../crm/contacts-v2/contact-account-access';
 import { assertProductCatalogEnabled } from '../../administration/product-interests/product-interests.service';
+import { resolveProducts } from '../../crm/leads/lead-automation.service';
 import { getOrganizationSettings } from '../../administration/organization-settings/organization-settings.service';
 import { getTemplateById, validateQuotationVariables } from '../templates/templates.service';
 import { renderQuotationPdf } from './quotation-pdf';
@@ -30,27 +33,30 @@ const recipientSelect = { id: true, firstName: true, lastName: true, companyName
   assignedUser: { select: { firstName: true, lastName: true } },
   customFieldValues: { select: { fieldId: true, value: true } } } as const;
 
-async function readRecipient(actor: Actor, draft: Pick<QuotationDraft, 'recipientType' | 'recipientId' | 'dealId'>) {
+// Historical, already-attempted receipts may predate the required Deal contract.
+async function readRecipient(actor: Actor, draft: Pick<QuotationDraft, 'recipientType' | 'recipientId'> & { dealId?: string }) {
   const module = draft.recipientType === 'Lead' ? 'leads' : 'contacts';
   await assertPermissions(actor, [`${module}.view`]);
   const where = { ...campaignScope(actor.tenantId), id: draft.recipientId, isArchived: false, deletedAt: null };
   const row = draft.recipientType === 'Lead' ? await prisma.lead.findFirst({ where: { ...where, convertedAt: null }, select: recipientSelect })
     : await prisma.contact.findFirst({ where, select: { ...recipientSelect, notes: true } });
   if (!row) throw new AppError('The selected recipient is unavailable.', 404);
+  let deal: { id: string; productInterestId: string | null } | null = null;
   if (draft.dealId) {
     await assertPermissions(actor, ['deals.view']);
     const relationship = draft.recipientType === 'Lead' ? { leadDeals: { some: { leadId: row.id, tenantId: actor.tenantId } } } : { OR: [
       { contactDeals: { some: { contactId: row.id, tenantId: actor.tenantId } } },
       { leadDeals: { some: { tenantId: actor.tenantId, lead: { tenantId: actor.tenantId, contactId: row.id, convertedAt: { not: null } } } } },
     ] };
-    if (!await prisma.deal.findFirst({ where: { id: draft.dealId, tenantId: actor.tenantId, isArchived: false, deletedAt: null, ...relationship }, select: { id: true } })) throw new AppError('Choose a visible Deal linked to this recipient.', 400);
+    deal = await prisma.deal.findFirst({ where: { id: draft.dealId, tenantId: actor.tenantId, isArchived: false, deletedAt: null, ...relationship }, select: { id: true, productInterestId: true } });
+    if (!deal) throw new AppError('Choose a visible Deal linked to this recipient.', 400);
   }
   let canReadAccount = false;
   try { await assertPermissions(actor, ['accounts.view']); canReadAccount = true; }
   catch (error) { if (!(error instanceof AppError) || error.statusCode !== 403) throw error; }
   const account = canReadAccount && row.accountId ? await prisma.account.findFirst({ where: { id: row.accountId, tenantId: actor.tenantId, isArchived: false, deletedAt: null },
     select: { id: true, tenantId: true, name: true, address: true } }) : null;
-  return { ...presentContactAccount({ ...row, account }, canReadAccount), account };
+  return { ...presentContactAccount({ ...row, account }, canReadAccount), account, deal };
 }
 
 export async function buildQuotationDocument(actor: Actor, input: unknown): Promise<{ draft: QuotationDraft; document: QuotationDocument; fingerprint: string }> {
@@ -61,9 +67,13 @@ export async function buildQuotationDocument(actor: Actor, input: unknown): Prom
   const layout = parseQuotationTemplate(template.content);
   await validateQuotationVariables(actor.tenantId, template.content);
   const recipient = await readRecipient(actor, draft);
+  if (!recipient.deal?.productInterestId) throw new AppError('No product is associated with this Deal. Please select a Deal with an assigned product.', 400, 'QUOTATION_DEAL_PRODUCT_UNAVAILABLE');
+  if (draft.products[0].productId !== recipient.deal.productInterestId) throw new AppError('Review the Product associated with this Deal.', 400, 'QUOTATION_DEAL_PRODUCT_MISMATCH');
   await assertProductCatalogEnabled(prisma, actor.tenantId);
-  const products = await prisma.productInterest.findMany({ where: { tenantId: actor.tenantId, active: true, id: { in: draft.products.map(row => row.productId) } } });
-  if (products.length !== draft.products.length) throw new AppError('A selected Product is unavailable. Review the Products step.', 400);
+  const products = await resolveProducts(prisma, actor.tenantId, [recipient.deal.productInterestId]).catch(error => {
+    if (error instanceof ValidationError) throw new AppError('The Deal’s Product is unavailable. Select a Deal with an available Product.', 400, 'QUOTATION_DEAL_PRODUCT_UNAVAILABLE');
+    throw error;
+  });
   const lines = draft.products.map(row => {
     const product = products.find(product => product.id === row.productId)!;
     const unit = new Prisma.Decimal(product.dealValue);
@@ -114,17 +124,24 @@ export async function quotationTemplatePdf(tenantId: string, id: string) {
 
 export async function sendQuotation(actor: Actor, input: unknown) {
   await assertPermissions(actor, ['campaigns.view', 'campaigns.send', 'products.view']);
-  const data = QuotationSendSchema.parse(input);
+  // Validate new drafts strictly below. Recovery compares the exact frozen draft,
+  // including pre-Deal receipts, without rebuilding it from current Product data.
+  const data = QuotationSendSchema.extend({ draft: z.unknown() }).parse(input);
   const { account } = await authorizedMailbox(actor.tenantId, actor.userId);
   const previous = await prisma.mailboxSendReceipt.findUnique({ where: { accountId_requestId: { accountId: account.id, requestId: data.requestId } } });
   const saved = (previous?.authorizationContext as { quotation?: MailboxQuotationContext } | null)?.quotation;
+  if (saved && (fingerprint(saved.draft) !== fingerprint(data.draft) || saved.fingerprint !== data.fingerprint)) throw new AppError('This send request belongs to different quotation content.', 409);
   let quotation: MailboxQuotationContext;
-  if (saved) {
-    if (fingerprint(saved.draft) !== fingerprint(data.draft) || saved.fingerprint !== data.fingerprint) throw new AppError('This send request belongs to different quotation content.', 409);
+  if (saved && (previous?.attemptedAt || ['sending', 'uncertain', 'sent'].includes(previous?.status ?? ''))) {
     await readRecipient(actor, saved.draft);
     quotation = saved;
   } else {
-    const prepared = await buildQuotationDocument(actor, data.draft);
+    let prepared;
+    try { prepared = await buildQuotationDocument(actor, data.draft); }
+    catch (error) {
+      if (error instanceof AppError && ['QUOTATION_DEAL_PRODUCT_UNAVAILABLE', 'QUOTATION_DEAL_PRODUCT_MISMATCH'].includes(error.code ?? '')) throw new AppError('Quotation data changed. Refresh the preview before sending.', 409, 'QUOTATION_PREVIEW_CHANGED');
+      throw error;
+    }
     if (prepared.fingerprint !== data.fingerprint) throw new AppError('Quotation data changed. Refresh the preview before sending.', 409, 'QUOTATION_PREVIEW_CHANGED');
     const document = prepared.document;
     if (!document.recipient.email) throw new AppError('The selected recipient needs a valid email address before sending.', 400);

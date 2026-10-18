@@ -42,8 +42,8 @@ export const dealsApi = {
   list: (query: Record<string, unknown> = {}, signal?: AbortSignal) =>
     apiClient.get<DealsResponse>(`/crm/deals${buildQuery(query)}`, { signal }),
 
-  get: (id: string) =>
-    apiClient.get<DealResponse>(`/crm/deals/${id}`),
+  get: (id: string, signal?: AbortSignal) =>
+    apiClient.get<DealResponse>(`/crm/deals/${id}`, { signal }),
 
   create: (data: Partial<Deal> & { contactIds?: string[] }) =>
     apiClient.post<DealResponse>('/crm/deals', data),

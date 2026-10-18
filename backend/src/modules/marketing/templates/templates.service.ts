@@ -14,7 +14,7 @@ export async function getTemplates(tenantId: string, query: Record<string, unkno
   const where = { ...campaignScope(tenantId), isArchived: query.archived === 'true',
     ...(query.type   ? { type:   String(query.type) }   : {}),
     ...(query.category ? { category: String(query.category) } : {}),
-    AND: buildSearchClauses(query.search, query.type === 'Quotation' ? ['name', 'category'] : ['name']),
+    AND: buildSearchClauses(query.search, ['Email', 'SMS', 'Quotation'].includes(String(query.type)) ? ['name', 'category'] : ['name']),
   };
   const [data, total] = await Promise.all([
     prisma.template.findMany({ where, skip, take: limit, orderBy: { createdAt: 'desc' } }),
