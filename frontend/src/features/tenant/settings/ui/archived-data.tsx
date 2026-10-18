@@ -2,8 +2,8 @@
 import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 
-import React, { useEffect, useRef, useState } from 'react';
-import { ArchiveRestore } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { ArchiveRestore, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { ARCHIVE_TYPES, type ArchivedRecord, type ArchiveType } from '@leadcrm/shared';
 import { useCachedPage } from '@/shared/hooks/use-cached-page';
@@ -35,16 +35,20 @@ export function ArchivedData(): React.ReactElement {
   const [pageSize, setPageSize] = useState(25);
   const [sort, setSort] = useState<SortState>({ field: 'archivedAt', direction: 'desc' });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [hiddenIds, setHiddenIds] = useState<Set<string>>(new Set());
+  const [pendingDelete, setPendingDelete] = useState<ArchivedRecord[] | null>(null);
   const [pending, setPending] = useState<{ records: ArchivedRecord[]; bulk: boolean } | null>(null);
   const [restoring, setRestoring] = useState(false);
   const busy = useRef(false);
-  useEffect(() => { setSelectedIds(new Set()); setPending(null); }, [identity]);
+  const returnToVisiblePage = useRef(false);
+  useEffect(() => { setSelectedIds(new Set()); setHiddenIds(new Set()); setPendingDelete(null); setPending(null); returnToVisiblePage.current = false; }, [identity]);
   const { data, error, isInitialLoad, isRefreshing, refetch } = useCachedPage({
     module: 'archived-crm', params: { filter, page, pageSize, search, sort }, disabled: false,
     intervalMs: 60_000, revalidateOnInvalidation: true,
     fetchFn: signal => archivedDataService.list(filter, page, pageSize, signal, search, sort),
   });
-  const records = data?.data ?? EMPTY_RECORDS;
+  const sourceRecords = data?.data ?? EMPTY_RECORDS;
+  const records = useMemo(() => sourceRecords.filter(record => !hiddenIds.has(rowId(record))), [sourceRecords, hiddenIds]);
   const total = data?.meta.total ?? 0;
   useEffect(() => {
     const available = new Set(records.map(rowId));
@@ -56,7 +60,14 @@ export function ArchivedData(): React.ReactElement {
   useEffect(() => {
     if (data && page > Math.max(1, Math.ceil(total / pageSize))) setPage(Math.max(1, Math.ceil(total / pageSize)));
   }, [data, page, total, pageSize]);
-  const changePage = (next: number) => { setSelectedIds(new Set()); setPage(next); };
+  useEffect(() => {
+    if (!returnToVisiblePage.current || isInitialLoad || isRefreshing) return;
+    if (!error && sourceRecords.length > 0 && records.length === 0 && page > 1) {
+      setSelectedIds(new Set());
+      setPage(page - 1);
+    } else returnToVisiblePage.current = false;
+  }, [sourceRecords, records, page, isInitialLoad, isRefreshing, error]);
+  const changePage = (next: number) => { returnToVisiblePage.current = false; setSelectedIds(new Set()); setPage(next); };
   const selected = records.filter(record => selectedIds.has(rowId(record)));
   const confirmRestore = async () => {
     if (!pending || busy.current || !canRestore) return;
@@ -99,7 +110,7 @@ export function ArchivedData(): React.ReactElement {
     { id: 'type', header: 'Type', accessor: row => row.type, width: 110 },
     { id: 'name', header: 'Name', accessor: row => row.name, width: 230, sortable: true },
     { id: 'detail', header: 'Details', accessor: row => row.detail || '—', width: 260 },
-    ...(records.some(row => row.archivedAt) ? [{
+    ...(sourceRecords.some(row => row.archivedAt) ? [{
       id: 'archivedAt', header: 'Archived On', accessor: (row: ArchivedRecord) => row.archivedAt ? new Date(row.archivedAt).toLocaleString() : '—', width: 190, sortable: true,
     }] : []),
     { id: 'actions', header: 'Actions', accessor: () => '', width: 120,
@@ -122,7 +133,12 @@ export function ArchivedData(): React.ReactElement {
           activeTab={filter} disabled={restoring} ariaLabel="Archived record types"
           onTabChange={type => { setFilter(type); changePage(1); }} />
         <ModuleTableToolbar label="Archived records" search={search} onSearch={value => { setSearch(value); changePage(1); }} placeholder="Search archived records..."
-          disabled={restoring} refreshing={isInitialLoad || isRefreshing} onRefresh={refetch} />
+          stackSearchOnMobile disabled={restoring} refreshing={isInitialLoad || isRefreshing} onRefresh={refetch}
+          beforeRefresh={<TableIconButton touchFriendly label="Remove from list" ariaLabel="Remove selected archived records from view"
+            className="rounded-lg disabled:opacity-50" disabled={!selected.length || isInitialLoad || isRefreshing || restoring}
+            onClick={() => setPendingDelete(selected)}>
+            <Trash2 size={15} className="text-destructive" aria-hidden="true" />
+          </TableIconButton>} />
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
         {isInitialLoad ? <TableLoadingState label="Loading archived records..." /> : (
           <DataGrid<ArchivedRecord> isRefreshing={isRefreshing} columns={columns} data={records} getRowId={rowId} sort={sort} sortingMode="external" onSortChange={next => { setSort(next ?? { field: 'archivedAt', direction: 'desc' }); setPage(1); }}
@@ -145,6 +161,15 @@ export function ArchivedData(): React.ReactElement {
           title={pending?.bulk ? 'Restore selected records?' : 'Restore record?'}
           description={pending?.bulk ? `This will restore ${pending.records.length} archived records to their original modules.` : 'This record will be restored to its original module.'}
           variant="success" confirmLabel="Restore" cancelLabel="Cancel" isLoading={restoring} onConfirm={confirmRestore} />
+        <ConfirmActionDialog open={pendingDelete !== null} onOpenChange={open => { if (!open) setPendingDelete(null); }}
+          title={pendingDelete?.length === 1 ? 'Delete archived record?' : 'Delete archived records?'}
+          description={pendingDelete?.length === 1 ? 'Are you sure you want to delete this archived record?' : 'Are you sure you want to delete the selected archived records?'}
+          variant="destructive" confirmLabel="Delete" cancelLabel="Cancel" onConfirm={() => {
+            if (!pendingDelete) return;
+            returnToVisiblePage.current = true;
+            setHiddenIds(previous => new Set([...previous, ...pendingDelete.map(rowId)]));
+            setSelectedIds(new Set());
+          }} />
       </div>
     </>
   );

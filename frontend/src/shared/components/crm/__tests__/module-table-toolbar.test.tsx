@@ -7,6 +7,18 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 
 afterEach(cleanup);
 
+it.each([false, true])('places an optional action immediately before Refresh (stacked search: %s)', stacked => {
+  render(<ModuleTableToolbar stackSearchOnMobile={stacked} label="Records" search="" onSearch={vi.fn()} placeholder="Search records..." onRefresh={vi.fn()}
+    beforeRefresh={<button type="button">Remove from list</button>} />);
+  const remove = screen.getByRole('button', { name: 'Remove from list' });
+  const refresh = screen.getByRole('button', { name: 'Refresh' });
+  expect(remove.nextElementSibling).toBe(refresh);
+  expect(remove.parentElement).toBe(refresh.parentElement);
+  expect(refresh.parentElement?.className).toContain('ml-auto');
+  expect(screen.getAllByRole('textbox')).toHaveLength(1);
+  if (stacked) expect(screen.getByRole('group', { name: 'Records actions' }).contains(remove)).toBe(true);
+});
+
 it('forwards the existing Filter button ref, dropdown keyboard attributes, and disabled state', async () => {
   const ref = React.createRef<HTMLButtonElement>();
   const select = vi.fn();
