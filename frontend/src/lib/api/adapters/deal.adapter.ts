@@ -80,7 +80,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     accountId: data.accountId || data.companyId || data.organizationId || undefined,
     industry: data.industry || undefined,
     address: data.address || undefined,
-    addressSource: data.addressSource,
+    addressSource: data.addressSource ?? undefined,
     productInterests: data.productInterests,
     productInterestId: data.productInterestId,
     productInterestIds: data.productInterestIds,
