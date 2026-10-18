@@ -12,6 +12,7 @@
       "@leadcrm/shared": ["../shared/src/index.ts"]
     }
   },
+  "files": ["src/scripts/seed-campaign-templates.ts"],
   "include": ["src/**/*"],
   "exclude": ["node_modules", "dist", "src/database/seeders", "src/scripts", "check-users.ts", "src/**/__tests__", "src/**/*.test.ts", "src/**/*.spec.ts"]
 }

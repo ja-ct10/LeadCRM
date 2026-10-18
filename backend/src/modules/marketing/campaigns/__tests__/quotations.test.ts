@@ -6,7 +6,12 @@ import { DEFAULT_QUOTATION_TEMPLATES } from '../../templates/default-templates';
 const draft = () => ({ quotationId: randomUUID(), templateId: randomUUID(), recipientType: 'Lead', recipientId: randomUUID(), products: [{ productId: randomUUID(), quantity: 2 }], quotationDate: '2026-10-18', validUntil: '2026-11-18', notes: '' });
 it('validates all six starters without changing Email/SMS requirements', () => {
   expect(DEFAULT_QUOTATION_TEMPLATES).toHaveLength(6);
+  expect(DEFAULT_QUOTATION_TEMPLATES.map(({ name, category }) => [name, category])).toEqual([
+    ['Standard Sales Quotation', 'Sales'], ['Service Quotation', 'Services'], ['Software Implementation', 'Software'],
+    ['Annual Maintenance', 'Maintenance'], ['Product Quotation', 'Product'], ['Custom Quotation', 'Custom'],
+  ]);
   for (const template of DEFAULT_QUOTATION_TEMPLATES) expect(MarketingTemplateSchema.safeParse(template).success).toBe(true);
+  for (const template of DEFAULT_QUOTATION_TEMPLATES) expect(template.content).not.toContain('Camxian Technologies');
   expect(MarketingTemplateSchema.safeParse({ name: 'Email', type: 'Email', content: 'Hello' }).success).toBe(false);
   expect(MarketingTemplateSchema.safeParse({ name: 'SMS', type: 'SMS', content: 'Hello' }).success).toBe(true);
   expect(MarketingTemplateSchema.safeParse({ name: 'Quote', type: 'Quotation', content: '{}' }).success).toBe(false);

@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "node --watch --require ts-node/register/transpile-only src/server.ts",
-    "build": "prisma generate && tsc && node -e \"require('fs').copyFileSync('start.js','dist/start.js')\"",
+    "build": "prisma generate && tsc && node -e \"const fs=require('fs');fs.copyFileSync('start.js','dist/start.js');fs.cpSync('assets','dist/backend/assets',{recursive:true})\"",
     "start": "node dist/start.js",
     "start:notifications": "node dist/start.js --notifications-worker",
     "lint": "tsc --noEmit && npm run typecheck:tests",
@@ -12,6 +12,8 @@
     "db:generate": "prisma generate",
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed:campaigns": "ts-node src/scripts/seed-campaign-templates.ts",
+    "db:seed:campaigns:production": "node dist/start.js --seed-campaign-templates",
+    "test:quotations:runtime": "node --test scripts/quotation-runtime.test.cjs",
     "db:repair": "ts-node src/database/scripts/repair-role-permissions.ts",
     "db:provision-test-user": "ts-node src/database/scripts/provision-test-user.ts",
     "db:seed:full": "ts-node src/database/seeders/demo-full.seed.ts",

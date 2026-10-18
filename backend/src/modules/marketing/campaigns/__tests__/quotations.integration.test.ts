@@ -53,6 +53,8 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
   }, 30000);
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await seedDb.$disconnect(); await prisma.$disconnect(); });
   it('persists six starters idempotently and retains edited/archived content', async () => {
+    const listed = await call('/marketing/templates?type=Quotation');
+    expect(listed.status).toBe(200); expect(listed.data.meta.total).toBe(6); expect(listed.data.data).toHaveLength(6);
     await scope(async () => {
       const saved = await prisma.template.findFirstOrThrow({ where: { tenantId, type: 'Quotation', id: { not: templateId } } });
       await prisma.template.update({ where: { id: saved.id }, data: { content: JSON.stringify({ ...defaultQuotationContent(), footer: 'User terms' }), isArchived: true } });
@@ -61,12 +63,38 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
       expect(await prisma.template.findUnique({ where: { id: saved.id } })).toMatchObject({ isArchived: true, content: expect.stringContaining('User terms') });
     });
   });
+  it('seeds quotations only for the explicit tenant and leaves messaging/custom/archived templates unchanged', async () => {
+    const target = await prisma.tenant.create({ data: { name: 'Explicit quotation seed', slug: randomUUID() } });
+    await tenantContext.run({ tenantId: target.id }, async () => {
+      const messages = await prisma.template.createMany({ data: [
+        { tenantId: target.id, name: 'Lead Inquiry Acknowledgment', type: 'Email', category: 'Sales', subject: 'Old {{first_name}}', content: 'Keep {{company_name}}' },
+        { tenantId: target.id, name: 'Inquiry Received', type: 'SMS', category: 'Sales', content: 'Keep this message' },
+      ] });
+      expect(messages.count).toBe(2);
+      const custom = await prisma.template.create({ data: { tenantId: target.id, name: 'CCTV Quotation', type: 'Quotation', category: 'Custom', content: JSON.stringify({ ...defaultQuotationContent(), footer: 'Custom CCTV terms' }) } });
+      const archived = await prisma.template.create({ data: { tenantId: target.id, name: 'Annual Maintenance', type: 'Quotation', category: 'Maintenance', isArchived: true, content: JSON.stringify({ ...defaultQuotationContent(), footer: 'Archived custom terms' }) } });
+      const before = await prisma.template.findMany({ where: { tenantId: target.id }, orderBy: { id: 'asc' } });
+      expect(await seedCampaignTemplates(seedDb, target.id, true, { quotationsOnly: true })).toBe(5);
+      expect(await seedCampaignTemplates(seedDb, target.id, true, { quotationsOnly: true })).toBe(0);
+      expect(await prisma.template.findMany({ where: { tenantId: target.id, id: { in: before.map(row => row.id) } }, orderBy: { id: 'asc' } })).toEqual(before);
+      expect(await prisma.template.count({ where: { tenantId: target.id, type: 'Quotation' } })).toBe(7);
+      expect(await prisma.template.findUnique({ where: { id: custom.id } })).toMatchObject({ content: custom.content, isArchived: false });
+      expect(await prisma.template.findUnique({ where: { id: archived.id } })).toMatchObject({ content: archived.content, isArchived: true });
+    });
+    expect(await tenantContext.run({ tenantId: otherTenant }, () => prisma.template.count({ where: { tenantId: otherTenant } }))).toBe(0);
+  });
   it('creates, edits, searches by category and reloads a quotation template', async () => {
     const created = await call('/marketing/templates', 'POST', { name: 'Custom Terms', type: 'Quotation', category: 'Custom', content: JSON.stringify(defaultQuotationContent()) });
     expect(created.status).toBe(201); const id = created.data.data.id;
     expect((await call(`/marketing/templates/${id}`, 'PUT', { content: JSON.stringify({ ...defaultQuotationContent(), footer: 'Edited terms {{sender_name}}' }) })).status).toBe(200);
     expect((await call(`/marketing/templates/${id}`)).data.data.content).toContain('Edited terms');
     expect((await call('/marketing/templates?type=Quotation&search=Custom&category=Custom')).data.data.some((row: { id: string }) => row.id === id)).toBe(true);
+    const response = await fetch(base + `/marketing/templates/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('application/pdf');
+    const savedPdf = Buffer.from(await response.arrayBuffer());
+    expect(savedPdf.subarray(0, 5).toString()).toBe('%PDF-');
+    writeFileSync(resolve(output, 'new-template.pdf'), savedPdf);
   });
   it.each(['Lead', 'Contact'] as const)('resolves %s, authenticated Sender, Organization and authoritative decimal totals', async type => {
     const result = await preview(draft(type));
@@ -82,6 +110,16 @@ describe.skipIf(!disposable)('quotation authenticated API on disposable PostgreS
     const response = await fetch(base + `/marketing/templates/${templateId}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
     expect(response.status).toBe(200); expect(response.headers.get('content-type')).toContain('application/pdf');
     writeFileSync(resolve(output, 'template.pdf'), Buffer.from(await response.arrayBuffer()));
+  });
+  it('returns PDF errors without exposing other tenants, archived records or internal errors', async () => {
+    const foreign = await tenantContext.run({ tenantId: otherTenant }, () => prisma.template.create({ data: { tenantId: otherTenant, name: 'Private template', type: 'Quotation', content: JSON.stringify(defaultQuotationContent()) } }));
+    const archived = await scope(() => prisma.template.findFirstOrThrow({ where: { tenantId, type: 'Quotation', isArchived: true } }));
+    for (const id of [foreign.id, archived.id, randomUUID(), 'invalid-template-id']) {
+      const response = await fetch(base + `/marketing/templates/${id}/pdf`, { headers: { Authorization: `Bearer ${token}` } });
+      expect(response.status).toBe(404); expect(response.headers.get('content-type')).toContain('application/json');
+    }
+    expect((await fetch(base + `/marketing/templates/${templateId}/pdf`)).status).toBe(401);
+    expect((await fetch(base + `/marketing/templates/${templateId}/pdf`, { headers: { Authorization: `Bearer ${denied}` } })).status).toBe(403);
   });
   it('blocks invalid quantities, dates, unknown variables and client-supplied totals', async () => {
     const value = draft();

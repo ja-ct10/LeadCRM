@@ -90,6 +90,19 @@ Custom Quotation. It requires an explicit confirmed tenant ID:
 npm --prefix backend run db:seed:campaigns -- <tenant-id>
 ```
 
+For the built production image, use its compiled entry point. To add only missing
+quotation starters while leaving Email/SMS rows byte-for-byte unchanged:
+
+```powershell
+npm --prefix backend run db:seed:campaigns:production -- <verified-tenant-id> --quotations-only
+```
+
+Resolve the intended tenant's ID from the verified production database first;
+do not infer it from local seed fixtures or a different database. Matching edited
+and archived quotation templates are retained, so an archived starter remains
+absent from the active list. Seeding is an explicit operation, separate from
+deployment and template listing; neither automatically seeds every tenant.
+
 The transaction locks that tenant and preserves matching edited/archived rows.
 Existing Email/SMS defaults remain unchanged. This command must target a database
 whose identity has been verified; implementation verification seeds only disposable
@@ -123,3 +136,81 @@ passed. Builds used an explicit fixture `API_URL`; the default checkout does not
 provide the production backend URL required by the existing build configuration.
 Standard Lead/Contact/template PDFs each rendered as one page; a 10-page sample
 verified repeated headings, long terms, placeholder rules and peso text.
+
+## Compiled-runtime repair audit (2026-10-18)
+
+The audited main revision was `cb7e80f164ece5245eb269587c296c7dfbaf9fcb`.
+At inspection, public frontend, direct backend and proxied backend release
+responses all reported that revision. Deployment mismatch was therefore ruled
+out for that observation.
+
+The compiled renderer reproduced `ENOENT` opening
+`backend/dist/backend/assets/fonts/NotoSans-Bold.ttf`. Its existing module-relative
+font path was correct for TypeScript sources, but the build omitted assets at
+the corresponding compiled location. The Docker image separately copied fonts
+to `backend/assets`, where the compiled module did not look. The backend build
+now copies the licensed assets to `dist/backend/assets`; the existing Docker
+copy of `dist` carries them into the image. No alternate renderer or font
+fallback is introduced.
+
+The six starters were already defined and valid. The existing seed was opt-in,
+was not invoked by startup, and its TypeScript CLI was excluded from compiled
+output and absent from the runner image. The existing CLI is now explicitly
+compiled and available through the production command above. The quotation-only
+option uses the existing tenant-lock transaction and skips Email/SMS creation
+and legacy-token normalization. This fixes the operational seed path; the
+production tenant's actual rows and prior seed execution must still be inspected
+before attributing missing live starters to an unrun seed.
+
+The existing Next proxy already uses `arrayBuffer()` and forwards PDF MIME type,
+download metadata, status and authentication. Focused regressions verify exact
+quotation bytes and JSON failure status; no proxy rewrite is needed. Existing
+card preview/download, SideSheet, iframe, Blob, toast and four-step wizard remain
+in use. Backend failures still reach the existing sanitized error middleware.
+
+After a backend build, run `npm --prefix backend run test:quotations:runtime` to
+verify packaged fonts, a real compiled-renderer PDF from an unrelated working
+directory, and the compiled seed CLI's missing-scope guard. The disposable API
+suite covers new-template PDFs, active-list availability, seed retention and
+PDF authorization. The rendered UI fixture additionally checks newly saved
+template preview/download, PDF failures and request counts at all seven widths.
+Docker image execution and production container/log/database acceptance remain
+separate checks; local results do not establish a corrected live deployment.
+
+Repair validation: 32 disposable backend/API tests, 88 focused frontend/proxy
+tests and two compiled-runtime checks passed. Workspace lint/typechecks passed.
+The first parallel build exhausted its sandbox process memory; the sequential
+retry completed all three workspace build tasks successfully. Visual extraction
+and page review covered one-page template/Lead/Contact PDFs and a ten-page sample.
+The browser fixture uses isolated API responses, not the production database.
+All 70 checks passed at 320/375/390/430/768/1024/1440px, including native Chrome
+PDF loading before screenshots, new-template previews/downloads, error toasts,
+request counts, Lead/Contact selection, whole-number quantity validation and
+retained wizard values when navigating backward. The fixture permits only the
+built-in viewer's Chrome-internal resources through its network guard. Extracted
+content from the newly created/edited template PDF included its persisted terms,
+organization information, placeholders and peso amounts.
+
+Production diagnostics remain incomplete: the configured local database is a
+different Supabase target, no Coolify API credentials are configured, browser
+access reports disabled, and the local Docker Linux engine is unavailable.
+Camxian Technologies' production UUID, saved starter/custom/archive inventory,
+container font paths, migration ledger and sanitized error logs must therefore
+be checked through authenticated production access. Seed only that verified
+tenant after inspecting existing rows; after deploying, confirm both PDF routes
+and frontend downloads against the matching serving revision. No live seed,
+database migration, deployment or Gmail delivery is established by this repair.
+
+Repair files:
+
+- Runtime packaging/entry point: `backend/package.json`, `backend/tsconfig.json`,
+  `backend/start.js`, `infrastructure/docker/Dockerfile.backend`.
+- Existing seed workflow: `backend/src/scripts/seed-campaign-templates.ts`,
+  `backend/src/modules/marketing/templates/default-templates.ts`.
+- Regression coverage: `backend/scripts/quotation-runtime.test.cjs`,
+  `backend/scripts/preview-quotations-browser.mjs`,
+  `backend/src/modules/marketing/campaigns/__tests__/quotations.test.ts`,
+  `backend/src/modules/marketing/campaigns/__tests__/quotations.integration.test.ts`,
+  `frontend/app/api/proxy/[...path]/__tests__/proxy-cookie-forwarding.test.ts`.
+- This document. Concurrent Export CSV, table-settings and TableIconButton edits
+  were preserved and are outside the quotation repair.
