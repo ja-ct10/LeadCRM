@@ -51,12 +51,12 @@ export const DEFAULT_QUOTATION_TEMPLATES = [
 ].map(([name, category, description]) => ({ name, type: 'Quotation' as const, category, content: JSON.stringify({ ...defaultQuotationContent(),
   introduction: `Dear {{firstName}},\n\n${description}\nPlease see the details prepared for {{companyName}} below.` }) }));
 
-export async function seedCampaignTemplates(db: PrismaClient, tenantId: string, includeQuotations = false) {
+export async function seedCampaignTemplates(db: PrismaClient, tenantId: string, includeQuotations = false, options: { quotationsOnly?: boolean } = {}) {
   return db.$transaction(async tx => {
     // Serialize concurrent seeds without adding a uniqueness constraint to user templates.
     await tx.$queryRaw`SELECT "id" FROM "Tenant" WHERE "id" = ${tenantId} FOR UPDATE`;
     // Repair only legacy tokens, preserving edits, archive state and timestamps.
-    await tx.$executeRaw(Prisma.sql`
+    if (!options.quotationsOnly) await tx.$executeRaw(Prisma.sql`
       UPDATE "Template" AS template
       SET subject = replace(replace(template.subject, '{{first_name}}', '{{firstName}}'), '{{company_name}}', '{{companyName}}'),
           content = replace(replace(template.content, '{{first_name}}', '{{firstName}}'), '{{company_name}}', '{{companyName}}')
@@ -67,7 +67,8 @@ export async function seedCampaignTemplates(db: PrismaClient, tenantId: string, 
           OR strpos(template.content, '{{first_name}}') > 0 OR strpos(template.content, '{{company_name}}') > 0)
     `);
     let created = 0;
-    for (const sample of [...DEFAULT_CAMXIAN_TEMPLATES, ...(includeQuotations ? DEFAULT_QUOTATION_TEMPLATES : [])]) {
+    const samples = options.quotationsOnly ? DEFAULT_QUOTATION_TEMPLATES : [...DEFAULT_CAMXIAN_TEMPLATES, ...(includeQuotations ? DEFAULT_QUOTATION_TEMPLATES : [])];
+    for (const sample of samples) {
       // Archived and edited records keep their identity; never overwrite user content.
       if (await tx.template.findFirst({ where: { tenantId, name: sample.name, type: sample.type } })) continue;
       await tx.template.create({ data: { tenantId, ...MarketingTemplateSchema.parse(sample) } });

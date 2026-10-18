@@ -7,6 +7,7 @@ import { toast } from 'sonner';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator } from '@/shared/components/ui/dropdown-menu';
 import type { ViewMode } from '@/shared/hooks/use-table-preferences';
 import { SortTableDialog } from './sort-table-dialog';
+import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 
 interface TableSettingsMenuProps {
   pageSize?: number;
@@ -36,8 +37,10 @@ export function TableSettingsMenu({ pageSize, onPageSizeChange, viewMode, onView
   if (!onManageColumns && !onResetColumnSize && !onPageSizeChange && !onViewModeChange && !canSort) return null;
   const mark = (active: boolean) => <Check size={14} aria-hidden="true" className={active ? 'ml-auto' : 'ml-auto invisible'} />;
   return <><DropdownMenu>
-    <DropdownMenuTrigger disabled={resetting} aria-label="Table settings" className="inline-flex min-h-11 min-w-11 sm:min-h-8 sm:min-w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50">
-      {resetting ? <Loader2 size={14} className="animate-spin" /> : <Settings2 size={14} />}
+    <DropdownMenuTrigger asChild>
+      <TableIconButton variant="outline" label="Table settings" disabled={resetting}>
+        {resetting ? <Loader2 size={14} className="animate-spin" /> : <Settings2 size={14} />}
+      </TableIconButton>
     </DropdownMenuTrigger>
     <DropdownMenuContent aria-label="Table settings">
       {onManageColumns && <DropdownMenuItem onSelect={onManageColumns}><Columns3 size={14} aria-hidden="true" />Manage Columns</DropdownMenuItem>}

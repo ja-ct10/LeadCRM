@@ -95,6 +95,33 @@ it('forwards CRM attachment bytes and download metadata through the proxy', asyn
   expect(response.headers.get('x-content-type-options')).toBe('nosniff');
 });
 
+it('preserves quotation PDF bytes, headers, authentication and the exact template endpoint', async () => {
+  const bytes = new Uint8Array([37, 80, 68, 70, 45, 49, 46, 55, 10, 0, 255, 128]);
+  const fetchMock = vi.fn().mockResolvedValue(new Response(bytes, { headers: {
+    'Content-Type': 'application/pdf', 'Content-Disposition': 'attachment; filename="CCTV_Quotation.pdf"',
+  } }));
+  vi.stubGlobal('fetch', fetchMock);
+  const req = new NextRequest('https://app.example.com/api/proxy/marketing/templates/template-id/pdf', { headers: { Cookie: 'leadcrm_token=session-token' } });
+  const response = await GET(req, { params: Promise.resolve({ path: ['marketing', 'templates', 'template-id', 'pdf'] }) });
+  expect(fetchMock).toHaveBeenCalledOnce();
+  expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:4000/api/v1/marketing/templates/template-id/pdf');
+  expect(fetchMock.mock.calls[0][1].headers.Cookie).toBe('leadcrm_token=session-token');
+  expect(response.status).toBe(200);
+  expect(response.headers.get('content-type')).toBe('application/pdf');
+  expect(response.headers.get('content-disposition')).toContain('CCTV_Quotation.pdf');
+  expect(response.headers.get('cache-control')).toBe('no-store');
+  expect(new Uint8Array(await response.arrayBuffer())).toEqual(bytes);
+});
+
+it.each([400, 401, 403, 404, 500])('preserves quotation PDF failure status %s and JSON error responses', async status => {
+  const payload = { success: false, error: 'Unable to generate quotation PDF.' };
+  vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload), { status, headers: { 'Content-Type': 'application/json' } })));
+  const response = await GET(new NextRequest('https://app.example.com/api/proxy/marketing/templates/template-id/pdf'), { params: Promise.resolve({ path: ['marketing', 'templates', 'template-id', 'pdf'] }) });
+  expect(response.status).toBe(status);
+  expect(response.headers.get('content-type')).toBe('application/json');
+  expect(await response.json()).toEqual(payload);
+});
+
 
 it.each(['crm/leads', 'crm/contacts', 'crm/accounts', 'crm/deals', 'administration/users', 'administration/users/user/permissions', 'automation/workflows'])('forwards the same session for %s', async path => {
   const fetchMock = vi.fn().mockResolvedValue(new Response('{"data":[]}'));
