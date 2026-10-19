@@ -7,7 +7,7 @@ import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 
 const events = vi.hoisted(() => ({ stage: vi.fn(), update: vi.fn() }));
 vi.mock('../../../../config/database.config', () => ({ default: new PrismaClient({ datasources: { db: { url: process.env.DEAL_PIPELINE_TEST_DATABASE_URL! } } }) }));
-vi.mock('../../../automation/triggers/triggers.service', () => ({ fireDealCreated: vi.fn(), fireLeadCreated: vi.fn(), fireDealStageChanged: events.stage, fireDealUpdated: events.update }));
+vi.mock('../../../automation/triggers/triggers.service', () => ({ fireDealCreated: vi.fn(), fireLeadCreated: vi.fn(), fireLeadStatusChanged: vi.fn(), fireContactStatusChanged: vi.fn(), fireDealStageChanged: events.stage, fireDealUpdated: events.update }));
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient;
 let transfer: typeof import('../deals.service').moveDealPipeline;
 let moveStage: typeof import('../deals.repository').moveDealStage;
@@ -76,6 +76,17 @@ it('commits pipeline/stage together, preserving identity, all child links and va
   expect(await db.dealStageHistory.count()).toBe(1); expect(await db.auditLog.count()).toBe(1);
   expect(await db.activity.count({ where: { type: 'stage_change' } })).toBe(1);
   expect(events.stage).toHaveBeenCalledOnce(); expect(events.update).toHaveBeenCalledOnce();
+});
+it('resets stage entry only for an actual movement and preserves it for same-stage retries', async () => {
+  const enteredAt = new Date('2020-01-01T04:23:45Z');
+  await db.deal.update({ where: { id: 'deal' }, data: { stageChangedAt: enteredAt } });
+  await moveStage('deal', 'a', 'lead', 'actor');
+  expect((await db.deal.findUniqueOrThrow({ where: { id: 'deal' } })).stageChangedAt).toEqual(enteredAt);
+  await moveStage('deal', 'a', 'qualified', 'actor');
+  const moved = await db.deal.findUniqueOrThrow({ where: { id: 'deal' } });
+  expect(moved.stageChangedAt!.getTime()).toBeGreaterThan(+enteredAt);
+  await moveStage('deal', 'a', 'qualified', 'actor');
+  expect((await db.deal.findUniqueOrThrow({ where: { id: 'deal' } })).stageChangedAt).toEqual(moved.stageChangedAt);
 });
 it('validates legacy singular participant requirements against canonical links', async () => {
   const result = await transfer('deal', 'a', 'actor', { pipelineId: 'target', stageId: 'participants-required' });

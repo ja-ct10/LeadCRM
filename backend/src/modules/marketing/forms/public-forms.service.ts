@@ -14,6 +14,7 @@ import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detectio
 import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
 import { normalizeFormDefinitionForTenant } from './forms.repository';
 import { saveRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
+import { productCategories } from '../../administration/product-interests/product-interests.service';
 
 export class SubmissionValidationError extends ValidationError {
   constructor(public fieldErrors: Record<string, string>) { super('Please check the highlighted fields.'); }
@@ -25,7 +26,11 @@ export async function getPublicForm(publicId: string): Promise<PublicFormDefinit
   return tenantContext.run({ tenantId: form.tenantId }, () => salesTransaction(async tx => {
     const config = await normalizeFormDefinitionForTenant(tx, form.tenantId, FormDefinitionSchema.parse(form.publishedConfig));
     const products = await productConfiguration(tx, form.tenantId);
-    return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams };
+    const productCatalog = config.fields.some(field => field.mapToField === 'productInterest') ? {
+      categories: await productCategories(tx, form.tenantId, { readOnly: true }),
+      products: products.map(({ id, name, category }) => ({ id, name, category })),
+    } : undefined;
+    return { name: config.name, fields: withProductOptions(config.fields, products), design: config.design, version: form.publishedVersion, trackUrlParams: config.settings.trackUrlParams, ...(productCatalog ? { productCatalog } : {}) };
   }));
 }
 

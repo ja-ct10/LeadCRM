@@ -193,6 +193,55 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await expect(getPublicForm(form.publicId)).rejects.toMatchObject({ statusCode: 404 }); await expect(submit(form.publicId)).rejects.toMatchObject({ statusCode: 404 });
     const copy = await scoped(() => service.duplicateForm(form.id, tenantId, userId)); expect(copy.id).not.toBe(form.id); expect(copy.publicId).not.toBe(form.publicId); expect(copy.fields).toEqual(form.fields); expect(copy.publishedVersion).toBe(0);
   });
+  it('reads current tenant product categories without writing preferences or changing published forms', async () => {
+    const form = await publish((await draft()).id);
+    const before = await prisma.marketingForm.findUniqueOrThrow({ where: { id: form.id } });
+    const categoryKey = { tenantId, module: 'product-interests', key: 'categories' };
+    const preferenceBefore = await prisma.tenantPreference.findUnique({ where: { tenantId_module_key: categoryKey } });
+    const smartLock = await prisma.productInterest.findUniqueOrThrow({ where: { id: productIds['Smart Lock'] } });
+    const foreign = await prisma.productInterest.create({ data: { tenantId: otherTenant, name: 'Private product', category: 'Private category', dealValue: 1 } });
+    try {
+      await prisma.tenantPreference.deleteMany({ where: categoryKey });
+      await prisma.productInterest.update({ where: { id: smartLock.id }, data: { category: 'Security' } });
+      const fallback = await getPublicForm(form.publicId);
+      expect(fallback.productCatalog?.categories).toEqual(['Security']);
+      expect(await prisma.tenantPreference.findUnique({ where: { tenantId_module_key: categoryKey } })).toBeNull();
+      expect(fallback.productCatalog?.products).toContainEqual({ id: smartLock.id, name: smartLock.name, category: 'Security' });
+      expect(fallback.productCatalog?.products.some(product => product.id === foreign.id)).toBe(false);
+      expect(fallback.productCatalog?.categories).not.toContain('Private category');
+      expect(Object.keys(fallback.productCatalog!.products[0]).sort()).toEqual(['category', 'id', 'name']);
+      await prisma.tenantPreference.create({ data: { ...categoryKey, value: ['Security', 'Empty category'] } });
+      expect((await getPublicForm(form.publicId)).productCatalog?.categories).toEqual(['Security', 'Empty category']);
+      await prisma.tenantPreference.update({ where: { tenantId_module_key: categoryKey }, data: { value: ['Security', 'Empty category', 'Added later'] } });
+      expect((await getPublicForm(form.publicId)).productCatalog?.categories).toContain('Added later');
+      await prisma.tenantPreference.update({ where: { tenantId_module_key: categoryKey }, data: { value: [] } });
+      expect((await getPublicForm(form.publicId)).productCatalog?.categories).toEqual([]);
+      expect(await prisma.marketingForm.findUniqueOrThrow({ where: { id: form.id } })).toEqual(before);
+    } finally {
+      await prisma.productInterest.update({ where: { id: smartLock.id }, data: { category: smartLock.category } });
+      await prisma.productInterest.delete({ where: { id: foreign.id } });
+      await prisma.tenantPreference.deleteMany({ where: categoryKey });
+      if (preferenceBefore) await prisma.tenantPreference.create({ data: preferenceBefore });
+    }
+  });
+  it('keeps required multi-product submission IDs and Website attribution without persisting category metadata', async () => {
+    const form = await publish((await draft()).id);
+    const ids = [productIds['Smart Lock'], productIds.Biometrics];
+    const answers = { ...values(), productInterest: ids };
+    await expect(submitPublicForm(form.publicId, { version: 1, values: { ...answers, productInterest: [] } })).rejects.toMatchObject({ fieldErrors: { productInterest: 'Select approved product interests.' } });
+    await submitPublicForm(form.publicId, { version: 1, values: answers });
+    const inquiry = await prisma.formSubmission.findFirstOrThrow({ where: { formId: form.id } });
+    expect(inquiry.values).toMatchObject({ productInterest: ids });
+    expect(inquiry.values).not.toHaveProperty('productCategory');
+    expect(inquiry.publishedConfig).not.toHaveProperty('productCatalog');
+    const lead = await prisma.lead.findUniqueOrThrow({ where: { id: inquiry.leadId! } });
+    expect(lead.source).toBe('Website');
+    expect((await prisma.leadProductInterest.findMany({ where: { leadId: lead.id } })).map(row => row.productInterestId).sort()).toEqual(ids.slice().sort());
+    const withoutProducts = await draft();
+    await scoped(() => service.updateForm(withoutProducts.id, tenantId, userId, { revision: 0, fields: (withoutProducts.fields as FormField[]).filter(field => field.mapToField !== 'productInterest') }));
+    await publish(withoutProducts.id);
+    expect(await getPublicForm(withoutProducts.publicId)).not.toHaveProperty('productCatalog');
+  });
   it('keeps draft edits private until publish and rejects stale saves/versions', async () => {
     const form = await publish((await draft()).id);
     await scoped(() => service.updateForm(form.id, tenantId, userId, { revision: 0, name: 'Draft only' }));

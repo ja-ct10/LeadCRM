@@ -99,6 +99,7 @@ export default function PipelinePage({ navigate }: { navigate?: (path: string) =
   const [createStage, setCreateStage] = useState<string>();
   const [lost, setLost] = useState<{ id: string; stageId: string }>();
   const query = useCachedPage<Deal[]>({ module: 'deals', params: { pipelineId: pipeline?.id }, disabled: USE_MOCK_DATA || !pipeline,
+    intervalMs: 30_000, pauseWhenHidden: true,
     revalidateOnInvalidation: true, fetchFn: async signal => {
       const records: Deal[] = [];
       for (let page = 1; ; page++) {

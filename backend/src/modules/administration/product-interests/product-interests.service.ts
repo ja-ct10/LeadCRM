@@ -9,7 +9,7 @@ export const productFieldKey = (tenantId: string) => ({ tenantId, module: 'produ
 const categoryKey = (tenantId: string) => ({ tenantId, module: 'product-interests', key: 'categories' });
 const categoryIdentity = (name: string) => name.trim().toLowerCase();
 
-export async function productCategories(tx: Prisma.TransactionClient, tenantId: string): Promise<string[]> {
+export async function productCategories(tx: Prisma.TransactionClient, tenantId: string, { readOnly = false } = {}): Promise<string[]> {
   const key = categoryKey(tenantId);
   const saved = await tx.tenantPreference.findUnique({ where: { tenantId_module_key: key } });
   if (saved) return z.array(ProductCategoryNameSchema).parse(saved.value);
@@ -17,7 +17,7 @@ export async function productCategories(tx: Prisma.TransactionClient, tenantId: 
   // list remains authoritative so deleted categories cannot reappear.
   const rows = await tx.productInterest.findMany({ where: { tenantId, category: { not: '' } }, select: { category: true }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }] });
   const categories = [...new Map(rows.filter(row => row.category.trim()).map(row => [categoryIdentity(row.category), row.category.trim()])).values()].sort((a, b) => a.localeCompare(b));
-  await tx.tenantPreference.create({ data: { ...key, value: categories } });
+  if (!readOnly) await tx.tenantPreference.create({ data: { ...key, value: categories } });
   return categories;
 }
 

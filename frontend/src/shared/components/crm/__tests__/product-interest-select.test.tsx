@@ -116,3 +116,38 @@ it.each(['id', 'name'] as const)('hides the special category in CRM %s mode with
   rerender(<ProductInterestSelect products={records} categories={['Services', 'New category', 'Added later']} showUncategorized={false} values={[value]} valueMode={mode} onChange={change} />);
   expect(screen.getByRole('option', { name: 'Added later' })).toBeTruthy();
 });
+
+it('filters the checkbox list without dropping hidden selections when checking or unchecking products', () => {
+  const change = vi.fn();
+  function Form() {
+    const [values, setValues] = useState<string[]>([]);
+    return <ProductInterestSelect presentation="checkbox-list" showUncategorized={false} products={[{ ...products[0], category: 'Network' }, { ...products[1], category: 'Security' }]} categories={['Security', 'Empty', 'Network']} values={values} onChange={next => { change(next); setValues(next); }} />;
+  }
+  render(<Form />);
+  const category = screen.getByLabelText('Product category');
+  expect(category).toHaveProperty('value', '');
+  expect(screen.getAllByRole('option').map(option => option.textContent)).toEqual(['All categories', 'Empty', 'Network', 'Security']);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'Network' }));
+  fireEvent.change(category, { target: { value: 'Security' } });
+  expect(screen.queryByRole('checkbox', { name: 'Network' })).toBeNull();
+  expect(change).toHaveBeenCalledTimes(1);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
+  expect(change).toHaveBeenLastCalledWith(['a', 'b']);
+  fireEvent.click(screen.getByRole('checkbox', { name: 'CCTV' }));
+  expect(change).toHaveBeenLastCalledWith(['a']);
+  fireEvent.change(category, { target: { value: 'Empty' } });
+  expect(screen.queryByRole('checkbox')).toBeNull();
+  expect(screen.getByText('No products match this category.')).toBeTruthy();
+  fireEvent.change(category, { target: { value: '' } });
+  expect(screen.getByRole('checkbox', { name: 'Network' })).toHaveProperty('checked', true);
+  expect(screen.getByRole('checkbox', { name: 'CCTV' })).toHaveProperty('checked', false);
+});
+
+it('refreshes inline category options and keeps uncategorized products available under All categories', () => {
+  const { rerender } = render(<ProductInterestSelect presentation="checkbox-list" showUncategorized={false} products={products} categories={[]} values={['b']} onChange={vi.fn()} />);
+  expect(screen.getAllByRole('checkbox')).toHaveLength(2);
+  expect(screen.queryByRole('option', { name: 'Uncategorized' })).toBeNull();
+  rerender(<ProductInterestSelect presentation="checkbox-list" showUncategorized={false} products={products} categories={['Added later']} values={['b']} onChange={vi.fn()} />);
+  expect(screen.getByRole('option', { name: 'Added later' })).toBeTruthy();
+  expect(screen.getByRole('checkbox', { name: 'CCTV' })).toHaveProperty('checked', true);
+});

@@ -1,7 +1,8 @@
 'use client';
 import type { CSSProperties } from 'react';
-import type { FormField, FormDesign } from '@leadcrm/shared';
-export function FormInput({ field: f, value = '', onChange, error, design }: { field: FormField; value?: string | boolean | string[]; onChange: (v: string | boolean | string[]) => void; error?: string; design: FormDesign }) {
+import type { FormField, FormDesign, FormProductCatalog } from '@leadcrm/shared';
+import { ProductInterestSelect } from '@/shared/components/crm/product-interest-select';
+export function FormInput({ field: f, value = '', onChange, error, design, productCatalog }: { field: FormField; value?: string | boolean | string[]; onChange: (v: string | boolean | string[]) => void; error?: string; design: FormDesign; productCatalog?: FormProductCatalog }) {
   const id = 'input-' + f.id;
   if (f.type === 'header' || f.type === 'heading') return <h2 className="text-2xl font-bold break-words">{f.label}</h2>;
   if (f.type === 'paragraph') return <p className="whitespace-pre-wrap break-words">{f.label}</p>;
@@ -13,7 +14,10 @@ export function FormInput({ field: f, value = '', onChange, error, design }: { f
   const string = typeof value === 'string' ? value : '';
   return <div className="min-w-0">
     <label htmlFor={id} className="block text-sm font-medium mb-1 break-words">{f.label}{f.required && <span className="text-red-600" aria-hidden="true"> *</span>}</label>
-    {f.mapToField === 'productInterest' ? <div id={id} tabIndex={-1} role="group" aria-label={f.label} className="max-h-60 overflow-y-auto rounded border p-2">{f.options?.map(option => { const selected = Array.isArray(value) ? value : string ? [string] : []; return <label key={option} className="flex min-h-10 items-center gap-2 text-sm"><input type="checkbox" checked={selected.includes(option)} onChange={e => onChange(e.target.checked ? [...selected, option] : selected.filter(v => v !== option))} />{f.optionLabels?.[option] ?? option}</label>; })}</div> : f.type === 'multi-line' ? <textarea {...props} rows={3} maxLength={f.customFieldId ? 10000 : 4000} placeholder={f.placeholder} value={string} onChange={e => onChange(e.target.value)} />
+    {f.mapToField === 'productInterest' ? <ProductInterestSelect id={id} presentation="checkbox-list" showUncategorized={false} ariaLabel={f.label} ariaInvalid={!!error} ariaDescribedBy={props['aria-describedby']} categories={productCatalog?.categories} products={(f.options ?? []).map(option => {
+      const product = productCatalog?.products.find(product => product.id === option);
+      return { id: option, name: f.optionLabels?.[option] ?? product?.name ?? option, category: product?.category };
+    })} values={Array.isArray(value) ? value : string ? [string] : []} onChange={onChange} /> : f.type === 'multi-line' ? <textarea {...props} rows={3} maxLength={f.customFieldId ? 10000 : 4000} placeholder={f.placeholder} value={string} onChange={e => onChange(e.target.value)} />
       : f.type === 'dropdown' || f.type === 'rating' ? <select {...props} value={string} onChange={e => onChange(e.target.value)}><option value="">{f.placeholder || 'Select an option'}</option>{(f.type === 'rating' ? ['1','2','3','4','5'] : f.options || []).map(o => <option key={o} value={o}>{o}</option>)}</select>
       : f.type === 'radio' ? <div role="radiogroup" aria-label={f.label} aria-describedby={props['aria-describedby']}>{f.options?.map((o, i) => <label key={o} className="flex gap-2 py-1 text-sm"><input id={i === 0 ? id : id + i} type="radio" name={id} value={o} checked={string === o} onChange={() => onChange(o)} />{o}</label>)}</div>
       : f.type === 'checkbox' ? <input {...props} style={undefined} className="h-5 w-5" type="checkbox" checked={value === true} onChange={e => onChange(e.target.checked)} />

@@ -3,7 +3,7 @@
 import React, { useCallback } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, User, Calendar, Clock, AlertTriangle } from 'lucide-react';
+import { GripVertical, User, Calendar, AlertTriangle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatCurrency } from '@/shared/utils/currency';
 import type { Deal, User as UserType } from '@/store/types';
@@ -14,9 +14,6 @@ interface PipelineDealCardProps {
   canDrag: boolean;
   onClick: (deal: Deal) => void;
 }
-
-const getDaysSinceUpdate = (deal: Deal): number =>
-  Math.floor((Date.now() - new Date(deal.lastStageChangeDate || deal.updatedAt || deal.createdAt || Date.now()).getTime()) / 86_400_000);
 
 const PRIORITY_CLASSES: Record<string, string> = {
   High: 'bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20',
@@ -37,9 +34,7 @@ export function PipelineDealCard({ deal, assignedUser, canDrag, onClick }: Pipel
     zIndex: isDragging ? 999 : 1,
   };
 
-  const daysSinceUpdate = getDaysSinceUpdate(deal);
-  const isRotting = daysSinceUpdate >= 14;
-  const isAging = daysSinceUpdate >= 7 && daysSinceUpdate < 14;
+  const stale = !deal.isArchived && deal.staleness?.isStale && deal.staleness.stageId === deal.stageId ? deal.staleness : undefined;
 
   const handleClick = useCallback(() => { if (!isDragging) onClick(deal); }, [isDragging, onClick, deal]);
 
@@ -53,10 +48,9 @@ export function PipelineDealCard({ deal, assignedUser, canDrag, onClick }: Pipel
         isDragging
           ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20 shadow-2xl'
           : cn(
-              !(isRotting || isAging) && 'bg-white dark:bg-slate-950',
-              isRotting && 'bg-red-50/10 dark:bg-red-500/5 border-red-300 dark:border-red-500/30 hover:border-red-400',
-              isAging && 'bg-amber-50/10 dark:bg-amber-500/5 border-amber-300 dark:border-amber-500/30 hover:border-amber-400',
-              !(isRotting || isAging) && 'border-slate-200 dark:border-white/[0.05] hover:border-blue-500/40',
+              !stale && 'bg-white dark:bg-slate-950',
+              stale && 'bg-red-50/10 dark:bg-red-500/5 border-red-300 dark:border-red-500/30 hover:border-red-400',
+              !stale && 'border-slate-200 dark:border-white/[0.05] hover:border-blue-500/40',
               'shadow-sm hover:shadow-md',
             ),
       )}
@@ -102,18 +96,13 @@ export function PipelineDealCard({ deal, assignedUser, canDrag, onClick }: Pipel
         )}>
           {deal.priority}
         </span>
-        {(isAging || isRotting) && (
+        {stale && (
           <span
-            className={cn(
-              'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0',
-              isRotting
-                ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
-                : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20',
-            )}
-            title={`Stale deal: Not moved in ${daysSinceUpdate} days`}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0 bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
+            title={`Stale deal: ${stale.daysInStage} ${stale.daysInStage === 1 ? 'day' : 'days'} in ${stale.stageName} (threshold: ${stale.thresholdDays} ${stale.thresholdDays === 1 ? 'day' : 'days'})`}
           >
-            {isRotting ? <AlertTriangle size={10} /> : <Clock size={10} />}
-            {daysSinceUpdate}d
+            <AlertTriangle size={10} />
+            {stale.daysInStage}d
           </span>
         )}
       </div>

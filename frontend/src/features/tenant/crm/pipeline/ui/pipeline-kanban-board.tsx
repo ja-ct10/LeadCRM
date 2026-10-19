@@ -34,7 +34,6 @@ import {
   GripVertical,
   User,
   Calendar,
-  Clock,
   Lock,
   Shield,
   Plus,
@@ -109,12 +108,7 @@ function DealCardContent({
   isDragOverlay = false,
   onMutated,
 }: DealCardContentProps): React.ReactElement {
-  const stageDateStr = deal.lastStageChangeDate || deal.updatedAt || deal.createdAt || Date.now();
-  const daysSinceUpdate = Math.floor(
-    (new Date().getTime() - new Date(stageDateStr).getTime()) / (1000 * 3600 * 24)
-  );
-  const isRotting = daysSinceUpdate >= 14;
-  const isAging = daysSinceUpdate >= 7 && daysSinceUpdate < 14;
+  const stale = !deal.isArchived && deal.staleness?.isStale && deal.staleness.stageId === deal.stageId ? deal.staleness : undefined;
 
   return (
     <div className={`flex flex-col gap-3 ${isDragOverlay ? 'opacity-90' : ''}`}>
@@ -178,17 +172,13 @@ function DealCardContent({
           {deal.priority}
         </span>
 
-        {(isAging || isRotting) && (
+        {stale && (
           <span
-            className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0 ${
-              isRotting
-                ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20'
-                : 'bg-amber-50 text-amber-600 border-amber-200 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/20'
-            }`}
-            title={`Stale deal: Not moved in ${daysSinceUpdate} days`}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0 bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
+            title={`Stale deal: ${stale.daysInStage} ${stale.daysInStage === 1 ? 'day' : 'days'} in ${stale.stageName} (threshold: ${stale.thresholdDays} ${stale.thresholdDays === 1 ? 'day' : 'days'})`}
           >
-            {isRotting ? <AlertTriangle size={10} /> : <Clock size={10} />}
-            {daysSinceUpdate}d
+            <AlertTriangle size={10} />
+            {stale.daysInStage}d
           </span>
         )}
       </div>
@@ -280,21 +270,12 @@ function SortableDealCard({
     cursor: isDragging ? 'grabbing' : 'pointer',
   };
 
-  const daysSinceUpdate = Math.floor(
-    (new Date().getTime() -
-      new Date(deal.lastStageChangeDate || deal.updatedAt || deal.createdAt || Date.now()).getTime()) /
-      (1000 * 3600 * 24)
-  );
-  const isRotting = daysSinceUpdate >= 14;
-  const isAging = daysSinceUpdate >= 7 && daysSinceUpdate < 14;
+  const isStale = !deal.isArchived && deal.staleness?.isStale && deal.staleness.stageId === deal.stageId;
 
   let borderStyle = 'border-slate-200 dark:border-white/[0.05] hover:border-blue-500/40';
-  if (isRotting) {
+  if (isStale) {
     borderStyle =
       'border-red-300 dark:border-red-500/30 bg-red-50/10 dark:bg-red-500/5 hover:border-red-400 dark:hover:border-red-500/50';
-  } else if (isAging) {
-    borderStyle =
-      'border-amber-300 dark:border-amber-500/30 bg-amber-50/10 dark:bg-amber-500/5 hover:border-amber-400 dark:hover:border-amber-500/50';
   }
 
   return (
@@ -307,7 +288,7 @@ function SortableDealCard({
       className={`search-highlight-card p-4 rounded-xl border transition-colors cursor-pointer group relative select-none ${
         isDragging
           ? 'border-blue-500/50 bg-blue-500/5 ring-2 ring-blue-500/20 shadow-2xl'
-          : `${isRotting || isAging ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
+          : `${isStale ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
       }`}
     >
       <DealCardContent

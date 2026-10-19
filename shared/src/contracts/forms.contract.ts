@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { AdministrationPhoneSchema } from '../validation/administration-user.schema';
 import type { CrmFieldCatalogEntry } from './field-catalog';
+import type { ProductInterest } from './product-interests.contract';
 
 // Legacy seed labels for database fixtures only. Runtime forms resolve database IDs.
 export const FORM_PRODUCT_INTERESTS = [
@@ -79,7 +80,8 @@ export function leadCatalogFormField(field: CrmFieldCatalogEntry): Omit<FormFiel
   }
   return { label: field.label, type, required: field.required, ...(mapToField ? { mapToField } : { customFieldId: field.customFieldId }), ...(type === 'dropdown' ? { options: [...field.options ?? []] } : {}) };
 }
-export type PublicFormDefinition = Omit<FormDefinition, 'settings'> & { version: number; trackUrlParams: boolean };
+export type FormProductCatalog = { categories: string[]; products: Pick<ProductInterest, 'id' | 'name' | 'category'>[] };
+export type PublicFormDefinition = Omit<FormDefinition, 'settings'> & { version: number; trackUrlParams: boolean; productCatalog?: FormProductCatalog };
 export interface FormSubmissionRecord {
   id: string; formId: string; leadId: string | null; contactId: string | null;
   submittedAt: string; publishedVersion: number; publishedConfig: Omit<FormDefinition, 'settings'>;

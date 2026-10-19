@@ -28,7 +28,7 @@ function makeField(field: PaletteField): FormField {
   return { id: 'field_' + crypto.randomUUID(), type: field.type, label: field.label, required: field.required ?? false, ...(field.mapToField ? { mapToField: field.mapToField } : {}), ...(field.customFieldId ? { customFieldId: field.customFieldId } : {}), ...(field.options ? { options: [...field.options] } : {}) };
 }
 export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormRecord; onBack: () => void; onFormUpdate: (form: FormRecord) => void }) {
-  const { products } = useProductInterests();
+  const { products, categories } = useProductInterests();
   const { userCan } = useAuth();
   const router = useRouter();
   const canEdit = userCan('forms', 'canEdit');
@@ -147,7 +147,7 @@ export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormReco
           <div className="flex-1 min-w-0 bg-muted p-3 sm:p-6 space-y-4">
             <label className="block text-xs text-muted-foreground">Form name<span className="text-red-600" aria-hidden="true"> *</span><input aria-label="Form name" required aria-invalid={nameInvalid} aria-describedby={nameInvalid ? 'form-name-error' : undefined} className="block mt-1 w-full border rounded bg-card text-foreground p-2 text-sm" maxLength={200} value={local.name} onChange={e => { setNameInvalid(false); change({ name: e.target.value }); }} /></label>
             {nameInvalid && <p id="form-name-error" className="text-xs text-red-600">Form name is required.</p>}
-            <FormCanvas fields={withProductOptions(local.fields, products)} catalog={catalog.data} design={local.design} onChange={fields => change({ fields })} />
+            <FormCanvas fields={withProductOptions(local.fields, products)} productCatalog={{ products, categories }} catalog={catalog.data} design={local.design} onChange={fields => change({ fields })} />
           </div>
           <aside aria-label="Form tools" className={panelThemeClass + " hidden xl:flex w-64 shrink-0 flex-col border-l max-h-[var(--app-viewport-height)] overflow-y-auto overscroll-contain"}>{dockedTools && panelContent}</aside>
         </div>}
