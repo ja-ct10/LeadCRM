@@ -38,13 +38,73 @@ it.each(['draft', 'published'] as const)('keeps saved native Lead Source identit
 const permissions = vi.hoisted(() => ({ edit: true, publish: true }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ tenant: { id: 'tenant' }, user: { }, userCan: (_module: string, permission: string) => permission === 'canEdit' ? permissions.edit : permission === 'canPublish' ? permissions.publish : true }) }));
 const products = [{ id: '0ff82f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Smart Lock', dealValue: 5000, active: true, createdAt: '', updatedAt: '' }];
-vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ products: [], loading: false, error: '' }) }));
+const productCatalog = vi.hoisted(() => ({ products: [] as import('@leadcrm/shared').ProductInterest[], categories: [] as string[] }));
+vi.mock('@/shared/hooks/use-product-interests', () => ({ useProductInterests: () => ({ ...productCatalog, loading: false, error: '' }) }));
 vi.mock('@/shared/hooks/use-cached-page', () => ({ useCachedPage: () => ({ data: getCrmFieldCatalog('leads', [{ ...ClosingFieldInputSchema.parse({ name: 'Age', type: 'Number', module: 'leads', group: 'Basic Information', required: false }), id: 'age', version: 1 }]), isInitialLoad: false, error: null, refetch: vi.fn() }) }));
 const form = { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, products), id: 'form', tenantId: 'tenant', publicId: 'public', revision: 0, publishedRevision: null, publishedVersion: 0, status: 'draft' as const, createdAt: '', updatedAt: '' };
-beforeEach(() => { vi.resetAllMocks(); permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
+beforeEach(() => { vi.resetAllMocks(); productCatalog.products = []; productCatalog.categories = []; permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
   const unloadPrevented = () => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; };
+
+  it('filters builder preview selections without changing saved fields or dirty state', async () => {
+    const network = { ...products[0], id: '87582f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Network', category: 'Network' };
+    productCatalog.products = [{ ...products[0], category: 'Security' }, network];
+    productCatalog.categories = ['Security', 'Empty', 'Network'];
+    const saved = { ...form, fields: withProductOptions(form.fields, productCatalog.products) };
+    vi.mocked(service.updateForm).mockImplementation(async (_id, dto) => ({ ...saved, ...dto, revision: 1 }));
+    render(<FormBuilderPage form={saved} onBack={vi.fn()} onFormUpdate={vi.fn()} />);
+    const category = screen.getByLabelText('Product category');
+    const list = screen.getByRole('group', { name: 'Product Interest' });
+    expect(category.compareDocumentPosition(list) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(category).toHaveProperty('value', '');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Smart Lock' }));
+    fireEvent.change(category, { target: { value: 'Network' } });
+    expect(screen.queryByRole('checkbox', { name: 'Smart Lock' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Network' }));
+    fireEvent.change(category, { target: { value: '' } });
+    expect(screen.getByRole('checkbox', { name: 'Smart Lock' })).toHaveProperty('checked', true);
+    expect(screen.getByRole('checkbox', { name: 'Network' })).toHaveProperty('checked', true);
+    expect(screen.queryByText('Unsaved changes')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Save draft' })).toHaveProperty('disabled', true);
+    expect(unloadPrevented()).toBe(false);
+    expect(screen.getByLabelText('Drag Product Interest')).toBeTruthy();
+    expect(screen.getByLabelText('Edit Product Interest')).toBeTruthy();
+    expect(screen.getByLabelText('Remove Product Interest')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Form name'), { target: { value: 'Saved preview' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(service.updateForm).toHaveBeenCalled());
+    expect(vi.mocked(service.updateForm).mock.calls[0][1].fields).toEqual(saved.fields);
+    expect(vi.mocked(service.updateForm).mock.calls[0][1]).not.toHaveProperty('productCatalog');
+  });
+
+  it('validates all selected Product IDs and submits hidden selections without category data', async () => {
+    const catalog = { products: [{ ...products[0], category: 'Security' }, { ...products[0], id: '87582f9c-48e9-4e1c-8c77-8a30755d704c', name: 'Network', category: 'Network' }], categories: ['Security', 'Network', 'Empty'] };
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => ({ data: { ...defaultContactForm(), fields: withProductOptions(defaultContactForm().fields, catalog.products), productCatalog: catalog, version: 1, trackUrlParams: false } }) }).mockResolvedValueOnce({ ok: true, json: async () => ({ success: true }) });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PublicFormPage publicId="public" />);
+    await screen.findByText('Contact Us');
+    fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } });
+    fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Visitor' } });
+    fireEvent.change(screen.getByLabelText(/Email Address/), { target: { value: 'anne@example.com' } });
+    fireEvent.click(screen.getByText('Submit'));
+    expect(screen.getByRole('group', { name: 'Product Interest' }).getAttribute('aria-invalid')).toBe('true');
+    expect(document.activeElement?.id).toBe('input-productInterest');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Smart Lock' }));
+    const category = screen.getByLabelText('Product category');
+    fireEvent.change(category, { target: { value: 'Network' } });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Network' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Network' }));
+    fireEvent.change(category, { target: { value: 'Empty' } });
+    expect(screen.queryByRole('checkbox')).toBeNull();
+    fireEvent.click(screen.getByText('Submit'));
+    await screen.findByText('Thank you!');
+    const payload = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(payload.values).toEqual({ firstName: 'Anne', lastName: 'Visitor', email: 'anne@example.com', productInterest: [products[0].id] });
+    expect(payload).not.toHaveProperty('productCatalog');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
 
   it('leaves immediately when clean without saving or opening a confirmation', () => {
     const back = vi.fn(); render(<FormBuilderPage form={form} onBack={back} onFormUpdate={vi.fn()} />);

@@ -5,6 +5,7 @@ import { tenantContext } from '../../../core/tenant/tenant-context';
 import { findUserEffectivePermissions } from '../../administration/roles/roles.repository';
 import { AppError } from '../../../shared/errors/app-error';
 import type { AuthenticatedUser } from '../../../api/middleware/auth.middleware';
+import { staleDealCutoff } from '../../crm/deals/deal-staleness';
 
 export async function dashboardAccess(identity: AuthenticatedUser) {
   const user = await prisma.user.findFirst({ where: { id: identity.userId, tenantId: identity.tenantId, status: 'ACTIVE' }, select: { role: true } });
@@ -171,7 +172,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
         WHERE ${scope} AND ${resolved} AND d."stageId" = ${won.id} AND ${credited}
         GROUP BY u.id, u."firstName", u."lastName" ORDER BY revenue DESC NULLS LAST, won DESC, u.id ASC`);
       const excluded = await tx.deal.count({ where: { tenantId, isArchived: false, deletedAt: null, pipelineId: { not: pipeline.id } } });
-      if (excluded) result.warnings.push(`${excluded} visible deals outside the authoritative Sales Pipeline are excluded; no records were changed.`);
+      if (excluded) result.warnings.push(`${excluded} visible deals outside the authoritative Sales Pipeline are excluded from sales metrics; no records were changed.`);
       if (totals.currencyExcluded) result.warnings.push(`${totals.currencyExcluded} deals have another or unknown currency and are excluded from ${currency} monetary totals.`);
       if (totals.monetaryMissing) result.warnings.push(`${totals.monetaryMissing} deals have missing or invalid amounts; affected monetary totals are unavailable.`);
       if (totals.closingDateMissing) result.warnings.push(`${totals.closingDateMissing} closed deals have missing or invalid closing dates and are excluded from period results.`);
@@ -202,12 +203,12 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       result.actions.push(...leads.map(lead => ({ id: lead.id, kind: 'lead' as const, title: `${lead.firstName} ${lead.lastName}`,
         priority: 'High', dueDate: null, overdue: false, href: `/crm/leads/${encodeURIComponent(lead.id)}` })));
     }
-    if (access.deals && result.pipeline) {
-      const stages = await tx.stage.findMany({ where: { tenantId, pipelineId: result.pipeline.id, isWon: false, isLost: false, rottenAfterDays: { not: null } },
-        select: { id: true, rottenAfterDays: true } });
+    if (access.deals) {
+      const stages = await tx.stage.findMany({ where: { tenantId, pipeline: { tenantId, isArchived: false }, isWon: false, isLost: false, rottenAfterDays: { not: null } },
+        select: { id: true, pipelineId: true, rottenAfterDays: true } });
       if (stages.length) {
-        const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null, ...ownerScope, OR: stages.map(stage => ({ stageId: stage.id,
-          OR: [{ stageChangedAt: { lt: new Date(+now - stage.rottenAfterDays! * 86400000) } }, { stageChangedAt: null, createdAt: { lt: new Date(+now - stage.rottenAfterDays! * 86400000) } }] })) };
+        const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null, ...ownerScope, OR: stages.map(stage => ({ stageId: stage.id, pipelineId: stage.pipelineId,
+          OR: [{ stageChangedAt: { lte: staleDealCutoff(stage.rottenAfterDays!, now) } }, { stageChangedAt: null, createdAt: { lte: staleDealCutoff(stage.rottenAfterDays!, now) } }] })) };
         const [count, deals] = await Promise.all([tx.deal.count({ where }), tx.deal.findMany({ where,
           orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], select: { id: true, title: true, priority: true } })]);
         result.pendingActions += count;

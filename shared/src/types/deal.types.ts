@@ -12,6 +12,15 @@ import type { DealAssociationChange } from '../contracts/deal-batch';
 /** Possible priority values for a Deal. */
 export type DealPriority = 'LOW' | 'MEDIUM' | 'HIGH';
 
+/** Read-only attention indicator evaluated using the server clock. */
+export interface DealStaleness {
+  stageId: string;
+  stageName: string;
+  thresholdDays: number | null;
+  daysInStage: number;
+  isStale: boolean;
+}
+
 /**
  * Core Deal entity as returned by the list and detail API endpoints.
  * Maps to the Prisma `Deal` model in the backend.
@@ -44,6 +53,7 @@ export interface Deal {
   isArchived?: boolean;
   createdAt: string;
   updatedAt?: string;
+  staleness?: DealStaleness;
 
   // Joined relations (included in list/detail responses)
   stage?: { id: string; name: string; order: number };

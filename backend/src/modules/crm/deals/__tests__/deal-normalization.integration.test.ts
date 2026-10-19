@@ -33,6 +33,14 @@ beforeAll(async () => {
 afterAll(async () => { await db?.$disconnect(); await socket?.stop(); await pg?.close(); });
 
 describe('normalized Deal writes', () => {
+  it('preserves stage entry while editing Deal information, priority and notes', async () => {
+    const enteredAt = new Date('2020-01-01T04:23:45Z');
+    await db.deal.update({ where: { id: 'deal' }, data: { stageChangedAt: enteredAt } });
+    await update('deal', 'tenant-a', { priority: 'HIGH', title: 'Edited opportunity' }, 'actor');
+    await db.activity.create({ data: { tenantId: 'tenant-a', dealId: 'deal', type: 'note', title: 'Follow-up note', createdById: 'actor' } });
+    expect(await db.deal.findUniqueOrThrow({ where: { id: 'deal' } })).toMatchObject({ stageChangedAt: enteredAt, stageId: 'stage', value: 12500 });
+    await db.deal.update({ where: { id: 'deal' }, data: { title: 'Original' } });
+  });
   it('rolls back scalar and contact edits when a later lead association fails', async () => {
     const before = await db.deal.findUniqueOrThrow({ where: { id: 'deal' } });
     await expect(update('deal', 'tenant-a', { title: 'Must roll back', contactIds: ['new-contact'], leadIds: ['missing-lead'] }, 'actor')).rejects.toThrow();

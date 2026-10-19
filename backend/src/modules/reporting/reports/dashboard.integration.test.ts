@@ -385,6 +385,73 @@ describe('authoritative dashboard', () => {
       await db.deal.updateMany({ where: { id: { startsWith: 'scroll-' } }, data: { isArchived: true } });
     }
   });
+  it('matches server card staleness at exact thresholds across active pipelines and preserves action scope', async () => {
+    const { presentDealResponse } = await import('../../crm/deals/deal-presentation');
+    const day = 86400000;
+    const previous = await db.stage.findUniqueOrThrow({ where: { id: 'qualified' } });
+    const ids: string[] = [];
+    await db.pipeline.createMany({ data: [
+      { id: 'stale-custom', tenantId: 'a', name: 'Custom follow-up' },
+      { id: 'stale-archived-pipeline', tenantId: 'a', name: 'Archived', isArchived: true },
+    ] });
+    await db.stage.createMany({ data: [
+      { id: 'stale-custom-stage', tenantId: 'a', pipelineId: 'stale-custom', name: 'Review', order: 0, rottenAfterDays: 7 },
+      { id: 'stale-disabled', tenantId: 'a', pipelineId: 'stale-custom', name: 'No timer', order: 1 },
+      { id: 'stale-won', tenantId: 'a', pipelineId: 'stale-custom', name: 'Custom success', order: 2, isWon: true, rottenAfterDays: 1 },
+      { id: 'stale-lost', tenantId: 'a', pipelineId: 'stale-custom', name: 'Custom loss', order: 3, isLost: true, rottenAfterDays: 1 },
+      { id: 'stale-archived-stage', tenantId: 'a', pipelineId: 'stale-archived-pipeline', name: 'Review', order: 0, rottenAfterDays: 1 },
+    ] });
+    const create = async (id: string, stageId: string, extra = {}) => {
+      ids.push(id);
+      return deal(id, stageId, 100, { pipelineId: stageId === 'qualified' ? 'sales' : 'stale-custom', stageChangedAt: new Date(+now - 14 * day), ...extra });
+    };
+    try {
+      await db.stage.update({ where: { id: 'qualified' }, data: { rottenAfterDays: 14 } });
+      await create('stale-before', 'qualified', { stageChangedAt: new Date(+now - 14 * day + 1) });
+      await create('stale-exact', 'qualified');
+      await create('stale-after', 'qualified', { stageChangedAt: new Date(+now - 15 * day) });
+      await create('stale-fallback', 'qualified', { stageChangedAt: null, createdAt: new Date(+now - 14 * day), updatedAt: now });
+      await create('stale-new-stage', 'qualified', { stageChangedAt: now });
+      await create('stale-custom-exact', 'stale-custom-stage', { stageChangedAt: new Date(+now - 7 * day) });
+      await create('stale-other-agent', 'stale-custom-stage', { assignedUserId: 'other-agent' });
+      await create('stale-null', 'stale-disabled');
+      await create('stale-terminal-won', 'stale-won');
+      await create('stale-terminal-lost', 'stale-lost');
+      await create('stale-archived', 'qualified', { isArchived: true });
+      await create('stale-deleted', 'qualified', { deletedAt: now });
+      await create('stale-inactive', 'stale-archived-stage', { pipelineId: 'stale-archived-pipeline' });
+      ids.push('stale-foreign');
+      await db.stage.update({ where: { id: 'foreign-qualified' }, data: { rottenAfterDays: 1 } });
+      await db.deal.create({ data: { id: 'stale-foreign', tenantId: 'b', title: 'Foreign', pipelineId: 'foreign-sales', stageId: 'foreign-qualified', ownerId: 'foreign', createdAt: new Date(+now - 30 * day) } });
+      const before = await db.deal.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' } });
+      const counts = [await db.notification.count(), await db.task.count()];
+      const rows = before.filter(row => row.tenantId === 'a');
+      const cards = await scoped(() => presentDealResponse('a', rows, now)) as Array<(typeof rows)[number] & { staleness: { isStale: boolean; thresholdDays: number | null } }>;
+      const expected = ['stale-after', 'stale-custom-exact', 'stale-exact', 'stale-fallback', 'stale-other-agent'].sort();
+      const actions = (await report()).actions.filter(row => ids.includes(row.id));
+      expect(actions.map(row => row.id).sort()).toEqual(expected);
+      expect(cards.filter(row => row.staleness.isStale).map(row => row.id).sort()).toEqual(expected);
+      expect(cards.find(row => row.id === 'stale-custom-exact')!.staleness.thresholdDays).toBe(7);
+      expect(actions.find(row => row.id === 'stale-exact')).toMatchObject({ title: 'stale-exact', priority: 'MEDIUM', href: '/crm/deals/stale-exact' });
+      expect((await scoped(() => dashboard(agent, query, now))).actions.filter(row => ids.includes(row.id)).map(row => row.id).sort()).toEqual(expected.filter(id => id !== 'stale-other-agent'));
+      await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: false } });
+      expect((await scoped(() => dashboard(agent, query, now))).actions.some(row => row.kind === 'deal')).toBe(false);
+      expect(await db.deal.findMany({ where: { id: { in: ids } }, orderBy: { id: 'asc' } })).toEqual(before);
+      expect([await db.notification.count(), await db.task.count()]).toEqual(counts);
+      await scoped(() => move('stale-exact', 'a', 'contacted', 'admin'));
+      expect((await report()).actions.some(row => row.id === 'stale-exact')).toBe(false);
+      const moved = await db.deal.findUniqueOrThrow({ where: { id: 'stale-exact' } });
+      const card = await scoped(() => presentDealResponse('a', moved, moved.stageChangedAt!)) as typeof moved & { staleness: { isStale: boolean; daysInStage: number } };
+      expect(card.staleness).toMatchObject({ isStale: false, daysInStage: 0 });
+    } finally {
+      await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: true } });
+      await db.stage.update({ where: { id: 'qualified' }, data: { rottenAfterDays: previous.rottenAfterDays } });
+      await db.stage.update({ where: { id: 'foreign-qualified' }, data: { rottenAfterDays: null } });
+      await db.deal.deleteMany({ where: { id: { in: ids } } });
+      await db.stage.deleteMany({ where: { pipelineId: { in: ['stale-custom', 'stale-archived-pipeline'] } } });
+      await db.pipeline.deleteMany({ where: { id: { in: ['stale-custom', 'stale-archived-pipeline'] } } });
+    }
+  });
   it('enforces staff scope, module restrictions, HTTP auth, exports and cross-tenant requests', async () => {
     const organization = await scoped(() => dashboard(agent, query, now));
     expect(organization.scope).toBe('organization'); expect(organization.metrics).toEqual((await report()).metrics);

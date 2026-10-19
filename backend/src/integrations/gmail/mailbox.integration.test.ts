@@ -593,6 +593,8 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
 
   it('keeps outbound Warm and every genuine recent reply Hot without moving Deals', async () => {
     const c = await customer();
+    const enteredAt = before(30);
+    await prisma.deal.update({ where: { id: c.deals[0].id }, data: { stageChangedAt: enteredAt } });
     await ingest([message(c.thread, c.email, 'outbound', 'We approve the quotation. Please proceed with the order.', 8)]);
     expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
     await ingest([message(c.thread, c.email, 'inbound', 'Could you please send me the available options and a quotation?', 7)]);
@@ -601,6 +603,7 @@ describe.skipIf(!disposable)('mailbox database and authenticated HTTP', () => {
     expect((await read(c.lead.id)).status).toBe('Warm');
     await ingest([message(c.thread, c.email, 'inbound', 'The quotation is acceptable.', 5)]);
     expect((await read(c.lead.id)).status).toBe('Warm'); expect(await stageOf(c.deals[0].id)).toBe('Lead');
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: c.deals[0].id } })).stageChangedAt).toEqual(enteredAt);
   });
 
   it('enforces required names, trims valid edits and preserves create email validation over HTTP', async () => {

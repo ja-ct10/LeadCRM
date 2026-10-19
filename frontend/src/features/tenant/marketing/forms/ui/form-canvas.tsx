@@ -4,11 +4,12 @@ import { GripVertical, Settings2, Trash2 } from 'lucide-react';
 import { SortableContext, useSortable, rectSortingStrategy } from '@dnd-kit/sortable';
 import { useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { type CrmFieldCatalogEntry, type FormField, type FormDesign } from '@leadcrm/shared';
+import { type CrmFieldCatalogEntry, type FormField, type FormDesign, type FormProductCatalog } from '@leadcrm/shared';
 import { FormInput } from './form-input';
 export const CANVAS_DROPPABLE_ID = 'form-canvas';
-function FieldRow({ field, design, configured, onUpdate, onRemove }: { field: FormField; design: FormDesign; configured?: CrmFieldCatalogEntry; onUpdate: (patch: Partial<FormField>) => void; onRemove: () => void }) {
+function FieldRow({ field, design, configured, onUpdate, onRemove, productCatalog }: { field: FormField; design: FormDesign; configured?: CrmFieldCatalogEntry; onUpdate: (patch: Partial<FormField>) => void; onRemove: () => void; productCatalog?: FormProductCatalog }) {
   const [editing, setEditing] = useState(false);
+  const [previewProducts, setPreviewProducts] = useState<string[]>([]);
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: field.id });
   const layout = ['header', 'heading', 'paragraph', 'divider'].includes(field.type);
   return <div ref={setNodeRef} style={{ transform: CSS.Transform.toString(transform), transition, opacity: isDragging ? .4 : 1 }} className={'min-w-0 p-1 ' + (field.width === 'half' ? '' : 'sm:col-span-2')}>
@@ -17,7 +18,7 @@ function FieldRow({ field, design, configured, onUpdate, onRemove }: { field: Fo
       <button type="button" aria-label={'Edit ' + field.label} aria-expanded={editing} onClick={() => setEditing(v => !v)} className="p-2"><Settings2 size={14} /></button>
       <button type="button" aria-label={'Remove ' + field.label} onClick={onRemove} className="p-2 text-red-600"><Trash2 size={14} /></button>
     </div>
-    <FormInput field={field} design={design} onChange={() => {}} />
+    <FormInput field={field} design={design} productCatalog={productCatalog} value={field.mapToField === 'productInterest' ? previewProducts : undefined} onChange={value => { if (field.mapToField === 'productInterest' && Array.isArray(value)) setPreviewProducts(value); }} />
     {editing && <div className="mt-3 p-3 bg-card border border-border rounded-md text-foreground text-xs space-y-3">
       <label className="block">Label<input className="w-full p-2 border rounded mt-1" value={field.label} maxLength={500} onChange={e => onUpdate({ label: e.target.value })} /></label>
       {!layout && <>
@@ -33,12 +34,12 @@ function FieldRow({ field, design, configured, onUpdate, onRemove }: { field: Fo
     </div>}
   </div>;
 }
-export function FormCanvas({ fields, catalog = [], design, onChange }: { fields: FormField[]; catalog?: CrmFieldCatalogEntry[]; design: FormDesign; onChange: (fields: FormField[]) => void }) {
+export function FormCanvas({ fields, catalog = [], design, onChange, productCatalog }: { fields: FormField[]; catalog?: CrmFieldCatalogEntry[]; design: FormDesign; onChange: (fields: FormField[]) => void; productCatalog?: FormProductCatalog }) {
   const { setNodeRef, isOver } = useDroppable({ id: CANVAS_DROPPABLE_ID });
   return <div className="max-w-2xl mx-auto min-w-0">
     <div ref={setNodeRef} className={'border rounded-t-lg p-3 sm:p-6 ' + (isOver ? 'ring-2 ring-ring' : '')} style={{ backgroundColor: design.generalBg || '#fff', borderColor: design.generalBorder || '#e2e8f0', color: design.generalText || '#0f172a' }}>
       {!fields.length && <p className="py-12 text-center text-sm text-slate-500">Open Fields below to add your first field.</p>}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><SortableContext items={fields.map(f => f.id)} strategy={rectSortingStrategy}>{fields.map(f => <FieldRow key={f.id} field={f} design={design} configured={catalog.find(item => f.customFieldId ? item.customFieldId === f.customFieldId : item.technicalKey === f.mapToField)} onUpdate={patch => onChange(fields.map(old => old.id === f.id ? { ...old, ...patch } : old))} onRemove={() => onChange(fields.filter(old => old.id !== f.id))} />)}</SortableContext></div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4"><SortableContext items={fields.map(f => f.id)} strategy={rectSortingStrategy}>{fields.map(f => <FieldRow key={f.id} field={f} design={design} productCatalog={productCatalog} configured={catalog.find(item => f.customFieldId ? item.customFieldId === f.customFieldId : item.technicalKey === f.mapToField)} onUpdate={patch => onChange(fields.map(old => old.id === f.id ? { ...old, ...patch } : old))} onRemove={() => onChange(fields.filter(old => old.id !== f.id))} />)}</SortableContext></div>
       <button type="button" className="w-full border rounded-md mt-6 p-3 text-sm font-semibold" style={{ backgroundColor: design.buttonBg || '#2563eb', borderColor: design.buttonBorder || '#2563eb', color: design.buttonText || '#fff' }}>Submit</button>
     </div>
     <div className="bg-slate-50 text-slate-700 border border-t-0 rounded-b-lg p-6 text-center space-y-2"><h2 className="text-xl font-bold">Thank you!</h2><p className="text-sm font-semibold">Thank you for submitting the form.</p><p className="text-xs">Your submission has been received.<br />We will get back to you shortly.</p></div>

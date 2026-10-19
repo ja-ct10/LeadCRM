@@ -246,6 +246,7 @@ export function toFrontendDeal(backendDeal: any): any {
     order: typeof backendDeal.order === 'number' ? backendDeal.order : 0,
     createdAt: backendDeal.createdAt || new Date().toISOString(),
     updatedAt: backendDeal.updatedAt || undefined,
+    staleness: backendDeal.staleness,
     lastStageChangeDate: lastStageChangeDate || backendDeal.stageChangedAt || undefined,
     address: backendDeal.address || undefined,
     addressSource: backendDeal.addressSource,
