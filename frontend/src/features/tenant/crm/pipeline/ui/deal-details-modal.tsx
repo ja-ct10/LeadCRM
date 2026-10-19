@@ -33,7 +33,6 @@ interface EditFields {
   assignedUserId: string;
   stageId: string;
   leadSource: string;
-  industry: string;
   address: string;
   productInterests: string;
   campaign: string;
@@ -97,7 +96,6 @@ function buildEditFields(deal: Deal): EditFields {
     assignedUserId: deal.assignedUserId || '',
     stageId: deal.stageId || '',
     leadSource: deal.leadSource || '',
-    industry: deal.industry || '',
     address: deal.address || '',
     productInterests: deal.productInterests ? deal.productInterests.join(', ') : '',
     campaign: deal.campaign || '',
@@ -362,11 +360,6 @@ export function DealDetailsModal({
                         className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
                     </div>
                     <div>
-                      <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Industry</label>
-                      <input type="text" value={editFields.industry} onChange={e => setEditFields({ ...editFields, industry: e.target.value })}
-                        className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
-                    </div>
-                    <div>
                       <label className="block text-xs font-bold text-slate-500 uppercase tracking-widest mb-1.5">Product Interests (comma separated)</label>
                       <input type="text" value={editFields.productInterests} onChange={e => setEditFields({ ...editFields, productInterests: e.target.value })}
                         className="w-full bg-white dark:bg-slate-900 border border-gray-200 dark:border-white/[0.05] rounded-xl px-3 py-2 text-slate-900 dark:text-white text-sm focus:outline-none" />
@@ -430,7 +423,6 @@ export function DealDetailsModal({
                       { icon: <Tag size={14} />, label: 'Stage',
                         value: <span className="bg-primary/10 text-blue-400 px-2 py-0.5 rounded text-xs font-medium">{currentStageName}</span> },
                       { icon: <span>🌐</span>, label: 'Contact Source', value: deal.leadSource || '—' },
-                      { icon: <span>🏭</span>, label: 'Industry',       value: deal.industry    || '—' },
                       { icon: <span>📌</span>, label: 'Product Interests', value: deal.productInterests?.length ? deal.productInterests.join(', ') : '—' },
                       { icon: <span>📍</span>, label: 'Address',        value: deal.address     || '—' },
                       { icon: <span>📣</span>, label: 'Campaign',       value: deal.campaign    || '—' },

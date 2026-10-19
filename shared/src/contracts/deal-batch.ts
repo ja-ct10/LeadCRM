@@ -1,9 +1,7 @@
 import { z } from 'zod';
 import { CustomFieldValuesSchema } from './closing-requirements';
-import { COMPANY_INDUSTRIES } from '../constants/company-industries';
 import { ProductInterestIdSchema } from './product-interests.contract';
 
-export const DealIndustrySchema = z.enum(COMPANY_INDUSTRIES);
 const text = (max: number) => z.string().trim().max(max).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Unsupported control characters.');
 const id = z.string().min(1);
 export const DealAssociationSchema = z.object({ type: z.enum(['lead', 'contact']), id }).strict();
@@ -35,7 +33,7 @@ export const CreateDealBatchSchema = z.object({
   expectedCloseDate: z.string().datetime().optional(),
   accountId: id.optional(), assignedUserId: id.optional(),
   contactIds: z.array(id).max(100).optional(), leadIds: z.array(id).max(100).optional(),
-  leadSource: text(255).optional(), industry: DealIndustrySchema.optional(), address: text(10000).optional(),
+  leadSource: text(255).optional(), address: text(10000).optional(),
   productInterestOther: text(1000).nullable().optional(),
 }).strict();
 export const ManualCreateDealBatchSchema = CreateDealBatchSchema.superRefine(validateManualDealAssociation);

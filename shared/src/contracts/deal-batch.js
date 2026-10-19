@@ -1,14 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.ManualCreateDealBatchSchema = exports.CreateDealBatchSchema = exports.DealAssociationChangeSchema = exports.DealAssociationSchema = exports.DealIndustrySchema = void 0;
+exports.ManualCreateDealBatchSchema = exports.CreateDealBatchSchema = exports.DealAssociationChangeSchema = exports.DealAssociationSchema = void 0;
 exports.dealAssociationPatch = dealAssociationPatch;
 exports.validateManualDealAssociation = validateManualDealAssociation;
 exports.productDealTitle = productDealTitle;
 const zod_1 = require("zod");
 const closing_requirements_1 = require("./closing-requirements");
-const company_industries_1 = require("../constants/company-industries");
 const product_interests_contract_1 = require("./product-interests.contract");
-exports.DealIndustrySchema = zod_1.z.enum(company_industries_1.COMPANY_INDUSTRIES);
 const text = (max) => zod_1.z.string().trim().max(max).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Unsupported control characters.');
 const id = zod_1.z.string().min(1);
 exports.DealAssociationSchema = zod_1.z.object({ type: zod_1.z.enum(['lead', 'contact']), id }).strict();
@@ -38,7 +36,7 @@ exports.CreateDealBatchSchema = zod_1.z.object({
     expectedCloseDate: zod_1.z.string().datetime().optional(),
     accountId: id.optional(), assignedUserId: id.optional(),
     contactIds: zod_1.z.array(id).max(100).optional(), leadIds: zod_1.z.array(id).max(100).optional(),
-    leadSource: text(255).optional(), industry: exports.DealIndustrySchema.optional(), address: text(10000).optional(),
+    leadSource: text(255).optional(), address: text(10000).optional(),
     productInterestOther: text(1000).nullable().optional(),
 }).strict();
 exports.ManualCreateDealBatchSchema = exports.CreateDealBatchSchema.superRefine(validateManualDealAssociation);

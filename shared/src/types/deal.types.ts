@@ -32,7 +32,6 @@ export interface Deal {
   contactId?: string;
   contactIds?: string[];
   leadIds?: string[];
-  industry?: string;
   address?: string;
   productInterests?: string[];
   productInterestId?: string;
@@ -68,7 +67,6 @@ export interface CreateDealRequest {
   assignedUserId?: string;
   contactIds?: string[];
   leadIds?: string[];
-  industry?: string;
   address?: string;
   productInterests?: string[];
 }
@@ -90,7 +88,6 @@ export interface UpdateDealRequest {
   assignedUserId?: string;
   contactIds?: string[];
   leadIds?: string[];
-  industry?: string;
   address?: string;
   productInterests?: string[];
 }

@@ -13,7 +13,6 @@ import React, { useEffect, useRef, useMemo, useState } from 'react';
 import { useForm, Controller } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { COMPANY_INDUSTRIES, DealIndustrySchema } from '@leadcrm/shared';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { useData } from '@/store/DataContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -52,7 +51,6 @@ const CreateDealFormSchema = z.object({
   assignedUserId: z.string().optional(),
   contactIds: z.array(z.string()).optional(),
   leadIds: z.array(z.string()).optional(),
-  industry: z.union([DealIndustrySchema, z.literal('')]).optional(),
   address: z.string().optional(),
   productInterests: z.array(z.string().uuid()).min(1, 'Select at least one Product Interest.').max(100),
 }).superRefine(validateAssociation);
@@ -68,7 +66,6 @@ const UpdateDealFormSchema = z.object({
   assignedUserId: z.string().optional(),
   contactIds: z.array(z.string()).optional(),
   leadIds: z.array(z.string()).optional(),
-  industry: z.string().optional(),
   address: z.string().optional(),
   productInterests: z.array(z.string()).min(1, 'Select at least one Product Interest.').optional(),
 }).superRefine((data, ctx) => { if (data.associationChanged) validateAssociation(data, ctx); });
@@ -122,7 +119,7 @@ export function DealForm({
   isLoading = false,
 }: DealFormProps): React.ReactElement {
   const customFields = useRecordCustomFields('deals', initialData?.id);
-  const { products, loading: productsLoading, error: productsError, refresh: refreshProducts } = useProductInterests();
+  const { products, categories, loading: productsLoading, error: productsError, refresh: refreshProducts } = useProductInterests();
   const { pipelines: allPipelines } = useData();
   const pipelines = useMemo(() => allPipelines.filter(p => !p.isArchived), [allPipelines]);
   const canCreate = useHasPermission('deals.create');
@@ -158,7 +155,6 @@ export function DealForm({
         assignedUserId: '',
         contactIds: [] as string[],
         leadIds: [] as string[],
-        industry: '',
         address: '',
         productInterests: [] as string[],
       };
@@ -179,7 +175,6 @@ export function DealForm({
       assignedUserId: initialData?.assignedUserId || '',
       contactIds: initialData?.contactIds || [],
       leadIds: (initialData as any)?.leadIds || [],
-      industry: initialData?.industry || '',
       address: initialData?.address || '',
       productInterests: initialData?.productInterestIds?.length ? initialData.productInterestIds : initialData?.productInterestId ? [initialData.productInterestId] : undefined,
     };
@@ -258,7 +253,6 @@ export function DealForm({
         leadIds: associationType === 'lead' ? [associationId!] : undefined,
         contactIds: associationType === 'contact' ? [associationId!] : undefined,
       } : associationChanged ? { primaryAssociation: { type: associationType as 'lead' | 'contact', id: associationId!, previous: initialAssociation } } : {}),
-      industry: isCreateMode ? data.industry || undefined : data.industry,
       address: isCreateMode ? data.address || undefined : data.address,
       productInterests: undefined,
     };
@@ -338,7 +332,7 @@ export function DealForm({
               name="productInterests"
               control={control}
               render={({ field }) => (
-                <ProductInterestSelect products={products} disabled={!isCreateMode || productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
+                <ProductInterestSelect products={products} categories={categories} showUncategorized={false} disabled={!isCreateMode || productsLoading || isSubmitting || isLoading} id={`${fieldId}-product-interest`} values={field.value || []} onChange={field.onChange} />
               )}
             />
           {productsError && <Button type="button" variant="ghost" onClick={refreshProducts}>Retry products</Button>}
@@ -395,9 +389,6 @@ export function DealForm({
                 </select>
                 <ChevronDown size={13} className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400" />
               </div>
-            </FieldWrap>
-            <FieldWrap fieldKey="industry" htmlFor={`${fieldId}-industry`} error={errors.industry?.message} label="Industry">
-              {isCreateMode ? <select {...register('industry')} id={`${fieldId}-industry`} className={selectCls}><option value="">Select industry...</option>{COMPANY_INDUSTRIES.map(industry => <option key={industry} value={industry}>{industry}</option>)}</select> : <input {...register('industry')} id={`${fieldId}-industry`} className={inputCls} />}
             </FieldWrap>
           </div>
           <FieldWrap fieldKey="address" htmlFor={`${fieldId}-address`} error={errors.address?.message} label="Address">

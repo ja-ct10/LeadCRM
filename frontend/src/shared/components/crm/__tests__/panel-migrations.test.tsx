@@ -241,6 +241,20 @@ beforeEach(() => {
   });
 });
 
+it.each(['page', 'panel'])('hides native and Account Industry in Deal Details while keeping Relationships on the %s', async surface => {
+  const original = mocks.get.getMockImplementation()!;
+  const account = { id: 'account-one', name: 'Linked Company', industry: 'Account industry stays private to Account views' };
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, industry: 'Retired Deal value', organization: account } } : original(path));
+  render(surface === 'panel' ? <CrmRecordPanel module="deals" id="one" open onOpenChange={() => {}} /> : <CrmRecordView module="deals" id="one" />);
+  await screen.findByRole('heading', { level: 1 });
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(await screen.findByRole('link', { name: 'Linked Company' })).toHaveProperty('href', expect.stringContaining('/crm/accounts/account-one'));
+  expect(screen.getByRole('button', { name: 'Relationships' })).toBeTruthy();
+  expect(screen.queryByText('Industry', { exact: true })).toBeNull();
+  expect(screen.queryByText('Retired Deal value')).toBeNull();
+  expect(screen.queryByText(account.industry)).toBeNull();
+});
+
 it.each((['leads', 'contacts', 'accounts'] as const).flatMap(module =>
   (module === 'accounts' ? ['Account Name'] : ['First Name', 'Last Name']).flatMap(label =>
     ['panel', 'page'].map(surface => ({ module, label, surface }))))

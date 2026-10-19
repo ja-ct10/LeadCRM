@@ -200,7 +200,7 @@ async function syncMailboxPass(tenantId: string, userId: string, trigger: 'manua
         await checkpoint({});
         // History contains unfiltered IDs. Inspect headers before fetching any body.
         const meta = await gmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(id)}?format=metadata&${MAILBOX_METADATA_HEADERS}`);
-        const email = parseGmailMessage(meta);
+        const email = parseGmailMessage(meta, 'metadata');
         const currentPermissions = await mailboxPermissions(tenantId, userId);
         if (!await prisma.emailAccount.findFirst({ where: { id: account.id, tenantId, userId, isActive: true }, select: { id: true } })) throw new AppError('Mailbox disconnected during synchronization.', 403);
         const currentScope = await resolveMailboxScope(account, currentPermissions);

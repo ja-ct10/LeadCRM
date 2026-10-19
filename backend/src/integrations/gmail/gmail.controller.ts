@@ -10,7 +10,7 @@ import { beginMailboxConnection, finishMailboxConnection } from './mailbox-auth.
 import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, associateMailboxDeal } from './mailbox-sync.service';
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
-import { readMailboxAttachment } from './mailbox-attachments';
+import { readMailboxAttachment, readMailboxContent } from './mailbox-attachments';
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export async function scheduledDetail(req: Request, res: Response, next: NextFunction) {
@@ -76,12 +76,17 @@ export async function conversationReadState(req: Request, res: Response, next: N
 }
 export async function attachment(req: Request, res: Response, next: NextFunction) {
   try {
-    const file = await readMailboxAttachment(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId), z.string().regex(/^[a-zA-Z0-9_-]+$/).max(2000).parse(req.params.attachmentId));
+    const file = await readMailboxAttachment(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId), z.string().regex(/^(?:[a-zA-Z0-9_-]+|part:[a-zA-Z0-9_.-]*)$/).max(2000).parse(req.params.attachmentId));
     const filename = file.filename.replace(/[\r\n/\\]/g, '_').slice(0, 1000) || 'attachment';
-    res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, char => '%' + char.charCodeAt(0).toString(16))}`);
     res.send(file.data);
   } catch (error) { next(error); }
+}
+export async function messageContent(req: Request, res: Response, next: NextFunction) {
+  try { res.json(await readMailboxContent(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId))); }
+  catch (error) { next(error); }
 }
 export async function threadReadState(req: Request, res: Response, next: NextFunction) {
   try { const { isRead } = MailboxReadStateSchema.parse(req.body); res.json(await mutateMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), isRead ? 'read' : 'unread')); } catch (error) { next(error); }

@@ -70,7 +70,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
   const canSubmit = actionAllowed && !!recordAccess.policy && (!initialData || recordAccess.canMutate(initialData));
   const customFields = useRecordCustomFields('contacts', initialData?.id);
   const organization = useOrganizationForm(initialData);
-  const { products: productRecords, loading: productsLoading, error: productError } = useProductInterests();
+  const { products: productRecords, categories, loading: productsLoading, error: productError } = useProductInterests();
   const { users } = useData();
   const isEdit = !!initialData;
   const [isSaving, setIsSaving] = useState(false);
@@ -279,7 +279,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             </FieldWrap>
 
             <FieldWrap fieldKey="productInterestIds" label="Product Interest">
-              <ProductInterestSelect products={productRecords} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true, shouldDirty: true })} disabled={productsLoading || !!productError} />
+              <ProductInterestSelect products={productRecords} categories={categories} showUncategorized={false} valueMode="name" values={selectedProducts} onChange={values => setValue('productInterest', values, { shouldValidate: true, shouldDirty: true })} disabled={productsLoading || !!productError} />
               {productError && <p role="alert" className="text-xs text-destructive">{productError}</p>}
             </FieldWrap>
           </div>

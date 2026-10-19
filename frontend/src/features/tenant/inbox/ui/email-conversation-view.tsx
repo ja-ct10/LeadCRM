@@ -1,10 +1,11 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import Link from 'next/link';
-import { Archive, ArrowLeft, Forward, Loader2, Reply, ReplyAll, Trash2 } from 'lucide-react';
+import { Archive, ArrowLeft, Loader2, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Badge } from '@/shared/components/ui/badge';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, type GmailEmail } from '../services/gmail.service';
 import type { MailboxConversationDetail } from '@leadcrm/shared';
-import { forwardDraft, replyDraft, replyAllDraft, type MailboxComposeDraft } from '../services/email-presentation';
+import { conversationNames, emailAddress, forwardDraft, replyDraft, type MailboxComposeDraft } from '../services/email-presentation';
 import type { ApiRequestError } from '@/lib/api/client';
 import EmailDetailView, { mailboxIconButton } from './email-detail-view';
 import ComposeModal from './compose-modal';
@@ -31,7 +32,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [error, setError] = useState(''), [loading, setLoading] = useState(true);
   const [deals, setDeals] = useState<{ id: string; title: string; stage: string }[]>([]);
-  const [canAssociate, setCanAssociate] = useState(false), [dealId, setDealId] = useState('');
+  const [canAssociate, setCanAssociate] = useState(false);
   const [busy, setBusy] = useState(false), [draft, setDraft] = useState<MailboxComposeDraft | null>(null);
   const [refresh, setRefresh] = useState(0), [cooldown, setCooldown] = useState(0);
   const pending = useRef(false);
@@ -56,7 +57,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
       if ('threads' in result) { setTopics(result.threads); setMessageCount(result.messageCount); }
       else { setDeals(result.dealOptions); setCanAssociate(result.canAssociateDeal); setMessageCount(ordered.length); }
       const latestId = ordered.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined)?.id;
-      setExpanded(previous => Object.fromEntries(ordered.map((message, index) => [message.id, previous[message.id] ?? (email.conversationId ? message.id === latestId : !message.isRead || index === ordered.length - 1)])));
+      setExpanded(previous => ({ ...previous, ...Object.fromEntries(ordered.map(message => [message.id, previous[message.id] ?? message.id === latestId])) }));
     }).catch(error => { if (active) failure(error); }).finally(() => { if (active) setLoading(false); });
     return () => { active = false; historyController.current?.abort(); if (historyGeneration.current === generation) historyGeneration.current++; };
   }, [email.conversationId, email.threadId, revision, refresh, failure]);
@@ -71,7 +72,8 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
       setMessages(previous => [...new Map([...previous, ...result.emails].map(message => [message.id, message])).values()]);
       setTopics(previous => [...new Map([...previous, ...result.threads].map(topic => [topic.threadId, topic])).values()]);
       setNextPageToken(result.nextPageToken); setMessageCount(result.messageCount);
-      setExpanded(previous => ({ ...previous, ...Object.fromEntries(result.emails.map(message => [message.id, false])) }));
+      const latestId = [...messages, ...result.emails].reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined)?.id;
+      setExpanded(previous => ({ ...previous, ...Object.fromEntries(result.emails.map(message => [message.id, previous[message.id] ?? message.id === latestId])) }));
     } catch (error) {
       if (generation !== historyGeneration.current) return;
       if ((error as ApiRequestError).code === 'MAILBOX_PAGE_CHANGED') { setMessages([]); setTopics([]); setRefresh(value => value + 1); }
@@ -86,55 +88,48 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
     finally { pending.current = false; setBusy(false); }
   };
   const latest = messages.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined);
-  const context = [...messages].reverse().find(message => message.leadId || message.contactId) ?? latest;
+  const participantNames = conversationNames({ ...email, participants: email.participants?.filter(name => name !== 'You') }, mailboxEmail);
+  const participantAddresses = email.correspondentAddresses ?? (email.direction === 'outbound' ? [...email.to, ...(email.cc ?? [])] : [email.from]).map(emailAddress).filter(address => address.toLowerCase() !== mailboxEmail?.toLowerCase());
+  const isExpanded = (message: GmailEmail) => expanded[message.id] ?? message.id === latest?.id;
+  const associationMessages = new Map<string, string>();
+  for (const message of messages) {
+    if (isExpanded(message) && !message.dealId && !associationMessages.has(message.threadId)) associationMessages.set(message.threadId, message.id);
+  }
   return <div className="flex h-full min-h-0 min-w-0 flex-col">
     <div role="toolbar" aria-label="Conversation actions" className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-2 sm:px-4">
       <button type="button" title="Back to inbox" aria-label="Back to inbox" className={mailboxIconButton} onClick={() => onBack()}><ArrowLeft size={18} /></button>
-      <span className="flex-1" />
+      <span className="min-w-0 flex-1 truncate text-sm font-semibold">Email Thread</span>
       {busy && <Loader2 aria-label="Updating conversation" className="h-4 w-4 animate-spin text-muted-foreground" />}
       <button type="button" title={email.conversationId ? 'Archive all authorized messages in this history' : 'Archive conversation'} aria-label="Archive conversation" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => void mutate(() => email.conversationId ? archiveGmailConversations([email.conversationId]) : archiveGmailThread(email.threadId), true)}><Archive size={18} /></button>
       <button type="button" title={email.conversationId ? 'Move all authorized messages in this history to trash' : 'Move conversation to trash'} aria-label="Move conversation to trash" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => void mutate(() => email.conversationId ? trashGmailConversations([email.conversationId]) : trashGmailThread(email.threadId), true)}><Trash2 size={18} /></button>
     </div>
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
-      <header className="space-y-3 border-b border-border px-3 py-5 sm:px-6">
-        <h1 className="text-lg font-semibold leading-relaxed [overflow-wrap:anywhere] sm:text-xl">{email.conversationId ? email.participants?.filter(name => name !== 'You').join(', ') || email.correspondentAddresses?.join(', ') || 'Correspondent history' : messages[0]?.subject || '(no subject)'}{messageCount > 1 && <span aria-label={`${messageCount} messages`} className="ml-2 inline-block rounded bg-muted px-1.5 align-middle text-xs font-normal text-muted-foreground">{messageCount}</span>}</h1>
-        {email.conversationId && <p className="text-xs text-muted-foreground">{email.correspondentAddresses?.join(', ')} · Toolbar actions apply to all accessible messages.</p>}
-        {!email.conversationId && context && <div className="space-y-2 text-xs">
-          <div className="flex flex-wrap gap-x-4 gap-y-2">
-            {context.leadId && <Link className="text-[var(--primary)] underline" href={`/crm/leads/${context.leadId}`}>View linked Lead</Link>}
-            {context.contactId && <Link className="text-[var(--primary)] underline" href={`/crm/contacts/${context.contactId}`}>View linked Contact</Link>}
-            {context.dealId && <Link className="text-[var(--primary)] underline" href={`/crm/deals/${context.dealId}`}>View related Deal</Link>}
-            {!context.leadId && !context.contactId && <span className="text-muted-foreground">No unique CRM email match.</span>}
-          </div>
-          {context.needsDealAssociation && <p className="text-muted-foreground">Select the relevant open Deal for this conversation. Association does not change its stage.</p>}
-          {canAssociate && deals.length > 0 && !context.dealId && <form className="flex min-w-0 flex-wrap items-center gap-2" onSubmit={event => { event.preventDefault(); if (dealId) void mutate(() => associateThreadDeal(email.threadId, dealId)); }}>
-            <select aria-label="Associate conversation with Deal" required disabled={busy} value={dealId} onChange={event => setDealId(event.target.value)} className="min-h-10 w-full min-w-0 rounded-lg border border-border bg-background px-2 text-xs focus-visible:outline-2 sm:w-80"><option value="">Select the relevant open Deal</option>{deals.map(deal => <option key={deal.id} value={deal.id}>{deal.title} · {deal.stage}</option>)}</select>
-            <button type="submit" disabled={!dealId || busy || paused} className={control}>Associate Deal</button>
-          </form>}
-          {(context.leadId || context.contactId) && !context.dealId && !deals.length && !loading && <p className="text-muted-foreground">No open Deal available.</p>}
-        </div>}
+      <header className="space-y-1 border-b border-border px-3 py-3 sm:px-6">
+        <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+          <h1 className="min-w-0 text-base font-semibold [overflow-wrap:anywhere]">{participantNames}</h1>
+          <Badge variant="secondary" className="shrink-0" aria-label={`${messageCount} ${messageCount === 1 ? 'message' : 'messages'}`}>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</Badge>
+        </div>
+        {!!participantAddresses.length && <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{participantAddresses.join(', ')}</p>}
         {loading && <p role="status" className="text-xs text-muted-foreground">Loading conversation…</p>}
         {paused && <p role="status" className="text-xs text-muted-foreground">Gmail updates are temporarily paused. Saved emails remain available.</p>}
         {readError && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{readError}</p><button type="button" className={control} disabled={paused || readPending} onClick={onRetryRead}>Retry marking as read</button></div>}
         {error && <div role="alert" className="space-y-2 text-sm text-red-600"><p>{error}</p><button type="button" className={control} disabled={paused || busy} onClick={() => { setLoading(true); setRefresh(value => value + 1); }}>Retry</button></div>}
       </header>
-      {messages.map((message, index) => <React.Fragment key={message.id}>
-        {email.conversationId && (index === 0 || message.threadId !== messages[index - 1].threadId) && <section className="border-b border-border bg-muted/30 px-3 py-3 sm:px-6" aria-label={`Original Gmail conversation: ${message.subject}`}>
-          <div className="flex min-w-0 items-start gap-1">
-            <h2 className="min-w-0 flex-1 text-sm font-semibold [overflow-wrap:anywhere]">{message.subject || '(no subject)'}</h2>
-            <button type="button" title="Archive this topic" aria-label={`Archive topic: ${message.subject}`} className={mailboxIconButton} disabled={loading || busy || paused} onClick={() => void mutate(() => archiveGmailThread(message.threadId), true)}><Archive size={16} /></button>
-            <button type="button" title="Trash this topic" aria-label={`Trash topic: ${message.subject}`} className={mailboxIconButton} disabled={loading || busy || paused} onClick={() => void mutate(() => trashGmailThread(message.threadId), true)}><Trash2 size={16} /></button>
-          </div>
-          {messages.some(item => item.threadId === message.threadId && expanded[item.id] && !item.dealId) && topics.filter(topic => topic.threadId === message.threadId).map(topic => <TopicDealSelector key={topic.threadId} topic={topic} disabled={loading || busy || paused} onAssociate={(threadId, dealId) => void mutate(() => associateThreadDeal(threadId, dealId))} />)}
-        </section>}
-        <EmailDetailView email={message} showContext={!!email.conversationId} expanded={expanded[message.id] ?? (!email.conversationId && index === messages.length - 1)} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? (!email.conversationId && index === messages.length - 1)) }))} onReply={() => setDraft(replyDraft(message))} onReplyAll={mailboxEmail ? () => setDraft(replyAllDraft(message, mailboxEmail)) : undefined} onForward={() => setDraft(forwardDraft(message))} disabled={loading || busy || paused} />
-      </React.Fragment>)}
+      {messages.map((message, index) => <EmailDetailView key={message.id} onUnavailable={failure} email={message} expanded={isExpanded(message)} onToggle={() => setExpanded(previous => ({ ...previous, [message.id]: !(previous[message.id] ?? message.id === latest?.id) }))} onReply={() => setDraft(replyDraft(message))} onForward={() => setDraft(forwardDraft(message))} disabled={loading || busy || paused}
+        topicActions={email.conversationId && (index === 0 || message.threadId !== messages[index - 1].threadId) ? <DropdownMenu>
+          <DropdownMenuTrigger className={mailboxIconButton} aria-label={`Actions for topic: ${message.subject || '(no subject)'}`} disabled={loading || busy || paused}><MoreHorizontal size={16} /></DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem disabled={loading || busy || paused} aria-label={`Archive topic: ${message.subject}`} onSelect={() => void mutate(() => archiveGmailThread(message.threadId), true)}><Archive size={16} />Archive this topic</DropdownMenuItem>
+            <DropdownMenuItem destructive disabled={loading || busy || paused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => void mutate(() => trashGmailThread(message.threadId), true)}><Trash2 size={16} />Move this topic to trash</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu> : undefined}
+        associationControls={associationMessages.get(message.threadId) === message.id ? <>
+          {message.needsDealAssociation && <p className="text-muted-foreground">Select the relevant open Deal for this conversation. Association does not change its stage.</p>}
+          {(email.conversationId ? topics.filter(topic => topic.threadId === message.threadId) : [{ threadId: email.threadId, dealOptions: deals, canAssociateDeal: canAssociate }]).map(topic => <TopicDealSelector key={topic.threadId} topic={topic} disabled={loading || busy || paused} onAssociate={(threadId, dealId) => void mutate(() => associateThreadDeal(threadId, dealId))} />)}
+          {!email.conversationId && (message.leadId || message.contactId) && !deals.length && !loading && <p className="text-muted-foreground">No open Deal available.</p>}
+        </> : undefined}
+      />)}
       {nextPageToken && <div className="px-3 py-3 sm:px-6"><button type="button" className={control} disabled={loading || busy || paused} onClick={() => void loadMore()}>Load more messages</button></div>}
-      {latest && <div className="flex flex-wrap gap-2 px-3 py-5 sm:px-6 sm:pl-[76px]">
-        <button type="button" className={control} disabled={loading || busy || paused} onClick={() => setDraft(replyDraft(latest))}><Reply size={16} />Reply</button>
-        {mailboxEmail && <button type="button" className={control} disabled={loading || busy || paused} onClick={() => setDraft(replyAllDraft(latest, mailboxEmail))}><ReplyAll size={16} />Reply All</button>}
-        <button type="button" className={control} disabled={loading || busy || paused} onClick={() => setDraft(forwardDraft(latest))}><Forward size={16} />Forward</button>
-      </div>}
     </div>
     <ComposeModal isOpen={!!draft} initialDraft={draft} retryAt={Math.max(retryAt, cooldown)} onClose={() => setDraft(null)} onSent={() => { onEmailsChanged(); setRefresh(value => value + 1); }} />
   </div>;
