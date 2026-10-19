@@ -35,6 +35,24 @@ it('loads backend analytics and batches duplicate notifications without local ar
   expect(mocks.get).toHaveBeenCalledTimes(2);
   hook.unmount(); expect(Feed.instances[0].closed).toBe(true);
 });
+it('reconciles current stage counts through the existing feed and manual refresh while retaining historical rates', async () => {
+  const snapshot = (lead: number, contacted: number, qualified: number, currentWon: number) => ({
+    distribution: [{ id: 'lead', count: lead }, { id: 'contacted', count: contacted }, { id: 'qualified', count: qualified }],
+    metrics: { currentWon }, conversion: { leadToContacted: 20.8, contactedToQualified: 40, qualifiedToWon: 33.3 },
+  });
+  mocks.get.mockResolvedValueOnce({ success: true, data: snapshot(17, 1, 2, 1) });
+  const hook = renderHook(() => useDashboard({ range: 'thisMonth', funnelRange: 'year' }));
+  await waitFor(() => expect(hook.result.current.report?.distribution.map(stage => stage.count)).toEqual([17, 1, 2]));
+  mocks.get.mockResolvedValueOnce({ success: true, data: snapshot(16, 2, 2, 1) });
+  act(() => Feed.instances[0].emit('dashboard-change', { access: '1', analytics: '2' }));
+  await waitFor(() => expect(hook.result.current.report?.distribution.map(stage => stage.count)).toEqual([16, 2, 2]));
+  mocks.get.mockResolvedValueOnce({ success: true, data: snapshot(16, 2, 1, 2) });
+  await act(async () => { expect(await hook.result.current.refresh()).toBe(true); });
+  expect(hook.result.current.report?.metrics.currentWon).toBe(2);
+  expect(hook.result.current.report?.distribution.map(stage => stage.count)).toEqual([16, 2, 1]);
+  expect(hook.result.current.report?.conversion?.contactedToQualified).toBe(40);
+  expect(Feed.instances).toHaveLength(1);
+});
 it('clears permission-sensitive results before receiving new scope data', async () => {
   const hook = renderHook(() => useDashboard({ range: 'thisMonth' }));
   await waitFor(() => expect(hook.result.current.report).not.toBeNull());

@@ -69,7 +69,16 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     assert.equal(await row.getByRole('meter').locator('div').evaluate((bar,color)=>{const probe=document.createElement('span');probe.style.backgroundColor=color;return probe.style.backgroundColor===bar.style.backgroundColor;},stage.color),true);
   }
   const funnel=page.getByRole('region',{name:'Conversion Funnel',exact:true});
-  for(const stage of initial.conversion.stages.slice(0,4)) await funnel.getByRole('listitem',{name:`${stage.name}: ${stage.reached} reached`,exact:true}).waitFor();
+  const currentCounts = report => report.pipeline.stages.slice(0, 4).map(stage => stage.isWon ? report.metrics.currentWon : report.distribution.find(row => row.id === stage.id).count);
+  async function expectFunnel(report, tab = page) {
+    const region = tab.getByRole('region', { name: 'Conversion Funnel', exact: true });
+    const expected = currentCounts(report).map((count, index) => `${report.pipeline.stages[index].name}: ${count} ${count === 1 ? 'deal' : 'deals'}`);
+    await until(async () => JSON.stringify(await region.getByRole('listitem').evaluateAll(rows => rows.map(row => row.getAttribute('aria-label')))) === JSON.stringify(expected), 'Current funnel matches authoritative stage IDs');
+    assert.equal(await region.getByRole('list', { name: 'Current pipeline stages', exact: true }).count(), 1);
+    assert.equal(await region.getByRole('heading', { name: 'Historical Conversion Rates', exact: true }).count(), 1);
+    assert.equal(await region.getByText(/Date filter applies only to historical rates/).count(), 1);
+  }
+  await expectFunnel(initial);
   assert.deepEqual(await funnel.locator('dl dd').allTextContents(),[initial.conversion.leadToContacted,initial.conversion.contactedToQualified,initial.conversion.qualifiedToWon].map(value=>value==null?'Unavailable':`${value}%`));
   const board=page.getByRole('region',{name:'Sales Leaderboard',exact:true});
   for(const [index,agent] of initial.leaderboard.entries()){
@@ -77,7 +86,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     await board.getByText(`${agent.firstName} ${agent.lastName}`,{exact:true}).waitFor();
     assert.equal(await board.getByLabel(money(agent.revenue),{exact:true}).count(),1);
   }
-  record('Requested Dashboard structure uses exact API stage values, colors, historical counts/rates and attributed agents');
+  record('Dashboard uses exact current API stage counts and colors, separate historical rates and attributed agents');
 
   for (const theme of ['light','dark']) {
     await page.evaluate(theme => { localStorage.setItem('app_theme', theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, mode: theme === 'dark' ? 'Dark' : 'Light' } })); }, theme);
@@ -161,8 +170,10 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     const result = await filteredResponse.json();
     assert.equal(result.data.conversion.period.range, range);
     assert.equal(result.data.metrics.totalRevenue, 6500);
-    await page.getByRole('list', { name: 'Historical conversion stages' }).waitFor();
-    record(`Independent ${label} cohort filter renders recorded history`);
+    assert.deepEqual(currentCounts(result.data), currentCounts(initial));
+    await expectFunnel(result.data);
+    assert.deepEqual(await funnel.locator('dl dd').allTextContents(), [result.data.conversion.leadToContacted, result.data.conversion.contactedToQualified, result.data.conversion.qualifiedToWon].map(rate => rate == null ? 'Unavailable' : `${rate}%`));
+    record(`Independent ${label} historical filter preserves current counts and backend rates`);
   }
   assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).count(), 0);
   await expectValue('Total Revenue', money(6500), false);
@@ -181,4 +192,63 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   record('Missing money is unavailable, long amounts fit all requested widths, and archival updates current metrics through SSE');
   await staffPage.getByRole('group', { name: 'Forecast', exact: true }).waitFor();
   reconcile(await fetchReport('range=thisMonth'));
+
+  // Reproduce the reported snapshot with real Deals in this disposable tenant.
+  await prisma.deal.updateMany({ where: { tenantId: tenant.id, pipelineId: pipeline.id }, data: { isArchived: true } });
+  const snapshotDeals = [];
+  for (const [index, count] of [17, 1, 2, 1, 3].entries()) {
+    for (let i = 0; i < count; i++) snapshotDeals.push({ ...await create(`Snapshot ${stages[index].name} ${i}`, 100, index), stageId: stages[index].id });
+  }
+  await expectFunnel(await fetchReport('range=thisMonth'), staffPage);
+  const dealsPage = staffPage;
+  const dealErrors = [];
+  dealsPage.on('pageerror', error => dealErrors.push(error.message));
+  try {
+    await dealsPage.goto(`${base}/crm/deals?pipelineId=${pipeline.id}`, { waitUntil: 'domcontentloaded' });
+    const boardCounts = () => dealsPage.locator('[aria-label="Deal pipeline"] h3').evaluateAll(headings => headings.map(heading => heading.parentElement.parentElement.parentElement.querySelector('span:last-child')?.textContent.trim()));
+    async function compareSnapshot(expected) {
+      const rows = await http(`/crm/deals?pipelineId=${pipeline.id}&limit=100`);
+      assert.equal(new Set(rows.map(row => row.id)).size, rows.length);
+      assert.deepEqual(stages.map(stage => rows.filter(row => row.stageId === stage.id).length), expected);
+      const report = await fetchReport('range=thisMonth');
+      assert.deepEqual(currentCounts(report), expected.slice(0, 4));
+      await expectFunnel(report);
+      await until(async () => JSON.stringify(await boardCounts()) === JSON.stringify(expected.map(String)), 'Deals board agrees with Dashboard');
+      assert.equal(await funnel.getByText('Closed Lost', { exact: true }).count(), 0);
+      return report;
+    }
+    await compareSnapshot([17, 1, 2, 1, 3]);
+    record('Screenshot fixture matches All Deals and both authorized Dashboard sessions: 17/1/2/1, with 3 Lost excluded');
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => { localStorage.setItem('app_theme', theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, mode: theme === 'dark' ? 'Dark' : 'Light' } })); }, theme);
+      await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((element, dark) => element.classList.contains('dark') === dark, theme === 'dark'), 'Snapshot theme applied');
+      for (const width of [320, 375, 390, 430, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 1000 }); await wait(250);
+        await funnel.scrollIntoViewIfNeeded();
+        const layout = await funnel.evaluate(region => ({ width: innerWidth, rootWidth: document.documentElement.scrollWidth,
+          clipped: [...region.querySelectorAll('li > div, li > p, h4, dl dd')].filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.textContent) }));
+        assert.ok(layout.rootWidth <= width + 1, JSON.stringify(layout));
+        assert.deepEqual(layout.clipped, [], JSON.stringify(layout));
+        await funnel.screenshot({ path: resolve(output, `current-funnel-${theme}-${width}.png`) });
+        record(`Current funnel and historical explanation fit ${theme} ${width}px`, layout);
+      }
+    }
+    await http(`/crm/deals/${snapshotDeals[0].id}/stage`, 'PATCH', { stageId: stages[1].id });
+    await dealsPage.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await compareSnapshot([16, 2, 2, 1, 3]);
+    record('Lead to Contacted updates Dashboard through existing reconciliation and Deals through its Refresh control');
+    const qualified = snapshotDeals.find(deal => deal.stageId === stages[2].id);
+    await http(`/crm/deals/${qualified.id}/stage`, 'PATCH', { stageId: stages[3].id });
+    const synced = page.waitForResponse(response => response.url().includes('/reporting/dashboard?') && response.ok());
+    await page.getByRole('button', { name: 'Sync Metrics', exact: true }).click();
+    assert.equal((await (await synced).json()).data.metrics.currentWon, 2);
+    await dealsPage.getByRole('button', { name: 'Refresh', exact: true }).click();
+    await compareSnapshot([16, 2, 1, 2, 3]);
+    record('Closed Won and Sync Metrics reconcile current stage counts without a second subscription or local counting');
+    assert.deepEqual(dealErrors, []);
+  } catch (error) {
+    await dealsPage.screenshot({ path: resolve(output, 'deals-snapshot-failure.png'), fullPage: true }).catch(() => {});
+    error.message += `\nDeals URL: ${dealsPage.url()}\nPage errors: ${JSON.stringify(dealErrors)}\n${await dealsPage.locator('body').innerText().catch(() => '')}`;
+    throw error;
+  } finally { await dealsPage.close(); }
 }

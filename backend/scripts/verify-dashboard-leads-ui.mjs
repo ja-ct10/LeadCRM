@@ -320,7 +320,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   }
   await page.unroute('**/api/proxy/reporting/dashboard?*', unavailableRoute);
   await page.goto(base + '/dashboard');
-  await page.getByRole('list', { name: 'Historical conversion stages' }).waitFor();
+  await page.getByRole('list', { name: 'Current pipeline stages' }).waitFor();
   }
 
   if (dashboardOnly) return;
