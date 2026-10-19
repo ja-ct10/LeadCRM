@@ -132,6 +132,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   await page.unroute('**/api/proxy/reporting/dashboard?*');
   record('Sync failure retains authoritative values; retry recovers; reassignment retains historical revenue owner');
 
+  await page.goto(base + '/reporting');
   await page.getByRole('button', { name: 'Dashboard date range', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Custom Date Range', exact: true }).click();
   await page.getByLabel('Start date', { exact: true }).fill('2020-01-01');
@@ -142,7 +143,9 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   assert.ok(await page.getByText('No won revenue in the selected period.').isVisible());
   assert.equal((await fetchReport('range=custom&start=2020-01-01&end=2020-01-02')).conversion.cohort, 7);
   record('Custom global date filter changes period charts while current KPIs and independent cohort stay consistent');
-  await page.getByText('Cohort details', {exact:true}).click();
+  await page.goto(base + '/dashboard');
+  await page.getByRole('button', { name: 'Filter Conversion Funnel', exact: true }).waitFor();
+  assert.equal(await page.getByText('Cohort details', {exact:true}).count(), 0);
   for (const label of ['Week','Month','Year','Custom Range']) {
     const range = label === 'Custom Range' ? 'custom' : label.toLowerCase();
     const response = page.waitForResponse(response => response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('funnelRange') === range);
@@ -153,14 +156,15 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
       await page.getByLabel('Funnel To Date', { exact: true }).fill(today);
       await page.getByRole('button', { name: 'Apply funnel dates', exact: true }).click();
     }
-    const result = await (await response).json();
+    const filteredResponse = await response;
+    assert.equal(new URL(filteredResponse.url()).searchParams.get('range'), 'thisMonth');
+    const result = await filteredResponse.json();
     assert.equal(result.data.conversion.period.range, range);
-    assert.equal(result.data.metrics.totalRevenue, 0);
-    await page.getByText(/deals in the creation cohort.*Historical milestones/).waitFor({ state: 'attached' });
+    assert.equal(result.data.metrics.totalRevenue, 6500);
+    await page.getByRole('list', { name: 'Historical conversion stages' }).waitFor();
     record(`Independent ${label} cohort filter renders recorded history`);
   }
-  await page.getByRole('button', { name: 'Dashboard date range', exact: true }).click();
-  await page.getByRole('menuitem', { name: 'This Month', exact: true }).click();
+  assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).count(), 0);
   await expectValue('Total Revenue', money(6500), false);
   const invalid = await create('Metrics missing money', 100, 0);
   await prisma.deal.update({ where: { id: invalid.id }, data: { value: null } });

@@ -103,7 +103,11 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
   renderToolbarActions?: (props: { query: DashboardQuery; report: DashboardReport | null; error: string | null; className: string }) => React.ReactNode;
 } = {}) {
   const { user } = useAuth();
-  const [query, setQuery] = useState<DashboardQuery>({ range: 'thisMonth', revenueInterval: 'month', funnelRange: 'month' });
+  const [selectedQuery, setQuery] = useState<DashboardQuery>({ range: 'thisMonth', revenueInterval: 'month', funnelRange: 'month' });
+  // Dashboard keeps its default period even when switching from the Reports view.
+  const query: DashboardQuery = presentation === 'dashboard'
+    ? { ...selectedQuery, range: 'thisMonth', start: undefined, end: undefined }
+    : selectedQuery;
   const [custom, setCustom] = useState(false);
   const [draft, setDraft] = useState({ start: '', end: '' });
   const [funnelCustom, setFunnelCustom] = useState(false);
@@ -197,14 +201,14 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
           <DashboardClock />
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <DropdownMenu><DropdownMenuTrigger className={toolbarButton} aria-label="Dashboard date range" title={ranges.find(range => range.id === query.range)?.label}><Calendar size={14} aria-hidden="true" /><span className="hidden sm:inline">{ranges.find(range => range.id === query.range)?.label}</span><ChevronDown size={12} aria-hidden="true" className="hidden sm:block" /></DropdownMenuTrigger>
+          {presentation === 'reporting' && <DropdownMenu><DropdownMenuTrigger className={toolbarButton} aria-label="Dashboard date range" title={ranges.find(range => range.id === query.range)?.label}><Calendar size={14} aria-hidden="true" /><span className="hidden sm:inline">{ranges.find(range => range.id === query.range)?.label}</span><ChevronDown size={12} aria-hidden="true" className="hidden sm:block" /></DropdownMenuTrigger>
             <DropdownMenuContent align="end">{ranges.map(range => <DropdownMenuItem key={range.id} onClick={() => selectRange(range.id)}>{range.label}</DropdownMenuItem>)}</DropdownMenuContent>
-          </DropdownMenu>
+          </DropdownMenu>}
           {renderToolbarActions?.({ query, report, error, className: toolbarButton })}
           <button onClick={handleRefresh} disabled={loading} className={toolbarButton} title="Sync Metrics" aria-label={loading ? 'Syncing…' : 'Sync Metrics'}><RefreshCw size={14} aria-hidden="true" className={loading ? 'animate-spin' : ''} /><span className="hidden sm:inline">{loading ? 'Syncing…' : 'Sync Metrics'}</span></button>
         </div>
       </div>
-      {custom && <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
+      {presentation === 'reporting' && custom && <div className="flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 dark:border-slate-800 p-3">
         <label className="text-xs">Start date<input aria-label="Start date" type="date" value={draft.start} onChange={event => setDraft({ ...draft, start: event.target.value })} className="block rounded border bg-transparent p-2 mt-1" /></label>
         <label className="text-xs">End date<input aria-label="End date" type="date" value={draft.end} onChange={event => setDraft({ ...draft, end: event.target.value })} className="block rounded border bg-transparent p-2 mt-1" /></label>
         <button className={button} onClick={applyCustom}>Apply dates</button><button className={button} onClick={() => setCustom(false)}>Cancel</button>
@@ -257,14 +261,12 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
                 {funnelError && <p role="alert" className="text-xs text-destructive">{funnelError}</p>}<div className="flex flex-wrap gap-2"><button className={button} onClick={applyFunnel}>Apply funnel dates</button><button className={button} onClick={() => setFunnelCustom(false)}>Cancel</button></div>
               </div>}
               {!report.conversion ? <Empty>Deal history unavailable.</Empty> : <>
-                <ol aria-label="Historical conversion stages" className="grid grid-cols-4 gap-3">{report.conversion.stages.slice(0, 4).map((stage, index) => <li key={stage.id} aria-label={`${stage.name}: ${stage.reached} reached`} className="relative min-w-0 text-center">
-                  <div className="rounded-lg py-2 text-lg font-bold tabular-nums" style={{ backgroundColor: pipelineStageColor(stage), color: stageForeground(pipelineStageColor(stage)) }}>{stage.reached}</div><p className="mt-1.5 break-words text-[11px] text-slate-600 dark:text-slate-300">{stage.name}</p>{index < 3 && <ChevronRight size={14} aria-hidden="true" className="absolute -right-3 top-3 text-slate-400" />}
+                <ol aria-label="Historical conversion stages" className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)] gap-1 min-[375px]:gap-2 sm:grid-cols-4 sm:gap-3">{report.conversion.stages.slice(0, 4).map((stage, index) => <li key={stage.id} aria-label={`${stage.name}: ${stage.reached} reached`} className="relative min-w-0 text-center">
+                  <div className="rounded-lg py-2 text-lg font-bold tabular-nums" style={{ backgroundColor: pipelineStageColor(stage), color: stageForeground(pipelineStageColor(stage)) }}>{stage.reached}</div><p className="mt-1.5 break-normal text-[11px] text-slate-600 dark:text-slate-300">{stage.name}</p>{index < 3 && <ChevronRight size={14} aria-hidden="true" className="absolute -right-2 top-3 text-slate-400 min-[375px]:-right-2.5 sm:-right-3" />}
                 </li>)}</ol>
                 <dl className="mt-4 grid grid-cols-1 min-[375px]:grid-cols-3 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">{[
                   ['Lead → Contacted', report.conversion.leadToContacted], ['Contacted → Qualified', report.conversion.contactedToQualified], ['Qualified → Closed Won', report.conversion.qualifiedToWon],
                 ].map(([label, rate]) => <div key={label} className="min-w-0 text-center"><dt className="text-[11px] text-slate-500 dark:text-slate-400">{label}</dt><dd className={`mt-1 break-words font-bold tabular-nums text-blue-600 dark:text-blue-400 ${rate == null ? 'text-xs leading-7' : 'text-lg'}`}>{rate == null ? 'Unavailable' : `${rate}%`}</dd></div>)}</dl>
-                {report.conversion.stages.filter(stage => stage.name.trim().toLowerCase() === 'closed lost' && stage.reached > 0).map(stage => <p key={stage.id} className="mt-3 text-xs text-slate-500 dark:text-slate-400">Closed Lost: {stage.reached} reached · Qualified → Closed Lost: {report.conversion!.qualifiedToLost == null ? 'Unavailable' : `${report.conversion!.qualifiedToLost}%`}</p>)}
-                <details className="mt-3 text-xs text-slate-500 dark:text-slate-400"><summary className="cursor-pointer">Cohort details</summary><p className="mt-2">{funnelSubtitle}</p><p className="mt-1">{report.conversion.cohort} deals in the creation cohort · Historical milestones, not current stages</p>{report.conversion.cohort === 0 && <p className="mt-1">No deals created in this cohort.</p>}</details>
                 {report.conversion.missingHistory > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{report.conversion.missingHistory} deals lack recorded starting history. Rates are unavailable; counts show recorded milestones only.</p>}
               </>}
             </section>
