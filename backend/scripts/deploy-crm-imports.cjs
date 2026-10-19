@@ -151,6 +151,8 @@ function deploymentPlan(records, localNames) {
     '20261217000000_contact_company_name',
     // Additive classification evidence, catalog categories, SMS receipts and published revisions.
     '20261217000000_inquiry_status', '20261218000000_crm_classification_and_revisions',
+    // Additive address-source preference; no customer address data is copied or retired.
+    '20261219000000_deal_address_source',
     // Coordinated Deal contract retirement; SQL blocks unresolved executable references.
     '20261219000000_remove_deal_industry',
   ];

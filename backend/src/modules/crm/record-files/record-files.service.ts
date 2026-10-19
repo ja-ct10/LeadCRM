@@ -7,6 +7,10 @@ import prisma from '../../../config/database.config';
 import { AppError } from '../../../shared/errors/app-error';
 import { recordText } from '../record-validation';
 import { privateObjectStorage } from '../../../shared/services/private-object-storage';
+import type { MailboxAttachment, RecordEmailAttachmentContext, RecordEmailAttachmentsPage } from '@leadcrm/shared';
+import { recordMailboxScope } from '../../../integrations/gmail/mailbox-record-scope';
+import { readMailboxContent } from '../../../integrations/gmail/mailbox-attachments';
+import sanitizeHtml from 'sanitize-html';
 
 export type FileModule = 'leads' | 'contacts' | 'accounts' | 'deals';
 const links = { leads: 'leadId', contacts: 'contactId', accounts: 'accountId', deals: 'dealId' } as const;
@@ -30,6 +34,74 @@ export async function listFiles(module: FileModule, id: string, tenantId: string
   await requireRecord(module, id, tenantId);
   const files = await prisma.recordFile.findMany({ where: { tenantId, [links[module]]: id }, include: actor, orderBy: [{ uploadedAt: 'desc' }, { id: 'desc' }] });
   return files.map(file => metadata(file, module, id));
+}
+
+function validAttachment(file: unknown): file is MailboxAttachment {
+  if (!file || typeof file !== 'object') return false;
+  const value = file as MailboxAttachment;
+  return typeof value.id === 'string' && /^(?:[a-zA-Z0-9_-]+|part:[a-zA-Z0-9_.-]*)$/.test(value.id) && value.id.length <= 2000
+    && typeof value.filename === 'string' && typeof value.mimeType === 'string'
+    && value.mimeType.length > 0 && (!value.id.startsWith('part:') || value.partId === value.id.slice(5))
+    && (value.size === undefined || Number.isSafeInteger(value.size) && value.size >= 0);
+}
+
+function referencedContentIds(body: string) {
+  const ids = new Set<string>();
+  sanitizeHtml(body, { allowedTags: ['img'], allowedAttributes: { img: ['src'] }, transformTags: {
+    img: (tagName, attribs) => {
+      if (/^cid:/i.test(attribs.src ?? '')) {
+        try { ids.add(decodeURIComponent(attribs.src.slice(4)).trim().replace(/^<|>$/g, '')); } catch { /* Invalid CID cannot identify an attachment. */ }
+      }
+      return { tagName, attribs };
+    },
+  } });
+  return ids;
+}
+
+export async function listEmailAttachments(tenantId: string, userId: string, context: RecordEmailAttachmentContext, cursor?: string): Promise<RecordEmailAttachmentsPage> {
+  const access = await recordMailboxScope(tenantId, userId, context);
+  let after: { date: string; id: string; context: string } | undefined;
+  if (cursor) {
+    try {
+      after = JSON.parse(Buffer.from(cursor, 'base64url').toString('utf8'));
+      if (!after || typeof after.id !== 'string' || !Number.isFinite(Date.parse(after.date))) throw new Error();
+    } catch { throw new AppError('Invalid attachment page.', 400); }
+    if (after.context !== access.contextHash) throw new AppError('Mailbox access changed. Reload files.', 409, 'MAILBOX_SCOPE_CHANGED');
+  }
+  const rows = await prisma.mailboxMessage.findMany({ where: { AND: [access.where, ...(after ? [{ OR: [{ sentAt: { lt: new Date(after.date) } }, { sentAt: new Date(after.date), id: { lt: after.id } }] }] : [])] },
+    select: { id: true, providerMessageId: true, attachments: true, body: true, sentAt: true }, orderBy: [{ sentAt: 'desc' }, { id: 'desc' }], take: 21 });
+  const page: RecordEmailAttachmentsPage = { attachments: [] };
+  const seen = new Set<string>();
+  for (const row of rows.slice(0, 20)) {
+    let files = Array.isArray(row.attachments) ? (row.attachments as unknown[]).filter(validAttachment) : [];
+    let body = row.body;
+    if ((!files.length || !Array.isArray(row.attachments) || files.length !== row.attachments.length) && !page.error) {
+      try { const recovered = await readMailboxContent(tenantId, userId, row.providerMessageId); files = recovered.attachments.filter(validAttachment); body = recovered.body; }
+      catch (error) {
+        if (error instanceof AppError && ([401, 403, 409].includes(error.statusCode) || error.code === 'MAILBOX_SCOPE_CHANGED')) throw error;
+        page.error = 'Some email attachments are unavailable. Retry files to try again.';
+      }
+    }
+    const inlineIds = referencedContentIds(body);
+    for (const file of files) {
+      if (file.disposition === 'inline' || file.contentId && inlineIds.has(file.contentId)) continue;
+      const id = JSON.stringify([access.account.id, row.providerMessageId, file.id]);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      page.attachments.push({ id, accountId: access.account.id, messageId: row.providerMessageId, attachmentId: file.id,
+        name: file.filename, type: file.mimeType, ...(file.size === undefined ? {} : { size: file.size }), sentAt: row.sentAt.toISOString() });
+    }
+  }
+  const current = await recordMailboxScope(tenantId, userId, context);
+  if (current.contextHash !== access.contextHash) throw new AppError('Mailbox access changed. Reload files.', 409, 'MAILBOX_SCOPE_CHANGED');
+  const expectedIds = rows.slice(0, 20).map(row => row.id);
+  const stillLinked = await prisma.mailboxMessage.count({ where: { AND: [current.where, { id: { in: expectedIds } }] } });
+  if (stillLinked !== expectedIds.length) throw new AppError('Message association changed. Reload files.', 409, 'MAILBOX_SCOPE_CHANGED');
+  if (rows.length > 20) {
+    const last = rows[19];
+    page.nextCursor = Buffer.from(JSON.stringify({ context: access.contextHash, date: last.sentAt.toISOString(), id: last.id })).toString('base64url');
+  }
+  return page;
 }
 export async function uploadFile(module: FileModule, id: string | null, tenantId: string, userId: string, input: unknown, bytes: Buffer) {
   if (id) await requireRecord(module, id, tenantId);

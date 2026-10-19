@@ -53,6 +53,10 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     await prisma.contact.create({ data: { tenantId, assignedUserId: userId, email: contactEmail, firstName: 'Contact', lastName: 'Customer', productInterests: [] } });
   });
   afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); vi.restoreAllMocks(); });
+  async function recordFiles(module: string, id: string, suffix = 'email-attachments', auth = token) {
+    const response = await realFetch(base.replace('/integrations/gmail', '') + `/crm/${module}/${id}/${suffix}`, { headers: { Authorization: `Bearer ${auth}` } });
+    return { status: response.status, body: await response.json() as any };
+  }
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
   it.each(['/send', '/drafts'])('rejects missing or malformed operation IDs on %s before contacting Gmail', async path => {
@@ -705,6 +709,137 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const first = await call('/emails?maxResults=1&sort=oldest');
     expect(first.body.nextPageToken).toBeUndefined(); expect(first.body.emails[0].messageCount).toBe(2);
   });
+  it.each(['leads', 'contacts'] as const)('lists sent and received %s attachments with uploads and stable original identities', async module => {
+    const contact = await prisma.contact.findFirstOrThrow({ where: { tenantId, email: contactEmail } });
+    const id = module === 'leads' ? leadId : contact.id, address = module === 'leads' ? leadEmail : contactEmail;
+    const attachment = { id: 'quotation-original', filename: 'QT-2026-1275D500.pdf', mimeType: 'application/pdf', size: 20173 };
+    const incoming = { ...mail(address, 'record-received'), attachments: [attachment, attachment, { ...attachment, id: 'another-original' }] };
+    const outgoing = { ...mail(account.email, 'record-sent', ['SENT']), to: [address], attachments: [attachment] };
+    await scope(() => ingestMailboxMessages(account, [incoming, outgoing], permissions));
+    await prisma.recordFile.create({ data: { tenantId, [module === 'leads' ? 'leadId' : 'contactId']: id, uploadedById: userId,
+      name: 'manual.pdf', type: 'application/pdf', size: 10, objectKey: 'untouched-test-object' } });
+    const activities = await prisma.activity.findMany({ where: { tenantId, mailboxMessage: { accountId: account.id } }, orderBy: { id: 'asc' } });
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    const first = await recordFiles(module, id);
+    expect(first.status).toBe(200); expect(first.body.data.attachments).toHaveLength(3);
+    expect(first.body.data.attachments.map((file: any) => file.messageId).sort()).toEqual(['record-received', 'record-received', 'record-sent']);
+    expect(first.body.data.attachments[0]).toMatchObject({ name: attachment.filename, size: 20173, accountId: account.id, type: 'application/pdf' });
+    expect((await recordFiles(module, id, 'files')).body.data.map((file: any) => file.name)).toEqual(['manual.pdf']);
+    await scope(() => ingestMailboxMessages(account, [incoming, outgoing], permissions));
+    expect((await recordFiles(module, id)).body.data).toEqual(first.body.data);
+    expect(await prisma.activity.findMany({ where: { tenantId, mailboxMessage: { accountId: account.id } }, orderBy: { id: 'asc' } })).toEqual(activities);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('includes converted Lead history once in Contact Files without rewriting messages or Activities', async () => {
+    const attachment = { id: 'converted-part', filename: 'historical.pdf', mimeType: 'application/pdf' };
+    await scope(() => ingestMailboxMessages(account, [{ ...mail(leadEmail, 'conversion-file'), attachments: [attachment] }], permissions));
+    const contact = await prisma.contact.create({ data: { tenantId, assignedUserId: userId, email: leadEmail, firstName: 'Converted', lastName: 'Customer', productInterests: [] } });
+    await prisma.lead.update({ where: { id: leadId }, data: { contactId: contact.id, convertedAt: new Date() } });
+    await prisma.mailboxMessage.updateMany({ where: { accountId: account.id }, data: { contactId: contact.id } });
+    const messages = await prisma.mailboxMessage.findMany({ where: { accountId: account.id } });
+    const response = await recordFiles('contacts', contact.id);
+    expect(response.status).toBe(200); expect(response.body.data.attachments).toHaveLength(1);
+    expect(response.body.data.attachments[0]).toMatchObject({ messageId: 'conversion-file', attachmentId: attachment.id });
+    expect(await prisma.mailboxMessage.findMany({ where: { accountId: account.id } })).toEqual(messages);
+  });
+
+  it('isolates Deal Files by saved message/thread associations and rejects unrelated or obsolete relationships', async () => {
+    const { pipeline, initial } = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const deals = [];
+    for (const title of ['CCTV Installation', 'Network Infrastructure']) deals.push(await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title, value: 100,
+      leadDeals: { create: { leadId, position: 0 } }, productInterests: [], tags: [] } }));
+    await prisma.recordFile.create({ data: { tenantId, dealId: deals[0].id, uploadedById: userId, name: 'existing-deal-upload.pdf', type: 'application/pdf', size: 10, objectKey: 'untouched-deal-object' } });
+    const attachments = [{ id: 'quotation', filename: 'QT-2026-1275D500.pdf', mimeType: 'application/pdf', size: 5 }];
+    await persistHistorical({ ...mail(leadEmail, 'quotation-a'), attachments }, { leadId, dealId: deals[0].id, attachments });
+    await persistHistorical({ ...mail(leadEmail, 'unlinked-customer'), attachments }, { leadId, attachments });
+    await persistHistorical({ ...mail(leadEmail, 'thread-b'), attachments }, { leadId, attachments });
+    await prisma.mailboxThreadAssociation.create({ data: { tenantId, accountId: account.id, threadId: 'thread-b', dealId: deals[1].id } });
+    expect((await recordFiles('deals', deals[0].id)).body.data.attachments.map((file: any) => file.messageId)).toEqual(['quotation-a']);
+    expect((await recordFiles('deals', deals[0].id, 'files')).body.data.map((file: any) => file.name)).toEqual(['existing-deal-upload.pdf']);
+    expect((await recordFiles('deals', deals[1].id)).body.data.attachments.map((file: any) => file.messageId)).toEqual(['thread-b']);
+    const wrong = new URLSearchParams({ recordModule: 'deals', recordId: deals[1].id, accountId: account.id });
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    expect((await call('/messages/quotation-a/attachments/quotation?' + wrong)).status).toBe(404);
+    expect(provider).not.toHaveBeenCalled();
+    // A newer explicit thread association supersedes an old saved message link.
+    await prisma.mailboxThreadAssociation.create({ data: { tenantId, accountId: account.id, threadId: 'quotation-a', dealId: deals[1].id } });
+    expect((await recordFiles('deals', deals[0].id)).body.data.attachments).toEqual([]);
+    await prisma.leadDeal.deleteMany({ where: { tenantId, dealId: deals[1].id } });
+    expect((await recordFiles('deals', deals[1].id)).body.data.attachments).toEqual([]);
+  });
+
+  it.each([false, true])('recovers historical metadata only for linked messages, excludes inline images and leaves Activity unchanged (incomplete=%s)', async incomplete => {
+    await scope(() => ingestMailboxMessages(account, [mail(leadEmail, 'missing-file-metadata')], permissions));
+    if (incomplete) await prisma.mailboxMessage.updateMany({ where: { accountId: account.id }, data: { attachments: [{ id: 'part:2', filename: 'historical.pdf', mimeType: 'application/pdf' }] } });
+    const before = await prisma.activity.findMany({ where: { tenantId, mailboxMessage: { accountId: account.id } } });
+    const source = apiMail(mail(leadEmail, 'missing-file-metadata'));
+    Object.assign(source.payload, { mimeType: 'multipart/mixed', parts: [
+      { mimeType: 'text/html', body: { data: Buffer.from('<p>Original</p><img src="cid:logo">').toString('base64url') } },
+      { filename: 'quotation.pdf', mimeType: 'application/pdf', body: { attachmentId: 'historical-pdf', size: 20 } },
+      { filename: 'logo.png', mimeType: 'image/png', headers: [{ name: 'Content-ID', value: '<logo>' }], body: { attachmentId: 'inline-logo', size: 10 } },
+    ] });
+    const provider = vi.fn(async (_input: string | URL) => Response.json(source)); vi.stubGlobal('fetch', provider);
+    const response = await recordFiles('leads', leadId);
+    expect(response.status).toBe(200); expect(response.body.data.attachments.map((file: any) => file.name)).toEqual(['quotation.pdf']);
+    expect(provider).toHaveBeenCalledOnce(); expect(String(provider.mock.calls[0][0])).toContain('messages/missing-file-metadata?format=full');
+    expect(await prisma.activity.findMany({ where: { tenantId, mailboxMessage: { accountId: account.id } } })).toEqual(before);
+    expect((await recordFiles('leads', leadId)).body.data).toEqual(response.body.data); expect(provider).toHaveBeenCalledOnce();
+  });
+
+  it('returns bounded pages without duplicates and recovers attachment-free messages without fabricating files', async () => {
+    const attachment = { id: 'same-part', filename: 'same-name.pdf', mimeType: 'application/pdf' };
+    for (let index = 0; index < 21; index++) await persistHistorical(mail(leadEmail, 'page-file-' + index), { leadId, attachments: [attachment] });
+    const first = await recordFiles('leads', leadId), next = await recordFiles('leads', leadId, 'email-attachments?cursor=' + encodeURIComponent(first.body.data.nextCursor));
+    expect(first.body.data.attachments).toHaveLength(20); expect(next.body.data.attachments).toHaveLength(1);
+    expect(new Set([...first.body.data.attachments, ...next.body.data.attachments].map(file => file.id)).size).toBe(21);
+    await prisma.mailboxMessage.deleteMany({ where: { accountId: account.id } });
+    await persistHistorical(mail(leadEmail, 'without-files'), { leadId });
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json(apiMail(mail(leadEmail, 'without-files')))));
+    expect((await recordFiles('leads', leadId)).body.data.attachments).toEqual([]);
+  });
+
+  it('reauthorizes contextual bytes after provider I/O, keeps exact bytes and rejects disconnected/stale accounts', async () => {
+    const pdf = Buffer.from('%PDF-original quotation'), attachment = { id: 'context-pdf', filename: 'quotation.pdf', mimeType: 'application/pdf', size: pdf.length };
+    await persistHistorical(mail(leadEmail, 'context-message'), { leadId, attachments: [attachment] });
+    const context = new URLSearchParams({ recordModule: 'leads', recordId: leadId, accountId: account.id });
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ data: pdf.toString('base64url'), size: pdf.length })));
+    const response = await realFetch(base + '/messages/context-message/attachments/context-pdf?' + context, { headers: { Authorization: `Bearer ${token}` } });
+    expect(response.status).toBe(200); expect(Buffer.from(await response.arrayBuffer())).toEqual(pdf);
+    expect(response.headers.get('cache-control')).toContain('no-store'); expect(response.headers.get('content-disposition')).toContain('quotation.pdf');
+    const staleContext = new URLSearchParams({ recordModule: 'leads', recordId: leadId, accountId: randomUUID() });
+    expect((await call('/messages/context-message/attachments/context-pdf?' + staleContext)).status).toBe(409);
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: { message: 'Revoked grant' } }, { status: 401 })));
+    expect((await call('/messages/context-message/attachments/context-pdf?' + context)).status).toBe(401);
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      await prisma.mailboxMessage.updateMany({ where: { accountId: account.id }, data: { leadId: null } });
+      return Response.json({ data: pdf.toString('base64url'), size: pdf.length });
+    }));
+    expect((await call('/messages/context-message/attachments/context-pdf?' + context)).status).toBe(404);
+    const provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false } });
+    expect((await recordFiles('leads', leadId)).status).toBe(409);
+    expect((await call('/messages/context-message/attachments/context-pdf?' + context)).status).toBe(409);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
+  it('hides another user’s attachment metadata and rejects missing CRM permission and cross-tenant records', async () => {
+    await persistHistorical(mail(leadEmail, 'private-record-file'), { leadId, attachments: [{ id: 'private', filename: 'private.pdf', mimeType: 'application/pdf' }] });
+    const other = await prisma.user.findUniqueOrThrow({ where: { id: otherId } });
+    await prisma.emailAccount.upsert({ where: { tenantId_userId_provider: { tenantId, userId: other.id, provider: 'gmail' } }, create: { tenantId, userId: other.id, email: other.email, accessToken: encryptToken('other-token'), tokenExpiresAt: new Date(Date.now() + 3600000) }, update: { isActive: true } });
+    const otherToken = (await issueAuthSession(other)).token, provider = vi.fn(); vi.stubGlobal('fetch', provider);
+    const list = await recordFiles('leads', leadId, 'email-attachments', otherToken);
+    expect(list.status).toBe(200); expect(list.body.data.attachments).toEqual([]);
+    const context = new URLSearchParams({ recordModule: 'leads', recordId: leadId });
+    expect((await call('/messages/private-record-file/attachments/private?' + context, 'GET', undefined, 'Bearer ' + otherToken)).status).toBe(404);
+    const foreign = await prisma.tenant.create({ data: { name: 'Foreign files', slug: randomUUID() } });
+    const foreignLead = await prisma.lead.create({ data: { tenantId: foreign.id, firstName: 'Foreign', lastName: 'Customer', productInterest: [] } });
+    expect((await recordFiles('leads', foreignLead.id)).status).toBe(404);
+    await prisma.user.update({ where: { id: userId }, data: { role: 'Staff' } });
+    expect((await recordFiles('leads', leadId)).status).toBe(403);
+    expect(provider).not.toHaveBeenCalled();
+  });
+
   it('preserves nested attachment metadata through replay and authorizes downloads by message and mailbox', async () => {
     const payload = apiMail(mail(leadEmail, 'file-source'));
     const attachmentId = 'provider-attachment';

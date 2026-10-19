@@ -41,7 +41,7 @@ const CONTACT_FILTER_FIELDS: FilterFields = {
 // ── Shared include shape ───────────────────────────────────────────────────
 const CONTACT_INCLUDE = {
   assignedUser: { select: { id: true, firstName: true, lastName: true } },
-  account:      { select: { id: true, name: true, industry: true, size: true, website: true } },
+  account:      { select: { id: true, name: true, industry: true, size: true, website: true, address: true } },
 } as const;
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {

@@ -657,6 +657,7 @@ model Deal {
   leadSource        String?
   productInterests  String[]
   address           String?
+  addressSource     Json?
   tags              String[] // normalized to array G�� consistent with Contact.tags and Organization.tags
   order             Int       @default(0)
   isArchived        Boolean   @default(false)

@@ -1,4 +1,5 @@
 'use client';
+import { dealAddressKey, dealAddressMessage, dealCustomerAddressMessage, resolveDealAddress, type DealAddressContext } from '@leadcrm/shared';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
 import { InlineEditRows, type InlineRowDef } from './inline-edit-rows';
@@ -6,7 +7,7 @@ import { useFieldLayout } from '@/shared/hooks/use-field-layout';
 import { panelSurfaceClass, panelHeaderClass, panelCloseClass } from '@/shared/components/side-panel-styles';
 import { RecordIdentityHeader, RecordQuickInfo, RecordRows, RecordLinkRow } from './record-panel-presentation';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { DealClosingRequirements } from './deal-closing-requirements';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -32,7 +33,9 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { RecordTimelineTab } from './record-timeline-tab';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 import { CLOSED_WON_GROUP_ID, CRM_STATUSES, getCrmFieldCatalog, normalizeCrmStatus } from '@leadcrm/shared';
-import type { RecordFileMetadata } from '@leadcrm/shared';
+import type { RecordFileMetadata, RecordEmailAttachmentReference, RecordEmailAttachmentsPage } from '@leadcrm/shared';
+import { getPageCache, getPageCacheGeneration, invalidatePageCache, requestPageCache } from '@/shared/cache/page-cache';
+import { subscribeMailboxEvents } from '@/shared/services/mailbox-events';
 import { RecordFilesTab } from './record-files-tab';
 import { ConfirmActionDialog } from './confirm-action-dialog';
 import { RecordSection } from './record-section';
@@ -100,7 +103,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const [lostReason, setLostReason] = useState('');
   const [taskCount, setTaskCount] = useState<number>();
   const [savingField, setSavingField] = useState<string | null>(null);
-  const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, revalidateOnInvalidation: true,
+  const recordQuery = useCachedPage<RecordData>({ module, params: { recordId: id }, intervalMs: 30000, pauseWhenHidden: true, revalidateOnInvalidation: true,
     fetchFn: async signal => (await apiClient.get<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { signal })).data });
   const [activityFilters, setActivityFilters] = useState<RecordActivityFilters>({});
   const relatedQuery = useRecordRelationships<Relationships>(module, id, module === 'deals' || USE_MOCK_DATA || !detailsVisited || !recordQuery.data);
@@ -126,6 +129,54 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const filesQuery = useCachedPage<RecordFileMetadata[]>({ module, params: { recordId: id, files: true }, revalidateOnInvalidation: true,
     disabled: tab !== 'files' || !recordQuery.data || USE_MOCK_DATA,
     fetchFn: async signal => (await apiClient.get<{ data: RecordFileMetadata[] }>(`/crm/${module}/${encodeURIComponent(id)}/files`, { signal })).data });
+  const [emailRevision, setEmailRevision] = useState(0);
+  const emailIdentity = JSON.stringify([module, id, tenant?.id, user?.id, user?.role, getPageCacheGeneration(), emailRevision]);
+  const [emailPagination, setEmailPagination] = useState({ identity: emailIdentity, count: 1 });
+  const emailPageCount = emailPagination.identity === emailIdentity ? emailPagination.count : 1;
+  useEffect(() => {
+    if (tab !== 'files') setEmailPagination(current => current.identity === emailIdentity && current.count === 1 ? current : { identity: emailIdentity, count: 1 });
+  }, [tab, emailIdentity]);
+  const emailContext = module === 'accounts' ? undefined : { recordModule: module, recordId: id };
+  const canReadEmailFiles = !!emailContext && !!recordQuery.data && !USE_MOCK_DATA && (canReadLeads || canReadContacts);
+  const emailFiles = useCachedPage<RecordEmailAttachmentsPage>({ module: 'record-email-attachments',
+    params: { emailIdentity, emailPageCount }, revalidateOnInvalidation: true,
+    disabled: !canReadEmailFiles || tab !== 'files',
+    fetchFn: async signal => {
+      const attachments = new Map<string, RecordEmailAttachmentReference>();
+      let cursor: string | undefined, error: string | undefined;
+      for (let page = 0; page < emailPageCount; page++) {
+        const params = { emailIdentity, cursor, userId: user?.id, role: user?.role };
+        const cached = emailPageCount > 1 ? getPageCache<RecordEmailAttachmentsPage>('record-email-attachments', tenant?.id ?? '', params) : null;
+        const response = cached && !cached.isStale ? cached.data : await requestPageCache<RecordEmailAttachmentsPage>('record-email-attachments', tenant?.id ?? '', params,
+          async requestSignal => (await apiClient.get<{ data: RecordEmailAttachmentsPage }>(`/crm/${module}/${encodeURIComponent(id)}/email-attachments`, { signal: requestSignal, params: { cursor } })).data, signal);
+        response.attachments.forEach(file => attachments.set(file.id, file));
+        error ||= response.error; cursor = response.nextCursor;
+        if (!cursor) break;
+      }
+      return { attachments: [...attachments.values()], nextCursor: cursor, error };
+    },
+  });
+  const resetEmailAccess = () => {
+    invalidatePageCache('record-email-attachments', tenant?.id ?? '', false);
+    setEmailRevision(value => value + 1);
+  };
+  useEffect(() => {
+    if (!emailContext || tab !== 'files' || !recordQuery.data || USE_MOCK_DATA || !tenant?.id || !user?.id || !(canReadLeads || canReadContacts)) return;
+    const refresh = () => invalidatePageCache('record-email-attachments', tenant.id);
+    const subscription = subscribeMailboxEvents(tenant.id, user.id, {
+      onChange: refresh, onOpen: refresh,
+      onAccessChanged: () => { invalidatePageCache('record-email-attachments', tenant.id, false); setEmailRevision(value => value + 1); },
+    });
+    return () => subscription.close();
+  }, [module, id, tab, !!recordQuery.data, tenant?.id, user?.id, user?.role, canReadLeads, canReadContacts]);
+  const emailUnavailable = [401, 403, 404, 409].includes(emailFiles.errorStatus ?? 0);
+  const loadedEmailFiles = useRef<{ identity: string; page?: RecordEmailAttachmentsPage }>({ identity: emailIdentity });
+  if (loadedEmailFiles.current.identity !== emailIdentity || emailUnavailable || !canReadEmailFiles) loadedEmailFiles.current = { identity: emailIdentity };
+  if (canReadEmailFiles && !emailUnavailable && emailFiles.data) loadedEmailFiles.current.page = emailFiles.data;
+  const emailPage = loadedEmailFiles.current.page;
+  const combinedFiles = [...(filesQuery.data ?? []), ...(emailPage?.attachments ?? []).map(file => ({
+    id: file.id, name: file.name || 'Unnamed attachment', type: file.type, size: file.size, uploadedAt: file.sentAt, emailAttachment: file,
+  }))].sort((a, b) => b.uploadedAt.localeCompare(a.uploadedAt) || b.id.localeCompare(a.id));
 
   const relationships = relatedQuery.data;
   const label = labels[module];
@@ -158,7 +209,9 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const trimmed = typeof value === 'string' ? value.trim() : value;
         if (apiField === 'email' && (module === 'leads' || module === 'contacts')) CrmEmailSchema.parse(trimmed);
         const normalized = apiField === 'website' && module === 'accounts' && typeof trimmed === 'string' && trimmed && !/^https?:\/\//i.test(trimmed) ? `https://${trimmed}` : trimmed;
-        const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
+        const addressOption = apiField === 'addressSource' ? addressContext.options.find(option => dealAddressKey(option) === normalized) : undefined;
+        const sourceValue = addressOption ? { type: addressOption.type, id: addressOption.id } : null;
+        const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'addressSource' ? sourceValue : module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
         if (response.data) recordQuery.setData(response.data);
       }
       toast.success('Field updated');
@@ -178,7 +231,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const source = (module === 'deals' ? (record.productInterests as string[] | undefined)?.join(', ') : '') || text(record.source) || text(record.leadSource);
   const owner = personName(object(record.assignedUser)) || 'Unassigned';
   const company = text(object(record.account)?.name) || text(object(record.organization)?.name) || text(person?.companyName) || text(record.companyName) || text(object(record.account)?.name);
-  const location = module === 'accounts' ? text(record.address)
+  const addressContext = (record.addressContext as DealAddressContext | undefined) ?? resolveDealAddress(text(record.address), record.addressSource, []);
+  const location = module === 'deals' ? addressContext.effectiveAddress ?? '' : module === 'accounts' ? text(record.address)
     : [text(record.address), text(record.city), text(record.province), text(record.country)].filter(Boolean).join(', ');
   const personChipActions = module === 'contacts' || (module === 'leads' && !!onClose);
   const email = text(person?.email);
@@ -236,7 +290,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ...(canReadAccounts ? [{ technicalKey: 'accountId', label: 'Account', value: object(record.organization)?.name ?? object(record.account)?.name }] : []),
     { label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' },
     { label: 'Source', value: record.leadSource, apiField: 'leadSource' },
-    { label: 'Address', value: record.address, apiField: 'address' },
+    { label: 'Deal Address (override)', value: record.address, apiField: 'address', type: 'textarea' },
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
   ] : [
     ...(module === 'accounts' ? [
@@ -264,7 +318,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const catalog = getCrmFieldCatalog(module, customFields.fields.map(field => ({ ...field, deletedAt: undefined })), detailLayout);
   const accountField = catalog.find(field => field.technicalKey === 'accountId');
   const showAccount = canReadAccounts && accountField?.visibleInDetails !== false;
-  const linkedAccount = showAccount ? relationships?.account ?? object(record.account) ?? object(record.organization) : null;
+  const linkedAccount = showAccount ? object(record.account) ?? object(record.organization) ?? relationships?.account : null;
   const configuredRows = aboutRows.filter(row => row.technicalKey !== 'accountId')
     .map(row => ({ row, field: catalog.find(field => field.technicalKey === (row.technicalKey ?? row.apiField)) })).filter(item => item.field?.visibleInDetails !== false);
   const relationshipGroupId = accountField?.groupId ?? `${module}:section:${module === 'deals' ? 1 : 2}`;
@@ -275,7 +329,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   </div> : (module === 'leads' || module === 'contacts') && showAccount ? <div>
     <h3 className="px-3 pt-3 text-xs font-semibold text-muted-foreground">Account</h3>
     <RelatedRecords records={linkedAccount ? [linkedAccount] : []} module="accounts" empty="No Account linked yet." showSubtitle={false} />
-    {linkedAccount && <RecordRows rows={[["Industry", linkedAccount.industry], ["Size", linkedAccount.size], ["Website", linkedAccount.website]]} />}
+    {linkedAccount && <RecordRows rows={[["Company Address", linkedAccount.address], ["Industry", linkedAccount.industry], ["Size", linkedAccount.size], ["Website", linkedAccount.website]]} />}
   </div> : null;
   const showRelationships = module === 'deals' ? canReadLeads || canReadContacts || showAccount : isPerson &&
     (showAccount || Boolean(relationships && canReadDeals) || Boolean(module === 'contacts' && relationships?.sourceLead && canReadLeads));
@@ -302,7 +356,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     <RelatedRecords records={deals} module="deals" empty={`No deals attached to this ${label.toLowerCase()}.`} />
     {relationships?.hasMoreDeals && <Button variant="ghost" size="sm" onClick={relatedQuery.loadMore} disabled={relatedQuery.isRefreshing}>Load older deals</Button>}
     {creatingDeal && <div className="border-t border-border p-3"><InlineDealForm relatedRecord={{ type: module === 'leads' ? 'lead' : module === 'contacts' ? 'contact' : 'account', id }} onError={error => toast.error(error instanceof Error ? error.message : 'Failed to create deal')} onCancel={() => setCreatingDeal(false)} onSubmit={async values => {
-      await apiClient.post('/crm/deals', { customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(values.leadId ? { leadIds: [values.leadId] } : { contactIds: [values.contactId!] }) });
+      await apiClient.post('/crm/deals', { address: values.address, addressSource: values.addressSource, customFieldValues: values.customFieldValues, title: values.title, productInterestIds: values.productInterestIds, pipelineId: values.pipelineId, stageId: values.stageId, priority: values.priority, expectedCloseDate: values.expectedCloseDate ? new Date(values.expectedCloseDate).toISOString() : undefined, ...(values.leadId ? { leadIds: [values.leadId] } : { contactIds: [values.contactId!] }) });
       setCreatingDeal(false);
     }} /></div>}
   </>;
@@ -394,7 +448,13 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               {fields.map(field => {
                 if (field.customFieldId) return !USE_MOCK_DATA && <RecordCustomFieldInlineRow key={field.customFieldId} details={customFields} fieldId={field.customFieldId} canEdit={canEdit} />;
                 const row = configuredRows.find(item => item.field?.technicalKey === field.technicalKey)?.row;
-                return row ? <InlineEditRows key={field.technicalKey} rows={[{ ...row, label: field.label, apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
+                return row ? <InlineEditRows key={field.technicalKey} rows={[...(module === 'deals' && field.technicalKey === 'address' ? [{
+                  label: 'Customer Address', apiField: 'addressSource', alwaysVisible: true,
+                  value: record.addressSource ? dealAddressKey(record.addressSource as import('@leadcrm/shared').DealAddressSource) : '',
+                  displayValue: dealCustomerAddressMessage(addressContext),
+                  renderValue: () => <span className="block whitespace-pre-wrap break-words">{dealCustomerAddressMessage(addressContext)}<span className="block text-xs text-muted-foreground">{addressContext.options.find(option => option.type === addressContext.source?.type && option.id === addressContext.source?.id)?.label}</span></span>,
+                  renderEditor: ({ value, onChange, disabled }: { value: string; onChange: (value: string) => void; disabled: boolean }) => <select aria-label="Customer Address" className="w-full min-w-0 rounded-md border border-input bg-background px-2 py-1 text-xs" value={value} disabled={disabled} onChange={event => onChange(event.target.value)}><option value="">Automatic / choose later</option>{value && !addressContext.options.some(option => dealAddressKey(option) === value) && <option value={value}>Selected address unavailable</option>}{addressContext.options.map(option => <option key={dealAddressKey(option)} value={dealAddressKey(option)}>{option.label}</option>)}</select>,
+                }] : []), { ...row, label: field.label, alwaysVisible: field.technicalKey === 'address', apiField: row.apiField === 'assignedUserId' && !recordAccess.canReassign ? undefined : row.apiField }]} canEdit={canEdit && !USE_MOCK_DATA} onSave={saveField} /> : null;
               })}
               {hasRelationships && isPerson && <>
                 {relationshipContent}
@@ -419,7 +479,12 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
             {USE_MOCK_DATA && mockCustomFields && Object.keys(mockCustomFields).length > 0 && <RecordSection title="Custom fields" count={Object.keys(mockCustomFields).length}><RecordRows rows={Object.entries(mockCustomFields)} /></RecordSection>}
           </div></TabsContent>
           <TabsContent value="files" className={cn('m-0', onClose && '[&>div]:px-[var(--panel-gutter)]')}>
-            <RecordFilesTab files={filesQuery.data ?? []} loading={filesQuery.isInitialLoad} error={filesQuery.error} onRetry={() => void filesQuery.refetch()}
+            <RecordFilesTab files={combinedFiles} loading={filesQuery.isInitialLoad || emailFiles.isInitialLoad && !emailPage}
+              error={filesQuery.error || emailFiles.error || emailPage?.error}
+              onRetry={() => { void filesQuery.refetch(); resetEmailAccess(); }} emailContext={emailContext}
+              attachmentAccessKey={emailIdentity + ':' + emailUnavailable + ':' + canReadEmailFiles} onEmailUnavailable={resetEmailAccess}
+              hasMore={!!emailPage?.nextCursor} loadingMore={emailFiles.isInitialLoad || emailFiles.isRefreshing}
+              onLoadMore={() => setEmailPagination({ identity: emailIdentity, count: emailPageCount + 1 })}
               onUpload={canEdit && !USE_MOCK_DATA ? async file => {
                 const query = new URLSearchParams({ name: file.name, type: file.type || 'application/octet-stream' });
                 await apiClient.upload(`/crm/${module}/${encodeURIComponent(id)}/files?${query}`, new Blob([file], { type: 'application/octet-stream' }));

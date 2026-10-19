@@ -317,7 +317,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
           </FieldWrap>
 
           {/* Address */}
-              <FieldWrap fieldKey="address" label="Full Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
+              <FieldWrap fieldKey="address" label="Contact Address" htmlFor={`${fieldId}-address`} error={errors.address?.message}>
             <div className="relative">
               <MapPin className="absolute left-3.5 top-3 text-slate-400" size={14} />
               <textarea

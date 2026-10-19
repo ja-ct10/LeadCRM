@@ -5,6 +5,7 @@ exports.dealAssociationPatch = dealAssociationPatch;
 exports.validateManualDealAssociation = validateManualDealAssociation;
 exports.productDealTitle = productDealTitle;
 const zod_1 = require("zod");
+const deal_address_1 = require("./deal-address");
 const closing_requirements_1 = require("./closing-requirements");
 const product_interests_contract_1 = require("./product-interests.contract");
 const text = (max) => zod_1.z.string().trim().max(max).refine(value => !/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(value), 'Unsupported control characters.');
@@ -26,6 +27,7 @@ function validateManualDealAssociation(data, ctx) {
     }
 }
 exports.CreateDealBatchSchema = zod_1.z.object({
+    addressSource: deal_address_1.DealAddressSourceSchema.nullable().optional(),
     customFieldValues: closing_requirements_1.CustomFieldValuesSchema.optional(),
     idempotencyKey: zod_1.z.string().uuid(),
     pipelineId: id,

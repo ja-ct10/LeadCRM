@@ -1,5 +1,7 @@
 'use client';
 
+import { DealAddressSourceSchema, dealAddressKey, resolveDealAddress, dealCustomerAddressMessage } from '@leadcrm/shared';
+import { useDealAddressOptions } from '@/shared/hooks/use-deal-address-options';
 import React, { useMemo, useRef } from 'react';
 import { useRecordCustomFields } from './record-custom-fields';
 import { ConfiguredFormLayout } from './configured-form-layout';
@@ -28,6 +30,8 @@ function getDatePlusDays(days: number): string {
 // ── Zod Schema ─────────────────────────────────────────────────────────────
 
 const InlineDealSchema = z.object({
+  addressSource: DealAddressSourceSchema.nullable().optional(),
+  address: z.string().max(2000).optional(),
   associationType: z.enum(['', 'lead', 'contact']).optional(),
   associationId: z.string().optional(),
   title: z.string().trim().min(1, 'Title is required').max(255),
@@ -58,6 +62,8 @@ interface InlineDealFormProps {
     pipelineId: string;
     stageId: string;
     priority: 'LOW' | 'MEDIUM' | 'HIGH';
+    address?: string;
+    addressSource?: import('@leadcrm/shared').DealAddressSource | null;
     expectedCloseDate?: string;
     leadId?: string;
     contactId?: string;
@@ -93,12 +99,15 @@ export function InlineDealForm({
     watch,
     reset,
     setValue,
+    setError,
     formState: { errors, isValid, isSubmitting },
   } = useForm<InlineDealFormData>({
     resolver: zodResolver(InlineDealSchema),
     defaultValues: {
       associationType: relatedRecord?.type === 'lead' || relatedRecord?.type === 'contact' ? relatedRecord.type : '',
       associationId: relatedRecord?.type === 'lead' || relatedRecord?.type === 'contact' ? relatedRecord.id : '',
+      address: '',
+      addressSource: null,
       title: '',
       productInterestIds: [],
       pipelineId: defaultPipeline?.id || '',
@@ -121,9 +130,14 @@ export function InlineDealForm({
   const productFieldId = React.useId();
 
   const onFormSubmit = async (formData: InlineDealFormData): Promise<void> => {
+    if (formData.addressSource && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(formData.addressSource!))) {
+      setError('addressSource', { message: 'Choose an available linked customer address or return to Automatic.' }); return;
+    }
     if (!customFields.validate()) return;
     const payload: Parameters<typeof onSubmit>[0] = {
       customFieldValues: customFields.payload(),
+      address: formData.address || undefined,
+      addressSource: formData.addressSource,
       title: formData.title,
       productInterestIds: formData.productInterestIds,
       pipelineId: formData.pipelineId,
@@ -138,6 +152,7 @@ export function InlineDealForm({
     try {
       await onSubmit(payload);
     } catch (error) {
+      if (error instanceof Error && error.message.startsWith('Customer Address:')) setError('addressSource', { type: 'server', message: error.message });
       if (!onError) throw error;
       onError(error);
       return;
@@ -146,6 +161,12 @@ export function InlineDealForm({
     onCancel?.();
     toast.success('Deal created successfully');
   };
+
+  const selectedType = watch('associationType');
+  const selectedId = watch('associationId');
+  const selectedAddressSource = watch('addressSource');
+  const addressOptions = useDealAddressOptions({ association: selectedType && selectedId ? { type: selectedType, id: selectedId } : undefined });
+  const addressContext = resolveDealAddress(watch('address'), selectedAddressSource, addressOptions.data ?? []);
 
   // ── Shared Styling ──────────────────────────────────────────────────────
   const inputCls =
@@ -228,6 +249,20 @@ export function InlineDealForm({
           <Label htmlFor={`${productFieldId}-association`} className={labelCls}>{associationType === 'lead' ? 'Lead' : 'Contact'} <span className="text-red-500">*</span></Label>
           <EntityCombobox key={associationType} id={`${productFieldId}-association`} aria-required="true" entityType={associationType === 'lead' ? 'leads' : 'contacts'} value={associationId || null} onChange={id => setValue('associationId', id || '', { shouldDirty: true, shouldValidate: true })} error={errors.associationId?.message} disabled={isSubmitting || isLoading} />
         </div>}
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor={`${productFieldId}-customer-address`} className={labelCls}>Customer Address</Label>
+        <select id={`${productFieldId}-customer-address`} aria-invalid={!!errors.addressSource} aria-describedby={errors.addressSource ? `${productFieldId}-customer-address-error` : undefined} className={selectCls} disabled={isSubmitting || isLoading || addressOptions.isInitialLoad} value={selectedAddressSource ? dealAddressKey(selectedAddressSource) : ''} onChange={event => {
+          const option = addressContext.options.find(option => dealAddressKey(option) === event.target.value);
+          setValue('addressSource', option ? { type: option.type, id: option.id } : null, { shouldDirty: true, shouldValidate: true });
+        }}><option value="">{!selectedAddressSource && addressContext.options.length === 1 ? `Automatic: ${addressContext.options[0].label}` : 'Automatic / choose later'}</option>{selectedAddressSource && !addressContext.options.some(option => dealAddressKey(option) === dealAddressKey(selectedAddressSource)) && <option value={dealAddressKey(selectedAddressSource)}>Selected address unavailable</option>}{addressContext.options.map(option => <option key={dealAddressKey(option)} value={dealAddressKey(option)}>{option.label}</option>)}</select>
+        {errors.addressSource?.message && <p id={`${productFieldId}-customer-address-error`} role="alert" className="text-xs text-destructive">{errors.addressSource.message}</p>}
+        <p role="status" className="whitespace-pre-wrap break-words text-xs text-muted-foreground">{addressOptions.isInitialLoad ? 'Loading customer addresses…' : addressOptions.error || dealCustomerAddressMessage(addressContext)}</p>
+        {addressOptions.error && <Button type="button" variant="ghost" size="sm" onClick={() => void addressOptions.refetch()}>Retry addresses</Button>}
+        <Label htmlFor={`${productFieldId}-address`} className={labelCls}>Deal Address (override)</Label>
+        <textarea {...register('address')} id={`${productFieldId}-address`} className={inputCls} rows={2} placeholder="Optional project or service location..." aria-invalid={!!errors.address} />
+        {errors.address && <p role="alert" className="text-xs text-destructive">{errors.address.message}</p>}
+        <p className="text-xs text-muted-foreground">Leave blank to use the linked address. Changes affect only this Deal.</p>
       </div>
       {/* Actions */}
       <div className="flex items-center gap-2 pt-1">

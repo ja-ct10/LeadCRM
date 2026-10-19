@@ -235,6 +235,7 @@ beforeEach(() => {
     if (path.includes('/closing-requirements')) return { data: { fields: [], values: {}, errors: {}, files: [], locked: false } };
     if (path.includes('/relationships')) return { data: { account: null, contact: null, sourceLead: null, deals: [], contacts: [], activities: [] } };
     if (path.includes('/activities')) return { data: [] };
+    if (path.endsWith('/email-attachments')) return { data: { attachments: [] } };
     if (path.includes('/files')) return { data: [] };
     const module = path.split('/')[2] as CrmRecordModule;
     return { data: records[module] };

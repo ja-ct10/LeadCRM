@@ -79,6 +79,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
     leadSource: data.leadSource || undefined,
     accountId: data.accountId || data.companyId || data.organizationId || undefined,
     address: data.address || undefined,
+    addressSource: data.addressSource ?? undefined,
     productInterests: data.productInterests,
     productInterestId: data.productInterestId,
     productInterestIds: data.productInterestIds,
@@ -102,6 +103,7 @@ export function toBackendCreateDeal(data: Partial<any>): any {
  */
 export function toBackendUpdateDeal(data: Partial<any>): any {
   const updateData: any = {};
+  if (data.addressSource !== undefined) updateData.addressSource = data.addressSource;
   if (data.primaryAssociation !== undefined) updateData.primaryAssociation = data.primaryAssociation;
   if (data.customFieldValues !== undefined) updateData.customFieldValues = data.customFieldValues;
 
@@ -246,6 +248,8 @@ export function toFrontendDeal(backendDeal: any): any {
     updatedAt: backendDeal.updatedAt || undefined,
     lastStageChangeDate: lastStageChangeDate || backendDeal.stageChangedAt || undefined,
     address: backendDeal.address || undefined,
+    addressSource: backendDeal.addressSource,
+    addressContext: backendDeal.addressContext,
     leadSource: backendDeal.leadSource || undefined,
     
     // Frontend-only or unmapped backend fields default setups

@@ -11,6 +11,7 @@ import { syncMailbox, readMailboxThread, decorateEmails, mailboxPermissions, ass
 import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
 import { readMailboxAttachment, readMailboxContent } from './mailbox-attachments';
+import { RecordEmailAttachmentContextSchema } from '@leadcrm/shared';
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export async function scheduledDetail(req: Request, res: Response, next: NextFunction) {
@@ -76,9 +77,11 @@ export async function conversationReadState(req: Request, res: Response, next: N
 }
 export async function attachment(req: Request, res: Response, next: NextFunction) {
   try {
-    const file = await readMailboxAttachment(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId), z.string().regex(/^(?:[a-zA-Z0-9_-]+|part:[a-zA-Z0-9_.-]*)$/).max(2000).parse(req.params.attachmentId));
+    const context = Object.keys(req.query).length ? RecordEmailAttachmentContextSchema.parse(req.query) : undefined;
+    const file = await readMailboxAttachment(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.messageId), z.string().regex(/^(?:[a-zA-Z0-9_-]+|part:[a-zA-Z0-9_.-]*)$/).max(2000).parse(req.params.attachmentId), context);
     const filename = file.filename.replace(/[\r\n/\\]/g, '_').slice(0, 1000) || 'attachment';
     res.setHeader('Content-Type', file.mimeType);
+    res.setHeader('Cache-Control', 'no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(filename).replace(/['()*]/g, char => '%' + char.charCodeAt(0).toString(16))}`);
     res.send(file.data);

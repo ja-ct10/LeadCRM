@@ -31,7 +31,7 @@ const { startMailboxScheduler } = require('../dist/backend/src/integrations/gmai
 const { runScheduledMailboxEmails } = require('../dist/backend/src/integrations/gmail/scheduled-mailbox.service.js');
 const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
 const realFetch = globalThis.fetch, calls = [], messages = new Map(), drafts = new Map(), attachmentBytes = new Map();
-let api, frontend, browser, secondBrowser, stopWorker, account, history = [], sends = 0;
+let api, frontend, browser, secondBrowser, stopWorker, account, pageForFailure, history = [], sends = 0;
 const checks = [], pageErrors = [], transportErrors = [];
 const apiMessage = email => ({ id: email.id, threadId: email.threadId, labelIds: email.labels, snippet: email.snippet, internalDate: String(Date.parse(email.date)), payload: { headers: [{ name: 'From', value: email.from }, { name: 'To', value: email.to.join(', ') }, { name: 'Subject', value: email.subject }, ...(email.rfcMessageId ? [{ name: 'Message-ID', value: email.rfcMessageId }] : [])], mimeType: email.attachments?.length ? 'multipart/mixed' : email.bodyMimeType ?? 'text/html', ...(email.attachments?.length ? { parts: [{ mimeType: 'text/html', body: { data: Buffer.from(email.body).toString('base64url') } }, ...email.attachments.map(file => ({ filename: file.filename, mimeType: file.mimeType, headers: file.contentId ? [{ name: 'Content-ID', value: `<${file.contentId}>` }, { name: 'Content-Disposition', value: 'inline' }] : [], body: { attachmentId: file.id, size: file.size } }))] } : { body: { data: Buffer.from(email.body).toString('base64url') } }) } });
 globalThis.fetch = async (input, init) => {
@@ -118,7 +118,7 @@ try {
   // browser-internal resources rather than network/provider requests.
   await context.route(/^chrome(?:-extension)?:\/\/(?:mhjfbmdgcfjbbpaeojofohoefgiehjai|resources)\//, route => route.continue());
   await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
-  const page = await context.newPage(); page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
+  const page = await context.newPage(); pageForFailure = page; page.setDefaultTimeout(30000); page.setDefaultNavigationTimeout(120000); page.setDefaultNavigationTimeout(120000); page.on('pageerror', error => pageErrors.push(error.message));
   const imageReady = async locator => {
     let state;
     // Recovery can replace srcdoc while an image loads; poll the current frame DOM.
@@ -219,6 +219,8 @@ try {
   await page.getByLabel('Filter emails').click(); assert.deepEqual(await page.getByRole('menuitemradio').allTextContents(), ['All emails', 'Unread only', 'Sent', 'Scheduled', 'Drafts only']);
   await page.getByRole('menuitemradio', { name: 'All emails', exact: true }).click();
   await page.getByText(seed[1].subject, { exact: true }).click();
+  await page.locator('article').nth(1).waitFor();
+  await page.getByText('Loading conversation…', { exact: true }).waitFor({ state: 'hidden' });
   await page.getByRole('button', { name: 'Expand message from Camxian Technologies', exact: true }).click();
   const resetFrame = page.frameLocator('iframe[data-mailbox-body]').first();
   await resetFrame.getByRole('heading', { name: 'Reset your password' }).waitFor();
@@ -257,9 +259,22 @@ try {
   assert.equal(await page.getByRole('button', { name: 'Preview specifications.docx' }).count(), 0);
   await page.getByRole('button', { name: 'Preview QT-2026-00124.pdf' }).click();
   await page.getByTitle('Email attachment PDF preview').waitFor();
+  let nativePdf, pageCount;
+  for (let attempt = 0; attempt < 100; attempt++) {
+    nativePdf = page.frames().find(frame => frame.url().startsWith('chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/'));
+    if (nativePdf && await nativePdf.locator('viewer-page-selector').count()) pageCount = await nativePdf.locator('viewer-page-selector').evaluate(element => element.docLength);
+    if (pageCount === 2) break;
+    await page.waitForTimeout(100);
+  }
+  assert.equal(pageCount, 2, 'Native PDF viewer renders both original pages');
   const pdfSource = await page.getByTitle('Email attachment PDF preview').getAttribute('src');
   assert.deepEqual(Buffer.from(await page.evaluate(async source => [...new Uint8Array(await (await fetch(source.split('#')[0])).arrayBuffer())], pdfSource)), pdf);
-  await responsive('pdf-preview'); await page.getByLabel('Close sheet', { exact: true }).click();
+  await responsive('pdf-preview');
+  await nativePdf.locator('viewer-page-selector input').fill('2'); await nativePdf.locator('viewer-page-selector input').press('Enter');
+  for (let attempt = 0; attempt < 30 && await nativePdf.locator('viewer-page-selector').evaluate(element => element.pageNo) !== 2; attempt++) await page.waitForTimeout(100);
+  assert.equal(await nativePdf.locator('viewer-page-selector').evaluate(element => element.pageNo), 2);
+  await page.screenshot({ path: resolve(output, 'pdf-page-two.png') });
+  await page.getByLabel('Close sheet', { exact: true }).click();
   await page.getByRole('button', { name: 'Preview installation-photo.png' }).click(); await page.getByRole('dialog', { name: 'installation-photo.png' }).waitFor();
   await responsive('image-preview'); await page.getByLabel('Close sheet', { exact: true }).click();
   checks.push({ label: 'Formatted isolated HTML, automatic no-referrer remote images, authorized CID images, original two-page PDF preview/download bytes and native image preview' });
@@ -331,8 +346,14 @@ try {
   await page.getByLabel('Filter emails').click(); await page.getByRole('menuitemradio', { name: 'Sent', exact: true }).click(); await page.getByText(scheduledSubject, { exact: true }).waitFor();
   checks.push({ label: 'schedule survived browser reload; controlled due time sent once; two-tab Scheduled to Sent SSE transition without loading flashes', sends });
   await page.screenshot({ path: resolve(output, 'sent-320.png') });
-  assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local development server' }, null, 2));
+  assert.deepEqual(pageErrors, []); assert.deepEqual(transportErrors, []); writeFileSync(resolve(output, 'results.json'), JSON.stringify({ checks, pageErrors, transportErrors, provider: 'Simulated. No real email sent.', backend: 'Compiled build', frontend: 'Local built Next.js frontend' }, null, 2));
   console.log(JSON.stringify({ passed: checks.length, output, sends, browserSyncs }));
+} catch (error) {
+  if (pageForFailure && !pageForFailure.isClosed()) {
+    await pageForFailure.screenshot({ path: resolve(output, 'failure.png'), fullPage: true }).catch(() => {});
+    writeFileSync(resolve(output, 'failure-page.html'), await pageForFailure.content());
+  }
+  throw error;
 } finally {
   await stopWorker?.(); await secondBrowser?.close(); await browser?.close(); frontend?.kill();
   if (api) { api.closeAllConnections(); await new Promise(done => api.close(done)); }

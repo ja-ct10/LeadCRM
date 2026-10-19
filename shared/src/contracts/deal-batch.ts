@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { DealAddressSourceSchema } from './deal-address';
 import { CustomFieldValuesSchema } from './closing-requirements';
 import { ProductInterestIdSchema } from './product-interests.contract';
 
@@ -23,6 +24,7 @@ export function validateManualDealAssociation(data: { leadIds?: string[]; contac
   }
 }
 export const CreateDealBatchSchema = z.object({
+  addressSource: DealAddressSourceSchema.nullable().optional(),
   customFieldValues: CustomFieldValuesSchema.optional(),
   idempotencyKey: z.string().uuid(),
   pipelineId: id,

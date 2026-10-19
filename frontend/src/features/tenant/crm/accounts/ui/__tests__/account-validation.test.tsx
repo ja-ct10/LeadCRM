@@ -22,7 +22,7 @@ it.each([false, true])('submits an Account without obsolete fields (edit=%s)', a
   }
   for (const label of ['Tax ID', 'Customer Type', 'Customer Since', 'Customer Classification']) expect(screen.queryByText(label)).toBeNull();
   fireEvent.change(screen.getByLabelText(/Account Name/), { target: { value: 'New Account' } });
-  const address = screen.getByLabelText('Full Address');
+  const address = screen.getByLabelText('Company Address');
   expect(address.tagName).toBe('TEXTAREA');
   expect(address.parentElement?.parentElement?.className).toContain('sm:col-span-2');
   fireEvent.change(address, { target: { value: '123 Main Street\nMakati City, Metro Manila, Philippines' } });
@@ -70,7 +70,7 @@ it('keeps international address data and omits legacy note inputs when editing',
   render(<AccountFormInner initialData={{ id: 'account', tenantId: 'tenant', name: 'Account', createdAt: '2026-09-24T00:00:00Z', address: '42 Queen Street\nToronto, Ontario, Canada', notes: 'Historical notes' }} onSave={save} onCancel={vi.fn()} />);
   expect(screen.queryByLabelText('Notes')).toBeNull();
   expect(screen.queryByLabelText('Internal Notes')).toBeNull();
-  expect((screen.getByLabelText('Full Address') as HTMLTextAreaElement).value).toBe('42 Queen Street\nToronto, Ontario, Canada');
+  expect((screen.getByLabelText('Company Address') as HTMLTextAreaElement).value).toBe('42 Queen Street\nToronto, Ontario, Canada');
   fireEvent.submit(screen.getByLabelText(/Account Name/).closest('form')!);
   await waitFor(() => expect(save).toHaveBeenCalled());
   expect(save.mock.calls[0][0]).toMatchObject({ address: '42 Queen Street\nToronto, Ontario, Canada' });
