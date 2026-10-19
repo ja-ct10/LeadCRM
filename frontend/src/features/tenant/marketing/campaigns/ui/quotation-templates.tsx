@@ -90,7 +90,9 @@ export function QuotationTemplates() {
       <h2 className="col-start-1 row-start-2 min-w-0 text-lg font-semibold sm:col-span-2">Quotation Templates</h2>
       <p className="col-span-2 row-start-3 text-sm text-muted-foreground">Create reusable PDF-formatted quotations for your customers.</p>
     </div>
-    <ModuleFilterRail showFilters={filters} onToggleFilters={() => setFilters(false)} totalRecords={result.data?.meta.total ?? 0} onClearFilters={() => { setCategory(''); setPage(1); }} filterGroups={[{ id: 'category', label: 'Category', isExpanded: true, items: categories.map(value => ({ id: value, label: value, isChecked: category === value })) }]} onFilterToggle={(_group, value) => { setCategory(previous => previous === value ? '' : value); setPage(1); }} />
+    <div className="flex min-w-0 items-start gap-3">
+      <ModuleFilterRail showFilters={filters} onToggleFilters={() => setFilters(false)} totalRecords={result.data?.meta.total ?? 0} onClearFilters={() => { setCategory(''); setPage(1); }} filterGroups={[{ id: 'category', label: 'Category', isExpanded: true, items: categories.map(value => ({ id: value, label: value, isChecked: category === value })) }]} onFilterToggle={(_group, value) => { setCategory(previous => previous === value ? '' : value); setPage(1); }} />
+      <div className="min-w-0 flex-1 space-y-4">
     {result.error && <p role="alert" className="text-sm text-destructive">{result.error}</p>}
     {result.isInitialLoad ? <p role="status">Loading quotation templates…</p> : !templates.length ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No quotation templates found.</div> :
       <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{templates.map(template => {
@@ -100,10 +102,12 @@ export function QuotationTemplates() {
           <div className="mb-3 flex items-center justify-between gap-2"><Badge variant="secondary">{template.category}</Badge><div className="flex shrink-0 items-center gap-1"><TableIconButton label="Download PDF" touchFriendly disabled={!!busyId} onClick={() => void pdf(template, true)}><FileDown size={17} /></TableIconButton>
             {canEdit && <DropdownMenu><DropdownMenuTrigger asChild><Button size="icon" variant="ghost" aria-label={`Actions for ${template.name}`}><MoreVertical size={16} /></Button></DropdownMenuTrigger><DropdownMenuContent align="end"><DropdownMenuItem onClick={() => { try { parseQuotationTemplate(template.content); setEditor({ template }); } catch { toast.error('This saved template has an invalid layout.'); } }}><Edit2 size={14} /> Edit Template</DropdownMenuItem></DropdownMenuContent></DropdownMenu>}</div></div>
           <h3 className="break-words text-lg font-semibold">{template.name}</h3><p className="mb-3 text-sm text-muted-foreground">{tenant?.name}</p><p className="mb-5 line-clamp-3 flex-1 break-words text-sm text-muted-foreground">{description}</p>
-          <div className="flex gap-2"><Button className="flex-1" variant="outline" disabled={!!busyId} onClick={() => void pdf(template, false)}>Preview</Button><Button className="flex-1" onClick={() => setUsing(template)}>Use Template</Button></div>
+          <div className="flex flex-wrap gap-2"><Button className="flex-1" variant="outline" disabled={!!busyId} onClick={() => void pdf(template, false)}>Preview</Button><Button className="flex-1" onClick={() => setUsing(template)}>Use Template</Button></div>
         </article>;
       })}</div>}
     <LeadsPagination currentPage={page} totalRecords={result.data?.meta.total ?? 0} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} refreshing={result.isRefreshing} loading={result.isInitialLoad} />
+      </div>
+    </div>
     <SideSheet isOpen={!!editor} onClose={() => setEditor(null)} title={editor?.template ? 'Edit Quotation Template' : 'Create Quotation Template'}>{editor && <TemplateForm template={editor.template} categories={categories} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); void result.refetch(); }} />}</SideSheet>
     <SideSheet isOpen={!!using} onClose={() => setUsing(null)} title={`Use Template: ${using?.name ?? ''}`} width="w-full max-w-3xl">{using && <QuotationWizard template={using} onClose={() => setUsing(null)} />}</SideSheet>
     <SideSheet isOpen={!!preview} onClose={() => setPreview(null)} title={preview?.name ?? 'Quotation Preview'} width="w-full max-w-3xl">{preview && <div className="flex h-full min-h-[65vh] flex-col gap-3 p-4"><iframe title="Quotation template PDF preview" src={preview.url + '#view=FitH'} className="min-h-[65vh] w-full flex-1 rounded border border-border" /><a className="text-sm text-primary underline" href={preview.url} target="_blank" rel="noreferrer">Open PDF in a new tab</a></div>}</SideSheet>

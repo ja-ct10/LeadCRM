@@ -174,10 +174,50 @@ async function templateControls(page, type, width) {
   await fits(page, `${type} template controls and pagination`, width);
   return styles;
 }
+async function templateFilterLayout(page, type, width) {
+  const section = page.getByRole('heading', { name: `${type} Templates`, level: 2, exact: true }).locator('xpath=ancestor::section[1]');
+  const card = section.getByRole('heading', { level: 3 }).first().locator('..');
+  const grid = card.locator('..'), pagination = section.getByRole('navigation', { name: 'Pagination' });
+  const filter = page.getByLabel(`Filter ${type.toLowerCase()} templates`, { exact: true });
+  const closed = await grid.boundingBox(), closedCard = await card.boundingBox();
+  const count = await grid.locator(':scope > *').count();
+  assert.ok(closed && closedCard);
+  assert.equal(await page.getByRole('heading', { name: 'Campaigns', level: 1, exact: true }).locator('..').textContent(), 'Campaigns', 'Campaigns title has no total badge');
+  await filter.click();
+  if (width >= 1280) {
+    const rail = section.getByRole('complementary', { name: 'Filters', exact: true });
+    await rail.waitFor();
+    await page.waitForFunction(node => Math.abs(node.getBoundingClientRect().width - 260) < 1, await rail.elementHandle());
+    const sidebar = await rail.boundingBox(), open = await grid.boundingBox(), openCard = await card.boundingBox(), footer = await pagination.boundingBox();
+    assert.ok(sidebar && open && openCard && footer);
+    assert.ok(open.x >= sidebar.x + sidebar.width + 10 && Math.abs(open.y - sidebar.y) < 2, `${type}: cards align beside desktop sidebar`);
+    assert.ok(open.x > closed.x && open.width < closed.width && openCard.width < closedCard.width, `${type}: grid and cards narrow when filters open`);
+    assert.ok(Math.abs(footer.x - open.x) < 2 && Math.abs(footer.width - open.width) < 2, `${type}: pagination stays in results column`);
+  } else {
+    await page.getByRole('dialog', { name: 'Filters', exact: true }).waitFor();
+    const open = await grid.boundingBox(), openCard = await card.boundingBox();
+    assert.ok(open && openCard);
+    assert.ok(Math.abs(open.x - closed.x) < 2 && Math.abs(open.width - closed.width) < 2 && Math.abs(openCard.width - closedCard.width) < 2, `${type}: drawer preserves card layout`);
+  }
+  assert.equal(await grid.evaluate(node => [...node.children].every(child => child.scrollWidth <= child.clientWidth + 1)), true, `${type}: card content fits with filters open`);
+  assert.equal(await grid.locator(':scope > *').count(), count, `${type}: opening filters preserves records`);
+  await fits(page, `${type} open filter layout`, width);
+  await page.screenshot({ path: resolve(output, `${type.toLowerCase()}-filters-open-${width}.png`), fullPage: true });
+  await page.getByRole('button', { name: 'Close filters', exact: true }).click();
+  await page.waitForFunction(({ node, closed }) => {
+    const box = node.getBoundingClientRect();
+    return Math.abs(box.x - closed.x) < 2 && Math.abs(box.width - closed.width) < 2;
+  }, { node: await grid.elementHandle(), closed });
+  assert.equal(await filter.getAttribute('aria-expanded'), 'false');
+  assert.ok(Math.abs((await card.boundingBox()).width - closedCard.width) < 2, `${type}: card width restored after closing filters`);
+  assert.equal(await grid.locator(':scope > *').count(), count, `${type}: closing filters preserves records`);
+  await fits(page, `${type} restored filter layout`, width);
+  assertions.push(`${width}: ${type} filters preserve records, resize desktop results and pagination, retain compact drawer, and restore original layout`);
+}
 try {
   for (let attempt = 0; attempt < 60; attempt++) { try { if ((await fetch(base + '/login')).ok) break; } catch {} await new Promise(done => setTimeout(done, 500)); }
   browser = await chromium.launch({ channel: 'chrome', headless: true });
-  const widths = process.env.TEMPLATE_PREVIEW_WIDTHS ? process.env.TEMPLATE_PREVIEW_WIDTHS.split(',').map(Number) : [320,375,390,430,639,640,768,1024,1440];
+  const widths = process.env.TEMPLATE_PREVIEW_WIDTHS ? process.env.TEMPLATE_PREVIEW_WIDTHS.split(',').map(Number) : [320,375,390,430,639,640,768,1024,1279,1280,1440,1920];
   assert.ok(widths.length && widths.every(width => Number.isInteger(width) && width >= 320));
   for (const width of widths) {
     const recipientType = [375, 1024].includes(width) ? 'Contact' : 'Lead', selectedRecipient = recipientType === 'Contact' ? contact : lead;
@@ -239,6 +279,7 @@ try {
         assert.equal(await page.getByRole('button', { name: 'Preview', exact: true }).count(), 10);
         messageControlStyles.push(await templateControls(page, type, width));
         await page.screenshot({ path: resolve(output, `${type.toLowerCase()}-templates-${width}.png`), fullPage: true });
+        await templateFilterLayout(page, type, width);
         await page.getByRole('button', { name: 'Next page' }).click(); await page.getByRole('heading', { name: `${type} Follow 11`, exact: true }).waitFor();
         await page.getByLabel('Search templates', { exact: true }).fill('sAlEs'); await page.getByText('Page 1 of 2', { exact: true }).waitFor();
         assert.equal(await page.getByRole('heading', { name: `${type} Follow 2`, exact: true }).count(), 0);
@@ -302,6 +343,7 @@ try {
         assert.ok(badge && icon && icon.x > badge.x && Math.abs((badge.y + badge.height/2) - (icon.y + icon.height/2)) < 2);
       }
       await fits(page, 'six starters plus CCTV cards and tabs', width); await page.screenshot({ path: resolve(output, `cards-${width}.png`), fullPage: true });
+      await templateFilterLayout(page, 'Quotation', width);
       const standardCard = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }) });
       const [blankDownload] = await Promise.all([page.waitForEvent('download'), standardCard.getByRole('button', { name: 'Download PDF', exact: true }).click()]); assert.equal(blankDownload.suggestedFilename(), 'Standard Sales Quotation.pdf');
       await standardCard.getByRole('button', { name: 'Preview', exact: true }).click(); await pdfReady(page, 'Quotation template PDF preview'); await fits(page, 'reusable template preview/download', width); await page.getByRole('button', { name: 'Close sheet', exact: true }).click();
