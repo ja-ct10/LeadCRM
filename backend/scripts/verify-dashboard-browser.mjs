@@ -33,7 +33,7 @@ const { tenantContext } = require('../dist/backend/src/core/tenant/tenant-contex
 const { salesPipeline, salesTransaction } = require('../dist/backend/src/modules/crm/leads/lead-automation.service.js');
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
 let api, frontend, browser, page, gateway;
-const checks = [], pageErrors = [], latencies = [], queryTimes = [];
+const checks = [], pageErrors = [], consoleMessages = [], latencies = [], queryTimes = [];
 const record = (label, details = {}) => { checks.push({ label, ...details }); console.log('PASS', label); };
 const wait = ms => new Promise(done => setTimeout(done, ms));
 async function until(predicate, label, timeout = 25000) {
@@ -70,7 +70,14 @@ try {
   const adminToken = (await issueAuthSession(admin)).token, agentToken = (await issueAuthSession(agent)).token, replacementToken = (await issueAuthSession(replacement)).token;
   api = app.listen(0, '127.0.0.1'); await new Promise(done => api.once('listening', done));
   const port = api.address().port;
+  const fixtureContacts = new Map();
   async function http(path, method = 'GET', body, token = adminToken) {
+    if (method === 'POST' && path === '/crm/deals' && !body.leadIds?.length && !body.contactIds?.length) {
+      const owner = body.assignedUserId ?? agent.id;
+      if (!fixtureContacts.has(owner)) fixtureContacts.set(owner, (await prisma.contact.create({ data: { tenantId: tenant.id, firstName: 'Dashboard', lastName: 'Buyer', email: `${owner}@example.test`, assignedUserId: owner } })).id);
+      body = { ...body, contactIds: [fixtureContacts.get(owner)] };
+    }
+    if (method === 'POST' && path === '/operations/tasks') body = { requestId: randomUUID(), ...body };
     const response = await fetch(`http://127.0.0.1:${port}/api/v1${path}`, { method, headers: { authorization: `Bearer ${token}`, 'Content-Type': 'application/json', Connection:'close' }, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
     const result = await response.json(); assert.ok(response.ok, `${method} ${path}: ${response.status} ${JSON.stringify(result)}`); return result.data;
   }
@@ -87,7 +94,7 @@ try {
     response.on('close',()=>upstream.destroy()); request.pipe(upstream);
   });
   gateway.listen(Number(new URL(base).port)); await new Promise(done=>gateway.once('listening',done));
-  browser = await chromium.launch({ channel: 'chrome', headless: true });
+  browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--disable-extensions'] });
   async function session(token) {
     const context = await createAcceptanceContext(browser, { ignoreHTTPSErrors:true, hasTouch:uiPolish, viewport: { width: 1440, height: 1000 } });
     await context.addInitScript(() => {
@@ -108,6 +115,7 @@ try {
     });
     await context.addCookies([{ name: 'leadcrm_token', value: token, url: base, httpOnly: true, sameSite: 'Lax' }]);
     const tab = await context.newPage(); tab.setDefaultTimeout(25000); tab.on('pageerror', error => pageErrors.push(error.message));
+    tab.on('console', message => { if (['warning', 'error'].includes(message.type())) consoleMessages.push({ type: message.type(), text: message.text(), ...message.location() }); });
     await tab.goto(base + '/dashboard', { waitUntil: 'domcontentloaded' }); await tab.getByRole('heading', { name: 'Revenue Trend', exact: true }).waitFor();
     await until(async () => (await tab.evaluate(() => window.__dashboardEvents.length)) > 0,'Dashboard subscription established'); return { context, tab };
   }
@@ -148,14 +156,14 @@ try {
     for (const width of [1440,640,639,390,320]) {
       await page.setViewportSize({width,height:1000});
       await clock.scrollIntoViewIfNeeded();
-      for (const label of ['Dashboard date range','Sync Metrics']) {
+      assert.equal(await page.getByRole('button',{name:'Dashboard date range',exact:true}).count(),0);
+      for (const label of ['Sync Metrics']) {
         const control = page.getByRole('button',{name:label,exact:true});
         assert.equal(await control.locator('span').isVisible(),width>=640);
         if (width<640) {
           const bounds = await control.boundingBox(); assert.equal(bounds.width,44); assert.equal(bounds.height,44);
         }
       }
-      assert.equal(await page.getByRole('button',{name:'Dashboard date range',exact:true}).locator('svg').last().isVisible(),width>=640);
       const dimensions = await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
       assert.ok(dimensions.scrollWidth<=width+1);
       await page.screenshot({path:resolve(output,`clock-${width}.png`),fullPage:true});
@@ -222,9 +230,11 @@ try {
   }, async () => until(async () => await stageCount(staffSession.tab, 'Contacted') === '1','Restart recovered committed stage'));
   await mutation('Permission revocation hides sensitive Dashboard without reload', () => http(`/administration/roles/${role.id}`,'PUT',{permissions:grants.map(p => p.module === 'dashboard' ? {...p,canView:false} : p)}), async () => until(async () => await staffSession.tab.getByRole('heading',{name:'Revenue Trend',exact:true}).count() === 0,'Dashboard hidden'));
   await mutation('Permission restoration remounts Dashboard without reload', () => http(`/administration/roles/${role.id}`,'PUT',{permissions:grants}), async () => { await staffSession.tab.getByRole('heading',{name:'Revenue Trend',exact:true}).waitFor(); await until(async () => await value(staffSession.tab,'Active Deals') === '1','Grant visible'); });
+  await page.goto(base+'/reporting');
+  await page.getByRole('button',{name:'Dashboard date range',exact:true}).waitFor();
   for (const label of ['Today','Last 7 Days','Last 30 Days','This Month','Last Month','Last 3 Months','Last 6 Months','This Year']) {
     await page.getByRole('button',{name:'Dashboard date range',exact:true}).click(); await page.getByRole('menuitem',{name:label,exact:true}).click();
-    await page.getByRole('heading',{name:'Revenue Trend',exact:true}).waitFor();
+    await page.getByRole('heading',{name:/^Revenue Trend by /}).waitFor();
     await until(async () => !await page.getByRole('button',{name:'Syncing…',exact:true}).count(),'Date query complete');
   }
   // A live-clock suite may cross Manila midnight after creating/closing its records.
@@ -248,14 +258,20 @@ try {
   for (const interval of ['Week','Month','Year']) {
     await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click();
     await page.getByRole('menuitem',{name:interval,exact:true}).click();
-    await page.getByRole('heading',{name:'Revenue Trend',exact:true}).waitFor();
+    await page.getByRole('heading',{name:/^Revenue Trend by /}).waitFor();
     await expectValue('Total Revenue','₱2,800.00');
   }
   await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click(); await page.getByRole('menuitem',{name:'Month',exact:true}).click();
-  await page.getByText('Cohort details', {exact:true}).click();
+  await page.goto(base+'/dashboard');
+  await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).waitFor();
+  assert.equal(await page.getByText('Cohort details',{exact:true}).count(),0);
   for (const period of ['Week','Month','Year']) {
+    const response = page.waitForResponse(response=>response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('funnelRange')===period.toLowerCase());
     await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:period,exact:true}).click();
-    await page.getByText(`Deals created during the current ${period.toLowerCase()} · Recorded milestones through today`,{exact:true}).waitFor({state:'attached'});
+    const filteredResponse = await response;
+    assert.equal(new URL(filteredResponse.url()).searchParams.get('range'),'thisMonth');
+    const result = await filteredResponse.json();
+    assert.equal(result.data.conversion.period.range,period.toLowerCase());
   }
   await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Range',exact:true}).click();
   const today = dashboardToday();
@@ -268,8 +284,9 @@ try {
   await page.getByRole('alert').filter({hasText:'Choose valid historical dates'}).waitFor();
   await page.getByLabel('Funnel From Date').fill(fixtureStart);
 
+  const customResponse = page.waitForResponse(response=>response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('funnelRange')==='custom');
   await page.getByRole('button',{name:'Apply funnel dates',exact:true}).click();
-  await page.getByText(/Deals created .*Recorded milestones through/).filter({hasNotText:'current'}).waitFor({state:'attached'});
+  assert.equal(new URL((await customResponse).url()).searchParams.get('range'),'thisMonth');
   assert.equal(await page.getByText('View revenue and outcome data',{exact:true}).count(),0);
   assert.equal(await page.getByText(/Reporting limitations \(/).count(),0);
   assert.equal(await page.getByText(/Automatic updates connected|Assigned records only/).count(),0);
@@ -362,11 +379,12 @@ try {
   record('Authoritative reconciliation after all committed mutations',{queryMs:queryTimes});
   }
   assert.deepEqual(pageErrors,[]);
-  writeFileSync(resolve(output,clockOnly?'clock-results.json':'results.json'),JSON.stringify({checks,pageErrors,latencies,queryTimes,stages,scope:'Disposable PostgreSQL-compatible database, optimized frontend build and local HTTPS gateway'},null,2));
+  assert.deepEqual(consoleMessages.filter(message=>/MaxListenersExceededWarning|ObjectMultiplex|Blocked script execution/.test(message.text)),[]);
+  writeFileSync(resolve(output,clockOnly?'clock-results.json':'results.json'),JSON.stringify({checks,pageErrors,consoleMessages,latencies,queryTimes,stages,scope:'Disposable PostgreSQL-compatible database, optimized frontend build, clean Chrome profile with extensions disabled and local HTTPS gateway'},null,2));
   console.log(`Dashboard acceptance passed: ${checks.length} checks.`);
 } catch (error) {
   if (page) { await page.screenshot({path:resolve(output,'failure.png'),fullPage:true}).catch(()=>{}); writeFileSync(resolve(output,'failure.txt'),await page.locator('body').innerText().catch(()=>'')); }
-  writeFileSync(resolve(output,clockOnly?'clock-results.json':'results.json'),JSON.stringify({checks,pageErrors,latencies,queryTimes,error:String(error)},null,2)); throw error;
+  writeFileSync(resolve(output,clockOnly?'clock-results.json':'results.json'),JSON.stringify({checks,pageErrors,consoleMessages,latencies,queryTimes,error:String(error)},null,2)); throw error;
 } finally {
   await browser?.close(); frontend?.kill();
   if (gateway) { gateway.closeAllConnections(); await new Promise(done=>gateway.close(done)); }

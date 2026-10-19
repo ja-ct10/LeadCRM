@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.MailboxBulkActionSchema = exports.MailboxConversationPageSchema = exports.MailboxConversationReadStateSchema = exports.MailboxConversationIdSchema = exports.ScheduleMailboxEmailSchema = exports.MailboxListSchema = exports.SaveMailboxDraftSchema = exports.MailboxReadStateSchema = exports.MAILBOX_FILTERS = exports.SendMailboxEmailSchema = exports.MailboxComposeContextSchema = exports.MAILBOX_COMPOSE_MODES = exports.ClosedWonConfirmationSchema = exports.CLOSED_WON_CONFIRMATION_TYPES = void 0;
+exports.MailboxDealAssociationSchema = exports.MailboxBulkActionSchema = exports.MailboxConversationPageSchema = exports.MailboxConversationReadStateSchema = exports.MailboxConversationIdSchema = exports.ScheduleMailboxEmailSchema = exports.MailboxListSchema = exports.SaveMailboxDraftSchema = exports.MailboxReadStateSchema = exports.MAILBOX_FILTERS = exports.SendMailboxEmailSchema = exports.MailboxComposeContextSchema = exports.MAILBOX_COMPOSE_MODES = exports.ClosedWonConfirmationSchema = exports.CLOSED_WON_CONFIRMATION_TYPES = void 0;
 const zod_1 = require("zod");
 exports.CLOSED_WON_CONFIRMATION_TYPES = ['Approved Quotation', 'Signed/Approved Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'];
 exports.ClosedWonConfirmationSchema = zod_1.z.object({
@@ -46,12 +46,13 @@ exports.SaveMailboxDraftSchema = zod_1.z.object({
     composeMode: exports.SendMailboxEmailSchema.shape.composeMode,
 }).strict();
 exports.MailboxListSchema = zod_1.z.object({
+    view: zod_1.z.enum(['inbox', 'archived']).default('inbox'),
     filter: zod_1.z.enum(exports.MAILBOX_FILTERS).default('all'),
     sort: zod_1.z.enum(['newest', 'oldest', 'unread']).default('newest'),
     query: zod_1.z.string().trim().max(1000).optional(),
     maxResults: zod_1.z.coerce.number().int().min(1).max(50).default(30),
     pageToken: zod_1.z.string().max(2000).optional(),
-});
+}).refine(value => value.view !== 'archived' || value.filter === 'all' || value.filter === 'unread', 'Archived Messages supports All or Unread.');
 exports.ScheduleMailboxEmailSchema = exports.SendMailboxEmailSchema.extend({
     scheduledAt: zod_1.z.string().datetime().refine(value => Date.parse(value) > Date.now(), 'Choose a future date and time'),
     requestId: zod_1.z.string().uuid(),
@@ -71,3 +72,8 @@ exports.MailboxBulkActionSchema = zod_1.z.union([
     zod_1.z.object({ threadIds: zod_1.z.array(providerId).min(1).max(100) }).strict(),
     zod_1.z.object({ messageIds: zod_1.z.array(providerId).min(1).max(100) }).strict(),
 ]);
+exports.MailboxDealAssociationSchema = zod_1.z.object({
+    dealId: zod_1.z.string().min(1).max(200),
+    conversationId: exports.MailboxConversationIdSchema.optional(),
+    messageId: providerId.optional(),
+}).strict().refine(value => !(value.conversationId && value.messageId), 'Choose one message or conversation.');

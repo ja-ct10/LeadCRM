@@ -4,6 +4,7 @@ import type { MailboxEmail as GmailEmail, MailboxUnreadCount, MailboxListOptions
 import type { MailboxConversationReadState } from '@leadcrm/shared';
 import type { MailboxMessageContent } from '@leadcrm/shared';
 import type { RecordEmailAttachmentContext } from '@leadcrm/shared';
+import type { MailboxBulkActionResult } from '@leadcrm/shared';
 
 export const fetchGmailUnreadCount = () => apiClient.get<MailboxUnreadCount>('/integrations/gmail/unread-count');
 export const fetchGmailMessageContent = (messageId: string, signal?: AbortSignal) => apiClient.get<MailboxMessageContent>(`/integrations/gmail/messages/${encodeURIComponent(messageId)}/content`, { signal });
@@ -24,12 +25,13 @@ export const fetchGmailThread = (threadId: string, signal?: AbortSignal) => apiC
 export const fetchGmailCorrespondent = (conversationId: string, pageToken?: string, signal?: AbortSignal) => apiClient.get<MailboxConversationDetail>(`/integrations/gmail/conversations/${encodeURIComponent(conversationId)}`, { params: { pageToken }, signal });
 export const setGmailMessageReadState = (messageId: string, isRead: boolean) => apiClient.patch(`/integrations/gmail/messages/${encodeURIComponent(messageId)}/read-state`, { isRead });
 export const setGmailConversationReadState = (conversationId: string, isRead: boolean, pageToken?: string) => apiClient.patch<MailboxConversationReadState>(`/integrations/gmail/conversations/${encodeURIComponent(conversationId)}/read-state`, { isRead, pageToken });
-export const associateThreadDeal = (threadId: string, dealId: string) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/deal`, { dealId });
+export const associateThreadDeal = (threadId: string, dealId: string, target: { conversationId?: string; messageId?: string } = {}) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/deal`, { dealId, ...target });
 export const setGmailThreadReadState = (threadId: string, isRead: boolean) => apiClient.patch(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/read-state`, { isRead });
 export const archiveGmailThread = (threadId: string) => apiClient.post(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/archive`, {});
 export const trashGmailThread = (threadId: string) => apiClient.post(`/integrations/gmail/threads/${encodeURIComponent(threadId)}/trash`, {});
-export const archiveGmailConversations = (ids: string[]) => apiClient.post('/integrations/gmail/archive', ids.every(id => /^c_[a-f0-9]{32}$/.test(id)) ? { conversationIds: ids } : { threadIds: ids });
-export const trashGmailConversations = (ids: string[]) => apiClient.post('/integrations/gmail/trash', ids.every(id => /^c_[a-f0-9]{32}$/.test(id)) ? { conversationIds: ids } : { threadIds: ids });
+export const archiveGmailConversations = (ids: string[]) => apiClient.post<MailboxBulkActionResult>('/integrations/gmail/archive', ids.every(id => /^c_[a-f0-9]{32}$/.test(id)) ? { conversationIds: ids } : { threadIds: ids });
+export const trashGmailConversations = (ids: string[]) => apiClient.post<MailboxBulkActionResult>('/integrations/gmail/trash', ids.every(id => /^c_[a-f0-9]{32}$/.test(id)) ? { conversationIds: ids } : { threadIds: ids });
+export const restoreGmailConversations = (ids: string[]) => apiClient.post<MailboxBulkActionResult>('/integrations/gmail/restore', { conversationIds: ids });
 
 interface EmailListResponse {
   emails: GmailEmail[];

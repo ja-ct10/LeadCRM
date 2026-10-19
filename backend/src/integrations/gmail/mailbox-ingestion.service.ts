@@ -13,6 +13,19 @@ import { mailboxPermissions } from './mailbox-sync.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean }
 type Tx = Prisma.TransactionClient;
+type SentContext = { sourceMessageId?: string; dealId?: string };
+
+async function validatedReplyDeal(tx: Tx, account: EmailAccount, email: GmailEmail, link: CustomerLink | undefined, context?: SentContext) {
+  const sentContext = mailboxAddress(email.from) === mailboxAddress(account.email) ? context : undefined;
+  if (!link || !sentContext && !email.rfcInReplyTo) return;
+  const parent = sentContext?.sourceMessageId ? { providerMessageId: sentContext.sourceMessageId }
+    : email.rfcInReplyTo ? { rfcMessageId: email.rfcInReplyTo } : undefined;
+  const sources = parent ? await tx.mailboxMessage.findMany({ where: {
+    ...await historyWhere(tx, account.tenantId, link), accountId: account.id, threadId: email.threadId, ...parent, dealId: { not: null },
+  }, distinct: ['dealId'], take: 2, select: { dealId: true } }) : [];
+  const id = sentContext?.dealId || (sources.length === 1 ? sources[0].dealId : undefined);
+  return id && await tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id }, select: { id: true } }) ? id : undefined;
+}
 
 /** Persist provider history independently of permission to edit CRM engagement. */
 async function persistEmailActivity(tx: Tx, account: EmailAccount, stored: MailboxMessage) {
@@ -93,7 +106,7 @@ async function emitStatus(account: EmailAccount, link: CustomerLink, change: Awa
   else await fireContactStatusChanged({ ...event, contact: { id: change.id, status: change.status } });
 }
 
-export async function ingestMailboxMessages(account: EmailAccount, messages: GmailEmail[], permissions: MailboxPermissions) {
+export async function ingestMailboxMessages(account: EmailAccount, messages: GmailEmail[], permissions: MailboxPermissions, sentContext?: SentContext) {
   const requestedPermissions = { ...permissions };
   const scope = await resolveMailboxScope(account, permissions);
   const staff = await prisma.user.findMany({ where: { tenantId: account.tenantId }, select: { email: true } });
@@ -122,7 +135,10 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         return;
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
+        const link = existing.contactId ? { contactId: existing.contactId } : existing.leadId ? { leadId: existing.leadId } : undefined;
+        const contextDealId = !existing.dealId && permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, sentContext) : undefined;
         const stored = await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
+          ...(contextDealId ? { dealId: contextDealId, needsDealAssociation: false } : {}),
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         await persistEmailActivity(tx, account, stored);
@@ -136,7 +152,10 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const link = matched ?? (priorLink && (priorLink.leadId ? currentScope.leadIds.includes(priorLink.leadId) : currentScope.contactIds.includes(priorLink.contactId!)) ? priorLink : undefined);
       const prior = link ? await tx.mailboxMessage.findMany({ where: { ...await historyWhere(tx, account.tenantId, link), accountId: account.id, threadId: email.threadId }, select: { dealId: true } }) : [];
       const association = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId: email.threadId } } });
-      const explicitIds = association?.dealId ? [association.dealId] : existing?.dealId ? [existing.dealId] : [...new Set(prior.map(row => row.dealId).filter((id): id is string => !!id))];
+      const contextDealId = permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, sentContext) : undefined;
+      const explicitIds = existing?.dealId ? [existing.dealId] : contextDealId
+        ? [contextDealId]
+        : [...new Set([association?.dealId, ...prior.map(row => row.dealId)].filter((id): id is string => !!id))];
       const deals = link && permissions.dealsView ? await tx.deal.findMany({ where: { ...customerDealWhere(account.tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true } }) : [];
       const candidateDealId = explicitIds.length === 1 ? explicitIds[0] : !explicitIds.length && deals.length === 1 ? deals[0].id : undefined;
       const dealId = candidateDealId && link && await tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id: candidateDealId }, select: { id: true } }) ? candidateDealId : undefined;

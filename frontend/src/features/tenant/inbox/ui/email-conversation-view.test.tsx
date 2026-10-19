@@ -5,8 +5,8 @@ import EmailConversationView from './email-conversation-view';
 import { forwardDraft, mailboxDate, replyDraft } from '../services/email-presentation';
 import type { GmailEmail } from '../services/gmail.service';
 
-const mocks = vi.hoisted(() => ({ content: vi.fn(), attachment: vi.fn(), thread: vi.fn(), read: vi.fn(), archive: vi.fn(), trash: vi.fn(), associate: vi.fn(), correspondent: vi.fn(), readMessage: vi.fn(), archiveGroups: vi.fn(), trashGroups: vi.fn(), send: vi.fn() }));
-vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment, fetchGmailThread: mocks.thread, fetchGmailCorrespondent: mocks.correspondent, setGmailMessageReadState: mocks.readMessage, archiveGmailConversations: mocks.archiveGroups, trashGmailConversations: mocks.trashGroups, sendGmailEmail: mocks.send, setGmailThreadReadState: mocks.read, archiveGmailThread: mocks.archive, trashGmailThread: mocks.trash, associateThreadDeal: mocks.associate }));
+const mocks = vi.hoisted(() => ({ content: vi.fn(), attachment: vi.fn(), thread: vi.fn(), read: vi.fn(), archive: vi.fn(), trash: vi.fn(), associate: vi.fn(), correspondent: vi.fn(), readMessage: vi.fn(), archiveGroups: vi.fn(), trashGroups: vi.fn(), restore: vi.fn(), send: vi.fn() }));
+vi.mock('../services/gmail.service', () => ({ fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment, fetchGmailThread: mocks.thread, fetchGmailCorrespondent: mocks.correspondent, setGmailMessageReadState: mocks.readMessage, archiveGmailConversations: mocks.archiveGroups, trashGmailConversations: mocks.trashGroups, restoreGmailConversations: mocks.restore, sendGmailEmail: mocks.send, setGmailThreadReadState: mocks.read, archiveGmailThread: mocks.archive, trashGmailThread: mocks.trash, associateThreadDeal: mocks.associate }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 const old: GmailEmail = { id: 'old', threadId: 'conversation', from: 'Staff <staff@camxian.com>', to: ['customer@example.test'], subject: 'Fire Detection Inquiry', snippet: 'Original question', body: '<p>Original question</p>', date: '2026-10-08T05:57:00Z', labels: ['SENT'], isRead: true, direction: 'outbound', leadId: 'lead' };
 const latest: GmailEmail = { ...old, id: 'latest', from: 'Doris <customer@example.test>', to: ['staff@camxian.com'], cc: ['Sales <sales@example.test>'], replyToAddress: 'reply@example.test', snippet: 'Please send the catalog', body: '<p>Please send the catalog</p><div class="gmail_quote"><p>On Thursday, Staff wrote:</p><blockquote>Original question</blockquote></div>', date: '2026-10-08T05:58:00Z', labels: ['INBOX', 'UNREAD'], isRead: false, direction: 'inbound' };
@@ -39,7 +39,7 @@ it('shows the compact toolbar, participant, total message count and address with
   render(<EmailConversationView {...props()} email={{ ...groupedEmail, messageCount: 51 }} mailboxEmail="staff@camxian.com" />); await loaded();
   const toolbar = within(screen.getByRole('toolbar', { name: 'Conversation actions' }));
   expect(toolbar.getByText('Email Thread')).toBeTruthy();
-  for (const name of ['Back to inbox', 'Archive conversation', 'Move conversation to trash']) expect(toolbar.getByRole('button', { name })).toBeTruthy();
+  for (const name of ['Back to inbox', 'Archive conversation', 'Delete Permanently']) expect(toolbar.getByRole('button', { name })).toBeTruthy();
   expect(screen.getByRole('heading', { level: 1, name: 'Doris' })).toBeTruthy();
   expect(screen.getByLabelText('51 messages').textContent).toBe('51 messages');
   expect(screen.getByText('customer@example.test', { selector: 'header p' })).toBeTruthy();
@@ -88,8 +88,9 @@ it.each([['Archive topic: CCTV quotation', 'archive'], ['Trash topic: CCTV quota
   fireEvent.click(screen.getByRole('button', { name: 'Actions for topic: CCTV quotation' }));
   expect(within(screen.getAllByRole('article')[0]).getByRole('button', { name: 'Expand message from Doris' })).toBeTruthy();
   fireEvent.click(screen.getByRole('menuitem', { name: label }));
-  await waitFor(() => expect(mocks[action]).toHaveBeenCalledWith(olderTopic.threadId));
-  expect(mocks.archiveGroups).not.toHaveBeenCalled(); expect(mocks.trashGroups).not.toHaveBeenCalled();
+  if (action === 'trash') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
+  await waitFor(() => expect(mocks[action === 'archive' ? 'archiveGroups' : 'trashGroups']).toHaveBeenCalledWith([correspondentId]));
+  expect(mocks.archive).not.toHaveBeenCalled(); expect(mocks.trash).not.toHaveBeenCalled();
   expect(actions.onEmailsChanged).toHaveBeenCalledOnce(); expect(actions.onBack).toHaveBeenCalledOnce();
 });
 it('keeps the existing topic Deal selector once inside the first eligible expanded message', async () => {
@@ -102,7 +103,7 @@ it('keeps the existing topic Deal selector once inside the first eligible expand
   expect(screen.getAllByRole('button', { name: /Actions for topic:/ })).toHaveLength(1);
   fireEvent.change(screen.getByRole('combobox'), { target: { value: 'deal' } });
   fireEvent.click(screen.getByRole('button', { name: 'Associate Deal' }));
-  await waitFor(() => expect(mocks.associate).toHaveBeenCalledWith(latest.threadId, 'deal'));
+  await waitFor(() => expect(mocks.associate).toHaveBeenCalledWith(latest.threadId, 'deal', { conversationId: correspondentId }));
 });
 it('forwards the selected older message with its existing source identity', async () => {
   mocks.correspondent.mockResolvedValue(groupResult()); mocks.send.mockResolvedValue({ success: true });
@@ -152,10 +153,11 @@ it('loads bounded history pages and keeps the message count and existing topic o
   expect(mocks.correspondent).toHaveBeenLastCalledWith(correspondentId, 'next-history', expect.any(AbortSignal));
   expect(screen.queryByRole('button', { name: 'Load more messages' })).toBeNull();
 });
-it.each([['Archive conversation', 'archiveGroups'], ['Move conversation to trash', 'trashGroups']] as const)('applies %s to the correspondent identity across original Gmail topics', async (label, action) => {
+it.each([['Archive conversation', 'archiveGroups'], ['Delete Permanently', 'trashGroups']] as const)('applies %s to the correspondent identity across original Gmail topics', async (label, action) => {
   mocks.correspondent.mockResolvedValue(groupResult([{ ...olderTopic, isRead: true }, { ...latest, isRead: true }])); mocks[action].mockResolvedValue({ success: true });
   const actions = props(); render(<EmailConversationView {...actions} email={groupedEmail} />); await loaded();
   fireEvent.click(screen.getByRole('button', { name: label }));
+  if (label === 'Delete Permanently') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(mocks[action]).toHaveBeenCalledWith([correspondentId])); expect(actions.onBack).toHaveBeenCalledOnce();
 });
 it('clears correspondent bodies and a reply draft when authorization is revoked', async () => {
@@ -166,6 +168,20 @@ it('clears correspondent bodies and a reply draft when authorization is revoked'
   view.rerender(<EmailConversationView {...actions} email={groupedEmail} revision={1} />);
   await waitFor(() => expect(actions.onBack).toHaveBeenCalledOnce());
   expect(screen.queryByRole('article')).toBeNull(); expect(screen.queryByRole('dialog')).toBeNull();
+});
+
+it('restores the selected archived group and returns to Archived Messages', async () => {
+  mocks.correspondent.mockResolvedValue(groupResult([{ ...latest, dealId: 'deal', dealTitle: 'CCTV Installation' }]));
+  mocks.restore.mockResolvedValue({ success: true, count: 1, completedMessageIds: [latest.id], completedConversationIds: [correspondentId] });
+  const actions = props();
+  render(<EmailConversationView {...actions} email={{ ...groupedEmail, isArchived: true }} originView="archived" />);
+  await loaded();
+  expect(screen.getByRole('button', { name: 'Back to Archived Messages' })).toBeTruthy();
+  expect(screen.getByText('CCTV Installation')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Restore conversation' }));
+  await waitFor(() => expect(mocks.restore).toHaveBeenCalledWith([correspondentId]));
+  expect(mocks.archive).not.toHaveBeenCalled(); expect(mocks.archiveGroups).not.toHaveBeenCalled();
+  expect(actions.onBack).toHaveBeenCalledOnce();
 });
 it('discards an in-flight history page after a later authorization failure', async () => {
   let finish!: (result: ReturnType<typeof groupResult>) => void;
@@ -235,9 +251,10 @@ it('renders a single read message without a provider write', async () => {
   render(<EmailConversationView {...props()} email={old} />); await loaded();
   expect(screen.getAllByRole('article')).toHaveLength(1); expect(mocks.read).not.toHaveBeenCalled();
 });
-it.each([['Archive conversation', 'archive'], ['Move conversation to trash', 'trash']] as const)('applies %s to the thread, then refreshes and returns', async (label, action) => {
+it.each([['Archive conversation', 'archive'], ['Delete Permanently', 'trash']] as const)('applies %s to the thread, then refreshes and returns', async (label, action) => {
   const actions = props(); render(<EmailConversationView {...actions} />); await loaded();
   fireEvent.click(screen.getByRole('button', { name: label }));
+  if (label === 'Delete Permanently') fireEvent.click(screen.getByRole('button', { name: 'Delete' }));
   await waitFor(() => expect(actions.onBack).toHaveBeenCalledOnce());
   expect(mocks[action]).toHaveBeenCalledWith('conversation'); expect(actions.onEmailsChanged).toHaveBeenCalled();
 });

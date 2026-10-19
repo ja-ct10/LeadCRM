@@ -30,7 +30,7 @@ const scope: MailboxScope = { userId: 'actor', addresses: ['own@example.test'], 
   identities: [], leadIds: ['lead'], contactIds: ['contact'], fixedThreadIds: [], threadRecipients: {}, draftSourceIds: [], hash: 'scope' };
 const access = { account, scope };
 const nonEmail = { type: { not: 'email' } };
-const mailboxGate = () => ({ OR: [nonEmail, { mailboxMessage: { is: scopedMessagesWhere(account, scope) } }] });
+const mailboxGate = () => ({ OR: [nonEmail, { mailboxMessage: { is: scopedMessagesWhere(account, scope, true) } }] });
 const email = { id: 'activity', type: 'email', title: 'Private subject', leadId: 'lead', contactId: null,
   mailboxMessageId: 'canonical', metadata: { mailboxMessageId: 'forged', email: { body: 'old body' } }, createdAt: new Date('2026-10-01T00:00:00Z') };
 const message = { id: 'canonical', leadId: null, contactId: 'contact', providerMessageId: 'provider', threadId: 'thread', accountId: account.id,
@@ -109,7 +109,7 @@ describe('Activity email authorization before reads', () => {
   it('hydrates the canonical FK and preserves converted Lead history instead of trusting metadata IDs', async () => {
     state.db.activity.findFirst.mockResolvedValue(email); state.db.mailboxMessage.findMany.mockResolvedValue([message]);
     const result = await getActivity(email.id, 'tenant');
-    expect(state.db.mailboxMessage.findMany).toHaveBeenCalledWith({ where: { AND: [scopedMessagesWhere(account, scope), { id: { in: ['canonical'] } }] } });
+    expect(state.db.mailboxMessage.findMany).toHaveBeenCalledWith({ where: { AND: [scopedMessagesWhere(account, scope, true), { id: { in: ['canonical'] } }] } });
     expect(result.metadata).toMatchObject({ mailboxMessageId: 'canonical', email: { id: 'canonical', body: 'Current body' } });
     expect((result.metadata as { email: { body: string } }).email.body).not.toBe('old body');
     expect(await withEmailContent('tenant', [{ ...email, mailboxMessageId: null }])).toEqual([]);

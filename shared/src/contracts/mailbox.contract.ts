@@ -48,12 +48,13 @@ export const SaveMailboxDraftSchema = z.object({
   composeMode: SendMailboxEmailSchema.shape.composeMode,
 }).strict();
 export const MailboxListSchema = z.object({
+  view: z.enum(['inbox', 'archived']).default('inbox'),
   filter: z.enum(MAILBOX_FILTERS).default('all'),
   sort: z.enum(['newest', 'oldest', 'unread']).default('newest'),
   query: z.string().trim().max(1000).optional(),
   maxResults: z.coerce.number().int().min(1).max(50).default(30),
   pageToken: z.string().max(2000).optional(),
-});
+}).refine(value => value.view !== 'archived' || value.filter === 'all' || value.filter === 'unread', 'Archived Messages supports All or Unread.');
 export type MailboxListOptions = z.input<typeof MailboxListSchema>;
 export const ScheduleMailboxEmailSchema = SendMailboxEmailSchema.extend({
   scheduledAt: z.string().datetime().refine(value => Date.parse(value) > Date.now(), 'Choose a future date and time'),
@@ -99,6 +100,9 @@ export interface MailboxEmail {
   leadId?: string | null;
   contactId?: string | null;
   dealId?: string | null;
+  dealTitle?: string | null;
+  isArchived?: boolean;
+  canArchive?: boolean;
   needsDealAssociation?: boolean;
   scheduledStatus?: string;
   scheduleError?: string | null;
@@ -135,6 +139,8 @@ export interface MailboxConversationDetail {
   emails: MailboxEmail[];
   nextPageToken?: string;
   messageCount: number;
+  dealId?: string | null;
+  dealTitle?: string | null;
   threads: { threadId: string; dealOptions: { id: string; title: string; stage: string }[]; canAssociateDeal: boolean }[];
 }
 export const MailboxBulkActionSchema = z.union([
@@ -142,3 +148,17 @@ export const MailboxBulkActionSchema = z.union([
   z.object({ threadIds: z.array(providerId).min(1).max(100) }).strict(),
   z.object({ messageIds: z.array(providerId).min(1).max(100) }).strict(),
 ]);
+
+export const MailboxDealAssociationSchema = z.object({
+  dealId: z.string().min(1).max(200),
+  conversationId: MailboxConversationIdSchema.optional(),
+  messageId: providerId.optional(),
+}).strict().refine(value => !(value.conversationId && value.messageId), 'Choose one message or conversation.');
+
+export interface MailboxBulkActionResult {
+  success: boolean;
+  count: number;
+  completedMessageIds: string[];
+  completedConversationIds?: string[];
+  error?: string;
+}

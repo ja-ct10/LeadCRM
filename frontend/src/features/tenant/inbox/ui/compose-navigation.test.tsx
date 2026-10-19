@@ -87,7 +87,7 @@ it('retains a delivered email link retry across Inbox remount and never resends'
   first.unmount(); render(<InboxPage />);
   fireEvent.click(await screen.findByRole('button', { name: 'Retry deal link' }));
   await waitFor(() => expect(screen.queryByRole('button', { name: 'Retry deal link' })).toBeNull());
-  expect(mocks.associate).toHaveBeenLastCalledWith('delivered-thread', 'source-deal');
+  expect(mocks.associate).toHaveBeenLastCalledWith('delivered-thread', 'source-deal', {});
   expect(JSON.parse(sessionStorage.getItem(key)!)).toEqual([]);
   expect(mocks.send).not.toHaveBeenCalled();
 });
