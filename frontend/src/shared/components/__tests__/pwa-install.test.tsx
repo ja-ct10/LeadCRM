@@ -26,6 +26,18 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
+it('keeps one install listener per event through Strict Mode and removes each on unmount', () => {
+  const add = vi.spyOn(window, 'addEventListener');
+  const remove = vi.spyOn(window, 'removeEventListener');
+  const view = render(<React.StrictMode><PwaInstallProvider><main>Workspace</main></PwaInstallProvider></React.StrictMode>);
+  const active = (type: string) => add.mock.calls.filter(([name, listener]) => name === type && !remove.mock.calls.some(([removedName, removedListener]) => removedName === name && removedListener === listener));
+  for (const type of ['beforeinstallprompt', 'appinstalled', 'storage']) expect(active(type)).toHaveLength(1);
+  act(() => window.dispatchEvent(installEvent()));
+  expect(screen.getAllByRole('region', { name: 'Install LeadCRM' })).toHaveLength(1);
+  view.unmount();
+  for (const type of ['beforeinstallprompt', 'appinstalled', 'storage']) expect(active(type)).toHaveLength(0);
+});
+
 it('stays hidden until a real prompt object is available, then invokes it once', async () => {
   app();
   expect(screen.queryByRole('region', { name: 'Install LeadCRM' })).toBeNull();

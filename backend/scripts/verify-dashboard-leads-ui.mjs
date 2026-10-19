@@ -11,6 +11,19 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const currency = amount => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
   async function layout(label) {
     await wait(400);
+    const funnel = page.getByRole('region', { name: 'Conversion Funnel', exact: true });
+    const labels = await funnel.locator('ol > li').evaluateAll(stages => stages.map(stage => {
+      const label = stage.querySelector('p'), value = stage.querySelector('div'), range = document.createRange();
+      range.selectNodeContents(label);
+      const bounds = label.getBoundingClientRect(), text = range.getBoundingClientRect();
+      return { name: label.textContent, value: value.textContent, valueFits: value.scrollWidth <= value.clientWidth, lines: range.getClientRects().length, fontSize: parseFloat(getComputedStyle(label).fontSize), fits: text.left >= bounds.left - 1 && text.right <= bounds.right + 1, centered: Math.abs((text.left + text.right) / 2 - (bounds.left + bounds.right) / 2) <= 1 };
+    }));
+    assert.deepEqual(labels.map(label => label.name), ['Lead', 'Contacted', 'Qualified', 'Closed Won']);
+    for (const label of labels) { assert.ok(label.valueFits, JSON.stringify(labels)); assert.ok(label.fits, JSON.stringify(labels)); assert.ok(label.centered, JSON.stringify(labels)); assert.equal(label.fontSize, 11); if (label.name !== 'Closed Won') assert.equal(label.lines, 1, JSON.stringify(labels)); }
+    assert.equal(await funnel.locator('ol > li > svg').count(), 3);
+    assert.equal(await funnel.locator('details').count(), 0);
+    assert.equal(await funnel.getByText(/Closed Lost/).count(), 0);
+    assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).count(), 0);
     const dimensions = await revenue().evaluate(region => {
       const card=region.closest('section'),action=document.querySelector('section[aria-label="Action Center"]');
       const list=action.querySelector('[aria-label="Action Center actions"]'),canvas=region.querySelector('canvas');
@@ -51,7 +64,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     await page.getByRole('button', { name: 'Filter Revenue Trend', exact: true }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
     await response;
-    await page.getByRole('heading', { name: 'Revenue Trend', exact: true }).waitFor();
+    await page.getByRole('heading', { name: /^Revenue Trend(?: by \w+)?$/ }).waitFor();
     const report = await http(`/reporting/dashboard?range=${range}&revenueInterval=${label.toLowerCase()}`);
     assert.equal(report.metrics.totalRevenue, report.trend.reduce((sum, row) => sum + row.revenue, 0));
     assert.equal(report.metrics.won, report.trend.reduce((sum, row) => sum + row.won, 0));
@@ -73,11 +86,11 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   await until(() => revenue().locator('canvas').evaluate(canvas => canvas.__labels.some(text => text.startsWith('Revenue (PHP):') && text.includes('45,000.00'))), 'Single-point currency tooltip');
   await page.mouse.move(0, 0);
   assert.equal(await page.getByRole('button', { name: 'Export CSV', exact: true }).count(), 0);
-  assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).getAttribute('title'), 'This Month');
+  assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).count(), 0);
   const syncResponse = page.waitForResponse(r => r.url().includes('/reporting/dashboard?'));
   await page.getByRole('button', { name: 'Sync Metrics', exact: true }).click(); await syncResponse;
   await expectValue('Total Revenue', currency(45000));
-  record('Dashboard has two header controls; This Month and Sync Metrics work');
+  record('Dashboard header retains functional Sync Metrics without a global date control');
 
   await page.setViewportSize({ width: 1440, height: 1000 });
   const heights = [];
@@ -187,6 +200,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     const closedAt = new Date(Date.UTC(year, monthNumber - 1 - offset, 10));
     await prisma.deal.create({ data: { tenantId: tenant.id, pipelineId: pipeline.id, stageId: stages[3].id, title: `Historical actual observation ${offset}`, value, currency: 'PHP', closedAt, createdAt: new Date(closedAt.getTime() - 86400000), revenueOwnerId: agent.id, revenueOwnerEligible: true, assignedUserId: agent.id, ownerId: agent.id } });
   }
+  await page.goto(base + '/reporting');
   await page.getByRole('button', { name: 'Dashboard date range', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Last 3 Months', exact: true }).click();
   await expectValue('Total Revenue', currency(95000), false);
@@ -194,7 +208,12 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     const report = await interval(label, 'last3');
     assert.equal(report.metrics.totalRevenue, 95000);
     if (label === 'Month') { assert.equal(report.trend.length, 3); assert.deepEqual(report.trend.map(row => row.revenue), [30000, 20000, 45000]); }
-    for (const width of widths) { await page.setViewportSize({ width, height: 1000 }); await layout(`Multiple observations ${label} responsive ${width}`); }
+    for (const width of widths) {
+      await page.setViewportSize({ width, height: 1000 });
+      await wait(400);
+      assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+      record(`Reporting multiple observations ${label} responsive ${width}`);
+    }
   }
   await page.setViewportSize({ width: 1440, height: 1000 });
   await revenue().scrollIntoViewIfNeeded(); await page.screenshot({ path: resolve(output, 'dashboard-multiple-months.png') });
@@ -220,6 +239,8 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const csv = await page.request.get(base + '/api/proxy/reporting/dashboard/export?range=last3');
   assert.ok(csv.ok()); assert.match(csv.headers()['content-type'], /text\/csv/);
   record('Reporting CSV endpoint remains intact');
+  await page.goto(base + '/dashboard');
+  await actionList().getByRole('link').last().waitFor();
   for (const task of tasks) await http(`/operations/tasks/${task.id}/complete`, 'PATCH');
   await until(async () => await action().getByRole('link').count() === 0, 'Completed tasks disappear automatically');
   const completed = await layout('Empty Action Center releases unused list space while retaining the chart minimum');
@@ -258,6 +279,8 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
       assert.equal(visible, width >= 1024 ? 5 : 3);
       await action().scrollIntoViewIfNeeded();
       await page.screenshot({ path: resolve(output, `dashboard-compact-${theme}-${width}.png`) });
+      await page.getByRole('region', { name: 'Conversion Funnel', exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(output, `dashboard-funnel-${theme}-${width}.png`) });
       await links.last().focus();
       assert.ok(await links.last().evaluate(link => link.getBoundingClientRect().bottom <= link.parentElement.getBoundingClientRect().bottom + 1));
     }
@@ -282,6 +305,22 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   for(const title of ['Deals Won vs. Lost','Pipeline Distribution','Pipeline Value by Stage','Deal Pipeline Conversion Funnel']) await page.getByRole('heading',{name:title,exact:true}).waitFor();
   await page.getByRole('group',{name:'Avg Deal Velocity',exact:true}).waitFor();
   record('Reports retains its original visualizations and CSV download');
+  const unavailable = await http('/reporting/dashboard?range=thisMonth');
+  unavailable.conversion = null;
+  const unavailableRoute = route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: unavailable }) });
+  await page.route('**/api/proxy/reporting/dashboard?*', unavailableRoute);
+  await page.goto(base + '/dashboard');
+  await page.getByText('Deal history unavailable.', { exact: true }).waitFor();
+  for (const width of widths) {
+    await page.setViewportSize({ width, height: 1000 });
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
+    await page.getByRole('region', { name: 'Conversion Funnel', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(output, `dashboard-funnel-unavailable-${width}.png`) });
+    record(`Unavailable funnel and header remain responsive ${width}`);
+  }
+  await page.unroute('**/api/proxy/reporting/dashboard?*', unavailableRoute);
+  await page.goto(base + '/dashboard');
+  await page.getByRole('list', { name: 'Historical conversion stages' }).waitFor();
   }
 
   if (dashboardOnly) return;

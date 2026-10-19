@@ -128,9 +128,10 @@ it('uses historical reached counts and backend rates rather than recomputing adj
   expect(funnel.getByRole('listitem', { name: 'Lead: 9 reached' })).toBeTruthy();
   expect(funnel.getByRole('listitem', { name: 'Closed Won: 1 reached' })).toBeTruthy();
   for (const rate of ['27.8%', '40%', '37.5%']) expect(funnel.getByText(rate)).toBeTruthy();
-  expect(funnel.getByText('Closed Lost: 1 reached · Qualified → Closed Lost: 5%')).toBeTruthy();
-  fireEvent.click(funnel.getByText('Cohort details'));
-  expect(funnel.getByText('10 deals in the creation cohort · Historical milestones, not current stages')).toBeTruthy();
+  expect(funnel.queryByText(/Closed Lost/)).toBeNull();
+  expect(funnel.queryByText('Cohort details')).toBeNull();
+  expect(funnel.queryByText(/deals in the creation cohort/)).toBeNull();
+  expect(funnel.getAllByRole('term').map(term => term.textContent)).toEqual(['Lead → Contacted', 'Contacted → Qualified', 'Qualified → Closed Won']);
   expect(funnel.getByText(/1 deals lack recorded starting history/)).toBeTruthy();
 });
 it('accepts the same normalized official stage names as the backend', () => {
@@ -197,13 +198,13 @@ it('preserves chart report data, compact ticks, exact tooltips and opt-in data p
   expect(trend.options.plugins.tooltip.callbacks.label({ dataset: { label: 'Revenue (PHP)' }, parsed: { y: 45000 } })).toBe('Revenue (PHP): ₱45,000.00');
 });
 
-it('preserves independent global, revenue interval and historical funnel filters', () => {
-  render(<Dashboard />);
+it('preserves Reports global, revenue interval and historical funnel filters', () => {
+  render(<Dashboard presentation="reporting" />);
   fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Last 3 Months' }));
   fireEvent.click(screen.getByRole('button', { name: 'Filter Revenue Trend' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Week' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Filter Conversion Funnel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Deal Pipeline Conversion Funnel' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Year' }));
   expect(mocks.query).toMatchObject({ range: 'last3', revenueInterval: 'week', funnelRange: 'year' });
   fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
@@ -212,12 +213,61 @@ it('preserves independent global, revenue interval and historical funnel filters
   fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2020-01-02' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply dates' }));
   expect(mocks.query).toMatchObject({ range: 'custom', start: '2020-01-01', end: '2020-01-02', revenueInterval: 'week', funnelRange: 'year' });
-  fireEvent.click(screen.getByRole('button', { name: 'Filter Conversion Funnel' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Deal Pipeline Conversion Funnel' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Range' }));
   fireEvent.change(screen.getByLabelText('Funnel From Date'), { target: { value: '2020-01-03' } });
   fireEvent.change(screen.getByLabelText('Funnel To Date'), { target: { value: '2020-01-04' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply funnel dates' }));
   expect(mocks.query).toMatchObject({ range: 'custom', start: '2020-01-01', end: '2020-01-02', funnelRange: 'custom', funnelStart: '2020-01-03', funnelEnd: '2020-01-04' });
+});
+
+it('keeps Dashboard on this month while independent chart filters and refresh remain usable', async () => {
+  const view = render(<Dashboard />);
+  expect(screen.queryByRole('button', { name: 'Dashboard date range' })).toBeNull();
+  expect(screen.getByText(/Welcome back,/)).toBeTruthy();
+  expect(screen.getByLabelText('Current date and time')).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Revenue Trend' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Week' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Filter Conversion Funnel' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Range' }));
+  fireEvent.change(screen.getByLabelText('Funnel From Date'), { target: { value: '2020-01-03' } });
+  fireEvent.change(screen.getByLabelText('Funnel To Date'), { target: { value: '2020-01-04' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply funnel dates' }));
+  expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined, revenueInterval: 'week', funnelRange: 'custom', funnelStart: '2020-01-03', funnelEnd: '2020-01-04' });
+  fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
+  await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
+  expect(mocks.query!.range).toBe('thisMonth');
+  view.unmount();
+  render(<Dashboard />);
+  expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined, revenueInterval: 'month', funnelRange: 'month' });
+});
+
+it('clears hidden global dates when switching from Reports to Dashboard', () => {
+  const view = render(<Dashboard presentation="reporting" />);
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Date Range' }));
+  fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2020-01-01' } });
+  fireEvent.change(screen.getByLabelText('End date'), { target: { value: '2020-01-02' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply dates' }));
+  expect(mocks.query!.range).toBe('custom');
+  fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Date Range' }));
+  view.rerender(<Dashboard />);
+  expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined });
+  expect(screen.queryByRole('button', { name: 'Dashboard date range' })).toBeNull();
+  expect(screen.queryByLabelText('Start date')).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Apply dates' })).toBeNull();
+});
+
+it('retains missing conversion data and disables Sync Metrics while loading', () => {
+  mocks.report!.conversion = null;
+  mocks.loading = true;
+  render(<Dashboard />);
+  expect(screen.getByText('Deal history unavailable.')).toBeTruthy();
+  const sync = screen.getByRole('button', { name: 'Syncing…' }) as HTMLButtonElement;
+  expect(sync.disabled).toBe(true);
+  fireEvent.click(sync);
+  expect(mocks.refresh).not.toHaveBeenCalled();
 });
 
 it('uses Sync Metrics and reports refresh success or failure', async () => {
