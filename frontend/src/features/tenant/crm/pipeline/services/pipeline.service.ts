@@ -8,12 +8,12 @@ export const pipelineService = {
   getPipelines: (): Promise<PaginatedResponse<Pipeline>> =>
     apiClient.get<PaginatedResponse<Pipeline>>('/crm/pipelines'),
 
-  getDeals: (pipelineId?: string, limit?: number): Promise<PaginatedResponse<Deal>> => {
+  getDeals: (pipelineId?: string, limit?: number, signal?: AbortSignal): Promise<PaginatedResponse<Deal>> => {
     const params = new URLSearchParams();
     if (pipelineId) params.set('pipelineId', pipelineId);
     if (limit) params.set('limit', String(limit));
     const qs = params.toString() ? `?${params.toString()}` : '';
-    return apiClient.get<PaginatedResponse<Deal>>(`/crm/deals${qs}`);
+    return apiClient.get<PaginatedResponse<Deal>>(`/crm/deals${qs}`, { signal });
   },
 
   createDeals: (data: CreateDealBatchInput): Promise<ApiResponse<DealBatchResult<Deal>>> =>
