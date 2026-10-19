@@ -82,7 +82,7 @@ router.post('/leads/imports/preview', authorize('leads.import'), validate(Create
 router.post(  '/leads/imports',      authorize('leads.import'), validate(CreateCrmImportSchema), leadImportController.createImport);
 router.get(   '/leads/:id',          authorize('leads.view'),   leadController.getContactById);
 router.post(  '/leads',              authorize('leads.create'), validate(CreateContactSchema),  leadController.createContact);
-router.put(   '/leads/:id',          authorize('leads.edit'),   validate(UpdateContactSchema), (req, res, next) => req.body.status === 'Closed' ? authorizeAll('contacts.create', 'contacts.view', 'accounts.create', 'accounts.view', 'deals.view')(req, res, next) : next(), leadController.updateContact);
+router.put(   '/leads/:id',          authorize('leads.edit'),   validate(UpdateContactSchema), (req, res, next) => req.body.status === 'Closed Deal' ? authorizeAll('contacts.create', 'contacts.view', 'accounts.create', 'accounts.view', 'deals.view')(req, res, next) : next(), leadController.updateContact);
 router.patch( '/leads/:id/archive',  authorize('leads.archive'), leadController.archiveContact);
 router.patch( '/leads/:id/restore',  authorizeAll('archived_data.restore', 'leads.view'), leadController.restoreContact);
 router.post(  '/leads/:id/convert', authorizeAll('leads.edit', 'contacts.create', 'contacts.view', 'accounts.create', 'accounts.view', 'deals.view'), validate(ConvertContactSchema), leadController.convertContact);

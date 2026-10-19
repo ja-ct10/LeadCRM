@@ -35,7 +35,7 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   await assertCrmCreateAssignment(tx, tenantId, dto.assignedUserId);
   await assertContactAccountSelection(tx, tenantId, dto.accountId);
   const status = CrmStatusSchema.parse(dto.status ?? 'Inquiry');
-  if (status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
+  if (status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before setting Closed Deal.');
   const selectedAccount = dto.accountId ? await tx.account.findFirst({ where: { tenantId, id: String(dto.accountId), isArchived: false, deletedAt: null }, select: { name: true } }) : null;
   if (dto.accountId && !selectedAccount) throw new NotFoundError('Account');
   const relations = await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined });
@@ -50,7 +50,7 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   }
   const agent = await resolveSalesAgent(tx, tenantId, dto.assignedUserId as string | null | undefined, ['contacts', 'deals']);
   const contact = await runCrmAutomaticCreation(tx, 'contacts', agent?.id ?? null, () => tx.contact.create({
-    data: { ...fields, ...relations, tenantId, status: status.toUpperCase(), assignedUserId: agent?.id ?? null } as Prisma.ContactUncheckedCreateInput,
+    data: { ...fields, ...relations, tenantId, manualCancellation: status === 'Cancelled', status: status.toUpperCase().replace(' ', '_'), assignedUserId: agent?.id ?? null } as Prisma.ContactUncheckedCreateInput,
     include: { assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true } } },
   }));
   await saveRecordValues(tx, tenantId, 'contacts', contact.id, customFieldValues, actorId);
@@ -59,5 +59,5 @@ export async function createAssignedContact(tx: Prisma.TransactionClient, tenant
   await fireContactCreated({ tenantId, actorId, contact });
   await createProductDeals(tx, tenantId, contact.id, actorId, 'contact');
   await tx.contactCreationReceipt.create({ data: { tenantId, requestId, actorId, requestHash, contactId: contact.id } });
-  return { contact, replayed: false };
+  return { contact: { ...contact, ...await tx.contact.findFirstOrThrow({ where: { tenantId, id: contact.id } }) }, replayed: false };
 }

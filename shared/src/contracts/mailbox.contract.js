@@ -6,7 +6,7 @@ const zod_1 = require("zod");
 exports.CLOSED_WON_CONFIRMATION_TYPES = ['Approved Quotation', 'Signed/Approved Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'];
 exports.ClosedWonConfirmationSchema = zod_1.z.object({
     type: zod_1.z.enum(exports.CLOSED_WON_CONFIRMATION_TYPES),
-    date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a Closed Won date').refine(value => {
+    date: zod_1.z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a Closed Deal date').refine(value => {
         const date = new Date(`${value}T00:00:00.000Z`);
         return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value && date.getTime() <= Date.now() + 86400000;
     }, 'Choose a valid date that is not in the future'),

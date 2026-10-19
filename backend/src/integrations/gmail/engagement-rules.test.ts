@@ -16,7 +16,7 @@ describe('reply timestamp engagement', () => {
   });
   it('preserves no-history and terminal records and rejects future timestamps', () => {
     expect(engagementStatus({ status: 'Warm', lastCustomerReplyAt: null, firstUnansweredOutboundAt: null }, now)).toBeUndefined();
-    for (const status of ['Closed', 'Cancelled']) expect(engagementStatus({ status, lastCustomerReplyAt: now, firstUnansweredOutboundAt: null }, now)).toBeUndefined();
+    for (const status of ['Closed Deal', 'Cancelled']) expect(engagementStatus({ status, lastCustomerReplyAt: now, firstUnansweredOutboundAt: null }, now)).toBeUndefined();
     expect(engagementStatus({ status: 'Cold', lastCustomerReplyAt: new Date(+now + 1), firstUnansweredOutboundAt: null }, now)).toBeUndefined();
   });
   it('uses exact normalized email addresses without name or Gmail alias guessing', () => {

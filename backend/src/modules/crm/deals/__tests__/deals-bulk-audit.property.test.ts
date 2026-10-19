@@ -1,3 +1,4 @@
+vi.mock('../../customer-classification.service', () => ({ refreshDealClassification: vi.fn().mockResolvedValue(undefined) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 
@@ -20,8 +21,7 @@ import * as fc from 'fast-check';
 const mockWriteAuditLog = vi.fn().mockResolvedValue(undefined);
 
 vi.mock('../../../../config/database.config', () => {
-  return {
-    default: {
+  const client = {
       deal: {
         findFirst: vi.fn(),
         update: vi.fn(),
@@ -29,8 +29,10 @@ vi.mock('../../../../config/database.config', () => {
       user: {
         findFirst: vi.fn(),
       },
-    },
+      $transaction: vi.fn(),
   };
+  client.$transaction.mockImplementation(async (work: (tx: unknown) => unknown) => work(client));
+  return { default: client };
 });
 
 vi.mock('../../../../core/audit/audit.service', () => {

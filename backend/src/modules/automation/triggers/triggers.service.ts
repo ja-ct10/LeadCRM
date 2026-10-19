@@ -1,4 +1,4 @@
-import { CRM_STATUSES } from '@leadcrm/shared';
+import { normalizeCrmStatus } from '@leadcrm/shared';
 import { safeWorkflowError } from '../actions/action-dispatcher';
 import { salesContext } from '../../crm/leads/sales-context';
 import prisma from '../../../config/database.config';
@@ -21,12 +21,12 @@ async function fire(params: RecordEvent, type: string, entity: string, id: strin
 }
 export function fireLeadCreated(params: LeadEvent) { return fire(params, 'lead.created', 'lead', params.lead.id); }
 function statusEvent(previous: string, next: string) {
-  const canonical = (value: string) => CRM_STATUSES.find(status => status.toLowerCase() === value.toLowerCase()) ?? value;
+  const canonical = normalizeCrmStatus;
   return { 'event.previousStatus': canonical(previous), 'event.newStatus': canonical(next) };
 }
-export function fireLeadStatusChanged(params: LeadEvent & { prevStatus: string }) { return params.prevStatus.toLowerCase() === params.lead.status.toLowerCase() ? Promise.resolve() : fire(params, 'lead.status_changed', 'lead', params.lead.id, statusEvent(params.prevStatus, params.lead.status)); }
+export function fireLeadStatusChanged(params: LeadEvent & { prevStatus: string }) { return normalizeCrmStatus(params.prevStatus) === normalizeCrmStatus(params.lead.status) ? Promise.resolve() : fire(params, 'lead.status_changed', 'lead', params.lead.id, statusEvent(params.prevStatus, params.lead.status)); }
 export function fireContactCreated(params: ContactEvent) { return fire(params, 'contact.created', 'contact', params.contact.id); }
-export function fireContactStatusChanged(params: ContactEvent & { prevStatus: string }) { return params.prevStatus.toLowerCase() === params.contact.status.toLowerCase() ? Promise.resolve() : fire(params, 'contact.status_changed', 'contact', params.contact.id, statusEvent(params.prevStatus, params.contact.status)); }
+export function fireContactStatusChanged(params: ContactEvent & { prevStatus: string }) { return normalizeCrmStatus(params.prevStatus) === normalizeCrmStatus(params.contact.status) ? Promise.resolve() : fire(params, 'contact.status_changed', 'contact', params.contact.id, statusEvent(params.prevStatus, params.contact.status)); }
 export function fireDealCreated(params: DealEvent) { return fire(params, 'deal.created', 'deal', params.deal.id); }
 async function updated(params: UpdatedEvent, entity: string) {
   if (!params.changedFields.length) return;

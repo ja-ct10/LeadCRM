@@ -81,7 +81,9 @@ function walk(folder) {
 async function vitest(label, workspace, args, env = {}, expectedFile, database) {
   const report = resolve(output, `${mode}-${++sequence}.json`);
   rmSync(report, { force: true });
-  const code = await run(label, [resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', ...args, '--maxWorkers=1', '--reporter=default', '--reporter=json', `--outputFile=${report}`], resolve(root, workspace), env);
+  // Bound component-suite parallelism while keeping database suites serial.
+  const workers = workspace === 'frontend' ? 2 : 1;
+  const code = await run(label, [resolve(root, 'node_modules/vitest/vitest.mjs'), 'run', ...args, `--maxWorkers=${workers}`, '--reporter=default', '--reporter=json', `--outputFile=${report}`], resolve(root, workspace), env);
   const result = existsSync(report) ? JSON.parse(readFileSync(report, 'utf8')) : null;
   const suites = result?.testResults ?? [];
   const allAssertions = suites.flatMap(suite => suite.assertionResults ?? []);

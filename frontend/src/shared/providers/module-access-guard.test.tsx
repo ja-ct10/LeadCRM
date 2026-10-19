@@ -1,16 +1,17 @@
 import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { cleanup, render, renderHook, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, renderHook, screen } from '@testing-library/react';
 import { EMPTY_PERMISSION_FLAGS, hasModulePermission, type ResolvedPermissions, type PermissionAction } from '@leadcrm/shared';
-const state = vi.hoisted(() => ({ path: '/crm/leads', permissions: {} as ResolvedPermissions, loaded: true, role: 'Sales Staff' }));
+const state = vi.hoisted(() => ({ path: '/crm/leads', permissions: {} as ResolvedPermissions, loaded: true, role: 'Sales Staff', isLoading: false, signedIn: true, permissionsError: null as string | null, refreshPermissions: vi.fn() }));
 vi.mock('next/navigation', () => ({ usePathname: () => state.path, useRouter: () => ({ push: vi.fn() }) }));
-vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'qa', role: state.role }, permissions: state.permissions, isPermissionsLoaded: state.loaded,
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: state.signedIn ? { id: 'qa', role: state.role } : null, permissions: state.permissions, isPermissionsLoaded: state.loaded,
+  isLoading: state.isLoading, permissionsError: state.permissionsError, refreshPermissions: state.refreshPermissions,
   userCan: (module: string, action: PermissionAction) => state.role === 'Client Admin' || hasModulePermission(state.permissions, module, action),
 }) }));
 import { ModuleAccessGuard } from './module-access-guard';
 import { useLayout } from '@/features/tenant/layout/use-layout';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
-beforeEach(() => { state.path = '/crm/leads'; state.permissions = {}; state.loaded = true; state.role = 'Sales Staff'; });
+beforeEach(() => { state.path = '/crm/leads'; state.permissions = {}; state.loaded = true; state.role = 'Sales Staff'; state.isLoading = false; state.signedIn = true; state.permissionsError = null; state.refreshPermissions.mockReset(); });
 afterEach(cleanup);
 it('protects legacy reporting with Dashboard View', () => {
   state.path = '/reporting';
@@ -69,4 +70,22 @@ it('retains the authenticated Client Admin policy while role grants load', () =>
   render(<ModuleAccessGuard><p>Protected content</p></ModuleAccessGuard>);
   expect(screen.getByText('Protected content')).toBeTruthy();
   expect(screen.queryByRole('status')).toBeNull();
+});
+it.each(['initializing', 'signed out'])('does not show denial while authentication is %s', phase => {
+  state.isLoading = phase === 'initializing';
+  state.signedIn = phase !== 'signed out';
+  render(<ModuleAccessGuard><p>Protected content</p></ModuleAccessGuard>);
+  expect(screen.getByRole('status', { name: 'Loading' })).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByText('Protected content')).toBeNull();
+});
+it('offers the existing inline Retry state for permission initialization errors', () => {
+  state.loaded = false;
+  state.permissionsError = 'Unable to load your permissions. Please try again.';
+  render(<ModuleAccessGuard><p>Protected content</p></ModuleAccessGuard>);
+  expect(screen.getByText(state.permissionsError)).toBeTruthy();
+  expect(screen.queryByRole('alert')).toBeNull();
+  expect(screen.queryByText('Protected content')).toBeNull();
+  fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+  expect(state.refreshPermissions).toHaveBeenCalledOnce();
 });

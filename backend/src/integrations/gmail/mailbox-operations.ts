@@ -12,6 +12,7 @@ import { assertMailboxRecipients } from './mailbox-recipient-access';
 export type MailboxOperation = 'send' | 'draft' | 'schedule' | 'delete';
 export interface MailboxQuotationContext { draft: QuotationDraft; document: QuotationDocument; fingerprint: string; subject: string; body: string }
 export interface MailboxOperationContext {
+  dealId?: string;
   recipients: string[];
   replyToMessageId?: string;
   forwardSourceMessageId?: string;
@@ -20,7 +21,6 @@ export interface MailboxOperationContext {
   composeMode?: MailboxComposeMode;
   quotation?: MailboxQuotationContext;
   recordContext?: MailboxRecordContext;
-  dealId?: string;
 }
 export interface MailboxOperationClaim {
   receipt: MailboxSendReceipt;
@@ -52,7 +52,7 @@ export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id'
     if (context.dealId && (!current.permissions.dealsView || !await prisma.deal.findFirst({ where: {
       ...customerDealWhere(account.tenantId, recordModule === 'leads' ? { leadId: recordId } : { contactId: recordId }), id: context.dealId,
     }, select: { id: true } }))) throw new AppError('Select a Deal associated with this record.', 400);
-  } else if (context.dealId) throw new AppError('A selected Deal requires its CRM record context.', 400);
+  }
   if (context.quotation) {
     const { recipientId, recipientType } = context.quotation.draft;
     const where = { id: recipientId, tenantId: account.tenantId, isArchived: false, deletedAt: null };
@@ -70,6 +70,14 @@ export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id'
     threadId = source?.threadId ?? '';
   }
   await assertMailboxRecipients(current.account, current.scope, current.permissions, context.recipients, threadId);
+  if (context.dealId) {
+    if (!current.permissions.dealsView) throw new AppError('Deal view permission is required.', 403);
+    const deal = await prisma.deal.findFirst({ where: { tenantId: account.tenantId, id: context.dealId, isArchived: false, deletedAt: null, assignedUserId: account.userId },
+      include: { leadDeals: { where: { tenantId: account.tenantId }, include: { lead: { select: { email: true } } } },
+        contactDeals: { where: { tenantId: account.tenantId }, include: { contact: { select: { email: true } } } } } });
+    const addresses = deal ? [...deal.leadDeals.map(link => mailboxAddress(link.lead.email ?? '')), ...deal.contactDeals.map(link => mailboxAddress(link.contact.email ?? ''))] : [];
+    if (!deal || !context.recipients.length || context.recipients.some(recipient => !addresses.includes(recipient))) throw new AppError('Choose authorized recipients linked to your Deal.', 403, 'CRM_ASSIGNMENT_REQUIRED');
+  }
   return current;
 }
 

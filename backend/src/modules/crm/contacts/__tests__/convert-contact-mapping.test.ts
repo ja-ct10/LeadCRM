@@ -10,7 +10,7 @@ it('maps Lead fields into real Contact columns and normalized Product links afte
   const { lead, deal } = await fixture.inquiry('ABC Corporation');
   const result = await fixture.convert(lead.id);
   const contact = await fixture.db.contact.findUniqueOrThrow({ where: { id: result.contact.id }, include: { productLinks: true } });
-  expect(contact).toMatchObject({ firstName: 'John', lastName: 'Smith', companyName: 'ABC Corporation', address: 'Makati', source: 'Website', notes: 'Original inquiry', status: 'CLOSED', lifecycleStage: 'CUSTOMER' });
+  expect(contact).toMatchObject({ firstName: 'John', lastName: 'Smith', companyName: 'ABC Corporation', address: 'Makati', source: 'Website', notes: 'Original inquiry', status: 'CLOSED_DEAL', lifecycleStage: 'CUSTOMER' });
   expect(contact.productLinks).toEqual([expect.objectContaining({ productInterestId: 'product', interested: true, activeProduct: false })]);
   expect(contact.productInterests).toEqual(['CRM Enterprise']);
   expect(contact).not.toHaveProperty('activeProducts');
@@ -31,7 +31,8 @@ it('basic conversion preserves the Lead status and existing open Deal without re
   expect(result.lead).toMatchObject({ status: lead.status, contactId: result.contact.id });
   expect(result.lead.convertedAt).toBeInstanceOf(Date);
   const contact = await fixture.db.contact.findUniqueOrThrow({ where: { id: result.contact.id } });
-  expect(contact.status).toBe('WARM');
+  // Overall status follows the linked Inquiry Deal; conversion does not invent a reply.
+  expect(contact.status).toBe('INQUIRY');
   expect(contact.lifecycleStage).not.toBe('CUSTOMER');
   expect(contact.customerSince).toBeNull();
   expect(await fixture.db.contactDeal.count({ where: { contactId: contact.id, dealId: deal.id } })).toBe(1);

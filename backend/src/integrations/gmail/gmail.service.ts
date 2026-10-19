@@ -238,8 +238,8 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
   try {
     let current = await authorizeMailboxOperation(account, context);
     const persisted = await prisma.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(current.account, current.scope),
-      { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true, dealId: true } });
-    if (persisted && (persisted.dealId || !context.replyToMessageId && !context.quotation?.draft.dealId && !context.dealId)) return;
+      { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true, dealId: true, dealAttribution: true } });
+    if (persisted && (persisted.dealAttribution || !context.dealId && !context.replyToMessageId && !context.quotation?.draft.dealId)) return;
     const token = await getValidAccessToken(account.tenantId, account.userId);
     const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(messageId)}?format=metadata&${MAILBOX_METADATA_HEADERS}`), 'metadata');
     current = await authorizeMailboxOperation(account, context);

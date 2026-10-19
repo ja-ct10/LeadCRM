@@ -18,7 +18,7 @@ export interface DealVelocity {
 }
 
 export interface ContactStatusCount {
-  status: 'INQUIRY' | 'HOT' | 'WARM' | 'COLD' | 'CANCELLED' | 'CLOSED';
+  status: 'INQUIRY' | 'HOT' | 'WARM' | 'COLD' | 'CANCELLED' | 'CLOSED_DEAL';
   count: number;
 }
 

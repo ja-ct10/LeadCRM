@@ -225,6 +225,7 @@ export function toFrontendDeal(backendDeal: any): any {
     tenantId: backendDeal.tenantId || '',
     pipelineId: backendDeal.pipelineId || '',
     stageId: backendDeal.stageId || '',
+    engagementStatus: backendDeal.engagementStatus,
     title: backendDeal.title || 'Untitled Deal',
     accountId,
     organizationId: accountId,

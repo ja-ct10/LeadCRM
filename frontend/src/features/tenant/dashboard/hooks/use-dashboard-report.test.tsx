@@ -118,3 +118,57 @@ it('preserves independent chart filters in requests and exports without creating
   expect(Feed.instances).toHaveLength(1);
   expect(mocks.get.mock.calls.at(-1)?.[0]).toContain('funnelEnd=2020-01-10');
 });
+
+const sourceSnapshot = (won: number, revenue = 45000) => ({
+  access: { deals: true, leads: true, tasks: true }, metrics: { totalRevenue: revenue },
+  distribution: [{ id: 'lead', count: 17 }],
+  leadSourcePerformance: { period: { start: '2020-01-01', end: '2020-01-15', timezone: 'Asia/Manila' }, sources: [{ name: 'Referral', won }] },
+});
+it('serializes independent source dates and updates only the source chart on a range change', async () => {
+  expect(dashboardQueryString({ range: 'thisMonth', leadSourceRange: 'custom', leadSourceStart: '2020-01-01', leadSourceEnd: '2020-01-02' })).toBe('range=thisMonth&leadSourceRange=custom&leadSourceStart=2020-01-01&leadSourceEnd=2020-01-02');
+  mocks.get.mockResolvedValue({ success: true, data: sourceSnapshot(12) });
+  const hook = renderHook(({ range }: { range: 'thisMonth' | 'lastMonth' }) => useDashboard({ range: 'thisMonth', leadSourceRange: range }), { initialProps: { range: 'thisMonth' } });
+  await waitFor(() => expect(hook.result.current.report?.leadSourcePerformance?.sources[0].won).toBe(12));
+  let finish: (response: unknown) => void = () => {};
+  mocks.get.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  hook.rerender({ range: 'lastMonth' });
+  expect(hook.result.current.report?.metrics.totalRevenue).toBe(45000);
+  expect(hook.result.current.report?.distribution[0].count).toBe(17);
+  expect(hook.result.current.report?.leadSourcePerformance).toBeNull();
+  expect(hook.result.current.loading).toBe(false);
+  expect(hook.result.current.sourceLoading).toBe(true);
+  await act(async () => finish({ success: true, data: sourceSnapshot(3, 99999) }));
+  expect(hook.result.current.report?.leadSourcePerformance?.sources[0].won).toBe(3);
+  expect(hook.result.current.report?.metrics.totalRevenue).toBe(45000);
+  expect(Feed.instances).toHaveLength(1);
+  mocks.get.mockResolvedValueOnce({ success: true, data: sourceSnapshot(4, 46000) });
+  act(() => Feed.instances[0].emit('dashboard-change', { access: '1', analytics: '2' }));
+  await waitFor(() => expect(hook.result.current.report?.leadSourcePerformance?.sources[0].won).toBe(4));
+  expect(hook.result.current.report?.metrics.totalRevenue).toBe(46000);
+});
+it('keeps source errors local, retries, and discards late source-filter responses', async () => {
+  mocks.get.mockResolvedValue({ success: true, data: sourceSnapshot(12) });
+  const hook = renderHook(({ range }: { range: 'thisMonth' | 'lastMonth' | 'today' }) => useDashboard({ range: 'thisMonth', leadSourceRange: range }), { initialProps: { range: 'thisMonth' } });
+  await waitFor(() => expect(hook.result.current.report).not.toBeNull());
+  mocks.get.mockRejectedValueOnce(new Error('Source unavailable'));
+  hook.rerender({ range: 'lastMonth' });
+  await waitFor(() => expect(hook.result.current.sourceError).toBe('Source unavailable'));
+  expect(hook.result.current.error).toBeNull();
+  expect(hook.result.current.report?.metrics.totalRevenue).toBe(45000);
+  expect(hook.result.current.report?.leadSourcePerformance).toBeNull();
+  mocks.get.mockResolvedValueOnce({ success: true, data: sourceSnapshot(2) });
+  await act(async () => { await hook.result.current.refresh(true); });
+  expect(hook.result.current.sourceError).toBeNull();
+  let late: (response: unknown) => void = () => {};
+  mocks.get.mockImplementationOnce(() => new Promise(resolve => { late = resolve; }));
+  hook.rerender({ range: 'today' });
+  mocks.get.mockResolvedValueOnce({ success: true, data: sourceSnapshot(7) });
+  hook.rerender({ range: 'thisMonth' });
+  await waitFor(() => expect(hook.result.current.report?.leadSourcePerformance?.sources[0].won).toBe(7));
+  await act(async () => late({ success: true, data: sourceSnapshot(999) }));
+  expect(hook.result.current.report?.leadSourcePerformance?.sources[0].won).toBe(7);
+  mocks.get.mockRejectedValueOnce({ status: 403 });
+  await act(async () => { await hook.result.current.refresh(true); });
+  expect(hook.result.current.report).toBeNull();
+  expect(mocks.permissions).toHaveBeenCalled();
+});

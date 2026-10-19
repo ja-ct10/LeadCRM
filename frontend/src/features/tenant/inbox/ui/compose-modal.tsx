@@ -237,7 +237,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const getEditorContent = (): string => {
     return safeMailboxHtml(editorRef.current?.innerHTML ?? '');
   };
-  const sourceContext = { composeMode: composeMode || undefined, recordContext, dealId: dealId || undefined,
+  const sourceContext = { composeMode: composeMode || undefined, recordContext, dealId: dealId || initialDraft?.sourceDealId || undefined,
     replyToMessageId: composeMode === 'reply' || composeMode === 'replyAll' ? sourceMessageId || undefined : undefined,
     forwardSourceMessageId: composeMode === 'forward' ? sourceMessageId || undefined : undefined };
   const sourceRequired = !!initialDraft?.draftContextRequired && (!composeMode || !sourceOptions.some(email => email.id === sourceMessageId));

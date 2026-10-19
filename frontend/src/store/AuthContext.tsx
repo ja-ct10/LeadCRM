@@ -8,7 +8,7 @@ import React, {
   useCallback, useRef, ReactNode,
 } from 'react';
 import { User, Tenant } from './types';
-import { hasModulePermission, isApplicablePermission } from '@leadcrm/shared';
+import { hasModulePermission, isApplicablePermission, isOnboardingComplete } from '@leadcrm/shared';
 import type { ResolvedPermissions, PermissionAction } from './types/roles.types';
 import { MOCK_USERS, MOCK_TENANTS, MOCK_ROLES } from './mockData';
 import { resolveMockPermissions } from './mock-permissions';
@@ -94,6 +94,7 @@ interface AuthContextType {
   switchDemoAccount: (email: string, password: string) => Promise<boolean>;
   permissions: ResolvedPermissions;
   isPermissionsLoaded: boolean;
+  permissionsError: string | null;
   userCan: (module: string, action: PermissionAction) => boolean;
   refreshPermissions: () => Promise<void>;
   restoreSession: () => Promise<void>;
@@ -111,6 +112,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [authError, setAuthError] = useState<string | null>(null);
   const [permissions, setPermissions]           = useState<ResolvedPermissions>({});
   const [isPermissionsLoaded, setIsPermissionsLoaded] = useState(false);
+  const [permissionsError, setPermissionsError] = useState<string | null>(null);
+  const onboardingComplete = user ? isOnboardingComplete(user) : false;
 
   const requestGeneration = useRef(0);
   const permissionGeneration = useRef(0);
@@ -130,14 +133,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const applyAuthUser = useCallback((apiUser: AuthUser, expectedUserId?: string) => {
     if (expectedUserId && activeUserId.current !== expectedUserId) return;
-    const identity = JSON.stringify([apiUser.id, apiUser.tenantId, apiUser.role, apiUser.status, apiUser.tenantStatus, apiUser.mustChangePassword]);
+    const identity = JSON.stringify([apiUser.id, apiUser.tenantId, apiUser.role, apiUser.status, apiUser.tenantStatus, apiUser.mustChangePassword, isOnboardingComplete(apiUser)]);
     if (authenticatedIdentity.current !== identity) clearNotificationTracking();
-    if (authenticatedIdentity.current !== null && authenticatedIdentity.current !== identity) {
+    if (authenticatedIdentity.current !== identity) {
       permissionGeneration.current += 1;
       appliedPermissions.current = null;
       setPermissions({});
       setIsPermissionsLoaded(false);
-      clearPageCache(true);
+      setPermissionsError(null);
+      if (authenticatedIdentity.current !== null) clearPageCache(true);
     }
     authenticatedIdentity.current = identity;
     requestGeneration.current += 1;
@@ -185,6 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setTenant(null);
       setPermissions({});
       setIsPermissionsLoaded(true);
+      setPermissionsError(null);
       setAuthError(isNoSessionError(error) ? null
         : error instanceof TypeError ? 'Unable to connect to the server. Check your network connection.'
         : error instanceof Error ? error.message : 'Unable to load your session');
@@ -200,9 +205,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const refreshPermissions = useCallback(async (): Promise<void> => {
     if (isLoading || authError || !user?.id) return;
-    if (user.mustChangePassword) {
+    if (user.mustChangePassword || !onboardingComplete) {
       setPermissions({});
-      setIsPermissionsLoaded(true);
+      setIsPermissionsLoaded(false);
+      setPermissionsError(null);
       return;
     }
     if (USE_MOCK_AUTH) {
@@ -212,6 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     const id = user.id;
     const generation = ++permissionGeneration.current;
+    setPermissionsError(null);
     try {
       const response = await rolesApi.getUserPermissions(id);
       if (activeUserId.current === id && permissionGeneration.current === generation) {
@@ -223,22 +230,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     } catch (error) {
       if (activeUserId.current === id && permissionGeneration.current === generation) {
+        const code = typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
+        if (code === 'PASSWORD_CHANGE_REQUIRED' || code === 'ONBOARDING_REQUIRED') {
+          if (appliedPermissions.current !== null) clearPageCache(true);
+          appliedPermissions.current = null;
+          setPermissions({});
+          setIsPermissionsLoaded(false);
+          // Setup requirements are not a role denial. Refresh canonical setup
+          // state and let AuthGuard select the password/onboarding route.
+          await (passwordRecoveryRefresh.current ?? accessRefresh.current.refreshUser()).catch(() => {});
+          if (activeUserId.current === id && permissionGeneration.current === generation) {
+            setPermissionsError('Unable to initialize your permissions. Please try again.');
+          }
+          return;
+        }
         const denied = isNoSessionError(error) || typeof error === 'object' && error !== null && 'status' in error && (error.status === 403 || error.status === 404);
         if (appliedPermissions.current !== null && !denied) return;
         if (appliedPermissions.current !== null) clearPageCache(true);
         appliedPermissions.current = null;
         setPermissions({});
-        setIsPermissionsLoaded(true);
+        setIsPermissionsLoaded(denied);
+        setPermissionsError(denied ? null : 'Unable to load your permissions. Please try again.');
       }
     }
-  }, [user?.id, user?.role, user?.tenantId, user?.status, user?.mustChangePassword, tenant?.status, isLoading, authError]);
+  }, [user?.id, user?.role, user?.tenantId, user?.status, user?.mustChangePassword, onboardingComplete, tenant?.status, isLoading, authError]);
 
   useEffect(() => {
+    appliedPermissions.current = null;
     setPermissions({});
     setIsPermissionsLoaded(USE_MOCK_AUTH || !user);
+    setPermissionsError(null);
     void refreshPermissions();
     const interval = setInterval(() => { void refreshPermissions(); }, 5 * 60 * 1000);
-    return () => clearInterval(interval);
+    return () => { clearInterval(interval); permissionGeneration.current += 1; };
   }, [user?.id, user?.role, refreshPermissions]);
 
   // ── userCan — permission guard helper ─────────────────────────────
@@ -272,6 +296,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setUser(null);
           setTenant(null);
           setPermissions({});
+          setPermissionsError(null);
         }
       }
       throw error;
@@ -307,7 +332,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [user?.id, user?.tenantId]);
 
   useEffect(() => {
-    if (USE_MOCK_AUTH || !user?.id || user.mustChangePassword || typeof EventSource === 'undefined') return;
+    if (USE_MOCK_AUTH || isLoading || authError || !user?.id || user.mustChangePassword || !onboardingComplete || typeof EventSource === 'undefined') return;
     // Keep observing access when a module guard unmounts the Dashboard. This
     // allows a later permission grant to restore the module without a reload.
     const source = new EventSource('/api/proxy/auth/events');
@@ -340,10 +365,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       authenticatedIdentity.current = null;
       appliedPermissions.current = null;
       setUser(null); setTenant(null); setPermissions({});
+      setPermissionsError(null);
       clearPageCache(); source.close();
     });
     return () => source.close();
-  }, [user?.id, user?.tenantId, user?.mustChangePassword]);
+  }, [user?.id, user?.tenantId, user?.mustChangePassword, onboardingComplete, isLoading, authError]);
 
   const login = async (email: string, password?: string): Promise<boolean> => {
     if (USE_MOCK_AUTH) return mockLogin(email);
@@ -414,6 +440,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     permissionGeneration.current += 1;
     setPermissions({});
     setIsPermissionsLoaded(true);
+    setPermissionsError(null);
     clearPageCache(); // evict all cross-route module data — prevents stale data after re-login
     localStorage.removeItem('leadcrm_user');
     localStorage.removeItem('leadcrm_tenant');
@@ -497,7 +524,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     <AuthContext.Provider value={{
       user, tenant, isLoading, authError, retryAuthInit, refreshUser, applyAuthUser, applyOrganizationSettings,
       login, logout, requestPasswordReset, confirmPasswordReset,
-      switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded,
+      switchRole, updateProfile, switchDemoAccount, permissions, isPermissionsLoaded, permissionsError,
       userCan, refreshPermissions, restoreSession,
     }}>
       {children}

@@ -207,13 +207,13 @@ it('retains entered values and allows retry when saving fails', async () => {
   expect((screen.getByRole('button', { name: 'Save Product' }) as HTMLButtonElement).disabled).toBe(false);
 });
 
-it('keeps Product metadata visible while loading the historical Closed Won table with a spinner', async () => {
+it('keeps Product metadata visible while loading the historical Closed Deal table with a spinner', async () => {
   render(<ProductsPage />); await screen.findByRole('grid');
   let resolve!: (value: unknown) => void;
   vi.mocked(apiClient.get).mockImplementation((url) => url.includes('/closed-won') ? new Promise(done => { resolve = done; }) : Promise.resolve({ data: product }));
   fireEvent.click(screen.getByRole('button', { name: 'Row actions' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
-  expect(screen.getByRole('status', { name: 'Loading Closed Won' }).querySelector('.animate-spin')).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Loading Closed Deal' }).querySelector('.animate-spin')).toBeTruthy();
   expect(screen.getByText('Product Record')).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Product details' })).toBeTruthy();
   expect(screen.queryByText('Complete the product details below.')).toBeNull();
@@ -221,7 +221,7 @@ it('keeps Product metadata visible while loading the historical Closed Won table
   expect(await screen.findByText('Saved Customer')).toBeTruthy();
   expect(screen.queryByText('Real won deal')).toBeNull();
   expect(screen.queryByText('₱45,000.00')).toBeNull();
-  const table = within(screen.getByRole('region', { name: 'Closed Won table' })).getByRole('grid');
+  const table = within(screen.getByRole('region', { name: 'Closed Deal table' })).getByRole('grid');
   expect(table.tagName).toBe('TABLE');
   expect(within(table).getAllByRole('columnheader').map(cell => cell.textContent)).toEqual(['Contacts', 'Won', 'Assigned Agent']);
   expect(within(table).getByText('Company')).toBeTruthy();
@@ -236,15 +236,15 @@ it('refreshes once, retains metadata and pagination, then uses server pages and 
   vi.mocked(apiClient.get).mockImplementation(async url => url.includes('/closed-won') ? { data: [won], meta: { total: 26 } } : { data: product });
   fireEvent.click(screen.getByRole('button', { name: 'Row actions' })); fireEvent.click(screen.getByRole('menuitem', { name: 'View' }));
   await screen.findByText('26 records');
-  const section = screen.getByRole('region', { name: 'Closed Won' });
+  const section = screen.getByRole('region', { name: 'Closed Deal' });
   let finish!: (value: unknown) => void;
   vi.mocked(apiClient.get).mockImplementation(() => new Promise(resolve => { finish = resolve; }));
-  const refresh = within(section).getByRole('button', { name: 'Refresh Closed Won' });
+  const refresh = within(section).getByRole('button', { name: 'Refresh Closed Deal' });
   const before = vi.mocked(apiClient.get).mock.calls.length;
   fireEvent.click(refresh); fireEvent.click(refresh);
   expect(apiClient.get).toHaveBeenCalledTimes(before + 1);
   expect((refresh as HTMLButtonElement).disabled).toBe(true);
-  expect(screen.getByRole('status', { name: 'Loading Closed Won' }).textContent).toBe('');
+  expect(screen.getByRole('status', { name: 'Loading Closed Deal' }).textContent).toBe('');
   expect(screen.getAllByText('₱25,000.00').length).toBeGreaterThan(0);
   expect(within(section).getByRole('navigation', { name: 'Pagination' })).toBeTruthy();
   finish({ data: [won], meta: { total: 26 } });

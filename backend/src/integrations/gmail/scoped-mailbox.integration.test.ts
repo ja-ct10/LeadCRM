@@ -1381,7 +1381,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Historical automatic Deal',
       leadDeals: { create: { leadId, position: 0 } } } });
     const sent = { ...mail(account.email, 'dedup-original', ['SENT']), threadId: 'dedup-thread', to: [leadEmail], date: new Date(Date.now() - 9000).toISOString(), rfcMessageId: '<dedup-original@example.test>' };
-    await scope(() => ingestMailboxMessages(account, [sent], permissions));
+    await scope(() => ingestMailboxMessages(account, [sent], permissions, { dealId: deal.id }));
     const first = (await call('/emails')).body.emails[0];
     expect(first.dealId).toBe(deal.id); expect(first.messageCount).toBe(1);
     const secondDeal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: initial.id, title: 'Another Deal',

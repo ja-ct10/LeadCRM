@@ -5,7 +5,7 @@ import { ClosedWonDialog } from '../closed-won-dialog';
 afterEach(cleanup);
 it('does not confirm without a type and requires an explanation for Other', () => {
   const confirm = vi.fn(); render(<ClosedWonDialog onConfirm={confirm} onCancel={vi.fn()} />);
-  const form = screen.getByRole('button', { name: 'Confirm Closed Won' }).closest('form')!;
+  const form = screen.getByRole('button', { name: 'Confirm Closed Deal' }).closest('form')!;
   fireEvent.submit(form); expect(confirm).not.toHaveBeenCalled();
   fireEvent.change(screen.getByLabelText('Confirmation Type'), { target: { value: 'Other' } });
   fireEvent.submit(form); expect(confirm).not.toHaveBeenCalled();

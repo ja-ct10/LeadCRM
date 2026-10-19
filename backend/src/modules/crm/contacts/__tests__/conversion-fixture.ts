@@ -16,7 +16,7 @@ export async function conversionFixture() {
   await db.tenant.createMany({ data: [{ id: 'conversion', name: 'Conversion', slug: 'conversion' }, { id: 'foreign', name: 'Foreign', slug: 'foreign' }] });
   await db.user.create({ data: { id: 'actor', tenantId: 'conversion', email: 'actor@example.test', firstName: 'Actor', lastName: 'Test', role: 'Client Admin' } });
   await db.pipeline.create({ data: { id: 'p', tenantId: 'conversion', name: 'Sales' } });
-  await db.stage.createMany({ data: [{ id: 'open', pipelineId: 'p', tenantId: 'conversion', name: 'Lead', order: 0 }, { id: 'won', pipelineId: 'p', tenantId: 'conversion', name: 'Closed Won', order: 1, isWon: true }] });
+  await db.stage.createMany({ data: [{ id: 'open', pipelineId: 'p', tenantId: 'conversion', name: 'Lead', order: 0 }, { id: 'won', pipelineId: 'p', tenantId: 'conversion', name: 'Closed Deal', order: 1, isWon: true }] });
   await db.productInterest.create({ data: { id: 'product', tenantId: 'conversion', name: 'CRM Enterprise', dealValue: 12500 } });
   const inquiry = async (companyName = 'Customer company', won = true) => {
     const id = randomUUID();

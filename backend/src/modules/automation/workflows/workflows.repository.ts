@@ -3,7 +3,7 @@ import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
 import { workflowStatusLabel } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { getPaginationParams } from '../../../shared/helpers/pagination';
-import { getCrmFieldCatalog, getWorkflowConditionFields, customFieldTechnicalKey, CRM_STATUSES, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
+import { getCrmFieldCatalog, getWorkflowConditionFields, customFieldTechnicalKey, normalizeCrmStatus, FieldLayoutSchema, CUSTOM_FIELD_MODULES, WORKFLOW_MODULES, type WorkflowDraft, type WorkflowEntity, type FieldLayout } from '@leadcrm/shared';
 import { workflowCustomFields } from './workflow-fields';
 import { readRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { ValidationError } from '../../../shared/errors/http-error';
@@ -192,7 +192,7 @@ export async function entityContext(entity: WorkflowEntity, id: string, tenantId
     const key = field.field.slice(entity.length + 1), value = source[key];
     context[field.field] = value instanceof Date ? value.toISOString().slice(0, 10) : value;
   }
-  if ('status' in record) context[entity + '.status'] = CRM_STATUSES.find(status => status.toLowerCase() === record.status.toLowerCase()) ?? record.status;
+  if ('status' in record) context[entity + '.status'] = normalizeCrmStatus(record.status);
   if ('doNotContact' in record) context['contact.doNotContact'] = record.doNotContact;
   if ('productLinks' in record) {
     context[entity + '.productInterestIds'] = record.productLinks.filter(link => !('interested' in link) || link.interested).map(link => link.productInterestId).sort();

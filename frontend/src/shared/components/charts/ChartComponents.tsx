@@ -21,6 +21,7 @@ import {
   type ChartOptions,
   type ChartData,
   type ScriptableContext,
+  type Plugin,
 } from 'chart.js';
 import {
   Bar as ChartBar,
@@ -66,6 +67,8 @@ interface BarChartProps {
   width?: number | string;
   height?: number | string;
   layout?: 'horizontal' | 'vertical';
+  showValueLabels?: boolean;
+  wrapCategoryLabels?: boolean;
 }
 interface BarProps {
   dataKey: string; name?: string; fill?: string;
@@ -190,7 +193,7 @@ export function ResponsiveContainer({
 // ─────────────────────────────────────────────────────────────
 // BarChart
 // ─────────────────────────────────────────────────────────────
-export function BarChart({ data, children, layout }: BarChartProps) {
+export function BarChart({ data, children, layout, showValueLabels = false, wrapCategoryLabels = false }: BarChartProps) {
   const dark = useChartTheme();
   let xDataKey = 'name';
   let yTickFormatter: ((v: any) => string) | undefined;
@@ -229,6 +232,8 @@ export function BarChart({ data, children, layout }: BarChartProps) {
     indexAxis: horizontal ? 'y' : 'x',
     responsive: true,
     maintainAspectRatio: false,
+    ...(showValueLabels ? { color: dark ? '#f8fafc' : '#0f172a' } : {}),
+    ...(showValueLabels && horizontal ? { layout: { padding: { right: Math.max(24, ...datasets.flatMap(dataset => dataset.data.map(value => String(value).length * 8 + 12))) } } } : {}),
     plugins: {
       legend: showLegend
         ? { labels: { color: dark ? '#94a3b8' : '#475569', boxWidth: 12 } }
@@ -240,20 +245,60 @@ export function BarChart({ data, children, layout }: BarChartProps) {
     },
     scales: {
       x: { ...getAxisDefaults(dark), grid: { color: 'transparent' }, ...(horizontal ? { beginAtZero: true } : {}),
+        ...(showValueLabels && horizontal ? { display: false } : {}),
         ticks: { ...getAxisDefaults(dark).ticks, maxRotation: 0, maxTicksLimit: 6,
           callback: horizontal ? xTickFormatter : value => xTickFormatter ? xTickFormatter(labels[Number(value)]) : labels[Number(value)] } },
       y: {
         ...getAxisDefaults(dark),
+        ...(wrapCategoryLabels && horizontal ? {
+          grid: { display: false }, border: { display: false },
+          afterFit: scale => { scale.width = Math.min(164, Math.max(66, scale.chart.width * 0.38 + 14)); },
+        } : {}),
         ...(horizontal ? {} : { beginAtZero: true }),
         ticks: { ...getAxisDefaults(dark).ticks, ...(horizontal ? {} : { precision: 0 }),
-          callback: horizontal ? value => yTickFormatter ? yTickFormatter(labels[Number(value)]) : labels[Number(value)] ?? '' : yTickFormatter || ((v: any) => v) },
+          ...(wrapCategoryLabels && horizontal ? { autoSkip: false } : {}),
+          callback: horizontal ? function(value) {
+            const label = yTickFormatter ? yTickFormatter(labels[Number(value)]) : labels[Number(value)] ?? '';
+            if (!wrapCategoryLabels) return label;
+            const maxWidth = Math.max(52, Math.min(150, this.chart.width * 0.38));
+            const context = this.chart.ctx;
+            context.save(); context.font = `12px ${ChartJS.defaults.font.family}`;
+            const lines: string[] = []; let line = '';
+            for (const word of label.split(/\s+/)) {
+              if (line && context.measureText(`${line} ${word}`).width > maxWidth) { lines.push(line); line = ''; }
+              for (const character of (line ? ` ${word}` : word)) {
+                if (line && context.measureText(line + character).width > maxWidth) { lines.push(line.trim()); line = ''; }
+                line += character;
+              }
+            }
+            if (line) lines.push(line.trim());
+            context.restore();
+            return lines.length > 3 ? [...lines.slice(0, 2), lines[2].slice(0, -1) + '…'] : lines;
+          } : yTickFormatter || ((v: any) => v) },
       },
+    },
+  };
+
+  // Local opt-in plugin; existing charts keep their rendering and defaults.
+  const valueLabels: Plugin<'bar'> = {
+    id: 'barValueLabels',
+    afterDatasetsDraw(chart) {
+      const context = chart.ctx;
+      context.save(); context.font = '600 12px sans-serif';
+      context.fillStyle = String(chart.options.color); context.textAlign = 'left'; context.textBaseline = 'middle';
+      chart.data.datasets.forEach((dataset, datasetIndex) => {
+        if (!chart.isDatasetVisible(datasetIndex)) return;
+        chart.getDatasetMeta(datasetIndex).data.forEach((element, index) => {
+          context.fillText(String(dataset.data[index]), element.x + 6, element.y);
+        });
+      });
+      context.restore();
     },
   };
 
   return (
     <div style={{ position: 'relative', minWidth: 0, width: '100%', height: '100%' }}>
-      <ChartBar style={{ maxWidth: '100%' }} data={{ labels, datasets }} options={options} />
+      <ChartBar style={{ maxWidth: '100%' }} data={{ labels, datasets }} options={options} plugins={showValueLabels && horizontal ? [valueLabels] : undefined} />
     </div>
   );
 }

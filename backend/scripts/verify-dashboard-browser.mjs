@@ -14,7 +14,8 @@ import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { replayCrmMigrations } from './replay-crm-migrations.mjs';
 const uiPolish = process.argv.includes('--ui-polish');
-const metricsOnly = process.argv.includes('--metrics-only');
+const sourceOnly = process.argv.includes('--sources-only');
+const metricsOnly = process.argv.includes('--metrics-only') || sourceOnly;
 const root = resolve(import.meta.dirname, '../..'), output = process.env.LEADCRM_BROWSER_OUTPUT || (resolve(process.env.DASHBOARD_VERIFICATION_OUTPUT || (uiPolish ? process.env.UI_POLISH_OUTPUT || resolve(tmpdir(), 'leadcrm-dashboard-leads-ui') : resolve(root, 'data/outputs/dashboard-verification'))));
 const clockOnly = process.argv.includes('--clock-only');
 mkdirSync(output, { recursive: true });
@@ -108,8 +109,15 @@ try {
       const text = CanvasRenderingContext2D.prototype.fillText;
       const arc = CanvasRenderingContext2D.prototype.arc;
       const curve = CanvasRenderingContext2D.prototype.bezierCurveTo;
-      CanvasRenderingContext2D.prototype.clearRect = function(...args) { this.canvas.__labels = []; this.canvas.__points = []; this.canvas.__curves = []; return clear.apply(this, args); };
-      CanvasRenderingContext2D.prototype.fillText = function(...args) { (this.canvas.__labels ??= []).push(String(args[0])); return text.apply(this, args); };
+      CanvasRenderingContext2D.prototype.clearRect = function(...args) { this.canvas.__labels = []; this.canvas.__texts = []; this.canvas.__points = []; this.canvas.__curves = []; return clear.apply(this, args); };
+      CanvasRenderingContext2D.prototype.fillText = function(...args) {
+        const label = String(args[0]), transform = this.getTransform(), point = transform.transformPoint({ x: args[1], y: args[2] });
+        const width = this.measureText(label).width * Math.hypot(transform.a, transform.b) / devicePixelRatio;
+        const x = point.x / devicePixelRatio, left = x - (this.textAlign === 'center' ? width / 2 : ['right', 'end'].includes(this.textAlign) ? width : 0);
+        (this.canvas.__labels ??= []).push(label);
+        (this.canvas.__texts ??= []).push({ text: label, x, y: point.y / devicePixelRatio, left, right: left + width, width, align: this.textAlign, color: this.fillStyle });
+        return text.apply(this, args);
+      };
       CanvasRenderingContext2D.prototype.arc = function(...args) { (this.canvas.__points ??= []).push({ x: args[0], y: args[1], radius: args[2] }); return arc.apply(this, args); };
       CanvasRenderingContext2D.prototype.bezierCurveTo = function(...args) { (this.canvas.__curves ??= []).push({ x: args[4], y: args[5] }); return curve.apply(this, args); };
     });
@@ -167,13 +175,13 @@ try {
       const dimensions = await page.evaluate(()=>({width:innerWidth,scrollWidth:document.documentElement.scrollWidth}));
       assert.ok(dimensions.scrollWidth<=width+1);
       await page.screenshot({path:resolve(output,`clock-${width}.png`),fullPage:true});
-      await page.getByRole('heading',{name:'Conversion Funnel',exact:true}).scrollIntoViewIfNeeded();
+      await page.getByRole('heading',{name:'Lead Source Performance',exact:true}).scrollIntoViewIfNeeded();
       await page.screenshot({path:resolve(output,`clock-${width}-funnel.png`),fullPage:true});
       record(`Clock, requested notes and responsive toolbar ${width}`,dimensions);
     }
   } else if (metricsOnly) {
     const { verifyDashboardMetrics } = await import('./verify-dashboard-metrics.mjs');
-    await verifyDashboardMetrics({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, agent, replacement, pipeline, stages, products, record, until, wait, expectValue });
+    await verifyDashboardMetrics({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, sourceOnly });
   } else if (uiPolish) {
     const { verifyDashboardLeadsUi } = await import('./verify-dashboard-leads-ui.mjs');
     await verifyDashboardLeadsUi({ page, staffPage: staffSession.tab, base, output, http, prisma, tenant, admin, agent, replacement, pipeline, stages, products, record, until, wait, expectValue, leadsOnly: process.argv.includes('--leads-only'), dashboardOnly: process.argv.includes('--dashboard-only') });
@@ -262,18 +270,18 @@ try {
     await expectValue('Total Revenue','₱2,800.00');
   }
   await page.getByRole('button',{name:'Filter Revenue Trend',exact:true}).click(); await page.getByRole('menuitem',{name:'Month',exact:true}).click();
-  await page.goto(base+'/dashboard');
-  await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).waitFor();
+  await page.goto(base+'/reporting');
+  await page.getByRole('button',{name:'Filter Deal Pipeline Conversion Funnel',exact:true}).waitFor();
   assert.equal(await page.getByText('Cohort details',{exact:true}).count(),0);
   for (const period of ['Week','Month','Year']) {
     const response = page.waitForResponse(response=>response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('funnelRange')===period.toLowerCase());
-    await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:period,exact:true}).click();
+    await page.getByRole('button',{name:'Filter Deal Pipeline Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:period,exact:true}).click();
     const filteredResponse = await response;
     assert.equal(new URL(filteredResponse.url()).searchParams.get('range'),'thisMonth');
     const result = await filteredResponse.json();
     assert.equal(result.data.conversion.period.range,period.toLowerCase());
   }
-  await page.getByRole('button',{name:'Filter Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Range',exact:true}).click();
+  await page.getByRole('button',{name:'Filter Deal Pipeline Conversion Funnel',exact:true}).click(); await page.getByRole('menuitem',{name:'Custom Range',exact:true}).click();
   const today = dashboardToday();
   await page.getByLabel('Funnel From Date').fill(fixtureStart); await page.getByLabel('Funnel To Date').fill(today);
   assert.equal(await page.getByLabel('Funnel To Date').getAttribute('max'),today);
@@ -293,12 +301,13 @@ try {
   const cohort = await http(`/reporting/dashboard?range=custom&start=${fixtureStart}&end=${fixtureEnd}&revenueInterval=month&funnelRange=custom&funnelStart=${fixtureStart}&funnelEnd=${today}`);
   for (const [label, rate] of [
     ['Lead → Contacted', cohort.conversion.leadToContacted], ['Contacted → Qualified', cohort.conversion.contactedToQualified],
-    ['Qualified → Closed Won', cohort.conversion.qualifiedToWon],
+    [`Qualified → ${cohort.pipeline.stages[3].name}`, cohort.conversion.qualifiedToWon],
   ]) {
-    const rateRow=page.getByRole('region',{name:'Conversion Funnel',exact:true}).locator('dl > div').filter({has:page.getByText(label,{exact:true})});
-    await rateRow.locator('dd').getByText(rate===null?'Unavailable':`${rate}%`,{exact:true}).waitFor();
+    await page.getByText(`${label}: ${rate===null?'Unavailable':`${rate}%`}`,{exact:true}).waitFor();
   }
   record('Revenue intervals, independent funnel periods, historical custom date controls and requested cleanup');
+  await page.goto(base+'/dashboard');
+  await page.getByRole('region',{name:'Pipeline Overview'}).waitFor();
   const pipelineSession = await session(adminToken);
   await pipelineSession.tab.goto(base+'/crm/deals',{waitUntil:'domcontentloaded',timeout:60000});
   const pipelineNav = pipelineSession.tab.getByRole('button',{name:'Pipeline',exact:true});
@@ -319,10 +328,8 @@ try {
     await until(async()=>{
       const rows=await Promise.all([http('/reporting/dashboard'),http('/reporting/dashboard','GET',undefined,agentToken)]);
       if(!rows.every(row=>row.pipeline.stages[index].color===color)) return false;
-      if(index===4) return true; // Closed Lost has no primary Dashboard stage block.
-      const selectors = [page,staffSession.tab].map(tab=>index===3
-        ? tab.getByRole('region',{name:'Conversion Funnel',exact:true}).getByRole('listitem',{name:new RegExp(`^${stage.name}:`)}).locator('div').first()
-        : tab.getByRole('meter',{name:`${stage.name} deal count relative to largest stage`,exact:true}).locator('div'));
+      if(index>=3) return true; // Terminal stages are absent from Pipeline Overview.
+      const selectors = [page,staffSession.tab].map(tab=>tab.getByRole('meter',{name:`${stage.name} deal count relative to largest stage`,exact:true}).locator('div'));
       return (await Promise.all(selectors.map(selector=>selector.evaluate(el=>el.style.backgroundColor)))).every(value=>value===`rgb(18, 52, ${80+index})`);
     },'Saved stage color reaches Dashboard');
     const observerColor = observerSession.tab.getByRole('heading',{name:stage.name,exact:true}).locator('..').locator('..').locator('[aria-hidden="true"]').first();
@@ -389,5 +396,8 @@ try {
   await browser?.close(); frontend?.kill();
   if (gateway) { gateway.closeAllConnections(); await new Promise(done=>gateway.close(done)); }
   if (api) { api.closeAllConnections(); await new Promise(done=>api.close(done)); }
-  await prisma.$disconnect(); await socket.stop(); await pg.close();
+  await prisma.$disconnect(); await socket.stop();
+  // Socket close handlers schedule detach callbacks on the next event-loop turn.
+  await new Promise(done => setImmediate(done));
+  await pg.close();
 }

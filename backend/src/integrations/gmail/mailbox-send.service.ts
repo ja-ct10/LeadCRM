@@ -1,4 +1,4 @@
-import { recordStaffOutreach } from '../../modules/crm/customer-classification.service';
+import { refreshDealClassification, recordStaffOutreach } from '../../modules/crm/customer-classification.service';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { randomUUID, createHash } from 'node:crypto';
 import { SendMailboxEmailSchema, SaveMailboxDraftSchema } from '@leadcrm/shared';
@@ -115,8 +115,12 @@ export async function deleteMailboxDraft(tenantId: string, userId: string, draft
 
 async function recordPersonalOutreach(accountId: string, tenantId: string, providerMessageId: string) {
   await salesTransaction(async tx => {
-    const message = await tx.mailboxMessage.findFirst({ where: { accountId, tenantId, providerMessageId, direction: 'outbound' }, select: { leadId: true, contactId: true, sentAt: true } });
+    const message = await tx.mailboxMessage.findFirst({ where: { accountId, tenantId, providerMessageId, direction: 'outbound' }, select: { leadId: true, contactId: true, dealId: true, dealAttribution: true, sentAt: true } });
     if (message?.leadId) await recordStaffOutreach(tx, tenantId, { leadId: message.leadId }, message.sentAt);
     if (message?.contactId) await recordStaffOutreach(tx, tenantId, { contactId: message.contactId }, message.sentAt);
+    if (message?.dealId && message.dealAttribution) {
+      const account = await tx.emailAccount.findFirstOrThrow({ where: { tenantId, id: accountId } });
+      await refreshDealClassification(tx, tenantId, message.dealId, account.userId);
+    }
   });
 }

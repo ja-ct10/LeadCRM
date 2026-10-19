@@ -41,6 +41,7 @@ export async function fieldUpdatePatch(action: WorkflowAction, entity: WorkflowE
     throw new ValidationError('Choose an editable field for this record.');
   }
   let value = config.value;
+  if (['lead', 'contact'].includes(entity) && config.field === 'status' && typeof value === 'string' && ['closed', 'closed_deal'].includes(value.toLowerCase())) value = 'Closed Deal';
   if (field.type === 'list' && Array.isArray(value)) value = value.filter(v => typeof v === 'string' && v.trim()).map(v => String(v).trim());
   if (config.clear === true) {
     if (field.required) throw new ValidationError(`${field.label} cannot be cleared.`);

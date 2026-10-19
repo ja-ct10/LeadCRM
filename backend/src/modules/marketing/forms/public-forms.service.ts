@@ -1,9 +1,9 @@
 import { fireDealCreated } from '../../automation/triggers/triggers.service';
+import { classifyCustomerRecord } from '../../crm/customer-classification.service';
 import { productRelationData } from '../../crm/leads/product-relations';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { convertClosedLead } from '../../crm/leads/lead-conversion.service';
-import { changeCustomerStatus } from '../../crm/engagement.service';
 import { FormDefinitionSchema, PublicSubmissionSchema, validateFormValues, withProductOptions } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
@@ -107,7 +107,6 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 contactId = ids[0] ?? null;
               }
               if (contactId) await tx.lead.update({ where: { ...scope, id: lead.id }, data: { contactId } });
-              await changeCustomerStatus(tx, scope.tenantId, live.createdById, { leadId: lead.id }, 'Closed', 'Completed sales conversion resolved during a returning inquiry.', new Date(), { previousLead: lead });
               const converted = await convertClosedLead(tx, scope.tenantId, lead.id, live.createdById);
               contact = converted.contact;
               contactId = contact.id;
@@ -170,6 +169,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 type: 'deal_action', title: `Deal created for ${product.name}`, description: 'New website inquiry from an existing Contact.' } });
               await fireDealCreated({ tenantId: scope.tenantId, actorId: live.createdById, deal });
             }
+            await classifyCustomerRecord(tx, scope.tenantId, { contactId }, live.createdById);
           }
           return { submission, notificationEmail: config.settings.notificationEmail };
         });

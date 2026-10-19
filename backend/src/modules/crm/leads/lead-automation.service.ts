@@ -1,3 +1,4 @@
+import { classifyCustomerRecord } from '../customer-classification.service';
 import { weightedLeadScores, lowestWorkloadRotation } from './lead-workload';
 import { setNotificationActor, withAssignmentReason } from '../../notifications/notification-actor';
 import { assertCrmCreateAssignment, isCrmTransactionConflict, runCrmAutomaticCreation } from '../access/crm-record-access.service';
@@ -77,7 +78,7 @@ export async function salesPipeline(tx: Tx, tenantId: string) {
   let stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   if (!stages.length) {
     for (const [order, name] of SALES_PIPELINE_STAGES.entries()) await tx.stage.create({ data: {
-      ...scope, pipelineId: pipeline.id, name, color: pipelineStageColor({ name }), order, isDefault: order === 0, isWon: name === 'Closed Won', isLost: name === 'Closed Lost', probability: name === 'Closed Won' ? 100 : 0, requiredFields: [],
+      ...scope, pipelineId: pipeline.id, name, color: pipelineStageColor({ name }), order, isDefault: order === 0, isWon: name === 'Closed Deal', isLost: name === 'Cancelled', probability: name === 'Closed Deal' ? 100 : 0, requiredFields: [],
     } });
     stages = await tx.stage.findMany({ where: { ...scope, pipelineId: pipeline.id }, orderBy: { order: 'asc' } });
   }
@@ -114,6 +115,7 @@ export async function createProductDeals(tx: Tx, tenantId: string, leadId: strin
       type: 'deal_action', title: `Deal created for ${product.name}; ${agent ? 'assigned to ' + agent.firstName + ' ' + agent.lastName : 'awaiting assignment'}`, description: `System created this Deal from the ${kind === 'lead' ? 'Lead' : 'Contact'}'s Product Interest.` } });
     await fireDealCreated({ tenantId, actorId, deal });
   }
+  if (actorId) await classifyCustomerRecord(tx, tenantId, kind === 'lead' ? { leadId } : { contactId: leadId }, actorId);
 }
 
 /** Shared transactional rotation for new CRM records. */
@@ -153,7 +155,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     const existing = await tx.lead.findFirst({ where: { ...scope, creationKey: input.creationKey } });
     if (existing) return existing;
   }
-  if (input.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before closing this customer.');
+  if (input.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before closing this customer.');
   if (input.accountId && !await tx.account.findFirst({ where: { ...scope, id: input.accountId, isArchived: false, deletedAt: null } })) throw new ValidationError('Account is unavailable in this workspace.');
   // API callers provide IDs. Trusted imports may still provide historical names; resolve them here.
   const products = input.productInterestIds
@@ -161,7 +163,7 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
     : await tx.productInterest.findMany({ where: { tenantId: scope.tenantId, active: true, name: { in: (input.productInterest ?? []) as string[] } } });
   if (!input.productInterestIds && new Set((input.productInterest ?? []) as string[]).size !== products.length) throw new ValidationError('Unknown Product Interest');
   const relations = await productRelationData(tx, 'lead', scope.tenantId, { ids: products.map(p => p.id) });
-  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, status: input.status ?? 'Inquiry' } });
+  const lead = await tx.lead.create({ data: { ...input, ...scope, ...relations, assignedUserId: null, manualCancellation: input.status === 'Cancelled', status: input.status ?? 'Inquiry' } });
   const agent = assignment === 'public-form'
     ? await resolveFormSalesAgent(tx, scope.tenantId)
     : await resolveSalesAgent(tx, scope.tenantId, input.assignedUserId);
@@ -181,5 +183,6 @@ export async function createAssignedLead(tx: Tx, input: Prisma.LeadUncheckedCrea
   await fireLeadCreated({ tenantId: scope.tenantId, actorId, lead: assignedLead });
   await createProductDeals(tx, scope.tenantId, lead.id, actorId);
   if (lead.status === 'Cancelled' && actorId) await cancelOpenDeals(tx, scope.tenantId, actorId, { leadId: lead.id }, 'Staff created a cancelled opportunity.');
-  return assignedLead;
+  if (actorId) await classifyCustomerRecord(tx, scope.tenantId, { leadId: lead.id }, actorId);
+  return { ...assignedLead, ...await tx.lead.findFirstOrThrow({ where: { id: lead.id, ...scope } }) };
 }

@@ -166,7 +166,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
       phone: phoneLocal ? toE164(phoneLocal) : isEdit ? '' : undefined,
       ...organization.payload(),
       ...(isEdit ? { notes: data.notes || '' } : {}),
-      status: data.status || 'Inquiry',
+      status: initialData?.statusManagedByDeals ? normalizeCrmStatus(initialData.status) : data.status || 'Inquiry',
       leadSource: data.source || (isEdit ? '' : undefined),
       assignedUserId: data.assignedUserId || undefined,
       productInterest: data.productInterest || [],
@@ -262,7 +262,7 @@ export function ContactFormInner({ initialData, onSave, onCancel }: ContactFormI
             <FieldWrap fieldKey="status" label="Status" htmlFor={`${fieldId}-status`} error={errors.status?.message}>
               <div className="relative">
                 <select
-                  {...register('status')}
+                  {...register('status')} disabled={!!initialData?.statusManagedByDeals}
                   id={`${fieldId}-status`}
                   aria-invalid={!!errors.status}
                   aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}

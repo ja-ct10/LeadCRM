@@ -14,7 +14,7 @@ describe('hybrid customer classification', () => {
     for (const status of CRM_STATUSES) expect(CreateLeadSchema.parse({ ...person, status }).status).toBe(status);
   });
   it.each(CRM_STATUSES)('qualification takes precedence for %s except terminal outcomes', status => {
-    expect(classifyCustomer({ ...evidence, status, qualified: true, lastCustomerReplyAt: ago(60), genuineReply: true }, now)).toBe(['Closed', 'Cancelled'].includes(status) ? undefined : 'Hot');
+    expect(classifyCustomer({ ...evidence, status, qualified: true, lastCustomerReplyAt: ago(60), genuineReply: true }, now)).toBe(['Closed Deal', 'Cancelled'].includes(status) ? undefined : 'Hot');
   });
   it('never cools an untouched Inquiry even when automated outbound evidence exists', () => {
     expect(classifyCustomer({ ...evidence, firstUnansweredOutboundAt: ago(60) }, now)).toBeUndefined();
@@ -34,7 +34,7 @@ describe('hybrid customer classification', () => {
     expect(classifyCustomer({ ...evidence, status: 'Hot', qualificationChanged: true, lastCustomerReplyAt: ago(2) }, now)).toBe('Warm');
     expect(classifyCustomer({ ...evidence, status: 'Hot', qualificationChanged: true, lastCustomerReplyAt: ago(31) }, now)).toBe('Cold');
   });
-  it.each(['Closed', 'Cancelled'])('messages and inactivity cannot reopen %s', status => {
+  it.each(['Closed Deal', 'Cancelled'])('messages and inactivity cannot reopen %s', status => {
     expect(classifyCustomer({ ...evidence, status, genuineReply: true, lastCustomerReplyAt: now }, now)).toBeUndefined();
     expect(classifyCustomer({ ...evidence, status, lastCustomerReplyAt: ago(90) }, now)).toBeUndefined();
   });
@@ -45,7 +45,7 @@ describe('hybrid customer classification', () => {
 });
 describe('assignment and typed filters', () => {
   it('chooses weighted load first and rotates only equally loaded candidates', () => {
-    expect(LEAD_WORKLOAD_WEIGHTS).toEqual({ Inquiry: 1, Warm: 2, Hot: 3, Cold: 1, Closed: 0, Cancelled: 0 });
+    expect(LEAD_WORKLOAD_WEIGHTS).toEqual({ Inquiry: 1, Warm: 2, Hot: 3, Cold: 1, 'Closed Deal': 0, Cancelled: 0 });
     const users = [{ id: 'c' }, { id: 'a' }, { id: 'b' }];
     expect(lowestWorkloadRotation(users, new Map([['a', 9], ['b', 2], ['c', 2]]), 'b')?.id).toBe('c');
     expect(lowestWorkloadRotation(users, new Map([['a', 9], ['b', 2], ['c', 2]]), 'c')?.id).toBe('b');

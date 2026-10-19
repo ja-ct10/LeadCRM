@@ -304,7 +304,8 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: stage.id, wonConfirmedAt: new Date('2025-01-01'), wonConfirmedById: userId, hasEverBeenWon: true, wonHistoryVerified: true, leadDeals: { create: { leadId: l.id, position: 0 } }, title: 'Historic sale', productInterests: ['CCTV'], tags: [] } });
     await submit(form.publicId, v); await submit(form.publicId, v);
     const repaired = await prisma.lead.findUniqueOrThrow({ where: { id: l.id } }); expect(repaired.contactId).toBeTruthy();
-    expect(repaired.status).toBe('Closed');
+    expect(repaired.status).toBe('Inquiry');
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: repaired.contactId! } })).toMatchObject({ status: 'INQUIRY', lifecycleStage: 'CUSTOMER', customerSince: new Date('2025-01-01') });
     expect(await prisma.deal.findUnique({ where: { id: deal.id }, include: { contactDeals: true } })).toMatchObject({
       id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactDeals: [{ contactId: repaired.contactId }],
     });
@@ -323,7 +324,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const lead = await prisma.lead.create({ data: { tenantId, firstName: 'Customer', lastName: 'Old email', email: v.email, productInterest: [] } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Customer', lastName: 'New email', email: randomUUID() + '@example.com', productInterests: [] } });
     const pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'Historical' } });
-    const won = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Closed Won', order: 1, isWon: true, requiredFields: [] } });
+    const won = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Closed Deal', order: 1, isWon: true, requiredFields: [] } });
     const current = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'After sale', order: 2, requiredFields: [] } });
     const deal = await prisma.deal.create({ data: { tenantId, pipelineId: pipeline.id, stageId: current.id, wonConfirmedAt: new Date('2025-01-01'), wonConfirmedById: userId, hasEverBeenWon: true, wonHistoryVerified: true, title: 'Old purchase', productInterests: [], tags: [] } });
     await prisma.leadDeal.create({ data: { tenantId, dealId: deal.id, leadId: lead.id } });
@@ -332,7 +333,8 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     await submit(f.publicId, v);
     expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ contactId: contact.id, leadId: null });
     expect(await prisma.deal.findUnique({ where: { id: deal.id }, include: { contactDeals: true } })).toMatchObject({ id: deal.id, stageId: deal.stageId, value: deal.value, productInterests: deal.productInterests, contactDeals: [{ contactId: contact.id }] });
-    expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'Closed', contactId: contact.id });
+    expect(await prisma.lead.findUnique({ where: { id: lead.id } })).toMatchObject({ status: 'Inquiry', contactId: contact.id });
+    expect(await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } })).toMatchObject({ status: 'INQUIRY', lifecycleStage: 'CUSTOMER', customerSince: new Date('2025-01-01') });
   });
   it('matches legacy formatted phones and whitespace-normalized email', async () => {
     const f = await publish((await draft()).id), v = values();

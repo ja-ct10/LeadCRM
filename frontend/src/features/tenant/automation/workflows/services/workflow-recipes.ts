@@ -145,13 +145,13 @@ export const WORKFLOW_RECIPES: WorkflowDraft[] = [
     ],
   },
   {
-    name: 'Contact Status Closed Wrap-up',
+    name: 'Contact Status Closed Deal Wrap-up',
     description: 'Assign wrap-up responsibility when a Contact becomes Closed.',
     trigger: 'contact.status_changed',
     isActive: false,
     conditions: {
       operator: 'AND',
-      conditions: [{ field: 'contact.status', operator: 'equals', value: 'Closed' }],
+      conditions: [{ field: 'contact.status', operator: 'equals', value: 'Closed Deal' }],
     },
     actions: [
       { type: 'assign_owner', config: { userId: '' } },

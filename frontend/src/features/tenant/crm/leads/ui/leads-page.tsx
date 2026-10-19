@@ -266,7 +266,7 @@ export default function LeadsPage(): React.ReactElement {
   };
 
   // ── Filter groups for the rail ───────────────────────────────────────
-  const statusCounts = useMemo(() => Object.fromEntries(['Inquiry','Hot','Warm','Cold','Closed','Cancelled'].map(status => [status, facets?.['status:' + status] ?? 0])), [facets]);
+  const statusCounts = useMemo(() => Object.fromEntries(['Inquiry','Hot','Warm','Cold','Closed Deal','Cancelled'].map(status => [status, facets?.['status:' + status] ?? 0])), [facets]);
   const touchedCount = facets?.touched ?? 0, untouchedCount = facets?.untouched ?? 0;
   const distinctSources = LEAD_SOURCES;
 

@@ -372,7 +372,7 @@ describe('visual workflow editor', () => {
     await screen.findByText('Draft saved. This workflow is inactive.');
     expect(save).toHaveBeenCalledOnce();
     expect(close).not.toHaveBeenCalled();
-    expect(unloadPrevented()).toBe(false);
+    await waitFor(() => expect(unloadPrevented()).toBe(false));
     const navigate = vi.fn(); act(() => requestNavigation(navigate)); expect(navigate).toHaveBeenCalledOnce();
     fireEvent.click(button('Back to workflows')); expect(close).toHaveBeenCalledOnce();
     editTask('Edited after saving');

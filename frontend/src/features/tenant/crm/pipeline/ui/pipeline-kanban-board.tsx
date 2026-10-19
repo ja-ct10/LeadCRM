@@ -3,6 +3,8 @@ import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 
 import React from 'react';
+import { CrmStatusBadge } from '@/shared/components/crm/crm-status';
+import { dealStageValueVisibility } from '@/shared/utils/deal-stage-pipeline';
 import {
   DndContext,
   DragOverlay,
@@ -88,6 +90,8 @@ interface PipelineKanbanBoardProps {
 // ─── Deal Card Content ───────────────────────────────────────────────────────
 
 interface DealCardContentProps {
+  showValue: boolean;
+  currencyConfig?: CurrencyConfig;
   deal: Deal;
   assignedUser?: Pick<UserType, 'id' | 'firstName' | 'lastName'>;
   canDrag?: boolean;
@@ -99,6 +103,8 @@ interface DealCardContentProps {
 }
 
 function DealCardContent({
+  showValue,
+  currencyConfig,
   deal,
   assignedUser,
   canDrag = false,
@@ -154,9 +160,9 @@ function DealCardContent({
       </div>
 
       <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
-        {typeof deal.value === 'number' && (
+        {showValue && typeof deal.value === 'number' && (
           <span className="inline-flex items-center gap-1 text-slate-700 dark:text-slate-200 text-[13px] font-medium shrink-0">
-            {formatCurrency(deal.value)}
+            {formatCurrency(deal.value, currencyConfig)}
           </span>
         )}
         <span
@@ -172,6 +178,7 @@ function DealCardContent({
           {deal.priority}
         </span>
 
+        <CrmStatusBadge status={deal.engagementStatus} />
         {stale && (
           <span
             className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded border text-[10px] font-bold uppercase tracking-wider shrink-0 bg-red-50 text-red-600 border-red-200 dark:bg-red-500/10 dark:text-red-400 dark:border-red-500/20"
@@ -228,6 +235,8 @@ function DealCardContent({
 // ─── Sortable Deal Card ──────────────────────────────────────────────────────
 
 interface SortableDealCardProps {
+  showValue: boolean;
+  currencyConfig?: CurrencyConfig;
   deal: Deal;
   assignedUser?: Pick<UserType, 'id' | 'firstName' | 'lastName'>;
   onClick: (deal: Deal) => void;
@@ -238,6 +247,8 @@ interface SortableDealCardProps {
 }
 
 function SortableDealCard({
+  showValue,
+  currencyConfig,
   deal,
   assignedUser,
   onClick,
@@ -291,7 +302,7 @@ function SortableDealCard({
           : `${isStale ? '' : 'bg-white dark:bg-slate-950'} ${borderStyle} shadow-sm hover:shadow-md`
       }`}
     >
-      <DealCardContent
+      <DealCardContent showValue={showValue} currencyConfig={currencyConfig}
         deal={deal}
         assignedUser={assignedUser}
         canDrag={canDrag}
@@ -310,6 +321,7 @@ interface DroppableStageProps {
   stage: Stage;
   children: React.ReactNode;
   stageValue: number;
+  showValue: boolean;
   count: number;
   isDraggingAny: boolean;
   isAutomatedOnly?: boolean;
@@ -320,6 +332,7 @@ function DroppableStage({
   stage,
   children,
   stageValue,
+  showValue,
   count,
   isDraggingAny,
   isAutomatedOnly = false,
@@ -359,9 +372,9 @@ function DroppableStage({
             >
               {stage.name}
             </h3>
-            <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
+            {showValue && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
               {formatCurrency(stageValue, currencyConfig)}
-            </p>
+            </p>}
           </div>
         </div>
         <div className="flex items-center gap-1.5">
@@ -510,6 +523,7 @@ export function PipelineKanbanBoard({
                 key={stage.id}
                 stage={stage}
                 stageValue={stageValue}
+                showValue={dealStageValueVisibility(pipeline, stage.id).header}
                 count={stageDeals.length}
                 isDraggingAny={!!activeDeal}
                 isAutomatedOnly={!canEdit}
@@ -522,7 +536,7 @@ export function PipelineKanbanBoard({
                 >
                   <div className="p-3 flex-1 overflow-y-auto space-y-3 custom-scrollbar min-h-[200px]">
                     {stageDeals.map((deal) => (
-                      <SortableDealCard
+                      <SortableDealCard showValue={dealStageValueVisibility(pipeline, stage.id).card} currencyConfig={currencyConfig}
                         key={deal.id}
                         deal={deal}
                         highlighted={boardHeight !== undefined && deal.id === highlightDealId}
@@ -603,7 +617,7 @@ export function PipelineKanbanBoard({
       >
         {activeDeal ? (
           <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border-2 border-blue-500/60 shadow-[0_20px_60px_rgba(0,0,0,0.3)] flex flex-col gap-3 w-80 rotate-1 cursor-grabbing">
-            <DealCardContent
+            <DealCardContent showValue={dealStageValueVisibility(pipeline, activeDeal.stageId).card} currencyConfig={currencyConfig}
               deal={activeDeal}
               assignedUser={activeDeal.assignedUser ?? users.find((u) => u.id === activeDeal.assignedUserId)}
               isDragOverlay={true}

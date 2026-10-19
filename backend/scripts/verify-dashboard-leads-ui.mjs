@@ -11,25 +11,16 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   const currency = amount => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(amount);
   async function layout(label) {
     await wait(400);
-    const funnel = page.getByRole('region', { name: 'Conversion Funnel', exact: true });
-    const labels = await funnel.locator('ol > li').evaluateAll(stages => stages.map(stage => {
-      const label = stage.querySelector('p'), value = stage.querySelector('div'), range = document.createRange();
-      range.selectNodeContents(label);
-      const bounds = label.getBoundingClientRect(), text = range.getBoundingClientRect();
-      return { name: label.textContent, value: value.textContent, valueFits: value.scrollWidth <= value.clientWidth, lines: range.getClientRects().length, fontSize: parseFloat(getComputedStyle(label).fontSize), fits: text.left >= bounds.left - 1 && text.right <= bounds.right + 1, centered: Math.abs((text.left + text.right) / 2 - (bounds.left + bounds.right) / 2) <= 1 };
-    }));
-    assert.deepEqual(labels.map(label => label.name), ['Lead', 'Contacted', 'Qualified', 'Closed Won']);
-    for (const label of labels) { assert.ok(label.valueFits, JSON.stringify(labels)); assert.ok(label.fits, JSON.stringify(labels)); assert.ok(label.centered, JSON.stringify(labels)); assert.equal(label.fontSize, 11); if (label.name !== 'Closed Won') assert.equal(label.lines, 1, JSON.stringify(labels)); }
-    assert.equal(await funnel.locator('ol > li > svg').count(), 3);
-    assert.equal(await funnel.locator('details').count(), 0);
-    assert.equal(await funnel.getByText(/Closed Lost/).count(), 0);
+    const source = page.getByRole('region', { name: 'Lead Source Performance', exact: true });
+    assert.equal(await source.getByRole('heading', { name: 'Lead Source Performance', exact: true }).count(), 1);
+    assert.equal(await page.getByRole('region', { name: 'Lead Source Performance', exact: true }).count(), 0);
     assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).count(), 0);
     const dimensions = await revenue().evaluate(region => {
       const card=region.closest('section'),action=document.querySelector('section[aria-label="Action Center"]');
       const list=action.querySelector('[aria-label="Action Center actions"]'),canvas=region.querySelector('canvas');
       const rect=element=>{const r=element.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height,bottom:r.bottom,right:r.right};};
       const items=[...list.querySelectorAll('a')].map(link=>{const title=link.querySelector('p'),style=getComputedStyle(link);return {...rect(link),title:link.title,fullTitle:title.textContent,titleHeight:title.getBoundingClientRect().height,titleLineHeight:parseFloat(getComputedStyle(title).lineHeight),clamp:getComputedStyle(title).webkitLineClamp,paddingX:parseFloat(style.paddingLeft),paddingY:parseFloat(style.paddingBottom)};});
-      const sections=[...document.querySelectorAll('main section[aria-label]')].filter(section=>['Action Center','Revenue Trend','Pipeline Overview','Conversion Funnel','Sales Leaderboard'].includes(section.getAttribute('aria-label'))).map(section=>({name:section.getAttribute('aria-label'),...rect(section)}));
+      const sections=[...document.querySelectorAll('main section[aria-label]')].filter(section=>['Action Center','Revenue Trend','Pipeline Overview','Lead Source Performance','Sales Leaderboard'].includes(section.getAttribute('aria-label'))).map(section=>({name:section.getAttribute('aria-label'),...rect(section)}));
       const kpis=[...document.querySelectorAll('[aria-label="Dashboard KPIs"] > [role="group"]')].map(group=>({name:group.getAttribute('aria-label'),...rect(group)}));
       return {width:innerWidth,rootWidth:document.documentElement.scrollWidth,fontSize:parseFloat(getComputedStyle(document.documentElement).fontSize),region:rect(region),card:rect(card),canvas:rect(canvas),action:rect(action),sections,kpis,
         list:{...rect(list),clientHeight:list.clientHeight,scrollHeight:list.scrollHeight,scrollWidth:list.scrollWidth,clientWidth:list.clientWidth,overflow:getComputedStyle(list).overflowY,items,
@@ -45,7 +36,7 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
     assert.ok(dimensions.labels.some(text=>text.startsWith('₱')),JSON.stringify(dimensions.labels));
     assert.equal(dimensions.list.overflow,'auto');assert.ok(dimensions.list.scrollWidth<=dimensions.list.clientWidth);assert.equal(dimensions.list.clippedItems,0);
     assert.deepEqual(dimensions.kpis.map(kpi=>kpi.name),['Revenue','Forecast','Open Deals','Leads','Win Rate']);
-    assert.deepEqual(dimensions.sections.map(section=>section.name),['Action Center','Revenue Trend','Pipeline Overview','Conversion Funnel','Sales Leaderboard']);
+    assert.deepEqual(dimensions.sections.map(section=>section.name),['Action Center','Revenue Trend','Pipeline Overview','Lead Source Performance','Sales Leaderboard']);
     const expectedKpiColumns=dimensions.width>=1024?5:dimensions.width>=640?3:dimensions.width>=360?2:1;
     assert.equal(dimensions.kpis.filter(kpi=>Math.abs(kpi.y-dimensions.kpis[0].y)<=1).length,expectedKpiColumns);
     const items=dimensions.list.items,limit=dimensions.width>=1024?5:3;
@@ -279,8 +270,8 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
       assert.equal(visible, width >= 1024 ? 5 : 3);
       await action().scrollIntoViewIfNeeded();
       await page.screenshot({ path: resolve(output, `dashboard-compact-${theme}-${width}.png`) });
-      await page.getByRole('region', { name: 'Conversion Funnel', exact: true }).scrollIntoViewIfNeeded();
-      await page.screenshot({ path: resolve(output, `dashboard-funnel-${theme}-${width}.png`) });
+      await page.getByRole('region', { name: 'Lead Source Performance', exact: true }).scrollIntoViewIfNeeded();
+      await page.screenshot({ path: resolve(output, `dashboard-sources-${theme}-${width}.png`) });
       await links.last().focus();
       assert.ok(await links.last().evaluate(link => link.getBoundingClientRect().bottom <= link.parentElement.getBoundingClientRect().bottom + 1));
     }
@@ -306,21 +297,21 @@ export async function verifyDashboardLeadsUi({ page, staffPage, base, output, ht
   await page.getByRole('group',{name:'Avg Deal Velocity',exact:true}).waitFor();
   record('Reports retains its original visualizations and CSV download');
   const unavailable = await http('/reporting/dashboard?range=thisMonth');
-  unavailable.conversion = null;
+  unavailable.leadSourcePerformance = null;
   const unavailableRoute = route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: unavailable }) });
   await page.route('**/api/proxy/reporting/dashboard?*', unavailableRoute);
   await page.goto(base + '/dashboard');
-  await page.getByText('Deal history unavailable.', { exact: true }).waitFor();
+  await page.getByRole('region', { name: 'Lead Source Performance' }).getByText('Deal reporting unavailable.', { exact: true }).waitFor();
   for (const width of widths) {
     await page.setViewportSize({ width, height: 1000 });
     assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1));
-    await page.getByRole('region', { name: 'Conversion Funnel', exact: true }).scrollIntoViewIfNeeded();
-    await page.screenshot({ path: resolve(output, `dashboard-funnel-unavailable-${width}.png`) });
-    record(`Unavailable funnel and header remain responsive ${width}`);
+    await page.getByRole('region', { name: 'Lead Source Performance', exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: resolve(output, `dashboard-sources-unavailable-${width}.png`) });
+    record(`Unavailable source chart and header remain responsive ${width}`);
   }
   await page.unroute('**/api/proxy/reporting/dashboard?*', unavailableRoute);
   await page.goto(base + '/dashboard');
-  await page.getByRole('list', { name: 'Current pipeline stages' }).waitFor();
+  await page.getByRole('region', { name: 'Lead Source Performance' }).getByRole('list').waitFor();
   }
 
   if (dashboardOnly) return;

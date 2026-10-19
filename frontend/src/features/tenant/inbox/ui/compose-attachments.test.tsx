@@ -2,10 +2,11 @@ import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import ComposeModal from './compose-modal';
-const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), schedule: vi.fn(), error: vi.fn(), content: vi.fn(), attachment: vi.fn(), relationships: { data: { deals: [{ id: 'linked-deal', title: 'Camera installation' }], hasMoreDeals: false }, isInitialLoad: false, isRefreshing: false, loadMore: vi.fn(), refetch: vi.fn(), error: null } }));
+const mocks = vi.hoisted(() => ({ send: vi.fn(), save: vi.fn(), schedule: vi.fn(), error: vi.fn(), content: vi.fn(), attachment: vi.fn(), relationships: { data: { deals: [{ id: 'linked-deal', title: 'Camera installation', assignedUserId: 'agent' }, { id: 'other-deal', title: 'Other agent Deal', assignedUserId: 'other-agent' }], hasMoreDeals: false }, isInitialLoad: false, isRefreshing: false, loadMore: vi.fn(), refetch: vi.fn(), error: null } }));
 vi.mock('../services/gmail.service', () => ({ sendGmailEmail: mocks.send, saveGmailDraft: mocks.save, scheduleGmailEmail: mocks.schedule, fetchGmailMessageContent: mocks.content, fetchGmailAttachment: mocks.attachment }));
 vi.mock('@/shared/hooks/use-record-relationships', () => ({ useRecordRelationships: () => mocks.relationships }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent' } }) }));
 vi.mock('sonner', () => ({ toast: { error: mocks.error, success: vi.fn() } }));
 vi.mock('motion/react', () => ({ motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> }, AnimatePresence: ({ children }: any) => children, useReducedMotion: () => true }));
 beforeEach(() => { vi.clearAllMocks(); mocks.send.mockResolvedValue({ messageId: 'sent', threadId: 'thread' }); mocks.save.mockResolvedValue({ draftId: 'draft' }); });
@@ -16,6 +17,7 @@ function attach(file = new File(['%PDF-1.4 test'], 'Proposal.pdf', { type: 'appl
 it('keeps the selected related Deal when editing the subject and sends attachments with it', async () => {
   render(<ComposeModal isOpen onClose={vi.fn()} onSent={vi.fn()} initialDraft={draft} />);
   fireEvent.click(screen.getByRole('button', { name: 'Associated deal' }));
+  expect(screen.queryByRole('radio', { name: 'Other agent Deal' })).toBeNull();
   fireEvent.change(screen.getByLabelText('Search associated deal'), { target: { value: 'Camera' } });
   fireEvent.click(screen.getByRole('radio', { name: 'Camera installation' }));
   fireEvent.change(screen.getByRole('textbox', { name: 'Subject' }), { target: { value: 'My edited subject' } });

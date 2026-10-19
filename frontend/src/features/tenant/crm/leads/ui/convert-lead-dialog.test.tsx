@@ -19,7 +19,7 @@ it('confirms conversion without promising Closed status or requiring a Won Deal'
   render(<ConvertLeadDialog isOpen onClose={vi.fn()} onSuccess={onSuccess} lead={{ id: 'lead', firstName: 'Ada', lastName: 'Lead', status: 'Warm', companyName: 'Example' } as Lead} />);
   for (let step = 1; step <= 4; step++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
   expect(screen.getByText(/Lead will be marked as/).textContent).toContain('converted');
-  expect(screen.getByText(/Sales completion remains a separate Closed Won operation/)).toBeTruthy();
+  expect(screen.getByText(/Sales completion remains a separate Closed Deal operation/)).toBeTruthy();
   expect(screen.queryByText(/must already be confirmed/)).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Convert Lead' }));
   await waitFor(() => expect(mocks.post).toHaveBeenCalledWith('/crm/leads/lead/convert', expect.objectContaining({ newAccount: expect.objectContaining({ name: 'Example', requestId: expect.any(String) }), createContact: true, createDeal: false })));

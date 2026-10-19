@@ -1,4 +1,5 @@
 'use client';
+import { CrmStatusBadge } from './crm-status';
 import { dealAddressKey, dealAddressMessage, dealCustomerAddressMessage, resolveDealAddress, type DealAddressContext } from '@leadcrm/shared';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { RecordCustomFieldInlineRow, useRecordCustomFieldDetails } from './record-custom-fields';
@@ -251,7 +252,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const dealProductIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const dealProductNames = record.productInterests as string[] | undefined;
   const dealProductName = text(object(record.productInterestRecord)?.name) || (record.productInterestRecord !== null && dealProductIds.length === 1 && dealProductNames?.length === 1 ? dealProductNames[0] : '');
-  const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined, undefined, module === 'leads' || module === 'contacts' ? { recordModule: module, recordId: id } : undefined) : null;
+  const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined, module === 'deals' ? id : undefined, module === 'leads' || module === 'contacts' ? { recordModule: module, recordId: id } : undefined) : null;
   const composeDisabled = !composeHref && (!personInboxAction || ownsRecordMailbox);
   const openRecordEmail = () => {
     if (personInboxAction && !ownsRecordMailbox) {
@@ -282,7 +283,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     catch (error) { showCrmMutationError(error, 'Unable to move Deal'); }
     finally { setSaving(false); }
   };
-  const statuses = [...CRM_STATUSES];
+  const statusManaged = !!record.statusManagedByDeals;
+  const statuses = statusManaged ? record.manualCancellation ? ['Inquiry'] : ['Cancelled'] : [...CRM_STATUSES];
   const productIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const productNames = (record.productInterest ?? record.productInterests ?? []) as string[];
   const productRow: InlineRowDef = { technicalKey: 'productInterestIds', label: 'Product interests', value: module === 'leads' || module === 'deals' ? productIds : productNames, displayValue: productNames, apiField: module === 'leads' ? 'productInterest' : module === 'deals' ? undefined : 'productInterests', type: 'products', showUncategorized: false, valueMode: module === 'leads' || module === 'deals' ? 'id' : 'name', productLabels: Object.fromEntries(productIds.map((id, i) => [id, productNames[i] ?? 'Unavailable product'])) };
@@ -316,7 +318,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
     ]),
     { label: 'Address', value: record.address, apiField: 'address' },
     productRow,
-    ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: 'status', type: 'select' as const, options: statuses }]),
+    ...(module === 'accounts' ? [] : [{ label: 'Status', value: statusLabel, apiField: statusManaged ? undefined : 'status', type: 'select' as const, options: statuses }]),
     ...(module === 'accounts' ? [] : [{ technicalKey: 'assignedUserId', label: 'Assigned Agent', value: record.assignedUserId, displayValue: owner, apiField: 'assignedUserId', type: 'users' as const }]),
     ...(module === 'leads' || module === 'accounts' ? [] : [{ label: 'Notes', value: record.notes, apiField: 'notes', type: 'textarea' as const }]),
     { technicalKey: 'createdAt', label: 'Created', value: record.createdAt, displayValue: formatDateTime(record.createdAt as string | null | undefined) },
@@ -354,7 +356,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const links = module === 'deals' ? { dealId: id } : module === 'leads' ? { leadId: id } : module === 'contacts' ? { contactId: id } : { accountId: id };
   const activityLoading = timeline.isInitialLoad;
   const activityError = timeline.error;
-  const formRecord = { ...record, companyName: company, leadSource: source, organizationId: record.accountId, productInterests: record.productInterest ?? record.productInterests, status: statusLabel };
+  const formRecord = { ...record, companyName: company, leadSource: source, organizationId: record.accountId, productInterests: record.productInterest ?? record.productInterests, status: status, statusManagedByDeals: statusManaged, manualCancellation: record.manualCancellation };
   const website = text(record.website);
   const websiteHref = website && !/^[a-z][a-z0-9+.-]*:/i.test(website) ? `https://${website}` : /^https?:\/\//i.test(website) ? website : undefined;
 
@@ -414,7 +416,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
               </span></TooltipTrigger>
               <TooltipContent>{personInboxAction && composeDisabled ? 'No valid email address available.' : 'Open messages'}</TooltipContent>
             </Tooltip></TooltipProvider>}
-            {status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{module === 'deals' ? dealStages.map(stage => <DropdownMenuItem key={stage.id} onSelect={() => { if (stage.id === record.stageId) return; if (stage.isLost) { setLostReason(''); setLostStage(stage.id); } else void changeStage(stage.id); }}>{stage.name}</DropdownMenuItem>) : statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
+            {module === 'deals' ? <CrmStatusBadge status={typeof record.engagementStatus === 'string' ? record.engagementStatus : undefined} /> : status && (canEdit ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" disabled={saving} className={cn('min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs', getCRMStatusStyles(statusLabel))}><span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{statusLabel}</span><ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent>{statuses.map(option => <DropdownMenuItem key={option} onSelect={() => void save({ status: option })}>{statusManaged && record.manualCancellation ? 'Reopen customer' : option}</DropdownMenuItem>)}</DropdownMenuContent></DropdownMenu> : <span className={cn('rounded-lg px-2 py-1 text-xs', getCRMStatusStyles(statusLabel))}>{statusLabel}</span>)}
             {onClose && <Button variant="ghost" size="icon" className={panelCloseClass + " absolute -right-1 -top-1"} onClick={onClose} aria-label="Close record" title="Close record"><X size={16} /></Button>}
           </>}
         />

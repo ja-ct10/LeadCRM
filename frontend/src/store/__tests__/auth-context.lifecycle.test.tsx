@@ -18,7 +18,7 @@ let auth: ReturnType<typeof useAuth>;
 const user = {
   id: 'user', tenantId: 'tenant', role: 'Sales', firstName: 'Alice', lastName: 'Owner',
   email: 'alice@example.com', status: 'ACTIVE', emailVerified: '2026-01-01',
-  onboardingStep: 0, onboardingCompletedAt: null, isTenantOwner: true,
+  onboardingStep: 0, onboardingCompletedAt: '2026-01-01', isTenantOwner: true,
   tenantName: 'Workspace', tenantStatus: 'SANDBOX',
   avatarUrl: null,
 };
@@ -133,6 +133,143 @@ it('applies login state immediately and fetches permissions once without another
   expect(auth.user?.onboardingStep).toBe(0);
   expect(mocks.me).toHaveBeenCalledOnce();
   expect(mocks.permissions).toHaveBeenCalledOnce();
+});
+it('waits for password setup and onboarding before initializing permissions and authorization events', async () => {
+  class AccessEvents {
+    static instances: AccessEvents[] = [];
+    constructor() { AccessEvents.instances.push(this); }
+    addEventListener() {}
+    close() {}
+  }
+  vi.stubGlobal('EventSource', AccessEvents);
+  const fresh = { ...user, mustChangePassword: true, onboardingCompletedAt: null };
+  mocks.login.mockResolvedValue({ data: { user: fresh } });
+  show();
+  await waitFor(() => expect(auth.isLoading).toBe(false));
+  await act(async () => { await auth.login(user.email, 'temporary'); });
+  expect(auth.isPermissionsLoaded).toBe(false);
+  expect(mocks.permissions).not.toHaveBeenCalled();
+  expect(AccessEvents.instances).toHaveLength(0);
+  act(() => auth.applyAuthUser({ ...fresh, mustChangePassword: false } as never, user.id));
+  expect(getAccountDestination(auth.user)).toBe('/onboarding');
+  expect(auth.isPermissionsLoaded).toBe(false);
+  expect(mocks.permissions).not.toHaveBeenCalled();
+  expect(AccessEvents.instances).toHaveLength(0);
+  act(() => auth.applyAuthUser({ ...user, mustChangePassword: false } as never, user.id));
+  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  expect(auth.userCan('dashboard', 'canView')).toBe(true);
+  expect(mocks.permissions).toHaveBeenCalledOnce();
+  expect(AccessEvents.instances).toHaveLength(1);
+});
+
+it('marks the first authenticated render uninitialized before the permission effect runs', async () => {
+  const frames: boolean[] = [];
+  function CaptureReadiness() {
+    const context = useAuth();
+    if (context.user) frames.push(context.isPermissionsLoaded);
+    return null;
+  }
+  mocks.permissions.mockReturnValue(new Promise(() => {}));
+  render(<AuthProvider><Probe /><CaptureReadiness /></AuthProvider>);
+  await waitFor(() => expect(auth.isLoading).toBe(false));
+  await act(async () => { await auth.login(user.email, 'password'); });
+  expect(frames.length).toBeGreaterThan(0);
+  expect(frames.every(loaded => !loaded)).toBe(true);
+});
+
+it.each([new TypeError('Failed to fetch'), Object.assign(new Error('Unavailable'), { status: 503 })])('keeps an initial permission failure retryable (%s)', async error => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  mocks.permissions.mockRejectedValueOnce(error);
+  show();
+  await waitFor(() => expect(auth.permissionsError).toBeTruthy());
+  expect(auth.isPermissionsLoaded).toBe(false);
+  expect(auth.userCan('dashboard', 'canView')).toBe(false);
+  let finish!: (value: unknown) => void;
+  mocks.permissions.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  let retry!: Promise<void>;
+  act(() => { retry = auth.refreshPermissions(); });
+  expect(auth.permissionsError).toBeNull();
+  expect(auth.isPermissionsLoaded).toBe(false);
+  await act(async () => { finish({ data: { dashboard: { canView: true } } }); await retry; });
+  expect(auth.isPermissionsLoaded).toBe(true);
+  expect(auth.userCan('dashboard', 'canView')).toBe(true);
+});
+
+it.each([null, 401, 403, 404])('settles confirmed empty grants or access loss without a retry error (%s)', async status => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  if (status) mocks.permissions.mockRejectedValue(Object.assign(new Error('Access denied'), { status }));
+  else mocks.permissions.mockResolvedValue({ data: {} });
+  show();
+  await waitFor(() => expect(auth.user?.id === user.id && auth.isPermissionsLoaded).toBe(true));
+  expect(auth.permissions).toEqual({});
+  expect(auth.permissionsError).toBeNull();
+  expect(auth.userCan('dashboard', 'canView')).toBe(false);
+});
+
+it.each(['PASSWORD_CHANGE_REQUIRED', 'ONBOARDING_REQUIRED'])('resynchronizes canonical setup instead of treating %s as an RBAC denial', async code => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  show();
+  await waitFor(() => expect(auth.userCan('dashboard', 'canView')).toBe(true));
+  mocks.me.mockResolvedValueOnce({ data: { user: { ...user, mustChangePassword: code === 'PASSWORD_CHANGE_REQUIRED', onboardingCompletedAt: null } } });
+  mocks.permissions.mockRejectedValueOnce(Object.assign(new Error('Finish setup'), { status: 403, code }));
+  await act(async () => { await auth.refreshPermissions(); });
+  expect(auth.isPermissionsLoaded).toBe(false);
+  expect(auth.permissionsError).toBeNull();
+  expect(auth.permissions).toEqual({});
+  expect(getAccountDestination(auth.user)).toBe(code === 'PASSWORD_CHANGE_REQUIRED' ? '/change-password' : '/onboarding');
+});
+
+it('exposes Retry if canonical setup resynchronization fails', async () => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  show();
+  await waitFor(() => expect(auth.userCan('dashboard', 'canView')).toBe(true));
+  mocks.me.mockRejectedValueOnce(new TypeError('Offline'));
+  mocks.permissions.mockRejectedValueOnce(Object.assign(new Error('Finish setup'), { status: 403, code: 'ONBOARDING_REQUIRED' }));
+  await act(async () => { await auth.refreshPermissions(); });
+  expect(auth.isPermissionsLoaded).toBe(false);
+  expect(auth.permissionsError).toBeTruthy();
+  expect(auth.permissions).toEqual({});
+});
+
+it.each(['grants', 'setup error'])('ignores late %s across onboarding transitions', async outcome => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  show();
+  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  let resolve!: (value: unknown) => void;
+  let reject!: (error: unknown) => void;
+  mocks.permissions.mockReturnValueOnce(new Promise((done, fail) => { resolve = done; reject = fail; }));
+  let oldRequest!: Promise<void>;
+  act(() => { oldRequest = auth.refreshPermissions(); });
+  act(() => auth.applyAuthUser({ ...user, onboardingCompletedAt: null } as never, user.id));
+  expect(auth.isPermissionsLoaded).toBe(false);
+  mocks.permissions.mockResolvedValue({ data: {} });
+  act(() => auth.applyAuthUser(user as never, user.id));
+  await waitFor(() => expect(auth.isPermissionsLoaded).toBe(true));
+  await act(async () => {
+    if (outcome === 'grants') resolve({ data: { dashboard: { canView: true } } });
+    else reject(Object.assign(new Error('Stale setup response'), { status: 403, code: 'ONBOARDING_REQUIRED' }));
+    await oldRequest;
+  });
+  expect(auth.permissions).toEqual({});
+  expect(auth.permissionsError).toBeNull();
+  expect(auth.user?.onboardingCompletedAt).toBe(user.onboardingCompletedAt);
+  expect(mocks.me).toHaveBeenCalledOnce();
+});
+
+it('ignores late permissions after switching accounts and tenants', async () => {
+  mocks.me.mockResolvedValue({ data: { user } });
+  let finish!: (value: unknown) => void;
+  mocks.permissions.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+  show();
+  await waitFor(() => expect(mocks.permissions).toHaveBeenCalledOnce());
+  mocks.permissions.mockResolvedValue({ data: { workflows: { canView: true } } });
+  act(() => auth.applyAuthUser({ ...user, id: 'other-user', tenantId: 'other-tenant' } as never));
+  await waitFor(() => expect(auth.userCan('workflows', 'canView')).toBe(true));
+  await act(async () => finish({ data: { dashboard: { canView: true } } }));
+  expect(auth.user?.id).toBe('other-user');
+  expect(auth.tenant?.id).toBe('other-tenant');
+  expect(auth.userCan('dashboard', 'canView')).toBe(false);
+  expect(auth.userCan('workflows', 'canView')).toBe(true);
 });
 it('clears permissions on logout and ignores a late permissions response', async () => {
   let permissions!: (value: unknown) => void;

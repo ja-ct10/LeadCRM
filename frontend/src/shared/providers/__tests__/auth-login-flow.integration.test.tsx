@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, act, waitFor, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, act, waitFor, screen } from '@testing-library/react';
 import React from 'react';
 
 /**
@@ -42,13 +42,21 @@ import React from 'react';
 const loginApiMock = vi.fn();
 const meApiMock = vi.fn();
 const logoutApiMock = vi.fn();
+const changePasswordApiMock = vi.fn();
+const completeOnboardingApiMock = vi.fn();
+const permissionsApiMock = vi.fn();
 
 vi.mock('@/shared/services/auth.api', () => ({
   authApi: {
     login: (payload: unknown) => loginApiMock(payload),
     me: () => meApiMock(),
     logout: () => logoutApiMock(),
+    changePassword: (payload: unknown) => changePasswordApiMock(payload),
+    completeOnboarding: () => completeOnboardingApiMock(),
   },
+}));
+vi.mock('@/shared/services/roles.api', () => ({
+  rolesApi: { getUserPermissions: (id: string) => permissionsApiMock(id) },
 }));
 
 
@@ -138,6 +146,9 @@ function resetAllMocks(): void {
   loginApiMock.mockReset();
   meApiMock.mockReset();
   logoutApiMock.mockReset();
+  changePasswordApiMock.mockReset();
+  completeOnboardingApiMock.mockReset();
+  permissionsApiMock.mockReset().mockResolvedValue({ data: { dashboard: { canView: true } } });
   routerReplace.mockReset();
   currentPathname = '/dashboard';
   captured = null;
@@ -265,6 +276,121 @@ describe('Feature: auth-login-blank-screen-fix, Integration — credentials logi
       (target) => target === '/login' || target.startsWith('/onboarding'),
     );
     expect(badRedirects).toEqual([]);
+  });
+});
+
+describe('first-login permission initialization with the real AuthProvider and module guard', () => {
+  beforeEach(() => { resetAllMocks(); });
+  afterEach(() => { cleanup(); vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
+
+  async function renderWorkspace() {
+    const { auth, guard } = await loadRealApiModules();
+    const { ModuleAccessGuard } = await import('../module-access-guard');
+    const { default: ChangePasswordPage } = await import('@/features/tenant/auth/ui/change-password-page');
+    const { default: OnboardingPage } = await import('@/features/tenant/onboarding/ui/onboarding-page');
+    const Probe = makeProbe(auth.useAuth);
+    function Workspace() {
+      return <guard.AuthGuard>{currentPathname === '/change-password' ? <ChangePasswordPage />
+        : currentPathname === '/onboarding' ? <OnboardingPage />
+          : <ModuleAccessGuard><p>CRM Dashboard</p></ModuleAccessGuard>}</guard.AuthGuard>;
+    }
+    const tree = <auth.AuthProvider><Probe /><Workspace /></auth.AuthProvider>;
+    const view = render(tree);
+    return (path: string) => {
+      currentPathname = path;
+      view.rerender(<auth.AuthProvider><Probe /><Workspace /></auth.AuthProvider>);
+    };
+  }
+
+  it.each(['Skip', 'Finish'])('loads assigned-role permissions after password change and onboarding %s without a reload', async completion => {
+    let canonical = { ...VERIFIED_ONBOARDED_USER, role: 'Sales', mustChangePassword: true, onboardingCompletedAt: null as string | null };
+    let finishPermissions!: (value: unknown) => void;
+    const pendingPermissions = new Promise(resolve => { finishPermissions = resolve; });
+    meApiMock.mockRejectedValueOnce(Object.assign(new Error('No session'), { status: 401 }))
+      .mockImplementation(() => Promise.resolve(authResponse(canonical)));
+    loginApiMock.mockResolvedValue(authResponse(canonical));
+    changePasswordApiMock.mockImplementation(async () => {
+      canonical = { ...canonical, mustChangePassword: false };
+      return authResponse(canonical);
+    });
+    completeOnboardingApiMock.mockImplementation(async () => {
+      canonical = { ...canonical, onboardingCompletedAt: '2026-10-19T10:00:00.000Z' };
+      return authResponse(canonical);
+    });
+    permissionsApiMock.mockImplementation(() => canonical.onboardingCompletedAt ? pendingPermissions
+      : Promise.reject(Object.assign(new Error('Complete onboarding'), { status: 403, code: 'ONBOARDING_REQUIRED' })));
+    const navigate = await renderWorkspace();
+    await waitFor(() => expect(captured.isLoading).toBe(false));
+    await act(async () => { await captured.login(canonical.email, 'Temporary1!'); });
+    expect(redirectTargets()).toContain('/change-password');
+    navigate('/change-password');
+    expect(permissionsApiMock).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByLabelText(/^Old Password/), { target: { value: 'Temporary1!' } });
+    fireEvent.change(screen.getByLabelText(/^New password/), { target: { value: 'PermanentPassword1!' } });
+    fireEvent.change(screen.getByLabelText(/^Confirm new password/), { target: { value: 'PermanentPassword1!' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Change password' }));
+    await waitFor(() => expect(redirectTargets()).toContain('/onboarding'));
+    expect(changePasswordApiMock).toHaveBeenCalledExactlyOnceWith({ currentPassword: 'Temporary1!', password: 'PermanentPassword1!' });
+    navigate('/onboarding');
+    expect(permissionsApiMock).not.toHaveBeenCalled();
+    if (completion === 'Finish') for (let step = 1; step < 8; step++) fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    fireEvent.click(screen.getByRole('button', { name: completion }));
+    await waitFor(() => expect(redirectTargets()).toContain('/dashboard'));
+    navigate('/dashboard');
+    expect(completeOnboardingApiMock).toHaveBeenCalledOnce();
+    expect(permissionsApiMock).toHaveBeenCalledExactlyOnceWith(canonical.id);
+    expect(screen.getByRole('status', { name: 'Loading' })).toBeTruthy();
+    expect(screen.queryByText('CRM Dashboard')).toBeNull();
+    expect(screen.queryByText('You do not have permission to access this module.')).toBeNull();
+    await act(async () => finishPermissions({ data: { dashboard: { canView: true } } }));
+    expect(screen.getByText('CRM Dashboard')).toBeTruthy();
+    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.queryByText('You do not have permission to access this module.')).toBeNull();
+    expect(loginApiMock).toHaveBeenCalledOnce();
+  });
+
+  it.each([new TypeError('Failed to fetch'), Object.assign(new Error('Unavailable'), { status: 503 })])('retries a failed initial permission request from the module error state (%s)', async error => {
+    meApiMock.mockResolvedValue(authResponse({ ...VERIFIED_ONBOARDED_USER, role: 'Sales' }));
+    permissionsApiMock.mockRejectedValueOnce(error);
+    await renderWorkspace();
+    fireEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+    await screen.findByText('CRM Dashboard');
+    expect(permissionsApiMock).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText('You do not have permission to access this module.')).toBeNull();
+  });
+
+  it('denies Dashboard access after a successful empty permission response', async () => {
+    meApiMock.mockResolvedValue(authResponse({ ...VERIFIED_ONBOARDED_USER, role: 'Sales' }));
+    permissionsApiMock.mockResolvedValue({ data: {} });
+    await renderWorkspace();
+    await screen.findByText('You do not have permission to access this module.');
+    expect(screen.queryByText('CRM Dashboard')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Retry' })).toBeNull();
+  });
+
+  it('restores and revokes the active module through existing authorization-change events', async () => {
+    class AccessEvents {
+      static current: AccessEvents;
+      listeners = new Map<string, (event: MessageEvent) => void>();
+      constructor() { AccessEvents.current = this; }
+      addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, listener); }
+      close() {}
+      emit(revision: string) { this.listeners.get('authorization-change')?.(new MessageEvent('authorization-change', { data: revision })); }
+    }
+    vi.stubGlobal('EventSource', AccessEvents);
+    meApiMock.mockResolvedValue(authResponse({ ...VERIFIED_ONBOARDED_USER, role: 'Sales' }));
+    permissionsApiMock.mockResolvedValue({ data: {} });
+    await renderWorkspace();
+    await screen.findByText('You do not have permission to access this module.');
+    permissionsApiMock.mockResolvedValue({ data: { dashboard: { canView: true } } });
+    await act(async () => AccessEvents.current.emit('granted'));
+    expect(screen.getByText('CRM Dashboard')).toBeTruthy();
+    permissionsApiMock.mockResolvedValue({ data: {} });
+    await act(async () => AccessEvents.current.emit('revoked'));
+    expect(screen.queryByText('CRM Dashboard')).toBeNull();
+    expect(screen.getByText('You do not have permission to access this module.')).toBeTruthy();
+    expect(loginApiMock).not.toHaveBeenCalled();
+    expect(logoutApiMock).not.toHaveBeenCalled();
   });
 });
 

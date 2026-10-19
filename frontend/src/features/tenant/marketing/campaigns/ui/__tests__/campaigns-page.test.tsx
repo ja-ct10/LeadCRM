@@ -40,10 +40,12 @@ it.each(['loaded', 'initial', 'refreshing'] as const)('omits summary KPIs from t
   }
   expect(screen.queryByRole('progressbar', { name: /Average open rate/ })).toBeNull();
   expect(screen.getByRole('heading', { name: 'Campaigns' })).toBeTruthy();
+  expect(screen.queryByText(/^(?:\d+|…) total$/)).toBeNull();
   expect(screen.getByRole('button', { name: 'All Campaigns' })).toBeTruthy();
   if (state !== 'initial') {
     const grid = screen.getByRole('grid');
     expect(within(grid).getByText('Saved campaign')).toBeTruthy();
+    expect(screen.getByText('1 total records', { exact: true })).toBeTruthy();
     for (const label of ['Submitted', 'Opened', 'Clicked', 'Engagement']) {
       expect(within(grid).getByRole('columnheader', { name: label })).toBeTruthy();
     }

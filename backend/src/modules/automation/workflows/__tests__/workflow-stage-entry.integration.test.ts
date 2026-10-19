@@ -41,7 +41,7 @@ describe.skipIf(!disposable)('persisted Workflow stage entry identity and Task p
     replacementId = (await prisma.user.create({ data: { tenantId, role: 'Entry staff', email: `${randomUUID()}@example.test`, firstName: 'Replacement', lastName: 'Staff', userRoles: { create: { roleId: role.id } } } })).id;
     pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Entry pipeline' } })).id;
     const stage = (name: string, order: number, isLost = false) => prisma.stage.create({ data: { tenantId, pipelineId, name, order, isLost } });
-    initialId = (await stage('Lead', 0)).id; qualifiedId = (await stage('Qualified', 1)).id; lostId = (await stage('Closed Lost', 2, true)).id;
+    initialId = (await stage('Lead', 0)).id; qualifiedId = (await stage('Qualified', 1)).id; lostId = (await stage('Cancelled', 2, true)).id;
     contactedId = (await stage('Contacted', 3)).id; customId = (await stage('Commercial review', 4)).id;
     wonId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Implementation approved', order: 5, isWon: true } })).id;
     productId = (await prisma.productInterest.create({ data: { tenantId, name: 'Entry Product', dealValue: 1000 } })).id;

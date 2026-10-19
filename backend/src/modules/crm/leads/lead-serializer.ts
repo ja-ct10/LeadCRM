@@ -12,7 +12,7 @@ export function serializeLead(lead: LeadProjectionSource): LeadRead {
   return {
     id: lead.id, tenantId: lead.tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email, phone: lead.phone, companyName: lead.companyName, address: lead.address, source: lead.source,
-    accountId: lead.accountId, assignedUserId: lead.assignedUserId, status: normalizeCrmStatus(lead.status),
+    accountId: lead.accountId, assignedUserId: lead.assignedUserId, status: normalizeCrmStatus(lead.status), manualCancellation: lead.manualCancellation,
     firstStaffOutreachAt: lead.firstStaffOutreachAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(), updatedAt: lead.updatedAt.toISOString(),
     createdById: lead.createdById, updatedById: lead.updatedById, lastStatusChangedAt: lead.lastStatusChangedAt?.toISOString() ?? null,

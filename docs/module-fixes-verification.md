@@ -1,6 +1,7 @@
 # Module fixes
 
 Baseline: `main` at `4d3f5a71` (checked against `origin/main`).
+Before publication, the branch was reconciled with `origin/main` at `b70312a9`, preserving its Deal engagement migration and explicit email attribution. Contextual Deal choices respect the existing mailbox Deal ownership checks.
 
 - Campaign reports omit the SMS Delivered metric and all report CSV export controls/code. Provider delivery evidence and Email report metrics remain available. Email, SMS and Quotation template cards share an inline desktop filter/content row; the existing mobile filter drawer remains in use.
 - Inbox uses the existing Gmail send, draft, schedule, receipt and history paths. Composer attachments accept up to 10 documents/images, 5 MB per file and 10 MB total. Shared validation checks names, encoding, types and sizes; backend validation also checks signatures. Draft files are loaded before editing and retained through save/schedule/retry. Attachment bytes remain in Gmail; receipts store intent hashes.

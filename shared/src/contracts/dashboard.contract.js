@@ -22,12 +22,16 @@ exports.DashboardQuerySchema = zod_1.z.object({
     range: zod_1.z.enum(exports.DASHBOARD_RANGES).default('thisMonth'), start: day.optional(), end: day.optional(),
     revenueInterval: zod_1.z.enum(exports.REVENUE_INTERVALS).optional(),
     funnelRange: zod_1.z.enum(exports.FUNNEL_RANGES).optional(), funnelStart: day.optional(), funnelEnd: day.optional(),
+    leadSourceRange: zod_1.z.enum(exports.DASHBOARD_RANGES).optional(), leadSourceStart: day.optional(), leadSourceEnd: day.optional(),
 }).strict().superRefine((query, ctx) => {
     if (query.range === 'custom' && (!query.start || !query.end || query.start > query.end)) {
         ctx.addIssue({ code: 'custom', message: 'Choose a valid start and end date.' });
     }
     if (query.funnelRange === 'custom' && (!query.funnelStart || !query.funnelEnd || query.funnelStart > query.funnelEnd)) {
         ctx.addIssue({ code: 'custom', message: 'Choose valid funnel From and To dates.' });
+    }
+    if (query.leadSourceRange === 'custom' && (!query.leadSourceStart || !query.leadSourceEnd || query.leadSourceStart > query.leadSourceEnd)) {
+        ctx.addIssue({ code: 'custom', message: 'Choose valid Lead Source start and end dates.' });
     }
 });
 /** Monday-start calendar cohorts; custom reports stop observing at the To day. */
@@ -102,7 +106,7 @@ function dashboardCsv(report) {
         ['Conversion stage', 'Distinct deals reached', 'Created-in-period cohort'], ...(report.conversion?.stages.map(row => [row.name, row.reached, report.conversion.cohort]) ?? []),
         ['Progression', 'Percent', 'History-based cohort intersection'],
         ['Lead to Contacted', report.conversion?.leadToContacted ?? null], ['Contacted to Qualified', report.conversion?.contactedToQualified ?? null],
-        ['Qualified to Closed Won', report.conversion?.qualifiedToWon ?? null], ['Qualified to Closed Lost', report.conversion?.qualifiedToLost ?? null],
+        ['Qualified to Closed Deal', report.conversion?.qualifiedToWon ?? null], ['Qualified to Cancelled', report.conversion?.qualifiedToLost ?? null],
         ['Action', 'Due', 'Priority'], ...report.actions.map(row => [row.title, row.dueDate, row.priority]),
         ...report.warnings.map(warning => ['Reporting limitation', warning]),
     ];

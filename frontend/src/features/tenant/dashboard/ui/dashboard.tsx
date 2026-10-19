@@ -2,7 +2,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/store/AuthContext';
-import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Calendar, ChevronDown, ChevronRight, Filter, Layers, Trophy, ChartNoAxesColumnIncreasing, CircleAlert, ListTodo } from 'lucide-react';
+import { Users, Briefcase, TrendingUp, ArrowUpRight, Zap, RefreshCw, Check, Target, Star, Calendar, ChevronDown, Filter, Layers, Trophy, ChartNoAxesColumnIncreasing, CircleAlert, ListTodo } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, PieChart, Pie, Cell, AreaChart, Area } from '@/shared/components/charts/ChartComponents';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
 import DashboardSkeleton from '@/shared/components/dashboard-skeleton';
@@ -49,10 +49,6 @@ function CompactMoney({ value, currency }: { value: number | null | undefined; c
 }
 function countLabel(count: number, singular: string) { return `${count} ${singular}${count === 1 ? '' : 's'}`; }
 function initials(name: string) { return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map(word => word[0]).join('').toUpperCase(); }
-function stageForeground(color: string) {
-  const channels = [1, 3, 5].map(index => parseInt(color.slice(index, index + 2), 16) / 255).map(value => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
-  return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722 > 0.179 ? '#0f172a' : '#ffffff';
-}
 function ActionCenterList({ children }: { children: React.ReactNode }) {
   const listRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => {
@@ -106,15 +102,18 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
   const [selectedQuery, setQuery] = useState<DashboardQuery>({ range: 'thisMonth', revenueInterval: 'month', funnelRange: 'month' });
   // Dashboard keeps its default period even when switching from the Reports view.
   const query: DashboardQuery = presentation === 'dashboard'
-    ? { ...selectedQuery, range: 'thisMonth', start: undefined, end: undefined }
-    : selectedQuery;
+    ? { ...selectedQuery, range: 'thisMonth', start: undefined, end: undefined, leadSourceRange: selectedQuery.leadSourceRange ?? 'thisMonth' }
+    : { ...selectedQuery, leadSourceRange: undefined, leadSourceStart: undefined, leadSourceEnd: undefined };
   const [custom, setCustom] = useState(false);
   const [draft, setDraft] = useState({ start: '', end: '' });
   const [funnelCustom, setFunnelCustom] = useState(false);
   const [funnelDraft, setFunnelDraft] = useState({ start: '', end: '' });
   const [funnelError, setFunnelError] = useState('');
+  const [sourceCustom, setSourceCustom] = useState(false);
+  const [sourceDraft, setSourceDraft] = useState({ start: '', end: '' });
+  const [sourceDateError, setSourceDateError] = useState('');
   const dashboard = useDashboard(query);
-  const { report, error, loading, refresh } = dashboard;
+  const { report, error, loading, sourceLoading, sourceError, refresh } = dashboard;
   const currency = report?.currency ?? 'PHP';
   const money = (value: number | null | undefined) => value == null ? 'Unavailable' : new Intl.NumberFormat('en-PH', { style: 'currency', currency, maximumFractionDigits: 2 }).format(value);
   const axisMoney = (value: unknown) => new Intl.NumberFormat('en-PH', { style: 'currency', currency, notation: 'compact', ...(presentation === 'dashboard' ? { minimumFractionDigits: 0 } : {}), maximumFractionDigits: 1 }).format(Number(value));
@@ -148,9 +147,6 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
     { label: 'Win Rate', value: metric?.winRate == null ? 'Unavailable' : `${metric.winRate}%`, icon: Target, color: 'pink', context: 'Current won deals divided by all current eligible deals' },
   ];
   const openStages = report?.distribution.filter(stage => ['lead', 'contacted', 'qualified'].includes(stage.name.trim().toLowerCase())) ?? [];
-  const currentFunnelStages = report?.pipeline?.stages.slice(0, 4).map(stage => ({ ...stage,
-    count: stage.isWon ? metric?.currentWon : report.distribution.find(row => row.id === stage.id)?.count,
-  })) ?? [];
   const largestStage = Math.max(0, ...openStages.map(stage => stage.count));
   const actionSummary = report ? [
     report.access.tasks && countLabel(report.actions.filter(action => action.kind === 'task' && action.overdue).length, 'overdue task'),
@@ -189,6 +185,23 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
       const checked = DashboardQuerySchema.parse(candidate); dashboardFunnelPeriod(checked);
       setQuery(checked); setFunnelCustom(false); setFunnelError('');
     } catch { setFunnelError('Choose valid historical dates through today, with From no later than To (maximum two years).'); }
+  };
+  const selectSourceRange = (range: DashboardRange) => {
+    setSourceDateError('');
+    if (range === 'custom') {
+      const current = dashboardPeriod({ range: query.leadSourceRange ?? 'thisMonth', start: query.leadSourceStart, end: query.leadSourceEnd });
+      setSourceDraft({ start: current.start, end: current.end }); setSourceCustom(true);
+    } else {
+      setQuery(previous => ({ ...previous, leadSourceRange: range, leadSourceStart: undefined, leadSourceEnd: undefined }));
+      setSourceCustom(false);
+    }
+  };
+  const applySourceDates = () => {
+    const candidate: DashboardQuery = { ...query, leadSourceRange: 'custom', leadSourceStart: sourceDraft.start, leadSourceEnd: sourceDraft.end };
+    try {
+      DashboardQuerySchema.parse(candidate); dashboardPeriod({ range: 'custom', ...sourceDraft });
+      setQuery(candidate); setSourceCustom(false); setSourceDateError('');
+    } catch { setSourceDateError('Choose valid start and end dates (maximum two years).'); }
   };
   const handleRefresh = async () => {
     if (loading) return;
@@ -257,28 +270,31 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
                 <div role="meter" aria-label={`${stage.name} deal count relative to largest stage`} aria-valuemin={0} aria-valuemax={largestStage} aria-valuenow={stage.count} className="h-3 min-w-0 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-800"><div className="h-full rounded-full" style={{ width: `${stage.count / largestStage * 100}%`, backgroundColor: pipelineStageColor(stage) }} /></div><span className="text-right tabular-nums text-slate-500 dark:text-slate-400">{stage.count} {stage.count === 1 ? 'deal' : 'deals'}</span>
               </li>)}</ul>}
             </section>
-            <section aria-label="Conversion Funnel" className={`${card} !p-4 sm:!p-5 lg:col-span-7`}>
-              <div className="mb-4 flex items-center justify-between gap-2"><h3 className="flex items-center gap-2 font-semibold text-slate-900 dark:text-white"><Filter size={21} className="text-pink-500" aria-hidden="true" />Conversion Funnel</h3><ChartFilter title="Conversion Funnel" options={['Week', 'Month', 'Year', 'Custom Range']} value={query.funnelRange === 'custom' ? 'Custom Range' : (query.funnelRange ?? 'month')[0].toUpperCase() + (query.funnelRange ?? 'month').slice(1)} onSelect={selectFunnel} /></div>
-              {funnelCustom && <div className="mb-4 space-y-3 rounded-lg border border-border p-3">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="min-w-0 text-xs">From Date<Input aria-label="Funnel From Date" type="date" max={funnelDraft.end && funnelDraft.end < dashboardToday() ? funnelDraft.end : dashboardToday()} value={funnelDraft.start} onChange={event => setFunnelDraft(previous => ({ ...previous, start: event.target.value }))} className="mt-1 min-w-0" /></label><label className="min-w-0 text-xs">To Date<Input aria-label="Funnel To Date" type="date" min={funnelDraft.start} max={dashboardToday()} value={funnelDraft.end} onChange={event => setFunnelDraft(previous => ({ ...previous, end: event.target.value }))} className="mt-1 min-w-0" /></label></div>
-                {funnelError && <p role="alert" className="text-xs text-destructive">{funnelError}</p>}<div className="flex flex-wrap gap-2"><button className={button} onClick={applyFunnel}>Apply funnel dates</button><button className={button} onClick={() => setFunnelCustom(false)}>Cancel</button></div>
-              </div>}
-              {!report.access.deals || !report.pipeline ? <Empty>Deal reporting unavailable.</Empty> : <>
-                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">Current pipeline stage counts</p>
-                <ol aria-label="Current pipeline stages" className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)] gap-1 min-[375px]:gap-2 sm:grid-cols-4 sm:gap-3">{currentFunnelStages.map((stage, index) => <li key={stage.id} aria-label={`${stage.name}: ${stage.count == null ? 'Unavailable' : countLabel(stage.count, 'deal')}`} className="relative min-w-0 text-center">
-                  <div className={`rounded-lg py-2 font-bold tabular-nums ${stage.count == null ? 'break-words text-xs leading-7' : 'text-lg'}`} style={{ backgroundColor: pipelineStageColor(stage), color: stageForeground(pipelineStageColor(stage)) }}>{stage.count ?? 'Unavailable'}</div><p className="mt-1.5 break-normal text-[11px] text-slate-600 dark:text-slate-300">{stage.name}</p>{index < 3 && <ChevronRight size={14} aria-hidden="true" className="absolute -right-2 top-3 text-slate-400 min-[375px]:-right-2.5 sm:-right-3" />}
-                </li>)}</ol>
-                <div className="mt-4 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
-                  <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300">Historical Conversion Rates</h4>
-                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{funnelSubtitle}. Date filter applies only to historical rates.</p>
-                  {!report.conversion ? <p className="mt-3 text-xs text-slate-500">Deal history unavailable.</p> : <>
-                    <dl className="mt-3 grid grid-cols-1 min-[375px]:grid-cols-3 gap-3">{[
-                      ['Lead → Contacted', report.conversion.leadToContacted], ['Contacted → Qualified', report.conversion.contactedToQualified], ['Qualified → Closed Won', report.conversion.qualifiedToWon],
-                    ].map(([label, rate]) => <div key={label} className="min-w-0 text-center"><dt className="text-[11px] text-slate-500 dark:text-slate-400">{label}</dt><dd className={`mt-1 break-words font-bold tabular-nums text-blue-600 dark:text-blue-400 ${rate == null ? 'text-xs leading-7' : 'text-lg'}`}>{rate == null ? 'Unavailable' : `${rate}%`}</dd></div>)}</dl>
-                    {report.conversion.missingHistory > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{report.conversion.missingHistory} deals lack recorded starting history. Historical conversion rates are unavailable.</p>}
-                  </>}
+            <section aria-label="Lead Source Performance" className={`${card} !p-4 sm:!p-5 lg:col-span-7`} aria-busy={sourceLoading}>
+              <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+                <ChartHeading title="Lead Source Performance" subtitle="Won Deals by Lead Source" />
+                <DropdownMenu><DropdownMenuTrigger className={button} aria-label="Lead Source date range"><span>{ranges.find(range => range.id === (query.leadSourceRange ?? 'thisMonth'))?.label}</span><ChevronDown size={12} aria-hidden="true" /></DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">{ranges.map(range => <DropdownMenuItem key={range.id} onClick={() => selectSourceRange(range.id)}>{range.label}</DropdownMenuItem>)}</DropdownMenuContent>
+                </DropdownMenu>
+              </div>
+              {sourceCustom && <div className="mb-4 space-y-3 rounded-lg border border-border p-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <label className="min-w-0 text-xs">Start date<Input aria-label="Lead Source start date" type="date" value={sourceDraft.start} onChange={event => setSourceDraft(previous => ({ ...previous, start: event.target.value }))} className="mt-1 min-w-0" /></label>
+                  <label className="min-w-0 text-xs">End date<Input aria-label="Lead Source end date" type="date" min={sourceDraft.start} value={sourceDraft.end} onChange={event => setSourceDraft(previous => ({ ...previous, end: event.target.value }))} className="mt-1 min-w-0" /></label>
                 </div>
-              </>}
+                {sourceDateError && <p role="alert" className="text-xs text-destructive">{sourceDateError}</p>}
+                <div className="flex flex-wrap gap-2"><button className={button} onClick={applySourceDates}>Apply source dates</button><button className={button} onClick={() => setSourceCustom(false)}>Cancel</button></div>
+              </div>}
+              {sourceError ? <div role="alert" className="text-sm text-destructive">{sourceError} <button className="underline" onClick={() => void refresh(true)} disabled={sourceLoading} aria-label="Retry Lead Source Performance">Retry</button></div>
+                : sourceLoading && !report.leadSourcePerformance ? <div role="status" aria-label="Loading Lead Source Performance" className="h-48 animate-pulse rounded-lg bg-slate-100 dark:bg-slate-800" />
+                : !report.access.deals || !report.leadSourcePerformance ? <Empty>Deal reporting unavailable.</Empty>
+                : report.leadSourcePerformance.sources.length === 0 ? <Empty>No won deals for this period.</Empty>
+                : <>
+                  <div role="img" aria-label="Won Deals by Lead Source. Source names and counts follow." style={{ height: Math.max(180, report.leadSourcePerformance.sources.length * 64) }} className="min-w-0">
+                    <ResponsiveContainer width="100%" height="100%"><BarChart layout="vertical" data={report.leadSourcePerformance.sources} showValueLabels wrapCategoryLabels><XAxis /><YAxis dataKey="name" /><Tooltip /><Bar dataKey="won" name="Won Deals" fill="#3B82F6" barSize={16} /></BarChart></ResponsiveContainer>
+                  </div>
+                  <ul className="sr-only" aria-label="Won Deals by Lead Source">{report.leadSourcePerformance.sources.map(source => <li key={source.name}>{source.name}: {source.won} {source.won === 1 ? 'won deal' : 'won deals'}</li>)}</ul>
+                </>}
             </section>
           </div>
           <section aria-label="Sales Leaderboard" className={`${card} !p-4 sm:!p-5`}>
@@ -310,7 +326,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
           </div>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          <div className={`${card} min-h-[300px]`}><ChartHeading title="Deals Won vs. Lost" subtitle="Resolved deals in the selected period" />{!report.access.deals ? <Empty>Deal reporting unavailable.</Empty> : metric?.won === 0 && metric.lost === 0 ? <Empty>No resolved deals in the selected period.</Empty> : <div className="h-[220px]" role="img" aria-label={`${metric?.won} Closed Won and ${metric?.lost} Closed Lost. Resolved deals for the selected period.`}><ResponsiveContainer width="100%" height="100%"><BarChart data={report.trend}><XAxis dataKey="name" tickFormatter={bucketLabel} /><YAxis /><Tooltip labelFormatter={bucketLabel} /><Legend /><Bar dataKey="won" name="Closed Won" fill={report.pipeline ? pipelineStageColor(report.pipeline.stages[3]) : undefined} /><Bar dataKey="lost" name="Closed Lost" fill={report.pipeline ? pipelineStageColor(report.pipeline.stages[4]) : undefined} /></BarChart></ResponsiveContainer></div>}</div>
+          <div className={`${card} min-h-[300px]`}><ChartHeading title="Deals Won vs. Lost" subtitle="Resolved deals in the selected period" />{!report.access.deals ? <Empty>Deal reporting unavailable.</Empty> : metric?.won === 0 && metric.lost === 0 ? <Empty>No resolved deals in the selected period.</Empty> : <div className="h-[220px]" role="img" aria-label={`${metric?.won} Closed Deal and ${metric?.lost} Cancelled. Resolved deals for the selected period.`}><ResponsiveContainer width="100%" height="100%"><BarChart data={report.trend}><XAxis dataKey="name" tickFormatter={bucketLabel} /><YAxis /><Tooltip labelFormatter={bucketLabel} /><Legend /><Bar dataKey="won" name="Closed Deal" fill={report.pipeline ? pipelineStageColor(report.pipeline.stages[3]) : undefined} /><Bar dataKey="lost" name="Cancelled" fill={report.pipeline ? pipelineStageColor(report.pipeline.stages[4]) : undefined} /></BarChart></ResponsiveContainer></div>}</div>
           <div className={`${card} min-h-[300px]`}><ChartHeading title="Pipeline Distribution" subtitle="Current open deals by official stage" />{!report.access.deals ? <Empty>Deal reporting unavailable.</Empty> : metric?.activeDeals === 0 ? <Empty>No open deals.</Empty> : <div className="h-[190px]" role="img" aria-label={`${metric?.activeDeals} active deals. Stage counts and percentages follow.`}><ResponsiveContainer width="100%" height="100%"><PieChart><Pie data={pipelineData} innerRadius={60} outerRadius={90} dataKey="value">{pipelineData.map(row => <Cell key={row.id} fill={row.color} />)}</Pie><Tooltip /></PieChart></ResponsiveContainer></div>}<div className="mt-3 space-y-1.5">{report.distribution.map(row => <div key={row.id} className="flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400"><span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: pipelineStageColor(row) }} />{row.name}: {row.count} ({row.percentage}%)</div>)}</div></div>
           <div className={`${card} min-h-[300px]`}><ChartHeading title="Pipeline Value by Stage" subtitle={`Current open pipeline · ${money(metric?.openPipelineValue)}`} />{metric?.openPipelineValue == null ? <Empty>Pipeline value unavailable.</Empty> : metric.activeDeals === 0 ? <Empty>No open deals.</Empty> : <div className="h-[190px]" role="img" aria-label="Potential value by open stage. Values follow."><ResponsiveContainer width="100%" height="100%"><BarChart data={pipelineValues}><XAxis dataKey="name" /><YAxis tickFormatter={axisMoney} /><Tooltip formatter={value => money(Number(value))} /><Bar dataKey="value" name={`Value (${currency})`} data={pipelineValues.map(row => ({ color: row.color }))} /></BarChart></ResponsiveContainer></div>}<div className="mt-3 space-y-1.5 text-[11px] text-slate-500 break-words">{report.distribution.map(row => <p key={row.id}>{row.name}: {money(row.value)}</p>)}</div></div>
         </div>
@@ -332,7 +348,7 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
             <div className="grid grid-cols-2 gap-3 mt-4">{report.conversion.stages.slice(3).map(stage => <div key={stage.id} className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 text-xs"><p className="flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: pipelineStageColor(stage) }} />{stage.name}</p><p className="font-semibold mt-1">{stage.reached} reached</p></div>)}</div>
             <div className="mt-3 space-y-1 text-xs text-slate-500">{[
               ['Lead → Contacted', report.conversion.leadToContacted], ['Contacted → Qualified', report.conversion.contactedToQualified],
-              ['Qualified → Closed Won', report.conversion.qualifiedToWon], ['Qualified → Closed Lost', report.conversion.qualifiedToLost],
+              ['Qualified → Closed Deal', report.conversion.qualifiedToWon], ['Qualified → Cancelled', report.conversion.qualifiedToLost],
             ].map(([label, rate]) => <p key={label}>{label}: {rate == null ? 'Unavailable' : `${rate}%`}</p>)}</div>
             {report.conversion.missingHistory > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{report.conversion.missingHistory} deals lack recorded starting history. Rates are unavailable; counts show recorded milestones only.</p>}
           </>}</div>

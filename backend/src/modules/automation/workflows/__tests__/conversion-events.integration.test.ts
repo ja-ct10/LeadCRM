@@ -42,7 +42,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     await prisma.userRole.create({ data: { tenantId, userId: ownerId, roleId: role.id } });
     pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Conversion pipeline' } })).id;
     qualifiedId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Qualified', order: 0 } })).id;
-    wonId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Closed Won', isWon: true, order: 1 } })).id;
+    wonId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Closed Deal', isWon: true, order: 1 } })).id;
     productId = (await prisma.productInterest.create({ data: { tenantId, name: 'Conversion Product', dealValue: 125.5 } })).id;
     await scope(async () => {
       const fields = await listFields(tenantId);
@@ -64,7 +64,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
       value: 55, currency: 'USD', productInterestId: productId, assignedUserId: ownerId, leadDeals: { create: { leadId: lead.id, position: 0 } } } });
     await scope(() => saveValues(tenantId, actorId, deal.id, { values: evidence }));
     const converted = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
-    expect(converted).toMatchObject({ status: 'Closed', convertedById: actorId });
+    expect(converted).toMatchObject({ status: 'Closed Deal', convertedById: actorId });
     expect(converted.convertedAt).toBeInstanceOf(Date);
     expect(await events(lead.id, 'lead.updated')).toHaveLength(1);
     expect(await events(lead.id, 'lead.status_changed')).toHaveLength(1);
@@ -127,7 +127,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
   it('the governed Lead edit callback emits one complete update while the converter emits Contact creation', async () => {
     for (const trigger of ['lead.updated', 'lead.status_changed', 'contact.created']) await activate(trigger);
     const { lead } = await inquiry(true);
-    await scope(() => updateContact(lead.id, tenantId, actorId, { status: 'Closed', firstName: 'Edited during conversion' }));
+    await scope(() => updateContact(lead.id, tenantId, actorId, { status: 'Closed Deal', firstName: 'Edited during conversion' }));
     expect(await events(lead.id, 'lead.updated')).toHaveLength(1);
     expect(await events(lead.id, 'lead.status_changed')).toHaveLength(1);
     const run = await prisma.workflowExecutionRun.findFirstOrThrow({ where: { tenantId, entityId: lead.id, trigger: { triggerType: 'lead.updated' } } });
@@ -174,7 +174,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
     const replacement = await prisma.user.create({ data: { tenantId, role: 'Sales', email: `${randomUUID()}@example.test`, firstName: 'New', lastName: 'Owner' } });
     const role = await prisma.roleDefinition.findFirstOrThrow({ where: { tenantId, name: 'Sales' } });
     await prisma.userRole.create({ data: { tenantId, roleId: role.id, userId: replacement.id } });
-    await scope(() => updateContact(lead.id, tenantId, actorId, { status: 'Closed', assignedUserId: replacement.id, productInterest: [productId, added.id] }));
+    await scope(() => updateContact(lead.id, tenantId, actorId, { status: 'Closed Deal', assignedUserId: replacement.id, productInterest: [productId, added.id] }));
     const converted = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     expect(converted.contactId).toBeTruthy();
     expect(converted.productInterestIds.sort()).toEqual([productId, added.id].sort());
@@ -193,7 +193,7 @@ describe.skipIf(!disposable)('durable successful-sales conversion event parity',
 
   it('a raw transaction caller binds conversion events to its transaction and rolls back when queue insertion fails', async () => {
     await activate('contact.created');
-    const { lead, deal } = await inquiry(true, { status: 'Closed' });
+    const { lead, deal } = await inquiry(true, { status: 'Closed Deal' });
     const before = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     await expect(scope(() => prisma.$transaction(async tx => {
       const failing = new Proxy(tx, { get(target, key) {
