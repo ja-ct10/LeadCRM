@@ -248,7 +248,7 @@ export function toFrontendDeal(backendDeal: any): any {
     createdAt: backendDeal.createdAt || new Date().toISOString(),
     updatedAt: backendDeal.updatedAt || undefined,
     staleness: backendDeal.staleness,
-    lastStageChangeDate: lastStageChangeDate || backendDeal.stageChangedAt || undefined,
+    lastStageChangeDate: backendDeal.lastStageChangeDate ?? lastStageChangeDate ?? backendDeal.createdAt,
     address: backendDeal.address || undefined,
     addressSource: backendDeal.addressSource,
     addressContext: backendDeal.addressContext,

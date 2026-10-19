@@ -54,7 +54,6 @@ export interface Deal extends Omit<SharedDeal, 'priority' | 'value' | 'order'> {
   companyId?: string;
   companyName: string;
   contactPerson: string;
-  lastStageChangeDate?: string;
   campaign?: string;
   customerType?: 'New Business' | 'Existing Customer' | string;
   tags?: string[];

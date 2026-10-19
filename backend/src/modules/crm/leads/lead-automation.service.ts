@@ -13,7 +13,7 @@ import { productRelationData } from './product-relations';
 import { findSalesGroup } from '../../administration/groups/sales-group';
 import { eligibleAssignedAgents, crmAssignmentRequirements } from '../access/assigned-agent-eligibility';
 import type { CrmModule } from '../access/crm-record-access.service';
-import { salesContext } from './sales-context';
+import { salesContext, discardWorkflowWake, workflowTransactionCommitted } from './sales-context';
 import { fenceWorkflowLease } from '../../automation/workflows/workflow-lease';
 
 type Tx = Prisma.TransactionClient;
@@ -25,12 +25,15 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
   if (current) { await fenceWorkflowLease(current); return work(current); }
   for (let attempt = 0; ; attempt++) {
     let result: T;
+    let transaction: Tx | undefined;
     try { result = await prisma.$transaction(async tx => {
+      transaction = tx;
       await fenceWorkflowLease(tx);
       await setNotificationActor(tx);
       return salesContext.run(tx, () => work(tx));
     }, { isolationLevel: 'Serializable', timeout: 20000 }); }
     catch (error) {
+      if (transaction) discardWorkflowWake(transaction);
       if ((isCrmTransactionConflict(error) || error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') && attempt < 4) {
         // Let concurrent writers commit before taking another serializable snapshot.
         await new Promise(resolve => setTimeout(resolve, 25 * 2 ** attempt + Math.floor(Math.random() * 25)));
@@ -38,6 +41,7 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
       }
       throw error;
     }
+    if (transaction) workflowTransactionCommitted(transaction);
     return result;
   }
 }

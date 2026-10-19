@@ -1,0 +1,116 @@
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { randomUUID } from 'node:crypto';
+import prisma from '../../../../config/database.config';
+import { tenantContext } from '../../../../core/tenant/tenant-context';
+import { salesTransaction } from '../../../crm/leads/lead-automation.service';
+import { updateDeal } from '../../../crm/deals/deals.service';
+import { fireDealUpdated } from '../../triggers/triggers.service';
+import { dispatchQueuedWorkflows, startWorkflowScheduler } from '../workflow-queue';
+import * as workflows from '../workflows.service';
+
+const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
+const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
+describe.skipIf(!disposable)('post-commit workflow stage dispatch', () => {
+  let tenantId: string, actorId: string, pipelineId: string, initialId: string, targetId: string;
+  let stop: (() => Promise<void>) | undefined;
+  const scope = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
+  const deal = () => scope(() => prisma.deal.create({ data: { tenantId, pipelineId, stageId: initialId, title: randomUUID(), value: 1000, priority: 'LOW', assignedUserId: actorId } }));
+  const workflow = (extra = {}) => scope(() => workflows.createWorkflow(tenantId, actorId, {
+    name: randomUUID(), trigger: 'deal.updated', isActive: true,
+    conditions: { operator: 'AND', conditions: [{ field: 'deal.priority', operator: 'equals', value: 'HIGH' }] },
+    actions: [{ type: 'move_deal_stage', config: { stageId: targetId } }], ...extra,
+  }));
+  beforeAll(async () => {
+    tenantId = (await prisma.tenant.create({ data: { name: 'Realtime fixture', slug: randomUUID() } })).id;
+    actorId = (await prisma.user.create({ data: { tenantId, role: 'Client Admin', firstName: 'Workflow', lastName: 'Admin', email: `${randomUUID()}@camxian.com` } })).id;
+    pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Sales' } })).id;
+    initialId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Lead', order: 0 } })).id;
+    targetId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Qualified', order: 1 } })).id;
+  });
+  beforeEach(async () => { await prisma.workflow.updateMany({ where: { tenantId }, data: { isActive: false } }); });
+  afterEach(async () => { await stop?.(); stop = undefined; });
+  afterAll(async () => { await prisma.$disconnect(); });
+
+  it('moves a Deal after a field edit promptly, publishes content and deduplicates competing dispatch', async () => {
+    const saved = await deal(); const configured = await workflow();
+    const before = (await prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).content;
+    stop = startWorkflowScheduler();
+    const started = Date.now();
+    await scope(() => updateDeal(saved.id, tenantId, actorId, { priority: 'HIGH' }));
+    await vi.waitFor(async () => expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).stageId).toBe(targetId), { timeout: 5000 });
+    expect(Date.now() - started).toBeLessThan(5000);
+    // An identical source event and another worker must not replay the transition.
+    const updated = await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } });
+    await scope(() => fireDealUpdated({ tenantId, actorId, record: updated, eventId: 'duplicate-delivery', changedFields: ['priority'] }));
+    await Promise.all([dispatchQueuedWorkflows(), dispatchQueuedWorkflows()]);
+    await stop(); stop = undefined;
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(1);
+    expect((await prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).content).toBeGreaterThan(before);
+    expect(await prisma.workflowExecutionRun.count({ where: { workflowId: configured.id, status: 'completed' } })).toBeGreaterThan(0);
+  });
+
+  it('never dispatches the source transaction before commit and drops rolled-back work', async () => {
+    const saved = await deal(); await workflow(); stop = startWorkflowScheduler();
+    const content = (await prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).content;
+    let release!: () => void; let entered!: () => void;
+    const ready = new Promise<void>(resolve => { entered = resolve; });
+    const pending = scope(() => salesTransaction(async () => {
+      await updateDeal(saved.id, tenantId, actorId, { priority: 'HIGH' });
+      entered(); await new Promise<void>(resolve => { release = resolve; }); throw new Error('rollback');
+    }));
+    const rejected = expect(pending).rejects.toThrow('rollback');
+    await ready;
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).priority).toBe('LOW');
+    expect(await prisma.workflowExecutionRun.count({ where: { tenantId, entityId: saved.id } })).toBe(0);
+    release(); await rejected; await stop(); stop = undefined;
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).stageId).toBe(initialId);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(0);
+    expect((await prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).content).toBe(content);
+  });
+
+  it('wakes for standalone trigger transactions and skips duplicate deliveries', async () => {
+    const saved = await deal(); await workflow();
+    const changed = await prisma.deal.update({ where: { id: saved.id }, data: { priority: 'HIGH' } });
+    stop = startWorkflowScheduler();
+    const event = { tenantId, actorId, record: changed, eventId: 'standalone-edit', changedFields: ['priority'] };
+    await scope(() => fireDealUpdated(event)); await scope(() => fireDealUpdated(event));
+    await vi.waitFor(async () => expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).stageId).toBe(targetId), { timeout: 5000 });
+    await stop(); stop = undefined;
+    expect(await prisma.workflowExecutionRun.count({ where: { tenantId, entityId: saved.id } })).toBe(1);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(1);
+  });
+
+  it('claims one execution across competing dispatchers and duplicate queued events', async () => {
+    const saved = await deal(); await workflow();
+    const changed = await prisma.deal.update({ where: { id: saved.id }, data: { priority: 'HIGH' } });
+    const event = { tenantId, actorId, record: changed, eventId: 'concurrent-edit', changedFields: ['priority'] };
+    await Promise.all([scope(() => fireDealUpdated(event)), scope(() => fireDealUpdated(event))]);
+    await Promise.all([dispatchQueuedWorkflows(), dispatchQueuedWorkflows(), dispatchQueuedWorkflows()]);
+    expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).stageId).toBe(targetId);
+    expect(await prisma.workflowExecutionRun.count({ where: { tenantId, entityId: saved.id } })).toBe(1);
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(1);
+  });
+
+  it.each(['unmatched', 'paused', 'invalid-stage', 'unauthorized'] as const)('does not move Deals for %s workflows', async scenario => {
+    const saved = await deal(); const configured = await workflow();
+    if (scenario === 'paused') await prisma.workflow.update({ where: { id: configured.id }, data: { isActive: false, status: 'PAUSED' } });
+    if (scenario === 'invalid-stage') await prisma.stage.update({ where: { id: targetId }, data: { requiredFields: ['address'] } });
+    if (scenario === 'unauthorized') {
+      const inactive = await prisma.user.create({ data: { tenantId, role: 'Client Admin', status: 'INACTIVE', firstName: 'Inactive', lastName: 'Actor', email: `${randomUUID()}@camxian.com` } });
+      await prisma.workflow.update({ where: { id: configured.id }, data: { activatedById: inactive.id } });
+    }
+    try {
+      stop = startWorkflowScheduler();
+      await scope(() => updateDeal(saved.id, tenantId, actorId, { priority: scenario === 'unmatched' ? 'MEDIUM' : 'HIGH' }));
+      if (scenario !== 'paused') await vi.waitFor(async () => {
+        const runs = await prisma.workflowExecutionRun.findMany({ where: { workflowId: configured.id } });
+        expect(runs.some(run => !['queued', 'running'].includes(run.status))).toBe(true);
+      }, { timeout: 5000 });
+      await stop(); stop = undefined;
+      expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).stageId).toBe(initialId);
+      expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(0);
+    } finally {
+      await prisma.stage.update({ where: { id: targetId }, data: { requiredFields: [] } });
+    }
+  });
+});
