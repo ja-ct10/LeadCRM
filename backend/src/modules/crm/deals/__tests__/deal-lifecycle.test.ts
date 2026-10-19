@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+vi.mock('../../customer-classification.service', () => ({ refreshDealClassification: vi.fn() }));
 import { Prisma } from '@prisma/client';
 
 const state = vi.hoisted(() => ({
@@ -12,7 +13,7 @@ vi.mock('../../../../config/database.config', () => ({ default: state.tx }));
 vi.mock('../../leads/lead-automation.service', () => ({ crmScope: (tenantId: string) => ({ tenantId }), salesTransaction: (work: (tx: unknown) => unknown) => work(state.tx), resolveProducts: vi.fn() }));
 vi.mock('../../closing-requirements/closing-requirements.repository', () => ({ closingEvidence: vi.fn(async () => ({ fields: [], values: { signed: true } })) }));
 vi.mock('../won-conversion.service', () => ({ resolveWonRelationships: vi.fn() }));
-vi.mock('../../engagement.service', () => ({ changeCustomerStatus: vi.fn() }));
+vi.mock('../../engagement.service', () => ({ changeCustomerStatus: vi.fn(), finalizeContactLifecycle: vi.fn() }));
 
 import { moveDealStage, moveDealPipeline } from '../deals.repository';
 import { dealHasEverBeenWon } from '../deal-lifecycle';

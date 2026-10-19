@@ -207,7 +207,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
       email: data.email || undefined,
       phone: fullPhone,
       ...organization.payload(),
-      status: data.status || 'Inquiry',
+      status: initialData?.statusManagedByDeals ? normalizeCrmStatus(initialData.status) : data.status || 'Inquiry',
       ...((data.source || !initialData || OptionalLeadSourceSchema.safeParse(initialData.leadSource || initialData.source || '').success) ? { source: data.source ?? '' } : {}),
       assignedUserId: data.assignedUserId || (isEdit ? '' : undefined),
       productInterest: productInterest,
@@ -303,7 +303,7 @@ export function AddLeadForm({ initialData, onSave, onCancel }: AddLeadFormProps)
             <FieldWrap fieldKey="status" htmlFor={`${fieldId}-status`} error={errors.status?.message} label="Status">
               <div className="relative">
                 <select
-                  {...register('status')}
+                  {...register('status')} disabled={!!initialData?.statusManagedByDeals}
                   id={`${fieldId}-status`}
                   aria-invalid={!!errors.status}
                   aria-describedby={errors.status ? `${fieldId}-status-error` : undefined}

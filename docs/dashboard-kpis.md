@@ -45,9 +45,17 @@ Valid closure means `createdAt <= closedAt <= generatedAt`. Missing/invalid clos
 
 Currencies are never converted or mixed. Money uses tenant currency (PHP when unset); other/unknown currencies are excluded and warned, while counts remain currency-independent. Reporting normalizes each stored amount to two decimal places before summing, consistent with the Product price contract and currency presentation. This keeps bucket/stage sums reconciled even for legacy Float values with extra precision; stored amounts are not rewritten. Negative/nonfinite/missing same-currency amounts make affected monetary totals unavailable. Missing/invalid probability makes forecast unavailable. Configured zero is valid, never replaced with invented probability. Existing CRM APIs protect immutable Product/value snapshots; subscriptions also cover committed integration/database corrections.
 
-## Deal Pipeline Conversion Funnel
+## Lead Source Performance
 
-Dashboard's four colored boxes show current Lead, Contacted, Qualified and Closed Won Deal counts. Open counts reuse Pipeline Overview's stage aggregates by stage ID; Closed Won uses the current Won total, independent of revenue dates. The Historical Conversion Rates section below them uses the selected historical creation cohort and recorded milestones described below. Its date filter never narrows the current-stage counts. Reports and CSV retain their historical milestone counts and rates.
+Dashboard shows distinct currently Won Deals grouped by trimmed saved `Deal.leadSource`, using the existing authorized Sales Pipeline population and valid `closedAt` boundaries. Missing or blank sources are “Not specified”; related Lead/Contact sources are not inferred. Counts include eligible Deals regardless of their currency or monetary-data validity.
+
+The independent date dropdown defaults to This Month and reuses the date options above. Changing it updates only this chart; Sync Metrics and existing realtime reconciliation update it with the rest of Dashboard. No wins displays “No won deals for this period.” Request errors remain errors rather than empty results.
+
+Up to five individual source groups are shown, reserving one slot for nonzero “Not specified”. Overflow and saved “Others” values form a single Others bar. Displayed bars sort by won count descending, then source name. Revenue, current Pipeline Overview, and other metrics retain their existing definitions.
+
+## Reports: Deal Pipeline Conversion Funnel
+
+Reports and CSV retain their historical milestone counts, rates, creation-period filter and observation cutoff. Dashboard no longer displays the current-stage funnel boxes or Historical Conversion Rates section.
 
 Cohort: eligible organization Deals **created in the independent funnel interval**. Default Month, Week (Monday start), and Year run from their calendar start through today in Manila. Custom From/To dates must be valid, ordered, historical and at most 732 days; both browser and server enforce this. Milestones count distinct Deals with actual `DealStageHistory.newStageId` events from creation through the earlier of report generation and the end of the selected To day (23:59:59.999 Manila). Custom reports therefore exclude later events. The response and CSV carry the actual observation cutoff. Current stage alone is not proof. Verified start has null previous stage and timestamp matching creation. The existing migration records future starts with a valid actor/owner/assignee. Old events are never reconstructed.
 

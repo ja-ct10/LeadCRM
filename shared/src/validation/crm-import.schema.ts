@@ -24,7 +24,7 @@ const person = {
 };
 export const ImportLeadRowSchema = z.object({ ...person, firstName: LeadNameSchema, lastName: LeadNameSchema, phone: LeadPhoneSchema.optional().default(''), companyName: optional(2000), address: optional(2000), source: OptionalLeadSourceSchema.optional().default(''),
   status: optional(30).transform(v => v ? v[0].toUpperCase() + v.slice(1).toLowerCase() : 'Inquiry')
-    .pipe(z.enum(['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled'], { errorMap: () => ({ message: 'Status must be Inquiry, Hot, Warm, Cold or Cancelled. Close customers through a confirmed Closed Won Deal.' }) })),
+    .pipe(z.enum(['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled'], { errorMap: () => ({ message: 'Status must be Inquiry, Hot, Warm, Cold or Cancelled. Close customers through a confirmed Closed Deal Deal.' }) })),
 }).strict();
 export const ImportContactRowSchema = z.object(person).strict();
 export const ImportAccountRowSchema = z.object({ name: required('Company Name').transform(v => v.replace(/\s+/g, ' ')),

@@ -22,8 +22,8 @@ export const DEALS_MODULE_CONFIG: ModuleConfig = {
         { id: 'qualification', label: 'Qualification' },
         { id: 'proposal', label: 'Proposal' },
         { id: 'negotiation', label: 'Negotiation' },
-        { id: 'closed-won', label: 'Closed Won' },
-        { id: 'closed-lost', label: 'Closed Lost' },
+        { id: 'closed-won', label: 'Closed Deal' },
+        { id: 'closed-lost', label: 'Cancelled' },
       ],
     },
     {

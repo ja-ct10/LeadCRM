@@ -15,6 +15,7 @@ import { productRelationData } from '../leads/product-relations';
 import { parseLeadCreatedFilter } from '../leads/lead-created-filter';
 import { convertClosedLead } from '../leads/lead-conversion.service';
 import { assertClosedStatus, cancelOpenDeals } from '../engagement.service';
+import { assertCustomerStatusEdit, classifyCustomerRecord } from '../customer-classification.service';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import prisma from '../../../config/database.config';
 import { resolveProducts, createAssignedLead, salesTransaction, createProductDeals, validateSalesOwner } from '../leads/lead-automation.service';
@@ -62,7 +63,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   filterClauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'source'], contains => [
     { companyName: contains, ...(!canReadAccount ? { companyFromAccount: false } : {}) },
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
-    ...(['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled', 'Closed'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
+    ...(['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled', 'Closed Deal'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
       .map(status => ({ status: { in: [status, status.toUpperCase()] } }))),
   ]));
   const scope = parsedFilters.find(filter => filter.field === 'scope')?.value;
@@ -140,7 +141,7 @@ export async function createContact(
 ) {
   const { requestId, productInterest, customFieldValues, newAccount, ...fields } = dto;
   await assertCrmCreateAssignment(prisma, tenantId, dto.assignedUserId);
-  if (dto.status === 'Closed') throw new ValidationError('Confirm a related Deal as Closed Won before setting Closed.');
+  if (dto.status === 'Closed Deal') throw new ValidationError('Confirm a related Deal as Closed Deal before setting Closed Deal.');
   return salesTransaction(async tx => {
     const existing = requestId ? await tx.lead.findFirst({ where: { tenantId, creationKey: requestId } }) : null;
     if (!existing) await assertContactAccountSelection(tx, tenantId, fields.accountId);
@@ -180,6 +181,8 @@ export async function updateContact(
       await assertCrmRecordMutation(tx, 'leads', id, 'edit', dto);
       const current = await tx.lead.findFirst({ where: { id, tenantId, isArchived: false, deletedAt: null } });
       if (!current) throw new NotFoundError('Active Lead');
+      await assertCustomerStatusEdit(tx, tenantId, { leadId: id }, current, dto.status);
+      if (dto.status !== undefined && (dto.status !== current.status || Object.keys(dto).length === 1)) data.manualCancellation = dto.status === 'Cancelled';
       if (current.convertedAt) throw new ValidationError('This Lead has been converted. Update the linked Contact instead.');
       await assertContactAccountSelection(tx, tenantId, dto.accountId, current.accountId);
       if (dto.newAccount) {
@@ -212,7 +215,7 @@ export async function updateContact(
       if (dto.status) {
         if (dto.status !== current.status) data.lastStatusChangedAt = new Date();
         else delete data.lastStatusChangedAt;
-        if (dto.status === 'Closed') await assertClosedStatus(tx, tenantId, { leadId: id });
+        if (dto.status === 'Closed Deal' && dto.status !== current.status) await assertClosedStatus(tx, tenantId, { leadId: id });
       }
       if (dto.productInterest) {
         const previous = await tx.lead.findFirstOrThrow({ where: { id, tenantId } });
@@ -248,16 +251,17 @@ export async function updateContact(
           metadata: { assignedUserId: dto.assignedUserId, previousUserId: current.assignedUserId, ...assignment },
         } });
       }
-      if (updated.status !== 'Closed' && (dto.assignedUserId || dto.productInterest)) await createProductDeals(tx, tenantId, id, updatedById);
-      if (updatedById && updated.status === 'Cancelled') await cancelOpenDeals(tx, tenantId, updatedById, { leadId: id }, 'Staff explicitly cancelled the opportunity.');
-      if (updated.status === 'Closed' && updatedById) {
+      if (updated.status !== 'Closed Deal' && (dto.assignedUserId || dto.productInterest)) await createProductDeals(tx, tenantId, id, updatedById);
+      if (updatedById && data.manualCancellation === true) await cancelOpenDeals(tx, tenantId, updatedById, { leadId: id }, 'Staff explicitly cancelled the opportunity.');
+      if (updated.status === 'Closed Deal' && updatedById) {
         await convertClosedLead(tx, tenantId, id, updatedById, { previousLead: current, emitLeadEvents: !onCommitted });
         return finish(await tx.lead.findFirstOrThrow({ where: { id, tenantId }, include: {
           assignedUser: { select: { id: true, firstName: true, lastName: true } }, account: { select: { id: true, name: true, industry: true, size: true, website: true, address: true } },
           createdBy: { select: { id: true, firstName: true, lastName: true } }, updatedBy: { select: { id: true, firstName: true, lastName: true } },
         } }));
       }
-      return finish(updated);
+      if (updatedById) await classifyCustomerRecord(tx, tenantId, { leadId: id }, updatedById);
+      return finish({ ...updated, ...await tx.lead.findFirstOrThrow({ where: { tenantId, id } }) });
     });
   } catch (error) {
     throw error;

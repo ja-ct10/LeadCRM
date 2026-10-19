@@ -1,6 +1,6 @@
 import type { Deal, Prisma } from '@prisma/client';
 import { crmScope } from '../leads/lead-automation.service';
-import { changeCustomerStatus } from '../engagement.service';
+import { convertClosedLead } from '../leads/lead-conversion.service';
 import { ConflictError } from '../../../shared/errors/http-error';
 
 /** Called inside the same serializable transaction as the actual Won transition. */
@@ -12,7 +12,7 @@ export async function resolveWonRelationships(tx: Prisma.TransactionClient, deal
   let accountId = deal.accountId;
   const conflict = () => new ConflictError('Multiple or archived matching records found. Resolve the Contact/Account association before marking this Deal won.');
   for (const lead of leads) {
-    await changeCustomerStatus(tx, deal.tenantId, actorId, { leadId: lead.id }, 'Closed', 'All configured Closed Won requirements completed and validated.', new Date(), { dealEventHandledByCaller: deal.id });
+    await convertClosedLead(tx, deal.tenantId, lead.id, actorId, { dealEventHandledByCaller: deal.id });
     const converted = await tx.lead.findFirstOrThrow({ where: { ...scope, id: lead.id } });
     accountId ??= converted.accountId;
   }

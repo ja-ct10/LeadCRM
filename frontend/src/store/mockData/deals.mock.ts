@@ -12,8 +12,8 @@ export const MOCK_PIPELINES: Pipeline[] = [
       { id: 'stage_assessment',  name: 'Assessment',   order: 1, probability: 25 },
       { id: 'stage_proposal',    name: 'Proposal',     order: 2, probability: 40 },
       { id: 'stage_negotiation', name: 'Negotiation',  order: 3, probability: 70 },
-      { id: 'stage_won',         name: 'Closed Won',   order: 4, probability: 100 },
-      { id: 'stage_lost',        name: 'Closed Lost',  order: 5, probability: 0 },
+      { id: 'stage_won',         name: 'Closed Deal',   order: 4, probability: 100 },
+      { id: 'stage_lost',        name: 'Cancelled',  order: 5, probability: 0 },
     ],
   },
   {

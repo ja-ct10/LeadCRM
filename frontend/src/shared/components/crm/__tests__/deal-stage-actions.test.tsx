@@ -23,7 +23,7 @@ vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 const sales = { id: 'sales-id', tenantId: 'tenant', name: 'Sales Pipeline', stages: [
   { id: 'lead', name: 'Lead', order: 0 }, { id: 'qualified', name: 'Qualified', order: 1 },
-  { id: 'won', name: 'Closed Won', order: 2, isWon: true }, { id: 'lost', name: 'Closed Lost', order: 3, isLost: true },
+  { id: 'won', name: 'Closed Deal', order: 2, isWon: true }, { id: 'lost', name: 'Cancelled', order: 3, isLost: true },
 ] } as Pipeline;
 const renewals = { id: 'renewals-id', tenantId: 'tenant', name: 'Renewals', stages: [{ id: 'review', name: 'Review', order: 0 }] } as Pipeline;
 const menu = async (onMutated?: (deal?: Deal) => void) => {
@@ -60,7 +60,7 @@ it('saves a stage in the current pipeline through the same stage action as drag-
   const changed = vi.fn(); fireEvent.click(await menu(changed));
   const stage = await screen.findByLabelText('Choose the target stage');
   expect((screen.getByRole('option', { name: 'Lead (current)' }) as HTMLOptionElement).disabled).toBe(true);
-  expect(screen.queryByRole('option', { name: 'Closed Won' })).toBeNull(); expect(screen.queryByRole('option', { name: 'Closed Lost' })).toBeNull();
+  expect(screen.queryByRole('option', { name: 'Closed Deal' })).toBeNull(); expect(screen.queryByRole('option', { name: 'Cancelled' })).toBeNull();
   fireEvent.change(stage, { target: { value: 'qualified' } });
   const save = screen.getByRole('button', { name: 'Move deal' }); fireEvent.click(save); fireEvent.click(save);
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
@@ -121,7 +121,7 @@ it('does not offer terminal or foreign stages and reports a pipeline with no oth
   render(<DealStageDialog deal={mocks.deal} pipelines={[pipeline, renewals]} onMove={save} onClose={vi.fn()} />);
   expect((screen.getByLabelText('Choose the target stage') as HTMLSelectElement).disabled).toBe(true);
   expect(screen.getByRole('status').textContent).toBe('No other open stages are available in this pipeline.');
-  expect(screen.queryByRole('option', { name: 'Closed Won' })).toBeNull();
+  expect(screen.queryByRole('option', { name: 'Closed Deal' })).toBeNull();
   expect(screen.queryByRole('option', { name: 'Review' })).toBeNull();
   fireEvent.submit(screen.getByRole('button', { name: 'Move deal' }).closest('form')!); expect(save).not.toHaveBeenCalled();
 });

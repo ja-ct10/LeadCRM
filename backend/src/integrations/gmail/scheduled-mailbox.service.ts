@@ -223,7 +223,7 @@ async function runScheduledMailboxPass() {
       try {
         const meta = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(result.id)}?format=metadata&${MAILBOX_METADATA_HEADERS}`));
         const current = await authorizeMailboxOperation(account, context);
-        if (messageInScope(meta, account.email, current.scope) && !meta.labels.some(label => ['SPAM', 'TRASH'].includes(label))) await ingestMailboxMessages(account, [await fetchMessageDetail(token, result.id)], current.permissions);
+        if (messageInScope(meta, account.email, current.scope) && !meta.labels.some(label => ['SPAM', 'TRASH'].includes(label))) await ingestMailboxMessages(account, [await fetchMessageDetail(token, result.id)], current.permissions, { dealId: context.dealId, sourceMessageId: context.replyToMessageId });
         await mailboxChanged(account.id);
       } catch { /* History worker will finish ingestion. */ }
     } catch (error) {

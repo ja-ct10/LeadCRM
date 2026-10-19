@@ -35,7 +35,7 @@ vi.mock('../inline-deal-form', () => ({ InlineDealForm: ({ onSubmit, onCancel, r
 import { recordEmailComposeHref } from '@/features/tenant/inbox/services/compose-navigation';
 
 const records = {
-  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUserId: 'user', assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
+  deals: { id: 'one', title: 'Lina Reyes – Smart Lock', pipelineId: 'sales', stageId: 'lead', engagementStatus: 'Cold', stage: { name: 'Lead' }, pipeline: { name: 'Sales Pipeline' }, value: 1250.75, priority: 'MEDIUM', productInterests: ['Smart Lock'], assignedUserId: 'user', assignedUser: { firstName: 'Sam', lastName: 'Cruz' }, leadDeals: [{ lead: { id: 'lead-one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test' } }], contactDeals: [] },
   leads: { id: 'one', firstName: 'Lina', lastName: 'Reyes', email: 'lina@example.test', source: 'Referral', status: 'Warm', productInterest: ['CCTV'], assignedUserId: 'user', assignedUser: { firstName: 'Sam', lastName: 'Cruz' } },
   contacts: { id: 'one', firstName: 'Nora', lastName: 'Lim', status: 'WARM', companyName: 'North Company', assignedUserId: 'user' },
   accounts: { id: 'one', name: 'North Company', industry: 'Services', website: 'example.test' },
@@ -186,7 +186,7 @@ it.each(dealEmailRoleCases)('opens the assigned Deal from the $surface $action f
   mocks.permissions = ['deals.view'];
   const { button, error, onOpenChange } = await renderDealEmailAction(testCase);
   fireEvent.click(button);
-  expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry'));
+  expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry', 'one'));
   expect(error).not.toHaveBeenCalled();
   expect(onOpenChange).not.toHaveBeenCalled();
   expect(mocks.put).not.toHaveBeenCalled();
@@ -422,7 +422,8 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   const header = screen.getByRole('heading', { name: title }).closest('header')!;
   const headerButtons = Array.from(header.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent?.trim());
   expect(headerButtons.filter(label => label === 'Record actions')).toHaveLength(1);
-  if (module !== 'accounts') expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf(module === 'leads' || module === 'contacts' ? 'Warm' : 'Lead'));
+  if (module === 'leads' || module === 'contacts') expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf('Warm'));
+  if (module === 'deals') expect(within(header).getByText('Cold')).toBeTruthy();
   expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
   fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
   if (module !== 'deals') {
@@ -552,39 +553,39 @@ it('cancels inline Lead edits without submitting or changing the loaded value', 
 });
 
 
-it('Deal stage changes use the governed API without supplying a new owner', async () => {
-  mocks.move.mockResolvedValue(undefined);
+it('Deal header shows read-only engagement while Details retains its pipeline stage', async () => {
   render(<CrmRecordView module="deals" id="one" />);
-  await screen.findByRole('heading', { name: records.deals.title });
-  fireEvent.click(screen.getAllByRole('button', { name: 'Lead' })[0]);
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Won' }));
-  await waitFor(() => expect(mocks.move).toHaveBeenCalledWith('one', 'won', undefined, undefined));
-});
-
-it('requires a lost reason before submitting the Deal transition', async () => {
-  render(<CrmRecordView module="deals" id="one" />);
-  await screen.findByRole('heading', { name: records.deals.title });
-  fireEvent.click(screen.getAllByRole('button', { name: 'Lead' })[0]);
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Lost' }));
+  const heading = await screen.findByRole('heading', { name: records.deals.title });
+  const header = heading.closest('header')!;
+  expect(within(header).getByText('Cold')).toBeTruthy();
+  expect(within(header).queryByRole('button', { name: 'Cold' })).toBeNull();
+  expect(within(header).queryByRole('button', { name: 'Lead' })).toBeNull();
+  fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByText('Stage')).toBeTruthy();
+  expect(screen.getByText('Lead')).toBeTruthy();
   expect(mocks.move).not.toHaveBeenCalled();
-  expect((screen.getByRole('button', { name: 'Save' }) as HTMLButtonElement).disabled).toBe(true);
-  fireEvent.change(screen.getByLabelText('Lost reason'), { target: { value: 'Project postponed' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-  await waitFor(() => expect(mocks.move).toHaveBeenCalledWith('one', 'lost', undefined, 'Project postponed'));
 });
 
+it('shows unavailable engagement without falling back to the pipeline stage', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, engagementStatus: undefined } } : original(path));
+  render(<CrmRecordView module="deals" id="one" />);
+  const heading = await screen.findByRole('heading', { name: records.deals.title });
+  expect(within(heading.closest('header')!).getByText('Status unavailable')).toBeTruthy();
+  expect(mocks.move).not.toHaveBeenCalled();
+});
 
 it.each(['leads', 'contacts'] as const)('%s header and inline status editors send canonical values', async module => {
   render(<CrmRecordView module={module} id="one" />);
   await screen.findByRole('heading', { name: module === 'leads' ? 'Lina Reyes' : 'Nora Lim' });
-  for (const status of ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']) {
+  for (const status of ['Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']) {
     fireEvent.click(screen.getByRole('button', { name: 'Warm' }));
     fireEvent.click(screen.getByRole('menuitem', { name: status }));
     await waitFor(() => expect(mocks.put).toHaveBeenLastCalledWith(`/crm/${module}/one`, { status }));
     await waitFor(() => expect((screen.getByRole('button', { name: 'Warm' }) as HTMLButtonElement).disabled).toBe(false));
   }
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
-  for (const status of ['Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']) {
+  for (const status of ['Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']) {
     fireEvent.click(await screen.findByRole('button', { name: 'Edit Status' }));
     fireEvent.change(screen.getByRole('combobox', { name: 'Status' }), { target: { value: status } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -630,9 +631,10 @@ it('Deal header uses Messages between actions and status and the shared Activity
   const buttons = Array.from(screen.getByRole('heading', { name: records.deals.title }).closest('header')!.querySelectorAll('button'));
   const names = buttons.map(b => b.getAttribute('aria-label') || b.textContent);
   expect(names.indexOf('Record actions')).toBeLessThan(names.indexOf('Open messages'));
-  expect(names.indexOf('Open messages')).toBeLessThan(names.indexOf('Lead'));
-  expect(names.indexOf('Lead')).toBeLessThan(names.indexOf('Close record'));
-  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry'));
+  const badge = within(screen.getByRole('heading', { name: records.deals.title }).closest('header')!).getByText('Cold');
+  expect(buttons[names.indexOf('Open messages')].compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  expect(badge.compareDocumentPosition(buttons[names.indexOf('Close record')]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry', 'one'));
   expect(screen.queryByRole('button', { name: 'Notes' })).toBeNull();
   expect(screen.queryByRole('button', { name: 'Calls & Emails' })).toBeNull();
   expect(screen.getByRole('button', { name: 'Emails' })).toBeTruthy();

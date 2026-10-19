@@ -2,7 +2,7 @@ import { isWorkspaceAccessible } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { tenantContext } from '../../core/tenant/tenant-context';
 import { crmActor, resolveCrmActor } from './access/crm-record-access.service';
-import { classifyCustomerRecord } from './customer-classification.service';
+import { refreshDealClassification, classifyCustomerRecord } from './customer-classification.service';
 import { salesTransaction } from './leads/lead-automation.service';
 
 /** Continue aging verified evidence even when no mailbox or receiving device is connected. */
@@ -17,6 +17,11 @@ export async function sweepCustomerClassifications(now = new Date()) {
       const value = saved?.value;
       const positions = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
       const next: Record<string, string> = {};
+      const dealPosition = typeof positions.deal === 'string' ? positions.deal : '';
+      const deals = await prisma.deal.findMany({ where: { tenantId, isArchived: false, deletedAt: null, pipeline: { isArchived: false }, ...(dealPosition ? { id: { gt: dealPosition } } : {}) },
+        orderBy: { id: 'asc' }, take: 50, select: { id: true } });
+      for (const deal of deals) await salesTransaction(tx => refreshDealClassification(tx, tenantId, deal.id, actor.id, [], now));
+      next.deal = deals.length === 50 ? deals[deals.length - 1].id : '';
       for (const kind of ['lead', 'contact'] as const) {
         const position = typeof positions[kind] === 'string' ? positions[kind] as string : '';
         const where = { tenantId, isArchived: false, deletedAt: null, ...(position ? { id: { gt: position } } : {}) };

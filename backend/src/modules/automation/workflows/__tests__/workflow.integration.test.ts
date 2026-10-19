@@ -280,7 +280,7 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const record = await scope(async () => {
       const customer = { tenantId, firstName: 'Recipe', lastName: 'Recipient', email: 'recipe@example.test', phone: '+639171234567', assignedUserId: owner.id };
       if (entity === 'lead') return prisma.lead.create({ data: { ...customer, source: 'Website', status: String(status ?? 'Warm'), productInterest: [] } });
-      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, companyName: 'Example', status: String(status ?? 'Warm').toUpperCase() as 'HOT', productInterests: [] } });
+      if (entity === 'contact') return prisma.contact.create({ data: { ...customer, companyName: 'Example', status: String(status ?? 'Warm').toUpperCase().replace(' ', '_') as 'HOT', productInterests: [] } });
       if (entity === 'account') return prisma.account.create({ data: { tenantId, name: 'Ownerless recipe Account' } });
       return prisma.deal.create({ data: { tenantId, title: 'Catalog opportunity', pipelineId: deal.pipelineId, stageId: isStageEvent(draft.trigger) ? deal.stageId : stageId,
         assignedUserId: owner.id, value: 300000, priority: 'HIGH', tags: [], productInterests: [], wonHistoryVerified: true,
@@ -367,7 +367,11 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: contacted.id, currentStageId: deal.stageId, targetMode } }], {
       trigger: `${entity}.status_changed`, conditions: { operator: 'AND', conditions: [{ field: 'event.newStatus', operator: 'equals', value: 'Hot' }] },
     });
-    const changed = await call(`/crm/${entity === 'lead' ? 'leads' : 'contacts'}/${record.id}`, 'PUT', { status: 'Hot' });
+    const qualifier = count ? await relatedDeal(entity, record.id) : undefined;
+    if (qualifier) await prisma.deal.update({ where: { id: qualifier.id }, data: { expectedCloseDate: new Date('2026-10-10T00:00:00Z') } });
+    const changed = qualifier
+      ? await call(`/crm/deals/${qualifier.id}/stage`, 'PATCH', { stageId: required.id })
+      : await call(`/crm/${entity === 'lead' ? 'leads' : 'contacts'}/${record.id}`, 'PUT', { status: 'Hot' });
     expect(changed.status, JSON.stringify(changed.body)).toBe(200);
     const history = await runs(workflow.id);
     expect(history).toHaveLength(1);
@@ -408,7 +412,6 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const created = await call('/crm/leads', 'POST', { firstName: 'Status', lastName: 'Example', email: 'status@example.test', status: 'Cold' });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
-    await relatedDeal('lead', id);
     expect((await call(`/crm/leads/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);
     expect((await call(`/crm/leads/${id}`, 'PUT', { status: 'Warm', address: 'No second status event' })).status).toBe(200);
     expect(await runs(workflow.id)).toHaveLength(1);
@@ -423,7 +426,6 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const created = await call('/crm/contacts', 'POST', { firstName: 'Profile', lastName: 'Example', email: 'profile@example.test', status: 'Cold', productInterests: [] });
     expect(created.status, JSON.stringify(created.body)).toBe(201);
     const id = created.body.data.id;
-    await relatedDeal('contact', id);
     expect((await call(`/crm/contacts/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);
     expect((await call(`/crm/contacts/${id}`, 'PUT', { status: 'Warm' })).status).toBe(200);
     expect(await runs(createdWorkflow.id)).toHaveLength(1);

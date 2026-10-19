@@ -263,8 +263,8 @@ export async function restoreDeal(id: string, tenantId: string, userId: string) 
     after: { isArchived: false, archiveReason: null },
   });
 
-  if (deal.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, id, userId);
-  return { ...restored, leadId: deal.leadId, contactId: deal.contactId };
+  const classified = await refreshDealClassification(tx, tenantId, id, userId);
+  return { ...restored, ...(classified ? { engagementStatus: classified.engagementStatus } : {}), leadId: deal.leadId, contactId: deal.contactId };
   });
 }
 
@@ -302,6 +302,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
           value: Number(product.dealValue), currency: 'PHP',
           automationKey: null,
           hasEverBeenWon: false,
+          engagementStatus: 'Inquiry', engagementEvaluatedAt: null,
           wonHistoryVerified: true,
           title: `${source.title} (Copy)`,
           tenantId,
@@ -333,6 +334,7 @@ export async function duplicateDeal(id: string, tenantId: string, userId: string
           skipDuplicates: true,
         });
       }
+      await refreshDealClassification(tx, tenantId, created.id, userId);
       return created;
     });
   } catch (error) {

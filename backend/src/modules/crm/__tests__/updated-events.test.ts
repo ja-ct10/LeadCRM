@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   triggers: { fireLeadUpdated: vi.fn(), fireContactUpdated: vi.fn(), fireDealUpdated: vi.fn(), fireAccountUpdated: vi.fn(),
     fireLeadCreated: vi.fn(), fireLeadStatusChanged: vi.fn(), fireContactCreated: vi.fn(), fireContactStatusChanged: vi.fn(), fireDealCreated: vi.fn(), fireDealStageChanged: vi.fn() },
 }));
+vi.mock('../customer-classification.service', () => ({ withCustomerStatusPolicy: async (_tx: unknown, _tenant: string, _kind: string, records: unknown[]) => records }));
 vi.mock('../contacts/contacts.repository', () => mocks.leads);
 vi.mock('../contacts-v2/contacts-v2.repository', () => mocks.contacts);
 vi.mock('../companies/companies.repository', () => mocks.accounts);

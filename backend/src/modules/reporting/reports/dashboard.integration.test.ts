@@ -19,6 +19,105 @@ const admin = { userId: 'admin', tenantId: 'a', role: 'Client Admin', email: 'ad
 const agent = { userId: 'agent', tenantId: 'a', role: 'Sales', email: 'agent@camxian.com' };
 const scoped = <T>(work: () => T) => tenantContext.run({ tenantId: 'a' }, work);
 const report = () => scoped(() => dashboard(admin, query, now));
+
+describe('Lead Source Performance', () => {
+  const tenantId = 'source-performance', pipelineId = 'source-sales';
+  const identity = { userId: 'source-admin', tenantId, role: 'Client Admin', email: 'source@camxian.com' };
+  const read = (extra = {}) => tenantContext.run({ tenantId }, () => dashboard(identity, { range: 'thisMonth', ...extra }, now));
+  const create = (id: string, source: string | null, extra = {}) => db.deal.create({ data: {
+    id: `source-${id}`, tenantId, pipelineId, stageId: 'source-won', title: id, leadSource: source,
+    createdAt: new Date('2019-12-01T00:00:00Z'), closedAt: new Date('2020-01-05T00:00:00Z'), value: 100, currency: 'PHP', ...extra,
+  } });
+  beforeAll(async () => {
+    await db.tenant.create({ data: { id: tenantId, name: 'Sources', slug: tenantId } });
+    await db.user.create({ data: { id: identity.userId, tenantId, role: identity.role, email: identity.email, firstName: 'Source', lastName: 'Admin' } });
+    await db.pipeline.createMany({ data: [{ id: pipelineId, tenantId, name: 'Sales Pipeline' }, { id: 'source-other', tenantId, name: 'Other' }] });
+    const official = await db.stage.findMany({ where: { pipelineId: 'sales' }, orderBy: { order: 'asc' } });
+    await db.stage.createMany({ data: [...official.map(stage => ({
+      id: `source-${stage.id}`, tenantId, pipelineId, name: stage.name, order: stage.order, isWon: stage.isWon, isLost: stage.isLost,
+    })), { id: 'source-other-won', tenantId, pipelineId: 'source-other', name: 'Won', order: 0, isWon: true }] });
+    for (const [name, count] of [['Referral', 12], ['Website', 8], ['Social Media Advertisement', 5], ['Email Campaign', 3], ['Content Marketing', 2], ['Google Ads', 1], ['Direct Mail', 1], ['Others', 2]] as const) {
+      for (let i = 0; i < count; i++) await create(`${name}-${i}`, i === 0 && name === 'Referral' ? ' Referral ' : name, name === 'Website' ? { currency: 'USD', value: null } : {});
+    }
+    for (const [index, source] of [null, '', ' \t\n '].entries()) await create(`missing-${index}`, source);
+    await db.lead.createMany({ data: [0, 1].map(index => ({ id: `source-person-${index}`, tenantId, firstName: 'Linked', lastName: String(index), source: 'Wrong fallback' })) });
+    await db.contact.create({ data: { id: 'source-contact', tenantId, firstName: 'Linked', lastName: 'Contact', source: 'Wrong fallback' } });
+    await db.leadDeal.createMany({ data: [
+      ...[0, 1].map(index => ({ tenantId, dealId: 'source-Referral-0', leadId: `source-person-${index}` })),
+      { tenantId, dealId: 'source-Referral-1', leadId: 'source-person-0' },
+      { tenantId, dealId: 'source-missing-0', leadId: 'source-person-0' },
+    ] });
+    await db.contactDeal.create({ data: { tenantId, dealId: 'source-Referral-0', contactId: 'source-contact' } });
+    await create('open', 'Excluded', { stageId: 'source-qualified' });
+    await create('cancelled', 'Excluded', { stageId: 'source-lost' });
+    await create('archived', 'Excluded', { isArchived: true });
+    await create('deleted', 'Excluded', { deletedAt: now });
+    await create('other-pipeline', 'Excluded', { pipelineId: 'source-other', stageId: 'source-other-won' });
+    await create('no-close-date', 'Excluded', { closedAt: null });
+    await create('future-close', 'Excluded', { closedAt: new Date('2020-01-16T00:00:00Z') });
+    await create('invalid-close', 'Excluded', { closedAt: new Date('2019-11-30T00:00:00Z') });
+    await db.tenant.create({ data: { id: 'source-foreign', name: 'Foreign sources', slug: 'source-foreign' } });
+    await db.pipeline.create({ data: { id: 'source-foreign-sales', tenantId: 'source-foreign', name: 'Sales Pipeline' } });
+    await db.stage.create({ data: { id: 'source-foreign-won', tenantId: 'source-foreign', pipelineId: 'source-foreign-sales', name: 'Won', order: 0, isWon: true } });
+    await create('foreign', 'Foreign source', { tenantId: 'source-foreign', pipelineId: 'source-foreign-sales', stageId: 'source-foreign-won' });
+  });
+  it('counts distinct valid wins, saves source precedence, and groups overflow without changing revenue', async () => {
+    const result = await read();
+    expect(result.leadSourcePerformance).toEqual({
+      period: { start: '2020-01-01', end: '2020-01-15', timezone: 'Asia/Manila' },
+      sources: [
+        { name: 'Referral', won: 12 }, { name: 'Website', won: 8 }, { name: 'Others', won: 6 },
+        { name: 'Social Media Advertisement', won: 5 }, { name: 'Email Campaign', won: 3 }, { name: 'Not specified', won: 3 },
+      ],
+    });
+    expect(result.leadSourcePerformance!.sources.reduce((sum, row) => sum + row.won, 0)).toBe(result.metrics.won);
+    expect(result.metrics.totalRevenue).toBe(2900);
+    const different = await read({ leadSourceRange: 'lastMonth' });
+    expect(different.leadSourcePerformance!.sources).toEqual([]);
+    expect(different.metrics).toEqual(result.metrics);
+    expect(different.distribution).toEqual(result.distribution);
+    expect(different.conversion).toEqual(result.conversion);
+  });
+  it('uses close dates and half-open Manila boundaries, with five named groups when none are missing', async () => {
+    const from = '2020-01-09T16:00:00Z', until = '2020-01-10T16:00:00Z';
+    for (const [name, count] of [['Alpha', 6], ['Beta', 5], ['Gamma', 4], ['Delta', 3], ['Epsilon', 2], ['Zeta', 1]] as const) {
+      for (let i = 0; i < count; i++) await create(`boundary-${name}-${i}`, name, { closedAt: new Date(from) });
+    }
+    await create('before-boundary', 'Excluded', { closedAt: new Date(+new Date(from) - 1) });
+    await create('at-until', 'Excluded', { closedAt: new Date(until) });
+    await create('last-millisecond', 'Zeta', { closedAt: new Date(+new Date(until) - 1) });
+    const result = await read({ leadSourceRange: 'custom', leadSourceStart: '2020-01-10', leadSourceEnd: '2020-01-10' });
+    expect(result.leadSourcePerformance!.sources).toEqual([
+      { name: 'Alpha', won: 6 }, { name: 'Beta', won: 5 }, { name: 'Gamma', won: 4 }, { name: 'Delta', won: 3 },
+      { name: 'Epsilon', won: 2 }, { name: 'Others', won: 2 },
+    ]);
+    expect(result.leadSourcePerformance!.sources.reduce((sum, row) => sum + row.won, 0)).toBe(22);
+  });
+  it('refreshes source edits through the existing committed Dashboard revision', async () => {
+    const before = await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId } });
+    const original = await read();
+    try {
+      await db.deal.update({ where: { id: 'source-Referral-1' }, data: { leadSource: null } });
+      const after = await db.dashboardRevision.findUniqueOrThrow({ where: { tenantId } });
+      expect(after.analytics).toBeGreaterThan(before.analytics);
+      const changed = await read();
+      expect(changed.leadSourcePerformance!.sources.find(row => row.name === 'Referral')!.won).toBe(11);
+      expect(changed.leadSourcePerformance!.sources.find(row => row.name === 'Not specified')!.won).toBe(4);
+      expect(changed.metrics).toEqual(original.metrics);
+    } finally { await db.deal.update({ where: { id: 'source-Referral-1' }, data: { leadSource: 'Referral' } }); }
+  });
+  it('preserves tenant and module authorization and rejects invalid independent dates', async () => {
+    await db.roleDefinition.create({ data: { id: 'source-viewer-role', tenantId, name: 'Source viewer' } });
+    await db.rolePermission.create({ data: { tenantId, roleId: 'source-viewer-role', module: 'dashboard', canView: true } });
+    await db.user.create({ data: { id: 'source-viewer', tenantId, role: 'Source viewer', email: 'source-viewer@camxian.com', firstName: 'Viewer', lastName: 'Test' } });
+    await db.userRole.create({ data: { tenantId, userId: 'source-viewer', roleId: 'source-viewer-role' } });
+    const viewer = { ...identity, userId: 'source-viewer', role: 'Source viewer' };
+    expect((await tenantContext.run({ tenantId }, () => dashboard(viewer, {}, now))).leadSourcePerformance).toBeNull();
+    await expect(tenantContext.run({ tenantId: 'b' }, () => dashboard(identity, {}, now))).rejects.toThrow('Workspace mismatch');
+    await expect(read({ leadSourceRange: 'custom', leadSourceStart: '2020-02-30', leadSourceEnd: '2020-03-01' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(read({ leadSourceRange: 'custom', leadSourceStart: '2010-01-01', leadSourceEnd: '2020-01-01' })).rejects.toThrow('at most two years');
+  });
+});
 async function deal(id: string, stageId: string, value: number | null = 1000, extra = {}) {
   return db.deal.create({ data: { id, tenantId: 'a', title: id, pipelineId: 'sales', stageId, assignedUserId: 'agent', ownerId: 'agent',
     value, currency: 'PHP', createdAt: new Date('2020-01-01T00:00:00Z'), tags: [], ...extra } });
@@ -53,7 +152,7 @@ beforeAll(async () => {
   await db.pipeline.createMany({ data: [{ id: 'sales', tenantId: 'a', name: 'Sales Pipeline' }, { id: 'foreign-sales', tenantId: 'b', name: 'Sales Pipeline' }] });
   await db.stage.createMany({ data: [
     ['lead','Lead',10,'#3B82F6'], ['contacted','Contacted',40,'#F59E0B'], ['qualified','Qualified',70,'#8B5CF6'],
-    ['won','Closed Won',100,'#059669'], ['lost','Closed Lost',0,'#DC2626'],
+    ['won','Closed Deal',100,'#059669'], ['lost','Cancelled',0,'#DC2626'],
   ].flatMap(([id, name, probability, color], order) => ['a','b'].map(tenantId => ({ id: tenantId === 'a' ? String(id) : `foreign-${id}`,
     tenantId, pipelineId: tenantId === 'a' ? 'sales' : 'foreign-sales', name: String(name), probability: Number(probability), color: String(color), order,
     isWon: id === 'won', isLost: id === 'lost', requiredFields: [] }))) });
@@ -180,6 +279,7 @@ describe('authoritative dashboard', () => {
     expect(staff.scope).toBe('organization'); expect(staff.metrics).toEqual(organization.metrics);
     expect(staff.distribution).toEqual(organization.distribution); expect(staff.trend).toEqual(organization.trend);
     expect(staff.conversion).toEqual(organization.conversion); expect(staff.leaderboard).toEqual(organization.leaderboard);
+    expect(staff.leadSourcePerformance).toEqual(organization.leadSourcePerformance);
     expect(organization.metrics).toMatchObject({ totalRevenue: before.metrics.totalRevenue! + 21000, activeDeals: before.metrics.activeDeals! + 1,
       totalLeads: before.metrics.totalLeads! + 1, forecastedRevenue: before.metrics.forecastedRevenue! + 2000, openPipelineValue: before.metrics.openPipelineValue! + 2000 });
     expect(organization.metrics).toMatchObject({ won: 2, lost: 1, currentWon: 2, totalDeals: 7, winRate: 28.6, averageDealDays: 4 });
@@ -531,6 +631,7 @@ describe('authoritative dashboard', () => {
     await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'deals' }, data: { canView: false } });
     const restricted = await scoped(() => dashboard(agent, query));
     expect(restricted.metrics.totalRevenue).toBeNull(); expect(restricted.trend).toEqual([]); expect(restricted.leaderboard).toEqual([]);
+    expect(restricted.leadSourcePerformance).toBeNull();
     expect((await http('/reporting/pipeline-summary', agentToken)).status).toBe(403);
     expect((await http('/crm/pipelines/events', agentToken)).status).toBe(403);
     await db.rolePermission.updateMany({ where: { roleId: 'sales-role', module: 'dashboard' }, data: { canView: false } });

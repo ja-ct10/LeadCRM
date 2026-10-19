@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import * as service from './contacts.service';
 import { serializeLead } from '../leads/lead-serializer';
+import { withCustomerStatusPolicy } from '../customer-classification.service';
+import prisma from '../../../config/database.config';
 
 // Controller — HTTP handlers only. No business logic here.
 
@@ -11,7 +13,7 @@ export async function getContacts(req: Request, res: Response, next: NextFunctio
       req.user!.tenantId,
       { ...req.query, currentUserId: req.user!.userId },
     );
-    res.json({ success: true, ...result, data: result.data.map(serializeLead) });
+    res.json({ success: true, ...result, data: await withCustomerStatusPolicy(prisma, req.user!.tenantId, 'lead', result.data.map(serializeLead)) });
   } catch (err) {
     next(err);
   }
@@ -21,7 +23,7 @@ export async function getContactById(req: Request, res: Response, next: NextFunc
   try {
     const id = z.string().uuid().parse(req.params.id);
     const contact = await service.getContactById(id, req.user!.tenantId);
-    res.json({ success: true, data: serializeLead(contact) });
+    res.json({ success: true, data: (await withCustomerStatusPolicy(prisma, req.user!.tenantId, 'lead', [serializeLead(contact)]))[0] });
   } catch (err) {
     next(err);
   }
@@ -34,7 +36,7 @@ export async function createContact(req: Request, res: Response, next: NextFunct
       req.user!.userId,
       req.body,
     );
-    res.status(201).json({ success: true, data: serializeLead(contact) });
+    res.status(201).json({ success: true, data: (await withCustomerStatusPolicy(prisma, req.user!.tenantId, 'lead', [serializeLead(contact)]))[0] });
   } catch (err) {
     next(err);
   }
@@ -49,7 +51,7 @@ export async function updateContact(req: Request, res: Response, next: NextFunct
       req.user!.userId,
       req.body,
     );
-    res.json({ success: true, data: serializeLead(contact) });
+    res.json({ success: true, data: (await withCustomerStatusPolicy(prisma, req.user!.tenantId, 'lead', [serializeLead(contact)]))[0] });
   } catch (err) {
     next(err);
   }

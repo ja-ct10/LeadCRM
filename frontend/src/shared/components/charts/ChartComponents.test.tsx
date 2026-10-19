@@ -8,6 +8,27 @@ vi.mock('react-chartjs-2', () => ({
   Line: (props: unknown) => { captured.line = props; return null; }, Doughnut: () => null,
 }));
 afterEach(() => { cleanup(); localStorage.clear(); vi.unstubAllGlobals(); });
+it('opts into bar-end counts and wrapped source names without changing ordinary bars', () => {
+  const view = render(<BarChart layout="vertical" data={[{ name: 'Social Media Advertisement', won: 123456 }]} showValueLabels wrapCategoryLabels><YAxis dataKey="name" /><Bar dataKey="won" /></BarChart>);
+  const context = { save: vi.fn(), restore: vi.fn(), measureText: (value: string) => ({ width: value.length * 7 }), fillText: vi.fn() };
+  const labels = captured.bar.options.scales.y.ticks.callback.call({ chart: { width: 240, ctx: context } }, 0);
+  expect(labels.length).toBeLessThanOrEqual(3);
+  expect(labels.join(' ').replaceAll(' ', '')).toBe('SocialMediaAdvertisement');
+  expect(captured.bar.options.scales.y.ticks.autoSkip).toBe(false);
+  expect(captured.bar.options.layout.padding.right).toBeGreaterThanOrEqual(60);
+  const plugin = captured.bar.plugins[0];
+  plugin.afterDatasetsDraw({ ctx: context, data: captured.bar.data, options: { color: '#0f172a' }, isDatasetVisible: () => true, getDatasetMeta: () => ({ data: [{ x: 100, y: 32 }] }) });
+  expect(context.fillText).toHaveBeenCalledWith('123456', 106, 32);
+  expect((context as any).fillStyle).toBe('#0f172a');
+  plugin.afterDatasetsDraw({ ctx: context, data: captured.bar.data, options: { color: '#f8fafc' }, isDatasetVisible: () => true, getDatasetMeta: () => ({ data: [{ x: 100, y: 32 }] }) });
+  expect((context as any).fillStyle).toBe('#f8fafc');
+  const scale = { chart: { width: 230 }, width: 0 };
+  captured.bar.options.scales.y.afterFit(scale);
+  expect(scale.width).toBeGreaterThan(100);
+  view.rerender(<BarChart data={[{ name: 'January', won: 1 }]}><Bar dataKey="won" /></BarChart>);
+  expect(captured.bar.plugins).toBeUndefined();
+  expect(captured.bar.options.layout).toBeUndefined();
+});
 it('renders horizontal stage bars with official colors and formatted currency tooltips', () => {
   render(<BarChart layout="vertical" data={[{ name: 'Lead', value: 1500 }]}><YAxis dataKey="name" /><XAxis tickFormatter={value => `₱${value}`} /><Tooltip formatter={value => `₱${value}`} /><Bar dataKey="value" name="PHP" data={[{ color: '#123456' }]} /></BarChart>);
   expect(captured.bar.options.indexAxis).toBe('y'); expect(captured.bar.data.labels).toEqual(['Lead']);

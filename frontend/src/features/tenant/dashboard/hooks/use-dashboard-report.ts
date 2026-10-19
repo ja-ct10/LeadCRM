@@ -17,6 +17,11 @@ export function dashboardQueryString(query: DashboardQuery) {
     if (query.funnelStart) params.set('funnelStart', query.funnelStart);
     if (query.funnelEnd) params.set('funnelEnd', query.funnelEnd);
   }
+  if (query.leadSourceRange) params.set('leadSourceRange', query.leadSourceRange);
+  if (query.leadSourceRange === 'custom') {
+    if (query.leadSourceStart) params.set('leadSourceStart', query.leadSourceStart);
+    if (query.leadSourceEnd) params.set('leadSourceEnd', query.leadSourceEnd);
+  }
   return params.toString();
 }
 
@@ -25,54 +30,72 @@ export function useDashboard(query: DashboardQuery) {
   const identity = `${tenant?.id ?? user?.tenantId ?? ''}:${user?.id ?? ''}:${user?.role ?? ''}`;
   const queryString = dashboardQueryString(query);
   const key = `${identity}:${queryString}`;
-  const [state, setState] = useState<{ key: string; report: DashboardReport | null; error: string | null }>({ key, report: null, error: null });
+  const baseKey = `${identity}:${dashboardQueryString({ ...query, leadSourceRange: undefined, leadSourceStart: undefined, leadSourceEnd: undefined })}`;
+  const [state, setState] = useState<{ key: string; sourceKey: string; report: DashboardReport | null; error: string | null; sourceError: string | null }>({ key: baseKey, sourceKey: key, report: null, error: null, sourceError: null });
+  const stateRef = useRef(state);
+  stateRef.current = state;
   const [loading, setLoading] = useState(false);
+  const [sourceLoading, setSourceLoading] = useState(false);
   const [connection, setConnection] = useState<'connecting' | 'live' | 'stale'>('connecting');
   const generation = useRef(0);
   const controller = useRef<AbortController | null>(null);
   const activeKey = useRef(key);
   activeKey.current = key;
+  const activeBaseKey = useRef(baseKey);
+  activeBaseKey.current = baseKey;
   const authActions = useRef({ refreshPermissions, refreshUser });
   authActions.current = { refreshPermissions, refreshUser };
   const resetAccess = useCallback(() => {
     generation.current++;
     controller.current?.abort();
     setLoading(false);
-    setState({ key: activeKey.current, report: null, error: 'Your reporting access changed. Try refreshing or contact your administrator.' });
+    setSourceLoading(false);
+    setState({ key: activeBaseKey.current, sourceKey: activeKey.current, report: null, error: 'Your reporting access changed. Try refreshing or contact your administrator.', sourceError: null });
     clearPageCache();
     void Promise.allSettled([authActions.current.refreshPermissions(), authActions.current.refreshUser()]);
   }, []);
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (sourceOnly = false) => {
     if (!user?.id) return false;
     controller.current?.abort();
     const request = new AbortController();
     controller.current = request;
     const current = ++generation.current;
-    setLoading(true);
+    sourceOnly = sourceOnly && stateRef.current.key === baseKey && !!stateRef.current.report;
+    setLoading(!sourceOnly);
+    setSourceLoading(true);
+    setState(previous => ({ ...previous, sourceError: null }));
     try {
       const response = await apiClient.get<{ success: boolean; data: DashboardReport }>(`/reporting/dashboard?${queryString}`, { signal: request.signal });
       if (generation.current !== current || activeKey.current !== key) return false;
-      setState({ key, report: response.data, error: null });
+      setState(previous => {
+        const sameAccess = previous.report?.access && response.data.access && (['deals', 'leads', 'tasks'] as const).every(module => previous.report!.access[module] === response.data.access[module]);
+        return { key: baseKey, sourceKey: key,
+          report: sourceOnly && previous.key === baseKey && sameAccess ? { ...previous.report!, leadSourcePerformance: response.data.leadSourcePerformance } : response.data,
+          error: sourceOnly && sameAccess ? previous.error : null, sourceError: null };
+      });
       return true;
     } catch (error) {
       if (generation.current !== current || activeKey.current !== key || request.signal.aborted) return false;
       const err = error as ApiRequestError;
       if (err.status === 401 || err.status === 403) resetAccess();
-      else setState(previous => ({ key, report: previous.key === key ? previous.report : null, error: err.message || 'Dashboard could not load.' }));
+      else setState(previous => sourceOnly && previous.key === baseKey && previous.report
+        ? { ...previous, sourceKey: key, report: { ...previous.report, leadSourcePerformance: null }, sourceError: err.message || 'Lead Source Performance could not load.' }
+        : { key: baseKey, sourceKey: key, report: previous.key === baseKey ? previous.report : null, error: err.message || 'Dashboard could not load.', sourceError: null });
       setConnection('stale');
       return false;
     } finally {
-      if (generation.current === current) setLoading(false);
+      if (generation.current === current) { setLoading(false); setSourceLoading(false); }
     }
-  }, [user?.id, key, queryString, resetAccess]);
+  }, [user?.id, key, baseKey, queryString, resetAccess]);
   const refreshRef = useRef(refresh);
   refreshRef.current = refresh;
 
   useEffect(() => {
-    setState({ key, report: null, error: null });
-    void refresh();
+    const sourceOnly = stateRef.current.key === baseKey && !!stateRef.current.report;
+    if (!sourceOnly) setState({ key: baseKey, sourceKey: key, report: null, error: null, sourceError: null });
+    void refresh(sourceOnly);
     return () => { generation.current++; controller.current?.abort(); };
-  }, [key, refresh]);
+  }, [key, baseKey, refresh]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -126,5 +149,11 @@ export function useDashboard(query: DashboardQuery) {
       document.removeEventListener('visibilitychange', wake);
     };
   }, [identity, user?.id, resetAccess]);
-  return { report: state.key === key ? state.report : null, error: state.key === key ? state.error : null, loading, connection, refresh };
+  const report = state.key === baseKey ? state.report : null;
+  return {
+    report: report && state.sourceKey !== key ? { ...report, leadSourcePerformance: null } : report,
+    error: state.key === baseKey ? state.error : null,
+    sourceError: state.key === baseKey && state.sourceKey === key ? state.sourceError : null,
+    sourceLoading: sourceLoading || (!!report && state.sourceKey !== key), loading, connection, refresh,
+  };
 }

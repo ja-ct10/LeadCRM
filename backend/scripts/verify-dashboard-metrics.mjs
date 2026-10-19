@@ -2,12 +2,14 @@ import assert from 'node:assert/strict';
 import { resolve } from 'node:path';
 
 // Uses only the parent harness's disposable SQL, real API, sessions and proxy.
-export async function verifyDashboardMetrics({ page, staffPage, base, output, http, prisma, tenant, agent, replacement, pipeline, stages, record, until, wait, expectValue }) {
+export async function verifyDashboardMetrics({ page, staffPage, base, output, http, prisma, tenant, agent, replacement, pipeline, stages, record, until, wait, expectValue, sourceOnly = false }) {
   const money = value => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value);
   const chart = title => page.getByRole('heading', { name: title, exact: true }).locator('..').locator('..');
   const revenue = () => page.getByRole('img', { name: /^Revenue Trend by/ });
   const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
   const fetchReport = query => http(`/reporting/dashboard?${query}`);
+  const overview=page.getByRole('region',{name:'Pipeline Overview',exact:true});
+  const sources=page.getByRole('region',{name:'Lead Source Performance',exact:true});
   const reconcile = report => {
     assert.equal(report.metrics.totalRevenue, report.trend.reduce((sum,row) => sum + row.revenue,0));
     assert.equal(report.metrics.won, report.trend.reduce((sum,row) => sum + row.won,0));
@@ -16,6 +18,11 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     assert.equal(report.metrics.forecastedRevenue, report.metrics.openPipelineValue);
     assert.equal(report.metrics.forecastedRevenue, report.distribution.reduce((sum,row) => sum + row.value,0));
   };
+  if (sourceOnly) {
+    await create('Source chart open pipeline', 2500);
+    await verifySources();
+    return;
+  }
   assert.ok(await page.getByText('No won revenue in the selected period.', { exact: true }).isVisible());
   assert.ok(await page.getByRole('region', { name: 'Pipeline Overview' }).getByText('No open deals.', { exact: true }).isVisible());
   record('Zero revenue, resolved outcomes and current Win Rate have honest empty states');
@@ -54,39 +61,33 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   await page.getByText(/Reporting warnings/).click();
   await page.getByText(/period wins lack verified historical agent attribution/).waitFor();
   await page.getByText(/cohort deals lack a recorded starting milestone/).waitFor();
-  await page.getByText(/deals lack recorded starting history/).waitFor();
   record('Multiple wins group under immutable agent credit; unknown revenue and incomplete funnel history are exposed');
   const initial = await fetchReport('range=thisMonth'); reconcile(initial);
   assert.equal(initial.leaderboard[0].revenue, 1500); assert.equal(initial.leaderboard[0].won, 2);
   assert.equal(initial.conversion.cohort, 7); assert.equal(initial.conversion.qualifiedToWon, null);
-  assert.deepEqual(await page.getByRole('heading', {level:3}).allTextContents(), ['Action Center','Revenue Trend','Pipeline Overview','Conversion Funnel','Sales Leaderboard']);
+  assert.deepEqual(await page.getByRole('heading', {level:3}).allTextContents(), ['Action Center','Revenue Trend','Pipeline Overview','Lead Source Performance','Sales Leaderboard']);
   for (const title of ['Avg Deal Velocity','Deals Won vs. Lost','Pipeline Distribution','Pipeline Value by Stage']) assert.equal(await page.getByText(title,{exact:true}).count(),0);
-  const overview=page.getByRole('region',{name:'Pipeline Overview',exact:true});
   for(const stage of initial.distribution){
     const row=overview.getByRole('listitem',{name:stage.name,exact:true});
     assert.equal(await row.getByRole('meter').getAttribute('aria-valuenow'),String(stage.count));
     assert.equal(await row.getByLabel(money(stage.value),{exact:true}).count(),1);
     assert.equal(await row.getByRole('meter').locator('div').evaluate((bar,color)=>{const probe=document.createElement('span');probe.style.backgroundColor=color;return probe.style.backgroundColor===bar.style.backgroundColor;},stage.color),true);
   }
-  const funnel=page.getByRole('region',{name:'Conversion Funnel',exact:true});
   const currentCounts = report => report.pipeline.stages.slice(0, 4).map(stage => stage.isWon ? report.metrics.currentWon : report.distribution.find(row => row.id === stage.id).count);
-  async function expectFunnel(report, tab = page) {
-    const region = tab.getByRole('region', { name: 'Conversion Funnel', exact: true });
-    const expected = currentCounts(report).map((count, index) => `${report.pipeline.stages[index].name}: ${count} ${count === 1 ? 'deal' : 'deals'}`);
-    await until(async () => JSON.stringify(await region.getByRole('listitem').evaluateAll(rows => rows.map(row => row.getAttribute('aria-label')))) === JSON.stringify(expected), 'Current funnel matches authoritative stage IDs');
-    assert.equal(await region.getByRole('list', { name: 'Current pipeline stages', exact: true }).count(), 1);
-    assert.equal(await region.getByRole('heading', { name: 'Historical Conversion Rates', exact: true }).count(), 1);
-    assert.equal(await region.getByText(/Date filter applies only to historical rates/).count(), 1);
+  async function expectSources(report, tab = page) {
+    const region = tab.getByRole('region', { name: 'Lead Source Performance', exact: true });
+    const expected = report.leadSourcePerformance.sources.map(row => `${row.name}: ${row.won} ${row.won === 1 ? 'won deal' : 'won deals'}`);
+    await until(async () => JSON.stringify(await region.getByRole('listitem').allTextContents()) === JSON.stringify(expected), 'Source chart matches authoritative won Deal counts');
+    assert.equal(await tab.getByRole('region', { name: 'Conversion Funnel', exact: true }).count(), 0);
   }
-  await expectFunnel(initial);
-  assert.deepEqual(await funnel.locator('dl dd').allTextContents(),[initial.conversion.leadToContacted,initial.conversion.contactedToQualified,initial.conversion.qualifiedToWon].map(value=>value==null?'Unavailable':`${value}%`));
+  await expectSources(initial);
   const board=page.getByRole('region',{name:'Sales Leaderboard',exact:true});
   for(const [index,agent] of initial.leaderboard.entries()){
     await board.getByLabel(`Rank ${index+1}`,{exact:true}).waitFor();
     await board.getByText(`${agent.firstName} ${agent.lastName}`,{exact:true}).waitFor();
     assert.equal(await board.getByLabel(money(agent.revenue),{exact:true}).count(),1);
   }
-  record('Dashboard uses exact current API stage counts and colors, separate historical rates and attributed agents');
+  record('Dashboard uses exact current API stage counts and colors, won source counts and attributed agents');
 
   for (const theme of ['light','dark']) {
     await page.evaluate(theme => { localStorage.setItem('app_theme', theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, mode: theme === 'dark' ? 'Dark' : 'Light' } })); }, theme);
@@ -99,11 +100,9 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
       for (const width of [320,375,390,430,768,1024,1440]) {
         await page.setViewportSize({ width, height: 1000 }); await wait(350);
         const dimensions = await page.evaluate(() => ({ width: innerWidth, scrollWidth: document.documentElement.scrollWidth,
-          overflowingRates: [...document.querySelectorAll('section[aria-label="Conversion Funnel"] dd')].filter(value => value.scrollWidth > value.clientWidth + 1).map(value => value.textContent),
           charts: [...document.querySelectorAll('canvas')].map(canvas => { const bounds = canvas.getBoundingClientRect(); return { width: bounds.width, height: bounds.height, left: bounds.left, right: bounds.right, labels: canvas.__labels ?? [] }; }) }));
         assert.ok(dimensions.scrollWidth <= width + 1, JSON.stringify(dimensions));
-        assert.deepEqual(dimensions.overflowingRates, [], 'Unavailable conversion rates fit their cells');
-        assert.equal(dimensions.charts.length, 1);
+        assert.equal(dimensions.charts.length, 2);
         for (const canvas of dimensions.charts) {
           assert.ok(canvas.width > 0 && canvas.height > 0 && canvas.left >= 0 && canvas.right <= width + 1, JSON.stringify(canvas));
           assert.ok(!canvas.labels.some(label => /^\d{4}-\d{2}-\d{2}$/.test(label)), 'Human-readable dates');
@@ -153,30 +152,29 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   assert.equal((await fetchReport('range=custom&start=2020-01-01&end=2020-01-02')).conversion.cohort, 7);
   record('Custom global date filter changes period charts while current KPIs and independent cohort stay consistent');
   await page.goto(base + '/dashboard');
-  await page.getByRole('button', { name: 'Filter Conversion Funnel', exact: true }).waitFor();
-  assert.equal(await page.getByText('Cohort details', {exact:true}).count(), 0);
-  for (const label of ['Week','Month','Year','Custom Range']) {
-    const range = label === 'Custom Range' ? 'custom' : label.toLowerCase();
-    const response = page.waitForResponse(response => response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('funnelRange') === range);
-    await page.getByRole('button', { name: 'Filter Conversion Funnel', exact: true }).click();
+  await page.getByRole('button', { name: 'Lead Source date range', exact: true }).waitFor();
+  for (const [label, range] of [['Last Month','lastMonth'],['Today','today'],['Custom Date Range','custom']]) {
+    const before = await page.getByRole('region', { name: 'Pipeline Overview' }).innerHTML();
+    const response = page.waitForResponse(response => response.url().includes('/reporting/dashboard?') && new URL(response.url()).searchParams.get('leadSourceRange') === range);
+    await page.getByRole('button', { name: 'Lead Source date range', exact: true }).click();
     await page.getByRole('menuitem', { name: label, exact: true }).click();
-    if (label === 'Custom Range') {
-      await page.getByLabel('Funnel From Date', { exact: true }).fill(today);
-      await page.getByLabel('Funnel To Date', { exact: true }).fill(today);
-      await page.getByRole('button', { name: 'Apply funnel dates', exact: true }).click();
+    if (range === 'custom') {
+      await page.getByLabel('Lead Source start date', { exact: true }).fill(today);
+      await page.getByLabel('Lead Source end date', { exact: true }).fill(today);
+      await page.getByRole('button', { name: 'Apply source dates', exact: true }).click();
     }
-    const filteredResponse = await response;
-    assert.equal(new URL(filteredResponse.url()).searchParams.get('range'), 'thisMonth');
-    const result = await filteredResponse.json();
-    assert.equal(result.data.conversion.period.range, range);
-    assert.equal(result.data.metrics.totalRevenue, 6500);
-    assert.deepEqual(currentCounts(result.data), currentCounts(initial));
-    await expectFunnel(result.data);
-    assert.deepEqual(await funnel.locator('dl dd').allTextContents(), [result.data.conversion.leadToContacted, result.data.conversion.contactedToQualified, result.data.conversion.qualifiedToWon].map(rate => rate == null ? 'Unavailable' : `${rate}%`));
-    record(`Independent ${label} historical filter preserves current counts and backend rates`);
+    const filtered = await response; const report = (await filtered.json()).data;
+    assert.equal(new URL(filtered.url()).searchParams.get('range'), 'thisMonth');
+    await until(async () => await sources.getAttribute('aria-busy') === 'false', 'Source chart loaded');
+    if (report.leadSourcePerformance.sources.length) await expectSources(report);
+    else await sources.getByText('No won deals for this period.', { exact: true }).waitFor();
+    assert.equal(await page.getByRole('region', { name: 'Pipeline Overview' }).innerHTML(), before);
+    await expectValue('Total Revenue', money(6500), false);
+    record(`Independent ${label} source filter preserves all other Dashboard metrics`);
   }
-  assert.equal(await page.getByRole('button', { name: 'Dashboard date range', exact: true }).count(), 0);
-  await expectValue('Total Revenue', money(6500), false);
+  await page.getByRole('button', { name: 'Lead Source date range', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'This Month', exact: true }).click();
+  await expectSources(initial);
   const invalid = await create('Metrics missing money', 100, 0);
   await prisma.deal.update({ where: { id: invalid.id }, data: { value: null } });
   await expectValue('Forecasted Revenue', 'Unavailable');
@@ -199,7 +197,7 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
   for (const [index, count] of [17, 1, 2, 1, 3].entries()) {
     for (let i = 0; i < count; i++) snapshotDeals.push({ ...await create(`Snapshot ${stages[index].name} ${i}`, 100, index), stageId: stages[index].id });
   }
-  await expectFunnel(await fetchReport('range=thisMonth'), staffPage);
+  await expectSources(await fetchReport('range=thisMonth'), staffPage);
   const dealsPage = staffPage;
   const dealErrors = [];
   dealsPage.on('pageerror', error => dealErrors.push(error.message));
@@ -212,9 +210,9 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
       assert.deepEqual(stages.map(stage => rows.filter(row => row.stageId === stage.id).length), expected);
       const report = await fetchReport('range=thisMonth');
       assert.deepEqual(currentCounts(report), expected.slice(0, 4));
-      await expectFunnel(report);
+      await expectSources(report);
       await until(async () => JSON.stringify(await boardCounts()) === JSON.stringify(expected.map(String)), 'Deals board agrees with Dashboard');
-      assert.equal(await funnel.getByText('Closed Lost', { exact: true }).count(), 0);
+      assert.equal(await sources.getByText('Closed Lost', { exact: true }).count(), 0);
       return report;
     }
     await compareSnapshot([17, 1, 2, 1, 3]);
@@ -224,13 +222,13 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
       await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((element, dark) => element.classList.contains('dark') === dark, theme === 'dark'), 'Snapshot theme applied');
       for (const width of [320, 375, 390, 430, 768, 1024, 1440]) {
         await page.setViewportSize({ width, height: 1000 }); await wait(250);
-        await funnel.scrollIntoViewIfNeeded();
-        const layout = await funnel.evaluate(region => ({ width: innerWidth, rootWidth: document.documentElement.scrollWidth,
-          clipped: [...region.querySelectorAll('li > div, li > p, h4, dl dd')].filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.textContent) }));
+        await sources.scrollIntoViewIfNeeded();
+        const layout = await sources.evaluate(region => ({ width: innerWidth, rootWidth: document.documentElement.scrollWidth,
+          clipped: [...region.querySelectorAll('h3, button')].filter(node => node.scrollWidth > node.clientWidth + 1).map(node => node.textContent) }));
         assert.ok(layout.rootWidth <= width + 1, JSON.stringify(layout));
         assert.deepEqual(layout.clipped, [], JSON.stringify(layout));
-        await funnel.screenshot({ path: resolve(output, `current-funnel-${theme}-${width}.png`) });
-        record(`Current funnel and historical explanation fit ${theme} ${width}px`, layout);
+        await sources.screenshot({ path: resolve(output, `lead-sources-${theme}-${width}.png`) });
+        record(`Lead Source Performance fits ${theme} ${width}px`, layout);
       }
     }
     await http(`/crm/deals/${snapshotDeals[0].id}/stage`, 'PATCH', { stageId: stages[1].id });
@@ -251,4 +249,67 @@ export async function verifyDashboardMetrics({ page, staffPage, base, output, ht
     error.message += `\nDeals URL: ${dealsPage.url()}\nPage errors: ${JSON.stringify(dealErrors)}\n${await dealsPage.locator('body').innerText().catch(() => '')}`;
     throw error;
   } finally { await dealsPage.close(); }
+
+  await verifySources();
+  async function verifySources() {
+    const stamp = new Date();
+    const longSource = 'A long historical source name that remains accessible when the chart wraps its category labels';
+    const sourceFixtures = [['Social Media Advertisement', 1234], ['Referral', 12], [longSource, 10], ['Website', 8], ['Email Campaign', 5], ['Content Marketing', 4], ['Google Ads', 3], ['Direct Mail', 2], ['Others', 1], [null, 2]];
+    await prisma.deal.createMany({ data: sourceFixtures.flatMap(([leadSource, count]) => Array.from({ length: count }, (_, index) => ({
+      tenantId: tenant.id, pipelineId: pipeline.id, stageId: stages[3].id, title: `Source fixture ${leadSource} ${index}`, leadSource,
+      value: 0, currency: 'PHP', createdAt: new Date(+stamp - 3600000), closedAt: stamp,
+    }))) });
+    const grouped = await fetchReport('range=thisMonth');
+    assert.equal(grouped.leadSourcePerformance.sources.length, 6);
+    assert.equal(grouped.leadSourcePerformance.sources[0].won, 1234);
+    assert.ok(grouped.leadSourcePerformance.sources.some(row => row.name === 'Not specified'));
+    assert.equal(grouped.leadSourcePerformance.sources.filter(row => row.name === 'Others').length, 1);
+    assert.equal(grouped.leadSourcePerformance.sources.reduce((sum, row) => sum + row.won, 0), grouped.metrics.won);
+    await page.goto(base + '/dashboard'); await expectSources(grouped);
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => { localStorage.setItem('app_theme', theme === 'dark' ? 'Dark' : 'Light'); window.dispatchEvent(new CustomEvent('themechange', { detail: { theme, mode: theme === 'dark' ? 'Dark' : 'Light' } })); }, theme);
+      await until(() => page.locator('.crm-shell[data-theme-container]').evaluate((shell, dark) => shell.classList.contains('dark') === dark, theme === 'dark'), 'Source theme applied');
+      for (const width of [320, 375, 390, 430, 768, 1024, 1440]) {
+        await page.setViewportSize({ width, height: 1000 }); await sources.scrollIntoViewIfNeeded(); await wait(1100);
+        const dimensions = await sources.evaluate(region => {
+          const canvas = region.querySelector('canvas'), bounds = canvas.getBoundingClientRect();
+          return { width: innerWidth, rootWidth: document.documentElement.scrollWidth, chartWidth: bounds.width,
+            texts: canvas.__texts ?? [], labels: canvas.__labels ?? [],
+            sections: ['Pipeline Overview', 'Lead Source Performance'].map(name => { const rect = document.querySelector(`section[aria-label="${name}"]`).getBoundingClientRect(); return { x: rect.x, y: rect.y, bottom: rect.bottom, right: rect.right }; }) };
+        });
+        assert.ok(dimensions.rootWidth <= width + 1);
+        for (const row of grouped.leadSourcePerformance.sources) {
+          const count = dimensions.texts.find(text => text.text === String(row.won) && text.align === 'left');
+          assert.ok(count && count.left >= 0 && count.right <= dimensions.chartWidth + 1, JSON.stringify({ row, dimensions }));
+          assert.equal(count.color, theme === 'dark' ? '#f8fafc' : '#0f172a');
+        }
+        assert.ok(dimensions.texts.every(text => text.left >= -1 && text.right <= dimensions.chartWidth + 1), JSON.stringify(dimensions));
+        const [left, right] = dimensions.sections;
+        if (width >= 1024) { assert.ok(Math.abs(left.y - right.y) <= 1); assert.ok(right.x >= left.right); }
+        else assert.ok(right.y >= left.bottom);
+        await sources.screenshot({ path: resolve(output, `lead-sources-full-${theme}-${width}.png`) });
+        record(`Actual source groups, wrapped names and four-digit bar-end counts fit ${theme} ${width}px`, dimensions);
+      }
+    }
+    const pipelineBefore = await overview.innerHTML();
+    let release;
+    const pending = new Promise(resolve => { release = resolve; });
+    const delayed = async route => {
+      if (new URL(route.request().url()).searchParams.get('leadSourceRange') === 'lastMonth') {
+        await pending; await route.fulfill({ status: 503, contentType: 'application/json', body: JSON.stringify({ success: false, error: { message: 'Source filter unavailable' } }) });
+      } else await route.continue();
+    };
+    await page.route('**/api/proxy/reporting/dashboard?*', delayed);
+    await page.getByRole('button', { name: 'Lead Source date range' }).click();
+    await page.getByRole('menuitem', { name: 'Last Month', exact: true }).click();
+    await sources.getByRole('status', { name: 'Loading Lead Source Performance' }).waitFor();
+    assert.equal(await overview.innerHTML(), pipelineBefore);
+    release();
+    await sources.getByRole('alert').filter({ hasText: 'Source filter unavailable' }).waitFor();
+    assert.equal(await overview.innerHTML(), pipelineBefore);
+    await page.unroute('**/api/proxy/reporting/dashboard?*', delayed);
+    await sources.getByRole('button', { name: 'Retry Lead Source Performance' }).click();
+    await sources.getByText('No won deals for this period.', { exact: true }).waitFor();
+    record('Source-only loading, failure, Retry and an empty period preserve Pipeline Overview');
+  }
 }

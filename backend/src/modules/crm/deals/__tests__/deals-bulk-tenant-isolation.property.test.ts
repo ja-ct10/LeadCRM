@@ -1,3 +1,4 @@
+vi.mock('../../customer-classification.service', () => ({ refreshDealClassification: vi.fn().mockResolvedValue(undefined) }));
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import * as fc from 'fast-check';
 

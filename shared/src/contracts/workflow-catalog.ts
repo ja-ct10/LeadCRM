@@ -101,7 +101,7 @@ export const WORKFLOW_TRIGGERS: WorkflowTriggerDefinition[] = [
   ['lead.created', 'Lead Created', 'lead'], ['lead.updated', 'Lead Updated', 'lead'], ['lead.status_changed', 'Lead Status Changed', 'lead'],
   ['contact.created', 'Contact Created', 'contact'], ['contact.updated', 'Contact Updated', 'contact'], ['contact.status_changed', 'Contact Status Changed', 'contact'],
   ['deal.created', 'Deal Created', 'deal'], ['deal.updated', 'Deal Updated', 'deal'], ['deal.stage_changed', 'Deal Stage Changed', 'deal'],
-  ['deal.closed_won', 'Deal Closed Won', 'deal'], ['deal.closed_lost', 'Deal Closed Lost', 'deal'], ['account.updated', 'Account Updated', 'account'],
+  ['deal.closed_won', 'Deal Closed Deal', 'deal'], ['deal.closed_lost', 'Deal Cancelled', 'deal'], ['account.updated', 'Account Updated', 'account'],
 ].map(([type, label, entity]) => ({ type, label, entity: entity as WorkflowEntity, fields: getWorkflowConditionFields(entity as WorkflowEntity, type) }));
 export const findTrigger = (type: string) => WORKFLOW_TRIGGERS.find(trigger => trigger.type === type);
 /** Legacy names map only on exact, unique catalog matches. Unresolved selections remain repairable. */

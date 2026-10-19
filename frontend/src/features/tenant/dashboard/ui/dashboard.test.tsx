@@ -4,9 +4,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { DashboardReport, DashboardQuery } from '@leadcrm/shared';
 import Dashboard from './dashboard';
 
-const mocks = vi.hoisted(() => ({ report: null as DashboardReport | null, query: null as DashboardQuery | null, error: null as string | null, loading: false, refresh: vi.fn(async () => true), charts: [] as any[], success: vi.fn(), failure: vi.fn() }));
+const mocks = vi.hoisted(() => ({ report: null as DashboardReport | null, query: null as DashboardQuery | null, error: null as string | null, loading: false, sourceLoading: false, sourceError: null as string | null, refresh: vi.fn(async () => true), charts: [] as any[], success: vi.fn(), failure: vi.fn() }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: 'agent', firstName: 'Sales' } }) }));
-vi.mock('../hooks/use-dashboard-report', () => ({ useDashboard: (query: DashboardQuery) => { mocks.query = query; return { report: mocks.report, error: mocks.error, loading: mocks.loading, refresh: mocks.refresh }; } }));
+vi.mock('../hooks/use-dashboard-report', () => ({ useDashboard: (query: DashboardQuery) => { mocks.query = query; return { report: mocks.report, error: mocks.error, loading: mocks.loading, sourceLoading: mocks.sourceLoading, sourceError: mocks.sourceError, refresh: mocks.refresh }; } }));
 vi.mock('sonner', () => ({ toast: { success: mocks.success, error: mocks.failure } }));
 vi.mock('react-chartjs-2', () => ({
   Bar: (props: any) => { mocks.charts.push({ type: 'bar', ...props }); return <canvas />; },
@@ -16,10 +16,10 @@ vi.mock('react-chartjs-2', () => ({
 
 beforeEach(() => {
   mocks.charts = [];
-  mocks.loading = false; mocks.error = null;
+  mocks.loading = false; mocks.error = null; mocks.sourceLoading = false; mocks.sourceError = null;
   mocks.refresh.mockResolvedValue(true); mocks.success.mockClear(); mocks.failure.mockClear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
-  const stages = ['Lead','Contacted','Qualified','Closed Won','Closed Lost'].map((name, order) => ({
+  const stages = ['Lead','Contacted','Qualified','Closed Deal','Cancelled'].map((name, order) => ({
     id: ['lead','contacted','qualified','won','lost'][order], name, order, color: '#123456', probability: null,
     isWon: order === 3, isLost: order === 4,
   }));
@@ -33,6 +33,7 @@ beforeEach(() => {
     trend: [{ name: '2020-01-01', revenue: 45000, won: 1, lost: 0 }],
     distribution: stages.slice(0, 3).map(stage => ({ id: stage.id, name: stage.name, color: stage.color,
       count: stage.id === 'lead' ? 3 : 0, value: stage.id === 'lead' ? 225000 : 0, percentage: stage.id === 'lead' ? 100 : 0 })),
+    leadSourcePerformance: { period: { start: '2020-01-01', end: '2020-01-15', timezone: 'Asia/Manila' }, sources: [{ name: 'Referral', won: 12 }, { name: 'Not specified', won: 2 }] },
     conversion: { cohort: 10, missingHistory: 1, period: { start: '2020-01-01', end: '2020-01-15', range: 'month', timezone: 'Asia/Manila', observationCutoff: '2020-01-15T04:00:00Z' },
       stages: stages.map(stage => ({ id: stage.id, name: stage.name, color: stage.color, reached: stage.id === 'lead' ? 9 : 1 })),
       leadToContacted: null, contactedToQualified: null, qualifiedToWon: null, qualifiedToLost: null },
@@ -57,16 +58,16 @@ it('exposes unique backend warnings, cohort totals and incomplete history withou
   expect(screen.getAllByText('Missing historical stage data.')).toHaveLength(1);
   expect(screen.getByText('10 deals in the creation cohort · Historical milestones, not current stages')).toBeTruthy();
   expect(screen.getByText(/1 deals lack recorded starting history/)).toBeTruthy();
-  expect(screen.getByText('Qualified → Closed Won: Unavailable')).toBeTruthy();
+  expect(screen.getByText('Qualified → Closed Deal: Unavailable')).toBeTruthy();
   expect(screen.getByText('Lead: 3 (100%)')).toBeTruthy();
 });
 it('shows backend conversion rates and formats single-bucket revenue and won/lost dates', () => {
   mocks.report!.conversion!.missingHistory = 0;
   mocks.report!.conversion!.qualifiedToWon = 37.5;
   render(<Dashboard presentation="reporting" />);
-  expect(screen.getByText('Qualified → Closed Won: 37.5%')).toBeTruthy();
+  expect(screen.getByText('Qualified → Closed Deal: 37.5%')).toBeTruthy();
   const trend = mocks.charts.find(chart => chart.type === 'area');
-  const outcomes = mocks.charts.find(chart => chart.type === 'bar' && chart.data.datasets[0].label === 'Closed Won');
+  const outcomes = mocks.charts.find(chart => chart.type === 'bar' && chart.data.datasets[0].label === 'Closed Deal');
   expect(trend.data.datasets[0].data).toEqual([45000]);
   expect(trend.options.scales.x.offset).toBe(true);
   expect(trend.options.plugins.tooltip.callbacks.title([{ label: '2020-01-01' }])).toBe('Jan 2020');
@@ -88,7 +89,7 @@ it('uses meaningful revenue and outcome empty states and unavailable monetary da
 it('renders exactly five mapped KPIs and the five requested sections in sample order', () => {
   render(<Dashboard />);
   expect(within(screen.getByLabelText('Dashboard KPIs')).getAllByRole('group').map(group => group.getAttribute('aria-label'))).toEqual(['Revenue', 'Forecast', 'Open Deals', 'Leads', 'Win Rate']);
-  expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Action Center', 'Revenue Trend', 'Pipeline Overview', 'Conversion Funnel', 'Sales Leaderboard']);
+  expect(screen.getAllByRole('heading', { level: 3 }).map(heading => heading.textContent)).toEqual(['Action Center', 'Revenue Trend', 'Pipeline Overview', 'Lead Source Performance', 'Sales Leaderboard']);
   for (const removed of ['Avg Deal Velocity', 'Deals Won vs. Lost', 'Pipeline Distribution', 'Pipeline Value by Stage']) expect(screen.queryByText(removed)).toBeNull();
   expect(within(screen.getByRole('group', { name: 'Revenue' })).getByLabelText('₱45,000.00').textContent).toBe('₱45K');
   expect(within(screen.getByRole('group', { name: 'Forecast' })).getByLabelText('₱225,000.00').textContent).toBe('₱225K');
@@ -110,7 +111,7 @@ it('uses real distribution values, saved colors and count-relative widths, exclu
     { id: 'lead', name: 'Lead', color: '#FFCC00', count: 13, value: 132123, percentage: 72.2 },
     { id: 'contacted', name: 'Contacted', color: '#123456', count: 3, value: 37000, percentage: 16.7 },
     { id: 'qualified', name: 'Qualified', color: '#654321', count: 2, value: null, percentage: 11.1 },
-    { id: 'won', name: 'Closed Won', color: null, count: 8, value: 1000, percentage: 0 },
+    { id: 'won', name: 'Closed Deal', color: null, count: 8, value: 1000, percentage: 0 },
   ];
   render(<Dashboard />);
   const pipeline = within(screen.getByRole('region', { name: 'Pipeline Overview' }));
@@ -125,55 +126,39 @@ it('uses real distribution values, saved colors and count-relative widths, exclu
   expect(within(pipeline.getByRole('listitem', { name: 'Qualified' })).getByText('Unavailable')).toBeTruthy();
 });
 
-it('matches current pipeline counts by stage ID and uses separately labeled backend historical rates', () => {
-  mocks.report!.distribution.forEach((stage, index) => { stage.count = [17, 1, 2][index]; });
-  mocks.report!.distribution.reverse();
-  mocks.report!.metrics.currentWon = 1;
-  mocks.report!.metrics.won = 0;
-  Object.assign(mocks.report!.conversion!, { missingHistory: 0, leadToContacted: 20.8, contactedToQualified: 40, qualifiedToWon: 33.3, qualifiedToLost: 5 });
-  mocks.report!.conversion!.stages.forEach((stage, index) => { stage.reached = [24, 5, 3, 1, 3][index]; });
+it('replaces the Dashboard funnel with backend source counts and a horizontal chart', () => {
   render(<Dashboard />);
-  const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
-  expect(funnel.getByRole('list', { name: 'Current pipeline stages' }).children).toHaveLength(4);
-  expect(funnel.getAllByRole('listitem').map(row => row.getAttribute('aria-label'))).toEqual(['Lead: 17 deals', 'Contacted: 1 deal', 'Qualified: 2 deals', 'Closed Won: 1 deal']);
-  expect(funnel.getByText('Current pipeline stage counts')).toBeTruthy();
-  expect(funnel.getByRole('heading', { name: 'Historical Conversion Rates' })).toBeTruthy();
-  expect(funnel.getByText(/Deals created during the current month · Recorded milestones through today.*Date filter applies only to historical rates/)).toBeTruthy();
-  for (const rate of ['20.8%', '40%', '33.3%']) expect(funnel.getByText(rate)).toBeTruthy();
-  expect(funnel.queryByText('200%')).toBeNull();
-  expect(funnel.queryByText('24')).toBeNull();
-  expect((funnel.getByRole('listitem', { name: 'Lead: 17 deals' }).firstChild as HTMLElement).style.backgroundColor).toBe('rgb(18, 52, 86)');
-  expect(funnel.queryByText(/Closed Lost/)).toBeNull();
-  expect(funnel.queryByText('Cohort details')).toBeNull();
-  expect(funnel.queryByText(/deals in the creation cohort/)).toBeNull();
-  expect(funnel.getAllByRole('term').map(term => term.textContent)).toEqual(['Lead → Contacted', 'Contacted → Qualified', 'Qualified → Closed Won']);
+  const source = within(screen.getByRole('region', { name: 'Lead Source Performance' }));
+  expect(source.getByText('Won Deals by Lead Source')).toBeTruthy();
+  expect(source.getByRole('list').textContent).toBe('Referral: 12 won dealsNot specified: 2 won deals');
+  const chart = mocks.charts.find(chart => chart.type === 'bar');
+  expect(chart.options.indexAxis).toBe('y');
+  expect(chart.data.labels).toEqual(['Referral', 'Not specified']);
+  expect(chart.data.datasets[0].data).toEqual([12, 2]);
+  expect(chart.options.plugins.legend.display).toBe(false);
+  expect(chart.plugins).toHaveLength(1);
+  expect(source.getByRole('button', { name: 'Lead Source date range' }).textContent).toBe('This Month');
+  for (const removed of ['Conversion Funnel', 'Historical Conversion Rates', 'Current pipeline stage counts']) expect(screen.queryByText(removed)).toBeNull();
 });
-it('keeps current counts when history is incomplete or the selected cohort is empty', () => {
+it('distinguishes an empty source period, unavailable access, loading and chart errors', () => {
+  mocks.report!.leadSourcePerformance!.sources = [];
   const view = render(<Dashboard />);
-  const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
-  expect(funnel.getByText('1 deals lack recorded starting history. Historical conversion rates are unavailable.')).toBeTruthy();
-  expect(funnel.getAllByRole('definition').map(rate => rate.textContent)).toEqual(['Unavailable', 'Unavailable', 'Unavailable']);
-  expect(funnel.getByRole('listitem', { name: 'Lead: 3 deals' })).toBeTruthy();
-  mocks.report!.conversion!.cohort = 0;
-  mocks.report!.conversion!.missingHistory = 0;
-  mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
+  const source = within(screen.getByRole('region', { name: 'Lead Source Performance' }));
+  expect(source.getByText('No won deals for this period.')).toBeTruthy();
+  expect(mocks.charts.filter(chart => chart.type === 'bar')).toHaveLength(0);
+  mocks.report!.leadSourcePerformance = null; mocks.sourceLoading = true;
   view.rerender(<Dashboard />);
-  expect(funnel.getByRole('listitem', { name: 'Lead: 3 deals' })).toBeTruthy();
-  expect(funnel.getByRole('listitem', { name: 'Closed Won: 2 deals' })).toBeTruthy();
-  expect(funnel.getAllByRole('definition').map(rate => rate.textContent)).toEqual(['Unavailable', 'Unavailable', 'Unavailable']);
-});
-it('does not substitute zero for unavailable current counts or show counts without Deals access', () => {
-  mocks.report!.metrics.currentWon = null;
-  mocks.report!.distribution = [];
-  const view = render(<Dashboard />);
-  const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
-  expect(funnel.getAllByRole('listitem', { name: /Unavailable/ })).toHaveLength(4);
-  mocks.report!.access.deals = false;
-  mocks.report!.pipeline = null;
-  mocks.report!.conversion = null;
+  expect(source.getByRole('status', { name: 'Loading Lead Source Performance' })).toBeTruthy();
+  expect(screen.getByRole('region', { name: 'Pipeline Overview' })).toBeTruthy();
+  mocks.sourceLoading = false; mocks.sourceError = 'Source request failed';
   view.rerender(<Dashboard />);
-  expect(funnel.getByText('Deal reporting unavailable.')).toBeTruthy();
-  expect(funnel.queryByRole('list')).toBeNull();
+  expect(source.getByRole('alert').textContent).toContain('Source request failed');
+  fireEvent.click(source.getByRole('button', { name: 'Retry Lead Source Performance' }));
+  expect(mocks.refresh).toHaveBeenCalledWith(true);
+  mocks.sourceError = null; mocks.report!.access.deals = false;
+  view.rerender(<Dashboard />);
+  expect(source.getByText('Deal reporting unavailable.')).toBeTruthy();
+  expect(source.queryByRole('img')).toBeNull();
 });
 it('accepts the same normalized official stage names as the backend', () => {
   mocks.report!.distribution[0].name = ' lead ';
@@ -217,13 +202,13 @@ it('renders truthful empty states, zero current counts and unavailable rates', (
   mocks.report!.distribution.forEach(stage => { stage.count = 0; });
   mocks.report!.metrics.currentWon = 0;
   mocks.report!.leaderboard = [];
+  mocks.report!.leadSourcePerformance!.sources = [];
   mocks.report!.conversion!.cohort = 0;
   mocks.report!.conversion!.missingHistory = 0;
   mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
   render(<Dashboard />);
   for (const empty of ['No actions require attention.', 'No won revenue in the selected period.', 'No open deals.', 'No verified eligible sales attribution in this period.']) expect(screen.getByText(empty)).toBeTruthy();
-  expect(screen.getByRole('list', { name: 'Current pipeline stages' }).children).toHaveLength(4);
-  expect(screen.getAllByRole('listitem', { name: /0 deals/ })).toHaveLength(4);
+  expect(screen.getByText('No won deals for this period.')).toBeTruthy();
   expect(within(screen.getByRole('group', { name: 'Forecast' })).getByText('Unavailable')).toBeTruthy();
   expect(screen.queryByRole('meter')).toBeNull();
   expect(mocks.charts).toHaveLength(0);
@@ -232,7 +217,7 @@ it('renders truthful empty states, zero current counts and unavailable rates', (
 it('preserves chart report data, compact ticks, exact tooltips and opt-in data points', () => {
   render(<Dashboard />);
   const trend = mocks.charts.find(chart => chart.type === 'area');
-  expect(mocks.charts).toHaveLength(1);
+  expect(mocks.charts.filter(chart => chart.type === 'area')).toHaveLength(1);
   expect(trend.data.datasets[0].data).toEqual([45000]);
   expect(trend.data.datasets[0].pointRadius).toBe(6);
   expect(trend.options.scales.x.ticks.callback(0)).toBe('Jan');
@@ -263,33 +248,37 @@ it('preserves Reports global, revenue interval and historical funnel filters', (
   expect(mocks.query).toMatchObject({ range: 'custom', start: '2020-01-01', end: '2020-01-02', funnelRange: 'custom', funnelStart: '2020-01-03', funnelEnd: '2020-01-04' });
 });
 
-it('keeps Dashboard on this month while independent chart filters and refresh remain usable', async () => {
+it('keeps source dates independent of Revenue Trend, Pipeline Overview and Sync Metrics', async () => {
   const view = render(<Dashboard />);
   expect(screen.queryByRole('button', { name: 'Dashboard date range' })).toBeNull();
-  expect(screen.getByText(/Welcome back,/)).toBeTruthy();
   expect(screen.getByLabelText('Current date and time')).toBeTruthy();
+  const pipeline = screen.getByRole('region', { name: 'Pipeline Overview' }).innerHTML;
   fireEvent.click(screen.getByRole('button', { name: 'Filter Revenue Trend' }));
   fireEvent.click(screen.getByRole('menuitem', { name: 'Week' }));
-  fireEvent.click(screen.getByRole('button', { name: 'Filter Conversion Funnel' }));
-  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Range' }));
-  fireEvent.change(screen.getByLabelText('Funnel From Date'), { target: { value: '2020-01-03' } });
-  fireEvent.change(screen.getByLabelText('Funnel To Date'), { target: { value: '2020-01-04' } });
-  fireEvent.click(screen.getByRole('button', { name: 'Apply funnel dates' }));
-  expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined, revenueInterval: 'week', funnelRange: 'custom', funnelStart: '2020-01-03', funnelEnd: '2020-01-04' });
-  const before = screen.getByRole('list', { name: 'Current pipeline stages' }).textContent;
-  mocks.report!.conversion!.period = { ...mocks.report!.conversion!.period, range: 'custom', start: '2020-01-03', end: '2020-01-04' };
-  mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
-  view.rerender(<Dashboard />);
-  expect(screen.getByRole('list', { name: 'Current pipeline stages' }).textContent).toBe(before);
-  expect(screen.getByText(/Deals created Jan 3, 2020 – Jan 4, 2020 · Recorded milestones through Jan 4, 2020/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Lead Source date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Last Month' }));
+  expect(mocks.query).toMatchObject({ range: 'thisMonth', revenueInterval: 'week', leadSourceRange: 'lastMonth' });
+  fireEvent.click(screen.getByRole('button', { name: 'Lead Source date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Date Range' }));
+  fireEvent.change(screen.getByLabelText('Lead Source start date'), { target: { value: '2020-01-03' } });
+  fireEvent.change(screen.getByLabelText('Lead Source end date'), { target: { value: '2020-01-04' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply source dates' }));
+  expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined, revenueInterval: 'week', leadSourceRange: 'custom', leadSourceStart: '2020-01-03', leadSourceEnd: '2020-01-04' });
+  expect(screen.getByRole('region', { name: 'Pipeline Overview' }).innerHTML).toBe(pipeline);
   fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
   await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
-  expect(mocks.query!.range).toBe('thisMonth');
-  view.unmount();
-  render(<Dashboard />);
-  expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined, revenueInterval: 'month', funnelRange: 'month' });
+  view.unmount(); render(<Dashboard />);
+  expect(mocks.query).toMatchObject({ range: 'thisMonth', revenueInterval: 'month', leadSourceRange: 'thisMonth' });
 });
-
+it('validates custom source dates without applying invalid ranges', () => {
+  render(<Dashboard />);
+  fireEvent.click(screen.getByRole('button', { name: 'Lead Source date range' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Custom Date Range' }));
+  fireEvent.change(screen.getByLabelText('Lead Source start date'), { target: { value: '2010-01-03' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Apply source dates' }));
+  expect(screen.getByRole('alert').textContent).toContain('maximum two years');
+  expect(mocks.query!.leadSourceRange).toBe('thisMonth');
+});
 it('clears hidden global dates when switching from Reports to Dashboard', () => {
   const view = render(<Dashboard presentation="reporting" />);
   fireEvent.click(screen.getByRole('button', { name: 'Dashboard date range' }));
@@ -307,13 +296,12 @@ it('clears hidden global dates when switching from Reports to Dashboard', () => 
   expect(screen.queryByRole('button', { name: 'Apply dates' })).toBeNull();
 });
 
-it('retains missing conversion data and disables Sync Metrics while loading', () => {
+it('keeps source data and disables Sync Metrics while loading', () => {
   mocks.report!.conversion = null;
   mocks.loading = true;
   render(<Dashboard />);
-  expect(screen.getByText('Deal history unavailable.')).toBeTruthy();
-  expect(screen.getByRole('listitem', { name: 'Lead: 3 deals' })).toBeTruthy();
-  expect(screen.getByRole('listitem', { name: 'Closed Won: 2 deals' })).toBeTruthy();
+  expect(screen.queryByText('Deal history unavailable.')).toBeNull();
+  expect(screen.getByText('Referral: 12 won deals')).toBeTruthy();
   const sync = screen.getByRole('button', { name: 'Syncing…' }) as HTMLButtonElement;
   expect(sync.disabled).toBe(true);
   fireEvent.click(sync);

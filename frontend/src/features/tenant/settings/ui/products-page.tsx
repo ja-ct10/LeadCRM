@@ -62,7 +62,7 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
       if (controller.signal.aborted) return;
       setDeals(result.data); setTotal(result.meta.total);
       setPage(current => Math.min(current, Math.max(1, Math.ceil(result.meta.total / pageSize))));
-    } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to load Closed Won records.'); }
+    } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : 'Unable to load Closed Deal records.'); }
     finally { if (pending.current === controller) { pending.current = null; setLoading(false); } }
   }, [id, page, pageSize, canViewDeals, user?.tenantId]);
   useEffect(() => {
@@ -93,16 +93,16 @@ function ProductView({ initialProduct }: { initialProduct: ProductInterest }) {
         <div><dt className={labelClass}>Updated</dt><dd className="mt-2">{formatDateTime(product.updatedAt)}</dd></div>
       </div>
     </dl>
-    <section className="min-w-0 space-y-3" aria-label="Closed Won">
-      <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Closed Won</h3><div className="flex shrink-0 items-center gap-2">
+    <section className="min-w-0 space-y-3" aria-label="Closed Deal">
+      <div className="flex items-center justify-between gap-2"><h3 className="font-semibold">Closed Deal</h3><div className="flex shrink-0 items-center gap-2">
         {canViewDeals && total !== null && <Badge variant="secondary">{total} {total === 1 ? 'record' : 'records'}</Badge>}
-        {canViewDeals && <RefreshButton label="Refresh Closed Won" refreshing={loading} onClick={loadDeals} />}
+        {canViewDeals && <RefreshButton label="Refresh Closed Deal" refreshing={loading} onClick={loadDeals} />}
       </div></div>
       {!canViewDeals ? <p className="text-sm text-muted-foreground">Deal viewing permission is required.</p> : <>
         {error && <p role="alert" className="text-sm text-destructive">{error}</p>}
         <div className="relative min-h-40 min-w-0 max-w-full" aria-busy={loading}>
-          <DataGrid columns={columns} data={deals} getRowId={row => row.id} height="auto" viewMode="wrap" enableColumnMenu={false} ariaLabel="Closed Won table" emptyMessage={loading || error ? '' : 'No Closed Won records found.'} />
-          {loading && <DataLoadingSpinner label="Loading Closed Won" hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
+          <DataGrid columns={columns} data={deals} getRowId={row => row.id} height="auto" viewMode="wrap" enableColumnMenu={false} ariaLabel="Closed Deal table" emptyMessage={loading || error ? '' : 'No Closed Deal records found.'} />
+          {loading && <DataLoadingSpinner label="Loading Closed Deal" hideLabel className="pointer-events-none absolute left-1/2 top-1/2 z-10 -translate-x-1/2 -translate-y-1/2 rounded-lg bg-card/95 p-3" />}
         </div>
         <LeadsPagination currentPage={page} pageSize={pageSize} totalRecords={total ?? 0} disabled={loading} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} />
       </>}

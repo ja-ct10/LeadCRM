@@ -44,6 +44,8 @@ afterEach(() => { cleanup(); clearPageCache(); vi.unstubAllGlobals(); });
 const confirm = () => fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: /^Restore/ }));
 const writes = () => request.mock.calls.filter(([, options]) => options.method === 'PATCH');
 const removeButton = () => screen.getByRole('button', { name: 'Remove selected archived records from view' });
+const floatingDeleteButton = () => within(screen.getByRole('toolbar', { name: 'Selected row actions' })).getByRole('button', { name: 'Delete' });
+const deleteButton = (source: 'toolbar' | 'selection') => source === 'toolbar' ? removeButton() : floatingDeleteButton();
 const confirmDelete = () => fireEvent.click(within(screen.getByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
 const mutations = () => request.mock.calls.filter(([, options]) => options.method !== 'GET');
 
@@ -95,17 +97,25 @@ it('places the red shared icon button immediately before Refresh and enables it 
   }
   fireEvent.click(button);
   expect(screen.queryByRole('alertdialog')).toBeNull();
+  expect(screen.queryByRole('toolbar', { name: 'Selected row actions' })).toBeNull();
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
   expect(button).toHaveProperty('disabled', false);
+  const selectionBar = screen.getByRole('toolbar', { name: 'Selected row actions' });
+  const restore = within(selectionBar).getByRole('button', { name: 'Restore' });
+  expect(restore.nextElementSibling).toBe(floatingDeleteButton());
+  expect(floatingDeleteButton()).toHaveProperty('disabled', false);
+  expect(floatingDeleteButton().className).toContain('bg-rose-600');
+  expect(floatingDeleteButton().className).toContain('rounded-lg');
   fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
   expect(button).toHaveProperty('disabled', true);
+  expect(screen.queryByRole('toolbar', { name: 'Selected row actions' })).toBeNull();
 });
 
-it('uses standard singular Delete confirmation, cancels unchanged, and removes only the selected UI row', async () => {
+it.each(['toolbar', 'selection'] as const)('uses standard singular Delete confirmation, cancels unchanged, and removes only the selected UI row (%s)', async source => {
   const original = structuredClone(rows);
   render(<ArchivedData />); await screen.findByText('Saved Lead');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
-  fireEvent.click(removeButton());
+  fireEvent.click(deleteButton(source));
   let dialog = screen.getByRole('alertdialog');
   expect(within(dialog).getByRole('heading', { name: 'Delete archived record?' })).toBeTruthy();
   expect(within(dialog).getByText('Are you sure you want to delete this archived record?')).toBeTruthy();
@@ -114,7 +124,8 @@ it('uses standard singular Delete confirmation, cancels unchanged, and removes o
   fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
   expect(screen.getByText('Saved Lead')).toBeTruthy();
   expect(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' })).toHaveProperty('checked', true);
-  fireEvent.click(removeButton());
+  expect(screen.getByText('1 selected')).toBeTruthy();
+  fireEvent.click(deleteButton(source));
   dialog = screen.getByRole('alertdialog');
   const readsBefore = request.mock.calls.length;
   confirmDelete();
@@ -132,13 +143,13 @@ it('uses standard singular Delete confirmation, cancels unchanged, and removes o
   expect(state.success).not.toHaveBeenCalled();
 });
 
-it('removes multiple selected records using plural wording and keeps matching IDs of other types', async () => {
+it.each(['toolbar', 'selection'] as const)('removes multiple selected records using plural wording and keeps matching IDs of other types (%s)', async source => {
   rows = rows.map(record => ({ ...record, id: 'same-id' }));
   const original = structuredClone(rows);
   render(<ArchivedData />); await screen.findByText('Saved Lead');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-same-id' }));
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Account-same-id' }));
-  fireEvent.click(removeButton());
+  fireEvent.click(deleteButton(source));
   expect(screen.getByText('Are you sure you want to delete the selected archived records?')).toBeTruthy();
   expect(screen.getByRole('heading', { name: 'Delete archived records?' })).toBeTruthy();
   confirmDelete();
@@ -237,7 +248,7 @@ it('keeps server page boundaries after partial removal and steps backward throug
 it.each(['tenant', 'user', 'remount'] as const)('resets exclusions and pending Delete confirmation on %s change', async change => {
   const view = render(<ArchivedData />); await screen.findByText('Saved Lead');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
-  fireEvent.click(removeButton()); confirmDelete();
+  fireEvent.click(floatingDeleteButton()); confirmDelete();
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Contact-contact-id' }));
   fireEvent.click(removeButton());
@@ -258,17 +269,22 @@ it('keeps removal separate from Restore permissions and disables removal while r
   const view = render(<ArchivedData />); await screen.findByText('Saved Lead');
   fireEvent.click(screen.getByRole('checkbox', { name: 'Select record Lead-lead-id' }));
   expect(removeButton()).toHaveProperty('disabled', false);
+  expect(floatingDeleteButton()).toHaveProperty('disabled', false);
   let finish!: (response: Response) => void;
   request.mockReturnValueOnce(new Promise(done => { finish = done; }));
   fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
   expect(removeButton()).toHaveProperty('disabled', true);
+  expect(floatingDeleteButton()).toHaveProperty('disabled', true);
   await act(async () => finish(new Response(JSON.stringify({ data: rows, meta: { total: rows.length, page: 1, limit: 25 } }))));
   expect(removeButton()).toHaveProperty('disabled', false);
+  expect(floatingDeleteButton()).toHaveProperty('disabled', false);
   state.canRestore = true; view.rerender(<ArchivedData />);
   const remove = removeButton();
+  const floatingDelete = floatingDeleteButton();
   request.mockReturnValueOnce(new Promise(done => { finish = done; }));
   fireEvent.click(within(screen.getByRole('grid')).getAllByRole('button', { name: 'Restore' })[0]); confirm();
   expect(remove).toHaveProperty('disabled', true);
+  expect(floatingDelete).toHaveProperty('disabled', true);
   await act(async () => finish(new Response(JSON.stringify({ success: true }))));
   await waitFor(() => expect(screen.queryByRole('alertdialog')).toBeNull());
 });

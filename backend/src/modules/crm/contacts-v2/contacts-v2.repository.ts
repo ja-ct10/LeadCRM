@@ -1,4 +1,5 @@
 import { salesContext } from '../leads/sales-context';
+import { assertCustomerStatusEdit, classifyCustomerRecord } from '../customer-classification.service';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
@@ -53,14 +54,14 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const statusFilter = filters.find(filter => filter.field === 'status');
   if (statusFilter && ['in', 'not_in', 'equals'].includes(statusFilter.operator)) {
     const values = Array.isArray(statusFilter.value) ? statusFilter.value : [statusFilter.value];
-    statusFilter.value = values.map(value => CrmStatusSchema.parse(value).toUpperCase());
+    statusFilter.value = values.map(value => CrmStatusSchema.parse(value).toUpperCase().replace(' ', '_'));
     if (statusFilter.operator === 'equals') statusFilter.operator = 'in';
   }
   const clauses = buildPrismaFilters(filters, CONTACT_FILTER_FIELDS);
   clauses.push(...buildSearchClauses(query.search, ['firstName', 'lastName', 'email', 'phone', 'source'], contains => [
     { companyName: contains, ...(!canReadAccount ? { companyFromAccount: false } : {}) },
     ...(canReadAccount ? [{ account: { name: contains } }] : []),
-    ...(['INQUIRY', 'HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED'].includes(contains.contains.toUpperCase()) ? [{ status: contains.contains.toUpperCase() }] : []),
+    ...(['INQUIRY', 'HOT', 'WARM', 'COLD', 'CANCELLED', 'CLOSED_DEAL'].includes(contains.contains.toUpperCase().replace(' ', '_')) ? [{ status: contains.contains.toUpperCase().replace(' ', '_') }] : []),
   ]));
   const scope = filters.find(filter => filter.field === 'scope')?.value;
   if (scope === 'my') clauses.push({ assignedUserId: String(query.currentUserId ?? '') });
@@ -83,7 +84,7 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
 
   // Status filter — value must be a valid ContactStatus enum member
   if (query.status) {
-    where['status'] = CrmStatusSchema.parse(query.status).toUpperCase();
+    where['status'] = CrmStatusSchema.parse(query.status).toUpperCase().replace(' ', '_');
   }
 
   if (query.assignedUserId) {
@@ -140,6 +141,7 @@ export async function createContact(tenantId: string, dto: Record<string, unknow
 }
 
 export async function updateContact(id: string, tenantId: string, dto: Record<string, unknown>, actorId?: string) {
+  const statusAction = dto.status !== undefined && Object.keys(dto).filter(key => dto[key] !== undefined).length === 1;
   const previous = await (salesContext.getStore() ?? prisma).contact.findFirst({ where: { id, tenantId } });
   if (dto.productInterestIds !== undefined && dto.productInterests !== undefined) throw new ValidationError('Supply Product IDs or legacy names, not both.');
   dto.productInterests = await validateProductSnapshots(tenantId, dto.productInterests, previous?.productInterests);
@@ -151,8 +153,9 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     const current = await tx.contact.findFirstOrThrow({ where: { id, tenantId } });
     if (dto.productInterests !== undefined || dto.productInterestIds !== undefined) Object.assign(dto, await productRelationData(tx, 'contact', tenantId, { ids: dto.productInterestIds as string[] | undefined, names: dto.productInterests as string[] | undefined }, current, true));
     const status = dto.status === undefined ? undefined : CrmStatusSchema.parse(dto.status);
-    if (status === 'Closed') {
-      await assertClosedStatus(tx, tenantId, { contactId: id });
+    await assertCustomerStatusEdit(tx, tenantId, { contactId: id }, current, status);
+    if (status === 'Closed Deal') {
+      if (normalizeCrmStatus(current.status) !== status) await assertClosedStatus(tx, tenantId, { contactId: id });
       await finalizeContactLifecycle(tx, tenantId, id, actorId);
     }
     const { customFieldValues, productInterestIds: _productIds, newAccount, ...data } = dto;
@@ -170,13 +173,13 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
     await saveRecordValues(tx, tenantId, 'contacts', id, customFieldValues, actorId);
     const contact = await tx.contact.update({
       where:   { id, tenantId } as never,
-      data: { ...data, ...(status ? { status: contactStatusValue(status), ...(status !== normalizeCrmStatus(current.status) ? { lastStatusChangedAt: new Date() } : {}) } : {}) } as never,
+      data: { ...data, ...(status ? { ...(status !== normalizeCrmStatus(current.status) || statusAction ? { manualCancellation: status === 'Cancelled' } : {}), status: contactStatusValue(status), ...(status !== normalizeCrmStatus(current.status) ? { lastStatusChangedAt: new Date() } : {}) } : {}) } as never,
       include: CONTACT_INCLUDE,
     });
     if (status && actorId && status !== normalizeCrmStatus(current.status)) {
       await tx.activity.create({ data: { tenantId, contactId: id, createdById: actorId, type: 'stage_change', title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: 'Staff changed the CRM status.' } });
-      if (status === 'Cancelled') await cancelOpenDeals(tx, tenantId, actorId, { contactId: id }, 'Staff explicitly cancelled the opportunity.');
     }
+    if (actorId && status === 'Cancelled' && (statusAction || normalizeCrmStatus(current.status) !== status)) await cancelOpenDeals(tx, tenantId, actorId, { contactId: id }, 'Staff explicitly cancelled the opportunity.');
     if (actorId && contact.assignedUserId && contact.assignedUserId !== current.assignedUserId) {
       const assignment = await assignmentSnapshot(tx, tenantId, current.assignedUserId, contact.assignedUserId, actorId);
       await tx.activity.create({ data: {
@@ -184,7 +187,8 @@ export async function updateContact(id: string, tenantId: string, dto: Record<st
         metadata: { assignedUserId: contact.assignedUserId, previousUserId: current.assignedUserId, ...assignment },
       } });
     }
-    return contact;
+    if (actorId) await classifyCustomerRecord(tx, tenantId, { contactId: id }, actorId);
+    return { ...contact, ...await tx.contact.findFirstOrThrow({ where: { tenantId, id } }) };
   });
 }
 

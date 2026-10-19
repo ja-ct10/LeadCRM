@@ -190,7 +190,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
   const getEditorContent = (): string => {
     return safeMailboxHtml(editorRef.current?.innerHTML ?? '');
   };
-  const sourceContext = { composeMode: composeMode || undefined,
+  const sourceContext = { ...(initialDraft?.sourceDealId ? { dealId: initialDraft.sourceDealId } : {}), composeMode: composeMode || undefined,
     replyToMessageId: composeMode === 'reply' || composeMode === 'replyAll' ? sourceMessageId || undefined : undefined,
     forwardSourceMessageId: composeMode === 'forward' ? sourceMessageId || undefined : undefined };
   const sourceRequired = !!initialDraft?.draftContextRequired && (!composeMode || !sourceOptions.some(email => email.id === sourceMessageId));
@@ -251,7 +251,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
       } else {
         const key = JSON.stringify([recipients, subject, htmlBody, currentDraftId, sourceContext]);
         if (sendRequest.current?.key !== key) sendRequest.current = { key, id: crypto.randomUUID() };
-        const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, sourceContext.replyToMessageId, currentDraftId, sourceContext.forwardSourceMessageId, sendRequest.current.id, sourceContext.composeMode);
+        const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, sourceContext.replyToMessageId, currentDraftId, sourceContext.forwardSourceMessageId, sendRequest.current.id, sourceContext.composeMode, sourceContext.dealId);
         if (generation !== operationGeneration.current) return;
         if (initialDraft?.sourceDealId) {
           const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId, messageId: result.messageId };
@@ -301,7 +301,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     try {
       const key = JSON.stringify([to.trim(), subject.trim(), htmlBody, currentDraftId, sourceContext]);
       if (draftRequest.current?.key !== key) draftRequest.current = { key, id: crypto.randomUUID() };
-      const result = await saveGmailDraft(to.trim(), subject.trim(), htmlBody, currentDraftId, sourceContext.replyToMessageId, sourceContext.forwardSourceMessageId, draftRequest.current.id, sourceContext.composeMode);
+      const result = await saveGmailDraft(to.trim(), subject.trim(), htmlBody, currentDraftId, sourceContext.replyToMessageId, sourceContext.forwardSourceMessageId, draftRequest.current.id, sourceContext.composeMode, sourceContext.dealId);
       if (generation !== operationGeneration.current) return;
       setCurrentDraftId(result.draftId);
       setDraftSaved(true);

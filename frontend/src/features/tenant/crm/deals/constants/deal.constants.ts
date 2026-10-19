@@ -5,8 +5,8 @@ export const DEAL_STATUS_LABELS: Record<string, string> = {
   stage_assessment:  'Assessment',
   stage_proposal:    'Proposal',
   stage_negotiation: 'Negotiation',
-  stage_won:         'Closed Won',
-  stage_lost:        'Closed Lost',
+  stage_won:         'Closed Deal',
+  stage_lost:        'Cancelled',
 };
 
 export const DEAL_PRIORITY_COLORS: Record<string, string> = {

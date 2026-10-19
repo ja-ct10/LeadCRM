@@ -64,8 +64,8 @@ async function main() {
           { name: 'Qualified',     order: 2, probability: 30, color: '#3b82f6' },
           { name: 'Proposal Sent', order: 3, probability: 50, color: '#f59e0b' },
           { name: 'Negotiation',   order: 4, probability: 75, color: '#8b5cf6' },
-          { name: 'Closed Won',    order: 5, probability: 100, isWon: true,  color: '#10b981' },
-          { name: 'Closed Lost',   order: 6, probability: 0,   isLost: true, color: '#ef4444' },
+          { name: 'Closed Deal',    order: 5, probability: 100, isWon: true,  color: '#10b981' },
+          { name: 'Cancelled',   order: 6, probability: 0,   isLost: true, color: '#ef4444' },
         ],
       },
     },
@@ -94,7 +94,7 @@ async function main() {
     prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[4].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Sofia', lastName: 'Villanueva', email: 'sofia.v@greentech.ph', phone: '+63 921 500 0005', status: 'WARM', source: 'Trade Show' } }),
     prisma.contact.create({ data: { tenantId: TENANT_ID, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Jerico', lastName: 'Tan', email: 'jerico.tan@gmail.com', phone: '+63 922 600 0006', status: 'WARM', source: 'Website' } }),
     prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[0].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Camille', lastName: 'Bautista', email: 'c.bautista@antigravity.ph', phone: '+63 923 700 0007', status: 'HOT', source: 'Referral', productInterests: ['Workflow Automation'] } }),
-    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Danilo', lastName: 'Cruz', email: 'd.cruz@cloudph.com', phone: '+63 924 800 0008', status: 'CLOSED', lifecycleStage: 'CUSTOMER', source: 'Cold Call' } }),
+    prisma.contact.create({ data: { tenantId: TENANT_ID, accountId: orgs[2].id, assignedUserId: USER_ID, ownerId: USER_ID, firstName: 'Danilo', lastName: 'Cruz', email: 'd.cruz@cloudph.com', phone: '+63 924 800 0008', status: 'CLOSED_DEAL', lifecycleStage: 'CUSTOMER', source: 'Cold Call' } }),
   ]);
   console.log('[Seed] Contacts created.');
 
@@ -104,8 +104,8 @@ async function main() {
     prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Qualified'].id,     assignedUserId: USER_ID, ownerId: USER_ID, title: 'CRM Pro — Nexwave Digital',        value: 120000, currency: 'PHP', priority: 'MEDIUM', expectedCloseDate: new Date(Date.now() + 40 * 86400000) } }),
     prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Negotiation'].id,   assignedUserId: USER_ID, ownerId: USER_ID, title: 'Service Suite — CloudPH Telecom',  value: 650000, currency: 'PHP', priority: 'HIGH',   expectedCloseDate: new Date(Date.now() + 10 * 86400000) } }),
     prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Lead'].id,          assignedUserId: USER_ID, ownerId: USER_ID, title: 'CRM Starter — BrightPath BPO',    value: 75000,  currency: 'PHP', priority: 'LOW',    expectedCloseDate: new Date(Date.now() + 55 * 86400000) } }),
-    prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Closed Won'].id,    assignedUserId: USER_ID, ownerId: USER_ID, title: 'CRM Enterprise — CloudPH Won',    value: 820000, currency: 'PHP', priority: 'HIGH',   expectedCloseDate: new Date(Date.now() - 5 * 86400000) } }),
-    prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Closed Lost'].id,   assignedUserId: USER_ID, ownerId: USER_ID, title: 'CRM Pro — GreenTech (Lost)',      value: 95000,  currency: 'PHP', priority: 'MEDIUM', expectedCloseDate: new Date(Date.now() - 15 * 86400000), lostReason: 'Budget constraints' } }),
+    prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Closed Deal'].id,    assignedUserId: USER_ID, ownerId: USER_ID, title: 'CRM Enterprise — CloudPH Won',    value: 820000, currency: 'PHP', priority: 'HIGH',   expectedCloseDate: new Date(Date.now() - 5 * 86400000) } }),
+    prisma.deal.create({ data: { tenantId: TENANT_ID, pipelineId: pipeline.id, stageId: sm['Cancelled'].id,   assignedUserId: USER_ID, ownerId: USER_ID, title: 'CRM Pro — GreenTech (Lost)',      value: 95000,  currency: 'PHP', priority: 'MEDIUM', expectedCloseDate: new Date(Date.now() - 15 * 86400000), lostReason: 'Budget constraints' } }),
   ]);
   console.log('[Seed] Deals created.');
 

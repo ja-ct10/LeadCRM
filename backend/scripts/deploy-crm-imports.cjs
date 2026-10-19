@@ -155,6 +155,8 @@ function deploymentPlan(records, localNames) {
     '20261219000000_deal_address_source',
     // Coordinated Deal contract retirement; SQL blocks unresolved executable references.
     '20261219000000_remove_deal_industry',
+    // Coordinated customer enum/stage rename and additive Deal evidence; no deferred columns are used.
+    '20261220000000_deal_engagement',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

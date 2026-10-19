@@ -28,7 +28,7 @@ export const onboardingTopics = [
     features: [
       ['Connect the context', 'Link Deals to customer records and record Product Interest.'],
       ['Keep the pipeline current', 'Review pipeline stage, Deal value, and expected close date.'],
-      ['Close with complete details', 'Resolve the required Deal information and any validation shown before marking Closed Won.'],
+      ['Close with complete details', 'Resolve the required Deal information and any validation shown before marking Closed Deal.'],
     ], note: 'Deal stages change through permitted user actions or configured Workflows.',
   },
   {

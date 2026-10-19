@@ -38,7 +38,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   }
   const close = (id: string) => scope(async () => {
     const result = await saveValues(tenantId, adminId, id, { values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': new Date().toISOString().slice(0, 10) } });
-    if (!result.locked) await moveDealStage(id, tenantId, stages['Closed Won'], adminId);
+    if (!result.locked) await moveDealStage(id, tenantId, stages['Closed Deal'], adminId);
     return { ...result, locked: true };
   });
   beforeAll(async () => {
@@ -67,12 +67,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const activity = await prisma.activity.create({ data: { tenantId, leadId: lead.id, createdById: adminId, type: 'note', title: 'Original audit history' } });
     const result = await close(deals[0].id); expect(result.locked).toBe(true);
     const saved = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
-    expect(saved).toMatchObject({ status: 'Closed', isArchived: false }); expect(saved.convertedAt).not.toBeNull();
+    expect(saved).toMatchObject({ status: 'Inquiry', isArchived: false }); expect(saved.convertedAt).not.toBeNull();
     const contact = await prisma.contact.findUniqueOrThrow({ where: { id: saved.contactId! } });
-    expect(contact).toMatchObject({ status: 'CLOSED', accountId: saved.accountId, assignedUserId: agentId });
+    expect(contact).toMatchObject({ status: 'INQUIRY', lifecycleStage: 'CUSTOMER', accountId: saved.accountId, assignedUserId: agentId });
     expect(saved.accountId).toBeTruthy();
     expect((await call(`/crm/leads?search=${lead.email}`)).body.data).toEqual([]);
-    expect((await call(`/crm/contacts/${contact.id}`)).body.data.status).toBe('Closed');
+    expect((await call(`/crm/contacts/${contact.id}`)).body.data.status).toBe('Inquiry');
     expect((await call(`/crm/contacts/${contact.id}/relationships`)).body.data.activities.map((row: { id: string }) => row.id)).toContain(activity.id);
     for (const original of deals) {
       const persisted = await prisma.deal.findUniqueOrThrow({ where: { id: original.id }, include: { leadDeals: true } });
@@ -81,7 +81,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     }
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[1].id } })).stageId).toBe(stages.Qualified);
     expect(await prisma.activity.count({ where: { leadId: lead.id, type: 'conversion' } })).toBe(1);
-    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Closed Won'], adminId));
+    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Closed Deal'], adminId));
     expect(await prisma.activity.count({ where: { leadId: lead.id, type: 'conversion' } })).toBe(1);
   });
   it('reuses normalized email and company identity while retaining prior Contact history', async () => {
@@ -107,27 +107,26 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Qualified);
     expect(await prisma.account.count({ where: { tenantId, name: 'Rollback Company' } })).toBe(0);
   });
-  it('manual Closed update requires successful Won and then performs the same conversion', async () => {
+  it('rejects direct calculated status edits and converts through the confirmed winning workflow', async () => {
     const { lead, deals } = await customer(null, 1);
-    await expect(scope(() => updateLead(lead.id, tenantId, { status: 'Closed' }, adminId))).rejects.toThrow('Closed Won');
-    await prisma.deal.update({ where: { id: deals[0].id }, data: { stageId: stages['Closed Won'], wonConfirmedAt: new Date(), wonConfirmedById: adminId } });
-    await scope(() => updateLead(lead.id, tenantId, { status: 'Closed' }, adminId));
+    await expect(scope(() => updateLead(lead.id, tenantId, { status: 'Closed Deal' }, adminId))).rejects.toThrow('calculated');
+    await close(deals[0].id);
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).contactId).toBeTruthy();
   });
   it('conversion endpoint reuses explicit relations and is idempotent', async () => {
     const { lead, deals } = await customer('Do not duplicate company', 1);
     const account = await prisma.account.create({ data: { tenantId, name: 'Explicit company' } });
     const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Known', lastName: 'Person', email: 'different@example.test', accountId: account.id } });
-    await prisma.deal.update({ where: { id: deals[0].id }, data: { accountId: account.id, stageId: stages['Closed Won'], wonConfirmedAt: new Date() } });
+    await prisma.deal.update({ where: { id: deals[0].id }, data: { accountId: account.id, stageId: stages['Closed Deal'], wonConfirmedAt: new Date() } });
     const result = await call(`/crm/leads/${lead.id}/convert`, 'POST', { contactId: contact.id });
-    expect(result.status).toBe(200); expect(result.body.data.contact).toMatchObject({ id: contact.id, status: 'Closed', accountId: account.id });
+    expect(result.status).toBe(200); expect(result.body.data.contact).toMatchObject({ id: contact.id, status: 'Closed Deal', accountId: account.id });
     expect((await call(`/crm/leads/${lead.id}/convert`, 'POST', {})).status).toBe(200);
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'conversion' } })).toBe(1);
   });
-  it.each([null, 'Lead', 'Contacted', 'Qualified', 'Closed Lost', 'Closed Won'])('basic conversion preserves %s Deals and actual customer evidence on concurrent retries', async stage => {
+  it.each([null, 'Lead', 'Contacted', 'Qualified', 'Cancelled', 'Closed Deal'])('basic conversion preserves %s Deals and actual customer evidence on concurrent retries', async stage => {
     const { lead, deals } = await customer(`Conversion ${randomUUID()}`, stage ? 1 : 0);
     const confirmedAt = new Date('2026-10-01T08:00:00Z');
-    if (stage) await prisma.deal.update({ where: { id: deals[0].id }, data: { stageId: stages[stage], ...(stage === 'Closed Won' ? { wonConfirmedAt: confirmedAt, wonConfirmedById: adminId, closingSnapshot: { genuine: true } } : {}) } });
+    if (stage) await prisma.deal.update({ where: { id: deals[0].id }, data: { stageId: stages[stage], ...(stage === 'Closed Deal' ? { wonConfirmedAt: confirmedAt, wonConfirmedById: adminId, closingSnapshot: { genuine: true } } : {}) } });
     const beforeDeal = stage ? await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } }) : null;
     const original = await prisma.activity.create({ data: { tenantId, leadId: lead.id, createdById: adminId, type: 'note', title: 'Preserved original activity' } });
     const responses = await Promise.all([call(`/crm/leads/${lead.id}/convert`, 'POST', {}), call(`/crm/leads/${lead.id}/convert`, 'POST', {})]);
@@ -135,7 +134,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const saved = await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } });
     const contact = await prisma.contact.findUniqueOrThrow({ where: { id: saved.contactId! } });
     expect(saved.status).toBe(lead.status); expect(saved.convertedAt).not.toBeNull();
-    expect(contact).toMatchObject({ assignedUserId: agentId, lifecycleStage: stage === 'Closed Won' ? 'CUSTOMER' : 'CONTACT', customerSince: stage === 'Closed Won' ? confirmedAt : null });
+    expect(contact).toMatchObject({ assignedUserId: agentId, lifecycleStage: stage === 'Closed Deal' ? 'CUSTOMER' : 'CONTACT', customerSince: stage === 'Closed Deal' ? confirmedAt : null });
     expect(await prisma.contact.count({ where: { tenantId, email: lead.email } })).toBe(1);
     expect(await prisma.account.count({ where: { tenantId, name: lead.companyName! } })).toBe(1);
     expect(await prisma.activity.count({ where: { tenantId, leadId: lead.id, type: 'conversion' } })).toBe(1);
@@ -151,7 +150,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     const { deals } = await customer(null, 1);
     await scope(() => saveValues(tenantId, adminId, deals[0].id, { values: { 'closing-notes': 'Optional note' } }));
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Qualified);
-    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Closed Won'], adminId));
+    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Closed Deal'], adminId));
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).wonConfirmedAt).not.toBeNull();
   });
   it('creates separate custom-field rows, updates by ID, preserves values and enforces RBAC', async () => {
@@ -166,7 +165,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).closingValues).toMatchObject({ [field.id]: 'Existing evidence' });
     expect((await call('/administration/closing-requirements', 'POST', input, agentToken)).status).toBe(403);
   });
-  it('engagement updates status but retired configuration cannot enable Deal-stage changes', async () => {
+  it('unattributed replies cannot change Deal engagement or move stages', async () => {
     const { lead, deals } = await customer(null);
     await prisma.deal.updateMany({ where: { leadDeals: { some: { leadId: lead.id } } }, data: { stageId: stages.Lead, stageChangedAt: before } });
     const account = await prisma.emailAccount.create({ data: { tenantId, userId: agentId, email: 'sales@camxian.com', accessToken: 'test-only', scopes: [], syncCursor: 'initialized', connectedAt: before } });
@@ -174,7 +173,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
       body: 'We want to proceed with the product purchase.', snippet: 'Purchase request', date: new Date().toISOString(), isRead: false, labels: ['INBOX'] });
     const rights = { leadsView: true, contactsView: true, leadsEdit: true, contactsEdit: true, dealsEdit: true, dealsView: true };
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Warm');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Inquiry');
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);
     await scope(() => ingestMailboxMessages(account, [message('Camera quotation')], rights));
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: deals[0].id } })).stageId).toBe(stages.Lead);
@@ -183,7 +182,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
     await scope(() => ingestMailboxMessages(account, [message('Product quotation')], rights));
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
     await scope(() => ingestMailboxMessages(account, [{ ...message('Camera cancellation'), body: 'Please cancel my order. We are no longer interested.' }], rights));
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Warm');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: lead.id } })).status).toBe('Inquiry');
     expect(await prisma.deal.count({ where: { leadDeals: { some: { leadId: lead.id } }, stageId: stages.Lead } })).toBe(2);
   });
   it('delivers role/owner notifications, deduplicates retries and never creates a foreign recipient', async () => {
@@ -258,7 +257,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_compl
   it('delivers reassignment, lost, failure and mailbox alerts once to the correct roles', async () => {
     const { lead, deals } = await customer(null, 1);
     await scope(() => updateLead(lead.id, tenantId, { assignedUserId: otherAgentId }, adminId));
-    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Closed Lost'], adminId, undefined, undefined, 'Customer declined'));
+    await scope(() => moveDealStage(deals[0].id, tenantId, stages['Cancelled'], adminId, undefined, undefined, 'Customer declined'));
     const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Failed workflow', trigger: 'lead.created', actions: [] } });
     const trigger = await prisma.workflowTriggerRecord.create({ data: { tenantId, workflowId: workflow.id, triggerType: 'lead.created', entityType: 'Lead', entityId: lead.id } });
     await prisma.workflowExecutionRun.create({ data: { tenantId, workflowId: workflow.id, triggerId: trigger.id, entityType: 'Lead', entityId: lead.id, status: 'failed', completedAt: new Date() } });
