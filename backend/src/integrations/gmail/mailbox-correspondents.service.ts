@@ -9,10 +9,10 @@ import { scopedMessagesWhere } from './mailbox-scope';
 import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.service';
 
 type DetailRow = { id: string; threadId: string; providerMessageId: string; sentAt: Date; threadStart: Date;
-  messageCount: number; leadIds: string[]; contactIds: string[] };
+  messageCount: number; leadIds: string[]; contactIds: string[];
+  effectiveDealId: string | null; effectiveDealTitle: string | null };
 
-/** Thread blocks are ordered by first authorized activity, then provider ID;
- * messages inside each block are oldest first. Cursor pages can split a block. */
+/** Open the latest page of the selected group; older pages retain chronological display. */
 export async function readMailboxCorrespondent(tenantId: string, userId: string, conversationId: string, input: unknown) : Promise<MailboxConversationDetail> {
   const options = MailboxConversationPageSchema.parse(input);
   const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
@@ -26,7 +26,7 @@ export async function readMailboxCorrespondent(tenantId: string, userId: string,
     } catch { throw new AppError('Invalid conversation history page.', 400); }
     if (cursor.context !== context) throw new AppError('Conversation changed. Reload its history.', 400, 'MAILBOX_PAGE_CHANGED');
   }
-  const after = cursor ? Prisma.sql`(t."threadStart", e."threadId", e."sentAt", e."providerMessageId") >
+  const after = cursor ? Prisma.sql`(t."threadStart", e."threadId", e."sentAt", e."providerMessageId") <
     ((${cursor.threadStart}::timestamptz AT TIME ZONE 'UTC'), ${cursor.threadId}, (${cursor.date}::timestamptz AT TIME ZONE 'UTC'), ${cursor.id})` : Prisma.sql`TRUE`;
   const rows = await mailboxReadQuery<DetailRow[]>(account, Prisma.sql`
     WITH ${correspondentCte(account, scope)}, history AS (
@@ -36,11 +36,11 @@ export async function readMailboxCorrespondent(tenantId: string, userId: string,
         array_remove(array_agg(DISTINCT "leadId"), NULL) AS "leadIds",
         array_remove(array_agg(DISTINCT "contactId"), NULL) AS "contactIds" FROM history GROUP BY "threadId"
     )
-    SELECT e.id, e."threadId", e."providerMessageId", e."sentAt", t.*, (SELECT count(*)::int FROM history) AS "messageCount"
+    SELECT e.id, e."threadId", e."providerMessageId", e."sentAt", e."effectiveDealId", e."effectiveDealTitle", t.*, (SELECT count(*)::int FROM history) AS "messageCount"
     FROM history e JOIN topics t ON t."threadId" = e."threadId" WHERE ${after}
-    ORDER BY t."threadStart", e."threadId", e."sentAt", e."providerMessageId" LIMIT ${options.maxResults + 1}`);
+    ORDER BY t."threadStart" DESC, e."threadId" DESC, e."sentAt" DESC, e."providerMessageId" DESC LIMIT ${options.maxResults + 1}`);
   if (!rows.length) throw new AppError('Conversation is outside your assigned CRM mailbox scope.', 404);
-  const page = rows.slice(0, options.maxResults);
+  const page = rows.slice(0, options.maxResults).reverse();
   // Recheck ORM scope before materializing bodies; no provider reads or N+1 queries.
   const saved = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { id: { in: page.map(row => row.id) } }] } });
   if (saved.length !== page.length) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
@@ -60,19 +60,15 @@ export async function readMailboxCorrespondent(tenantId: string, userId: string,
       leadDeals: { select: { leadId: true } }, contactDeals: { select: { contactId: true } } },
   }) : [];
   const belongs = (deal: typeof deals[number], link: CustomerLink) => link.leadId ? deal.leadDeals.some(item => item.leadId === link.leadId) : deal.contactDeals.some(item => item.contactId === link.contactId);
-  const associations = permissions.dealsView ? await prisma.mailboxThreadAssociation.findMany({ where: { tenantId, accountId: account.id, threadId: { in: topics.map(row => row.threadId) } } }) : [];
   for (const email of emails) {
-    const link: CustomerLink | undefined = email.leadId ? { leadId: email.leadId } : email.contactId ? { contactId: email.contactId } : undefined;
-    if (email.dealId && (!link || !deals.some(deal => deal.id === email.dealId && belongs(deal, link)))) email.dealId = undefined;
-    const association = associations.find(row => row.threadId === email.threadId);
-    if (link && !email.dealId && association && deals.some(deal => deal.id === association.dealId && belongs(deal, link))) {
-      email.dealId = association.dealId; email.needsDealAssociation = false;
-    }
+    const row = page.find(row => row.providerMessageId === email.id)!;
+    email.dealId = row.effectiveDealId; email.dealTitle = row.effectiveDealTitle;
+    if (email.dealId) email.needsDealAssociation = false;
   }
   const current = await authorizedMailbox(tenantId, userId);
   if (current.account.id !== account.id || current.scope.hash !== scope.hash) throw new AppError('Mailbox assignments changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
-  const last = page[page.length - 1];
-  return { emails, messageCount: rows[0].messageCount,
+  const last = page[0];
+  return { emails, messageCount: rows[0].messageCount, dealId: rows[0].effectiveDealId, dealTitle: rows[0].effectiveDealTitle,
     threads: topics.map(topic => {
       const link = links.get(topic.threadId);
       return { threadId: topic.threadId, canAssociateDeal: !!link && permissions.dealsEdit && permissions.dealsView,

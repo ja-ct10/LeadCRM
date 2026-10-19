@@ -10,6 +10,7 @@ import {
   disconnect,
   trash,
   archive,
+  restore,
   saveDraftHandler,
   deleteDraftHandler,
   sync,
@@ -73,6 +74,7 @@ router.post('/gmail/send', send);
 router.post('/gmail/disconnect', disconnect);
 router.post('/gmail/trash', trash);
 router.post('/gmail/archive', archive);
+router.post('/gmail/restore', restore);
 router.post('/gmail/drafts', saveDraftHandler);
 router.delete('/gmail/drafts/:draftId', deleteDraftHandler);
 

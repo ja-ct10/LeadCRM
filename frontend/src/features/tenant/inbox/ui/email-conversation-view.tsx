@@ -1,9 +1,11 @@
 'use client';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Archive, ArrowLeft, Loader2, MoreHorizontal, Trash2 } from 'lucide-react';
+import { Archive, ArrowLeft, Briefcase, Inbox, Loader2, MoreHorizontal, Trash2 } from 'lucide-react';
 import { Badge } from '@/shared/components/ui/badge';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
-import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, type GmailEmail } from '../services/gmail.service';
+import { fetchGmailThread, fetchGmailCorrespondent, associateThreadDeal, archiveGmailThread, trashGmailThread, archiveGmailConversations, trashGmailConversations, restoreGmailConversations, type GmailEmail } from '../services/gmail.service';
+import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dialog';
+import { toast } from 'sonner';
 import type { MailboxConversationDetail } from '@leadcrm/shared';
 import { conversationNames, emailAddress, forwardDraft, replyDraft, type MailboxComposeDraft } from '../services/email-presentation';
 import type { ApiRequestError } from '@/lib/api/client';
@@ -19,9 +21,10 @@ function TopicDealSelector({ topic, disabled, onAssociate }: { topic: MailboxCon
     <button type="submit" disabled={!dealId || disabled} className={control}>Associate Deal</button>
   </form>;
 }
-export default function EmailConversationView({ email, mailboxEmail, revision = 0, retryAt = 0, readError, readPending = false, onRetryRead, onBack, onEmailsChanged }: {
+export default function EmailConversationView({ email, originView = 'inbox', mailboxEmail, revision = 0, retryAt = 0, readError, readPending = false, onRetryRead, onBack, onEmailsChanged }: {
   email: GmailEmail; mailboxEmail?: string; revision?: number; retryAt?: number; onBack: (error?: string) => void; onEmailsChanged: () => void;
   readError?: string; readPending?: boolean; onRetryRead?: () => void;
+  originView?: 'inbox' | 'archived';
 }) {
   const [messages, setMessages] = useState<GmailEmail[]>([email]);
   const [topics, setTopics] = useState<MailboxConversationDetail['threads']>([]);
@@ -34,6 +37,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
   const [deals, setDeals] = useState<{ id: string; title: string; stage: string }[]>([]);
   const [canAssociate, setCanAssociate] = useState(false);
   const [busy, setBusy] = useState(false), [draft, setDraft] = useState<MailboxComposeDraft | null>(null);
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [refresh, setRefresh] = useState(0), [cooldown, setCooldown] = useState(0);
   const pending = useRef(false);
   const callbacks = useRef({ onBack, onEmailsChanged }); callbacks.current = { onBack, onEmailsChanged };
@@ -52,7 +56,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
     const request = email.conversationId ? fetchGmailCorrespondent(email.conversationId, undefined, controller.signal) : fetchGmailThread(email.threadId, controller.signal);
     request.then(result => {
       if (!active || generation !== historyGeneration.current) return;
-      const ordered: GmailEmail[] = email.conversationId ? result.emails : [...result.emails].sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id.localeCompare(b.id));
+      const ordered: GmailEmail[] = [...result.emails].sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id.localeCompare(b.id));
       setMessages(ordered); setError(''); setNextPageToken(result.nextPageToken);
       if ('threads' in result) { setTopics(result.threads); setMessageCount(result.messageCount); }
       else { setDeals(result.dealOptions); setCanAssociate(result.canAssociateDeal); setMessageCount(ordered.length); }
@@ -69,7 +73,7 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
       const controller = new AbortController(); historyController.current = controller;
       const result = await fetchGmailCorrespondent(email.conversationId, nextPageToken, controller.signal);
       if (generation !== historyGeneration.current) return;
-      setMessages(previous => [...new Map([...previous, ...result.emails].map(message => [message.id, message])).values()]);
+      setMessages(previous => [...new Map([...previous, ...result.emails].map(message => [message.id, message])).values()].sort((a, b) => Date.parse(a.date) - Date.parse(b.date) || a.id.localeCompare(b.id)));
       setTopics(previous => [...new Map([...previous, ...result.threads].map(topic => [topic.threadId, topic])).values()]);
       setNextPageToken(result.nextPageToken); setMessageCount(result.messageCount);
       const latestId = [...messages, ...result.emails].reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined)?.id;
@@ -81,13 +85,23 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
     } finally { historyPending.current = false; if (generation === historyGeneration.current) setLoading(false); }
   };
   const mutate = async (action: () => Promise<unknown>, goBack = false) => {
-    if (pending.current || paused) return;
+    if (pending.current || paused) return false;
     pending.current = true; setBusy(true); setError('');
-    try { await action(); callbacks.current.onEmailsChanged(); if (goBack) callbacks.current.onBack(); else setRefresh(value => value + 1); }
-    catch (error) { failure(error); }
+    try {
+      const result = await action() as { success?: boolean; error?: string } | undefined;
+      callbacks.current.onEmailsChanged();
+      if (result?.success === false) { setRefresh(value => value + 1); throw new Error(result.error || 'Some messages could not be updated. Retry the remaining messages.'); }
+      if (goBack) callbacks.current.onBack(); else setRefresh(value => value + 1);
+      return true;
+    }
+    catch (error) { callbacks.current.onEmailsChanged(); failure(error); return false; }
     finally { pending.current = false; setBusy(false); }
   };
   const latest = messages.reduce<GmailEmail | undefined>((latest, message) => !latest || Date.parse(message.date) >= Date.parse(latest.date) ? message : latest, undefined);
+  const archive = () => originView === 'archived' && email.conversationId
+    ? restoreGmailConversations([email.conversationId])
+    : email.conversationId ? archiveGmailConversations([email.conversationId]) : archiveGmailThread(email.threadId);
+  const remove = () => email.conversationId ? trashGmailConversations([email.conversationId]) : trashGmailThread(email.threadId);
   const participantNames = conversationNames({ ...email, participants: email.participants?.filter(name => name !== 'You') }, mailboxEmail);
   const participantAddresses = email.correspondentAddresses ?? (email.direction === 'outbound' ? [...email.to, ...(email.cc ?? [])] : [email.from]).map(emailAddress).filter(address => address.toLowerCase() !== mailboxEmail?.toLowerCase());
   const isExpanded = (message: GmailEmail) => expanded[message.id] ?? message.id === latest?.id;
@@ -97,16 +111,17 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
   }
   return <div className="flex h-full min-h-0 min-w-0 flex-col">
     <div role="toolbar" aria-label="Conversation actions" className="flex shrink-0 items-center gap-1 border-b border-border px-2 py-2 sm:px-4">
-      <button type="button" title="Back to inbox" aria-label="Back to inbox" className={mailboxIconButton} onClick={() => onBack()}><ArrowLeft size={18} /></button>
+      <button type="button" title={originView === 'archived' ? 'Back to Archived Messages' : 'Back to inbox'} aria-label={originView === 'archived' ? 'Back to Archived Messages' : 'Back to inbox'} className={mailboxIconButton} onClick={() => onBack()}><ArrowLeft size={18} /></button>
       <span className="min-w-0 flex-1 truncate text-sm font-semibold">Email Thread</span>
       {busy && <Loader2 aria-label="Updating conversation" className="h-4 w-4 animate-spin text-muted-foreground" />}
-      <button type="button" title={email.conversationId ? 'Archive all authorized messages in this history' : 'Archive conversation'} aria-label="Archive conversation" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => void mutate(() => email.conversationId ? archiveGmailConversations([email.conversationId]) : archiveGmailThread(email.threadId), true)}><Archive size={18} /></button>
-      <button type="button" title={email.conversationId ? 'Move all authorized messages in this history to trash' : 'Move conversation to trash'} aria-label="Move conversation to trash" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => void mutate(() => email.conversationId ? trashGmailConversations([email.conversationId]) : trashGmailThread(email.threadId), true)}><Trash2 size={18} /></button>
+      <button type="button" title={originView === 'archived' ? 'Restore to Inbox' : 'Archive conversation'} aria-label={originView === 'archived' ? 'Restore conversation' : 'Archive conversation'} disabled={loading || busy || paused || !latest || originView === 'inbox' && email.canArchive === false} className={mailboxIconButton} onClick={() => void mutate(archive, true).then(success => { if (success) toast.success(originView === 'archived' ? 'Messages restored to Inbox' : 'Messages archived'); })}>{originView === 'archived' ? <Inbox size={18} /> : <Archive size={18} />}</button>
+      <button type="button" title="Delete Permanently — move messages to Gmail Trash" aria-label="Delete Permanently" disabled={loading || busy || paused || !latest} className={mailboxIconButton} onClick={() => setConfirmOpen(true)}><Trash2 size={18} /></button>
     </div>
     <div className="min-h-0 min-w-0 flex-1 overflow-y-auto">
       <header className="space-y-1 border-b border-border px-3 py-3 sm:px-6">
         <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
           <h1 className="min-w-0 text-base font-semibold [overflow-wrap:anywhere]">{participantNames}</h1>
+          <Badge variant="secondary" className="max-w-full gap-1">{(latest?.dealId || email.dealId) && <Briefcase size={12} className="shrink-0" />}<span className="truncate">{latest?.dealTitle || email.dealTitle || 'No Deal'}</span></Badge>
           <Badge variant="secondary" className="shrink-0" aria-label={`${messageCount} ${messageCount === 1 ? 'message' : 'messages'}`}>{messageCount} {messageCount === 1 ? 'message' : 'messages'}</Badge>
         </div>
         {!!participantAddresses.length && <p className="text-xs text-muted-foreground [overflow-wrap:anywhere]">{participantAddresses.join(', ')}</p>}
@@ -119,18 +134,24 @@ export default function EmailConversationView({ email, mailboxEmail, revision = 
         topicActions={email.conversationId && (index === 0 || message.threadId !== messages[index - 1].threadId) ? <DropdownMenu>
           <DropdownMenuTrigger className={mailboxIconButton} aria-label={`Actions for topic: ${message.subject || '(no subject)'}`} disabled={loading || busy || paused}><MoreHorizontal size={16} /></DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem disabled={loading || busy || paused} aria-label={`Archive topic: ${message.subject}`} onSelect={() => void mutate(() => archiveGmailThread(message.threadId), true)}><Archive size={16} />Archive this topic</DropdownMenuItem>
-            <DropdownMenuItem destructive disabled={loading || busy || paused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => void mutate(() => trashGmailThread(message.threadId), true)}><Trash2 size={16} />Move this topic to trash</DropdownMenuItem>
+            <DropdownMenuItem disabled={loading || busy || paused} aria-label={`Archive topic: ${message.subject}`} onSelect={() => void mutate(archive, true)}><Archive size={16} />{originView === 'archived' ? 'Restore to Inbox' : 'Archive this conversation'}</DropdownMenuItem>
+            <DropdownMenuItem destructive disabled={loading || busy || paused} aria-label={`Trash topic: ${message.subject}`} onSelect={() => setConfirmOpen(true)}><Trash2 size={16} />Delete Permanently</DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu> : undefined}
         associationControls={associationMessages.get(message.threadId) === message.id ? <>
           {message.needsDealAssociation && <p className="text-muted-foreground">Select the relevant open Deal for this conversation. Association does not change its stage.</p>}
-          {(email.conversationId ? topics.filter(topic => topic.threadId === message.threadId) : [{ threadId: email.threadId, dealOptions: deals, canAssociateDeal: canAssociate }]).map(topic => <TopicDealSelector key={topic.threadId} topic={topic} disabled={loading || busy || paused} onAssociate={(threadId, dealId) => void mutate(() => associateThreadDeal(threadId, dealId))} />)}
+          {(email.conversationId ? topics.filter(topic => topic.threadId === message.threadId) : [{ threadId: email.threadId, dealOptions: deals, canAssociateDeal: canAssociate }]).map(topic => <TopicDealSelector key={topic.threadId} topic={topic} disabled={loading || busy || paused} onAssociate={(threadId, dealId) => void mutate(() => associateThreadDeal(threadId, dealId, email.conversationId ? { conversationId: email.conversationId } : { messageId: message.id }))} />)}
           {!email.conversationId && (message.leadId || message.contactId) && !deals.length && !loading && <p className="text-muted-foreground">No open Deal available.</p>}
         </> : undefined}
       />)}
       {nextPageToken && <div className="px-3 py-3 sm:px-6"><button type="button" className={control} disabled={loading || busy || paused} onClick={() => void loadMore()}>Load more messages</button></div>}
     </div>
+    <ConfirmActionDialog open={confirmOpen} onOpenChange={setConfirmOpen} title="Delete Permanently"
+      description="Remove the selected email conversation(s) from LeadCRM Inbox? The messages will be moved to Gmail Trash and can be recovered there."
+      confirmLabel="Delete" cancelLabel="Cancel" variant="destructive" isLoading={busy} onConfirm={async () => {
+        if (!await mutate(remove, true)) throw new Error('Some messages could not be moved to Gmail Trash. Refresh and retry.');
+        toast.success('Messages moved to Gmail Trash');
+      }} />
     <ComposeModal isOpen={!!draft} initialDraft={draft} retryAt={Math.max(retryAt, cooldown)} onClose={() => setDraft(null)} onSent={() => { onEmailsChanged(); setRefresh(value => value + 1); }} />
   </div>;
 }

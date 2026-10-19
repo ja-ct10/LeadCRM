@@ -162,9 +162,9 @@ it('retains the originating Deal and retries failed association without deliveri
   expect((screen.getByLabelText('Schedule send options') as HTMLButtonElement).disabled).toBe(true);
   fireEvent.click(screen.getByLabelText('Send email'));
   expect(await screen.findByRole('alert')).toHaveProperty('textContent', 'Email sent, but linking to the Deal failed.');
-  expect(mocks.associate).toHaveBeenCalledWith('thread-for-source', 'originating-deal');
+  expect(mocks.associate).toHaveBeenCalledWith('thread-for-source', 'originating-deal', { messageId: 'sent' });
   expect(close).not.toHaveBeenCalled(); expect(sent).toHaveBeenCalledOnce(); expect(mocks.send).toHaveBeenCalledOnce();
-  expect(linkResult).toHaveBeenCalledWith({ threadId: 'thread-for-source', sourceDealId: 'originating-deal' }, false);
+  expect(linkResult).toHaveBeenCalledWith({ threadId: 'thread-for-source', sourceDealId: 'originating-deal', messageId: 'sent' }, false);
   fireEvent.click(screen.getByLabelText('Retry deal link'));
   await waitFor(() => expect(close).toHaveBeenCalledOnce());
   expect(mocks.associate).toHaveBeenCalledTimes(2); expect(mocks.send).toHaveBeenCalledOnce(); expect(sent).toHaveBeenCalledOnce();

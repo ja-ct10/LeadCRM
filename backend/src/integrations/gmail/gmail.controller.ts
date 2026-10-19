@@ -12,6 +12,7 @@ import { AppError } from '../../shared/errors/app-error';
 import { writeAuditLog } from '../../core/audit/audit.service';
 import { readMailboxAttachment, readMailboxContent } from './mailbox-attachments';
 import { RecordEmailAttachmentContextSchema } from '@leadcrm/shared';
+import { MailboxDealAssociationSchema } from '@leadcrm/shared';
 
 const providerId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export async function scheduledDetail(req: Request, res: Response, next: NextFunction) {
@@ -101,7 +102,7 @@ export async function threadTrash(req: Request, res: Response, next: NextFunctio
   try { res.json(await mutateMailboxThread(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), 'trash')); } catch (error) { next(error); }
 }
 export async function associateDeal(req: Request, res: Response, next: NextFunction) {
-  try { const { dealId } = z.object({ dealId: z.string().min(1).max(200) }).strict().parse(req.body); res.json(await associateMailboxDeal(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), dealId)); } catch (error) { next(error); }
+  try { const data = MailboxDealAssociationSchema.parse(req.body); res.json(await associateMailboxDeal(req.user!.tenantId, req.user!.userId, providerId.parse(req.params.threadId), data.dealId, data)); } catch (error) { next(error); }
 }
 export async function send(req: Request, res: Response, next: NextFunction) {
   try {
@@ -122,7 +123,7 @@ export async function disconnect(req: Request, res: Response, next: NextFunction
     res.json({ success: true, message: 'Work email disconnected. Saved CRM history is preserved.' });
   } catch (error) { next(error); }
 }
-async function bulkAction(req: Request, res: Response, next: NextFunction, action: 'archive' | 'trash') {
+async function bulkAction(req: Request, res: Response, next: NextFunction, action: 'archive' | 'trash' | 'restore') {
   try {
     const data = MailboxBulkActionSchema.parse(req.body), { tenantId, userId } = req.user!;
     res.json(await ('conversationIds' in data ? mutateMailboxCorrespondents(tenantId, userId, data.conversationIds, action) :
@@ -132,6 +133,7 @@ async function bulkAction(req: Request, res: Response, next: NextFunction, actio
 }
 export const trash = (req: Request, res: Response, next: NextFunction) => bulkAction(req, res, next, 'trash');
 export const archive = (req: Request, res: Response, next: NextFunction) => bulkAction(req, res, next, 'archive');
+export const restore = (req: Request, res: Response, next: NextFunction) => bulkAction(req, res, next, 'restore');
 export async function saveDraftHandler(req: Request, res: Response, next: NextFunction) {
   try {
     const data = SaveMailboxDraftSchema.parse(req.body);
