@@ -1,3 +1,4 @@
+import { refreshDealClassification } from '../../modules/crm/customer-classification.service';
 import { Prisma } from '@prisma/client';
 import { mailboxProviderQueries, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_METADATA_HEADERS } from './mailbox-scope';
 import { authorizedMailbox, mailboxChanged, storedEmail } from './mailbox-store';
@@ -98,7 +99,7 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     const currentScope = await resolveMailboxScope(account, currentPermissions, tx);
     if (currentScope.hash !== scope.hash) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
     const threadWhere = { AND: [scopedMessagesWhere(account, currentScope), { threadId, id: { in: targets.map(row => row.id) } }] };
-    const selected = await tx.mailboxMessage.findMany({ where: threadWhere, select: { id: true, dealId: true } });
+    const selected = await tx.mailboxMessage.findMany({ where: threadWhere, select: { id: true, dealId: true, dealAttribution: true } });
     if (selected.length !== targets.length || selected.some(row => row.dealId && row.dealId !== dealId)) throw new AppError('Deal association changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
     const messages = await tx.mailboxMessage.findMany({ where: threadWhere, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
     const links = messages.filter(message => message.leadId ? scope.leadIds.includes(message.leadId) : message.contactId && scope.contactIds.includes(message.contactId));
@@ -109,14 +110,16 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     if (!deal) throw new AppError('Select an open Deal belonging to the linked CRM record.', 400);
     const key = { accountId: account.id, threadId };
     const previous = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: key } });
-    await tx.mailboxMessage.updateMany({ where: threadWhere, data: { dealId, needsDealAssociation: false } });
+    if (selected.every(row => row.dealId === dealId && row.dealAttribution)) { await refreshDealClassification(tx, tenantId, dealId, userId); return; }
+    await tx.mailboxMessage.updateMany({ where: threadWhere, data: { dealId, dealAttribution: { kind: 'manual', verifiedAt: new Date().toISOString(), actorId: userId }, needsDealAssociation: false } });
     await tx.activity.updateMany({ where: { tenantId, type: 'email', mailboxMessage: { is: threadWhere },
       dealId: null }, data: { dealId } });
+    await refreshDealClassification(tx, tenantId, dealId, userId);
     if (previous?.dealId === dealId) return;
     const value = { dealId, linkedAt: new Date() };
     const conflicts = await tx.mailboxMessage.count({ where: { tenantId, accountId: account.id, threadId, dealId: { not: dealId } } });
     if (!conflicts && (!previous || previous.dealId === dealId)) await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });
-    await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity for conversation history.', metadata: { threadId, mailboxOwnerId: userId } } });
+    await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity for conversation history.', metadata: { threadId, mailboxOwnerId: userId, messageIds: targets.map(row => row.id) } } });
   });
   await mailboxChanged(account.id);
   return { success: true };

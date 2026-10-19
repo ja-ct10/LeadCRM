@@ -54,7 +54,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     pipeline = await prisma.pipeline.create({ data: { tenantId, name: 'RBAC Pipeline' } });
     stage = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Lead', order: 0 } });
     qualified = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Qualified', order: 1 } });
-    lost = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Closed Lost', isLost: true, order: 2 } });
+    lost = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Cancelled', isLost: true, order: 2 } });
     product = await prisma.productInterest.create({ data: { tenantId, name: 'RBAC Product', dealValue: 100 } });
     for (const [module, model] of Object.entries(delegates)) {
       records[module] = {};
@@ -113,7 +113,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
   });
   it.each(Object.keys(delegates).filter(module => module !== 'accounts'))('%s creation rejects another-agent assignment and missing Create permission', async module => {
     const payload = { ...(module === 'contacts' ? { requestId: randomUUID() } : {}), assignedUserId: b.id, ...(module === 'accounts' ? { name: 'Spoofed' } : module === 'deals'
-      ? { title: 'Spoofed', pipelineId: pipeline.id, stageId: stage.id, productInterestIds: [product.id] }
+      ? { title: 'Spoofed', pipelineId: pipeline.id, stageId: stage.id, productInterestIds: [product.id], leadIds: [records.leads.other.id] }
       : { firstName: 'Spoofed', lastName: 'QA', email: `${module}-spoof@example.test` }) };
     const before = await snapshot();
     expect((await call(`/${module}`, a, 'POST', payload)).status).toBe(403);
@@ -200,7 +200,7 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
     const deal = await prisma.deal.create({ data: { tenantId, title: 'Owned closing cascade', assignedUserId: a.id, pipelineId: pipeline.id,
       stageId: qualified.id, productInterestId: product.id, productsNormalized: true, value: 100 } });
     await prisma.contactDeal.create({ data: { tenantId, dealId: deal.id, contactId: contact.id } });
-    const won = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Closed Won', isWon: true, order: 3 } });
+    const won = await prisma.stage.create({ data: { tenantId, pipelineId: pipeline.id, name: 'Closed Deal', isWon: true, order: 3 } });
     // This workspace permits closing without mandatory evidence. Exercise the
     // real status cascade after closing validation, rather than failing it first.
     const definitions = await prisma.closingFieldDefinition.findMany({ where: { tenantId } });
@@ -253,8 +253,10 @@ describe.skipIf(!disposable)('CRM assignment authorization with real HTTP sessio
       await prisma.rolePermission.updateMany({ where: { tenantId, roleId: a.roleId, module: 'leads' }, data: { canArchive: true } });
     }
   });
-  it.each(['leads'])('%s keeps server round-robin assignment to another agent available', async module => {
+  it.each(['leads'])('%s keeps server weighted tie-break assignment to another agent available', async module => {
     const agents = await eligibleAgents(prisma, tenantId, module === 'accounts' ? ['accounts'] : ['leads', 'deals']);
+    // Exercise the existing round-robin tie-break with equal active workloads.
+    await prisma.lead.updateMany({ where: { tenantId, assignedUserId: { in: agents.map(agent => agent.id) } }, data: { status: 'Cancelled' } });
     const targetIndex = agents.findIndex(agent => agent.id === b.id);
     const key = { tenantId, module: module === 'accounts' ? 'accounts-assignment' : 'lead-assignment', key: 'default' };
     const cursor = agents[(targetIndex + agents.length - 1) % agents.length].id;

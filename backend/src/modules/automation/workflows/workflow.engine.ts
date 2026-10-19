@@ -45,7 +45,10 @@ async function executeWorkflowTrigger(params: WorkflowFireParams, prepared?: Pre
   // Only event metadata is accepted from emitters; saved record values remain authoritative.
   for (const key of ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields']) if (key in params.context) context[key] = params.context[key];
   if (params.triggerType.endsWith('.status_changed')) {
-    const previous = params.context['event.previousStatus'], next = params.context['event.newStatus'];
+    // Interpret historical enum/label snapshots without rewriting queued evidence.
+    const canonical = (value: unknown) => typeof value === 'string' ? CRM_STATUSES.find(status => status.toLowerCase() === value.toLowerCase().replace('_', ' ')) ?? (value.toLowerCase() === 'closed' ? 'Closed Deal' : value) : value;
+    const previous = canonical(params.context['event.previousStatus']), next = canonical(params.context['event.newStatus']);
+    context['event.previousStatus'] = previous; context['event.newStatus'] = next;
     if (!CRM_STATUSES.includes(previous as never) || !CRM_STATUSES.includes(next as never) || previous === next || next !== currentContext?.[trigger.entity + '.status']) return;
   }
   const eventId = params.eventId ?? (params.triggerType.endsWith('.created') ? `${params.triggerType}:${params.entityId}` : undefined);

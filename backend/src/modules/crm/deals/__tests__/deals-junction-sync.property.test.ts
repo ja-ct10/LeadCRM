@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+vi.mock('../../customer-classification.service', () => ({ refreshDealClassification: vi.fn() }));
 import * as fc from 'fast-check';
 
 /**

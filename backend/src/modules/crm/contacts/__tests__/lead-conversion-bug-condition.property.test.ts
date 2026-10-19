@@ -22,7 +22,7 @@ it('converts varied company names on the fully migrated schema without unknown C
     if (existing) expect(result.account?.id).toBe(existing.id);
     expect(result.contact.accountId).toBe(result.account?.id);
     expect(result.lead.accountId).toBe(result.account?.id);
-    expect(result.contact.status).toBe('Closed');
+    expect(result.contact.status).toBe('Closed Deal');
     expect(await fixture.db.leadDeal.count({ where: { leadId: lead.id, dealId: deal.id } })).toBe(1);
     expect(await fixture.db.contactDeal.count({ where: { contactId: result.contact.id, dealId: deal.id } })).toBe(1);
     accounts.set(identity, { id: result.account!.id, name: existing?.name ?? normalizedName });

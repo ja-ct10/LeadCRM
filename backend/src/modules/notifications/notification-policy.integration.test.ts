@@ -153,7 +153,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await recipients(row.id, 'deal_progressed')).toEqual([]);
     await moveDealStage(row.id, tenantId, stages.Qualified, adminId); await processEvents();
     expect(await recipients(row.id, 'closing_requirements_needed')).toEqual([agentId]);
-    await expect(moveDealStage(row.id, tenantId, stages['Closed Won'], adminId)).rejects.toThrow('requirements');
+    await expect(moveDealStage(row.id, tenantId, stages['Closed Deal'], adminId)).rejects.toThrow('requirements');
     await processEvents(); expect(await recipients(row.id, 'deal_won')).toEqual([]);
     await saveValues(tenantId, adminId, row.id, { values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': '2026-10-12' } });
     await prisma.deal.update({ where: { id: row.id }, data: { value: 1 } });
@@ -161,7 +161,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await recipients(row.id, 'deal_won')).toEqual([adminId, agentId].sort());
     expect((await rows(row.id)).filter(n => n.type === 'deal_won').every(n => n.body === 'CCTV Installation was marked Closed Won. Value: ₱45,000. Responsible agent: Agent A Tester.')).toBe(true);
     expect(await recipients(row.id, 'closing_requirements_completed')).toEqual([]);
-    await moveDealStage(row.id, tenantId, stages['Closed Won'], adminId); await processEvents();
+    await moveDealStage(row.id, tenantId, stages['Closed Deal'], adminId); await processEvents();
     expect(await recipients(row.id, 'deal_won')).toHaveLength(2);
     for (const field of DEFAULT_CLOSING_FIELDS.filter(field => ['confirmation-type', 'confirmation-date'].includes(field.id))) {
       await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: field.id } }, data: { definition: { ...field } } });
@@ -169,14 +169,14 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   }));
   it('notifies successful Lost once, including an owner who acted, and suppresses failed or unchanged transitions', async () => {
     const row = await deal(); await processEvents();
-    await expect(moveDealStage(row.id, tenantId, stages['Closed Lost'], agentId)).rejects.toThrow('reason');
-    await moveDealStage(row.id, tenantId, stages['Closed Lost'], agentId, undefined, undefined, 'Customer declined');
-    await moveDealStage(row.id, tenantId, stages['Closed Lost'], agentId, undefined, undefined, 'Customer declined');
+    await expect(moveDealStage(row.id, tenantId, stages['Cancelled'], agentId)).rejects.toThrow('reason');
+    await moveDealStage(row.id, tenantId, stages['Cancelled'], agentId, undefined, undefined, 'Customer declined');
+    await moveDealStage(row.id, tenantId, stages['Cancelled'], agentId, undefined, undefined, 'Customer declined');
     await processEvents(); expect(await recipients(row.id, 'deal_lost')).toEqual([adminId, agentId].sort());
   });
   it('suppresses obsolete closing action when the Deal closes before delivery', async () => {
     const row = await deal(); await moveDealStage(row.id, tenantId, stages.Qualified, adminId);
-    await moveDealStage(row.id, tenantId, stages['Closed Lost'], adminId, undefined, undefined, 'Declined');
+    await moveDealStage(row.id, tenantId, stages['Cancelled'], adminId, undefined, undefined, 'Declined');
     await processEvents(); expect(await recipients(row.id, 'closing_requirements_needed')).toEqual([]);
   });
   it('routes Campaign incidents to admin and eligible creator, never unrelated marketing or sales viewers', async () => {

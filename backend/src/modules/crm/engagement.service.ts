@@ -10,7 +10,7 @@ import { salesContext } from './leads/sales-context';
 export type CustomerLink = { leadId: string; contactId?: never } | { contactId: string; leadId?: never };
 type Tx = Prisma.TransactionClient;
 // Keep the existing database enum adapter; public contracts and histories use canonical labels.
-const contactStatuses: Record<CrmStatus, ContactStatus> = { Inquiry: ContactStatus.INQUIRY, Hot: ContactStatus.HOT, Warm: ContactStatus.WARM, Cold: ContactStatus.COLD, Closed: ContactStatus.CLOSED, Cancelled: ContactStatus.CANCELLED };
+const contactStatuses: Record<CrmStatus, ContactStatus> = { Inquiry: ContactStatus.INQUIRY, Hot: ContactStatus.HOT, Warm: ContactStatus.WARM, Cold: ContactStatus.COLD, 'Closed Deal': ContactStatus.CLOSED_DEAL, Cancelled: ContactStatus.CANCELLED };
 export const contactStatusValue = (value: CrmStatus) => contactStatuses[value];
 export const customerDealWhere = (tenantId: string, link: CustomerLink): Prisma.DealWhereInput => ({ tenantId, isArchived: false, deletedAt: null,
   ...(link.leadId ? { leadDeals: { some: { tenantId, leadId: link.leadId } } } : { contactDeals: { some: { tenantId, contactId: link.contactId } } }),
@@ -33,12 +33,12 @@ export async function finalizeContactLifecycle(tx: Tx, tenantId: string, contact
 export async function changeCustomerStatus(tx: Tx, tenantId: string, actorId: string, link: CustomerLink, status: CrmStatus, reason: string, changedAt: Date, conversionEvents: LeadConversionEvents = {}) {
   const current = link.leadId ? await tx.lead.findFirst({ where: { tenantId, id: link.leadId } }) : await tx.contact.findFirst({ where: { tenantId, id: link.contactId } });
   if (!current) return;
-  if (link.contactId && status === 'Closed') {
+  if (link.contactId && status === 'Closed Deal') {
     await finalizeContactLifecycle(tx, tenantId, link.contactId, actorId);
   }
   if (normalizeCrmStatus(current.status) === status) {
-    if (link.leadId && status === 'Closed') await convertClosedLead(tx, tenantId, link.leadId, actorId, { previousLead: current, ...conversionEvents });
-    if (link.contactId && status === 'Closed') {
+    if (link.leadId && status === 'Closed Deal') await convertClosedLead(tx, tenantId, link.leadId, actorId, { previousLead: current, ...conversionEvents });
+    if (link.contactId && status === 'Closed Deal') {
       const contact = await tx.contact.findFirstOrThrow({ where: { tenantId, id: link.contactId } });
       const changes = recordChanges(current, contact);
       await salesContext.run(tx, () => fireContactUpdated({ tenantId, actorId, record: contact, changedFields: changes.changedFields, changes }));
@@ -51,8 +51,8 @@ export async function changeCustomerStatus(tx: Tx, tenantId: string, actorId: st
     title: `Status changed from ${normalizeCrmStatus(current.status)} to ${status}`, description: reason,
     metadata: { source: 'customer_engagement', occurredAt: changedAt.toISOString() } } });
   await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'customer.status_changed', entityType: link.leadId ? 'Lead' : 'Contact', entityId: current.id, changeset: { before: { status: normalizeCrmStatus(current.status) }, after: { status }, reason } } });
-  if (link.leadId && status === 'Closed') await convertClosedLead(tx, tenantId, link.leadId, actorId, { previousLead: current, ...conversionEvents });
-  if (link.contactId && status === 'Closed') {
+  if (link.leadId && status === 'Closed Deal') await convertClosedLead(tx, tenantId, link.leadId, actorId, { previousLead: current, ...conversionEvents });
+  if (link.contactId && status === 'Closed Deal') {
     const contact = await tx.contact.findFirstOrThrow({ where: { tenantId, id: link.contactId } });
     const changes = recordChanges(current, contact);
     await salesContext.run(tx, async () => {
@@ -78,12 +78,12 @@ export async function cancelOpenDeals(tx: Tx, tenantId: string, actorId: string,
     await fireDealStageChanged({ tenantId, actorId, eventId: history.id, deal: updated, prevStageId: deal.stageId, newStageId: lost[0].id, newStageName: lost[0].name, isWon: false, isLost: true });
     const changes = recordChanges(deal, updated);
     await fireDealUpdated({ tenantId, actorId, eventId: history.id, record: updated, changedFields: changes.changedFields, changes });
-    if (deal.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, deal.id, actorId);
+    await refreshDealClassification(tx, tenantId, deal.id, actorId);
   }
 }
 
 export async function assertClosedStatus(tx: Tx, tenantId: string, link: CustomerLink) {
   if (!await tx.deal.findFirst({ where: { ...customerDealWhere(tenantId, link), stage: { isWon: true }, wonConfirmedAt: { not: null } } })) {
-    throw new ValidationError('Confirm a related Deal as Closed Won before setting this record to Closed.');
+    throw new ValidationError('Confirm a related Deal as Closed Deal before setting this record to Closed Deal.');
   }
 }

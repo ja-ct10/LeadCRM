@@ -573,8 +573,8 @@ export const CompanyProfileTabs = ({
                     <tbody className="divide-y divide-gray-100 dark:divide-white/5">
                       {connectedDeals.map(deal => {
                         const stageName = getStageName(deal.pipelineId, deal.stageId);
-                        const isWon     = stageName === 'Closed Won'  || deal.stageId.toLowerCase().includes('won');
-                        const isLost    = stageName === 'Closed Lost' || deal.stageId.toLowerCase().includes('lost');
+                        const isWon     = ['Closed Deal', 'Closed Won'].includes(stageName)  || deal.stageId.toLowerCase().includes('won');
+                        const isLost    = ['Cancelled', 'Closed Lost'].includes(stageName) || deal.stageId.toLowerCase().includes('lost');
                         const isOverdue = deal.expectedCloseDate && new Date(deal.expectedCloseDate) < new Date() && !isWon && !isLost;
                         const agent     = users.find(u => u.id === deal.assignedUserId);
                         const agentName = agent ? `${agent.firstName} ${agent.lastName}` : (deal.assignedUserId || 'System');

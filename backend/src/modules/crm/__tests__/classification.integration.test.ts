@@ -56,7 +56,7 @@ describe.skipIf(!disposable)('hybrid classification, selection and revisions on 
     pipelineId = (await prisma.pipeline.create({ data: { tenantId, name: 'Sales fixture' } })).id;
     initialId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Lead', order: 0 } })).id;
     qualifiedId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Qualified', order: 1 } })).id;
-    lostId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Closed Lost', order: 2, isLost: true } })).id;
+    lostId = (await prisma.stage.create({ data: { tenantId, pipelineId, name: 'Cancelled', order: 2, isLost: true } })).id;
     token = (await issueAuthSession(admin)).token;
     server = app.listen(0); await new Promise<void>(resolve => server.once('listening', resolve));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
@@ -83,7 +83,7 @@ describe.skipIf(!disposable)('hybrid classification, selection and revisions on 
     await scope(() => salesTransaction(tx => classifyCustomerRecord(tx, tenantId, { leadId: a.id }, admin.id, { genuineReply: true })));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('Hot');
   });
-  it('keeps Hot while another Qualified Deal remains and reevaluates after the final unlink', async () => {
+  it('retains the remaining Deal qualification window after a stage change and unlink', async () => {
     const a = await lead({ status: 'Warm', lastCustomerReplyAt: new Date() });
     const first = await linkedDeal(a.id), secondDeal = await linkedDeal(a.id);
     await scope(() => deals.moveDealStage(first.id, tenantId, qualifiedId, admin.id));
@@ -91,15 +91,15 @@ describe.skipIf(!disposable)('hybrid classification, selection and revisions on 
     await scope(() => deals.moveDealStage(first.id, tenantId, initialId, admin.id));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('Hot');
     await scope(() => deals.syncLeadAssociations(secondDeal.id, tenantId, [], admin.id));
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('Warm');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('Hot');
   });
-  it('releases qualification when a Deal is lost or archived', async () => {
+  it('aggregates cancellation and preserves status when only archived open history remains', async () => {
     for (const outcome of ['lost', 'archived']) {
       const a = await lead(); const deal = await linkedDeal(a.id);
       await scope(() => deals.moveDealStage(deal.id, tenantId, qualifiedId, admin.id));
       if (outcome === 'lost') await scope(() => deals.moveDealStage(deal.id, tenantId, lostId, admin.id, undefined, undefined, 'Customer declined.'));
       else await scope(() => deals.archiveDeal(deal.id, tenantId, 'Fixture', admin.id));
-      expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('Inquiry');
+      expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe(outcome === 'lost' ? 'Cancelled' : 'Hot');
     }
   });
   it('restores Qualified protection immediately and ages phone-only evidence without a receiving device', async () => {
@@ -135,7 +135,7 @@ describe.skipIf(!disposable)('hybrid classification, selection and revisions on 
     await prisma.lead.update({ where: { id: a.id }, data: { status: 'Cancelled' } });
     await scope(() => salesTransaction(tx => cancelOpenDeals(tx, tenantId, admin.id, { leadId: a.id }, 'Cancelled by customer.')));
     expect((await prisma.lead.findUniqueOrThrow({ where: { id: a.id } })).status).toBe('Cancelled');
-    expect((await prisma.lead.findUniqueOrThrow({ where: { id: b.id } })).status).toBe('Inquiry');
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: b.id } })).status).toBe('Cancelled');
   });
   it('preserves Inquiry during conversion with relationships and outreach evidence', async () => {
     const firstStaffOutreachAt = new Date(Date.now() - 86400000), a = await lead({ firstStaffOutreachAt });

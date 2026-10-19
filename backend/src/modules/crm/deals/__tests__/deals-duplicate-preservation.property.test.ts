@@ -346,3 +346,4 @@ describe('Feature: deals-module-modernization, Property 13: Deal Duplication Fie
     });
   });
 });
+vi.mock('../../customer-classification.service', () => ({ refreshDealClassification: vi.fn().mockResolvedValue(undefined) }));

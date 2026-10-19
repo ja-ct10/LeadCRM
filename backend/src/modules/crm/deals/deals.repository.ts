@@ -9,7 +9,7 @@ import { salesTransaction, crmScope } from '../leads/lead-automation.service';
 import { resolveWonRelationships } from './won-conversion.service';
 import type { ClosedWonConfirmation } from '@leadcrm/shared';
 import { closingEvidence } from '../closing-requirements/closing-requirements.repository';
-import { changeCustomerStatus } from '../engagement.service';
+import { finalizeContactLifecycle } from '../engagement.service';
 import { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
 import { CreateDealDto, UpdateDealDto, DealsQueryParams } from './deals.dto';
@@ -144,6 +144,8 @@ export async function createDeal(tenantId: string, ownerId: string, dto: CreateD
       skipDuplicates: true,
     });
   }
+
+  if (ownerId) await refreshDealClassification(db, tenantId, deal.id, ownerId);
 
   // Re-fetch with includes so the response contains junction data for the frontend adapter
   const fullDeal = await db.deal.findFirst({
@@ -280,10 +282,8 @@ export async function moveDealStage(
         ...(newStage.isWon ? { closingSnapshot: snapshot, wonConfirmedById: movedById, wonConfirmedAt: now } : {}) } });
       if (newStage.isWon) {
         await resolveWonRelationships(tx, deal, movedById);
-        const leads = await tx.leadDeal.findMany({ where: { tenantId, dealId: id } });
         const contacts = await tx.contactDeal.findMany({ where: { tenantId, dealId: id } });
-        for (const leadId of new Set(leads.map(link => link.leadId))) await changeCustomerStatus(tx, tenantId, movedById, { leadId }, 'Closed', note!, now);
-        for (const contactId of new Set(contacts.map(link => link.contactId))) await changeCustomerStatus(tx, tenantId, movedById, { contactId }, 'Closed', note!, now);
+        for (const { contactId } of contacts) await finalizeContactLifecycle(tx, tenantId, contactId, movedById);
       }
       stageHistory = await tx.dealStageHistory.create({ data: { ...scope, dealId: id, previousStageId: deal.stageId, newStageId, movedById,
         movedAt: now, note, timeInPrevStage: Math.floor((now.getTime() - (previous?.movedAt ?? deal.createdAt).getTime()) / 60000) } });
@@ -291,7 +291,7 @@ export async function moveDealStage(
       await tx.activity.create({ data: { ...scope, dealId: id, createdById: movedById, type: 'stage_change',
         title: `Deal moved from "${deal.stage.name}" to "${newStage.name}"`, description: note ?? lostReason ?? 'Staff changed the Deal stage.' } });
     }
-    if (stageHistory && (deal.stage.name.trim().toLowerCase() === 'qualified' || newStage.name.trim().toLowerCase() === 'qualified')) await refreshDealClassification(tx, tenantId, id, movedById);
+    if (stageHistory) await refreshDealClassification(tx, tenantId, id, movedById);
     const fullDeal = await tx.deal.findFirstOrThrow({ where: { id, ...scope }, include: {
       stage: true, pipeline: true, organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
       leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } },
@@ -342,10 +342,10 @@ export async function moveDealPipeline(id: string, tenantId: string, actorId: st
     await tx.activity.create({ data: { tenantId, dealId: id, createdById: actorId, type: 'stage_change', title: note, metadata: context } });
     await tx.auditLog.create({ data: { tenantId, userId: actorId, action: 'deal.pipeline_changed', entityType: 'Deal', entityId: id,
       changeset: { before: { pipelineId: previousDeal.pipelineId, stageId: previousDeal.stageId }, after: { pipelineId: pipeline.id, stageId: stage.id } } } });
+    if (stageHistory) await refreshDealClassification(tx, tenantId, id, actorId);
     const deal = await tx.deal.findFirstOrThrow({ where: { id, tenantId }, include: { stage: true, pipeline: true,
       organization: true, assignedUser: { select: { id: true, firstName: true, lastName: true } },
       leadDeals: { orderBy: participantOrder, include: { lead: true } }, contactDeals: { orderBy: participantOrder, include: { contact: true } } } });
-    if (previousDeal.stage.name.trim().toLowerCase() === 'qualified' || stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, id, actorId);
     return { deal: withDealParticipants(deal), previousDeal, stageHistory };
   });
 }
@@ -354,7 +354,7 @@ export async function archiveDeal(id: string, tenantId: string, archiveReason?: 
   try {
     return await salesTransaction(async tx => {
       const updated = await tx.deal.update({ where: { id, tenantId }, data: { isArchived: true, archiveReason: archiveReason ?? null }, include: { stage: true } });
-      if (actorId && updated.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, id, actorId);
+      if (actorId) await refreshDealClassification(tx, tenantId, id, actorId);
       return updated;
     });
   } catch (error) {
@@ -476,7 +476,7 @@ export async function syncContactAssociations(
     for (const [position, contactId] of [...targetIds].entries()) {
       if (currentIds.has(contactId)) await tx.contactDeal.updateMany({ where: { dealId, tenantId, contactId }, data: { position } });
     }
-    if (userId && classificationDeal?.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, dealId, userId, current);
+    if (userId && classificationDeal) await refreshDealClassification(tx, tenantId, dealId, userId, current);
   };
   if (client) await work(client);
   else await salesTransaction(work);
@@ -531,7 +531,7 @@ export async function syncLeadAssociations(
     for (const [position, leadId] of [...targetIds].entries()) {
       if (currentIds.has(leadId)) await tx.leadDeal.updateMany({ where: { dealId, tenantId, leadId }, data: { position } });
     }
-    if (userId && classificationDeal?.stage.name.trim().toLowerCase() === 'qualified') await refreshDealClassification(tx, tenantId, dealId, userId, current);
+    if (userId && classificationDeal) await refreshDealClassification(tx, tenantId, dealId, userId, current);
   };
   if (client) await work(client);
   else await salesTransaction(work);

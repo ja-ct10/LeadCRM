@@ -1,4 +1,5 @@
 import { salesContext } from '../leads/sales-context';
+import { withCustomerStatusPolicy } from '../customer-classification.service';
 import { CreateClientContactSchema, UpdateClientContactSchema } from './contacts-v2.dto';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
@@ -11,13 +12,15 @@ import { recordChanges, customFieldChangeTracker } from '../record-updates';
 import { salesTransaction } from '../leads/lead-automation.service';
 import { assertContactAccountSelection, mayReadContactAccount, presentContactAccount } from './contact-account-access';
 
-async function presentContact<T extends { status: string; account: unknown; companyFromAccount?: boolean; companyName?: string | null }>(tenantId: string, contact: T) {
-  return presentContactAccount({ ...contact, status: normalizeCrmStatus(contact.status) }, await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId));
+async function presentContact<T extends { id: string; status: string; account: unknown; companyFromAccount?: boolean; companyName?: string | null }>(tenantId: string, contact: T) {
+  const [presented] = await withCustomerStatusPolicy(salesContext.getStore() ?? prisma, tenantId, 'contact', [contact]);
+  return presentContactAccount({ ...presented, status: normalizeCrmStatus(contact.status) }, await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId));
 }
 
 export async function getContacts(tenantId: string, query: Record<string, unknown>) {
   const result = await repo.findAllContacts(tenantId, query);
-  const response = paginate(result.data.map(contact => ({ ...contact, status: normalizeCrmStatus(contact.status) })), result.total, { page: result.page, limit: result.limit });
+  const records = await withCustomerStatusPolicy(salesContext.getStore() ?? prisma, tenantId, 'contact', result.data);
+  const response = paginate(records.map(contact => ({ ...contact, status: normalizeCrmStatus(contact.status) })), result.total, { page: result.page, limit: result.limit });
   return { ...response, meta: { ...response.meta, facets: result.facets } };
 }
 

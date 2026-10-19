@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const CLOSED_WON_CONFIRMATION_TYPES = ['Approved Quotation', 'Signed/Approved Contract', 'Purchase Order Received', 'Order Confirmed', 'Other'] as const;
 export const ClosedWonConfirmationSchema = z.object({
   type: z.enum(CLOSED_WON_CONFIRMATION_TYPES),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a Closed Won date').refine(value => {
+  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Choose a Closed Deal date').refine(value => {
     const date = new Date(`${value}T00:00:00.000Z`);
     return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value && date.getTime() <= Date.now() + 86400000;
   }, 'Choose a valid date that is not in the future'),
@@ -17,6 +17,7 @@ export const MAILBOX_COMPOSE_MODES = ['compose', 'reply', 'replyAll', 'forward']
 export type MailboxComposeMode = typeof MAILBOX_COMPOSE_MODES[number];
 const sourceId = z.string().regex(/^[a-zA-Z0-9_-]+$/).max(200);
 export const MailboxComposeContextSchema = z.object({
+  dealId: z.string().min(1).max(200).optional(),
   composeMode: z.enum(MAILBOX_COMPOSE_MODES).optional(),
   replyToMessageId: sourceId.optional(),
   forwardSourceMessageId: sourceId.optional(),
@@ -25,6 +26,7 @@ export const MailboxComposeContextSchema = z.object({
     : value.composeMode === 'forward' ? !!value.forwardSourceMessageId && !value.replyToMessageId
     : !!value.replyToMessageId && !value.forwardSourceMessageId, 'Choose the original message for Reply, Reply All or Forward.');
 export const SendMailboxEmailSchema = z.object({
+  dealId: z.string().min(1).max(200).optional(),
   requestId: z.string().uuid(),
   to: z.union([recipient, z.array(recipient).min(1).max(50)]),
   subject: header,
@@ -38,6 +40,7 @@ export const SendMailboxEmailSchema = z.object({
 export const MAILBOX_FILTERS = ['all', 'unread', 'sent', 'scheduled', 'drafts'] as const;
 export const MailboxReadStateSchema = z.object({ isRead: z.boolean() }).strict();
 export const SaveMailboxDraftSchema = z.object({
+  dealId: SendMailboxEmailSchema.shape.dealId,
   requestId: z.string().uuid(),
   to: z.string().max(998).refine(value => !/[\r\n]/.test(value)),
   subject: z.string().max(998).refine(value => !/[\r\n]/.test(value)),

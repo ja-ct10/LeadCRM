@@ -80,6 +80,8 @@ export function toFrontendContact(backendContact: any): Record<string, any> {
   const contactPerson = [firstName, lastName].filter(Boolean).join(' ');
 
   return {
+    statusManagedByDeals: backendContact.statusManagedByDeals,
+    manualCancellation: backendContact.manualCancellation,
     id: backendContact.id || '',
     tenantId: backendContact.tenantId || '',
     organizationId: backendContact.organizationId || backendContact.accountId || undefined,

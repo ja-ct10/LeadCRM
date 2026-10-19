@@ -21,7 +21,7 @@ export function verifyDashboardStages(stages: DashboardStage[]) {
   const names = SALES_PIPELINE_STAGES.map(name => name.toLowerCase());
   if (stages.length !== 5 || stages.some((stage, i) => stage.name.trim().toLowerCase() !== names[i] ||
     stage.isWon !== (i === 3) || stage.isLost !== (i === 4))) {
-    throw new AppError('The Sales Pipeline must contain Lead, Contacted, Qualified, Closed Won and Closed Lost in the official order. Review its configuration; historical data has not been changed.', 409, 'DASHBOARD_PIPELINE_CONFIGURATION');
+    throw new AppError('The Sales Pipeline must contain Lead, Contacted, Qualified, Closed Deal and Cancelled in the official order. Review its configuration; historical data has not been changed.', 409, 'DASHBOARD_PIPELINE_CONFIGURATION');
   }
 }
 
@@ -37,6 +37,10 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
   const query: DashboardQuery = parsed.data;
   let period: ReturnType<typeof dashboardPeriod>;
   try { period = dashboardPeriod(query, now); } catch { throw new AppError('Choose a reporting period of at most two years.', 400); }
+  let sourcePeriod: ReturnType<typeof dashboardPeriod>;
+  try {
+    sourcePeriod = dashboardPeriod({ range: query.leadSourceRange ?? 'thisMonth', start: query.leadSourceStart, end: query.leadSourceEnd }, now);
+  } catch { throw new AppError('Choose a Lead Source reporting period of at most two years.', 400); }
   let funnel: ReturnType<typeof dashboardFunnelPeriod>;
   try { funnel = dashboardFunnelPeriod(query, now); } catch (error) { throw new AppError(error instanceof Error ? error.message : 'Choose a valid historical funnel period.', 400); }
   const interval = query.revenueInterval ?? 'month';
@@ -60,7 +64,7 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
         winRate: null, currentWon: null, totalDeals: null, unattributedWon: null, unattributedRevenue: null,
         averageDealDays: null, openPipelineValue: null, forecastMissing: 0, monetaryMissing: 0,
         currencyExcluded: 0, closingDateMissing: 0 },
-      trend: [], distribution: [], conversion: null, leaderboard: [], actions: [], pendingActions: 0, warnings: [],
+      trend: [], distribution: [], leadSourcePerformance: null, conversion: null, leaderboard: [], actions: [], pendingActions: 0, warnings: [],
     };
     const ownerScope = access.admin ? {} : { assignedUserId: userId };
     const leadWhere = { tenantId, isArchived: false, deletedAt: null, convertedAt: null };
@@ -90,6 +94,23 @@ export async function getDashboard(identity: AuthenticatedUser, input: unknown, 
       const credited = Prisma.sql`d."revenueOwnerEligible" = true AND d."revenueOwnerId" IS NOT NULL
         AND EXISTS (SELECT 1 FROM "User" u WHERE u.id = d."revenueOwnerId" AND u."tenantId" = ${tenantId})`;
       const raw = <T>(sql: Prisma.Sql) => tenantContext.exit(async () => await tx.$queryRaw<T>(sql));
+      const sourceGroups = await raw<Array<{ name: string; won: number }>>(Prisma.sql`
+        SELECT COALESCE(NULLIF(regexp_replace(d."leadSource", '^[[:space:]]+|[[:space:]]+$', '', 'g'), ''), 'Not specified') AS name,
+          COUNT(DISTINCT d.id)::int AS won
+        FROM "Deal" d JOIN "Stage" s ON s.id = d."stageId" AND s."tenantId" = d."tenantId" AND s."pipelineId" = d."pipelineId"
+        WHERE ${scope} AND s."isWon" AND d."closedAt" >= ${utc(sourcePeriod.from)} AND d."closedAt" < ${utc(sourcePeriod.until)}
+          AND d."closedAt" >= d."createdAt" AND d."closedAt" <= ${utc(now)}
+        GROUP BY 1 ORDER BY won DESC, name ASC`);
+      const unspecified = sourceGroups.find(row => row.name === 'Not specified');
+      const named = sourceGroups.filter(row => row.name !== 'Not specified' && row.name !== 'Others');
+      const sources = named.slice(0, unspecified ? 4 : 5);
+      if (unspecified) sources.push(unspecified);
+      const others = sourceGroups.filter(row => !sources.includes(row)).reduce((sum, row) => sum + row.won, 0);
+      if (others) sources.push({ name: 'Others', won: others });
+      sources.sort((a, b) => b.won - a.won || a.name.localeCompare(b.name));
+      result.leadSourcePerformance = {
+        period: { start: sourcePeriod.start, end: sourcePeriod.end, timezone: sourcePeriod.timezone }, sources,
+      };
       const totals = (await raw<Totals[]>(Prisma.sql`
         WITH eligible AS (SELECT d.*, s."isWon", s."isLost" FROM "Deal" d
           JOIN "Stage" s ON s.id = d."stageId" AND s."tenantId" = d."tenantId" AND s."pipelineId" = d."pipelineId" WHERE ${scope})

@@ -72,7 +72,7 @@ export default function InboxCurrentEmpty(): React.ReactElement {
 
         {/* Upcoming feature mention */}
         <p className="text-xs text-slate-400 dark:text-slate-500 leading-relaxed mb-8 max-w-xs">
-          Your email must be hosted by Gmail or Google Workspace. Read and send authorized customer conversations here. You stay in control of the final Closed Won confirmation.
+          Your email must be hosted by Gmail or Google Workspace. Read and send authorized customer conversations here. You stay in control of the final Closed Deal confirmation.
         </p>
 
         {/* CTA Button */}

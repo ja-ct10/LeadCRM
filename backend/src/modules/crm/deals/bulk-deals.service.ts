@@ -8,6 +8,7 @@ import { ValidationError } from '../../../shared/errors/http-error';
 import { BulkArchiveDto, BulkReassignDto, BulkStageChangeDto } from './deals.dto';
 import { fireDealUpdated } from '../../automation/triggers/triggers.service';
 import { recordChanges } from '../record-updates';
+import { refreshDealClassification } from '../customer-classification.service';
 
 export interface BulkOperationResult {
   succeeded: number;
@@ -39,9 +40,12 @@ export async function bulkArchive(
       }
 
       // SEC: tenantId in where clause closes the TOCTOU gap between findFirst and update
-      await prisma.deal.update({
-        where: { id: dealId, tenantId },
-        data: { isArchived: true, archiveReason: dto.archiveReason ?? null },
+      await salesTransaction(async tx => {
+        await tx.deal.update({
+          where: { id: dealId, tenantId },
+          data: { isArchived: true, archiveReason: dto.archiveReason ?? null },
+        });
+        await refreshDealClassification(tx, tenantId, dealId, userId);
       });
 
       await writeAuditLog({
@@ -153,7 +157,7 @@ export async function bulkStageChange(
   if (!targetStage) {
     throw new ValidationError('Target stage not found in tenant');
   }
-  if (targetStage.isWon) throw new ValidationError('Confirm each Closed Won Deal individually with its supporting evidence.');
+  if (targetStage.isWon) throw new ValidationError('Confirm each Closed Deal individually with its supporting evidence.');
 
   // Lost stage requires lostReason
   if (targetStage.isLost && !dto.lostReason) {

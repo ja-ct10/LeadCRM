@@ -31,7 +31,7 @@ const titles: Record<NotificationType, string> = {
   lead_assigned: 'Lead Assigned to You', contact_assigned: 'Contact Assigned to You', account_assigned: 'Account Assigned to You',
   deal_assigned: 'Deal Assigned to You', task_assigned: 'New Task Assigned', customer_hot: 'Customer Became Hot',
   customer_cold: 'Customer became Cold', customer_cancelled: 'Customer became Cancelled', deal_progressed: 'Deal progressed',
-  deal_won: 'Deal Closed Won', deal_lost: 'Deal Closed Lost', closing_requirements_needed: 'Closing Requirements Need Attention',
+  deal_won: 'Deal Closed Deal', deal_lost: 'Deal Cancelled', closing_requirements_needed: 'Closing Requirements Need Attention',
   closing_requirements_completed: 'Closing requirements completed', task_due: 'Task reminder', task_overdue: 'Task overdue',
   customer_reply: 'New Customer Reply', campaign_failed: 'Campaign Failed', workflow_failed: 'Workflow Failed',
   user_created: 'New Team Member', user_status_changed: 'Team Member Account Status Changed', mailbox_disconnected: 'Gmail Disconnected',

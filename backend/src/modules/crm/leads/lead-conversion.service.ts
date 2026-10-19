@@ -1,7 +1,8 @@
 import { productRelationData } from './product-relations';
 import { isDeepStrictEqual } from 'node:util';
 import type { ContactStatus, Deal, Prisma } from '@prisma/client';
-import { normalizeCrmStatus, type NewAccountInput } from '@leadcrm/shared';
+import { aggregateDealEngagement, normalizeCrmStatus, type NewAccountInput } from '@leadcrm/shared';
+import { classifyCustomerRecord } from '../customer-classification.service';
 import { createCompany } from '../companies/companies.service';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { AppError } from '../../../shared/errors/app-error';
@@ -42,8 +43,7 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
     if (!contact) throw new ConflictError('The converted Contact is unavailable.');
     return { lead, contact, accountId: lead.accountId };
   }
-  if (completedSale && lead.status !== 'Closed') throw new ConflictError('Persist Closed status before converting this Lead.');
-  const deals = await tx.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId } } }, include: { stage: true } });
+  const deals = await tx.deal.findMany({ where: { tenantId, leadDeals: { some: { tenantId, leadId } } }, include: { stage: true, pipeline: true } });
   const source = await tx.lead.findFirstOrThrow({ where: { tenantId, id: leadId }, select: { productsNormalized: true } });
   const initialInterests = source.productsNormalized ? { ids: lead.productInterestIds } : { names: lead.productInterest };
   // Merge canonical IDs, including retired Products, without resolving a reused name.
@@ -104,18 +104,19 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   const now = new Date();
   const firstWon = deals.flatMap(deal => deal.wonConfirmedAt ? [deal.wonConfirmedAt] : []).sort((a, b) => a.getTime() - b.getTime())[0];
   if (completedSale && !firstWon) throw new ConflictError('Confirmed Won evidence is required before conversion.');
-  const status = (firstWon ? 'CLOSED' : normalizeCrmStatus(lead.status).toUpperCase()) as ContactStatus;
+  const aggregate = aggregateDealEngagement(deals.filter(deal => !deal.deletedAt).map(deal => ({ ...deal, pipelineArchived: deal.pipeline.isArchived, isWon: deal.stage.isWon, isLost: deal.stage.isLost, confirmedWon: !!deal.wonConfirmedAt })));
+  const status = (lead.manualCancellation ? 'CANCELLED' : (aggregate ?? normalizeCrmStatus(lead.status)).toUpperCase().replace(' ', '_')) as ContactStatus;
   if (!contact) contact = await tx.contact.create({ data: { tenantId, firstName: lead.firstName, lastName: lead.lastName,
     email: lead.email?.trim().toLowerCase(), phone: lead.phone, companyName: lead.companyName, companyFromAccount: lead.companyFromAccount, address: lead.address,
     source: lead.source, notes: typeof legacyDescription?.value === 'string' ? legacyDescription.value : undefined, assignedUserId: lead.assignedUserId, accountId,
-    ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
+    ...await productRelationData(tx, 'contact', tenantId, initialInterests, lead), status: !firstWon && status === 'CLOSED_DEAL' ? 'WARM' : status, lifecycleStage: firstWon ? 'CUSTOMER' : 'CONTACT',
     lastCustomerReplyAt: lead.lastCustomerReplyAt, firstUnansweredOutboundAt: lead.firstUnansweredOutboundAt, firstStaffOutreachAt: lead.firstStaffOutreachAt,
-    customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });
+    manualCancellation: lead.manualCancellation, customerSince: firstWon ?? null, convertedAt: now, lastStatusChangedAt: lead.lastStatusChangedAt } });
   else {
     const current = contact;
     const data = { accountId,
-      ...(firstWon ? { status: 'CLOSED' as const, lifecycleStage: 'CUSTOMER' as const, customerSince: current.customerSince && current.customerSince <= firstWon ? current.customerSince : firstWon,
-        lastStatusChangedAt: current.status === 'CLOSED' ? current.lastStatusChangedAt : now } : {}),
+      ...(firstWon ? { lifecycleStage: 'CUSTOMER' as const, customerSince: current.customerSince && current.customerSince <= firstWon ? current.customerSince : firstWon,
+        lastStatusChangedAt: current.status === 'CLOSED_DEAL' ? current.lastStatusChangedAt : now } : {}),
       convertedAt: current.convertedAt ?? now,
     };
     const products = await mergedContactProducts(current);
@@ -138,6 +139,9 @@ export async function convertLead(tx: Prisma.TransactionClient, tenantId: string
   }
   const convertedLead = await tx.lead.update({ where: { tenantId, id: leadId }, data: { contactId: contact.id, accountId,
     convertedAt: lead.convertedAt ?? now, convertedById: lead.convertedById ?? actorId } });
+  // Conversion emits its existing durable events below, using the combined Deal aggregate.
+  await classifyCustomerRecord(tx, tenantId, { contactId: contact.id }, actorId, {}, now, false);
+  contact = await tx.contact.findFirstOrThrow({ where: { tenantId, id: contact.id } });
   if (!lead.convertedAt) {
     const metadata = { contactId: contact.id, accountId, convertedAt: now.toISOString(), sourceLeadId: leadId };
     await tx.activity.create({ data: { tenantId, leadId, createdById: actorId, type: 'conversion', title: 'Lead converted to Contact',

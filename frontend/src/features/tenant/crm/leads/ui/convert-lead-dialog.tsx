@@ -236,7 +236,7 @@ function ConvertLeadForm({ onClose, lead, onSuccess }: Omit<ConvertLeadDialogPro
       <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800">
         <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
         <p className="text-xs text-amber-700 dark:text-amber-300">
-          This action creates or links a Contact and retains the original Lead history. Sales completion remains a separate Closed Won operation.
+          This action creates or links a Contact and retains the original Lead history. Sales completion remains a separate Closed Deal operation.
         </p>
       </div>
     </div>

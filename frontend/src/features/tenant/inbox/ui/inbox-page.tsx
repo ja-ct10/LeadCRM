@@ -365,7 +365,7 @@ function InboxMailbox(): React.ReactElement {
     if (email.scheduledStatus) { setSelectedSchedule(email.id); return; }
     if (filter === 'drafts') { setComposeDraft({ to: [...email.to, ...(email.cc ?? [])].join(', '), subject: email.subject, body: email.body, draftId: email.draftId,
       composeMode: email.composeMode, replyToMessageId: email.replyToMessageId, forwardSourceMessageId: email.forwardSourceMessageId,
-      draftContextRequired: email.draftContextRequired, draftThreadId: email.threadId }); setIsComposeOpen(true); }
+      sourceDealId: email.dealId ?? undefined, draftContextRequired: email.draftContextRequired, draftThreadId: email.threadId }); setIsComposeOpen(true); }
     else setSelectedEmail(email);
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };

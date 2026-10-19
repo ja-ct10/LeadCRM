@@ -37,7 +37,7 @@ enum ContactStatus {
   WARM
   COLD
   CANCELLED
-  CLOSED
+  CLOSED_DEAL
 }
 
 // System-owned lifecycle position G�� never manually editable via status controls.
@@ -436,6 +436,7 @@ model Lead {
   productInterestIds  String[] @default([])
   source              String?
   assignedUserId      String?
+  manualCancellation Boolean @default(false)
   status              String    @default("Inquiry")
   accountId           String?
   createdById         String?
@@ -513,6 +514,7 @@ model Contact {
   companyName         String?
   // Retain provenance even after unlinking; copied Account text keeps its View boundary.
   companyFromAccount  Boolean              @default(false)
+  manualCancellation Boolean @default(false)
   status              ContactStatus        @default(INQUIRY)
   source              String?
   notes               String?
@@ -619,6 +621,8 @@ model Stage {
 // DEAL
 // G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��G��
 model Deal {
+  engagementStatus String @default("Inquiry")
+  engagementEvaluatedAt DateTime?
   customFieldValues CustomFieldValue[]
   productsNormalized Boolean @default(false)
   productInterestOther String?
@@ -1575,6 +1579,7 @@ model MailboxMessage {
   meaningful Boolean @default(false)
   readyToClose Boolean @default(false)
   engagementRuleVersion Int @default(0)
+  dealAttribution Json?
   needsDealAssociation Boolean @default(false)
   createdAt DateTime @default(now())
   account EmailAccount @relation(fields: [accountId, tenantId], references: [id, tenantId], onDelete: Restrict)
@@ -1583,6 +1588,7 @@ model MailboxMessage {
   @@index([tenantId, accountId, threadId, sentAt])
   @@index([tenantId, leadId, sentAt])
   @@index([tenantId, contactId, sentAt])
+  @@index([tenantId, dealId, sentAt])
   @@index([tenantId, accountId, fromAddress, sentAt])
   @@index([recipientAddresses], type: Gin)
 }

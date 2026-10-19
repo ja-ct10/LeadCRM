@@ -56,7 +56,7 @@ export async function assignmentWorkloads(client: Client, tenantId: string, ids:
   const where = { tenantId, assignedUserId: { in: ids }, isArchived: false, ...(purpose === 'crm_owner' && entityId ? { id: { not: entityId } } : {}) };
   const common = { by: ['assignedUserId'] as ['assignedUserId'], _count: { _all: true as const } };
   const rows = purpose === 'task_assignee' ? await client.task.groupBy({ ...common, where: { ...where, status: { in: ['pending', 'in_progress', 'in-progress', 'blocked'] } } })
-    : entity === 'lead' ? await client.lead.groupBy({ ...common, where: { ...where, convertedAt: null, deletedAt: null, status: { notIn: ['Closed', 'Cancelled', 'CLOSED', 'CANCELLED'] } } })
+    : entity === 'lead' ? await client.lead.groupBy({ ...common, where: { ...where, convertedAt: null, deletedAt: null, status: { notIn: ['Closed Deal', 'Cancelled', 'CLOSED_DEAL', 'CANCELLED'] } } })
     : entity === 'contact' ? await client.contact.groupBy({ ...common, where })
     : entity === 'deal' ? await client.deal.groupBy({ ...common, where: { ...where, stage: { tenantId, isWon: false, isLost: false } } }) : [];
   return new Map(rows.flatMap(row => row.assignedUserId ? [[row.assignedUserId, row._count._all] as const] : []));

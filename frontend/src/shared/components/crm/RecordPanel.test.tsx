@@ -16,13 +16,13 @@ vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => false
 describe('moduleConfig defaults', () => {
   it('defines valid lead statuses with tones', () => {
     expect(DEFAULT_LEAD_STATUSES.length).toBeGreaterThan(0);
-    expect(DEFAULT_LEAD_STATUSES.map((status) => status.label)).toEqual(['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']);
+    expect(DEFAULT_LEAD_STATUSES.map((status) => status.label)).toEqual(['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']);
     expect(DEFAULT_LEAD_STATUSES.some((s) => s.label === 'Hot')).toBe(true);
   });
 
   it('defines valid contact statuses', () => {
     expect(DEFAULT_CONTACT_STATUSES).toBe(DEFAULT_LEAD_STATUSES);
-    expect(DEFAULT_CONTACT_STATUSES.map(status => status.label)).toEqual(['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed', 'Cancelled']);
+    expect(DEFAULT_CONTACT_STATUSES.map(status => status.label)).toEqual(['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']);
   });
 
 

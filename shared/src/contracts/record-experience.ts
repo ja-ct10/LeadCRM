@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const CRM_STATUSES = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed', 'Cancelled'] as const;
+export const CRM_STATUSES = ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled'] as const;
 export const LEAD_SOURCES = ['Google Ads', 'Referral', 'Email Campaign', 'Website', 'Social Media Advertisement', 'Direct Mail', 'Content Marketing', 'Others'] as const;
 export const LeadSourceSchema = z.enum(LEAD_SOURCES);
 export const COMPANY_SIZE_OPTIONS = ['1-10', '11-50', '51-200', '200+'] as const;
@@ -17,6 +17,8 @@ export const LeadStatusSchema = CrmStatusSchema;
 
 /** Read legacy stored statuses into canonical UI state. API validation stays strict. */
 export function normalizeCrmStatus(status?: string): CrmStatus {
+  // Historical workflow snapshots and Contact enum values remain readable.
+  if (['closed', 'closed_deal', 'closed deal'].includes(status?.trim().toLowerCase() ?? '')) return 'Closed Deal';
   return CRM_STATUSES.find(value => value.toLowerCase() === status?.toLowerCase()) ?? 'Warm';
 }
 export const RECORD_FILE_MAX_BYTES = 10 * 1024 * 1024;

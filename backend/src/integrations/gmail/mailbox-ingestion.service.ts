@@ -1,14 +1,13 @@
-import { hasQualifiedDeal, recordStaffOutreach } from '../../modules/crm/customer-classification.service';
+import { classifyCustomerRecord, refreshDealClassification, recordStaffOutreach } from '../../modules/crm/customer-classification.service';
 import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
-import { CustomerLink, changeCustomerStatus, customerDealWhere } from '../../modules/crm/engagement.service';
-import { engagementStatus, engagementReason, normalizeEmail, ENGAGEMENT_RULE_VERSION, DAY_MS } from './engagement-rules';
+import { CustomerLink, customerDealWhere } from '../../modules/crm/engagement.service';
+import { engagementStatus, normalizeEmail, ENGAGEMENT_RULE_VERSION, DAY_MS } from './engagement-rules';
 import { GmailEmail } from './gmail.types';
-import { fireLeadStatusChanged, fireContactStatusChanged } from '../../modules/automation/triggers/triggers.service';
 import { mailboxPermissions } from './mailbox-sync.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean }
@@ -17,14 +16,24 @@ type SentContext = { sourceMessageId?: string; dealId?: string };
 
 async function validatedReplyDeal(tx: Tx, account: EmailAccount, email: GmailEmail, link: CustomerLink | undefined, context?: SentContext) {
   const sentContext = mailboxAddress(email.from) === mailboxAddress(account.email) ? context : undefined;
-  if (!link || !sentContext && !email.rfcInReplyTo) return;
+  if (!sentContext && !email.rfcInReplyTo && !email.rfcReferences?.length) return;
   const parent = sentContext?.sourceMessageId ? { providerMessageId: sentContext.sourceMessageId }
-    : email.rfcInReplyTo ? { rfcMessageId: email.rfcInReplyTo } : undefined;
+    : email.rfcInReplyTo ? { rfcMessageId: email.rfcInReplyTo } : email.rfcReferences?.length ? { rfcMessageId: { in: email.rfcReferences } } : undefined;
   const sources = parent ? await tx.mailboxMessage.findMany({ where: {
-    ...await historyWhere(tx, account.tenantId, link), accountId: account.id, threadId: email.threadId, ...parent, dealId: { not: null },
+    tenantId: account.tenantId, accountId: account.id, threadId: email.threadId, ...parent, dealId: { not: null }, NOT: { dealAttribution: { equals: Prisma.DbNull } },
   }, distinct: ['dealId'], take: 2, select: { dealId: true } }) : [];
   const id = sentContext?.dealId || (sources.length === 1 ? sources[0].dealId : undefined);
-  return id && await tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id }, select: { id: true } }) ? id : undefined;
+  if (!id) return;
+  const deal = await tx.deal.findFirst({ where: { tenantId: account.tenantId, id, deletedAt: null }, include: {
+    leadDeals: { where: { tenantId: account.tenantId, lead: { isArchived: false, deletedAt: null } }, include: { lead: { select: { email: true } } } },
+    contactDeals: { where: { tenantId: account.tenantId, contact: { isArchived: false, deletedAt: null } }, include: { contact: { select: { email: true } } } },
+  } });
+  if (!deal) return;
+  const people = [...deal.leadDeals.map(link => mailboxAddress(link.lead.email ?? '')), ...deal.contactDeals.map(link => mailboxAddress(link.contact.email ?? ''))].filter(Boolean);
+  const from = mailboxAddress(email.from);
+  const participates = from === mailboxAddress(account.email)
+    ? [...email.to, ...(email.cc ?? [])].some(recipient => people.includes(mailboxAddress(recipient))) : people.includes(from);
+  return participates ? id : undefined;
 }
 
 /** Persist provider history independently of permission to edit CRM engagement. */
@@ -90,20 +99,14 @@ async function evaluateCustomer(tx: Tx, account: EmailAccount, link: CustomerLin
     { syncPageToken: { not: null } }, { syncBaselineHistoryId: { not: null } }, { syncError: { not: null } },
   ] } }, select: { id: true } });
   // A newly observed reply can prove engagement while older history is incomplete.
-  const status = engagementStatus({ ...data, status: customer.status, firstStaffOutreachAt: customer.firstStaffOutreachAt, qualified: await hasQualifiedDeal(tx, tenantId, link) }, now);
+  const status = engagementStatus({ ...data, status: customer.status, firstStaffOutreachAt: customer.firstStaffOutreachAt }, now);
   const canEvaluate = (!pending && !stale) || (immediateReply && (status === 'Warm' || status === 'Hot'));
   const timestamps = { ...data, ...(canEvaluate ? { engagementEvaluatedAt: now } : {}) };
   if (link.leadId) await tx.lead.update({ where: { tenantId, id: link.leadId }, data: timestamps });
   else await tx.contact.update({ where: { tenantId, id: link.contactId }, data: timestamps });
   if (!canEvaluate || !status || normalizeCrmStatus(customer.status) === status) return;
-  return changeCustomerStatus(tx, tenantId, account.userId, link, status, engagementReason({ ...data, status }), now);
-}
-
-async function emitStatus(account: EmailAccount, link: CustomerLink, change: Awaited<ReturnType<typeof changeCustomerStatus>>) {
-  if (!change) return;
-  const event = { tenantId: account.tenantId, actorId: account.userId, eventId: change.eventId, prevStatus: change.prevStatus };
-  if (link.leadId) await fireLeadStatusChanged({ ...event, lead: { id: change.id, status: change.status } });
-  else await fireContactStatusChanged({ ...event, contact: { id: change.id, status: change.status } });
+  await classifyCustomerRecord(tx, tenantId, link, account.userId, { genuineReply: immediateReply }, now);
+  return;
 }
 
 export async function ingestMailboxMessages(account: EmailAccount, messages: GmailEmail[], permissions: MailboxPermissions, sentContext?: SentContext) {
@@ -136,12 +139,13 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
         const link = existing.contactId ? { contactId: existing.contactId } : existing.leadId ? { leadId: existing.leadId } : undefined;
-        const contextDealId = !existing.dealId && permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, sentContext) : undefined;
+        const contextDealId = !existing.dealAttribution && permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, sentContext) : undefined;
         const stored = await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
-          ...(contextDealId ? { dealId: contextDealId, needsDealAssociation: false } : {}),
+          ...(contextDealId && (!existing.dealId || existing.dealId === contextDealId) ? { dealId: contextDealId, dealAttribution: { kind: sentContext?.dealId ? 'explicit_send' : 'reply', verifiedAt: now.toISOString() }, needsDealAssociation: false } : {}),
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
           ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}), ...(email.draftId ? { draftId: email.draftId } : {}) } });
         await persistEmailActivity(tx, account, stored);
+        if (stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId);
         return;
       }
       const from = normalizeEmail(email.from), recipients = [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].map(normalizeEmail);
@@ -157,8 +161,8 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         ? [contextDealId]
         : [...new Set([association?.dealId, ...prior.map(row => row.dealId)].filter((id): id is string => !!id))];
       const deals = link && permissions.dealsView ? await tx.deal.findMany({ where: { ...customerDealWhere(account.tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true } }) : [];
-      const candidateDealId = explicitIds.length === 1 ? explicitIds[0] : !explicitIds.length && deals.length === 1 ? deals[0].id : undefined;
-      const dealId = candidateDealId && link && await tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id: candidateDealId }, select: { id: true } }) ? candidateDealId : undefined;
+      const candidateDealId = explicitIds.length === 1 ? explicitIds[0] : undefined;
+      const dealId = candidateDealId && (contextDealId === candidateDealId || link && await tx.deal.findFirst({ where: { ...customerDealWhere(account.tenantId, link), id: candidateDealId }, select: { id: true } })) ? candidateDealId : undefined;
       const genuineReply = direction === 'inbound' && !email.automated && !FIXED_MAILBOX_SENDERS.includes(from) && !email.labels.includes('DRAFT');
       const data = { ...key, threadId: email.threadId, direction, from: email.from, recipients: email.to, subject: email.subject,
         ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
@@ -166,16 +170,18 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
         ...(email.labels.includes('DRAFT') && sourceDraft ? { sourceMessageId: sourceDraft.sourceMessageId, crmDraft: sourceDraft.crmDraft } : {}),
         body: email.body, snippet: email.snippet, labels: email.labels, sentAt, rfcMessageId: email.rfcMessageId, rfcInReplyTo: email.rfcInReplyTo,
         ...(email.rfcReferences ? { rfcReferences: email.rfcReferences } : {}), ...(email.attachments ? { attachments: email.attachments as unknown as Prisma.InputJsonValue } : {}),
-        leadId: link?.leadId ?? null, contactId: link?.contactId ?? null, dealId, meaningful: genuineReply,
+        leadId: link?.leadId ?? null, contactId: link?.contactId ?? null, dealId,
+        ...(contextDealId && contextDealId === dealId ? { dealAttribution: { kind: sentContext?.dealId ? 'explicit_send' : 'reply', verifiedAt: now.toISOString() } } : {}), meaningful: genuineReply,
         readyToClose: false, needsDealAssociation: !!link && !dealId && deals.length > 1, engagementRuleVersion: ENGAGEMENT_RULE_VERSION };
       const stored = existing ? await tx.mailboxMessage.update({ where: { id: existing.id }, data }) : await tx.mailboxMessage.create({ data: { ...data, tenantId: account.tenantId } });
       await persistEmailActivity(tx, account, stored);
+      if (!email.labels.includes('DRAFT') && stored.dealId && stored.dealAttribution && permissions.dealsEdit) await refreshDealClassification(tx, account.tenantId, stored.dealId, account.userId);
       if (email.labels.includes('DRAFT') || !link || !(link.leadId ? permissions.leadsEdit : permissions.contactsEdit)) return;
       // Historical replay is evaluated once coverage is complete; fresh replies are immediate.
       if (direction === 'outbound' && await tx.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, providerMessageId: email.id, operation: 'send', status: 'sent' }, select: { id: true } })) await recordStaffOutreach(tx, account.tenantId, link, new Date(email.date));
       const change = await evaluateCustomer(tx, account, link, permissions, now, !existing && genuineReply);
       // Workflow trigger enqueueing shares the CRM transaction through salesContext.
-      await emitStatus(account, link, change);
+
       return { link, change };
     });
     void result;
@@ -201,7 +207,7 @@ export async function evaluateMailboxEngagement(account: EmailAccount, permissio
     const currentPermissions = Object.fromEntries(Object.entries(permissions).map(([key, allowed]) => [key, allowed && latestPermissions[key as keyof MailboxPermissions]])) as unknown as MailboxPermissions;
     await salesTransaction(async tx => {
       const change = await evaluateCustomer(tx, account, link!, currentPermissions, now);
-      await emitStatus(account, link!, change);
+
     });
   }
 }

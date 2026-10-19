@@ -140,10 +140,10 @@ export function DealDetailsModal({
   const currentStageIdx = pipeline.stages.findIndex(s => s.id === deal.stageId);
   const currentStageName = pipeline.stages[currentStageIdx]?.name ?? '—';
   const nextStage = pipeline.stages[currentStageIdx + 1];
-  const isClosedWon = currentStageName === 'Closed Won';
+  const isClosedWon = !!pipeline.stages[currentStageIdx]?.isWon;
 
 
-  const isClosedLost = currentStageName === 'Closed Lost';
+  const isClosedLost = !!pipeline.stages[currentStageIdx]?.isLost;
 
   const taskData = useTasks({ dealId: deal.id, limit: 1 });
   const taskCount = taskData.summary?.total ?? 0;
@@ -285,7 +285,7 @@ export function DealDetailsModal({
                       className="w-full flex items-center justify-center gap-2 bg-red-500/10 hover:bg-red-500/25 border border-red-500/20 text-red-400 py-1.5 px-3 rounded-lg text-xs font-semibold transition-all"
                     >
                       <AlertCircle size={12} />
-                      Mark Dead / Closed Lost
+                      Cancel Deal
                     </button>
                   ) : (
                     <div className="flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 p-3 rounded-xl text-xs">
@@ -611,8 +611,8 @@ export function DealDetailsModal({
                       ? (pipeline.stages.find(s => s.id === entry.previousStageId)?.name ?? entry.previousStageId)
                       : null;
                     const histUser = users.find(u => u.id === entry.userId);
-                    const isWon  = stageName === 'Closed Won';
-                    const isLost = stageName === 'Closed Lost';
+                    const isWon  = ['Closed Deal', 'Closed Won'].includes(stageName);
+                    const isLost = ['Cancelled', 'Closed Lost'].includes(stageName);
 
                     return (
                       <div key={idx} className="flex gap-3 relative">

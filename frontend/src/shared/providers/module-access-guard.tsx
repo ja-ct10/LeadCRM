@@ -2,7 +2,7 @@
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/store/AuthContext';
 import type { PermissionAction } from '@leadcrm/shared';
-import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
+import { DataErrorState, DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 
 export function requiredRoutePermission(path: string): [string, PermissionAction] | null {
   if (path.startsWith('/settings') || path.startsWith('/help') || path === '/inbox' || path === '/notifications') return null;
@@ -22,9 +22,13 @@ export function requiredRoutePermission(path: string): [string, PermissionAction
 }
 export function ModuleAccessGuard({ children }: { children: React.ReactNode }) {
   const path = usePathname();
-  const { userCan, isPermissionsLoaded, user } = useAuth();
+  const { userCan, isLoading, isPermissionsLoaded, permissionsError, refreshPermissions, user } = useAuth();
   const required = requiredRoutePermission(path);
-  if (required && !isPermissionsLoaded && user?.role !== 'Client Admin') return <DataLoadingSpinner label="Loading" hideLabel />;
+  if (required && (isLoading || !user)) return <DataLoadingSpinner label="Loading" hideLabel />;
+  if (required && !isPermissionsLoaded && user?.role !== 'Client Admin') {
+    if (permissionsError) return <DataErrorState message={permissionsError} onRetry={() => void refreshPermissions()} />;
+    return <DataLoadingSpinner label="Loading" hideLabel />;
+  }
   if (required && !userCan(...required)) return <p role="alert" className="p-4">You do not have permission to access this module.</p>;
   return <>{children}</>;
 }

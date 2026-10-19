@@ -69,7 +69,7 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
 
 it.each([
   ['Hot', 'rgb(239, 68, 68)'], ['Warm', 'rgb(245, 158, 11)'], ['Cold', 'rgb(59, 130, 246)'],
-  ['Closed', 'rgb(139, 92, 246)'], ['Cancelled', 'rgb(107, 114, 128)'],
+  ['Closed Deal', 'rgb(139, 92, 246)'], ['Cancelled', 'rgb(107, 114, 128)'],
 ])('renders %s using the unchanged Leads dot style, including legacy records', (status, color) => {
   const { container } = render(<CrmStatusIndicator status={status.toUpperCase()} />);
   expect(screen.getByText(status)).toBeTruthy();
@@ -80,4 +80,16 @@ it.each([
 it('rejects invalid write statuses instead of silently changing them to Inquiry', () => {
   expect(() => toBackendCreateContact({ status: 'WARM' })).toThrow();
   expect(toBackendUpdateContact({ email: 'test@example.test' })).not.toHaveProperty('status');
+});
+
+it.each(['lead', 'contact'] as const)('saves other %s fields while the calculated status is read-only', async kind => {
+  const save = vi.fn();
+  const initialData = { id: 'person', tenantId: 'tenant', createdAt: '2026-09-30T00:00:00Z', firstName: 'Testing', lastName: 'Person', email: 'person@example.test', status: 'Hot', statusManagedByDeals: true };
+  render(kind === 'lead'
+    ? <LeadFormSheet isOpen initialData={initialData} onClose={() => {}} onSave={save} />
+    : <ContactFormSheet isOpen initialData={initialData} onClose={() => {}} onSave={save} />);
+  expect((screen.getByLabelText('Status') as HTMLSelectElement).disabled).toBe(true);
+  fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Updated' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Save Changes' }));
+  await waitFor(() => expect(save).toHaveBeenCalledWith(expect.objectContaining({ lastName: 'Updated', status: 'Hot' })));
 });

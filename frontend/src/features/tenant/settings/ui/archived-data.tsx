@@ -14,6 +14,7 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { TableIconButton } from '@/shared/components/data-grid/table-icon-button';
 import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar';
 import { ModuleTabs } from '@/shared/components/crm/module-tabs';
+import { Button } from '@/shared/components/ui/button';
 import { archivedDataService } from '../services/archived-data.service';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
@@ -69,6 +70,8 @@ export function ArchivedData(): React.ReactElement {
   }, [sourceRecords, records, page, isInitialLoad, isRefreshing, error]);
   const changePage = (next: number) => { returnToVisiblePage.current = false; setSelectedIds(new Set()); setPage(next); };
   const selected = records.filter(record => selectedIds.has(rowId(record)));
+  const deleteDisabled = !selected.length || isInitialLoad || isRefreshing || restoring;
+  const openDeleteConfirmation = () => setPendingDelete(selected);
   const confirmRestore = async () => {
     if (!pending || busy.current || !canRestore) return;
     busy.current = true;
@@ -135,8 +138,8 @@ export function ArchivedData(): React.ReactElement {
         <ModuleTableToolbar label="Archived records" search={search} onSearch={value => { setSearch(value); changePage(1); }} placeholder="Search archived records..."
           stackSearchOnMobile disabled={restoring} refreshing={isInitialLoad || isRefreshing} onRefresh={refetch}
           beforeRefresh={<TableIconButton touchFriendly label="Remove from list" ariaLabel="Remove selected archived records from view"
-            className="rounded-lg disabled:opacity-50" disabled={!selected.length || isInitialLoad || isRefreshing || restoring}
-            onClick={() => setPendingDelete(selected)}>
+            className="rounded-lg disabled:opacity-50" disabled={deleteDisabled}
+            onClick={openDeleteConfirmation}>
             <Trash2 size={15} className="text-destructive" aria-hidden="true" />
           </TableIconButton>} />
         {error && <div role="alert" className="text-sm text-red-600">{error} <button type="button" className="underline" onClick={() => void refetch()}>Retry</button></div>}
@@ -156,6 +159,7 @@ export function ArchivedData(): React.ReactElement {
         </div>}
         <SelectedRowsBar count={selected.length} onClear={() => setSelectedIds(new Set())} disabled={restoring}>
           <button type="button" className={restoreClass} disabled={restoring || selected.some(record => !record.canRestore)} onClick={() => setPending({ records: selected, bulk: true })}>Restore</button>
+          <Button type="button" variant="destructive" size="sm" className="rounded-lg" disabled={deleteDisabled} onClick={openDeleteConfirmation}>Delete</Button>
         </SelectedRowsBar>
         <ConfirmActionDialog open={pending !== null} onOpenChange={open => { if (!open && !restoring) setPending(null); }}
           title={pending?.bulk ? 'Restore selected records?' : 'Restore record?'}

@@ -8,8 +8,9 @@ export function evaluateRule(rule: WorkflowConditionRule, context: Record<string
   if (rule.operator === 'is_not_empty') return !empty;
   if (actual === undefined) return false;
   // Contact stores uppercase enums; public CRM editors use canonical title case.
-  if (['lead.status', 'contact.status'].includes(rule.field) && typeof actual === 'string' && typeof rule.value === 'string') {
-    const equal = actual.trim().toLowerCase() === rule.value.trim().toLowerCase();
+  if (['lead.status', 'contact.status', 'event.newStatus', 'event.previousStatus'].includes(rule.field) && typeof actual === 'string' && typeof rule.value === 'string') {
+    const canonical = (value: string) => ['closed', 'closed_deal', 'closed deal'].includes(value.trim().toLowerCase()) ? 'closed deal' : value.trim().toLowerCase();
+    const equal = canonical(actual) === canonical(rule.value);
     if (rule.operator === 'equals') return equal;
     if (rule.operator === 'not_equals') return !equal;
   }

@@ -184,7 +184,7 @@ export async function generateTenants(count: number = 10) {
           lastName:       faker.person.lastName(),
           email:          faker.internet.email(),
           phone:          faker.phone.number(),
-          status:         faker.helpers.arrayElement(['Inquiry', 'Contacted', 'Qualified', 'Closed']),
+          status:         faker.helpers.arrayElement(['Inquiry', 'Contacted', 'Qualified', 'Closed Deal']),
           source:         faker.helpers.arrayElement(['Website', 'Referral', 'Cold Call', 'Conference', 'LinkedIn']),
           createdAt:      randomDatePast(12),
         },

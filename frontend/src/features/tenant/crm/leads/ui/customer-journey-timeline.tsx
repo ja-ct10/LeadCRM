@@ -74,7 +74,7 @@ export const CustomerJourneyTimeline: React.FC<CustomerJourneyTimelineProps> = (
 
     if (deal.history && deal.history.length > 0) {
       deal.history.forEach((h, idx) => {
-        const stageName = h.stageId === 'stage_won' ? 'Closed Won' : h.stageId === 'stage_lost' ? 'Closed Lost' : h.stageId;
+        const stageName = h.stageId === 'stage_won' ? 'Closed Deal' : h.stageId === 'stage_lost' ? 'Cancelled' : h.stageId;
         events.push({
           id: `evt_stage_${deal.id}_${idx}`,
           category: 'Sales',
