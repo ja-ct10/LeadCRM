@@ -191,7 +191,13 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         if (module === 'accounts') await data.updateOrganization(id, payload);
         else if (module === 'deals') await data.updateDeal(id, payload);
         else await data.updateContact(id, payload);
-      } else { const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, payload); if (response.data) recordQuery.setData(response.data); }
+      } else {
+        const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, payload);
+        // A committed Workflow can already have advanced this Deal while its
+        // original edit response was in flight. Reconcile through the guarded read.
+        if (module === 'deals') await recordQuery.refetch();
+        else if (response.data) recordQuery.setData(response.data);
+      }
       toast.success(`${label} updated`);
     } catch (error) { showCrmMutationError(error, `Failed to update ${label.toLowerCase()}`); }
     finally { setSaving(false); }
@@ -212,7 +218,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
         const addressOption = apiField === 'addressSource' ? addressContext.options.find(option => dealAddressKey(option) === normalized) : undefined;
         const sourceValue = addressOption ? { type: addressOption.type, id: addressOption.id } : null;
         const response = await apiClient.put<{ data: RecordData }>(`/crm/${module}/${encodeURIComponent(id)}`, { [apiField]: apiField === 'addressSource' ? sourceValue : module === 'deals' && ['accountId', 'assignedUserId', 'expectedCloseDate'].includes(apiField) && normalized === '' ? null : apiField === 'expectedCloseDate' && normalized ? new Date(String(normalized)).toISOString() : normalized });
-        if (response.data) recordQuery.setData(response.data);
+        if (module === 'deals') await recordQuery.refetch();
+        else if (response.data) recordQuery.setData(response.data);
       }
       toast.success('Field updated');
     } catch (error) {
@@ -244,7 +251,7 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const dealProductIds = (record.productInterestIds as string[] | undefined)?.length ? record.productInterestIds as string[] : record.productInterestId ? [text(record.productInterestId)] : [];
   const dealProductNames = record.productInterests as string[] | undefined;
   const dealProductName = text(object(record.productInterestRecord)?.name) || (record.productInterestRecord !== null && dealProductIds.length === 1 && dealProductNames?.length === 1 ? dealProductNames[0] : '');
-  const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined) : null;
+  const composeHref = emailChipAction || personInboxAction ? recordEmailComposeHref(email, module === 'deals' ? `${dealProductName || 'Product'} Inquiry` : undefined, undefined, module === 'leads' || module === 'contacts' ? { recordModule: module, recordId: id } : undefined) : null;
   const composeDisabled = !composeHref && (!personInboxAction || ownsRecordMailbox);
   const openRecordEmail = () => {
     if (personInboxAction && !ownsRecordMailbox) {

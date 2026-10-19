@@ -206,6 +206,40 @@ describe.skipIf(url.hostname !== '127.0.0.1' || !['/leadcrm_forms_test_2','/lead
     expect(await prisma.customFieldValue.count({ where: { tenantId, fieldId, value: { equals: 'Preserve exact history' } } })).toBe(2);
     await expect(scope(() => merge({ tenantId, userId: adminId, entityType: 'lead', primaryId: a.id, secondaryId: b.id, fieldResolutions: {} }))).rejects.toThrow();
   });
+  it('merges through the full comparison contract, deduplicates Deals and preserves files and activity history', async () => {
+    const a = await prisma.lead.create({ data: { tenantId, ...input(), productsNormalized: true } });
+    const b = await prisma.lead.create({ data: { tenantId, ...input({ phone: '+639171234567' }), productsNormalized: true, productLinks: { create: { productInterestId: productId } } } });
+    const shared = await prisma.deal.create({ data: { tenantId, title: 'Shared merge Deal', pipelineId, stageId, value: 100, leadDeals: { create: [{ leadId: a.id, position: 0 }, { leadId: b.id, position: 1 }] } } });
+    const moved = await prisma.deal.create({ data: { tenantId, title: 'Secondary merge Deal', pipelineId, stageId, value: 200, leadDeals: { create: { leadId: b.id } } } });
+    const history = await prisma.activity.create({ data: { tenantId, leadId: b.id, type: 'note', title: 'Preserved note', createdById: agentId } });
+    const file = await prisma.recordFile.create({ data: { tenantId, leadId: b.id, name: 'History.txt', size: 12, type: 'text/plain', objectKey: randomUUID(), uploadedById: adminId } });
+    const preview = await call('/crm/merge/preview', 'POST', { entityType: 'lead', primaryId: a.id, secondaryId: b.id });
+    expect(preview.status).toBe(200);
+    const fieldResolutions = Object.fromEntries(preview.body.data.fieldComparisons.filter((field: { isDifferent: boolean }) => field.isDifferent).map((field: { field: string }) => [field.field, ['phone', 'productInterest'].includes(field.field) ? 'secondary' : 'primary']));
+    const payload = { entityType: 'lead', primaryId: a.id, secondaryId: b.id, fieldResolutions };
+    const result = await call('/crm/merge', 'POST', payload);
+    expect(result.status, JSON.stringify(result.body)).toBe(200);
+    expect(result.body.data.mergedRecord).toMatchObject({ id: a.id, email: a.email, phone: b.phone, productInterestIds: [productId] });
+    expect(await prisma.leadDeal.count({ where: { tenantId, leadId: a.id, dealId: { in: [shared.id, moved.id] } } })).toBe(2);
+    expect(await prisma.leadDeal.count({ where: { tenantId, leadId: b.id } })).toBe(0);
+    expect(await prisma.activity.findUniqueOrThrow({ where: { id: history.id } })).toMatchObject({ leadId: a.id, createdById: agentId, createdAt: history.createdAt });
+    expect(await prisma.recordFile.findUniqueOrThrow({ where: { id: file.id } })).toMatchObject({ leadId: a.id, objectKey: file.objectKey });
+    expect(await prisma.lead.findUniqueOrThrow({ where: { id: b.id } })).toMatchObject({ isArchived: true, email: b.email });
+    expect((await call('/crm/merge', 'POST', payload)).status).toBe(400);
+    expect(await prisma.auditLog.count({ where: { tenantId, entityId: a.id, action: 'lead.merged' } })).toBe(1);
+    const foreign = await prisma.lead.create({ data: { tenantId: foreignTenant, ...input() } });
+    expect((await call('/crm/merge', 'POST', { ...payload, secondaryId: foreign.id })).status).toBe(404);
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: foreign.id } })).isArchived).toBe(false);
+  });
+  it('merges a source at most once when two agents submit concurrently', async () => {
+    const a = await prisma.lead.create({ data: { tenantId, ...input() } }), b = await prisma.lead.create({ data: { tenantId, ...input() } }), source = await prisma.lead.create({ data: { tenantId, ...input() } });
+    const note = await prisma.activity.create({ data: { tenantId, leadId: source.id, type: 'note', title: 'Concurrent merge history', createdById: adminId } });
+    const results = await Promise.all([a, b].map(primary => call('/crm/merge', 'POST', { entityType: 'lead', primaryId: primary.id, secondaryId: source.id, fieldResolutions: {} })));
+    expect(results.map(result => result.status).sort()).toEqual([200, 400]);
+    const survivor = results.find(result => result.status === 200)!.body.data.mergedRecord.id;
+    expect((await prisma.activity.findUniqueOrThrow({ where: { id: note.id } })).leadId).toBe(survivor);
+    expect(await prisma.auditLog.count({ where: { tenantId, action: 'lead.merged', metadata: { path: ['secondaryId'], equals: source.id } } })).toBe(1);
+  });
   it('merges the selected Product IDs even when a catalog name is reused', async () => {
     const name = `Reused ${randomUUID()}`;
     const retired = await prisma.productInterest.create({ data: { tenantId, name, dealValue: 10, active: false } });

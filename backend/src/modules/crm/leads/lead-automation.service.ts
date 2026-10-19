@@ -12,7 +12,9 @@ import { productRelationData } from './product-relations';
 import { findSalesGroup } from '../../administration/groups/sales-group';
 import { eligibleAssignedAgents, crmAssignmentRequirements } from '../access/assigned-agent-eligibility';
 import type { CrmModule } from '../access/crm-record-access.service';
-import { salesContext } from './sales-context';
+import { salesContext, salesAfterCommit } from './sales-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
+import { notifyRecordChanges } from '../record-change-events';
 import { fenceWorkflowLease } from '../../automation/workflows/workflow-lease';
 
 type Tx = Prisma.TransactionClient;
@@ -23,11 +25,12 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
   const current = salesContext.getStore();
   if (current) { await fenceWorkflowLease(current); return work(current); }
   for (let attempt = 0; ; attempt++) {
+    const afterCommit = new Map<string, () => void>();
     let result: T;
     try { result = await prisma.$transaction(async tx => {
       await fenceWorkflowLease(tx);
       await setNotificationActor(tx);
-      return salesContext.run(tx, () => work(tx));
+      return salesAfterCommit.run(afterCommit, () => salesContext.run(tx, () => work(tx)));
     }, { isolationLevel: 'Serializable', timeout: 20000 }); }
     catch (error) {
       if ((isCrmTransactionConflict(error) || error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') && attempt < 4) {
@@ -37,6 +40,9 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
       }
       throw error;
     }
+    for (const notify of afterCommit.values()) notify();
+    const tenantId = tenantContext.getStore()?.tenantId;
+    if (tenantId) notifyRecordChanges(tenantId);
     return result;
   }
 }

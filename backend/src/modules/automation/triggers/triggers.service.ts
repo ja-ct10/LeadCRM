@@ -2,7 +2,7 @@ import { CRM_STATUSES } from '@leadcrm/shared';
 import { safeWorkflowError } from '../actions/action-dispatcher';
 import { salesContext } from '../../crm/leads/sales-context';
 import prisma from '../../../config/database.config';
-import { enqueueWorkflowTrigger } from '../workflows/workflow-queue';
+import { enqueueWorkflowTrigger, requestWorkflowDispatch } from '../workflows/workflow-queue';
 interface RecordEvent { tenantId: string; actorId?: string; eventId?: string; }
 interface ContactEvent extends RecordEvent { contact: { id: string; updatedAt?: Date; status: string; assignedUserId?: string | null; source?: string | null }; }
 interface LeadEvent extends RecordEvent { lead: { id: string; updatedAt?: Date; status: string; score?: number | null; source?: string | null; assignedUserId?: string | null; companyName?: string | null }; }
@@ -15,7 +15,7 @@ async function fire(params: RecordEvent, type: string, entity: string, id: strin
   const tx = salesContext.getStore();
   // Required source-transaction events must roll back the source if enqueueing fails.
   if (tx) { await enqueueWorkflowTrigger(tx, event); return; }
-  try { await prisma.$transaction(client => enqueueWorkflowTrigger(client, event)); }
+  try { await prisma.$transaction(client => enqueueWorkflowTrigger(client, event)); requestWorkflowDispatch(); }
   catch (error) { console.error('[Workflow] Event processing failed', { trigger: type, entityType: entity, entityId: id,
     tenantId: params.tenantId, eventId, failureClass: error instanceof Error ? error.name : 'UnknownError', message: safeWorkflowError(error) }); }
 }

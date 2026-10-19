@@ -12,6 +12,7 @@ import { USE_MOCK_DATA } from '@/lib/config';
 import { useLayout } from './use-layout';
 import { cn } from '@/lib/utils';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
+import { useNotifications } from '@/features/tenant/notifications/hooks/use-notifications';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,8 @@ export default function SidebarNav({
 }: SidebarNavProps): React.ReactElement {
   const { currentPath, filteredNav } = useLayout();
   const { user, tenant } = useAuth();
+  const { unreadByModule } = useNotifications('all', { countsOnly: true });
+  const hasUnread = (path: string) => (unreadByModule[path === 'pipeline' ? 'deals' : path] ?? 0) > 0;
   const panelRef = useRef<HTMLElement>(null);
   const owner = useId();
   const swipe = useRef<{ x: number; y: number; time: number } | null>(null);
@@ -198,6 +201,7 @@ export default function SidebarNav({
                   isActive={currentPath === item.path}
                   isCollapsed={isCollapsed}
                   badgeCount={getBadgeCount(item.path)}
+                  hasUnread={hasUnread(item.path)}
                   onClick={() => requestNavigation(() => { navigate(item.path); onCloseSidebar(); })}
                 />
               ))}
@@ -221,6 +225,7 @@ export default function SidebarNav({
                         isActive={currentPath === item.path}
                         isCollapsed={isCollapsed}
                         badgeCount={getBadgeCount(item.path)}
+                        hasUnread={hasUnread(item.path)}
                         onClick={() => requestNavigation(() => { navigate(item.path); onCloseSidebar(); })}
                       />
                     ))}
@@ -279,10 +284,11 @@ interface NavButtonProps {
   isActive: boolean;
   isCollapsed: boolean;
   badgeCount?: number;
+  hasUnread?: boolean;
   onClick: () => void;
 }
 
-function NavButton({ item, isActive, isCollapsed, badgeCount, onClick }: NavButtonProps): React.ReactElement {
+function NavButton({ item, isActive, isCollapsed, badgeCount, hasUnread, onClick }: NavButtonProps): React.ReactElement {
   const Icon = item.icon;
 
   return (
@@ -305,7 +311,9 @@ function NavButton({ item, isActive, isCollapsed, badgeCount, onClick }: NavButt
         <div className="absolute left-0 top-1/2 -translate-y-1/2 w-[3px] h-5 bg-primary rounded-r-full" />
       )}
 
-      <Icon className="h-[16px] w-[16px] shrink-0" />
+      <span className="relative shrink-0"><Icon className="h-[16px] w-[16px]" />
+        {hasUnread && <span role="status" aria-label={`Unread ${item.name} notifications`} className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-[var(--sidebar-bg)]" />}
+      </span>
 
       {!isCollapsed && (
         <>

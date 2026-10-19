@@ -46,6 +46,8 @@ app.use('/api/v1/webhooks/textbee', express.raw({ type: 'application/json', limi
 app.use('/api/v1/public/forms', express.json({ limit: '64kb' }));
 // CSV JSON escaping can increase transport size; the shared schema enforces 10MB of CSV bytes.
 app.use(/^\/api\/v1\/crm\/(leads|contacts|accounts|deals)\/imports(?:\/preview)?$/, express.json({ limit: '22mb' }));
+// Composer attachments are bounded again by the shared per-file and aggregate limits.
+app.use(/^\/api\/v1\/integrations\/gmail\/(send|drafts|scheduled)$/, express.json({ limit: '15mb' }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true, limit: '1mb' }));
 app.use(cookieParser());

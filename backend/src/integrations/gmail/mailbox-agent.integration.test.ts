@@ -123,6 +123,25 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
     expect((await prisma.activity.findMany({ where: { tenantId, type: 'email' }, orderBy: { id: 'asc' } })).map(row => row.id)).toEqual(before.map(row => row.id));
   });
 
+  it.each(['leads', 'contacts'] as const)('keeps an explicitly selected %s Deal when the subject changes and History recovers later', async recordModule => {
+    const [agent, other] = agents;
+    const recordId = recordModule === 'leads' ? agent.leadId : agent.contactId;
+    const payload = { requestId: randomUUID(), to: recordModule === 'leads' ? agent.email : agent.contactEmail, subject: 'Manually edited subject', body: '<p>Details for the selected Deal</p>', composeMode: 'compose', recordContext: { recordModule, recordId }, dealId: agent.dealId };
+    expect((await call(agent, '/integrations/gmail/send', { ...payload, dealId: other.dealId })).status).toBe(400);
+    expect(writes).toBe(0);
+    failReads = true;
+    expect((await call(agent, '/integrations/gmail/send', payload)).status).toBe(200);
+    failReads = false;
+    await scope(() => syncMailbox(tenantId, agent.id, 'worker'));
+    const stored = await prisma.mailboxMessage.findFirstOrThrow({ where: { tenantId, accountId: agent.account.id, direction: 'outbound' } });
+    expect(stored.dealId).toBe(agent.dealId);
+    expect(recordModule === 'leads' ? stored.leadId : stored.contactId).toBe(recordId);
+    expect(await prisma.activity.count({ where: { tenantId, mailboxMessageId: stored.id, dealId: agent.dealId, type: 'email' } })).toBe(1);
+    expect((await call(agent, '/integrations/gmail/send', payload)).status).toBe(200);
+    expect(writes).toBe(1);
+    expect((await call(other, '/integrations/gmail/send', { ...payload, requestId: randomUUID() })).status).toBe(403);
+  });
+
   it('immediately ingests a recovered confirmed send and repairs a completed receipt without another write', async () => {
     const b = agents[1], requestId = randomUUID(); loseAcknowledgement = true;
     expect((await send(b, requestId)).status).toBe(503);

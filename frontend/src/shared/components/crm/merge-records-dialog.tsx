@@ -1,7 +1,7 @@
 'use client';
 import { panelBodyClass, panelFooterClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { SlidingDrawer } from '@/shared/components/sliding-drawer';
 import { apiClient } from '@/lib/api/client';
 import { toast } from 'sonner';
@@ -99,11 +99,15 @@ export function MergeRecordsDialog({
   const [isLoading, setIsLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fieldResolutions, setFieldResolutions] = useState<Record<string, 'primary' | 'secondary'>>({});
+  const closing = useRef(onClose); closing.current = onClose;
+  const submitting = useRef(false);
 
   // Fetch preview on open
   useEffect(() => {
     if (!isOpen || !primaryId || !secondaryId) return;
 
+    let active = true;
+    setPreview(null); setFieldResolutions({});
     const fetchPreview = async (): Promise<void> => {
       setIsLoading(true);
       try {
@@ -111,29 +115,33 @@ export function MergeRecordsDialog({
           '/crm/merge/preview',
           { entityType, primaryId, secondaryId },
         );
-        if (response.success && response.data) {
+        if (active && response.success && response.data) {
           setPreview(response.data);
           // Default all different fields to 'primary'
           const defaults: Record<string, 'primary' | 'secondary'> = {};
           response.data.fieldComparisons
             .filter((fc) => fc.isDifferent)
-            .forEach((fc) => { defaults[fc.field] = 'primary'; });
+            .forEach((fc) => { const empty = (value: unknown) => value == null || value === '' || Array.isArray(value) && !value.length; defaults[fc.field] = empty(fc.primaryValue) && !empty(fc.secondaryValue) ? 'secondary' : 'primary'; });
           setFieldResolutions(defaults);
         }
       } catch (err) {
+        if (!active) return;
         const message = err instanceof Error ? err.message : 'Failed to load merge preview';
         toast.error(message);
-        onClose();
+        closing.current();
       } finally {
-        setIsLoading(false);
+        if (active) setIsLoading(false);
       }
     };
 
     fetchPreview();
-  }, [isOpen, entityType, primaryId, secondaryId, onClose]);
+    return () => { active = false; };
+  }, [isOpen, entityType, primaryId, secondaryId]);
 
   // Execute merge
   const handleMerge = async (): Promise<void> => {
+    if (submitting.current || !preview || isLoading) return;
+    submitting.current = true;
     setIsSubmitting(true);
     try {
       await apiClient.post('/crm/merge', {
@@ -156,6 +164,7 @@ export function MergeRecordsDialog({
       const message = err instanceof Error ? err.message : 'Failed to merge records';
       toast.error(message);
     } finally {
+      submitting.current = false;
       setIsSubmitting(false);
     }
   };
@@ -177,7 +186,7 @@ export function MergeRecordsDialog({
   return (
     <SlidingDrawer
       isOpen={isOpen}
-      onClose={onClose}
+      onClose={() => { if (!submitting.current) onClose(); }}
       title={`Merge ${entityLabel} Records`}
       subtitle="Compare and merge duplicate records"
     >
@@ -221,6 +230,7 @@ export function MergeRecordsDialog({
                     <button
                       type="button"
                       onClick={() => setFieldResolutions((prev) => ({ ...prev, [fc.field]: 'primary' }))}
+                      disabled={isSubmitting}
                       className={cn(
                         'text-left px-3 py-2 rounded-lg text-xs transition-all border',
                         fieldResolutions[fc.field] === 'primary'
@@ -242,6 +252,7 @@ export function MergeRecordsDialog({
                     <button
                       type="button"
                       onClick={() => setFieldResolutions((prev) => ({ ...prev, [fc.field]: 'secondary' }))}
+                      disabled={isSubmitting}
                       className={cn(
                         'text-left px-3 py-2 rounded-lg text-xs transition-all border',
                         fieldResolutions[fc.field] === 'secondary'
@@ -303,6 +314,7 @@ export function MergeRecordsDialog({
               <button
                 type="button"
                 onClick={onClose}
+                disabled={isSubmitting}
                 className={panelSecondaryActionClass}
               >
                 Cancel

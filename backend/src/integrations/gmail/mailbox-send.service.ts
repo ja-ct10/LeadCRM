@@ -14,15 +14,17 @@ import { assertStoredMessages } from './mailbox-scope';
 import { resolveDraftOperationContext } from './mailbox-draft-context';
 import type { MailboxQuotationContext } from './mailbox-operations';
 import type { GeneratedMailboxAttachment } from './gmail.service';
+import { decodeOutgoingAttachments } from './mailbox-upload-attachments';
 
 export async function sendMailboxEmail(tenantId: string, userId: string, input: z.infer<typeof SendMailboxEmailSchema>, generated?: { attachments: GeneratedMailboxAttachment[]; quotation: MailboxQuotationContext }) {
   const data = SendMailboxEmailSchema.parse(input);
+  const attachments = generated?.attachments ?? decodeOutgoingAttachments(data.attachments);
   const { account, scope } = await authorizedMailbox(tenantId, userId);
   const recipients = normalizedRecipients(Array.isArray(data.to) ? data.to : [data.to]);
   const source = await resolveDraftOperationContext(account, data, { account, scope });
   const context = { recipients, ...source, draftId: data.draftId, ...(generated ? { quotation: generated.quotation } : {}) };
   await authorizeMailboxOperation(account, context);
-  const intent = { ...context, subject: data.subject, body: data.body, ...(generated ? { attachments: generated.attachments.map(file => ({ filename: file.filename, mimeType: file.mimeType, sha256: createHash('sha256').update(file.data).digest('hex') })) } : {}) };
+  const intent = { ...context, subject: data.subject, body: data.body, ...(attachments ? { attachments: attachments.map(file => ({ filename: file.filename, mimeType: file.mimeType, sha256: createHash('sha256').update(file.data).digest('hex') })) } : {}) };
   const claim = await reserveMailboxOperation(account, data.requestId, 'send', intent, context);
   if (claim.terminal) {
     if (claim.receipt.status !== 'sent' || !claim.receipt.providerMessageId || !claim.receipt.providerThreadId) throw new AppError('This operation is not a completed send.', 409);
@@ -36,7 +38,7 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
     const result = claim.recover
       ? await recoverMailboxProviderResult(account, claim.receipt, context, 'sent')
       : await sendEmail(tenantId, userId, recipients, data.subject, data.body, source.replyToMessageId, data.draftId, source.forwardSourceMessageId,
-        { messageId: claim.receipt.rfcMessageId!, receiptId: claim.receipt.id, attachments: generated?.attachments, quotation: generated?.quotation, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
+        { messageId: claim.receipt.rfcMessageId!, receiptId: claim.receipt.id, attachments, recordContext: source.recordContext, dealId: source.dealId, quotation: generated?.quotation, beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     await finishMailboxOperation(claim, { status: 'sent', providerMessageId: result.messageId, providerThreadId: result.threadId });
     await recordPersonalOutreach(account.id, tenantId, result.messageId);
     if (claim.recover) await ingestConfirmedMailboxSend(account, result.messageId, context);
@@ -52,12 +54,13 @@ export async function sendMailboxEmail(tenantId: string, userId: string, input: 
 
 export async function saveMailboxDraft(tenantId: string, userId: string, input: z.infer<typeof SaveMailboxDraftSchema>) {
   const data = SaveMailboxDraftSchema.parse(input);
+  const attachments = decodeOutgoingAttachments(data.attachments);
   const { account, scope } = await authorizedMailbox(tenantId, userId);
   const recipients = data.to.trim() ? normalizedRecipients(data.to.split(',').map(value => value.trim())) : [];
   const source = await resolveDraftOperationContext(account, data, { account, scope });
   const context = { recipients, ...source, draftId: data.draftId };
   await authorizeMailboxOperation(account, context);
-  const claim = await reserveMailboxOperation(account, data.requestId, 'draft', { ...context, subject: data.subject, body: data.body }, context);
+  const claim = await reserveMailboxOperation(account, data.requestId, 'draft', { ...context, subject: data.subject, body: data.body, attachments: data.attachments }, context);
   if (claim.terminal) {
     if (claim.receipt.status !== 'saved' || !claim.receipt.providerDraftId || !claim.receipt.providerMessageId) throw new AppError('This operation is not a saved draft.', 409);
     await assertDraftAccess(tenantId, userId, claim.receipt.providerDraftId, claim.receipt.id);
@@ -73,7 +76,7 @@ export async function saveMailboxDraft(tenantId: string, userId: string, input: 
       result = { draftId: recovered.draftId, messageId: recovered.messageId };
     } else {
       result = await saveDraft(tenantId, userId, recipients.join(', '), data.subject, data.body, data.draftId,
-        { replyToMessageId: source.replyToMessageId, forwardSourceMessageId: source.forwardSourceMessageId, messageId: claim.receipt.rfcMessageId!, operationReceiptId: claim.receipt.id,
+        { attachments, recordContext: source.recordContext, dealId: source.dealId, replyToMessageId: source.replyToMessageId, forwardSourceMessageId: source.forwardSourceMessageId, messageId: claim.receipt.rfcMessageId!, operationReceiptId: claim.receipt.id,
           beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     }
     await finishMailboxOperation(claim, { status: 'saved', providerDraftId: result.draftId, providerMessageId: result.messageId });

@@ -35,7 +35,20 @@ export async function findNotifications(tenantId: string, userId: string, input:
 async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: string) {
   // Both values come from one SQL snapshot, including inside mutation transactions.
   const groups = await tx.notification.groupBy({ by: ['isRead'], where: { tenantId, userId }, _count: { _all: true } });
-  return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0 };
+  const unread = await tx.notification.groupBy({ by: ['entityType', 'entityId'], where: { tenantId, userId, isRead: false }, _count: { _all: true } });
+  const access = await notificationAccess(tenantId, userId, tx);
+  const unreadByModule: Record<string, number> = {};
+  for (const group of unread) {
+    const target = await access.resolve(group.entityType, group.entityId);
+    if (!target) continue;
+    const path = target.destination.split('?')[0];
+    const module = path.startsWith('/crm/') ? path.split('/')[2]
+      : path.startsWith('/marketing/') ? path.split('/')[2]
+      : path.startsWith('/automation/') ? 'workflows'
+      : path.startsWith('/operations/') ? 'tasks' : path.split('/')[1];
+    if (module) unreadByModule[module] = (unreadByModule[module] ?? 0) + group._count._all;
+  }
+  return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0, unreadByModule };
 }
 export async function notificationCounts(tenantId: string, userId: string, input: Record<string, unknown> = {}) {
   const query = z.object({ after: z.string().max(2048).optional(), since: z.string().datetime().optional() }).strict().parse(input);
@@ -74,7 +87,7 @@ export async function notificationCounts(tenantId: string, userId: string, input
   const next = { ...cursor, at: hasMore && last ? last.createdAt.toISOString() : now.toISOString(), id: hasMore && last ? last.id : '', page: hasMore };
   const updates = (await presentNotifications(tenantId, userId, records)).filter(row => row.available);
   const access = result.active ? await notificationAccess(tenantId, userId) : null;
-  return { totalCount: result.totalCount, unreadCount: result.unreadCount, updates, hasMore,
+  return { totalCount: result.totalCount, unreadCount: result.unreadCount, unreadByModule: result.unreadByModule, updates, hasMore,
     cursor: Buffer.from(JSON.stringify(next)).toString('base64url'),
     activeSmsUntil: result.active?.submissionStartedAt && await access?.resolve('Campaign', result.active.id)
       ? new Date(+result.active.submissionStartedAt + 300000).toISOString() : null };

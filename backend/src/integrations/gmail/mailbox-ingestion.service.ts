@@ -2,7 +2,8 @@ import { hasQualifiedDeal, recordStaffOutreach } from '../../modules/crm/custome
 import { FIXED_MAILBOX_SENDERS, mailboxAddress, mailboxParticipants, messageInScope, resolveMailboxScope, scopedMessagesWhere, MAILBOX_PARTICIPANT_POLICY_VERSION } from './mailbox-scope';
 import { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
-import { normalizeCrmStatus } from '@leadcrm/shared';
+import { normalizeCrmStatus, type MailboxRecordContext } from '@leadcrm/shared';
+import { receiptComposeContext } from './mailbox-draft-context';
 import prisma from '../../config/database.config';
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { CustomerLink, changeCustomerStatus, customerDealWhere } from '../../modules/crm/engagement.service';
@@ -13,7 +14,7 @@ import { mailboxPermissions } from './mailbox-sync.service';
 
 export interface MailboxPermissions { leadsView: boolean; contactsView: boolean; leadsEdit: boolean; contactsEdit: boolean; dealsEdit: boolean; dealsView: boolean }
 type Tx = Prisma.TransactionClient;
-type SentContext = { sourceMessageId?: string; dealId?: string };
+type SentContext = { sourceMessageId?: string; dealId?: string; recordContext?: MailboxRecordContext };
 
 async function validatedReplyDeal(tx: Tx, account: EmailAccount, email: GmailEmail, link: CustomerLink | undefined, context?: SentContext) {
   const sentContext = mailboxAddress(email.from) === mailboxAddress(account.email) ? context : undefined;
@@ -124,6 +125,19 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const currentScope = await resolveMailboxScope(account, permissions, tx);
       if (!messageInScope(email, account.email, currentScope)) return;
       const authorizationParticipants = mailboxParticipants(email)!;
+      let context = sentContext;
+      if (!context && email.rfcMessageId && mailboxAddress(email.from) === mailboxAddress(account.email)) {
+        const receipt = await tx.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, rfcMessageId: email.rfcMessageId, operation: { in: ['send', 'schedule'] }, status: { in: ['sending', 'uncertain', 'queued', 'sent'] } }, select: { authorizationContext: true } });
+        const saved = receiptComposeContext(receipt?.authorizationContext ?? null);
+        if (saved) context = { ...saved, sourceMessageId: saved.replyToMessageId };
+      }
+      const selected = context?.recordContext;
+      const selectedWhere = selected ? { tenantId: account.tenantId, id: selected.recordId, assignedUserId: account.userId, isArchived: false, deletedAt: null } : undefined;
+      const selectedRecord = selectedWhere && mailboxAddress(email.from) === mailboxAddress(account.email)
+        ? selected?.recordModule === 'leads' && permissions.leadsView ? await tx.lead.findFirst({ where: { ...selectedWhere, convertedAt: null }, select: { email: true } })
+          : selected?.recordModule === 'contacts' && permissions.contactsView ? await tx.contact.findFirst({ where: selectedWhere, select: { email: true } }) : null : null;
+      const selectedLink: CustomerLink | undefined = selected && selectedRecord && [...email.to, ...(email.cc ?? [])].some(address => mailboxAddress(address) === mailboxAddress(selectedRecord.email ?? ''))
+        ? selected.recordModule === 'leads' ? { leadId: selected.recordId } : { contactId: selected.recordId } : undefined;
       const key = { accountId: account.id, providerMessageId: email.id };
       const existing = await tx.mailboxMessage.findUnique({ where: { accountId_providerMessageId: key } });
       const previousDraft = email.labels.includes('DRAFT') && email.draftId ? await tx.mailboxMessage.findFirst({ where: { tenantId: account.tenantId, accountId: account.id, draftId: email.draftId, sourceMessageId: { not: null } }, select: { sourceMessageId: true, crmDraft: true } }) : null;
@@ -136,7 +150,7 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       }
       if (existing?.engagementRuleVersion === ENGAGEMENT_RULE_VERSION && !existing.labels.includes('DRAFT') && !email.labels.includes('DRAFT')) {
         const link = existing.contactId ? { contactId: existing.contactId } : existing.leadId ? { leadId: existing.leadId } : undefined;
-        const contextDealId = !existing.dealId && permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, sentContext) : undefined;
+        const contextDealId = !existing.dealId && permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, context) : undefined;
         const stored = await tx.mailboxMessage.update({ where: { id: existing.id }, data: { threadId: email.threadId, labels: email.labels, authorizationParticipants, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION, fromAddress: mailboxAddress(email.from) ?? '', recipientAddresses: [...email.to, ...(email.cc ?? []), ...(email.bcc ?? [])].flatMap(value => mailboxAddress(value) ?? []), ccRecipients: email.cc ?? [], replyToAddress: email.replyToAddress ? mailboxAddress(email.replyToAddress) ?? null : null,
           ...(contextDealId ? { dealId: contextDealId, needsDealAssociation: false } : {}),
           ...(email.rfcMessageId ? { rfcMessageId: email.rfcMessageId } : {}), ...(email.rfcInReplyTo ? { rfcInReplyTo: email.rfcInReplyTo } : {}),
@@ -149,10 +163,10 @@ export async function ingestMailboxMessages(account: EmailAccount, messages: Gma
       const externals = [...new Set([from, ...recipients].filter(address => address.includes('@') && !internalEmails.has(address)))];
       const matched = direction !== 'unknown' && externals.length === 1 ? await matchCustomer(tx, account.tenantId, account.userId, externals[0], permissions) : undefined;
       const priorLink: CustomerLink | undefined = existing?.contactId ? { contactId: existing.contactId } : existing?.leadId ? { leadId: existing.leadId } : undefined;
-      const link = matched ?? (priorLink && (priorLink.leadId ? currentScope.leadIds.includes(priorLink.leadId) : currentScope.contactIds.includes(priorLink.contactId!)) ? priorLink : undefined);
+      const link = selected ? selectedLink : matched ?? (priorLink && (priorLink.leadId ? currentScope.leadIds.includes(priorLink.leadId) : currentScope.contactIds.includes(priorLink.contactId!)) ? priorLink : undefined);
       const prior = link ? await tx.mailboxMessage.findMany({ where: { ...await historyWhere(tx, account.tenantId, link), accountId: account.id, threadId: email.threadId }, select: { dealId: true } }) : [];
       const association = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId: email.threadId } } });
-      const contextDealId = permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, sentContext) : undefined;
+      const contextDealId = permissions.dealsView ? await validatedReplyDeal(tx, account, email, link, context) : undefined;
       const explicitIds = existing?.dealId ? [existing.dealId] : contextDealId
         ? [contextDealId]
         : [...new Set([association?.dealId, ...prior.map(row => row.dealId)].filter((id): id is string => !!id))];

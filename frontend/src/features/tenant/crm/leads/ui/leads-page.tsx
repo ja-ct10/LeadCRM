@@ -482,7 +482,7 @@ export default function LeadsPage(): React.ReactElement {
             onEdit={(lead) => { setEditingLead(lead); setIsFormOpen(true); }}
             onArchive={(lead) => confirmArchive([lead.id], formatLeadName(lead))}
             onConvert={(lead) => setConvertingLead(lead)}
-            onMerge={(lead) => setMergingLead(lead)}
+            onMerge={canEdit && canDelete ? (lead) => setMergingLead(lead) : undefined}
             onHideColumn={async (columnId) => {
               const updated = reconcileTableColumns('leads', effectiveColumns, LEADS_COLUMN_REGISTRY).map((col) =>
                 col.id === columnId ? { ...col, visible: false } : col,
@@ -569,7 +569,7 @@ export default function LeadsPage(): React.ReactElement {
             <EntityCombobox
               entityType="leads"
               value={null}
-              onChange={(id) => { if (id) setMergeSecondaryId(id); }}
+              onChange={(id) => { if (id === mergingLead.id) { toast.error('Choose a different Lead to merge.'); return; } if (id) setMergeSecondaryId(id); }}
               placeholder="Search for the duplicate lead..."
             />
           </div>
@@ -584,7 +584,7 @@ export default function LeadsPage(): React.ReactElement {
           entityType="lead"
           primaryId={mergingLead.id}
           secondaryId={mergeSecondaryId}
-          onSuccess={() => { setMergingLead(null); setMergeSecondaryId(null); }}
+          onSuccess={() => { setMergingLead(null); setMergeSecondaryId(null); void refetchLeads(); }}
         />
       )}
 

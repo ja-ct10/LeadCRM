@@ -14,6 +14,7 @@ import { authorizeMailboxOperation, normalizedRecipients, mailboxIntentHash, res
 import { recoverMailboxProviderResult, persistRecoveredDraft } from './mailbox-recovery';
 import { MAILBOX_METADATA_HEADERS } from './mailbox-scope';
 import { receiptComposeContext, resolveDraftOperationContext } from './mailbox-draft-context';
+import { decodeOutgoingAttachments } from './mailbox-upload-attachments';
 
 export const scheduleMessageId = (id: string) => `<leadcrm-schedule-${id}@leadcrm.invalid>`;
 
@@ -56,12 +57,13 @@ export async function cancelScheduledMailboxEmail(tenantId: string, userId: stri
 export async function scheduleMailboxEmail(tenantId: string, userId: string, input: z.infer<typeof ScheduleMailboxEmailSchema>) {
   // A replay of an accepted schedule remains valid after its original due time.
   const data = ScheduleMailboxEmailSchema.extend({ scheduledAt: z.string().datetime() }).parse(input);
+  const attachments = decodeOutgoingAttachments(data.attachments);
   const { account, scope } = await authorizedMailbox(tenantId, userId);
   const recipients = normalizedRecipients(Array.isArray(data.to) ? data.to : [data.to]);
   const source = await resolveDraftOperationContext(account, data, { account, scope });
   const context = { recipients, ...source, draftId: data.draftId };
   await authorizeMailboxOperation(account, context);
-  const intent = { ...context, subject: data.subject, body: data.body, scheduledAt: new Date(data.scheduledAt).toISOString() };
+  const intent = { ...context, subject: data.subject, body: data.body, attachments: data.attachments, scheduledAt: new Date(data.scheduledAt).toISOString() };
   const payloadHash = mailboxIntentHash('schedule', intent);
   const existing = await prisma.scheduledMailboxEmail.findUnique({ where: { accountId_requestId: { accountId: account.id, requestId: data.requestId } } });
   if (existing && existing.payloadHash !== payloadHash) throw new AppError('This request ID belongs to different scheduled content.', 409, 'MAILBOX_INTENT_CHANGED');
@@ -91,7 +93,7 @@ export async function scheduleMailboxEmail(tenantId: string, userId: string, inp
       await persistRecoveredDraft(account, { ...recovered, draftId: recovered.draftId }, context);
       draft = { draftId: recovered.draftId, messageId: recovered.messageId };
     } else draft = await saveDraft(tenantId, userId, recipients.join(', '), data.subject, data.body, data.draftId,
-      { replyToMessageId: source.replyToMessageId, forwardSourceMessageId: source.forwardSourceMessageId, messageId: claim.receipt.rfcMessageId!, operationReceiptId: claim.receipt.id, scheduledId: scheduled.id,
+      { attachments, recordContext: source.recordContext, dealId: source.dealId, replyToMessageId: source.replyToMessageId, forwardSourceMessageId: source.forwardSourceMessageId, messageId: claim.receipt.rfcMessageId!, operationReceiptId: claim.receipt.id, scheduledId: scheduled.id,
         beforeProviderWrite: async () => { await markMailboxOperationAttempt(claim); attempted = true; } });
     await prisma.$transaction(async tx => {
       await tx.scheduledMailboxEmail.update({ where: { id: scheduled!.id }, data: { draftId: draft.draftId, status: 'pending' } });

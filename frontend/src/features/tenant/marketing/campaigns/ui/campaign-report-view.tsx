@@ -2,7 +2,7 @@
 import { matchesSearch } from '@/shared/utils/search';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Check, Copy, Download, Link2, Mail, Send, Target, Users } from 'lucide-react';
+import { Check, Copy, Link2, Mail, Send, Target, Users } from 'lucide-react';
 import { toast } from 'sonner';
 import type { CampaignClickedLink, CampaignRecipient } from '@leadcrm/shared';
 import type { Campaign } from '@/store/types';
@@ -19,7 +19,6 @@ import { DataLoadingSkeleton } from '@/shared/components/crm/data-view-states';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { CampaignStatusBadge, formatCampaignStatus } from './campaign-status-badge';
-import { campaignReportCsv } from '../services/campaign-report-export';
 
 const deliveryFilters = ['Delivered', 'Bounced', 'Submitted', 'Sent', 'Failed', 'Pending', 'Unknown'];
 const engagementFilters = ['Opened', 'Clicked'];
@@ -155,7 +154,6 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const metrics: { label: string; value: number }[] = isSms ? [
     { label: 'Recipients', value: count }, { label: 'Submitted', value: report?.sentCount ?? 0 },
     { label: 'Sent', value: recipients.filter(r => ['Sent', 'Delivered'].includes(r.deliveryStatus)).length },
-    { label: 'Delivered', value: report?.deliveredCount ?? 0 },
     { label: 'Failed', value: report?.failedCount ?? 0 },
   ] : [
     { label: 'Recipients', value: count },
@@ -170,13 +168,6 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     : report?.trackingStatus === 'no_links' ? 'This campaign contains no trackable HTTP or HTTPS links.'
     : (report?.clickedCount ?? 0) > 0 ? 'Clicks were recorded, but their destination URLs are unavailable.'
     : 'No links have been clicked yet.';
-  function exportReport() {
-    if (!report || error) return;
-    const filter = [deliveryFilter.length ? `Delivery: ${deliveryFilter.join(' or ')}` : '',
-      engagementFilter.length ? `Engagement: ${engagementFilter.join(' or ')}` : ''].filter(Boolean).join('; ') || 'All recipients';
-    const url = URL.createObjectURL(new Blob([campaignReportCsv(report, visibleRecipients, { search, filter })], { type: 'text/csv;charset=utf-8' }));
-    const link = document.createElement('a'); link.href = url; link.download = 'campaign-report.csv'; link.click(); URL.revokeObjectURL(url);
-  }
   const details = [
     { label: 'Type', value: current.type === 'Sms' ? 'SMS' : current.type, icon: Mail },
     { label: 'Status', value: status, icon: Check },
@@ -198,8 +189,6 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
           <h1 className="break-words text-2xl sm:text-3xl font-bold tracking-tight text-slate-900 dark:text-white">{current.name} Report</h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Performance overview and recipient activity</p>
         </div>
-        <Button variant="outline" size="sm" className="w-8 shrink-0 px-0 sm:w-auto sm:px-3" aria-label="Export report" title="Export report"
-          onClick={exportReport} disabled={!report || !!error}><Download size={14} aria-hidden="true" /><span className="hidden sm:inline">Export report</span></Button>
       </div>
     </header>
     {error && <div role="alert" className="flex flex-wrap items-center gap-3 rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-950/20 dark:border-rose-900 dark:text-rose-300">
@@ -210,12 +199,12 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
     {current.reviewRequired && <p role="status" className="rounded border border-amber-300 p-3 text-sm">Some SMS outcomes are unconfirmed or the provider reported conflicting outcomes. Review the recipient details and TextBee history before sending again. No uncertain message is automatically resent. Refresh this report to check for later provider evidence.</p>}
     {current.submissionInterruptedAt && <div role="status" className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/20 dark:border-amber-900 dark:text-amber-200">Submission was interrupted. Recipients marked as not sent were never submitted. Unconfirmed recipients may have been accepted. Review recipient failure reasons and provider history before sending again; no recipients were automatically retried.</div>}
     {(report || initialLoading) && <>
-      <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-5' : 'xl:grid-cols-6'} gap-3`}>
+      <section aria-label="Campaign metrics" aria-busy={initialLoading} className={`grid grid-cols-1 min-[360px]:grid-cols-2 md:grid-cols-3 ${isSms ? 'xl:grid-cols-4' : 'xl:grid-cols-6'} gap-3`}>
         {metrics.map((metric, index) => <Card key={metric.label} className="min-w-0 rounded-lg p-4 shadow-sm">
           <h2 className="mb-2 text-[11px] font-medium uppercase tracking-wider text-slate-500 dark:text-slate-400">{metric.label}</h2>
           {initialLoading ? <div aria-hidden="true" className="h-8 w-20 animate-pulse rounded bg-slate-100 dark:bg-slate-800" /> :
             <div className="flex flex-wrap items-baseline justify-between gap-2"><span className="text-2xl font-semibold text-slate-900 dark:text-white">{metric.value.toLocaleString()}</span>
-              {isSms && index > 0 && <span className={index === 4 ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
+              {isSms && index > 0 && <span className={metric.label === 'Failed' ? 'text-sm text-rose-600' : 'text-sm text-slate-500 dark:text-slate-400'}>{count ? Math.round(metric.value / count * 100) : 0}%</span>}
             </div>}
         </Card>)}
       </section>

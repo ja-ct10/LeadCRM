@@ -391,10 +391,12 @@ export default function CampaignsPage() {
           <h2 className="col-start-1 row-start-2 min-w-0 text-lg font-semibold sm:col-span-2">{templateType} Templates</h2>
           <p className="col-span-2 row-start-3 text-sm text-muted-foreground">Create and reuse {templateType === 'Email' ? 'email' : 'SMS'} templates for your campaigns.</p>
         </div>
+        <div className="flex min-w-0 items-start gap-4">
         <ModuleFilterRail showFilters={showTemplateFilters} onToggleFilters={() => setShowTemplateFilters(false)} totalRecords={templateList.data?.meta.total ?? 0}
           onClearFilters={() => { setTemplateCategory(''); setTemplatePage(1); }}
           filterGroups={[{ id: 'category', label: 'Category', isExpanded: true, items: (templateCategories.data ?? []).map(value => ({ id: value, label: value, isChecked: templateCategory === value })) }]}
           onFilterToggle={(_group, value) => { setTemplateCategory(previous => previous === value ? '' : value); setTemplatePage(1); }} />
+        <div className="min-w-0 flex-1 space-y-4">
         {templateList.error && <p role="alert" className="text-sm text-destructive">{templateList.error}</p>}
         {templateCategories.error && <p role="alert" className="text-sm text-destructive">{templateCategories.error}</p>}
         {templateList.isInitialLoad ? <p role="status">Loading {templateType.toLowerCase()} templates…</p> : templateList.data && !templateList.data.data.length && (templateSearch || templateCategory) ?
@@ -403,7 +405,7 @@ export default function CampaignsPage() {
       {activeTab === 'email' && (
         <div>
           {emailTemplates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-6">
               {emailTemplates.map(template => (
                 <div key={template.id} className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">
@@ -448,7 +450,7 @@ export default function CampaignsPage() {
       {activeTab === 'sms' && (
         <div>
           {smsTemplates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-6">
               {smsTemplates.map(template => (
                 <div key={template.id} className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">
@@ -492,6 +494,8 @@ export default function CampaignsPage() {
         </>}
         <LeadsPagination currentPage={templatePage} totalRecords={templateList.data?.meta.total ?? 0} pageSize={templatePageSize} onPageChange={setTemplatePage}
           onPageSizeChange={size => { setTemplatePageSize(size); setTemplatePage(1); }} refreshing={templateList.isRefreshing} loading={templateList.isInitialLoad} disabled={!!templateList.error && !templateList.data} />
+        </div>
+        </div>
       </section>}
 
       {/* Create Campaign Side Panel */}

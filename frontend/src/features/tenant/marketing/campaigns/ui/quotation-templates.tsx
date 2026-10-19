@@ -90,10 +90,12 @@ export function QuotationTemplates() {
       <h2 className="col-start-1 row-start-2 min-w-0 text-lg font-semibold sm:col-span-2">Quotation Templates</h2>
       <p className="col-span-2 row-start-3 text-sm text-muted-foreground">Create reusable PDF-formatted quotations for your customers.</p>
     </div>
+    <div className="flex min-w-0 items-start gap-4">
     <ModuleFilterRail showFilters={filters} onToggleFilters={() => setFilters(false)} totalRecords={result.data?.meta.total ?? 0} onClearFilters={() => { setCategory(''); setPage(1); }} filterGroups={[{ id: 'category', label: 'Category', isExpanded: true, items: categories.map(value => ({ id: value, label: value, isChecked: category === value })) }]} onFilterToggle={(_group, value) => { setCategory(previous => previous === value ? '' : value); setPage(1); }} />
+    <div className="min-w-0 flex-1 space-y-4">
     {result.error && <p role="alert" className="text-sm text-destructive">{result.error}</p>}
     {result.isInitialLoad ? <p role="status">Loading quotation templates…</p> : !templates.length ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No quotation templates found.</div> :
-      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{templates.map(template => {
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-4">{templates.map(template => {
         let description = 'Reusable quotation template';
         try { description = parseQuotationTemplate(template.content).introduction.replace(/^Dear[^\n]*\n*/i, '').trim(); } catch { /* Existing malformed records remain visible for a clear API error. */ }
         return <article key={template.id} className="flex h-full min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-lg backdrop-blur-xl dark:border-white/5 dark:bg-white/2">
@@ -104,6 +106,8 @@ export function QuotationTemplates() {
         </article>;
       })}</div>}
     <LeadsPagination currentPage={page} totalRecords={result.data?.meta.total ?? 0} pageSize={pageSize} onPageChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(1); }} refreshing={result.isRefreshing} loading={result.isInitialLoad} />
+    </div>
+    </div>
     <SideSheet isOpen={!!editor} onClose={() => setEditor(null)} title={editor?.template ? 'Edit Quotation Template' : 'Create Quotation Template'}>{editor && <TemplateForm template={editor.template} categories={categories} onClose={() => setEditor(null)} onSaved={() => { setEditor(null); void result.refetch(); }} />}</SideSheet>
     <SideSheet isOpen={!!using} onClose={() => setUsing(null)} title={`Use Template: ${using?.name ?? ''}`} width="w-full max-w-3xl">{using && <QuotationWizard template={using} onClose={() => setUsing(null)} />}</SideSheet>
     <SideSheet isOpen={!!preview} onClose={() => setPreview(null)} title={preview?.name ?? 'Quotation Preview'} width="w-full max-w-3xl">{preview && <div className="flex h-full min-h-[65vh] flex-col gap-3 p-4"><iframe title="Quotation template PDF preview" src={preview.url + '#view=FitH'} className="min-h-[65vh] w-full flex-1 rounded border border-border" /><a className="text-sm text-primary underline" href={preview.url} target="_blank" rel="noreferrer">Open PDF in a new tab</a></div>}</SideSheet>

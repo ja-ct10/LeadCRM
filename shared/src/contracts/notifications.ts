@@ -53,6 +53,7 @@ export interface NotificationMutationResponse {
   success: boolean;
   totalCount: number;
   unreadCount: number;
+  unreadByModule?: Record<string, number>;
   readBefore?: string;
 }
 

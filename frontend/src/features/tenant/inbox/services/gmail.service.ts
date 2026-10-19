@@ -1,3 +1,5 @@
+import type { MailboxUploadAttachment, MailboxRecordContext } from '@leadcrm/shared';
+export type ComposeExtras = { attachments?: MailboxUploadAttachment[]; recordContext?: MailboxRecordContext; dealId?: string };
 import { apiClient } from '@/lib/api/client';
 export type { MailboxEmail as GmailEmail } from '@leadcrm/shared';
 import type { MailboxEmail as GmailEmail, MailboxUnreadCount, MailboxListOptions, ScheduledMailboxEmailDetail, MailboxConversationDetail } from '@leadcrm/shared';
@@ -75,7 +77,7 @@ export async function fetchGmailEmails(options?: MailboxListOptions, signal?: Ab
   });
 }
 
-export const scheduleGmailEmail = (data: { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string; forwardSourceMessageId?: string; composeMode?: import('@leadcrm/shared').MailboxComposeMode }) =>
+export const scheduleGmailEmail = (data: ComposeExtras & { to: string[]; subject: string; body: string; scheduledAt: string; requestId: string; draftId?: string; replyToMessageId?: string; forwardSourceMessageId?: string; composeMode?: import('@leadcrm/shared').MailboxComposeMode }) =>
   apiClient.post<{ id: string; status: string }>('/integrations/gmail/scheduled', data);
 export const deleteGmailDraft = (draftId: string) => apiClient.delete(`/integrations/gmail/drafts/${encodeURIComponent(draftId)}`);
 export const getScheduledGmailEmail = (id: string, signal?: AbortSignal) => apiClient.get<ScheduledMailboxEmailDetail>(`/integrations/gmail/scheduled/${encodeURIComponent(id)}`, { signal });
@@ -93,8 +95,9 @@ export async function sendGmailEmail(
   forwardSourceMessageId: string | undefined,
   requestId: string,
   composeMode?: import('@leadcrm/shared').MailboxComposeMode,
+  extras?: ComposeExtras,
 ): Promise<SendEmailResponse> {
-  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId, forwardSourceMessageId, requestId, composeMode });
+  return apiClient.post<SendEmailResponse>('/integrations/gmail/send', { to, subject, body, replyToMessageId, draftId, forwardSourceMessageId, requestId, composeMode, ...extras });
 }
 
 /**
@@ -130,6 +133,7 @@ export async function saveGmailDraft(
   forwardSourceMessageId: string | undefined,
   requestId: string,
   composeMode?: import('@leadcrm/shared').MailboxComposeMode,
+  extras?: ComposeExtras,
 ): Promise<{ success: boolean; draftId: string; messageId: string }> {
-  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId, forwardSourceMessageId, requestId, composeMode });
+  return apiClient.post<{ success: boolean; draftId: string; messageId: string }>('/integrations/gmail/drafts', { to, subject, body, draftId, replyToMessageId, forwardSourceMessageId, requestId, composeMode, ...extras });
 }

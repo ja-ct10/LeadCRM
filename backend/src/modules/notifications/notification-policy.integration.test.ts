@@ -10,7 +10,7 @@ import { dispatchTenantNotifications } from './notification-events.service';
 import { deliverNotification } from './notifications.service';
 import { notificationAccess } from './notification-access';
 import { saveNotificationPreferences } from './notification-preferences.service';
-import { findNotifications, deleteNotifications } from './notifications.repository';
+import { findNotifications, deleteNotifications, notificationCounts, markNotificationRead } from './notifications.repository';
 import { salesPipeline, salesTransaction } from '../crm/leads/lead-automation.service';
 import { moveDealStage } from '../crm/deals/deals.repository';
 import { listFields, saveField, saveValues } from '../crm/closing-requirements/closing-requirements.service';
@@ -293,6 +293,18 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: null } });
     await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false } }); await processEvents();
     expect(await recipients(account.id, 'mailbox_disconnected')).toHaveLength(4);
+  });
+  it('counts all accessible unread module targets and removes dots after reads, archive or permission loss', async () => {
+    const record = await lead();
+    const before = await notificationCounts(tenantId, agentId);
+    const item = await prisma.notification.create({ data: { tenantId, userId: agentId, type: 'lead_assigned', title: 'Unread module dot', entityType: 'Lead', entityId: record.id } });
+    expect((await notificationCounts(tenantId, agentId)).unreadByModule.leads).toBe((before.unreadByModule.leads ?? 0) + 1);
+    expect((await markNotificationRead(item.id, tenantId, agentId)).unreadByModule.leads ?? 0).toBe(before.unreadByModule.leads ?? 0);
+    await prisma.notification.update({ where: { id: item.id }, data: { isRead: false } });
+    await prisma.lead.update({ where: { id: record.id }, data: { isArchived: true } });
+    expect((await notificationCounts(tenantId, agentId)).unreadByModule.leads ?? 0).toBe(before.unreadByModule.leads ?? 0);
+    await prisma.notification.create({ data: { tenantId, userId: deniedId, type: 'lead_assigned', title: 'No access', entityType: 'Lead', entityId: record.id } });
+    expect((await notificationCounts(tenantId, deniedId)).unreadByModule).toEqual({});
   });
   it('suppresses historical routine event types for new delivery without deleting their visible history', async () => {
     const row = await deal();

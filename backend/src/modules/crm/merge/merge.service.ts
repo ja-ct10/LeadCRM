@@ -5,6 +5,7 @@ import prisma from '../../../config/database.config';
 import { mayReadContactAccount, presentContactAccount } from '../contacts-v2/contact-account-access';
 import { NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import * as repo from './merge.repository';
+import { assertCrmRecordMutation } from '../access/crm-record-access.service';
 import type {
   MergePreviewParams,
   MergeExecuteParams,
@@ -109,6 +110,9 @@ async function executeLeadMerge(
 ): Promise<MergeExecuteResult> {
   if (primaryId === secondaryId) throw new ValidationError('Choose two different Leads.');
   const result = await salesTransaction(async tx => {
+    // Lock in a stable order before moving any children; concurrent merges must
+    // re-read the archived state rather than merge the same source twice.
+    for (const id of [primaryId, secondaryId].sort()) await assertCrmRecordMutation(tx, 'leads', id, id === secondaryId ? 'archive' : 'edit');
     const [primary, secondary] = await Promise.all([
       tx.lead.findFirst({ where: { id: primaryId, tenantId } }),
       tx.lead.findFirst({ where: { id: secondaryId, tenantId } }),
@@ -116,8 +120,8 @@ async function executeLeadMerge(
 
     if (!primary) throw new NotFoundError('Primary lead');
     if (!secondary) throw new NotFoundError('Secondary lead');
-    if (primary.isArchived || primary.convertedAt || primary.status === 'Merged') throw new ValidationError('Primary lead has already been merged');
-    if (secondary.isArchived || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary lead has already been merged');
+    if (primary.isArchived || primary.deletedAt || primary.convertedAt || primary.status === 'Merged') throw new ValidationError('Primary Lead is archived, converted or already merged.');
+    if (secondary.isArchived || secondary.deletedAt || secondary.convertedAt || secondary.status === 'Merged') throw new ValidationError('Secondary Lead is archived, converted or already merged.');
 
     const mergedData = resolveFields(primary, secondary, fieldResolutions, LEAD_MERGE_FIELDS);
     if (mergedData.companyName !== undefined) mergedData.companyFromAccount =
@@ -153,6 +157,7 @@ async function executeLeadMerge(
         type: 'merge',
         title: `Merged with lead "${secondary.firstName} ${secondary.lastName}"`,
         leadId: primaryId,
+        metadata: { secondaryId, fieldResolutions },
       } as never,
     });
 

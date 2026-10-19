@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { AsyncResource } from 'node:async_hooks';
+import { salesAfterCommit } from '../../crm/leads/sales-context';
 import { accountWorkflowRetirementReferences } from './workflow-fields';
 import { ACCOUNT_RETIREMENT_REASON } from '@leadcrm/shared';
 import { Prisma } from '@prisma/client';
@@ -12,6 +14,8 @@ import { entityContext } from './workflows.repository';
 import { interruptWorkflowRun } from './workflow-interruption';
 
 const metadata = ['event.previousStageId', 'event.newStageId', 'event.stageHistoryId', 'event.previousStatus', 'event.newStatus', 'event.changedFields'];
+let wakeScheduler: (() => void) | undefined;
+export function requestWorkflowDispatch() { wakeScheduler?.(); }
 
 /** Snapshot the recipients in the source transaction. A replay never discovers new workflows. */
 export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, params: WorkflowFireParams) {
@@ -45,6 +49,7 @@ export async function enqueueWorkflowTrigger(tx: Prisma.TransactionClient, param
       definitionSnapshot: { name: workflow.name, description: workflow.description, trigger: workflow.trigger, conditions: workflow.conditions, actions: workflow.actions, isActive: workflow.isActive },
       dispatchContext: { version: 1, actorId: params.actorId ?? null, activatedById: workflow.activatedById, ancestry, context, eventContext } as Prisma.InputJsonValue,
     } });
+    salesAfterCommit.getStore()?.set('workflows', requestWorkflowDispatch);
   }
 }
 
@@ -56,6 +61,7 @@ export async function dispatchQueuedWorkflows() {
     await interruptWorkflowRun(tx, run, { status: 'running', leaseUntil: { lt: now } }, now);
   }));
   const due = await prisma.workflowExecutionRun.findMany({ where: { status: 'queued', dispatchContext: { not: Prisma.DbNull }, dispatchStartedAt: null, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, orderBy: [{ startedAt: 'asc' }, { id: 'asc' }], take: 10, include: { trigger: true } });
+  let progressed = false;
   for (const item of due) await tenantContext.run({ tenantId: item.tenantId }, async () => {
     const leaseId = randomUUID();
     const claim = await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, tenantId: item.tenantId, status: 'queued', dispatchStartedAt: null, OR: [{ leaseUntil: null }, { leaseUntil: { lt: now } }] }, data: { leaseId, leaseUntil: new Date(Date.now() + 300000) } });
@@ -66,13 +72,16 @@ export async function dispatchQueuedWorkflows() {
       if (workflow && (await accountWorkflowRetirementReferences(workflow, item.tenantId)).length) {
         await prisma.workflow.updateMany({ where: { id: workflow.id, tenantId: item.tenantId, version: workflow.version, isActive: true }, data: { isActive: false, status: 'PAUSED', version: { increment: 1 } } });
         await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: 'queued' }, data: { status: 'skipped', completedAt: new Date(), errorMessage: ACCOUNT_RETIREMENT_REASON, leaseId: null, leaseUntil: null } });
+        progressed = true;
         return;
       }
       if (context.version !== 1 || !workflow || !workflow.isActive || workflow.isArchived || workflow.status !== 'ACTIVE') {
         await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: 'queued' }, data: { status: 'skipped', completedAt: new Date(), errorMessage: 'The saved workflow authorization or definition changed after this event.', leaseId: null, leaseUntil: null } });
+        progressed = true;
         return;
       }
       if (!(await prisma.workflowExecutionRun.updateMany({ where: { id: item.id, leaseId, status: 'queued', dispatchStartedAt: null, leaseUntil: { gt: new Date() } }, data: { status: 'running', dispatchStartedAt: new Date() } })).count) return;
+      progressed = true;
       const snapshot = item.definitionSnapshot && typeof item.definitionSnapshot === 'object' && !Array.isArray(item.definitionSnapshot) ? item.definitionSnapshot : null;
       if (!snapshot || !context.activatedById) throw new ValidationError('Published workflow snapshot is unavailable.');
       const captured = { ...workflow, ...snapshot, id: workflow.id, tenantId: item.tenantId, version: item.workflowVersion ?? workflow.version, activatedById: context.activatedById } as typeof workflow;
@@ -92,16 +101,25 @@ export async function dispatchQueuedWorkflows() {
       });
     }
   });
+  // Drain a full batch promptly, but leave failed preparation to the bounded recovery tick.
+  return due.length === 10 && progressed;
 }
 
 export function startWorkflowScheduler() {
   let stopping = false;
   let pending: Promise<void> | undefined;
+  let requested = false;
   const tick = () => {
-    if (!stopping && !pending) pending = dispatchQueuedWorkflows().catch(error => console.error('[Workflow] Queue tick failed', { failureClass: error instanceof Error ? error.name : 'UnknownError' })).finally(() => { pending = undefined; });
+    if (stopping) return;
+    if (pending) { requested = true; return; }
+    requested = false;
+    pending = dispatchQueuedWorkflows().then(more => { requested ||= more; }).catch(error => console.error('[Workflow] Queue tick failed', { failureClass: error instanceof Error ? error.name : 'UnknownError' })).finally(() => { pending = undefined; if (requested && !stopping) wake(); });
   };
-  const timer = setInterval(tick, 30000);
+  // Capture the worker's context so an HTTP wakeup never lends it the actor's transaction or identity.
+  const wake = AsyncResource.bind(tick);
+  wakeScheduler = wake;
+  const timer = setInterval(wake, 30000);
   timer.unref();
   tick();
-  return async () => { stopping = true; clearInterval(timer); await pending; };
+  return async () => { stopping = true; if (wakeScheduler === wake) wakeScheduler = undefined; clearInterval(timer); await pending; };
 }

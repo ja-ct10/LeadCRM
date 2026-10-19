@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
 import type { EmailAccount, MailboxSendReceipt, Prisma } from '@prisma/client';
 import { z } from 'zod';
-import type { MailboxComposeMode, QuotationDocument, QuotationDraft } from '@leadcrm/shared';
+import type { MailboxComposeMode, MailboxRecordContext, QuotationDocument, QuotationDraft } from '@leadcrm/shared';
+import { customerDealWhere } from '../../modules/crm/engagement.service';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox } from './mailbox-store';
@@ -18,6 +19,8 @@ export interface MailboxOperationContext {
   threadId?: string;
   composeMode?: MailboxComposeMode;
   quotation?: MailboxQuotationContext;
+  recordContext?: MailboxRecordContext;
+  dealId?: string;
 }
 export interface MailboxOperationClaim {
   receipt: MailboxSendReceipt;
@@ -40,6 +43,16 @@ export function normalizedRecipients(recipients: string[]) {
 export async function authorizeMailboxOperation(account: Pick<EmailAccount, 'id' | 'tenantId' | 'userId'>, context: MailboxOperationContext) {
   const current = await authorizedMailbox(account.tenantId, account.userId);
   if (current.account.id !== account.id) throw new AppError('Mailbox changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
+  if (context.recordContext) {
+    const { recordModule, recordId } = context.recordContext;
+    const where = { tenantId: account.tenantId, id: recordId, assignedUserId: account.userId, isArchived: false, deletedAt: null };
+    const record = recordModule === 'leads' && current.permissions.leadsView ? await prisma.lead.findFirst({ where: { ...where, convertedAt: null }, select: { email: true } })
+      : recordModule === 'contacts' && current.permissions.contactsView ? await prisma.contact.findFirst({ where, select: { email: true } }) : null;
+    if (!record || !context.recipients.includes(mailboxAddress(record.email ?? '') ?? '')) throw new AppError('This email must include the selected record while it is assigned to you.', 403, 'MAILBOX_SCOPE_CHANGED');
+    if (context.dealId && (!current.permissions.dealsView || !await prisma.deal.findFirst({ where: {
+      ...customerDealWhere(account.tenantId, recordModule === 'leads' ? { leadId: recordId } : { contactId: recordId }), id: context.dealId,
+    }, select: { id: true } }))) throw new AppError('Select a Deal associated with this record.', 400);
+  } else if (context.dealId) throw new AppError('A selected Deal requires its CRM record context.', 400);
   if (context.quotation) {
     const { recipientId, recipientType } = context.quotation.draft;
     const where = { id: recipientId, tenantId: account.tenantId, isArchived: false, deletedAt: null };
