@@ -52,7 +52,7 @@ import { usersService } from "@/features/tenant/administration/users/services/us
 import { rolesApi } from '@/shared/services/roles.api';
 import { rolesService, toSettingsRole, toSettingsPermissions, toPermissionRows } from '@/features/tenant/administration/roles/services/roles.service';
 import { USE_MOCK_DATA } from "@/lib/config";
-import { clearPageCache, invalidatePageCache } from "@/shared/cache/page-cache";
+import { clearPageCache, invalidatePageCache, createPageCacheGuard, requestPageCache } from "@/shared/cache/page-cache";
 import { leadsService as contactsService } from "@/features/tenant/crm/leads/services/leads.service";
 import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
@@ -216,6 +216,37 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const [organizations, setOrganizations] = useState<Organization[]>([]);
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [deals, setDeals] = useState<Deal[]>([]);
+  const canReadDeals = userCan('deals', 'canView');
+  const dealsRequest = useRef<{ identity: string; controller: AbortController; valid: () => boolean; promise: Promise<void> } | null>(null);
+  const refreshDeals = useCallback((): Promise<void> => {
+    if (USE_MOCK_DATA || !workspaceReady || !user?.id || !tenant?.id || !canReadDeals) return Promise.resolve();
+    const identity = dataIdentityRef.current;
+    const pending = dealsRequest.current;
+    if (pending?.identity === identity && pending.valid() && !pending.controller.signal.aborted) return pending.promise;
+    pending?.controller.abort();
+    const controller = new AbortController();
+    const valid = createPageCacheGuard('deals');
+    const current = () => identity === dataIdentityRef.current && !controller.signal.aborted && valid();
+    const params = { query: { shared: true, limit: 100 }, userId: user.id, role: user.role };
+    const promise = requestPageCache('deals', tenant.id, params, async signal => {
+      const response = await pipelineService.getDeals(undefined, 100, signal);
+      return (response.data ?? []).map(toFrontendDeal).filter(deal => !deal.isArchived) as Deal[];
+    }, controller.signal).then(rows => {
+      if (current()) setDeals(rows);
+    }).catch(error => {
+      if (!current() || error?.name === 'AbortError') return;
+      if ([401, 403, 404].includes((error as ApiRequestError).status ?? 0)) setDeals([]);
+      else console.error('[DataContext] Failed to refresh deals:', error);
+    }).finally(() => { if (dealsRequest.current?.controller === controller) dealsRequest.current = null; });
+    dealsRequest.current = { identity, controller, valid, promise };
+    return promise;
+  }, [workspaceReady, user?.id, user?.role, tenant?.id, canReadDeals]);
+  useLayoutEffect(() => {
+    if (!canReadDeals && !USE_MOCK_DATA) setDeals([]);
+    return () => { dealsRequest.current?.controller.abort(); dealsRequest.current = null; };
+  }, [dataIdentity, canReadDeals, user?.role]);
+  const dealsRefresh = useRef(refreshDeals);
+  dealsRefresh.current = refreshDeals;
   const [pipelines, setPipelines] = useState<Pipeline[]>([]);
   const [workflows, setWorkflows] = useState<Workflow[]>([]);
   const [workflowsLoading, setWorkflowsLoading] = useState(!USE_MOCK_DATA);
@@ -341,23 +372,21 @@ export function DataProvider({ children }: { children: ReactNode }) {
         //   🔄 users           → 15+ consumers for assignee pickers across all modules
         //   🔄 tasks           → task-board, dashboard, RecordPanelWrappers, deals-page
         //   🔄 workflows       → workflows-page, campaign-builder, settings
-        const [orgsRes, dealsRes, pipelinesRes, usersRes] = await Promise.all([
+        const [orgsRes, pipelinesRes, usersRes] = await Promise.all([
           optionalModuleRead(organizationsService.getAll({ limit: 100 })),
-          optionalModuleRead(pipelineService.getDeals(undefined, 100)),
           optionalModuleRead(pipelineService.getPipelines()),
           loadShared ? optionalModuleRead(usersService.getDirectory()) : Promise.resolve(null),
+          refreshDeals(),
         ]);
 
         if (!isCurrent()) return;
         const apiOrgs      = (orgsRes?.data ?? []).map(toFrontendOrg);
-        const apiDeals     = (dealsRes?.data ?? []).map(toFrontendDeal);
         const apiPipelines = Array.isArray((pipelinesRes as any)?.data)
           ? ((pipelinesRes as any).data as any[]).map(toFrontendPipeline)
           : ((pipelinesRes as any)?.data ? [(pipelinesRes as any).data].map(toFrontendPipeline) : []);
         const apiUsers     = usersRes?.data ?? [];
 
         setOrganizations((apiOrgs as Organization[]).filter((o: any) => !o.isArchived));
-        setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
         setPipelines((apiPipelines as Pipeline[]).filter((p: any) => !p.isArchived));
         if (loadShared) setUsers((apiUsers as any[]).filter((u: any) => !u.isArchived));
       } catch (err) {
@@ -673,6 +702,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
       queued = setTimeout(() => {
         ['leads','contacts','accounts','deals','activities','tasks','settings','field-layout',
           'counts-leads','counts-contacts','counts-accounts','counts-deals'].forEach(module => invalidatePageCache(module, tenant.id));
+        void dealsRefresh.current();
       }, 100);
     };
     const source = new EventSource('/api/proxy/crm/record-events');
@@ -682,7 +712,10 @@ export function DataProvider({ children }: { children: ReactNode }) {
       previous = revision; reconcile();
     });
     source.addEventListener('open', () => { previous = ''; });
-    source.addEventListener('crm-access-changed', () => { clearPageCache(true); source.close(); });
+    source.addEventListener('crm-access-changed', () => {
+      clearTimeout(queued); dealsRequest.current?.controller.abort(); setDeals([]);
+      clearPageCache(true); source.close();
+    });
     window.addEventListener('online', reconcile); window.addEventListener('focus', reconcile); document.addEventListener('visibilitychange', reconcile);
     return () => { clearTimeout(queued); source.close(); window.removeEventListener('online', reconcile); window.removeEventListener('focus', reconcile); document.removeEventListener('visibilitychange', reconcile); };
   }, [dataIdentity, workspaceReady, canReadCrm, tenant?.id]);
@@ -710,18 +743,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const fallback = setInterval(wake, 60000);
     return () => { stopped = true; source.close(); pipelineGeneration.current++; clearInterval(fallback); window.removeEventListener('online', wake); window.removeEventListener('focus', wake); document.removeEventListener('visibilitychange', wake); };
   }, [dataIdentity, workspaceReady, canReadPipelines, user?.id]);
-
-  /** Re-fetch deals from the API and update state */
-  const refreshDeals = async (): Promise<void> => {
-    if (USE_MOCK_DATA || !user) return;
-    try {
-      const dealsRes = await pipelineService.getDeals(undefined, 100);
-      const apiDeals = (dealsRes?.data ?? []).map(toFrontendDeal);
-      setDeals((apiDeals as Deal[]).filter((d: any) => !d.isArchived));
-    } catch (err) {
-      console.error('[DataContext] Failed to refresh deals:', err);
-    }
-  };
 
   const addContact = async (leadData: any): Promise<void> => {
     if (!tenant) return;

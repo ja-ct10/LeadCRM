@@ -1,8 +1,9 @@
 import { normalizeCrmStatus } from '@leadcrm/shared';
 import { safeWorkflowError } from '../actions/action-dispatcher';
-import { salesContext } from '../../crm/leads/sales-context';
+import { salesContext, discardWorkflowWake, workflowTransactionCommitted } from '../../crm/leads/sales-context';
+import type { Prisma } from '@prisma/client';
 import prisma from '../../../config/database.config';
-import { enqueueWorkflowTrigger, requestWorkflowDispatch } from '../workflows/workflow-queue';
+import { enqueueWorkflowTrigger } from '../workflows/workflow-queue';
 interface RecordEvent { tenantId: string; actorId?: string; eventId?: string; }
 interface ContactEvent extends RecordEvent { contact: { id: string; updatedAt?: Date; status: string; assignedUserId?: string | null; source?: string | null }; }
 interface LeadEvent extends RecordEvent { lead: { id: string; updatedAt?: Date; status: string; score?: number | null; source?: string | null; assignedUserId?: string | null; companyName?: string | null }; }
@@ -15,8 +16,14 @@ async function fire(params: RecordEvent, type: string, entity: string, id: strin
   const tx = salesContext.getStore();
   // Required source-transaction events must roll back the source if enqueueing fails.
   if (tx) { await enqueueWorkflowTrigger(tx, event); return; }
-  try { await prisma.$transaction(client => enqueueWorkflowTrigger(client, event)); requestWorkflowDispatch(); }
-  catch (error) { console.error('[Workflow] Event processing failed', { trigger: type, entityType: entity, entityId: id,
+  let transaction: Prisma.TransactionClient | undefined;
+  try {
+    await prisma.$transaction(client => { transaction = client; return enqueueWorkflowTrigger(client, event); });
+    if (transaction) workflowTransactionCommitted(transaction);
+  }
+  catch (error) {
+    if (transaction) discardWorkflowWake(transaction);
+    console.error('[Workflow] Event processing failed', { trigger: type, entityType: entity, entityId: id,
     tenantId: params.tenantId, eventId, failureClass: error instanceof Error ? error.name : 'UnknownError', message: safeWorkflowError(error) }); }
 }
 export function fireLeadCreated(params: LeadEvent) { return fire(params, 'lead.created', 'lead', params.lead.id); }

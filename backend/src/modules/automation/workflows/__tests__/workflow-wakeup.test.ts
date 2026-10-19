@@ -1,12 +1,18 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { salesContext } from '../../../crm/leads/sales-context';
+import { salesContext, markWorkflowQueued, workflowTransactionCommitted } from '../../../crm/leads/sales-context';
 import { crmActor } from '../../../crm/access/crm-record-access.service';
 const mocks = vi.hoisted(() => ({ findMany: vi.fn(), updateMany: vi.fn(), findWorkflow: vi.fn() }));
 vi.mock('../../../../config/database.config', () => ({ default: {
   workflowExecutionRun: { findMany: mocks.findMany, updateMany: mocks.updateMany }, workflow: { findFirst: mocks.findWorkflow },
   $transaction: async (work: (tx: unknown) => unknown) => work({ workflowExecutionRun: { updateMany: mocks.updateMany } }),
 } }));
-import { dispatchQueuedWorkflows, requestWorkflowDispatch, startWorkflowScheduler } from '../workflow-queue';
+import { dispatchQueuedWorkflows, startWorkflowScheduler } from '../workflow-queue';
+
+const committedWake = () => {
+  const tx = {} as Parameters<typeof markWorkflowQueued>[0];
+  markWorkflowQueued(tx);
+  workflowTransactionCommitted(tx);
+};
 
 afterEach(() => { vi.useRealTimers(); vi.clearAllMocks(); });
 it('wakes before the recovery tick and keeps the worker outside the requesting transaction and actor', async () => {
@@ -16,12 +22,12 @@ it('wakes before the recovery tick and keeps the worker outside the requesting t
   const stop = startWorkflowScheduler();
   await vi.waitFor(() => expect(mocks.findMany).toHaveBeenCalledTimes(2));
   await Promise.resolve();
-  salesContext.run({} as never, () => crmActor.run({ tenantId: 'tenant', userId: 'agent' }, requestWorkflowDispatch));
+  salesContext.run({} as never, () => crmActor.run({ tenantId: 'tenant', userId: 'agent' }, committedWake));
   await vi.waitFor(() => expect(mocks.findMany.mock.calls.length).toBeGreaterThanOrEqual(4));
   expect(contexts.every(value => JSON.stringify(value) === '[null,null]')).toBe(true);
   await stop();
   const reads = mocks.findMany.mock.calls.length;
-  requestWorkflowDispatch(); await vi.advanceTimersByTimeAsync(60000);
+  committedWake(); await vi.advanceTimersByTimeAsync(60000);
   expect(mocks.findMany).toHaveBeenCalledTimes(reads);
 });
 

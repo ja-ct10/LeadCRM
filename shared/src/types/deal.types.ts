@@ -54,6 +54,8 @@ export interface Deal {
   lostReason?: string;
   isArchived?: boolean;
   createdAt: string;
+  /** Latest recorded stage movement, falling back to creation when no history exists. */
+  readonly lastStageChangeDate?: string;
   updatedAt?: string;
   staleness?: DealStaleness;
 

@@ -11,6 +11,7 @@ vi.mock('../../../automation/triggers/triggers.service', () => ({ fireDealCreate
 let pg: PGlite, socket: PGLiteSocketServer, db: PrismaClient;
 let transfer: typeof import('../deals.service').moveDealPipeline;
 let moveStage: typeof import('../deals.repository').moveDealStage;
+let presentDealResponse: typeof import('../deal-presentation').presentDealResponse;
 
 beforeAll(async () => {
   pg = await PGlite.create(); await replayCrmMigrations(pg);
@@ -19,6 +20,7 @@ beforeAll(async () => {
   db = (await import('../../../../config/database.config')).default;
   transfer = (await import('../deals.service')).moveDealPipeline;
   moveStage = (await import('../deals.repository')).moveDealStage;
+  presentDealResponse = (await import('../deal-presentation')).presentDealResponse;
   await db.tenant.createMany({ data: [{ id: 'a', name: 'A', slug: 'a' }, { id: 'b', name: 'B', slug: 'b' }] });
   await db.user.create({ data: { id: 'actor', tenantId: 'a', email: 'actor@example.test', firstName: 'Actor', lastName: 'Test', role: 'Client Admin' } });
   await db.pipeline.createMany({ data: [
@@ -91,6 +93,44 @@ it('resets stage entry only for an actual movement and preserves it for same-sta
 it('validates legacy singular participant requirements against canonical links', async () => {
   const result = await transfer('deal', 'a', 'actor', { pipelineId: 'target', stageId: 'participants-required' });
   expect(result.deal).toMatchObject({ leadId: 'lead-person', contactId: 'contact', pipelineId: 'target', stageId: 'participants-required' });
+});
+it('presents the latest persisted movement after stage re-entry without changing dates or history', async () => {
+  const latest = new Date('2026-10-20T02:00:00Z');
+  await db.deal.update({ where: { id: 'deal' }, data: { stageId: 'qualified',
+    createdAt: new Date('2020-01-01T00:00:00Z'), stageChangedAt: new Date('2099-01-01T00:00:00Z'),
+    updatedAt: new Date('2099-02-01T00:00:00Z') } });
+  await db.dealStageHistory.createMany({ data: [
+    { id: 're-entry', tenantId: 'a', dealId: 'deal', movedById: 'actor', previousStageId: 'lead', newStageId: 'qualified', movedAt: latest },
+    { id: 'first-entry', tenantId: 'a', dealId: 'deal', movedById: 'actor', previousStageId: 'lead', newStageId: 'qualified', movedAt: new Date('2026-10-18T02:00:00Z') },
+    { id: 'left-stage', tenantId: 'a', dealId: 'deal', movedById: 'actor', previousStageId: 'qualified', newStageId: 'lead', movedAt: new Date('2026-10-19T02:00:00Z') },
+  ] });
+  const row = await db.deal.findUniqueOrThrow({ where: { id: 'deal' }, include: { stageHistories: { orderBy: { id: 'asc' } } } });
+  const before = structuredClone(row);
+  type Presented = typeof row & { lastStageChangeDate: string };
+  const response = await presentDealResponse('a', { data: [row], deal: row }) as { data: Presented[]; deal: Presented };
+  expect(response.data[0].lastStageChangeDate).toBe(latest.toISOString());
+  expect(response.deal.lastStageChangeDate).toBe(latest.toISOString());
+  expect(response.deal.createdAt).toEqual(before.createdAt);
+  expect(response.deal.stageHistories).toEqual(before.stageHistories);
+  expect(row).toEqual(before);
+  expect(await db.deal.findUniqueOrThrow({ where: { id: 'deal' }, include: { stageHistories: { orderBy: { id: 'asc' } } } })).toEqual(before);
+});
+it('falls back to creation without history and presents committed moves and same-stage retries consistently', async () => {
+  const createdAt = new Date('2020-01-01T00:00:00Z');
+  const row = await db.deal.update({ where: { id: 'deal' }, data: { createdAt,
+    stageChangedAt: new Date('2099-01-01T00:00:00Z'), updatedAt: new Date('2099-02-01T00:00:00Z') } });
+  const initial = await presentDealResponse('a', row) as typeof row & { lastStageChangeDate: string };
+  expect(initial.lastStageChangeDate).toBe(createdAt.toISOString());
+  expect(await db.dealStageHistory.count()).toBe(0);
+  expect(await presentDealResponse('b', row)).not.toHaveProperty('lastStageChangeDate');
+  const result = (await moveStage('deal', 'a', 'qualified', 'actor'))!;
+  type Presented = typeof result & { deal: { lastStageChangeDate: string } };
+  const moved = await presentDealResponse('a', result) as Presented;
+  expect(moved.deal.lastStageChangeDate).toBe(result.stageHistory!.movedAt.toISOString());
+  const retried = await presentDealResponse('a', (await moveStage('deal', 'a', 'qualified', 'actor'))!) as Presented;
+  expect(retried.deal.lastStageChangeDate).toBe(moved.deal.lastStageChangeDate);
+  expect(await db.dealStageHistory.count()).toBe(1);
+  expect((await db.deal.findUniqueOrThrow({ where: { id: 'deal' } })).createdAt).toEqual(createdAt);
 });
 it.each([
   ['foreign', 'foreign-stage'], ['archived', 'archived-stage'], ['target', 'lead'], ['target', 'target-won'], ['target', 'required'], ['source', 'qualified'], ['missing', 'target-open'],

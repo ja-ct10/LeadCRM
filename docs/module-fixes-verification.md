@@ -2,6 +2,7 @@
 
 Baseline: `main` at `4d3f5a71` (checked against `origin/main`).
 Before publication, the branch was reconciled with `origin/main` at `b70312a9`, preserving its Deal engagement migration and explicit email attribution. Contextual Deal choices respect the existing mailbox Deal ownership checks.
+PR #180 was subsequently reconciled with `upstream/main` at `443590ff`. The resolution uses main's transaction-owned Workflow wake markers and worker lifecycle while retaining this branch's committed CRM revision notifications.
 
 - Campaign reports omit the SMS Delivered metric and all report CSV export controls/code. Provider delivery evidence and Email report metrics remain available. Email, SMS and Quotation template cards share an inline desktop filter/content row; the existing mobile filter drawer remains in use.
 - Inbox uses the existing Gmail send, draft, schedule, receipt and history paths. Composer attachments accept up to 10 documents/images, 5 MB per file and 10 MB total. Shared validation checks names, encoding, types and sizes; backend validation also checks signatures. Draft files are loaded before editing and retained through save/schedule/retry. Attachment bytes remain in Gmail; receipts store intent hashes.
@@ -23,6 +24,7 @@ Run the repository's [documented checks](../README.md#checks). Database acceptan
 
 ## Verification results
 
+- After resolving the PR #180 conflicts, fresh workspace lint/type checks, 19 backend transaction/worker unit cases, 13 frontend Deal/Kanban cases and 109 native PostgreSQL Workflow integration cases passed. The transaction tests verify that Workflow dispatch and CRM notifications wait for the outer commit, ignore rollbacks and fire once after a successful retry. The disposable PostgreSQL fixture was stopped and cleaned up.
 - After reconciling with the newer main branch, the focused frontend run passed 215 cases. Fresh PostgreSQL checks passed 19 mailbox isolation/recovery cases, 157 scoped draft/schedule cases and 8 Deal engagement cases. Older mailbox fixtures now explicitly select a Deal and verify that unrelated inbound threads remain unassociated, matching main's attribution policy.
 - Direct Shared, Backend and Frontend lint/type checks passed, including backend test types. Shared, Backend and Frontend production builds passed.
 - The final focused frontend run passed 125 tests covering reports, multi-product forms, notification dots/counts, cache invalidation, attachments, editable subjects with Deal associations and merge submission. Additional record-panel and template checks passed.

@@ -513,7 +513,13 @@ export function PipelineKanbanBoard({
               .map((d) =>
                 optimisticStageMap[d.id] ? { ...d, stageId: optimisticStageMap[d.id] } : d
               )
-              .filter((d) => d.stageId === stage.id);
+              .filter((d) => d.stageId === stage.id)
+              .sort((a, b) => {
+                const preview = Number(!!optimisticStageMap[b.id]) - Number(!!optimisticStageMap[a.id]);
+                const movement = new Date(b.lastStageChangeDate ?? b.createdAt).getTime()
+                  - new Date(a.lastStageChangeDate ?? a.createdAt).getTime();
+                return preview || movement || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+              });
             const stageValue = stageDeals.reduce((acc, d) => acc + d.value, 0);
             const isLoading = loadingStages.has(stage.id);
             const hasMore = hasMoreByStage[stage.id] ?? false;
