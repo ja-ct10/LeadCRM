@@ -23,6 +23,7 @@ Run the repository's [documented checks](../README.md#checks). Database acceptan
 
 ## Verification results
 
+- After reconciling with the newer main branch, the focused frontend run passed 215 cases. Fresh PostgreSQL checks passed 19 mailbox isolation/recovery cases, 157 scoped draft/schedule cases and 8 Deal engagement cases. Older mailbox fixtures now explicitly select a Deal and verify that unrelated inbound threads remain unassociated, matching main's attribution policy.
 - Direct Shared, Backend and Frontend lint/type checks passed, including backend test types. Shared, Backend and Frontend production builds passed.
 - The final focused frontend run passed 125 tests covering reports, multi-product forms, notification dots/counts, cache invalidation, attachments, editable subjects with Deal associations and merge submission. Additional record-panel and template checks passed.
 - PostgreSQL integration coverage passed for mailbox authorization/history (19 cases), scoped drafts/schedules (157 cases, including targeted reruns after updating provider fixtures), workflows (101 cases), Lead merge preservation/concurrency (4 cases), module notification counts and SMS links (9 cases).
