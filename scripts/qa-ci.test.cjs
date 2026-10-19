@@ -69,6 +69,7 @@ test('Local fixture previews stay outside database acceptance while undeclared b
     const before = ci.discovery(directory);
     const source = '// Rendered UI with intercepted API fixtures; no disposable database';
     fs.writeFileSync(path.resolve(directory, 'backend/scripts/preview-security-export-products.mjs'), source);
+    fs.writeFileSync(path.resolve(directory, 'backend/scripts/preview-record-email-attachments.mjs'), source);
     assert.deepEqual(ci.discovery(directory), before);
     fs.writeFileSync(path.resolve(directory, 'backend/scripts/verify-fixture-browser.mjs'), source);
     assert.throws(() => ci.discovery(directory), /Declare a disposable runtime/);

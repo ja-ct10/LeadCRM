@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.RECORD_FILE_MAX_BYTES = exports.LeadStatusSchema = exports.LEAD_STATUSES = exports.CrmStatusSchema = exports.COMPANY_SIZE_OPTIONS = exports.LeadSourceSchema = exports.LEAD_SOURCES = exports.CRM_STATUSES = void 0;
+exports.RecordEmailAttachmentContextSchema = exports.RECORD_FILE_MAX_BYTES = exports.LeadStatusSchema = exports.LEAD_STATUSES = exports.CrmStatusSchema = exports.COMPANY_SIZE_OPTIONS = exports.LeadSourceSchema = exports.LEAD_SOURCES = exports.CRM_STATUSES = void 0;
 exports.isAssignableAgent = isAssignableAgent;
 exports.normalizeCrmStatus = normalizeCrmStatus;
 const zod_1 = require("zod");
@@ -21,3 +21,8 @@ function normalizeCrmStatus(status) {
     return exports.CRM_STATUSES.find(value => value.toLowerCase() === status?.toLowerCase()) ?? 'Warm';
 }
 exports.RECORD_FILE_MAX_BYTES = 10 * 1024 * 1024;
+exports.RecordEmailAttachmentContextSchema = zod_1.z.object({
+    recordModule: zod_1.z.enum(['leads', 'contacts', 'deals']),
+    recordId: zod_1.z.string().uuid(),
+    accountId: zod_1.z.string().uuid().optional(),
+}).strict();

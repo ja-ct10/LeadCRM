@@ -62,7 +62,7 @@ export function getWorkflowUpdateFields(entity: WorkflowEntity, customFields: Cl
   if (entity === 'deal') standard = [text('title', 'Title', true, 255),
     { ...choice('priority', 'Priority', ['LOW', 'MEDIUM', 'HIGH']), required: true, optionLabels: { LOW: 'Low', MEDIUM: 'Medium', HIGH: 'High' } },
     { field: 'expectedCloseDate', label: 'Expected Close Date', type: 'date', nullable: true },
-    choice('leadSource', 'Lead Source', LEAD_SOURCES), choice('industry', 'Industry', COMPANY_INDUSTRIES), text('address', 'Address'), assignment, account,
+    choice('leadSource', 'Lead Source', LEAD_SOURCES), text('address', 'Address'), assignment, account,
     { field: 'contactIds', label: 'Contacts', type: 'contacts' }, { field: 'leadIds', label: 'Leads', type: 'leads' },
   ];
   else if (entity === 'account') standard = [text('name', 'Account Name', true, 255), choice('industry', 'Industry', COMPANY_INDUSTRIES),

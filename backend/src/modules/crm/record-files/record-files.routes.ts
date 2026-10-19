@@ -1,11 +1,20 @@
 import { Router, raw } from 'express';
 import { authorize } from '../../../api/middleware/rbac.middleware';
-import { listFiles, uploadFile, downloadFile } from './record-files.service';
+import { listFiles, uploadFile, downloadFile, listEmailAttachments } from './record-files.service';
+import { RecordEmailAttachmentContextSchema } from '@leadcrm/shared';
+import { z } from 'zod';
 
 export const recordFilesRouter = Router();
 // Mounted inside authenticated CRM routes; permissions run before the binary parser.
 for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) {
   const permission = module;
+  if (module !== 'accounts') recordFilesRouter.get(`/${module}/:id/email-attachments`, authorize(`${permission}.view`), async (req, res, next) => {
+    try {
+      const context = RecordEmailAttachmentContextSchema.parse({ recordModule: module, recordId: req.params.id });
+      const { cursor } = z.object({ cursor: z.string().max(2000).optional() }).strict().parse(req.query);
+      res.set('Cache-Control', 'private, no-store').json({ success: true, data: await listEmailAttachments(req.user!.tenantId, req.user!.userId, context, cursor) });
+    } catch (error) { next(error); }
+  });
   recordFilesRouter.post(`/${module}/custom-field-uploads`, authorize(`${permission}.create`), raw({ type: 'application/octet-stream', limit: '10mb' }), async (req, res, next) => {
     try { res.status(201).json({ success: true, data: await uploadFile(module, null, req.user!.tenantId, req.user!.userId, req.query, req.body) }); } catch (error) { next(error); }
   });

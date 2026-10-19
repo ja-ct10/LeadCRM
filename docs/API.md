@@ -272,7 +272,7 @@ Stage removal rejects default/won/lost stages and stages referenced by any Deal
 `POST /crm/deals/batch` accepts `idempotencyKey` (UUID), unique `productInterestIds`,
 `pipelineId`, the pipeline's `Lead` `stageId`, and common `title`, `priority`,
 `expectedCloseDate`, `accountId`, `assignedUserId`, `contactIds`, `leadIds`,
-`leadSource`, `industry` (from `COMPANY_INDUSTRIES`), `address`, `billingFrequency`,
+`leadSource`, `address`, `billingFrequency`,
 and `productInterestOther`. Prices and currency are server-owned Product snapshots
 in PHP. The response is `{ success: true, data: { deals: Deal[], replayed: boolean } }`,
 with 201 for creation, 200 for identical replay, and 409 for an actor/payload conflict
@@ -280,6 +280,9 @@ on a previously used key. Multi-Deal titles are `Entered title — Product name`
 the entered portion shortened to fit 255 characters. A single title is preserved.
 All relationships, audit records, Deals and the tenant-scoped receipt commit together.
 The existing single-Deal endpoint and response remain supported.
+
+Deal `industry` is retired and strict create/update contracts reject it. Account
+Industry remains unchanged. See the [coordinated retirement and preflight](deal-industry-retirement.md).
 
 Deal `address` remains an optional project/service location override. Create, batch-create and update accept optional `addressSource: { type: "lead" | "contact" | "account", id: string } | null`. The source must be an authorized active record linked through the Deal's existing relationships. Clearing it returns to automatic selection; omitting it preserves an existing choice. Deal responses include read-only `addressContext` (effective address, customer address/status, source and authorized options). One available source resolves automatically; several remain unresolved until chosen. Values are read live, never copied into Deal overrides. Source address changes do not update Deal rows or trigger Deal workflows. Existing quotation recipient/Account address roles and finalized document snapshots are unchanged.
 
@@ -318,6 +321,23 @@ Accounts retain their existing email rules.
 Record file history uses `GET`/`POST /crm/{module}/:id/files` and
 `GET /crm/{module}/:id/files/:fileId/download` for `leads`, `contacts`, `accounts`,
 and `deals`. These reuse the existing scoped file service and storage provider.
+
+Lead, Contact and Deal Files also read `GET /crm/{module}/:id/email-attachments`
+with an optional `cursor`. The response's `data` contains `attachments`, optional
+`nextCursor`, and an optional recovery `error`. Each page examines at most 20
+stored, authorized, record-linked messages. References contain the original
+mailbox/message/attachment identity, filename, MIME type, optional size, and
+sent/received timestamp. Contact history includes converted source Leads.
+Deal reads require a validated stored message or thread association and the
+existing customer relationship. Viewing a CRM record never grants access to
+another employee's Gmail account.
+
+Gmail references remain read-only and use the existing
+`GET /integrations/gmail/messages/:messageId/attachments/:attachmentId` endpoint.
+CRM actions supply `recordModule`, `recordId`, and `accountId` query parameters;
+record, association and mailbox access are rechecked before and after provider
+I/O. Existing Inbox callers may omit this context. No uploaded-file row or
+attachment bytes are persisted by this feature.
 
 ### CRM CSV imports
 

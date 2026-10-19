@@ -178,12 +178,6 @@ export function DealsDataGrid({
       </span>
     ),
 
-    industry: (_value: unknown, row: Deal) => (
-      <span className="text-[12px] text-[#5A6B85] dark:text-slate-400 truncate">
-        {row.industry ?? '—'}
-      </span>
-    ),
-
     createdAt: (_value: unknown, row: Deal) => renderDate(row.createdAt),
   }), [stageNameMap, getAssignedUserName, getAccountName, currencyConfig]);
 
@@ -205,7 +199,6 @@ export function DealsDataGrid({
       accountId: 160,
       expectedCloseDate: 140,
       leadSource: 130,
-      industry: 130,
       createdAt: 140,
     },
   });

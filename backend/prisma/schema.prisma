@@ -655,7 +655,6 @@ model Deal {
   currentStageHistoryId String? // internal identity of the current persisted stage entry
   lostReason        String?
   leadSource        String?
-  industry          String?
   productInterests  String[]
   address           String?
   addressSource     Json?

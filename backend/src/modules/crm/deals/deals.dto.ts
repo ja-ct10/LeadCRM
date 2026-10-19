@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DealAddressSourceSchema } from '@leadcrm/shared';
 import { CustomFieldValuesSchema, DealAssociationChangeSchema, validateManualDealAssociation } from '@leadcrm/shared';
 import { recordName, recordText } from '../record-validation';
-import { ProductInterestIdSchema, ClosedWonConfirmationSchema, DealIndustrySchema } from '@leadcrm/shared';
+import { ProductInterestIdSchema, ClosedWonConfirmationSchema } from '@leadcrm/shared';
 
 // ID field helper — accepts any non-empty string (UUID, CUID, or custom).
 // Format validation is not a business rule; referential integrity is enforced by the DB.
@@ -26,13 +26,12 @@ export const CreateDealSchema = z.object({
   assignedUserId:    id().optional(),
   contactIds:        z.array(id()).optional(),
   leadIds:           z.array(id()).optional(),
-  industry:          recordText(255).optional(),
   address:           recordText().optional(),
   productInterests:  z.array(z.string().trim().min(1).max(200)).max(100).optional(),
 }).strict();
 
 // Manual creation accepts catalog IDs; the singular ID remains supported for existing clients.
-export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional(), industry: DealIndustrySchema.optional() }).refine(data => {
+export const ManualCreateDealSchema = CreateDealSchema.extend({ productInterests: z.never().optional() }).refine(data => {
   const ids = [...new Set(data.productInterestIds ?? (data.productInterestId ? [data.productInterestId] : []))];
   return ids.length === 1 && (!data.productInterestId || data.productInterestId === ids[0]);
 }, { path: ['productInterestIds'], message: 'Select exactly one Product Interest per Deal.' }).superRefine(validateManualDealAssociation);

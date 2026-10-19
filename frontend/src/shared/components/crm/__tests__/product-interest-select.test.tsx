@@ -96,3 +96,23 @@ it('filters by category while retaining previously selected products', () => {
   fireEvent.change(screen.getByLabelText('Product category'), { target: { value: 'Services' } });
   expect(screen.queryByRole('checkbox', { name: 'CCTV' })).toBeNull();
 });
+
+it.each(['id', 'name'] as const)('hides the special category in CRM %s mode without losing legacy products or new catalog categories', mode => {
+  const records = [{ ...products[0], category: 'Services' }, products[1]];
+  const value = mode === 'id' ? 'b' : 'CCTV';
+  const change = vi.fn();
+  const { rerender } = render(<ProductInterestSelect products={records} categories={['Services', 'New category']} showUncategorized={false} values={[value]} valueMode={mode} onChange={change} />);
+  expect(screen.queryByRole('option', { name: 'Uncategorized' })).toBeNull();
+  expect(screen.getByRole('option', { name: 'All categories' })).toBeTruthy();
+  expect(screen.getByRole('option', { name: 'New category' })).toBeTruthy();
+  fireEvent.click(screen.getByRole('button', { name: 'Product Interest' }));
+  expect(screen.getByRole('checkbox', { name: 'CCTV' })).toHaveProperty('checked', true);
+  fireEvent.change(screen.getByLabelText('Product category'), { target: { value: 'New category' } });
+  expect(screen.queryByRole('checkbox', { name: 'Network' })).toBeNull();
+  expect(screen.getByRole('checkbox', { name: 'CCTV' })).toHaveProperty('checked', true);
+  expect(change).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('Product category'), { target: { value: '' } });
+  expect(screen.getByRole('checkbox', { name: 'Network' })).toBeTruthy();
+  rerender(<ProductInterestSelect products={records} categories={['Services', 'New category', 'Added later']} showUncategorized={false} values={[value]} valueMode={mode} onChange={change} />);
+  expect(screen.getByRole('option', { name: 'Added later' })).toBeTruthy();
+});
