@@ -47,6 +47,8 @@ Currencies are never converted or mixed. Money uses tenant currency (PHP when un
 
 ## Deal Pipeline Conversion Funnel
 
+Dashboard's four colored boxes show current Lead, Contacted, Qualified and Closed Won Deal counts. Open counts reuse Pipeline Overview's stage aggregates by stage ID; Closed Won uses the current Won total, independent of revenue dates. The Historical Conversion Rates section below them uses the selected historical creation cohort and recorded milestones described below. Its date filter never narrows the current-stage counts. Reports and CSV retain their historical milestone counts and rates.
+
 Cohort: eligible organization Deals **created in the independent funnel interval**. Default Month, Week (Monday start), and Year run from their calendar start through today in Manila. Custom From/To dates must be valid, ordered, historical and at most 732 days; both browser and server enforce this. Milestones count distinct Deals with actual `DealStageHistory.newStageId` events from creation through the earlier of report generation and the end of the selected To day (23:59:59.999 Manila). Custom reports therefore exclude later events. The response and CSV carry the actual observation cutoff. Current stage alone is not proof. Verified start has null previous stage and timestamp matching creation. The existing migration records future starts with a valid actor/owner/assignee. Old events are never reconstructed.
 
 Open milestones are Lead → Contacted → Qualified. Won and Lost are separate branches. Repeated/backward/reopened transitions count each milestone once; skipped stages are not inferred.

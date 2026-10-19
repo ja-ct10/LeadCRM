@@ -148,6 +148,9 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
     { label: 'Win Rate', value: metric?.winRate == null ? 'Unavailable' : `${metric.winRate}%`, icon: Target, color: 'pink', context: 'Current won deals divided by all current eligible deals' },
   ];
   const openStages = report?.distribution.filter(stage => ['lead', 'contacted', 'qualified'].includes(stage.name.trim().toLowerCase())) ?? [];
+  const currentFunnelStages = report?.pipeline?.stages.slice(0, 4).map(stage => ({ ...stage,
+    count: stage.isWon ? metric?.currentWon : report.distribution.find(row => row.id === stage.id)?.count,
+  })) ?? [];
   const largestStage = Math.max(0, ...openStages.map(stage => stage.count));
   const actionSummary = report ? [
     report.access.tasks && countLabel(report.actions.filter(action => action.kind === 'task' && action.overdue).length, 'overdue task'),
@@ -260,14 +263,21 @@ export default function Dashboard({ heading, renderToolbarActions, presentation 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3"><label className="min-w-0 text-xs">From Date<Input aria-label="Funnel From Date" type="date" max={funnelDraft.end && funnelDraft.end < dashboardToday() ? funnelDraft.end : dashboardToday()} value={funnelDraft.start} onChange={event => setFunnelDraft(previous => ({ ...previous, start: event.target.value }))} className="mt-1 min-w-0" /></label><label className="min-w-0 text-xs">To Date<Input aria-label="Funnel To Date" type="date" min={funnelDraft.start} max={dashboardToday()} value={funnelDraft.end} onChange={event => setFunnelDraft(previous => ({ ...previous, end: event.target.value }))} className="mt-1 min-w-0" /></label></div>
                 {funnelError && <p role="alert" className="text-xs text-destructive">{funnelError}</p>}<div className="flex flex-wrap gap-2"><button className={button} onClick={applyFunnel}>Apply funnel dates</button><button className={button} onClick={() => setFunnelCustom(false)}>Cancel</button></div>
               </div>}
-              {!report.conversion ? <Empty>Deal history unavailable.</Empty> : <>
-                <ol aria-label="Historical conversion stages" className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)] gap-1 min-[375px]:gap-2 sm:grid-cols-4 sm:gap-3">{report.conversion.stages.slice(0, 4).map((stage, index) => <li key={stage.id} aria-label={`${stage.name}: ${stage.reached} reached`} className="relative min-w-0 text-center">
-                  <div className="rounded-lg py-2 text-lg font-bold tabular-nums" style={{ backgroundColor: pipelineStageColor(stage), color: stageForeground(pipelineStageColor(stage)) }}>{stage.reached}</div><p className="mt-1.5 break-normal text-[11px] text-slate-600 dark:text-slate-300">{stage.name}</p>{index < 3 && <ChevronRight size={14} aria-hidden="true" className="absolute -right-2 top-3 text-slate-400 min-[375px]:-right-2.5 sm:-right-3" />}
+              {!report.access.deals || !report.pipeline ? <Empty>Deal reporting unavailable.</Empty> : <>
+                <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">Current pipeline stage counts</p>
+                <ol aria-label="Current pipeline stages" className="grid grid-cols-[minmax(0,0.7fr)_minmax(0,1.2fr)_minmax(0,1.1fr)_minmax(0,1fr)] gap-1 min-[375px]:gap-2 sm:grid-cols-4 sm:gap-3">{currentFunnelStages.map((stage, index) => <li key={stage.id} aria-label={`${stage.name}: ${stage.count == null ? 'Unavailable' : countLabel(stage.count, 'deal')}`} className="relative min-w-0 text-center">
+                  <div className={`rounded-lg py-2 font-bold tabular-nums ${stage.count == null ? 'break-words text-xs leading-7' : 'text-lg'}`} style={{ backgroundColor: pipelineStageColor(stage), color: stageForeground(pipelineStageColor(stage)) }}>{stage.count ?? 'Unavailable'}</div><p className="mt-1.5 break-normal text-[11px] text-slate-600 dark:text-slate-300">{stage.name}</p>{index < 3 && <ChevronRight size={14} aria-hidden="true" className="absolute -right-2 top-3 text-slate-400 min-[375px]:-right-2.5 sm:-right-3" />}
                 </li>)}</ol>
-                <dl className="mt-4 grid grid-cols-1 min-[375px]:grid-cols-3 gap-3 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">{[
-                  ['Lead → Contacted', report.conversion.leadToContacted], ['Contacted → Qualified', report.conversion.contactedToQualified], ['Qualified → Closed Won', report.conversion.qualifiedToWon],
-                ].map(([label, rate]) => <div key={label} className="min-w-0 text-center"><dt className="text-[11px] text-slate-500 dark:text-slate-400">{label}</dt><dd className={`mt-1 break-words font-bold tabular-nums text-blue-600 dark:text-blue-400 ${rate == null ? 'text-xs leading-7' : 'text-lg'}`}>{rate == null ? 'Unavailable' : `${rate}%`}</dd></div>)}</dl>
-                {report.conversion.missingHistory > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{report.conversion.missingHistory} deals lack recorded starting history. Rates are unavailable; counts show recorded milestones only.</p>}
+                <div className="mt-4 rounded-xl bg-slate-50 p-3 dark:bg-white/[0.03]">
+                  <h4 className="text-xs font-semibold text-slate-700 dark:text-slate-300">Historical Conversion Rates</h4>
+                  <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">{funnelSubtitle}. Date filter applies only to historical rates.</p>
+                  {!report.conversion ? <p className="mt-3 text-xs text-slate-500">Deal history unavailable.</p> : <>
+                    <dl className="mt-3 grid grid-cols-1 min-[375px]:grid-cols-3 gap-3">{[
+                      ['Lead → Contacted', report.conversion.leadToContacted], ['Contacted → Qualified', report.conversion.contactedToQualified], ['Qualified → Closed Won', report.conversion.qualifiedToWon],
+                    ].map(([label, rate]) => <div key={label} className="min-w-0 text-center"><dt className="text-[11px] text-slate-500 dark:text-slate-400">{label}</dt><dd className={`mt-1 break-words font-bold tabular-nums text-blue-600 dark:text-blue-400 ${rate == null ? 'text-xs leading-7' : 'text-lg'}`}>{rate == null ? 'Unavailable' : `${rate}%`}</dd></div>)}</dl>
+                    {report.conversion.missingHistory > 0 && <p className="mt-2 text-xs text-amber-700 dark:text-amber-400">{report.conversion.missingHistory} deals lack recorded starting history. Historical conversion rates are unavailable.</p>}
+                  </>}
+                </div>
               </>}
             </section>
           </div>

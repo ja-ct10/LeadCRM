@@ -88,6 +88,70 @@ describe('authoritative dashboard', () => {
     expect(result.metrics).toMatchObject({ totalRevenue: 0, activeDeals: 0, totalLeads: 0, forecastedRevenue: 0, winRate: 0, currentWon: 0, totalDeals: 0, averageDealDays: null });
     expect(result.distribution.map(row => row.count)).toEqual([0,0,0]); expect(result.pendingActions).toBe(0);
   });
+  it('matches the Deals pipeline snapshot across historical filters, exclusions and committed stage moves', async () => {
+    const tenantId = 'funnel-counts', pipelineId = 'funnel-sales', userId = 'funnel-admin';
+    await db.tenant.create({ data: { id: tenantId, name: 'Funnel counts', slug: tenantId, onboardingStep: 3, onboardingCompletedAt: now } });
+    const user = await db.user.create({ data: { id: userId, tenantId, role: 'Client Admin', email: 'funnel@camxian.com',
+      firstName: 'Funnel', lastName: 'Admin', mustChangePassword: false, onboardingCompletedAt: now } });
+    await db.pipeline.createMany({ data: [{ id: pipelineId, tenantId, name: 'Sales Pipeline' }, { id: 'funnel-other', tenantId, name: 'Other Pipeline' }] });
+    const official = await db.stage.findMany({ where: { pipelineId: 'sales' }, orderBy: { order: 'asc' } });
+    const stages = official.map(stage => ({ id: `funnel-${stage.id}`, tenantId, pipelineId, name: stage.name,
+      order: stage.order, isWon: stage.isWon, isLost: stage.isLost, color: stage.color, requiredFields: [] }));
+    await db.stage.createMany({ data: [...stages, { ...stages[0], id: 'funnel-other-lead', pipelineId: 'funnel-other' }] });
+    await db.closingFieldDefinition.create({ data: { id: 'funnel-optional', tenantId, definition: { id: 'funnel-optional', name: 'Optional note',
+      module: 'deals', group: 'Closed Won Requirements', type: 'Text', required: false, active: true, order: 0, options: [] } } });
+    for (const [index, stage] of stages.entries()) {
+      for (let i = 0; i < [17, 1, 2, 1, 3][index]; i++) await db.deal.create({ data: {
+        id: `${stage.id}-${i}`, tenantId, pipelineId, stageId: stage.id, title: `${stage.name} ${i}`, assignedUserId: userId, ownerId: userId,
+        value: index === 0 && i === 1 ? null : 100, currency: index === 0 && i === 0 ? 'USD' : 'PHP',
+        createdAt: new Date('2020-01-01T00:00:00Z'), ...(index >= 3 ? { closedAt: new Date('2020-01-05T00:00:00Z') } : {}),
+      } });
+      for (const exclusion of ['archived', 'deleted']) await db.deal.create({ data: {
+        id: `${stage.id}-${exclusion}`, tenantId, pipelineId, stageId: stage.id, title: exclusion, ownerId: userId,
+        ...(exclusion === 'archived' ? { isArchived: true } : { deletedAt: now }),
+      } });
+    }
+    await db.deal.create({ data: { id: 'funnel-outside', tenantId, pipelineId: 'funnel-other', stageId: 'funnel-other-lead', title: 'Outside' } });
+    await db.deal.create({ data: { id: 'funnel-foreign', tenantId: 'b', pipelineId: 'foreign-sales', stageId: 'foreign-lead', title: 'Foreign' } });
+    const { createAuthSessionToken } = await import('../../../core/auth/auth-session');
+    const token = await createAuthSessionToken(user);
+    const identity = { userId, tenantId, role: user.role, email: user.email };
+    const read = (funnelRange: 'week' | 'month' | 'year' | 'custom' = 'month') => tenantContext.run({ tenantId }, () => dashboard(identity, {
+      range: 'custom', start: '2020-01-12', end: '2020-01-13', funnelRange,
+      ...(funnelRange === 'custom' ? { funnelStart: '2020-01-01', funnelEnd: '2020-01-02' } : {}),
+    }, now));
+    const compare = async (expected: number[]) => {
+      const response = await http(`/crm/deals?pipelineId=${pipelineId}&limit=100`, token);
+      expect(response.status).toBe(200);
+      const rows = (await response.json()).data as Array<{ id: string; stageId: string }>;
+      expect(new Set(rows.map(row => row.id)).size).toBe(rows.length);
+      const counts = stages.map(stage => rows.filter(row => row.stageId === stage.id).length);
+      expect(counts).toEqual(expected);
+      const grouped = await http(`/crm/deals?pipelineId=${pipelineId}&groupByStage=true`, token);
+      expect(grouped.status).toBe(200);
+      const groups = (await grouped.json()).data.stages as Array<{ stageId: string; total: number }>;
+      expect(stages.map(stage => groups.find(group => group.stageId === stage.id)!.total)).toEqual(counts);
+      const result = await read();
+      expect(result.pipeline!.id).toBe(pipelineId);
+      expect(stages.slice(0, 3).map(stage => result.distribution.find(row => row.id === stage.id)!.count)).toEqual(counts.slice(0, 3));
+      expect(result.metrics.currentWon).toBe(counts[3]);
+      expect(result.metrics.totalDeals).toBe(rows.length);
+      expect(result.metrics.activeDeals).toBe(counts.slice(0, 3).reduce((sum, count) => sum + count, 0));
+      expect(result.metrics.won).toBe(0);
+      return result;
+    };
+    const initial = await compare([17, 1, 2, 1, 3]);
+    for (const range of ['week', 'month', 'year', 'custom'] as const) {
+      const filtered = await read(range);
+      expect(filtered.distribution).toEqual(initial.distribution);
+      expect(filtered.metrics.currentWon).toBe(1);
+    }
+    await tenantContext.run({ tenantId }, () => move('funnel-lead-0', tenantId, stages[1].id, userId));
+    await compare([16, 2, 2, 1, 3]);
+    await tenantContext.run({ tenantId }, () => move('funnel-qualified-0', tenantId, stages[3].id, userId));
+    await compare([16, 2, 1, 2, 3]);
+    expect((await db.deal.findUniqueOrThrow({ where: { id: 'funnel-outside' } })).stageId).toBe('funnel-other-lead');
+  }, 60000);
   it('reconciles revenue, outcomes, open counts, values, forecast and creation-to-close duration', async () => {
     await deal('open-lead', 'lead', 1000); await deal('open-contacted', 'contacted', 2000); await deal('open-qualified', 'qualified', 3000);
     await deal('winner', 'qualified', 45000); await close('winner', 'won');

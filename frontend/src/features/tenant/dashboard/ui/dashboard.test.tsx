@@ -19,17 +19,22 @@ beforeEach(() => {
   mocks.loading = false; mocks.error = null;
   mocks.refresh.mockResolvedValue(true); mocks.success.mockClear(); mocks.failure.mockClear();
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
+  const stages = ['Lead','Contacted','Qualified','Closed Won','Closed Lost'].map((name, order) => ({
+    id: ['lead','contacted','qualified','won','lost'][order], name, order, color: '#123456', probability: null,
+    isWon: order === 3, isLost: order === 4,
+  }));
   mocks.report = {
     generatedAt: '2020-01-15T04:00:00Z', queryMs: 1, currency: 'PHP', scope: 'organization',
     period: { start: '2020-01-01', end: '2020-01-15', interval: 'month', timezone: 'Asia/Manila' },
-    access: { deals: true, leads: true, tasks: true }, pipeline: null,
+    access: { deals: true, leads: true, tasks: true }, pipeline: { id: 'sales', name: 'Sales Pipeline', stages },
     metrics: { totalRevenue: 45000, forecastedRevenue: 225000, activeDeals: 3, totalLeads: 1, won: 1, lost: 0,
       currentWon: 2, totalDeals: 25, winRate: 8, averageDealDays: 4, openPipelineValue: 225000,
       forecastMissing: 0, monetaryMissing: 0, currencyExcluded: 0, closingDateMissing: 0, unattributedWon: 1, unattributedRevenue: 1000 },
     trend: [{ name: '2020-01-01', revenue: 45000, won: 1, lost: 0 }],
-    distribution: [{ id: 'lead', name: 'Lead', color: '#123456', count: 3, value: 225000, percentage: 100 }],
+    distribution: stages.slice(0, 3).map(stage => ({ id: stage.id, name: stage.name, color: stage.color,
+      count: stage.id === 'lead' ? 3 : 0, value: stage.id === 'lead' ? 225000 : 0, percentage: stage.id === 'lead' ? 100 : 0 })),
     conversion: { cohort: 10, missingHistory: 1, period: { start: '2020-01-01', end: '2020-01-15', range: 'month', timezone: 'Asia/Manila', observationCutoff: '2020-01-15T04:00:00Z' },
-      stages: ['Lead','Contacted','Qualified','Closed Won','Closed Lost'].map((name, index) => ({ id: String(index), name, color: '#123456', reached: index === 0 ? 9 : 1 })),
+      stages: stages.map(stage => ({ id: stage.id, name: stage.name, color: stage.color, reached: stage.id === 'lead' ? 9 : 1 })),
       leadToContacted: null, contactedToQualified: null, qualifiedToWon: null, qualifiedToLost: null },
     leaderboard: [{ id: 'agent', firstName: 'Historical', lastName: 'Agent', won: 2, revenue: 44000 }],
     actions: [], pendingActions: 0, warnings: ['Missing historical stage data.', 'Missing historical stage data.'],
@@ -120,19 +125,55 @@ it('uses real distribution values, saved colors and count-relative widths, exclu
   expect(within(pipeline.getByRole('listitem', { name: 'Qualified' })).getByText('Unavailable')).toBeTruthy();
 });
 
-it('uses historical reached counts and backend rates rather than recomputing adjacent ratios', () => {
-  Object.assign(mocks.report!.conversion!, { leadToContacted: 27.8, contactedToQualified: 40, qualifiedToWon: 37.5, qualifiedToLost: 5 });
+it('matches current pipeline counts by stage ID and uses separately labeled backend historical rates', () => {
+  mocks.report!.distribution.forEach((stage, index) => { stage.count = [17, 1, 2][index]; });
+  mocks.report!.distribution.reverse();
+  mocks.report!.metrics.currentWon = 1;
+  mocks.report!.metrics.won = 0;
+  Object.assign(mocks.report!.conversion!, { missingHistory: 0, leadToContacted: 20.8, contactedToQualified: 40, qualifiedToWon: 33.3, qualifiedToLost: 5 });
+  mocks.report!.conversion!.stages.forEach((stage, index) => { stage.reached = [24, 5, 3, 1, 3][index]; });
   render(<Dashboard />);
   const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
-  expect(funnel.getByRole('list', { name: 'Historical conversion stages' }).children).toHaveLength(4);
-  expect(funnel.getByRole('listitem', { name: 'Lead: 9 reached' })).toBeTruthy();
-  expect(funnel.getByRole('listitem', { name: 'Closed Won: 1 reached' })).toBeTruthy();
-  for (const rate of ['27.8%', '40%', '37.5%']) expect(funnel.getByText(rate)).toBeTruthy();
+  expect(funnel.getByRole('list', { name: 'Current pipeline stages' }).children).toHaveLength(4);
+  expect(funnel.getAllByRole('listitem').map(row => row.getAttribute('aria-label'))).toEqual(['Lead: 17 deals', 'Contacted: 1 deal', 'Qualified: 2 deals', 'Closed Won: 1 deal']);
+  expect(funnel.getByText('Current pipeline stage counts')).toBeTruthy();
+  expect(funnel.getByRole('heading', { name: 'Historical Conversion Rates' })).toBeTruthy();
+  expect(funnel.getByText(/Deals created during the current month · Recorded milestones through today.*Date filter applies only to historical rates/)).toBeTruthy();
+  for (const rate of ['20.8%', '40%', '33.3%']) expect(funnel.getByText(rate)).toBeTruthy();
+  expect(funnel.queryByText('200%')).toBeNull();
+  expect(funnel.queryByText('24')).toBeNull();
+  expect((funnel.getByRole('listitem', { name: 'Lead: 17 deals' }).firstChild as HTMLElement).style.backgroundColor).toBe('rgb(18, 52, 86)');
   expect(funnel.queryByText(/Closed Lost/)).toBeNull();
   expect(funnel.queryByText('Cohort details')).toBeNull();
   expect(funnel.queryByText(/deals in the creation cohort/)).toBeNull();
   expect(funnel.getAllByRole('term').map(term => term.textContent)).toEqual(['Lead → Contacted', 'Contacted → Qualified', 'Qualified → Closed Won']);
-  expect(funnel.getByText(/1 deals lack recorded starting history/)).toBeTruthy();
+});
+it('keeps current counts when history is incomplete or the selected cohort is empty', () => {
+  const view = render(<Dashboard />);
+  const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
+  expect(funnel.getByText('1 deals lack recorded starting history. Historical conversion rates are unavailable.')).toBeTruthy();
+  expect(funnel.getAllByRole('definition').map(rate => rate.textContent)).toEqual(['Unavailable', 'Unavailable', 'Unavailable']);
+  expect(funnel.getByRole('listitem', { name: 'Lead: 3 deals' })).toBeTruthy();
+  mocks.report!.conversion!.cohort = 0;
+  mocks.report!.conversion!.missingHistory = 0;
+  mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
+  view.rerender(<Dashboard />);
+  expect(funnel.getByRole('listitem', { name: 'Lead: 3 deals' })).toBeTruthy();
+  expect(funnel.getByRole('listitem', { name: 'Closed Won: 2 deals' })).toBeTruthy();
+  expect(funnel.getAllByRole('definition').map(rate => rate.textContent)).toEqual(['Unavailable', 'Unavailable', 'Unavailable']);
+});
+it('does not substitute zero for unavailable current counts or show counts without Deals access', () => {
+  mocks.report!.metrics.currentWon = null;
+  mocks.report!.distribution = [];
+  const view = render(<Dashboard />);
+  const funnel = within(screen.getByRole('region', { name: 'Conversion Funnel' }));
+  expect(funnel.getAllByRole('listitem', { name: /Unavailable/ })).toHaveLength(4);
+  mocks.report!.access.deals = false;
+  mocks.report!.pipeline = null;
+  mocks.report!.conversion = null;
+  view.rerender(<Dashboard />);
+  expect(funnel.getByText('Deal reporting unavailable.')).toBeTruthy();
+  expect(funnel.queryByRole('list')).toBeNull();
 });
 it('accepts the same normalized official stage names as the backend', () => {
   mocks.report!.distribution[0].name = ' lead ';
@@ -170,18 +211,19 @@ it('renders backend leaderboard rank, initials, revenue and attributed deal coun
   expect(board.getByText('1 won deals · ₱1,000.00 without verified eligible sales credit')).toBeTruthy();
 });
 
-it('renders truthful empty states, zero historical blocks and unavailable rates', () => {
+it('renders truthful empty states, zero current counts and unavailable rates', () => {
   mocks.report!.metrics.totalRevenue = 0;
   mocks.report!.metrics.forecastedRevenue = null;
   mocks.report!.distribution.forEach(stage => { stage.count = 0; });
+  mocks.report!.metrics.currentWon = 0;
   mocks.report!.leaderboard = [];
   mocks.report!.conversion!.cohort = 0;
   mocks.report!.conversion!.missingHistory = 0;
   mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
   render(<Dashboard />);
   for (const empty of ['No actions require attention.', 'No won revenue in the selected period.', 'No open deals.', 'No verified eligible sales attribution in this period.']) expect(screen.getByText(empty)).toBeTruthy();
-  expect(screen.getByRole('list', { name: 'Historical conversion stages' }).children).toHaveLength(4);
-  expect(screen.getAllByRole('listitem', { name: /0 reached/ })).toHaveLength(4);
+  expect(screen.getByRole('list', { name: 'Current pipeline stages' }).children).toHaveLength(4);
+  expect(screen.getAllByRole('listitem', { name: /0 deals/ })).toHaveLength(4);
   expect(within(screen.getByRole('group', { name: 'Forecast' })).getByText('Unavailable')).toBeTruthy();
   expect(screen.queryByRole('meter')).toBeNull();
   expect(mocks.charts).toHaveLength(0);
@@ -234,6 +276,12 @@ it('keeps Dashboard on this month while independent chart filters and refresh re
   fireEvent.change(screen.getByLabelText('Funnel To Date'), { target: { value: '2020-01-04' } });
   fireEvent.click(screen.getByRole('button', { name: 'Apply funnel dates' }));
   expect(mocks.query).toMatchObject({ range: 'thisMonth', start: undefined, end: undefined, revenueInterval: 'week', funnelRange: 'custom', funnelStart: '2020-01-03', funnelEnd: '2020-01-04' });
+  const before = screen.getByRole('list', { name: 'Current pipeline stages' }).textContent;
+  mocks.report!.conversion!.period = { ...mocks.report!.conversion!.period, range: 'custom', start: '2020-01-03', end: '2020-01-04' };
+  mocks.report!.conversion!.stages.forEach(stage => { stage.reached = 0; });
+  view.rerender(<Dashboard />);
+  expect(screen.getByRole('list', { name: 'Current pipeline stages' }).textContent).toBe(before);
+  expect(screen.getByText(/Deals created Jan 3, 2020 – Jan 4, 2020 · Recorded milestones through Jan 4, 2020/)).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Sync Metrics' }));
   await waitFor(() => expect(mocks.refresh).toHaveBeenCalledOnce());
   expect(mocks.query!.range).toBe('thisMonth');
@@ -264,6 +312,8 @@ it('retains missing conversion data and disables Sync Metrics while loading', ()
   mocks.loading = true;
   render(<Dashboard />);
   expect(screen.getByText('Deal history unavailable.')).toBeTruthy();
+  expect(screen.getByRole('listitem', { name: 'Lead: 3 deals' })).toBeTruthy();
+  expect(screen.getByRole('listitem', { name: 'Closed Won: 2 deals' })).toBeTruthy();
   const sync = screen.getByRole('button', { name: 'Syncing…' }) as HTMLButtonElement;
   expect(sync.disabled).toBe(true);
   fireEvent.click(sync);

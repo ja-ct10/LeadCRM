@@ -33,6 +33,7 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
   const where: Prisma.DealWhereInput = {
     tenantId,
     isArchived: params.archived === 'true',
+    deletedAt: null,
     ...(params.stageId        ? { stageId: params.stageId }               : {}),
     ...(params.pipelineId     ? { pipelineId: params.pipelineId }         : {}),
     ...(params.priority       ? { priority: params.priority }             : {}),
@@ -394,7 +395,7 @@ export async function findDealsGroupedByStage(
 
     const [deals, total] = await Promise.all([
       (salesContext.getStore() ?? prisma).deal.findMany({
-        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false },
+        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false, deletedAt: null },
         skip,
         take: PAGE_SIZE,
         orderBy: { createdAt: 'desc' },
@@ -410,7 +411,7 @@ export async function findDealsGroupedByStage(
         },
       }),
       (salesContext.getStore() ?? prisma).deal.count({
-        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false },
+        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false, deletedAt: null },
       }),
     ]);
 

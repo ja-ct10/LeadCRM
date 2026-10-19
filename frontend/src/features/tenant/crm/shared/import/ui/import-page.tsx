@@ -17,7 +17,6 @@ import {
   Clock,
   ChevronDown,
   ChevronUp,
-  Plus,
   Sparkles,
   Table2,
   ShieldCheck,
@@ -609,11 +608,6 @@ function Step2MapColumns({ config, csvHeaders, mappings, unmappedColumns, allReq
           )}
         </div>
       )}
-
-      {/* Add custom column (disabled) */}
-      <button disabled className="inline-flex items-center gap-1.5 h-9 px-4 text-[12.5px] font-medium text-slate-400 dark:text-slate-500 border border-dashed border-slate-300 dark:border-slate-700 rounded-lg cursor-not-allowed" title="Custom field creation coming soon">
-        <Plus size={14} /> Add custom column
-      </button>
 
       {/* Validation Message */}
       {!allRequiredMapped && firstUnmappedRequired && (
