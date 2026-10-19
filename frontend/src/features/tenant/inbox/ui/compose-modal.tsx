@@ -24,13 +24,13 @@ interface ComposeModalProps {
   initialDraft?: MailboxComposeDraft | null;
   authorizationRevision?: number;
   retryAt?: number;
-  onDealLinkResult?: (link: { threadId: string; sourceDealId: string }, linked: boolean) => void;
+  onDealLinkResult?: (link: { threadId: string; sourceDealId: string; messageId?: string }, linked: boolean) => void;
 }
 
 export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, authorizationRevision = 0, retryAt = 0, onDealLinkResult }: ComposeModalProps): React.ReactElement | null {
   const [to, setTo] = useState('');
   const [subject, setSubject] = useState('');
-  const [sentLink, setSentLink] = useState<{ threadId: string; sourceDealId: string } | null>(null);
+  const [sentLink, setSentLink] = useState<{ threadId: string; sourceDealId: string; messageId?: string } | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [actionRetryAt, setActionRetryAt] = useState(0);
@@ -209,7 +209,7 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
     if (sentLink) {
       mutationPending.current = true; setIsSending(true);
       const generation = operationGeneration.current;
-      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId); if (generation !== operationGeneration.current) return; onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal'); }
+      try { await associateThreadDeal(sentLink.threadId, sentLink.sourceDealId, sentLink.messageId ? { messageId: sentLink.messageId } : {}); if (generation !== operationGeneration.current) return; onDealLinkResult?.(sentLink, true); setSentLink(null); resetForm(); onClose(); toast.success('Email linked to deal'); }
       catch { if (generation === operationGeneration.current) setError('Email sent, but linking to the Deal failed.'); }
       finally { mutationPending.current = false; setIsSending(false); }
       return;
@@ -254,8 +254,8 @@ export default function ComposeModal({ isOpen, onClose, onSent, initialDraft, au
         const result = await sendGmailEmail(recipients, subject.trim() || '(no subject)', htmlBody, sourceContext.replyToMessageId, currentDraftId, sourceContext.forwardSourceMessageId, sendRequest.current.id, sourceContext.composeMode);
         if (generation !== operationGeneration.current) return;
         if (initialDraft?.sourceDealId) {
-          const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId };
-          try { await associateThreadDeal(link.threadId, link.sourceDealId); if (generation !== operationGeneration.current) return; onDealLinkResult?.(link, true); }
+          const link = { threadId: result.threadId, sourceDealId: initialDraft.sourceDealId, messageId: result.messageId };
+          try { await associateThreadDeal(link.threadId, link.sourceDealId, { messageId: link.messageId }); if (generation !== operationGeneration.current) return; onDealLinkResult?.(link, true); }
           catch { if (generation !== operationGeneration.current) return; setSentLink(link); onDealLinkResult?.(link, false); setError('Email sent, but linking to the Deal failed.'); onSent(); toast.success('Email sent'); return; }
         }
         toast.success('Email sent');

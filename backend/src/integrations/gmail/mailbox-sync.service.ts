@@ -18,6 +18,7 @@ import { customerDealWhere, CustomerLink } from '../../modules/crm/engagement.se
 import { salesTransaction } from '../../modules/crm/leads/lead-automation.service';
 import { isMailboxOwner } from './mailbox-ownership';
 import { readGmailJson as gmailJson, withMailboxWorkerReadBudget } from './gmail-read';
+import { correspondentCte, mailboxReadQuery } from './mailbox-conversations';
 
 export async function mailboxPermissions(tenantId: string, userId: string, checkOwnership = true, db: Prisma.TransactionClient = prisma): Promise<MailboxPermissions> {
   const user = await readAuthUser(userId, tenantId, db);
@@ -52,7 +53,8 @@ export async function decorateEmails(tenantId: string, userId: string, emails: G
     ...email, bcc: undefined, replyToAddresses: undefined, authorizationHeadersValid: undefined, direction: row?.direction as GmailEmail['direction'] ?? (normalizeEmail(email.from) === normalizeEmail(account.email) ? 'outbound' : [...email.to, ...(email.cc ?? [])].some(address => normalizeEmail(address) === normalizeEmail(account.email)) ? 'inbound' : 'unknown'),
     leadId: row?.leadId && scope.leadIds.includes(row.leadId) ? row.leadId : undefined,
     contactId: row?.contactId && scope.contactIds.includes(row.contactId) ? row.contactId : undefined,
-    dealId: permissions.dealsView && (scope.leadIds.includes(row?.leadId ?? '') || scope.contactIds.includes(row?.contactId ?? '')) ? row?.dealId : undefined,
+    dealId: permissions.dealsView ? email.conversationId ? email.dealId : (scope.leadIds.includes(row?.leadId ?? '') || scope.contactIds.includes(row?.contactId ?? '')) ? row?.dealId : undefined : undefined,
+    dealTitle: permissions.dealsView ? email.dealTitle : undefined,
     needsDealAssociation: permissions.dealsView ? row?.needsDealAssociation : false,
   }; });
 }
@@ -69,23 +71,36 @@ export async function readMailboxThread(tenantId: string, userId: string, thread
   const latest = decorated[decorated.length - 1];
   const link: CustomerLink | undefined = latest?.leadId ? { leadId: latest.leadId } : latest?.contactId ? { contactId: latest.contactId } : undefined;
   const deals = link && permissions.dealsView ? await prisma.deal.findMany({ where: { ...customerDealWhere(tenantId, link), stage: { isWon: false, isLost: false } }, select: { id: true, title: true, stage: { select: { name: true } } } }) : [];
-  const association = link && permissions.dealsView ? await prisma.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: { accountId: account.id, threadId } } }) : null;
-  const associated = association && link ? await prisma.deal.findFirst({ where: { ...customerDealWhere(tenantId, link), id: association.dealId }, select: { id: true } }) : null;
   const current = await resolveMailboxScope(account, await mailboxPermissions(tenantId, userId));
   if (current.hash !== scope.hash || !await prisma.emailAccount.findFirst({ where: { id: account.id, isActive: true }, select: { id: true } })) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
-  return { emails: associated ? decorated.map(email => ({ ...email, dealId: associated.id, needsDealAssociation: false })) : decorated, dealOptions: deals.map(deal => ({ id: deal.id, title: deal.title, stage: deal.stage.name })), canAssociateDeal: permissions.dealsEdit && permissions.dealsView };
+  const groups = await mailboxReadQuery<{ providerMessageId: string; conversationId: string; effectiveDealId: string | null; effectiveDealTitle: string | null }[]>(account, Prisma.sql`
+    WITH ${correspondentCte(account, scope)} SELECT "providerMessageId", "conversationId", "effectiveDealId", "effectiveDealTitle" FROM eligible WHERE "threadId" = ${threadId}`);
+  return { emails: decorated.map(email => {
+    const group = groups.find(row => row.providerMessageId === email.id);
+    return { ...email, conversationId: group?.conversationId, dealId: group?.effectiveDealId, dealTitle: group?.effectiveDealTitle,
+      needsDealAssociation: group?.effectiveDealId ? false : email.needsDealAssociation };
+  }), dealOptions: deals.map(deal => ({ id: deal.id, title: deal.title, stage: deal.stage.name })), canAssociateDeal: permissions.dealsEdit && permissions.dealsView };
 }
 
-export async function associateMailboxDeal(tenantId: string, userId: string, threadId: string, dealId: string) {
+export async function associateMailboxDeal(tenantId: string, userId: string, threadId: string, dealId: string, target: { conversationId?: string; messageId?: string } = {}) {
   const permissions = await mailboxPermissions(tenantId, userId);
   if (!permissions.dealsView || !permissions.dealsEdit) throw new AppError('Deal view and edit permissions are required.', 403);
   const account = await prisma.emailAccount.findUniqueOrThrow({ where: { tenantId_userId_provider: { tenantId, userId, provider: 'gmail' } } });
   if (!account.isActive) throw new AppError('Connect your mailbox first.', 409);
   const scope = await resolveMailboxScope(account, permissions);
+  const targets = await mailboxReadQuery<{ id: string; messageDealId: string | null }[]>(account, Prisma.sql`
+    WITH ${correspondentCte(account, scope)} SELECT id, "messageDealId" FROM eligible WHERE "threadId" = ${threadId}
+      AND ${target.conversationId ? Prisma.sql`"conversationId" = ${target.conversationId}` : target.messageId ? Prisma.sql`"providerMessageId" = ${target.messageId}` : Prisma.sql`TRUE`}`);
+  if (!targets.length) throw new AppError('Message is outside your assigned CRM mailbox scope.', target.conversationId || target.messageId ? 404 : 409);
+  if (targets.some(row => row.messageDealId && row.messageDealId !== dealId)) throw new AppError('Selected messages already belong to another Deal.', 409);
   await salesTransaction(async tx => {
-    const currentScope = await resolveMailboxScope(account, permissions, tx);
+    const currentPermissions = await mailboxPermissions(tenantId, userId, true, tx);
+    const currentScope = await resolveMailboxScope(account, currentPermissions, tx);
     if (currentScope.hash !== scope.hash) throw new AppError('Mailbox access changed.', 409, 'MAILBOX_SCOPE_CHANGED');
-    const messages = await tx.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(account, scope), { threadId }] }, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
+    const threadWhere = { AND: [scopedMessagesWhere(account, currentScope), { threadId, id: { in: targets.map(row => row.id) } }] };
+    const selected = await tx.mailboxMessage.findMany({ where: threadWhere, select: { id: true, dealId: true } });
+    if (selected.length !== targets.length || selected.some(row => row.dealId && row.dealId !== dealId)) throw new AppError('Deal association changed. Refresh your Inbox.', 409, 'MAILBOX_SCOPE_CHANGED');
+    const messages = await tx.mailboxMessage.findMany({ where: threadWhere, distinct: ['leadId', 'contactId'], select: { leadId: true, contactId: true } });
     const links = messages.filter(message => message.leadId ? scope.leadIds.includes(message.leadId) : message.contactId && scope.contactIds.includes(message.contactId));
     if (links.length !== 1) throw new AppError('This thread must have one unambiguous CRM email match.', 409);
     const link: CustomerLink = links[0].leadId ? { leadId: links[0].leadId } : { contactId: links[0].contactId! };
@@ -94,13 +109,13 @@ export async function associateMailboxDeal(tenantId: string, userId: string, thr
     if (!deal) throw new AppError('Select an open Deal belonging to the linked CRM record.', 400);
     const key = { accountId: account.id, threadId };
     const previous = await tx.mailboxThreadAssociation.findUnique({ where: { accountId_threadId: key } });
-    const threadWhere = { AND: [scopedMessagesWhere(account, currentScope), { threadId }] };
     await tx.mailboxMessage.updateMany({ where: threadWhere, data: { dealId, needsDealAssociation: false } });
     await tx.activity.updateMany({ where: { tenantId, type: 'email', mailboxMessage: { is: threadWhere },
-      OR: [{ dealId: null }, { dealId: { not: dealId } }] }, data: { dealId } });
+      dealId: null }, data: { dealId } });
     if (previous?.dealId === dealId) return;
     const value = { dealId, linkedAt: new Date() };
-    await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });
+    const conflicts = await tx.mailboxMessage.count({ where: { tenantId, accountId: account.id, threadId, dealId: { not: dealId } } });
+    if (!conflicts && (!previous || previous.dealId === dealId)) await tx.mailboxThreadAssociation.upsert({ where: { accountId_threadId: key }, create: { ...key, tenantId, ...value }, update: value });
     await tx.activity.create({ data: { tenantId, dealId, createdById: userId, type: 'note', title: 'Email conversation associated with this Deal', description: 'Staff selected this opportunity for conversation history.', metadata: { threadId, mailboxOwnerId: userId } } });
   });
   await mailboxChanged(account.id);

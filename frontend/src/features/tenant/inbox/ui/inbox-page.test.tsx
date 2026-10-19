@@ -31,6 +31,25 @@ afterEach(() => { cleanup(); vi.useRealTimers(); vi.unstubAllGlobals(); vi.resto
 
 
 describe('Persisted scoped Inbox', () => {
+  it('places Archive before Filter and restores the previous Inbox filter, query and sort after toggling views', async () => {
+    render(<InboxPage />); await flush();
+    const archive = screen.getByRole('button', { name: 'Archived messages' });
+    expect(archive.compareDocumentPosition(screen.getByRole('button', { name: 'Filter emails' })) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Filter emails' }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: 'Sent' })); await flush();
+    fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'quotation' } }); await advance(400);
+    fireEvent.click(screen.getByLabelText('Sort emails')); fireEvent.click(screen.getByText('Oldest first')); await flush();
+    fireEvent.click(archive); await flush();
+    expect(screen.getByRole('heading', { name: 'Archived Messages' })).toBeTruthy();
+    expect(mocks.list.mock.calls.at(-1)![0]).toMatchObject({ view: 'archived', filter: 'all' });
+    fireEvent.click(screen.getByRole('button', { name: 'Filter emails' }));
+    expect(screen.queryByRole('menuitemradio', { name: 'Sent' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Search email'), { target: { value: 'archive query' } }); await advance(400);
+    fireEvent.click(screen.getByLabelText('Sort emails')); fireEvent.click(screen.getByText('Newest first')); await flush();
+    fireEvent.click(archive); await flush();
+    expect(mocks.list.mock.calls.at(-1)![0]).toMatchObject({ view: 'inbox', filter: 'sent', query: 'quotation', sort: 'oldest' });
+    expect((screen.getByLabelText('Search email') as HTMLInputElement).value).toBe('quotation');
+  });
   const grouped = { ...email, conversationId: 'c_' + 'a'.repeat(32), messageCount: 14, participants: ['Customer'] };
   const open = () => fireEvent.click(screen.getByRole('button', { name: 'Open email from Customer: Saved customer email' }));
   it('marks the whole conversation once under Strict Mode and finishes after immediate Back', async () => {

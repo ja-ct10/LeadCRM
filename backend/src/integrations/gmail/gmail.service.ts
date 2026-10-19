@@ -237,15 +237,16 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
   try {
     let current = await authorizeMailboxOperation(account, context);
     const persisted = await prisma.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(current.account, current.scope),
-      { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true } });
-    if (persisted) return;
+      { providerMessageId: messageId, activities: { some: { type: 'email' } } }] }, select: { id: true, dealId: true } });
+    if (persisted && (persisted.dealId || !context.replyToMessageId && !context.quotation?.draft.dealId)) return;
     const token = await getValidAccessToken(account.tenantId, account.userId);
     const metadata = parseGmailMessage(await readGmailJson<GmailApiMessage>(token, `messages/${encodeURIComponent(messageId)}?format=metadata&${MAILBOX_METADATA_HEADERS}`), 'metadata');
     current = await authorizeMailboxOperation(account, context);
     if (!messageInScope(metadata, account.email, current.scope) || metadata.labels.some(label => ['DRAFT', 'SPAM', 'TRASH', 'DELETED'].includes(label))) {
       throw new AppError('Sent message access changed during ingestion.', 409, 'MAILBOX_SCOPE_CHANGED');
     }
-    await ingestMailboxMessages(current.account, [await fetchMessageDetail(token, messageId)], current.permissions);
+    await ingestMailboxMessages(current.account, [await fetchMessageDetail(token, messageId)], current.permissions,
+      { sourceMessageId: context.replyToMessageId, dealId: context.quotation?.draft.dealId });
     await mailboxChanged(account.id);
   } catch (error) {
     const where = { id: account.id, tenantId: account.tenantId, userId: account.userId, isActive: true };
@@ -280,7 +281,7 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   } catch {
     await prisma.emailAccount.updateMany({ where: { id: account.id, tenantId, userId, isActive: true }, data: { syncRequestedAt: new Date() } }).catch(() => undefined);
   }
-  await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId });
+  await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation });
   return { messageId: result.id, threadId: result.threadId };
 }
 export async function getConnectionStatus(

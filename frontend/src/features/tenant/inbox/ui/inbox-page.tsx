@@ -3,7 +3,7 @@ import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks
 
 import { useAuth } from '@/store/AuthContext';
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Mail, Check, Filter, ArrowDownAZ, Loader2, Pencil, Search } from 'lucide-react';
+import { Mail, Check, Filter, ArrowDownAZ, Loader2, Pencil, Search, Archive } from 'lucide-react';
 import { motion, useReducedMotion } from 'motion/react';
 import { cn } from '@/lib/utils';
 import { associateThreadDeal, getGmailStatus, fetchGmailEmails, fetchGmailThread, setGmailConversationReadState, setGmailThreadReadState, syncGmail, disconnectGmail, GmailConnectionStatus, GmailEmail } from '../services/gmail.service';
@@ -31,7 +31,7 @@ export default function InboxPage(): React.ReactElement {
 
 function InboxMailbox(): React.ReactElement {
   const { user, tenant } = useAuth();
-  type PendingLink = { threadId: string; sourceDealId: string };
+  type PendingLink = { threadId: string; sourceDealId: string; messageId?: string };
   const linkStorageKey = 'leadcrm:pending-deal-links:v1:' + tenant?.id + ':' + user?.id;
   const [pendingLinks, setPendingLinks] = useState<PendingLink[]>([]);
   const linkState = useRef({ key: linkStorageKey, links: [] as PendingLink[] });
@@ -53,12 +53,15 @@ function InboxMailbox(): React.ReactElement {
   const retryDealLink = async (link: PendingLink) => {
     if (linkingRequest.current) return;
     linkingRequest.current = true; setLinking(link.threadId);
-    try { await associateThreadDeal(link.threadId, link.sourceDealId); dealLinkResult(link, true); toast.success('Email linked to deal'); }
+    try { await associateThreadDeal(link.threadId, link.sourceDealId, link.messageId ? { messageId: link.messageId } : {}); dealLinkResult(link, true); toast.success('Email linked to deal'); }
     catch { toast.error('Email sent, but linking to the Deal failed.'); }
     finally { linkingRequest.current = false; setLinking(undefined); }
   };
   const searchParams = useSearchParams(), router = useRouter();
   const [filter, setFilter] = useState<NonNullable<MailboxListOptions['filter']>>('all');
+  const [view, setView] = useState<'inbox' | 'archived'>('inbox');
+  const previousInbox = useRef<{ filter: typeof filter; sort: NonNullable<MailboxListOptions['sort']>; search: string; page: number; pageToken?: string; tokens: Array<string | undefined> } | undefined>(undefined);
+  const pendingViewPage = useRef<{ page: number; pageToken?: string } | undefined>(undefined);
   const [sort, setSort] = useState<NonNullable<MailboxListOptions['sort']>>('newest');
   const [connectionStatus, setConnectionStatus] = useState<GmailConnectionStatus | null>(null);
   const [emails, setEmails] = useState<GmailEmail[]>([]), [unreadCount, setUnreadCount] = useState<number>();
@@ -151,14 +154,14 @@ function InboxMailbox(): React.ReactElement {
 
   const loadEmails = useCallback((pageToken?: string, targetPage = 1, authorizationRefresh = false): Promise<void> => {
     if (!authorizationRefresh && Date.now() < cooldownRef.current) return Promise.resolve();
-    const key = JSON.stringify([tenant?.id, user?.id, authorizationGeneration.current, filter, sort, debouncedSearch, pageToken]);
+    const key = JSON.stringify([tenant?.id, user?.id, authorizationGeneration.current, view, filter, sort, debouncedSearch, pageToken]);
     if (request.current?.key === key) return request.current.promise;
     request.current?.controller.abort();
     const controller = new AbortController(), id = ++requestId.current;
     setRefreshing(true); if (!loaded.current) setInitialLoading(true);
     const promise = (async () => {
       try {
-        const options = { filter, sort, query: debouncedSearch.trim(), maxResults: 30, pageToken };
+        const options = { view, filter, sort, query: debouncedSearch.trim(), maxResults: 30, pageToken };
         let currentToken = pageToken, currentPage = targetPage;
         const result = await fetchGmailEmails(options, controller.signal).catch(async error => {
           if (!pageToken || (error as ApiRequestError).code !== 'MAILBOX_PAGE_CHANGED' || controller.signal.aborted || id !== requestId.current) throw error;
@@ -189,7 +192,7 @@ function InboxMailbox(): React.ReactElement {
     })();
     request.current = { key, controller, promise };
     return promise;
-  }, [tenant?.id, user?.id, filter, sort, debouncedSearch, applyApiCooldown, invalidateMailbox]);
+  }, [tenant?.id, user?.id, view, filter, sort, debouncedSearch, applyApiCooldown, invalidateMailbox]);
   const refreshAfterMutation = useRef(() => {});
   refreshAfterMutation.current = () => {
     // A pre-write request must never be reused for post-write reconciliation.
@@ -248,7 +251,10 @@ function InboxMailbox(): React.ReactElement {
     void markOpenedRead(selectedEmail);
   }, [selectedEmail, markOpenedRead, retryAt]);
   useEffect(() => {
-    if (connectionStatus?.isConnected) void loadEmails();
+    if (connectionStatus?.isConnected) {
+      const previous = pendingViewPage.current; pendingViewPage.current = undefined;
+      void loadEmails(previous?.pageToken, previous?.page ?? 1);
+    }
     return () => { request.current?.controller.abort(); request.current = null; requestId.current++; };
   }, [connectionStatus?.isConnected, loadEmails]);
 
@@ -363,11 +369,25 @@ function InboxMailbox(): React.ReactElement {
     else setSelectedEmail(email);
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
+  const toggleArchived = () => {
+    request.current?.controller.abort(); request.current = null; requestId.current++;
+    setMenu(null); setEmails([]); loaded.current = false; setInitialLoading(true);
+    if (view === 'inbox') {
+      previousInbox.current = { filter, sort, search, page: pageRef.current, pageToken: tokenRef.current, tokens: [...pageTokens.current] };
+      setFilter('all'); setView('archived');
+    } else {
+      const previous = previousInbox.current;
+      pendingViewPage.current = previous;
+      pageTokens.current = previous?.tokens ?? [undefined];
+      setSort(previous?.sort ?? 'newest'); setSearch(previous?.search ?? ''); setDebouncedSearch(previous?.search ?? '');
+      setFilter(previous?.filter ?? 'all'); setView('inbox');
+    }
+  };
   if (selectedEmail) return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col rounded-xl border border-border bg-card">
-    <EmailConversationView key={selectedEmail.conversationId ?? selectedEmail.threadId} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} readError={readFailure?.message} readPending={readBusy} onRetryRead={() => { if (readFailure) void markOpenedRead(readFailure.email); }} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => refreshAfterMutation.current()} />
+    <EmailConversationView key={selectedEmail.conversationId ?? selectedEmail.threadId} originView={view} email={selectedEmail} mailboxEmail={connectionStatus?.email ?? undefined} revision={revision} retryAt={retryAt} readError={readFailure?.message} readPending={readBusy} onRetryRead={() => { if (readFailure) void markOpenedRead(readFailure.email); }} onBack={message => { setSelectedEmail(null); if (message) setError(message); }} onEmailsChanged={() => refreshAfterMutation.current()} />
   </motion.div>;
   return <motion.div {...animation} className="flex h-full min-h-0 min-w-0 flex-col gap-4 pb-16">
-    <header><h1 className="font-display text-2xl font-bold tracking-tight">Inbox</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}</p>}</header>
+    <header><h1 className="font-display text-2xl font-bold tracking-tight">{view === 'archived' ? 'Archived Messages' : 'Inbox'}</h1>{unreadCount !== undefined && connectionStatus?.isConnected && <p className="mt-1 text-xs text-muted-foreground">{unreadCount} unread {unreadCount === 1 ? 'conversation' : 'conversations'}</p>}</header>
     <section className="flex min-h-0 min-w-0 flex-1 flex-col rounded-xl border border-border bg-card">
       {connectionStatus?.isConnected && <>
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-border px-3 py-4 sm:px-5">
@@ -376,14 +396,15 @@ function InboxMailbox(): React.ReactElement {
         </div>
         <div ref={menuRef} className="flex flex-wrap items-center gap-2 border-b border-border p-3 sm:px-5" onKeyDown={event => { if (event.key === 'Escape') setMenu(null); }}>
           <label className="flex min-h-10 min-w-0 basis-full items-center gap-2 rounded-lg border border-border bg-muted/40 px-3 sm:flex-1 sm:basis-auto"><Search size={16} className="shrink-0 text-muted-foreground" /><input aria-label="Search email" placeholder="Search email..." value={search} onChange={event => setSearch(event.target.value)} className="min-w-0 flex-1 bg-transparent py-2 text-sm outline-none" /></label>
-          <div className="relative"><button className={control} aria-label="Filter emails" aria-expanded={menu === 'filter'} aria-haspopup="menu" onClick={() => setMenu(menu === 'filter' ? null : 'filter')}><Filter size={14} />Filter</button>{menu === 'filter' && <div role="menu" aria-label="Filter by" className="absolute left-0 top-full z-20 mt-2 w-48 rounded-xl border border-border bg-card py-2 shadow-lg"><p className="px-4 py-1 text-[10px] font-bold uppercase text-muted-foreground">Filter by</p>{FILTERS.map(option => <button key={option.id} role="menuitemradio" aria-checked={filter === option.id} className={cn('flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-muted', filter === option.id && 'bg-[var(--color-brand-light)] text-[var(--primary)]')} onClick={() => { setFilter(option.id); setMenu(null); }}><Check size={14} className={filter === option.id ? '' : 'invisible'} />{option.label}</button>)}</div>}</div>
+          <button type="button" className={cn(control, 'w-10 px-0')} aria-label="Archived messages" title="Archived messages" aria-pressed={view === 'archived'} onClick={toggleArchived}><Archive size={16} /></button>
+          <div className="relative"><button className={control} aria-label="Filter emails" aria-expanded={menu === 'filter'} aria-haspopup="menu" onClick={() => setMenu(menu === 'filter' ? null : 'filter')}><Filter size={14} />Filter</button>{menu === 'filter' && <div role="menu" aria-label="Filter by" className="absolute left-0 top-full z-20 mt-2 w-48 rounded-xl border border-border bg-card py-2 shadow-lg"><p className="px-4 py-1 text-[10px] font-bold uppercase text-muted-foreground">Filter by</p>{FILTERS.filter(option => view === 'inbox' || option.id === 'all' || option.id === 'unread').map(option => <button key={option.id} role="menuitemradio" aria-checked={filter === option.id} className={cn('flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-muted', filter === option.id && 'bg-[var(--color-brand-light)] text-[var(--primary)]')} onClick={() => { setFilter(option.id); setMenu(null); }}><Check size={14} className={filter === option.id ? '' : 'invisible'} />{option.label}</button>)}</div>}</div>
           <div className="relative"><button className={control} aria-label="Sort emails" aria-expanded={menu === 'sort'} aria-haspopup="menu" onClick={() => setMenu(menu === 'sort' ? null : 'sort')}><ArrowDownAZ size={14} />Sort</button>{menu === 'sort' && <div role="menu" aria-label="Sort by" className="absolute right-0 top-full z-20 mt-2 w-44 rounded-xl border border-border bg-card py-2 shadow-lg">{SORTS.map(option => <button key={option.id} role="menuitemradio" aria-checked={sort === option.id} className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm hover:bg-muted" onClick={() => { setSort(option.id); setMenu(null); }}><Check size={14} className={sort === option.id ? '' : 'invisible'} />{option.label}</button>)}</div>}</div>
         </div>
       </>}
       {syncError && <p role="status" className="border-b border-border px-4 py-2 text-xs text-muted-foreground">{syncError}</p>}
       {error && <p role="alert" className="px-4 py-3 text-sm text-red-600">{error}</p>}
       {readFailure && <div role="alert" className="px-4 py-3 text-sm text-red-600"><p>{readFailure.message}</p><button type="button" className={control} disabled={readBusy || retryAt > Date.now() || apiCooldownUntil > Date.now()} onClick={() => void markOpenedRead(readFailure.email)}>Retry marking as read</button></div>}
-      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList emails={emails} mailboxEmail={connectionStatus?.email ?? undefined} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
+      {isLoadingStatus ? <div className="flex min-h-64 items-center justify-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-5 w-5 animate-spin" />Loading emails...</div> : !connectionStatus?.isConnected ? <InboxCurrentEmpty /> : <InboxEmailList key={view} view={view} emails={emails} mailboxEmail={connectionStatus?.email ?? undefined} onEmailClick={openEmail} loading={initialLoading} hasLoadError={!!error} refreshDisabled={refreshing || syncing || disconnecting || apiCooldownUntil > Date.now()} onEmailsChanged={() => loadEmails(tokenRef.current, pageRef.current)} totalCount={emails.length} currentPage={page} hasNextPage={!!nextPageToken} onNextPage={() => { if (nextPageToken) void loadEmails(nextPageToken, page + 1); }} onPrevPage={() => void loadEmails(pageTokens.current[Math.max(0, page - 2)], Math.max(1, page - 1))} />}
     </section>
     {connectionStatus?.isConnected && !isComposeOpen && <button aria-label="Compose new email" onClick={() => { setComposeDraft(null); setIsComposeOpen(true); }} className="fixed bottom-4 right-3 z-40 inline-flex min-h-11 items-center gap-2 rounded-2xl bg-[var(--primary)] px-4 text-sm font-semibold text-[var(--primary-foreground)] shadow-lg sm:bottom-6 sm:right-6 sm:px-6"><Pencil size={18} />Compose</button>}
     {connectionStatus?.isConnected && selectedSchedule && <ScheduledEmailDialog key={selectedSchedule} id={selectedSchedule} onClose={() => setSelectedSchedule(undefined)} onCancelled={() => { void loadEmails(tokenRef.current, pageRef.current); toast.success('Scheduled send cancelled. The email is available in Drafts.'); }} />}

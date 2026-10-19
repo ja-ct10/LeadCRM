@@ -5,7 +5,7 @@ import { assertPermissions } from '../../core/permissions/permission.service';
 import { AppError } from '../../shared/errors/app-error';
 import { authorizedMailbox } from './mailbox-store';
 import { scopedMessagesWhere } from './mailbox-scope';
-import { conversationContext } from './mailbox-conversations';
+import { conversationContext, mailboxDealMessageIds } from './mailbox-conversations';
 
 /** Share the stored association boundary between listing and contextual byte reads. */
 export async function recordMailboxScope(tenantId: string, userId: string, context: RecordEmailAttachmentContext) {
@@ -25,21 +25,7 @@ export async function recordMailboxScope(tenantId: string, userId: string, conte
     const sources = await prisma.lead.findMany({ where: { tenantId, contactId: record.id, convertedAt: { not: null } }, select: { id: true } });
     association = { OR: [{ contactId: record.id }, { leadId: { in: sources.map(row => row.id).sort() } }] };
   } else {
-    const [leads, contacts, threads] = await Promise.all([
-      prisma.leadDeal.findMany({ where: { tenantId, dealId: record.id }, select: { leadId: true, lead: { select: { contactId: true, convertedAt: true } } } }),
-      prisma.contactDeal.findMany({ where: { tenantId, dealId: record.id }, select: { contactId: true } }),
-      prisma.mailboxThreadAssociation.findMany({ where: { tenantId, accountId: access.account.id }, select: { threadId: true, dealId: true }, orderBy: { threadId: 'asc' } }),
-    ]);
-    const contactIds = [...new Set([...contacts.map(row => row.contactId), ...leads.flatMap(row => row.lead.convertedAt && row.lead.contactId ? [row.lead.contactId] : [])])].sort();
-    const sources = await prisma.lead.findMany({ where: { tenantId, contactId: { in: contactIds }, convertedAt: { not: null } }, select: { id: true } });
-    const leadIds = [...new Set([...leads.map(row => row.leadId), ...sources.map(row => row.id)])].sort();
-    association = { AND: [
-      { OR: [{ leadId: { in: leadIds } }, { contactId: { in: contactIds } }] },
-      { OR: [
-        { threadId: { in: threads.filter(row => row.dealId === record.id).map(row => row.threadId) } },
-        { dealId: record.id, threadId: { notIn: threads.map(row => row.threadId) } },
-      ] },
-    ] };
+    association = { id: { in: await mailboxDealMessageIds(access.account, access.scope, record.id) } };
   }
   const where: Prisma.MailboxMessageWhereInput = { AND: [scopedMessagesWhere(access.account, access.scope), { NOT: { labels: { has: 'DRAFT' } } }, association] };
   return { ...access, where, contextHash: conversationContext(access.account, access.scope, [context.recordModule, record.id, association]) };

@@ -31,6 +31,7 @@ export interface MailboxScope {
   threadRecipients: Record<string, string[]>;
   draftSourceIds: string[];
   hash: string;
+  dealsView?: boolean;
 }
 
 /** Only actual provider address headers establish participants. Never inspect body text or infer aliases. */
@@ -55,7 +56,7 @@ function deriveScope(scope: MailboxScope, permissions: MailboxPermissions): Mail
   const leadIds = permitted.filter(identity => identity.type === 'lead').map(identity => identity.id).sort();
   const contactIds = permitted.filter(identity => identity.type === 'contact').map(identity => identity.id).sort();
   const hash = createHash('sha256').update(JSON.stringify([MAILBOX_PARTICIPANT_POLICY_VERSION, scope.userId, scope.mailboxAddress, permissions, identities, addresses, deniedAddresses])).digest('hex');
-  return { ...scope, identities, addresses, deniedAddresses, leadIds, contactIds, hash };
+  return { ...scope, identities, addresses, deniedAddresses, leadIds, contactIds, hash, dealsView: permissions.dealsView };
 }
 
 /** Run Check may project a validated earlier CRM assignment; independent duplicate identities still veto. */
@@ -122,10 +123,10 @@ export function messageInScope(email: Pick<GmailEmail, 'from' | 'to' | 'cc' | 't
     !!email.labels?.includes('DRAFT') && email.crmDraft === true && recipients.length === 0;
 }
 
-export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope): Prisma.MailboxMessageWhereInput {
+export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope, includeTrashedActivity = false): Prisma.MailboxMessageWhereInput {
   const deniedAddresses = scope.deniedAddresses.filter(address => address !== mailboxAddress(account.email));
   return { tenantId: account.tenantId, accountId: account.id, account: { isActive: true }, participantPolicyVersion: MAILBOX_PARTICIPANT_POLICY_VERSION,
-    NOT: [{ labels: { hasSome: ['SPAM', 'TRASH', 'DELETED'] } }, { authorizationParticipants: { hasSome: deniedAddresses } }],
+    NOT: [{ labels: { hasSome: includeTrashedActivity ? ['SPAM', 'DELETED'] : ['SPAM', 'TRASH', 'DELETED'] } }, { authorizationParticipants: { hasSome: deniedAddresses } }],
     AND: [{ OR: [{ NOT: { labels: { has: 'DRAFT' } } }, { sourceMessageId: null }, { sourceMessageId: { in: scope.draftSourceIds } }] }],
     OR: [
       { fromAddress: { in: [...FIXED_MAILBOX_SENDERS, ...scope.addresses], not: mailboxAddress(account.email) }, NOT: { labels: { has: 'DRAFT' } } },
@@ -139,7 +140,7 @@ export function scopedMessagesWhere(account: EmailAccount, scope: MailboxScope):
 }
 
 /** SQL and ORM both apply the participant veto before returning/searching/aggregating any messages. */
-export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope): Prisma.Sql {
+export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope, includeTrashedActivity = false): Prisma.Sql {
   const array = (values: string[]) => values.length ? Prisma.sql`ARRAY[${Prisma.join(values)}]::text[]` : Prisma.sql`ARRAY[]::text[]`;
   const mailbox = mailboxAddress(account.email) ?? '';
   const continuity = Object.entries(scope.threadRecipients).map(([threadId, addresses]) => Prisma.sql`(m."threadId" = ${threadId} AND m."recipientAddresses" && ${array(addresses)})`);
@@ -147,7 +148,7 @@ export function scopedMessagesSql(account: EmailAccount, scope: MailboxScope): P
     AND EXISTS (SELECT 1 FROM "EmailAccount" a WHERE a.id = m."accountId" AND a."tenantId" = m."tenantId" AND a."userId" = ${account.userId} AND a."isActive")
     AND m."participantPolicyVersion" = ${MAILBOX_PARTICIPANT_POLICY_VERSION}
     AND NOT (m."authorizationParticipants" && ${array(scope.deniedAddresses.filter(address => address !== mailbox))})
-    AND NOT (m.labels && ARRAY['SPAM', 'TRASH', 'DELETED']::text[])
+    AND NOT (m.labels && ${includeTrashedActivity ? Prisma.sql`ARRAY['SPAM', 'DELETED']::text[]` : Prisma.sql`ARRAY['SPAM', 'TRASH', 'DELETED']::text[]`})
     AND (NOT ('DRAFT' = ANY(m.labels)) OR m."sourceMessageId" IS NULL OR m."sourceMessageId" = ANY(${array(scope.draftSourceIds)}))
     AND ((m."fromAddress" = ANY(${array([...FIXED_MAILBOX_SENDERS, ...scope.addresses])}) AND m."fromAddress" <> ${mailbox} AND NOT ('DRAFT' = ANY(m.labels)))
       OR (m."fromAddress" = ${mailbox} AND (m."recipientAddresses" && ${array(scope.addresses)}

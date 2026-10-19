@@ -2,7 +2,7 @@ import { normalizeCrmStatus } from '@leadcrm/shared';
 import {taskContextWhere} from "../../operations/tasks/tasks.repository";
 import prisma from '../../../config/database.config';
 import { NotFoundError } from '../../../shared/errors/http-error';
-import { presentActivities, activityRecordContext, emailActivityVisibility } from '../activities/activities.repository';
+import { presentActivities, activityRecordContext, emailActivityVisibility, dealActivityContext } from '../activities/activities.repository';
 
 const DEFAULT_LIMIT = 10;
 
@@ -216,7 +216,7 @@ export async function getDealRelationships(id: string, tenantId: string, limit =
     }),
     // Recent activities
     prisma.activity.findMany({
-      where: { tenantId, AND: [await emailActivityVisibility(tenantId), activityRecordContext('deal', id, tenantId), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
+      where: { tenantId, AND: [await emailActivityVisibility(tenantId), await dealActivityContext(tenantId, id), ...(includeTasks ? [] : [{ taskId: null, type: { not: 'task' } }])] },
       take: limit,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       select: { createdBy: { select: { id: true, firstName: true, lastName: true, email: true } }, id: true, type: true, title: true, createdAt: true, metadata: true, mailboxMessageId: true, description: true, leadId: true, contactId: true },

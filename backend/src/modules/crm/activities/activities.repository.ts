@@ -9,6 +9,7 @@ import { AppError } from '../../../shared/errors/app-error';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { authorizedMailbox } from '../../../integrations/gmail/mailbox-store';
 import { scopedMessagesWhere } from '../../../integrations/gmail/mailbox-scope';
+import { mailboxDealMessageIds } from '../../../integrations/gmail/mailbox-conversations';
 
 /** Apply before search/count/pagination so CRM timelines cannot reveal revoked email details. */
 export async function emailActivityVisibility(tenantId: string): Promise<Prisma.ActivityWhereInput> {
@@ -21,7 +22,7 @@ async function emailActivityAccess(tenantId: string): Promise<{ where: Prisma.Ac
   if (!actor || actor.tenantId !== tenantId) return { where: nonEmail };
   try {
     const { account, scope } = await authorizedMailbox(tenantId, actor.userId);
-    return { where: { OR: [nonEmail, { mailboxMessage: { is: scopedMessagesWhere(account, scope) } }] },
+    return { where: { OR: [nonEmail, { mailboxMessage: { is: scopedMessagesWhere(account, scope, true) } }] },
       revision: { userId: actor.userId, accountId: account.id, scopeHash: scope.hash } };
   } catch (error) {
     if (error instanceof AppError && error.statusCode < 500) return { where: nonEmail };
@@ -56,6 +57,17 @@ export function activityRecordContext(kind: 'lead' | 'contact' | 'account' | 'de
     { type: 'task', metadata: { path: ['taskEvent', 'context', `${kind}Ids`], array_contains: [id] } },
     ...(kind === 'contact' ? [{ lead: { tenantId, contactId: id, convertedAt: { not: null } } }] : []),
   ] };
+}
+
+/** Keep stored events; validate email Deal context through the original mailbox. */
+export async function dealActivityContext(tenantId: string, id: string): Promise<Prisma.ActivityWhereInput> {
+  const nonEmail: Prisma.ActivityWhereInput = { AND: [{ type: { not: 'email' } }, activityRecordContext('deal', id, tenantId)] };
+  const actor = crmActor.getStore();
+  if (!actor || actor.tenantId !== tenantId) return nonEmail;
+  try {
+    const { account, scope } = await authorizedMailbox(tenantId, actor.userId);
+    return { OR: [nonEmail, { type: 'email', mailboxMessageId: { in: await mailboxDealMessageIds(account, scope, id, true) } }] };
+  } catch (error) { if (error instanceof AppError && error.statusCode < 500) return nonEmail; throw error; }
 }
 
 // ─── Shared include ───────────────────────────────────────────────────────────
@@ -97,7 +109,7 @@ export async function findAllActivities(
   // ── Entity filters ──────────────────────────────────────────────────────────
   // Note: the Activity model uses leadId (not contactId) for the Lead FK.
   for (const kind of ['lead', 'contact', 'account', 'deal'] as const) {
-    if (query[`${kind}Id`]) (where.AND as Prisma.ActivityWhereInput[]).push(activityRecordContext(kind, String(query[`${kind}Id`]), tenantId));
+    if (query[`${kind}Id`]) (where.AND as Prisma.ActivityWhereInput[]).push(kind === 'deal' ? await dealActivityContext(tenantId, String(query.dealId)) : activityRecordContext(kind, String(query[`${kind}Id`]), tenantId));
   }
   if (query.taskId)    where.taskId    = String(query.taskId);
 
@@ -169,7 +181,7 @@ export async function withEmailContent<T extends { type: string; mailboxMessageI
   let access: Awaited<ReturnType<typeof authorizedMailbox>>;
   try { access = await authorizedMailbox(tenantId, actor.userId); }
   catch (error) { if (error instanceof AppError && error.statusCode < 500) return activities.filter(activity => activity.type !== 'email'); throw error; }
-  const messages = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(access.account, access.scope), { id: { in: ids } }] } });
+  const messages = await prisma.mailboxMessage.findMany({ where: { AND: [scopedMessagesWhere(access.account, access.scope, true), { id: { in: ids } }] } });
   // A reassignment can commit while the body query is awaiting the database.
   try {
     const current = await authorizedMailbox(tenantId, actor.userId);
