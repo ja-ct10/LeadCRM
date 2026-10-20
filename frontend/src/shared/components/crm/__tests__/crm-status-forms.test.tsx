@@ -8,7 +8,7 @@ import { LeadFormSheet } from '@/features/tenant/crm/leads/ui/lead-form';
 import { ContactFormSheet } from '@/features/tenant/crm/contacts/ui/contact-form';
 import { toBackendCreateContact, toBackendUpdateContact } from '@/lib/api/adapters/contact.adapter';
 import { contactsV2Api } from '@/shared/services/contacts-v2.api';
-import { CrmStatusIndicator } from '../crm-status';
+import { CrmStatusIndicator, CustomerStatusMenu } from '../crm-status';
 
 const transport = vi.hoisted(() => ({ post: vi.fn(), put: vi.fn() }));
 vi.mock('@/lib/api/client', () => ({ apiClient: transport }));
@@ -69,8 +69,8 @@ it.each(CRM_STATUSES)('creates and edits Contacts with canonical %s', async stat
 
 it.each([
   ['Hot', 'rgb(239, 68, 68)'], ['Warm', 'rgb(245, 158, 11)'], ['Cold', 'rgb(59, 130, 246)'],
-  ['Closed Deal', 'rgb(139, 92, 246)'], ['Cancelled', 'rgb(107, 114, 128)'],
-])('renders %s using the unchanged Leads dot style, including legacy records', (status, color) => {
+  ['Closed Deal', 'rgb(139, 92, 246)'], ['Cancelled', 'rgb(51, 65, 85)'],
+])('renders %s using the shared CRM palette, including legacy records', (status, color) => {
   const { container } = render(<CrmStatusIndicator status={status.toUpperCase()} />);
   expect(screen.getByText(status)).toBeTruthy();
   expect((container.querySelector('[aria-hidden]') as HTMLElement).style.backgroundColor).toBe(color);
@@ -80,6 +80,27 @@ it.each([
 it('rejects invalid write statuses instead of silently changing them to Inquiry', () => {
   expect(() => toBackendCreateContact({ status: 'WARM' })).toThrow();
   expect(toBackendUpdateContact({ email: 'test@example.test' })).not.toHaveProperty('status');
+});
+
+it('shows every manual status, disables closing without sale proof, and saves a permitted selection', async () => {
+  const change = vi.fn().mockResolvedValue(undefined);
+  render(<CustomerStatusMenu status="Inquiry" canEdit onChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Inquiry' }));
+  expect(screen.getAllByRole('menuitem')).toHaveLength(6);
+  expect(screen.getByRole('menuitem', { name: 'Closed Deal' }).getAttribute('aria-disabled')).toBe('true');
+  expect(screen.getByRole('menuitem', { name: 'Closed Deal' }).title).toContain('Confirm a related Deal');
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cold' }));
+  await waitFor(() => expect(change).toHaveBeenCalledExactlyOnceWith('Cold'));
+});
+
+it('retains all statuses while enabling only reopening for a manually cancelled managed customer', async () => {
+  const change = vi.fn().mockResolvedValue(undefined);
+  render(<CustomerStatusMenu status="Cancelled" managed manuallyCancelled canEdit onChange={change} />);
+  fireEvent.click(screen.getByRole('button', { name: 'Cancelled' }));
+  expect(screen.getAllByRole('menuitem')).toHaveLength(6);
+  for (const item of screen.getAllByRole('menuitem')) expect(item.getAttribute('aria-disabled')).toBe(item.textContent?.includes('Reopen customer') ? 'false' : 'true');
+  fireEvent.click(screen.getByRole('menuitem', { name: /Inquiry.*Reopen customer/ }));
+  await waitFor(() => expect(change).toHaveBeenCalledExactlyOnceWith('Inquiry'));
 });
 
 it.each(['lead', 'contact'] as const)('saves other %s fields while the calculated status is read-only', async kind => {

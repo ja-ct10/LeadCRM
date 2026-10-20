@@ -3,7 +3,9 @@ import { randomUUID } from 'node:crypto';
 import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { salesTransaction } from '../../../crm/leads/lead-automation.service';
-import { updateDeal } from '../../../crm/deals/deals.service';
+import { updateDeal, moveDealStage, moveDealPipeline } from '../../../crm/deals/deals.service';
+import { createDeal } from '../../../crm/deals/deals.repository';
+import { bulkStageChange } from '../../../crm/deals/bulk-deals.service';
 import { fireDealUpdated } from '../../triggers/triggers.service';
 import { dispatchQueuedWorkflows, startWorkflowScheduler } from '../workflow-queue';
 import * as workflows from '../workflows.service';
@@ -66,6 +68,39 @@ describe.skipIf(!disposable)('post-commit workflow stage dispatch', () => {
     expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).stageId).toBe(initialId);
     expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(0);
     expect((await prisma.dashboardRevision.findUniqueOrThrow({ where: { tenantId } })).content).toBe(content);
+  });
+
+  it('sets High on manual and bulk Qualified entry, preserving same-stage requests and later priority edits', async () => {
+    for (const bulk of [false, true]) {
+      const saved = await deal();
+      if (bulk) expect((await scope(() => bulkStageChange(tenantId, actorId, { dealIds: [saved.id], stageId: targetId }))).succeeded).toBe(1);
+      else await scope(() => moveDealStage(saved.id, tenantId, actorId, { stageId: targetId }));
+      const moved = await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } });
+      expect(moved.priority).toBe('HIGH');
+      await scope(() => updateDeal(saved.id, tenantId, actorId, { priority: 'LOW' }));
+      await scope(() => moveDealStage(saved.id, tenantId, actorId, { stageId: targetId }));
+      expect(await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).toMatchObject({ priority: 'LOW', stageChangedAt: moved.stageChangedAt });
+      expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: saved.id, newStageId: targetId } })).toBe(1);
+      await scope(() => moveDealStage(saved.id, tenantId, actorId, { stageId: initialId }));
+      await scope(() => moveDealStage(saved.id, tenantId, actorId, { stageId: targetId }));
+      expect((await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).priority).toBe('HIGH');
+    }
+  });
+
+  it('sets High for repository creation and pipeline transfer into Qualified, without changing financial snapshots', async () => {
+    const product = await prisma.productInterest.create({ data: { tenantId, name: randomUUID(), dealValue: 12000 } });
+    const created = await scope(() => salesTransaction(tx => createDeal(tenantId, actorId, { pipelineId, stageId: targetId, title: 'Qualified creation',
+      priority: 'LOW', currency: 'PHP', productInterestId: product.id, assignedUserId: actorId }, tx)));
+    expect(created).toMatchObject({ priority: 'HIGH', value: 12000 });
+    const second = await prisma.pipeline.create({ data: { tenantId, name: 'Other pipeline' } });
+    const target = await prisma.stage.create({ data: { tenantId, pipelineId: second.id, name: 'Qualified', order: 0 } });
+    const saved = await deal();
+    await scope(() => moveDealPipeline(saved.id, tenantId, actorId, { pipelineId: second.id, stageId: target.id }));
+    const moved = await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } });
+    expect(moved).toMatchObject({ priority: 'HIGH', value: 1000, pipelineId: second.id });
+    await scope(() => updateDeal(saved.id, tenantId, actorId, { priority: 'MEDIUM' }));
+    await scope(() => moveDealPipeline(saved.id, tenantId, actorId, { pipelineId: second.id, stageId: target.id }));
+    expect(await prisma.deal.findUniqueOrThrow({ where: { id: saved.id } })).toMatchObject({ priority: 'MEDIUM', stageChangedAt: moved.stageChangedAt });
   });
 
   it('wakes for standalone trigger transactions and skips duplicate deliveries', async () => {

@@ -180,9 +180,14 @@ function readParents(model: string) {
 function modelReadWhere(model: string, policy: ReadPolicy): Args {
   if (model === 'Task') return policy.taskAssignmentRestricted ? taskReadWhere(policy) : {};
   if (modules[model]) return readWhere(policy, modules[model]);
-  const clauses = readParents(model).filter(field => field.type !== 'Task' || policy.taskAssignmentRestricted).map(field => field.isRequired
-    ? { [field.name]: { is: modelReadWhere(field.type, policy) } }
-    : { OR: [{ [field.name]: { is: null } }, { [field.name]: { is: modelReadWhere(field.type, policy) } }] });
+  const clauses = readParents(model).filter(field => field.type !== 'Task' || policy.taskAssignmentRestricted).map(field => {
+    const parent = { [field.name]: { is: modelReadWhere(field.type, policy) } };
+    if (field.isRequired) return parent;
+    // Composite CRM relations share a required tenantId. Prisma's relation-null
+    // filter also tests that column, hiding rows whose optional parent ID is null.
+    const nullableKeys = field.relationFromFields?.filter(key => dmmf.get(model)?.fields.some(scalar => scalar.name === key && !scalar.isRequired)) ?? [];
+    return { OR: [...nullableKeys.map(key => ({ [key]: null })), parent] };
+  });
   return clauses.length ? { AND: clauses } : {};
 }
 

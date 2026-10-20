@@ -226,6 +226,7 @@ beforeEach(() => {
   vi.spyOn(toast, 'error').mockReturnValue(0);
   mocks.post.mockResolvedValue({ data: { id: 'created' } });
   mocks.get.mockImplementation(async (path: string) => {
+      if (path === '/crm/leads/lead-one') return { data: { ...records.leads, id: 'lead-one', tenantId: 'tenant' } };
     if (path.endsWith('/field-layout')) {
       const module = path.split('/')[2] as CrmRecordModule;
       const layout = defaultFieldLayout(module);
@@ -423,7 +424,7 @@ it.each(['leads', 'contacts', 'accounts', 'deals'] as const)('%s uses the same i
   const headerButtons = Array.from(header.querySelectorAll('button')).map(button => button.getAttribute('aria-label') || button.textContent?.trim());
   expect(headerButtons.filter(label => label === 'Record actions')).toHaveLength(1);
   if (module === 'leads' || module === 'contacts') expect(headerButtons.indexOf('Record actions')).toBeLessThan(headerButtons.indexOf('Warm'));
-  if (module === 'deals') expect(within(header).getByText('Cold')).toBeTruthy();
+  if (module === 'deals') expect(await within(header).findByRole('button', { name: 'Customer Status' })).toHaveProperty('textContent', 'Warm');
   expect(screen.getAllByRole('tab').map(el => el.textContent)).toEqual(expect.arrayContaining([expect.stringContaining('Activity'), expect.stringContaining('Details'), 'Files']));
   fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
   if (module !== 'deals') {
@@ -553,32 +554,82 @@ it('cancels inline Lead edits without submitting or changing the loaded value', 
 });
 
 
-it('Deal header shows read-only engagement while Details retains its pipeline stage', async () => {
+it('Deal header edits the linked customer while Details retains automatic engagement and pipeline stage', async () => {
   render(<CrmRecordView module="deals" id="one" />);
   const heading = await screen.findByRole('heading', { name: records.deals.title });
   const header = heading.closest('header')!;
-  expect(within(header).getByText('Cold')).toBeTruthy();
+  await within(header).findByRole('button', { name: 'Customer Status' });
+  expect(within(header).getByText('Warm')).toBeTruthy();
   expect(within(header).queryByRole('button', { name: 'Cold' })).toBeNull();
   expect(within(header).queryByRole('button', { name: 'Lead' })).toBeNull();
   fireEvent.click(screen.getByRole('tab', { name: /Details/ }));
+  expect(screen.getByText('Deal Engagement')).toBeTruthy();
+  expect(screen.getByText('Cold')).toBeTruthy();
   expect(screen.getByText('Stage')).toBeTruthy();
   expect(screen.getByText('Lead')).toBeTruthy();
   expect(mocks.move).not.toHaveBeenCalled();
 });
 
-it('shows unavailable engagement without falling back to the pipeline stage', async () => {
+it('shows unavailable customer status without falling back to Deal engagement or the pipeline stage', async () => {
   const original = mocks.get.getMockImplementation()!;
-  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals, engagementStatus: undefined } } : original(path));
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/leads/lead-one' ? Promise.reject(Object.assign(new Error('Unavailable'), { status: 404 })) : original(path));
   render(<CrmRecordView module="deals" id="one" />);
   const heading = await screen.findByRole('heading', { name: records.deals.title });
-  expect(within(heading.closest('header')!).getByText('Status unavailable')).toBeTruthy();
+  expect(within(heading.closest('header')!).getByText('Customer status unavailable')).toBeTruthy();
   expect(mocks.move).not.toHaveBeenCalled();
+});
+
+it.each(['leads', 'contacts'] as const)('shows all six %s statuses and disables calculated transitions without sending writes', async module => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === `/crm/${module}/one` ? { data: { ...records[module], statusManagedByDeals: true } } : original(path));
+  render(<CrmRecordView module={module} id="one" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Warm' }));
+  for (const name of ['Inquiry', 'Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']) {
+    const option = screen.getByRole('menuitem', { name });
+    expect(option.getAttribute('aria-disabled')).toBe(name === 'Cancelled' ? 'false' : 'true');
+  }
+  expect(screen.getByText(/Status is calculated from related Deals/)).toBeTruthy();
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Hot' }));
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+
+it('edits the primary Contact from Deal Details without writing Deal engagement or pipeline stage', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals,
+    contactId: 'contact-one', contactDeals: [{ contactId: 'contact-one', contact: { id: 'contact-one' } }] } }
+    : path === '/crm/contacts/contact-one' ? { data: { ...records.contacts, id: 'contact-one', tenantId: 'tenant' } } : original(path));
+  render(<CrmRecordView module="deals" id="one" />);
+  fireEvent.click(await screen.findByRole('button', { name: 'Customer Status' }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Cold' }));
+  await waitFor(() => expect(mocks.put).toHaveBeenCalledExactlyOnceWith('/crm/contacts/contact-one', { status: 'Cold' }));
+  expect(mocks.get).not.toHaveBeenCalledWith('/crm/leads/lead-one', expect.anything());
+  expect(mocks.move).not.toHaveBeenCalled();
+});
+
+it('does not fall back to an accessible Lead when the primary Contact is unavailable', async () => {
+  const original = mocks.get.getMockImplementation()!;
+  mocks.get.mockImplementation(async (path: string) => path === '/crm/deals/one' ? { data: { ...records.deals,
+    contactId: 'hidden-contact', contactDeals: [{ contactId: 'hidden-contact', contact: null }] } }
+    : path === '/crm/contacts/hidden-contact' ? Promise.reject(Object.assign(new Error('Not found'), { status: 404 })) : original(path));
+  render(<CrmRecordView module="deals" id="one" />);
+  await screen.findByText('Customer status unavailable');
+  expect(screen.queryByRole('button', { name: 'Customer Status' })).toBeNull();
+  expect(mocks.get).not.toHaveBeenCalledWith('/crm/leads/lead-one', expect.anything());
+  expect(mocks.put).not.toHaveBeenCalled();
+});
+
+it('requires customer edit permission separately from Deals edit permission', async () => {
+  mocks.permissions = ['deals.view', 'deals.edit', 'leads.view'];
+  render(<CrmRecordView module="deals" id="one" />);
+  await screen.findByText('Warm');
+  expect(screen.queryByRole('button', { name: 'Customer Status' })).toBeNull();
+  expect(mocks.put).not.toHaveBeenCalled();
 });
 
 it.each(['leads', 'contacts'] as const)('%s header and inline status editors send canonical values', async module => {
   render(<CrmRecordView module={module} id="one" />);
   await screen.findByRole('heading', { name: module === 'leads' ? 'Lina Reyes' : 'Nora Lim' });
-  for (const status of ['Hot', 'Warm', 'Cold', 'Closed Deal', 'Cancelled']) {
+  for (const status of ['Hot', 'Warm', 'Cold', 'Cancelled']) {
     fireEvent.click(screen.getByRole('button', { name: 'Warm' }));
     fireEvent.click(screen.getByRole('menuitem', { name: status }));
     await waitFor(() => expect(mocks.put).toHaveBeenLastCalledWith(`/crm/${module}/one`, { status }));
@@ -631,7 +682,7 @@ it('Deal header uses Messages between actions and status and the shared Activity
   const buttons = Array.from(screen.getByRole('heading', { name: records.deals.title }).closest('header')!.querySelectorAll('button'));
   const names = buttons.map(b => b.getAttribute('aria-label') || b.textContent);
   expect(names.indexOf('Record actions')).toBeLessThan(names.indexOf('Open messages'));
-  const badge = within(screen.getByRole('heading', { name: records.deals.title }).closest('header')!).getByText('Cold');
+  const badge = await within(screen.getByRole('heading', { name: records.deals.title }).closest('header')!).findByRole('button', { name: 'Customer Status' });
   expect(buttons[names.indexOf('Open messages')].compareDocumentPosition(badge) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   expect(badge.compareDocumentPosition(buttons[names.indexOf('Close record')]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Open messages' })); expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref('lina@example.test', 'Product Inquiry', 'one'));

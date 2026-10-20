@@ -1,16 +1,13 @@
 import React from 'react';
 import { StatusBadge } from './record-drawer';
 import { CRM_STATUSES, normalizeCrmStatus, CUSTOMER_STATUS_HELP, type CrmStatus } from '@leadcrm/shared';
+import { CRM_STATUS_PRESENTATION, getCRMStatusStyles, getCRMStatusStripColor } from '@/lib/utils';
+import { Button } from '@/shared/components/ui/button';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from '@/shared/components/ui/dropdown-menu';
+import { ChevronDown } from 'lucide-react';
 
 // Preserve the existing Leads table palette and presentation for both modules.
-export const CRM_STATUS_DOT_COLORS: Record<CrmStatus, string> = {
-  Inquiry: '#64748b',
-  Hot: '#ef4444',
-  Warm: '#f59e0b',
-  Cold: '#3b82f6',
-  'Closed Deal': '#8b5cf6',
-  Cancelled: '#6b7280',
-};
+export const CRM_STATUS_DOT_COLORS = Object.fromEntries(CRM_STATUSES.map(status => [status, CRM_STATUS_PRESENTATION[status].color])) as Record<CrmStatus, string>;
 
 export function CrmStatusIndicator({ status }: { status?: string }) {
   const label = normalizeCrmStatus(status);
@@ -21,12 +18,36 @@ export function CrmStatusIndicator({ status }: { status?: string }) {
 }
 
 // Status configuration shared by the legacy record-detail surfaces.
-const CRM_DETAIL_VARIANTS = { Inquiry: 'neutral', Hot: 'danger', Warm: 'warning', Cold: 'neutral', 'Closed Deal': 'info', Cancelled: 'neutral' } as const;
+const CRM_DETAIL_VARIANTS = { Inquiry: 'neutral', Hot: 'danger', Warm: 'warn', Cold: 'info', 'Closed Deal': 'purple', Cancelled: 'neutral' } as const;
 export const CRM_DETAIL_STATUSES = CRM_STATUSES.map(value => ({ value, label: value, variant: CRM_DETAIL_VARIANTS[value] }));
 
 export function CrmStatusBadge({ status }: { status?: string | null }) {
   if (!status) return <StatusBadge label="Status unavailable" variant="neutral" dot={false} />;
   const value = normalizeCrmStatus(status);
-  const variants = { Inquiry: 'neutral', Hot: 'danger', Warm: 'warn', Cold: 'info', 'Closed Deal': 'purple', Cancelled: 'neutral' } as const;
-  return <StatusBadge label={value} variant={variants[value]} />;
+  return <StatusBadge label={value} variant={CRM_DETAIL_VARIANTS[value]} className={getCRMStatusStyles(value)} dotClassName={getCRMStatusStripColor(value)} />;
+}
+
+/** Show all statuses while preserving automatic classification and existing transitions. */
+export function CustomerStatusMenu({ status, managed = false, manuallyCancelled = false, canEdit, busy = false, label, onChange }: {
+  status?: string; managed?: boolean; manuallyCancelled?: boolean; canEdit: boolean; busy?: boolean;
+  label?: string; onChange: (status: CrmStatus) => Promise<void>;
+}) {
+  if (!status) return <span className="text-xs text-muted-foreground">Customer status unavailable</span>;
+  const current = normalizeCrmStatus(status);
+  if (!canEdit) return <span aria-label={label}><CrmStatusBadge status={current} /></span>;
+  return <DropdownMenu><DropdownMenuTrigger asChild>
+    <Button variant="outline" size="sm" disabled={busy} aria-label={label} className={`min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs ${getCRMStatusStyles(current)}`}>
+      <span className="min-w-0 max-w-[90px] truncate @min-[400px]:max-w-[140px]">{current}</span><ChevronDown size={12} className="shrink-0" />
+    </Button>
+  </DropdownMenuTrigger><DropdownMenuContent>
+    {managed && <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">Status is calculated from related Deals. {manuallyCancelled ? 'Reopen to resume automatic classification.' : 'You can cancel this customer.'}</p>}
+    {!managed && <p className="max-w-64 px-2 py-1.5 text-xs text-muted-foreground">Closed Deal requires a confirmed sale.</p>}
+    {CRM_STATUSES.map(option => {
+      const allowed = managed ? (manuallyCancelled ? option === 'Inquiry' : option === 'Cancelled') : option !== 'Closed Deal' || current === 'Closed Deal';
+      return <DropdownMenuItem key={option} disabled={!allowed} title={!allowed ? option === 'Closed Deal' ? 'Confirm a related Deal as Closed Deal first.' : CUSTOMER_STATUS_HELP[option] : undefined} onSelect={() => void onChange(option)}>
+        <span aria-hidden="true" className={`mr-2 h-2 w-2 rounded-full ${getCRMStatusStripColor(option)}`} />
+        {option}{managed && manuallyCancelled && option === 'Inquiry' ? ' · Reopen customer' : ''}
+      </DropdownMenuItem>;
+    })}
+  </DropdownMenuContent></DropdownMenu>;
 }
