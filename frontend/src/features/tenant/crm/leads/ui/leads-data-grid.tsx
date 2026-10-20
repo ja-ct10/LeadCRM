@@ -329,7 +329,7 @@ export function LeadsDataGrid({
         selectedIds={selectedIds}
         onSelectionChange={onSelectionChange}
         sortingMode="external"
-        sortFields={getTableSortFields('leads')} defaultSort={{ field: 'createdAt', direction: 'desc' }}
+        sortFields={getTableSortFields('leads')} defaultSort={{ field: 'lastSalesActivityAt', direction: 'desc' }}
         onSortReset={() => onSortChange?.(null)}
         sort={sort}
         onSortChange={onSortChange}

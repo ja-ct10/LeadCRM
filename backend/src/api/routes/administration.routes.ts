@@ -18,7 +18,7 @@ import { CreateRoleSchema, UpdateRoleSchema, AssignRoleSchema } from '../../modu
 import * as permController       from '../../modules/administration/permissions/permissions.controller';
 import * as auditController      from '../../modules/administration/audit/audit.controller';
 import * as groupController      from '../../modules/administration/groups/groups.controller';
-import { CreateGroupSchema, UpdateGroupSchema, GroupMemberSchema } from '../../modules/administration/groups/groups.dto';
+import { CreateGroupSchema, UpdateGroupSchema, GroupMemberSchema, GroupHeadSchema } from '../../modules/administration/groups/groups.dto';
 import { ForbiddenError } from '../../shared/errors/http-error';
 
 const router = Router();
@@ -89,6 +89,7 @@ router.get(   '/groups',                     authorize('groups.view'), groupCont
 router.post(  '/groups',                     authorize('groups.create'), validate(CreateGroupSchema), groupController.create);
 router.put(   '/groups/:id',                 authorize('groups.edit'), validate(UpdateGroupSchema), groupController.update);
 router.delete('/groups/:id',                 authorize('groups.delete'), groupController.remove);
+router.patch( '/groups/:id/head',            authorizeClientAdmin, authorize('groups.edit'), validate(GroupHeadSchema), groupController.setHead);
 router.post(  '/groups/:id/members',         authorizeClientAdmin, authorize('groups.edit'), validate(GroupMemberSchema), groupController.addMember);
 router.delete('/groups/:id/members/:userId', authorizeClientAdmin, authorize('groups.edit'), groupController.removeMember);
 

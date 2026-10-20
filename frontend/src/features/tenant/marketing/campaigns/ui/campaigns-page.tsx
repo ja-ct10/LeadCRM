@@ -44,7 +44,6 @@ import { ModuleTableToolbar } from '@/shared/components/crm/module-table-toolbar
 import { useModuleTableColumns } from '@/shared/hooks/use-module-table-columns';
 import { CAMPAIGNS_TABLE_COLUMNS } from '@leadcrm/shared';
 import { ModuleTabs } from '@/shared/components/crm/module-tabs';
-import { QuotationTemplates } from './quotation-templates';
 import { LeadsPagination } from '@/shared/components/crm/leads-pagination';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/shared/components/ui/tooltip';
 
@@ -60,7 +59,7 @@ export default function CampaignsPage() {
   const templateLock = useRef(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'all' | 'email' | 'sms' | 'quotation'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'email' | 'sms'>('all');
   const [showBuilder, setShowBuilder] = useState(false);
   const [selectedCampaignForReport, setSelectedCampaignForReport] = useState<Campaign | null>(null);
   const [builderInitialType, setBuilderInitialType] = useState<string | undefined>();
@@ -284,16 +283,15 @@ export default function CampaignsPage() {
 
       {/* 1. Standardized Header Row */}
       <PageHeader title="Campaigns" subtitle="Create, send, and monitor customer marketing campaigns."
-        actions={canCreateCampaign && activeTab !== 'quotation' && <CreateActionDropdown primaryActionLabel="Create Campaign" onPrimaryAction={() => {
+        actions={canCreateCampaign && <CreateActionDropdown primaryActionLabel="Create Campaign" onPrimaryAction={() => {
           setEditingCampaign(undefined); setBuilderInitialType('Email'); setBuilderInitialContent(undefined); setBuilderSubject(''); setShowBuilder(true);
         }} />} />
 
       <SmsReplyReviews />
-      <ModuleTabs<'all' | 'email' | 'sms' | 'quotation'> ariaLabel="Campaign views" activeTab={activeTab} onTabChange={changeTab} tabs={[
+      <ModuleTabs<'all' | 'email' | 'sms'> ariaLabel="Campaign views" activeTab={activeTab} onTabChange={changeTab} tabs={[
         { id: 'all', label: 'All Campaigns' }, { id: 'email', label: 'Email Templates' },
-        { id: 'sms', label: 'SMS Templates' }, { id: 'quotation', label: 'Quotation Templates' },
+        { id: 'sms', label: 'SMS Templates' },
       ]} />
-      {activeTab === 'quotation' && <QuotationTemplates />}
       {activeTab === 'all' && <>
         {tableColumns.drawer}
         <ModuleTableToolbar stackSearchOnMobile label="Campaigns" search={searchTerm} onSearch={setSearchTerm} placeholder="Search campaigns..."

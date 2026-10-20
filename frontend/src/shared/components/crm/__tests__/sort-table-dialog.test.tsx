@@ -26,11 +26,14 @@ it('has an isolated draft, displays the actual sort and cancels without changing
 });
 it('offers every existing supported field, including hidden fields, and applies once', () => {
   const { open, changed } = setup(); open();
-  expect(screen.getByRole('combobox', { name: 'Sort field' }).querySelectorAll('option')).toHaveLength(10);
-  fireEvent.change(screen.getByRole('combobox', { name: 'Sort field' }), { target: { value: 'updatedAt' } });
+  expect(Array.from(screen.getByRole('combobox', { name: 'Sort field' }).querySelectorAll('option'), option => option.value)).toEqual([
+    'name', 'firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'updatedAt', 'lastSalesActivityAt',
+  ]);
+  expect((screen.getByRole('option', { name: 'Most Recent Activity' }) as HTMLOptionElement).value).toBe('lastSalesActivityAt');
+  fireEvent.change(screen.getByRole('combobox', { name: 'Sort field' }), { target: { value: 'lastSalesActivityAt' } });
   expect(screen.getByRole('option', { name: 'Oldest first' })).toBeTruthy();
   fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
-  expect(changed).toHaveBeenCalledExactlyOnceWith({ field: 'updatedAt', direction: 'asc' });
+  expect(changed).toHaveBeenCalledExactlyOnceWith({ field: 'lastSalesActivityAt', direction: 'asc' });
 });
 it('restores the module default through the existing null preference', () => {
   const { open, changed } = setup(); open(); fireEvent.click(screen.getByRole('button', { name: 'Restore default sorting' }));

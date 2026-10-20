@@ -4,6 +4,8 @@ import type { TaskListQuery, TaskPage, TaskSummary } from "@leadcrm/shared";
 import { useAuth } from "@/store/AuthContext";
 import { useData } from "@/store/DataContext";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
+import { useTaskDueTransition } from './use-task-due-transition';
+import { getPageCacheGeneration } from '@/shared/cache/page-cache';
 
 export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
   const { user, tenant } = useAuth();
@@ -14,7 +16,7 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
     refreshTasks();
   }, [refreshTasks]);
   const queryKey = JSON.stringify(query);
-  const identity = `${tenant?.id}:${user?.id}:${user?.role}:${canRead}`;
+  const identity = `${tenant?.id}:${user?.id}:${user?.role}:${canRead}:${getPageCacheGeneration()}`;
   const key = `${identity}:${queryKey}:${tasksRevision}`;
   const [result, setResult] = useState<{
     key: string;
@@ -47,6 +49,7 @@ export function useTasks(query: TaskListQuery = {}, preserveOnRefresh = true) {
     };
   }, [key, queryKey, canRead, tenant, queryTasks, queryTaskSummary, preserveOnRefresh, identity]);
   const visible = result?.key === key || preserveOnRefresh && result?.scope === identity + queryKey ? result : undefined;
+  useTaskDueTransition(visible?.summary?.nextStatusChangeAt, visible?.summary?.evaluatedAt);
   return {
     tasks: visible?.page?.data ?? [],
     meta: visible?.page?.meta,

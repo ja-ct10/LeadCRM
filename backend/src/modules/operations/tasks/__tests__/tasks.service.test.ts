@@ -89,6 +89,24 @@ beforeEach(() => {
 });
 
 describe("Task service authority", () => {
+  it('defaults manual creation to To do and the authenticated assignee', async () => {
+    db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, role: 'Sales Agent', status: 'ACTIVE', tenant: { status: 'ACTIVE' },
+      userRoles: [{ tenantId, role: { tenantId, name: 'Sales Agent', isArchived: false, permissions: [{ tenantId, module: 'tasks', canView: true, canCreate: true }, { tenantId, module: 'deals', canView: true, canViewAll: true }] } }] }));
+    const { status: _status, assignedUserId: _assignee, ...draft } = input;
+    await scoped(() => service.createTask(tenantId, actorId, draft));
+    expect(db.task.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'pending', assignedUserId: actorId }) }));
+  });
+  it.each(['in_progress', 'blocked', 'overdue', 'completed', 'cancelled'])('rejects manual creation status %s before any database write', async status => {
+    await expect(scoped(() => service.createTask(tenantId, actorId, { ...input, status }))).rejects.toMatchObject({ statusCode: 400 });
+    expect(db.task.create).not.toHaveBeenCalled();
+    expect(recordTaskHistory).not.toHaveBeenCalled();
+  });
+  it('reads legacy Blocked as To do or Overdue without rewriting the saved record', () => {
+    const blocked = { ...original, status: 'blocked', dueDate: new Date('2099-01-01') };
+    expect(service.serializeTask(blocked as any)).toMatchObject({ status: 'pending', displayStatus: 'pending' });
+    expect(service.serializeTask({ ...blocked, dueDate: new Date('2020-01-01') } as any)).toMatchObject({ status: 'pending', displayStatus: 'overdue' });
+    expect(blocked.status).toBe('blocked');
+  });
   it.each(['Sales Agent', 'Sales Representative'])('rejects a %s creator after assignment moves to another user, including direct service calls', async role => {
     db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, role, status: 'ACTIVE', tenant: { status: 'ACTIVE' },
       userRoles: [{ tenantId, role: { name: role, tenantId, isArchived: false, permissions: [{ tenantId, module: 'tasks', canView: true, canEdit: true, canComplete: true, canArchive: true }] } }] }));

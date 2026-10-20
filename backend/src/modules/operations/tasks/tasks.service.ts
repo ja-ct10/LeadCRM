@@ -7,7 +7,8 @@ import {
   TaskQuerySchema,
   TaskBulkSchema,
   TaskOptionsQuerySchema,
-  TaskStatusSchema,
+  StoredTaskStatusSchema,
+  taskDisplayStatus,
   TASK_LINK_KINDS,
   taskAssociationIds,
   type TaskLinkInput,
@@ -19,7 +20,7 @@ import {
 import * as repo from "./tasks.repository";
 import { hydrateTaskRecords } from './tasks.context';
 import { recordTaskHistory, taskState } from './tasks.history';
-import { resolveCrmActor, authorizedWorkflowScope } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor, authorizedWorkflowScope, taskAssigneeInScope, crmReadWhere } from '../../crm/access/crm-record-access.service';
 import { assertEligibleAssignedAgent, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { hasModulePermission } from '@leadcrm/shared';
 import { tenantContext } from "../../../core/tenant/tenant-context";
@@ -100,7 +101,8 @@ export function serializeTask(task: repo.TaskRow): TaskRecord {
     tenantId: task.tenantId,
     title: task.title,
     description: task.description ?? "",
-    status: TaskStatusSchema.parse(task.status),
+    status: StoredTaskStatusSchema.parse(task.status),
+    displayStatus: taskDisplayStatus({ ...task, dueDate: task.dueDate.toISOString() }),
     priority: task.priority as TaskRecord["priority"],
     dueDate: task.dueDate.toISOString(),
     createdAt: task.createdAt.toISOString(),
@@ -161,6 +163,13 @@ export async function getTasks(
   );
 }
 export async function serializeTaskResponse(task: repo.TaskRow): Promise<TaskRecord> {
+  const actor = crmActor.getStore();
+  if (actor && !actor.readRecords) return crmActor.run({ ...actor, readRecords: true, readPolicy: undefined }, async () => {
+    // Mutation grants do not broaden the related CRM records disclosed in a response.
+    const visible = await repo.findTaskById(task.id, task.tenantId);
+    if (!visible) throw new NotFoundError('Task');
+    return (await hydrateTaskRecords([serializeTask(visible)], task.tenantId))[0];
+  });
   return (await hydrateTaskRecords([serializeTask(task)], task.tenantId))[0];
 }
 export async function getTaskById(id: string, tenantId: string) {
@@ -201,7 +210,8 @@ export async function createTask(
   workflowDeals?: (client: repo.TaskClient) => Promise<string[]>,
 ) {
   requireScope(tenantId);
-  const { requestId, ...dto } = parseInput(CreateTaskSchema, input);
+  const { requestId, ...parsed } = parseInput(CreateTaskSchema, input);
+  const dto = { ...parsed, assignedUserId: parsed.assignedUserId ?? userId };
   const fingerprint = createHash('sha256').update(JSON.stringify(dto)).digest('hex');
   if (dto.reminderAt)
     throw new ValidationError("Task reminder delivery is not available.");
@@ -230,9 +240,6 @@ export async function createTask(
         tenantId,
         createdById: userId,
         assignedById: userId,
-        ...(dto.status === "completed"
-          ? { completedAt: new Date(), completedById: userId }
-          : {}),
       },
       client,
     );
@@ -346,19 +353,19 @@ export async function getTaskSummary(
   input: Record<string, unknown>,
 ): Promise<TaskSummary> {
   requireScope(tenantId);
-  const { statuses, workload, late, users } = await repo.findTaskSummary(
+  const { statuses, workload, late, users, evaluatedAt, nextStatusChangeAt } = await repo.findTaskSummary(
     tenantId,
     parseInput(TaskQuerySchema, input),
   );
   const byStatus: TaskSummary["byStatus"] = {
     pending: 0,
     in_progress: 0,
-    blocked: 0,
+    overdue: 0,
     completed: 0,
     cancelled: 0,
   };
   for (const row of statuses) {
-    const status = TaskStatusSchema.safeParse(row.status);
+    const status = StoredTaskStatusSchema.safeParse(row.status);
     if (status.success) byStatus[status.data] += row._count._all;
   }
   const people = new Map(
@@ -371,20 +378,25 @@ export async function getTaskSummary(
       name: people.get(entry.assignedUserId) ?? "Unavailable user",
       pending: 0,
       inProgress: 0,
-      blocked: 0,
       overdue: 0,
       total: 0,
     };
     row.total += entry._count._all;
-    if (entry.status === "pending") row.pending += entry._count._all;
+    if (["pending", "blocked"].includes(entry.status)) row.pending += entry._count._all;
     if (["in_progress", "in-progress"].includes(entry.status))
       row.inProgress += entry._count._all;
-    if (entry.status === "blocked") row.blocked += entry._count._all;
     rows.set(entry.assignedUserId, row);
   }
   for (const entry of late) {
     const row = rows.get(entry.assignedUserId);
-    if (row) row.overdue = entry._count._all;
+    const status = StoredTaskStatusSchema.parse(entry.status);
+    byStatus[status] -= entry._count._all;
+    byStatus.overdue += entry._count._all;
+    if (row) {
+      row.overdue += entry._count._all;
+      if (status === 'pending') row.pending -= entry._count._all;
+      if (status === 'in_progress') row.inProgress -= entry._count._all;
+    }
   }
   return {
     total: statuses.reduce((sum, row) => sum + row._count._all, 0),
@@ -392,6 +404,8 @@ export async function getTaskSummary(
     completed: byStatus.completed,
     overdue: late.reduce((sum, row) => sum + row._count._all, 0),
     byStatus,
+    evaluatedAt,
+    nextStatusChangeAt,
     workload: [...rows.values()].sort(
       (a, b) => b.total - a.total || a.name.localeCompare(b.name),
     ),
@@ -416,10 +430,12 @@ async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: 
   action: 'canCreate' | 'canEdit' | 'canArchive', dto: TaskLinkInput & { status?: string; assignedUserId?: string }, before?: repo.TaskRow) {
   const policy = await resolveCrmActor(client, { tenantId, userId });
   const system = authorizedWorkflowScope(tenantId);
-  if (!system && before && policy.taskAssignmentRestricted && before.assignedUserId !== userId)
+  if (!system && before && !taskAssigneeInScope(policy, before.assignedUserId))
     throw new NotFoundError('Task');
-  if (action !== 'canCreate' && (!before?.createdById || before.createdById !== userId))
+  if (!system && action !== 'canCreate' && !policy.taskAssignmentRestricted && (!before?.createdById || before.createdById !== userId))
     throw new AppError(action === 'canArchive' ? 'Only the task owner can archive this task.' : 'Only the task owner can edit this task.', 403);
+  if (!system && dto.assignedUserId !== undefined && !taskAssigneeInScope(policy, dto.assignedUserId))
+    throw new AppError('You cannot assign Tasks outside your authorized team.', 403);
   const permitted = (flag: 'canCreate' | 'canEdit' | 'canArchive' | 'canAssign' | 'canComplete') => {
     if (!policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', flag)) throw new AppError('Access denied', 403);
   };
@@ -435,9 +451,12 @@ async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: 
     const previous = before?.dealLinks.map(row => row.dealId) ?? [];
     // Removing a Deal is an association mutation too; recheck both sides.
     const checked = [...new Set([...ids, ...previous])];
-    const deals = await client.deal.findMany({ where: { tenantId, id: { in: checked } }, select: { id: true, assignedUserId: true } });
+    const deals = await client.deal.findMany({ where: { tenantId, id: { in: checked },
+      ...(!system ? { AND: [await crmReadWhere(client, tenantId, 'deals')] } : {}),
+    }, select: { id: true, assignedUserId: true } });
     if (deals.length !== checked.length) throw new NotFoundError('Related Deal');
-    if (!system && policy.assignmentRestricted && deals.some(deal => deal.assignedUserId !== userId))
+    if (!system && (policy.taskManager ? deals.some(deal => !deal.assignedUserId || !taskAssigneeInScope(policy, deal.assignedUserId))
+      : policy.assignmentRestricted && deals.some(deal => deal.assignedUserId !== userId)))
       throw new AppError('You can only associate tasks with Deals assigned to you.', 403, 'CRM_ASSIGNMENT_REQUIRED');
   }
 }
@@ -448,7 +467,7 @@ export async function restoreTask(id: string, tenantId: string, userId: string) 
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before || !before.isArchived) throw new NotFoundError('Archived task');
     const policy = await resolveCrmActor(client, { tenantId, userId });
-    if (policy.taskAssignmentRestricted && before.assignedUserId !== userId) throw new NotFoundError('Archived task');
+    if (!taskAssigneeInScope(policy, before.assignedUserId)) throw new NotFoundError('Archived task');
     if (!policy.clientAdmin && (!hasModulePermission(policy.permissions, 'archived_data', 'canRestore') || !hasModulePermission(policy.permissions, 'tasks', 'canView'))) throw new AppError('Access denied', 403);
     const task = await repo.updateTask(id, tenantId, { isArchived: false }, client);
     await recordTaskHistory(client, userId, task, before);

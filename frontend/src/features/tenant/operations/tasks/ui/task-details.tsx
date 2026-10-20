@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Archive, Calendar, ChevronDown, ListTodo, MoreHorizontal, Pencil, User, X } from 'lucide-react';
-import { TASK_STATUSES, TASK_STATUS_LABELS, taskAssociationIds, isTaskAssignmentRestrictedRole, type TaskOption, type TaskRecord, type UpdateTaskDto } from '@leadcrm/shared';
+import { TASK_MANUAL_STATUSES, TASK_STATUS_LABELS, taskDisplayStatus, taskAssociationIds, isTaskAssignmentRestrictedRole, type TaskOption, type TaskRecord, type UpdateTaskDto } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -23,9 +23,11 @@ import { ConfirmActionDialog } from '@/shared/components/crm/confirm-action-dial
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { panelBodyClass, panelCloseClass, panelHeaderClass, panelInputClass, panelSurfaceClass, panelTitleClass } from '@/shared/components/side-panel-styles';
-import { isTaskOwner, taskRecordHref, taskRecordOptions } from '../task-relations';
+import { canManageTask, taskRecordHref, taskRecordOptions } from '../task-relations';
 import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { isPastManilaTaskDueDateTime, manilaCurrentDate, manilaLocalDateTime, manilaTaskDueInstant, resolveManilaTaskDueDateTime } from '../task-data';
+import { useTaskDueTransition } from '../use-task-due-transition';
+import { taskStatusClasses } from './task-status';
 import { TaskSelector } from './task-selector';
 import { TaskRecordCreator } from './task-record-creator';
 import type { TaskLinks } from './task-editor';
@@ -38,7 +40,8 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
 }) {
   const { user } = useAuth();
   const { updateTask, deleteTask, users } = useData();
-  const canRead = useHasPermission('tasks.view'), canEdit = useHasPermission('tasks.edit'), canAssign = useHasPermission('tasks.assign');
+  const canRead = useHasPermission('tasks.view'), canEdit = useHasPermission('tasks.edit'), assignGrant = useHasPermission('tasks.assign');
+  const canAssign = assignGrant && !isTaskAssignmentRestrictedRole(user?.role ?? '');
   const canComplete = useHasPermission('tasks.complete'), canArchive = useHasPermission('tasks.archive'), canCreateDeals = useHasPermission('deals.create');
   const readableRecords = { deal: useHasPermission('deals.view'), lead: useHasPermission('leads.view'), contact: useHasPermission('contacts.view'), account: useHasPermission('accounts.view') };
   const recordId = initialTask?.id ?? taskId!;
@@ -58,7 +61,7 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
     !!latest && isTaskAssignmentRestrictedRole(user?.role ?? '') && latest.assignedUserId !== user?.id;
   const ready = !!saved && !unavailable && (USE_MOCK_DATA || !!detail.data);
   useReadRecordNotifications('Task', recordId, !USE_MOCK_DATA && ready && !detail.isInitialLoad && !detail.isRefreshing && !detail.error);
-  const owned = ready && isTaskOwner(latest, user?.id);
+  const owned = ready && canManageTask(latest, user);
   const mutable = owned && !readOnly && !latest?.isArchived;
   const pending = busy || inline.busy;
   const changed = !!saved && !!detail.data && (saved.updatedAt !== detail.data.updatedAt || !saved.updatedAt && JSON.stringify(saved) !== JSON.stringify(detail.data));
@@ -125,8 +128,10 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
     disabled={pending || conflict || !!detail.error || !!inline.field && !definitions.some(row => row.apiField === inline.field)} onEditStateChange={definitions.some(row => row.apiField === inline.field) || !inline.field ? reportEdit : undefined} onSave={saveField} />;
   const agent = saved?.assignedUser?.id === saved?.assignedUserId ? saved?.assignedUser : saved?.assignedUserId === user?.id ? user : users.find(person => person.id === saved?.assignedUserId);
   const agentName = agent ? `${agent.firstName} ${agent.lastName}` : '—';
-  const statusClass = 'min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs';
-  const statusValue = saved && <span className="min-w-0 max-w-[52px] truncate @min-[400px]:max-w-[140px]">{TASK_STATUS_LABELS[saved.status]}</span>;
+  useTaskDueTransition(saved && !saved.isArchived && !['completed', 'cancelled'].includes(saved.status) ? saved.dueDate : null);
+  const displayStatus = saved ? taskDisplayStatus(saved) : 'pending';
+  const statusClass = 'min-h-9 min-w-0 max-w-full gap-1 rounded-lg text-xs ' + taskStatusClasses[displayStatus];
+  const statusValue = saved && <span className="min-w-0 max-w-[52px] truncate @min-[400px]:max-w-[140px]">{TASK_STATUS_LABELS[displayStatus]}</span>;
   const requestClose = () => { if (!pending) { if (creating) setCreating(false); else closeGuard.requestClose(); } };
   return <Sheet open onOpenChange={open => { if (!open) requestClose(); }}>
     <SheetContent className={panelSurfaceClass} aria-labelledby={heading} showClose={false} onKeyDown={event => {
@@ -140,9 +145,9 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
               {(canEdit || canAssign) && <DropdownMenuItem onSelect={() => setEditing(true)}><Pencil size={14} />Edit task</DropdownMenuItem>}
               {canArchive && <DropdownMenuItem destructive onSelect={() => setConfirmArchive(true)}><Archive size={14} />Archive task</DropdownMenuItem>}
             </DropdownMenuContent></DropdownMenu>}
-            {mutable && (canEdit || canComplete && saved.status !== 'completed') ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" className={statusClass} aria-label={`Task status: ${TASK_STATUS_LABELS[saved.status]}`} title={TASK_STATUS_LABELS[saved.status]} disabled={pending || !!inline.field || conflict || !!detail.error}>{statusValue}<ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
-              {TASK_STATUSES.map(status => <DropdownMenuItem key={status} disabled={status === saved.status || !(status === 'completed' ? canComplete : canEdit)} onSelect={() => void changeStatus(status)}>{TASK_STATUS_LABELS[status]}</DropdownMenuItem>)}
-            </DropdownMenuContent></DropdownMenu> : <span title={TASK_STATUS_LABELS[saved.status]} className={statusClass + ' inline-flex items-center border border-border bg-card px-3'}>{statusValue}</span>}
+            {mutable && (canEdit || canComplete && saved.status !== 'completed') ? <DropdownMenu><DropdownMenuTrigger asChild><Button variant="outline" size="sm" className={statusClass} aria-label={`Task status: ${TASK_STATUS_LABELS[displayStatus]}`} title={TASK_STATUS_LABELS[displayStatus]} disabled={pending || !!inline.field || conflict || !!detail.error}>{statusValue}<ChevronDown size={12} className="shrink-0" /></Button></DropdownMenuTrigger><DropdownMenuContent align="end">
+              {TASK_MANUAL_STATUSES.map(status => <DropdownMenuItem className={taskStatusClasses[status]} key={status} disabled={status === saved.status || !(status === 'completed' ? canComplete : canEdit)} onSelect={() => void changeStatus(status)}>{TASK_STATUS_LABELS[status]}</DropdownMenuItem>)}
+            </DropdownMenuContent></DropdownMenu> : <span title={TASK_STATUS_LABELS[displayStatus]} className={statusClass + ' inline-flex items-center border border-border px-3'}>{statusValue}</span>}
             <Button variant="ghost" size="icon" className={panelCloseClass} disabled={pending} onClick={requestClose} aria-label="Close record" title="Close record"><X size={16} /></Button>
           </>} />
         <RecordQuickInfo items={[{ value: agentName === '—' ? '' : agentName, icon: User, label: 'Assigned Agent: ' }, { value: formatDateTime(saved.dueDate), icon: Calendar, label: 'Due: ' }]} />
@@ -158,7 +163,7 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
             {ready && saved && <>
               <RecordSection title="Task Information" forceOpen={editing}>{rows([
                 { label: 'Title', value: saved.title, apiField: canEdit ? 'title' : undefined, alwaysVisible: true, required: true, maxLength: 255, editorFullWidth: true, validate: value => !value.trim() ? 'Enter a task title.' : value.trim().length > 255 ? 'Max 255 characters' : undefined },
-                { label: 'Status', value: TASK_STATUS_LABELS[saved.status], alwaysVisible: true },
+                { label: 'Status', value: TASK_STATUS_LABELS[displayStatus], alwaysVisible: true },
                 { label: 'Priority', value: saved.priority ?? 'Medium', apiField: canEdit ? 'priority' : undefined, type: 'select', options: ['Low', 'Medium', 'High'], alwaysVisible: true },
               ])}</RecordSection>
               <RecordSection title="Schedule & Assignment" forceOpen={editing}>{rows([

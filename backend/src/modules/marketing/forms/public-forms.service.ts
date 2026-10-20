@@ -4,14 +4,14 @@ import { productRelationData } from '../../crm/leads/product-relations';
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { convertClosedLead } from '../../crm/leads/lead-conversion.service';
-import { FormDefinitionSchema, PublicSubmissionSchema, validateFormValues, withProductOptions } from '@leadcrm/shared';
+import { FormDefinitionSchema, FormFieldSchema, PublicSubmissionSchema, publicSubmissionContent, validateFormValues, withProductOptions } from '@leadcrm/shared';
 import type { PublicFormDefinition } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { ConflictError, NotFoundError, ValidationError } from '../../../shared/errors/http-error';
 import { sendMail } from '../../../shared/services/email.service';
 import { normalizePhone } from '../../crm/duplicate-detection/duplicate-detection.service';
-import { createAssignedLead, createProductDeals, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
+import { createAssignedLead, productConfiguration, salesTransaction, resolveProducts, salesPipeline } from '../../crm/leads/lead-automation.service';
 import { normalizeFormDefinitionForTenant } from './forms.repository';
 import { saveRecordValues } from '../../crm/closing-requirements/custom-field-values.repository';
 import { productCategories } from '../../administration/product-interests/product-interests.service';
@@ -48,11 +48,18 @@ export async function submitPublicForm(publicId: string, body: unknown) {
         const accepted = await salesTransaction(async tx => {
           const live = await tx.marketingForm.findFirst({ where: { ...publicWhere(publicId), ...scope } });
           if (!live?.publishedConfig) throw new NotFoundError('Form');
-          if (live.publishedVersion !== input.version) throw new ConflictError('This form has changed. Reload it before submitting.');
-          if (input.requestId) {
-            const previous = await tx.formSubmission.findFirst({ where: { ...scope, formId: live.id, requestKey: input.requestId } });
-            if (previous) return { submission: previous, notificationEmail: '' };
+          const previous = await tx.formSubmission.findFirst({ where: { ...scope, formId: live.id, requestKey: input.requestId } });
+          if (previous) {
+            const snapshot = previous.publishedConfig as { fields: unknown; trackUrlParams?: boolean };
+            const checked = validateFormValues(FormFieldSchema.array().parse(snapshot.fields), input.values);
+            const tracking = snapshot.trackUrlParams === false ? {} : input.tracking;
+            if (Object.keys(checked.errors).length || publicSubmissionContent(input.version, checked.values, tracking) !==
+              publicSubmissionContent(previous.publishedVersion, previous.values as Record<string, unknown>, previous.tracking as Record<string, unknown>)) {
+              throw new ConflictError('This submission request was already used for different content.');
+            }
+            return { submission: previous, notificationEmail: '' };
           }
+          if (live.publishedVersion !== input.version) throw new ConflictError('This form has changed. Reload it before submitting.');
           const config = await normalizeFormDefinitionForTenant(tx, scope.tenantId, FormDefinitionSchema.parse(live.publishedConfig));
           config.fields = withProductOptions(config.fields, await productConfiguration(tx, scope.tenantId));
           const validated = validateFormValues(config.fields, input.values);
@@ -118,7 +125,6 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             await tx.lead.update({ where: { id: leadId, ...scope }, data: {
               ...await productRelationData(tx, 'lead', scope.tenantId, { names: [...new Set([...lead.productInterest, ...resolvedProducts.map(p => p.name)])] }, lead, true),
             } });
-            await createProductDeals(tx, scope.tenantId, leadId, live.createdById);
           }
           if (!leadId && !contactId) {
             const names = (mapped.fullName || '').split(/\s+/);
@@ -139,7 +145,7 @@ export async function submitPublicForm(publicId: string, body: unknown) {
             await saveRecordValues(tx, scope.tenantId, 'leads', leadId, customValues, live.createdById);
           }
           const submission = await tx.formSubmission.create({ data: { ...scope, formId: live.id, requestKey: input.requestId, publishedVersion: live.publishedVersion,
-            publishedConfig: { name: config.name, fields: config.fields, design: config.design }, leadId, contactId, email, phone,
+            publishedConfig: { name: config.name, fields: config.fields, design: config.design, trackUrlParams: config.settings.trackUrlParams }, leadId, contactId, email, phone,
             values: validated.values, tracking: config.settings.trackUrlParams ? input.tracking : {}, notificationStatus: config.settings.notificationEmail ? 'pending' : 'not_requested' } });
           // Only committed new captures through this published form qualify. Source
           // labels are editable CRM data and do not establish inbound provenance.
@@ -151,9 +157,10 @@ export async function submitPublicForm(publicId: string, body: unknown) {
               payload: { name: `${captured.firstName} ${captured.lastName}`.trim(), formId: live.id, submissionId: submission.id,
                 assignedName: captured.assignedUser ? `${captured.assignedUser.firstName} ${captured.assignedUser.lastName}`.trim() : null } }], skipDuplicates: true });
           }
-          if (contactId && resolvedProducts.length) {
-            const customer = await tx.contact.findFirstOrThrow({ where: { ...scope, id: contactId } });
-            await tx.contact.update({ where: { ...scope, id: customer.id }, data: await productRelationData(tx, 'contact', scope.tenantId,
+          if ((contactId || leadId && !newWebsiteLead) && resolvedProducts.length) {
+            const customer = contactId ? await tx.contact.findFirstOrThrow({ where: { ...scope, id: contactId } })
+              : await tx.lead.findFirstOrThrow({ where: { ...scope, id: leadId! } });
+            if (contactId && 'productInterests' in customer) await tx.contact.update({ where: { ...scope, id: customer.id }, data: await productRelationData(tx, 'contact', scope.tenantId,
               { names: [...new Set([...customer.productInterests, ...resolvedProducts.map(p => p.name)])] }, customer, true) });
             const { pipeline, initial } = await salesPipeline(tx, scope.tenantId);
             // Each accepted inquiry is a new opportunity. requestId retries return above,
@@ -164,12 +171,14 @@ export async function submitPublicForm(publicId: string, body: unknown) {
                 pipelineId: pipeline.id, stageId: initial.id, productInterestId: product.id, productsNormalized: true,
                 value: Number(product.dealValue), currency: 'PHP', assignedUserId: customer.assignedUserId, ownerId: customer.assignedUserId,
                 automationKey: `form:${submission.id}:${product.id}`, leadSource: 'Website', tags: [] } });
-              await tx.contactDeal.create({ data: { ...scope, contactId, dealId: deal.id, addedById: live.createdById } });
-              await tx.activity.create({ data: { ...scope, contactId, dealId: deal.id, createdById: live.createdById,
-                type: 'deal_action', title: `Deal created for ${product.name}`, description: 'New website inquiry from an existing Contact.' } });
+              if (contactId) await tx.contactDeal.create({ data: { ...scope, contactId, dealId: deal.id, addedById: live.createdById } });
+              else await tx.leadDeal.create({ data: { ...scope, leadId: leadId!, dealId: deal.id, addedById: live.createdById } });
+              await tx.activity.create({ data: { ...scope, leadId, contactId, dealId: deal.id, createdById: live.createdById,
+                type: 'deal_action', title: `Deal created for ${product.name}`, description: `New website inquiry from an existing ${contactId ? 'Contact' : 'Lead'}.` } });
+              await tx.auditLog.create({ data: { ...scope, userId: live.createdById, action: 'deal.created', entityType: 'Deal', entityId: deal.id } });
               await fireDealCreated({ tenantId: scope.tenantId, actorId: live.createdById, deal });
             }
-            await classifyCustomerRecord(tx, scope.tenantId, { contactId }, live.createdById);
+            await classifyCustomerRecord(tx, scope.tenantId, contactId ? { contactId } : { leadId: leadId! }, live.createdById);
           }
           return { submission, notificationEmail: config.settings.notificationEmail };
         });

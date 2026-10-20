@@ -1,13 +1,16 @@
 import React from 'react';
 import { afterEach, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 
 const mocks = vi.hoisted(() => ({ role: 'Sales', tenantId: 'tenant', users: false, groups: true }));
 vi.mock('@/store/AuthContext', () => ({
   useAuth: () => ({ user: { id: 'current', tenantId: mocks.tenantId, role: mocks.role }, userCan: (module: string) => mocks.role === 'Client Admin' || (module === 'users' ? mocks.users : mocks.groups) }),
 }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ users: [] }) }));
-vi.mock('../team-management-users', () => ({ UsersSubTab: ({ renderHeader }: { renderHeader: (action: React.ReactNode) => React.ReactNode }) => <>{renderHeader(null)}<div>Users tab content</div></> }));
+vi.mock('../team-management-users', () => ({ UsersSubTab: ({ renderHeader, onUsersLoaded }: { renderHeader: (action: React.ReactNode) => React.ReactNode; onUsersLoaded: (users: never[]) => void }) => {
+  React.useEffect(() => { onUsersLoaded([{ id: 'one', tenantId: 'tenant' }, { id: 'two', tenantId: 'tenant' }] as never[]); }, [onUsersLoaded]);
+  return <>{renderHeader(null)}<div>Users tab content</div></>;
+} }));
 vi.mock('../team-management-groups', () => ({ GroupsSubTab: ({ renderHeader }: { renderHeader: (action: React.ReactNode) => React.ReactNode }) => {
   const [draft, setDraft] = React.useState('');
   return <>{renderHeader(null)}<div>Groups tab content</div><input aria-label="Group draft" value={draft} onChange={event => setDraft(event.target.value)} /></>;
@@ -50,4 +53,6 @@ it('shows Users and Groups to Client Admin', async () => {
   expect(screen.getByRole('button', { name: 'Users' })).toBeTruthy();
   expect(screen.getByRole('button', { name: 'Groups' })).toBeTruthy();
   expect(await screen.findByText('Users tab content')).toBeTruthy();
+  await waitFor(() => expect(screen.getByRole('button', { name: 'Users' }).textContent).toBe('Users'));
+  expect(screen.queryByRole('button', { name: 'Users 2' })).toBeNull();
 });

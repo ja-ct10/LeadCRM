@@ -1,8 +1,7 @@
-// Rendered UI preview with isolated API fixtures. Database/API acceptance is
-// independently exercised by test-quotations-disposable.mjs; no live email sends.
+// Campaign template UI preview with isolated API fixtures; no live email sends.
 import { spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
-import { createWriteStream, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createWriteStream, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import assert from 'node:assert/strict';
@@ -23,11 +22,8 @@ const lead = { id: randomUUID(), firstName: 'Juan', lastName: 'Customer', email:
 const contact = { ...lead, id: randomUUID(), firstName: 'Maria', lastName: 'Contact', email: 'maria@example.test' };
 const product = { id: randomUUID(), name: 'Technical Service', category: 'Services', description: 'Setup and support', dealValue: 1234.56, active: true, createdAt: now, updatedAt: now };
 const deal = { id: randomUUID(), title: 'Technical Service Deal', productInterestId: product.id, value: 99999 };
-const emptyDeal = { id: randomUUID(), title: 'Deal without Product', productInterestId: null };
 const task = { id: randomUUID(), tenantId: user.tenantId, title: 'Template UI preview task', description: 'Task notes remain visible. '.repeat(50), status: 'pending', priority: 'High', createdById: user.id, createdBy: user, assignedUserId: user.id, assignedUser: user, createdAt: now, dueDate: '2030-01-01T12:00:00Z', dealIds: [deal.id], deals: [deal] };
 const permissions = Object.fromEntries(['campaigns','leads','contacts','accounts','deals','products','settings','users','groups','roles','custom_fields','archived_data','tasks','forms','notifications','dashboard','reporting'].map(module => [module, Object.fromEntries(['canView','canCreate','canEdit','canArchive','canSend','canViewReports'].map(flag => [flag, true]))]));
-const names = ['Standard Sales Quotation','Service Quotation','Software Implementation','Annual Maintenance','Product Quotation','Custom Quotation'];
-const pdf = readFileSync(resolve(root, 'data/outputs/quotations/lead.pdf'));
 async function fits(page, label, width) {
   await page.waitForFunction(() => [...document.querySelectorAll('[role="dialog"]')].every(element => { const box = element.getBoundingClientRect(); return box.left >= -1 && box.right <= innerWidth + 1; }));
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true, `${label}: page overflow at ${width}`);
@@ -106,17 +102,6 @@ async function taskDetails(page, width) {
   await editor.getByRole('button', { name: 'Close record', exact: true }).click(); await editor.waitFor({ state: 'detached' });
   assertions.push(`${width}: Task Details content, history scrolling, no footer, full-height body and header X dismissal`);
 }
-async function pdfReady(page, title) {
-  await page.getByTitle(title).waitFor();
-  for (let attempt = 0; attempt < 100; attempt++) {
-    for (const frame of page.frames().filter(frame => frame.url().startsWith('blob:'))) {
-      if (await frame.locator('embed[type="application/x-google-chrome-pdf"]').count() &&
-          await frame.locator('#sizer').count() && (await frame.locator('#sizer').boundingBox())?.height > 0) return;
-    }
-    await new Promise(done => setTimeout(done, 100));
-  }
-  throw new Error(`Native PDF viewer did not load: ${title}`);
-}
 async function templateControls(page, type, width) {
   // Compare resting styles after the previous view's hover transition has ended.
   await page.mouse.move(0, 0);
@@ -134,10 +119,10 @@ async function templateControls(page, type, width) {
     assert.ok(a.x + a.width <= b.x + 1 || b.x + b.width <= a.x + 1 || a.y + a.height <= b.y + 1 || b.y + b.height <= a.y + 1, `${type}: toolbar controls overlap at ${width}`);
   }
   assert.equal(await controls[3].count(), 1, `${type}: single create action`);
-  assert.equal(await page.getByRole('button', { name: /Create First .* Template|Create a quotation template/i }).count(), 0);
+  assert.equal(await page.getByRole('button', { name: /Create First .* Template/i }).count(), 0);
   assert.equal(await controls[3].getAttribute('title'), `New ${type} Template`);
   const heading = page.getByRole('heading', { name: `${type} Templates`, level: 2, exact: true });
-  const subtitle = page.getByText(type === 'Quotation' ? 'Create reusable PDF-formatted quotations for your customers.' : `Create and reuse ${type === 'Email' ? 'email' : 'SMS'} templates for your campaigns.`, { exact: true });
+  const subtitle = page.getByText(`Create and reuse ${type === 'Email' ? 'email' : 'SMS'} templates for your campaigns.`, { exact: true });
   const headingBox = await heading.boundingBox(), subtitleBox = await subtitle.boundingBox();
   const toolbar = await page.getByRole('toolbar', { name: 'templates controls' }).boundingBox();
   const container = await controls[3].locator('..').boundingBox();
@@ -191,7 +176,7 @@ async function templateFilterLayout(page, type, width) {
     const sidebar = await rail.boundingBox(), open = await grid.boundingBox(), openCard = await card.boundingBox(), footer = await pagination.boundingBox();
     assert.ok(sidebar && open && openCard && footer);
     assert.ok(open.x >= sidebar.x + sidebar.width + 10 && Math.abs(open.y - sidebar.y) < 2, `${type}: cards align beside desktop sidebar`);
-    assert.ok(open.x > closed.x && open.width < closed.width && openCard.width < closedCard.width, `${type}: grid and cards narrow when filters open`);
+    assert.ok(open.x > closed.x && open.width < closed.width && openCard.width <= open.width + 1, `${type}: results narrow and cards reflow when filters open`);
     assert.ok(Math.abs(footer.x - open.x) < 2 && Math.abs(footer.width - open.width) < 2, `${type}: pagination stays in results column`);
   } else {
     await page.getByRole('dialog', { name: 'Filters', exact: true }).waitFor();
@@ -220,19 +205,12 @@ try {
   const widths = process.env.TEMPLATE_PREVIEW_WIDTHS ? process.env.TEMPLATE_PREVIEW_WIDTHS.split(',').map(Number) : [320,375,390,430,639,640,768,1024,1279,1280,1440,1920];
   assert.ok(widths.length && widths.every(width => Number.isInteger(width) && width >= 320));
   for (const width of widths) {
-    const recipientType = [375, 1024].includes(width) ? 'Contact' : 'Lead', selectedRecipient = recipientType === 'Contact' ? contact : lead;
     const context = await createAcceptanceContext(browser, { viewport: { width, height: 960 }, reducedMotion: 'reduce', sandboxedFrames: true });
-    // Permit only Chrome's built-in PDF viewer and its internal resources;
-    // the existing guard still blocks external non-fixture requests.
-    for (const pattern of ['chrome-extension://mhjfbmdgcfjbbpaeojofohoefgiehjai/**', 'chrome://resources/**']) await context.route(pattern, route => route.continue());
     const page = await context.newPage();
     const errors = []; page.on('pageerror', error => errors.push(error.message));
-    let templates = [...names.map((name, index) => ({ id: randomUUID(), tenantId: user.tenantId, name, category: shared.QUOTATION_CATEGORIES[index], type: 'Quotation', content: JSON.stringify(shared.defaultQuotationContent()) })),
-      { id: randomUUID(), tenantId: user.tenantId, name: 'CCTV Quotation', category: 'Custom', type: 'Quotation', content: JSON.stringify(shared.defaultQuotationContent()) },
-      ...['Email', 'SMS'].flatMap(type => Array.from({ length: 23 }, (_, index) => ({ id: randomUUID(), tenantId: user.tenantId, name: `${type} Follow ${index + 1}`, type,
-        category: index % 2 ? 'Support' : 'Sales', subject: type === 'Email' ? 'Hello {{firstName}}' : undefined, content: `Hello {{firstName}}, ${type} message ${index + 1}.` })))];
+    let templates = ['Email', 'SMS'].flatMap(type => Array.from({ length: 23 }, (_, index) => ({ id: randomUUID(), tenantId: user.tenantId, name: `${type} Follow ${index + 1}`, type,
+      category: index % 2 ? 'Support' : 'Sales', subject: type === 'Email' ? 'Hello {{firstName}}' : undefined, content: `Hello {{firstName}}, ${type} message ${index + 1}.` })));
     const templateRequests = [], messageControlStyles = [], variableTriggerStyles = [];
-    let sends = 0, pdfRequests = 0, pdfFailure = false;
     await context.route('**/api/proxy/**', async route => {
       const url = new URL(route.request().url()), path = url.pathname.replace('/api/proxy', ''), method = route.request().method();
       const json = (data, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(data) });
@@ -251,14 +229,11 @@ try {
       if (path === '/administration/product-interests') return json({ success: true, data: [product], meta: { enabled: true, categories: ['Services'] } });
       if (path === '/crm/leads') return list([lead]);
       if (path === '/crm/contacts') return list([contact]);
-      if (path.endsWith('/relationships')) return json({ success: true, data: { deals: [deal, emptyDeal], hasMoreDeals: false } });
+      if (path.endsWith('/relationships')) return json({ success: true, data: { deals: [deal], hasMoreDeals: false } });
       if (path === `/crm/deals/${deal.id}`) return json({ success: true, data: deal });
-      if (path === `/crm/deals/${emptyDeal.id}`) return json({ success: true, data: emptyDeal });
       if (path === `/crm/leads/${lead.id}`) return json({ success: true, data: lead });
       if (path === `/crm/contacts/${contact.id}`) return json({ success: true, data: contact });
-      if (path.endsWith('/pdf')) { pdfRequests++; return pdfFailure ? json({ success: false, error: 'Unable to generate PDF. Please try again.' }, 500) : route.fulfill({ contentType: 'application/pdf', body: pdf }); }
       if (path === '/marketing/templates' && method === 'POST') { const data = route.request().postDataJSON(); const template = { ...data, id: randomUUID(), tenantId: user.tenantId }; templates.push(template); return json({ success: true, data: template }, 201); }
-      if (path.startsWith('/marketing/templates/') && method === 'PUT') { const index = templates.findIndex(template => path.endsWith(template.id)); templates[index] = { ...templates[index], ...route.request().postDataJSON() }; return json({ success: true, data: templates[index] }); }
       if (path === '/marketing/templates') {
         const query = Object.fromEntries(url.searchParams), category = query.category, type = query.type;
         templateRequests.push(query);
@@ -267,12 +242,16 @@ try {
         const currentPage = Number(query.page ?? 1), limit = Math.min(100, Number(query.limit ?? 10));
         return json({ success: true, data: data.slice((currentPage - 1) * limit, currentPage * limit), meta: { total: data.length, page: currentPage, limit, hasMore: currentPage * limit < data.length } });
       }
-      if (path === '/marketing/campaigns/quotations/preview') { const draft = route.request().postDataJSON(); assert.equal(draft.recipientType, recipientType); assert.equal(draft.recipientId, selectedRecipient.id); assert.equal(draft.dealId, deal.id); assert.deepEqual(draft.products, [{ productId: product.id, quantity: 3 }]); return json({ success: true, data: { pdfBase64: pdf.toString('base64'), filename: 'quotation.pdf', fingerprint: 'a'.repeat(64), document: { total: '3703.68' } } }); }
-      if (path === '/marketing/campaigns/quotations/send') { sends++; await new Promise(done => setTimeout(done, 250)); return json({ success: true, data: { messageId: 'fixture', threadId: 'fixture' } }); }
       return list([]);
     });
     try {
-      await page.goto(base + '/marketing/campaigns');
+      for (const route of ['/campaigns', '/marketing/campaigns']) {
+        await page.goto(base + route);
+        const navigation = page.getByRole('group', { name: 'Campaign views', exact: true });
+        await navigation.waitFor();
+        assert.deepEqual(await navigation.getByRole('button').allTextContents(), ['All Campaigns', 'Email Templates', 'SMS Templates']);
+        assert.equal(await navigation.getByRole('button', { name: 'All Campaigns', exact: true }).getAttribute('aria-pressed'), 'true');
+      }
       for (const type of ['Email', 'SMS']) {
         await page.getByRole('button', { name: `${type} Templates`, exact: true }).click();
         await page.getByText('Page 1 of 3', { exact: true }).waitFor();
@@ -333,97 +312,17 @@ try {
         await page.getByRole('button', { name: 'Refresh', exact: true }).click();
         await page.getByRole('heading', { name: `${type} Follow 1`, exact: true }).waitFor();
       }
-      await page.getByRole('button', { name: 'Quotation Templates', exact: true }).click();
-      await page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }).waitFor();
-      assert.equal(await page.locator('article').count(), 7);
-      const quotationStyles = await templateControls(page, 'Quotation', width);
-      for (const styles of messageControlStyles) assert.deepEqual(styles, quotationStyles, `${width}: shared template control styles match Quotation`);
-      for (const card of await page.locator('article').all()) {
-        const badge = await card.locator('.inline-flex').first().boundingBox(), icon = await card.getByRole('button', { name: 'Download PDF', exact: true }).boundingBox();
-        assert.ok(badge && icon && icon.x > badge.x && Math.abs((badge.y + badge.height/2) - (icon.y + icon.height/2)) < 2);
-      }
-      await fits(page, 'six starters plus CCTV cards and tabs', width); await page.screenshot({ path: resolve(output, `cards-${width}.png`), fullPage: true });
-      await templateFilterLayout(page, 'Quotation', width);
-      const standardCard = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }) });
-      const [blankDownload] = await Promise.all([page.waitForEvent('download'), standardCard.getByRole('button', { name: 'Download PDF', exact: true }).click()]); assert.equal(blankDownload.suggestedFilename(), 'Standard Sales Quotation.pdf');
-      await standardCard.getByRole('button', { name: 'Preview', exact: true }).click(); await pdfReady(page, 'Quotation template PDF preview'); await fits(page, 'reusable template preview/download', width); await page.getByRole('button', { name: 'Close sheet', exact: true }).click();
-      assert.equal(pdfRequests, 2);
-      pdfFailure = true; await standardCard.getByRole('button', { name: 'Preview', exact: true }).click();
-      await page.getByText('Unable to generate PDF. Please try again.', { exact: true }).waitFor();
-      assert.equal(await page.getByTitle('Quotation template PDF preview').count(), 0); assert.equal(pdfRequests, 3);
-      await fits(page, 'PDF error toast', width); pdfFailure = false;
-      await page.getByLabel('Search templates', { exact: true }).fill('Software'); await page.getByRole('heading', { name: 'Software Implementation' }).waitFor(); await page.waitForFunction(() => document.querySelectorAll('article').length === 1); assert.equal(await page.locator('article').count(), 1);
-      await page.getByLabel('Search templates', { exact: true }).fill(''); await page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }).waitFor();
-      await page.getByLabel('Filter quotation templates', { exact: true }).click(); await page.getByRole('checkbox', { name: 'Filter by Software', exact: true }).check(); await fits(page, 'category filter', width);
-      await page.getByRole('button', { name: 'Close filters', exact: true }).click(); await page.waitForFunction(() => document.querySelectorAll('article').length === 1);
-      await page.getByLabel('Filter quotation templates', { exact: true }).click(); await page.getByRole('button', { name: 'Clear filters', exact: true }).click(); await page.getByRole('button', { name: 'Close filters', exact: true }).click(); await page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }).waitFor();
-      await page.getByRole('button', { name: 'New Quotation Template', exact: true }).click();
-      await page.getByLabel('Template Name', { exact: false }).fill('Saved Preview Template');
-      const quotationFields = [['Header / Company Information', 'organizationName'], ['Introduction / Message', 'firstName'], ['Footer / Terms', 'quotationNumber']];
-      for (const [label, key] of quotationFields) {
-        const editor = page.getByRole('dialog', { name: 'Create Quotation Template', exact: true });
-        const style = await templateVariablePicker(page, editor, editor.getByLabel(`Insert Variable into ${label}`, { exact: true }), editor.getByLabel(label, { exact: true }), key, `Quotation-create-${key}`, width);
-        assert.deepEqual(style, variableTriggerStyles[0], `${label}: shares Email/SMS variable trigger appearance`);
-      }
-      await fits(page, 'editor and variable picker', width); await page.screenshot({ path: resolve(output, `editor-${width}.png`) });
-      await page.getByRole('button', { name: 'Save Template', exact: true }).click(); await page.getByRole('heading', { name: 'Saved Preview Template' }).waitFor();
-      const savedCard = page.locator('article').filter({ has: page.getByRole('heading', { name: 'Saved Preview Template', level: 3 }) });
-      await savedCard.getByRole('button', { name: 'Preview', exact: true }).click(); await pdfReady(page, 'Quotation template PDF preview');
-      await fits(page, 'newly saved template preview', width); await page.screenshot({ path: resolve(output, `template-preview-${width}.png`) });
-      await page.getByRole('button', { name: 'Close sheet', exact: true }).click();
-      const [savedDownload] = await Promise.all([page.waitForEvent('download'), savedCard.getByRole('button', { name: 'Download PDF', exact: true }).click()]);
-      assert.equal(savedDownload.suggestedFilename(), 'Saved Preview Template.pdf'); assert.equal(pdfRequests, 5);
-      await page.getByRole('button', { name: 'Actions for Saved Preview Template' }).click(); await page.getByRole('menuitem', { name: 'Edit Template' }).click();
-      assert.equal(await page.getByLabel('Template Name', { exact: false }).inputValue(), 'Saved Preview Template');
-      for (const [label, key] of quotationFields) {
-        const editor = page.getByRole('dialog', { name: 'Edit Quotation Template', exact: true });
-        await templateVariablePicker(page, editor, editor.getByLabel(`Insert Variable into ${label}`, { exact: true }), editor.getByLabel(label, { exact: true }), key, `Quotation-edit-${key}`, width);
-      }
-      await page.getByLabel('Quotation Title', { exact: false }).fill('UPDATED QUOTATION'); await page.getByRole('button', { name: 'Cancel', exact: true }).click(); await page.getByRole('button', { name: 'Keep editing', exact: true }).click(); await page.getByRole('button', { name: 'Save Template', exact: true }).click();
-      await page.locator('article').filter({ has: page.getByRole('heading', { name: 'Standard Sales Quotation', level: 3 }) }).getByRole('button', { name: 'Use Template' }).click();
-      await page.getByLabel('Send To', { exact: false }).selectOption(recipientType);
-      await page.getByRole('combobox', { name: 'Recipient', exact: true }).click(); await page.getByRole('combobox', { name: 'Recipient', exact: true }).fill(selectedRecipient.firstName); await page.getByRole('option').filter({ hasText: `${selectedRecipient.firstName} ${selectedRecipient.lastName}` }).click();
-      await page.getByRole('button', { name: 'Next', exact: true }).click(); await page.getByText('Associated Deal is required.', { exact: true }).waitFor();
-      assert.equal(await page.getByRole('combobox', { name: 'Associated Deal', exact: true }).getAttribute('aria-required'), 'true');
-      await fits(page, 'required Deal validation', width);
-      await page.getByLabel('Associated Deal', { exact: false }).selectOption(emptyDeal.id); await page.getByRole('button', { name: 'Next', exact: true }).click();
-      await page.getByText('No product is associated with this Deal. Please select a Deal with an assigned product.', { exact: true }).waitFor();
-      assert.equal(await page.getByRole('table').count(), 0); await fits(page, 'missing Deal Product error and Back', width);
-      await page.getByRole('button', { name: 'Back', exact: true }).click(); await page.getByLabel('Associated Deal', { exact: false }).selectOption(deal.id); await page.getByRole('button', { name: 'Next', exact: true }).click();
-      await page.getByLabel('Quantity for Technical Service').waitFor(); assert.equal(await page.getByRole('button', { name: /Add Product|Remove Technical/ }).count(), 0);
-      await page.getByRole('cell', { name: 'Services', exact: true }).waitFor(); await page.getByRole('cell', { name: 'Setup and support', exact: true }).waitFor();
-      await page.getByLabel('Quantity for Technical Service').fill('1.5'); await page.getByRole('button', { name: 'Next', exact: true }).click(); await page.getByRole('alert').filter({ hasText: 'positive whole-number quantity' }).waitFor();
-      await page.getByLabel('Quantity for Technical Service').fill('3'); await fits(page, 'products and four-step progress', width); await page.screenshot({ path: resolve(output, `products-${width}.png`) });
-      await page.getByRole('button', { name: 'Next', exact: true }).click(); await page.getByLabel('Notes', { exact: true }).fill('Quotation preview notes'); await fits(page, 'quotation details', width);
-      const number = await page.getByLabel('Quotation Number', { exact: true }).inputValue();
-      await page.getByRole('button', { name: 'Back', exact: true }).click(); assert.equal(await page.getByLabel('Quantity for Technical Service').inputValue(), '3');
-      await page.getByRole('button', { name: 'Next', exact: true }).click(); assert.equal(await page.getByLabel('Notes', { exact: true }).inputValue(), 'Quotation preview notes'); assert.equal(await page.getByLabel('Quotation Number', { exact: true }).inputValue(), number);
-      await page.getByRole('button', { name: 'Next', exact: true }).click(); await pdfReady(page, 'Quotation PDF preview'); await fits(page, 'PDF preview actions', width); await page.screenshot({ path: resolve(output, `preview-${width}.png`) });
-      const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('dialog').getByRole('button', { name: 'Download PDF', exact: true }).click()]); assert.equal(download.suggestedFilename(), 'quotation.pdf');
-      await page.getByRole('button', { name: 'Send', exact: true }).click(); await page.getByRole('button', { name: 'Sent', exact: true }).waitFor(); assert.equal(sends, 1);
-      await page.getByRole('button', { name: 'Close', exact: true }).click();
-      if (width === 1440) for (const name of [...names, 'CCTV Quotation']) {
-        const card = page.locator('article').filter({ has: page.getByRole('heading', { name, exact: true, level: 3 }) });
-        const [file] = await Promise.all([page.waitForEvent('download'), card.getByRole('button', { name: 'Download PDF', exact: true }).click()]);
-        await file.saveAs(resolve(output, `${name.replaceAll(' ', '-')}.pdf`));
-        assert.equal(readFileSync(resolve(output, `${name.replaceAll(' ', '-')}.pdf`)).subarray(0, 5).toString(), '%PDF-');
-        await card.getByRole('button', { name: 'Preview', exact: true }).click(); await pdfReady(page, 'Quotation template PDF preview'); await page.getByRole('button', { name: 'Close sheet', exact: true }).click();
-        await card.getByRole('button', { name: 'Use Template', exact: true }).click(); await page.getByRole('combobox', { name: 'Associated Deal', exact: true }).waitFor();
-        await page.getByRole('button', { name: 'Cancel', exact: true }).click(); assertions.push(`${name}: existing Preview, Download and Use Template actions`);
-      }
-      templates = templates.filter(template => template.type !== 'Quotation');
-      await page.getByRole('button', { name: 'Refresh', exact: true }).click();
-      await page.getByText('No quotation templates found.', { exact: true }).waitFor();
-      await templateControls(page, 'Quotation', width);
+      assert.deepEqual(messageControlStyles[0], messageControlStyles[1], `${width}: Email/SMS template control styles match`);
+      assert.ok(templateRequests.every(query => !query.type || ['Email', 'SMS'].includes(query.type)));
       await taskDetails(page, width);
-      assert.deepEqual(errors, []); assertions.push(`${width}: Email/SMS creation access, create/edit/discard guard, new-template PDF preview/download, PDF error handling and request counts, cursor picker, recipient, Products, details, preview, download, single send`);
-      console.log(`${width}px: Email, SMS, and Quotation template preview checks passed`);
+      assert.deepEqual(errors, []); assertions.push(`${width}: three Campaign views on both routes; Email/SMS filtering, pagination, Preview, Use Template, creation access and cursor picker; Task Details`);
+      console.log(`${width}px: Campaign views and Email/SMS template preview checks passed`);
     } catch (error) {
       await page.screenshot({ path: resolve(output, `failure-${width}.png`), fullPage: true });
       throw error;
     } finally { await context.close(); }
   }
-  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ evidence: 'Production frontend with isolated API fixtures; database and Gmail transport checks are separate.', assertions, passed: assertions.length }, null, 2));
+  writeFileSync(resolve(output, 'results.json'), JSON.stringify({ evidence: 'Production frontend with isolated API fixtures; no database writes or provider sends.', assertions, passed: assertions.length }, null, 2));
   rmSync(resolve(output, 'failure.json'), { force: true });
   console.log(JSON.stringify({ passed: assertions.length, output }));
 } catch (error) { writeFileSync(resolve(output, 'failure.json'), JSON.stringify({ message: error.message, stack: error.stack, assertions }, null, 2)); throw error; }

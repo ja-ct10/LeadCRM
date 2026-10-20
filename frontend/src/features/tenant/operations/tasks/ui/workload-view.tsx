@@ -2,6 +2,7 @@
 
 import React, { useMemo } from 'react';
 import { Users } from 'lucide-react';
+import { taskDisplayStatus } from '@leadcrm/shared';
 import type { Task, User } from '@/store/types';
 
 interface WorkloadViewProps {
@@ -18,17 +19,16 @@ interface UserWorkload {
 }
 
 export default function WorkloadView({ tasks, users }: WorkloadViewProps) {
-  const today = new Date();
 
   const workloads = useMemo<UserWorkload[]>(() => {
     return users
       .map(u => {
         const userTasks = tasks.filter(
-          t => t.assignedUserId === u.id && t.status !== 'cancelled' && t.status !== 'completed',
+          t => !t.isArchived && t.assignedUserId === u.id && t.status !== 'cancelled' && t.status !== 'completed',
         );
-        const pending    = userTasks.filter(t => t.status === 'pending').length;
-        const inProgress = userTasks.filter(t => t.status === 'in_progress').length;
-        const overdue    = userTasks.filter(t => t.dueDate && new Date(t.dueDate) < today).length;
+        const pending    = userTasks.filter(t => taskDisplayStatus(t) === 'pending').length;
+        const inProgress = userTasks.filter(t => taskDisplayStatus(t) === 'in_progress').length;
+        const overdue    = userTasks.filter(t => taskDisplayStatus(t) === 'overdue').length;
         const total      = userTasks.length;
         return { user: u, pending, inProgress, overdue, total };
       })

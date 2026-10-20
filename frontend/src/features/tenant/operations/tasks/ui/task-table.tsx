@@ -3,7 +3,6 @@ import { getTableSortFields } from "@/shared/constants/column-registries";
 import type { ReactNode } from "react";
 import {
   TASK_COLUMN_DEFINITIONS,
-  TASK_STATUS_LABELS,
   isTaskOverdue,
   type ColumnConfigItem,
   type TaskRecord,
@@ -14,10 +13,11 @@ import {
   useDataGridColumns,
   type CellRendererMap,
 } from "@/shared/components/data-grid";
+import { TaskStatusBadge } from './task-status';
 import { Eye, Edit, Archive } from "lucide-react";
 import { Button } from "@/shared/components/ui/button";
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
-import { isTaskOwner, taskRecordHref, taskRecordOptions } from '../task-relations';
+import { canManageTask, taskRecordHref, taskRecordOptions } from '../task-relations';
 import Link from 'next/link';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -105,7 +105,7 @@ export function TaskTable({
   const cell = (task: TaskRecord, id: string): ReactNode => {
     switch (id) {
       case "action":
-        return isTaskOwner(task, user?.id) && (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
+        return canManageTask(task, user) && (task.status === "completed" ? canEdit : canComplete) && !task.isArchived ? (
           <Button
             size="sm"
             variant="outline"
@@ -133,9 +133,7 @@ export function TaskTable({
         );
       case "status":
         return (
-          <span className="rounded-full bg-secondary px-2 py-1 text-xs">
-            {TASK_STATUS_LABELS[task.status]}
-          </span>
+          <TaskStatusBadge task={task} />
         );
       case "priority":
         return (
@@ -235,14 +233,14 @@ export function TaskTable({
           icon: <Eye size={14} />,
           onClick: () => onOpen(task),
         },
-        ...(isTaskOwner(task, user?.id) && canEdit && !task.isArchived ? [{
+        ...(canManageTask(task, user) && canEdit && !task.isArchived ? [{
           id: "edit",
           label: "Edit",
           icon: <Edit size={14} />,
           disabled: busy || !canEdit || !!task.isArchived,
           onClick: () => onEdit(task),
         }] : []),
-        ...(isTaskOwner(task, user?.id) && canArchive && !task.isArchived ? [{
+        ...(canManageTask(task, user) && canArchive && !task.isArchived ? [{
           id: "archive",
           label: "Archive",
           icon: <Archive size={14} />,

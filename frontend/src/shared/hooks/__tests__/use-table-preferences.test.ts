@@ -22,14 +22,14 @@ it('persists default restoration as null while indicating the actual server defa
   await waitFor(() => expect(mocks.api.saveSort).toHaveBeenCalledWith('leads', { field: 'email', direction: 'asc' }));
   act(() => result.current.setSort(null));
   await waitFor(() => expect(mocks.api.saveSort).toHaveBeenLastCalledWith('leads', null));
-  expect(result.current.sort).toEqual({ field: 'createdAt', direction: 'desc' });
+  expect(result.current.sort).toEqual({ field: 'lastSalesActivityAt', direction: 'desc' });
 });
 it('rolls back a failed sort and allows retry through the same menu action', async () => {
   const { result } = await loaded();
   mocks.api.saveSort.mockRejectedValueOnce(new Error('Offline'));
   act(() => result.current.setSort({ field: 'email', direction: 'asc' }));
   await waitFor(() => expect(mocks.toast).toHaveBeenCalled());
-  expect(result.current.sort).toEqual({ field: 'createdAt', direction: 'desc' });
+  expect(result.current.sort).toEqual({ field: 'lastSalesActivityAt', direction: 'desc' });
   act(() => result.current.setSort({ field: 'email', direction: 'asc' }));
   await waitFor(() => expect(mocks.api.saveSort).toHaveBeenCalledTimes(2));
   expect(result.current.sort).toEqual({ field: 'email', direction: 'asc' });
@@ -44,5 +44,12 @@ it('serializes writes and drops queued work from a former tenant', async () => {
   await waitFor(() => expect(result.current.isLoading).toBe(false));
   await act(async () => resolve());
   expect(mocks.api.saveSort).toHaveBeenCalledTimes(1);
-  expect(result.current.sort).toEqual({ field: 'createdAt', direction: 'desc' });
+  expect(result.current.sort).toEqual({ field: 'lastSalesActivityAt', direction: 'desc' });
+});
+
+it.each(['leads', 'contacts'])('preserves an explicit saved %s sort', async module => {
+  mocks.api.getTablePreferences.mockResolvedValue({ data: { sort: { field: 'createdAt', direction: 'asc' } } });
+  const { result } = renderHook(() => useTablePreferences(module));
+  await waitFor(() => expect(result.current.isLoading).toBe(false));
+  expect(result.current.sort).toEqual({ field: 'createdAt', direction: 'asc' });
 });

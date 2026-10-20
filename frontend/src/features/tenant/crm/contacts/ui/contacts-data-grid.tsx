@@ -232,7 +232,7 @@ export function ContactsDataGrid({
       selectedIds={selectedIds}
       onSelectionChange={onSelectionChange}
       sortingMode="external"
-      sortFields={getTableSortFields('contacts')} defaultSort={{ field: 'createdAt', direction: 'desc' }}
+      sortFields={getTableSortFields('contacts')} defaultSort={{ field: 'lastSalesActivityAt', direction: 'desc' }}
       onSortReset={() => onSortChange?.(null)}
       sort={sort}
       onSortChange={onSortChange}

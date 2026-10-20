@@ -27,6 +27,8 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
   if (!types.length) return [];
   const actor = crmActor.getStore();
   const taskScope = actor && types.includes('Task') ? taskReadWhere(await (actor.readPolicy ??= resolveCrmActor(prisma, actor))) : undefined;
+  const taskAssignees = typeof taskScope?.assignedUserId === 'string' ? [taskScope.assignedUserId]
+    : taskScope?.assignedUserId && typeof taskScope.assignedUserId === 'object' ? taskScope.assignedUserId.in as string[] : undefined;
   const terms = query.search?.trim().split(/\s+/).filter(Boolean) ?? [];
   const sources = types.map(type => {
     const definition = definitions[type];
@@ -46,7 +48,8 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
           ${definition.deletedAt ? Prisma.sql`AND r."deletedAt" IS NULL` : Prisma.empty}
         ORDER BY a."createdAt" DESC, a."id" ASC LIMIT 1) history ON true`}
       WHERE r."tenantId" = ${tenantId} AND ${archiveCondition}
-        ${type === 'Task' && taskScope?.assignedUserId ? Prisma.sql`AND r."assignedUserId" = ${taskScope.assignedUserId as string}` : Prisma.empty}
+        ${type === 'Task' && taskAssignees ? taskAssignees.length
+          ? Prisma.sql`AND r."assignedUserId" IN (${Prisma.join(taskAssignees)})` : Prisma.sql`AND false` : Prisma.empty}
         ${search.length ? Prisma.sql`AND ${Prisma.join(search, ' AND ')}` : Prisma.empty}`;
   });
   const direction = query.sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;

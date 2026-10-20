@@ -56,7 +56,7 @@ router.use(authorizeArchivedQuery);
 for (const module of ['leads', 'contacts', 'accounts', 'deals'] as const) router.get(`/${module}/export`, authorize(`${module}.view`), exportCrm(module));
 router.get('/record-access', async (req, res, next) => {
   try {
-    const { permissions: _permissions, taskAssignmentRestricted: _taskScope, ...policy } = await resolveCrmActor(prisma, req.user!);
+    const { permissions: _permissions, taskAssignmentRestricted: _taskScope, taskManager: _taskManager, taskTeamUserIds: _taskTeam, ...policy } = await resolveCrmActor(prisma, req.user!);
     res.set('Cache-Control', 'no-store').json({ success: true, data: policy });
   } catch (error) { next(error); }
 });

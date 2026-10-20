@@ -1,6 +1,7 @@
 import { normalizeCrmStatus, type LeadRead, type LeadUserSummary } from '@leadcrm/shared';
 import type { Lead as StoredLead } from '@prisma/client';
 type LeadProjectionSource = Omit<StoredLead, 'companyFromAccount'> & {
+  lastSalesActivityAt?: Date;
   assignedUser?: LeadUserSummary | null; account?: { id: string; name: string } | null;
   createdBy?: LeadUserSummary | null; updatedBy?: LeadUserSummary | null;
 };
@@ -15,6 +16,7 @@ export function serializeLead(lead: LeadProjectionSource): LeadRead {
     accountId: lead.accountId, assignedUserId: lead.assignedUserId, status: normalizeCrmStatus(lead.status), manualCancellation: lead.manualCancellation,
     firstStaffOutreachAt: lead.firstStaffOutreachAt?.toISOString() ?? null,
     createdAt: lead.createdAt.toISOString(), updatedAt: lead.updatedAt.toISOString(),
+    ...(lead.lastSalesActivityAt ? { lastSalesActivityAt: lead.lastSalesActivityAt.toISOString() } : {}),
     createdById: lead.createdById, updatedById: lead.updatedById, lastStatusChangedAt: lead.lastStatusChangedAt?.toISOString() ?? null,
     contactId: lead.contactId, convertedAt: lead.convertedAt?.toISOString() ?? null, convertedById: lead.convertedById,
     isArchived: lead.isArchived, deletedAt: lead.deletedAt?.toISOString() ?? null, deletedBy: lead.deletedBy,

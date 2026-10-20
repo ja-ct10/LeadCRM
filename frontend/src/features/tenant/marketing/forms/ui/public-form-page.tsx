@@ -1,9 +1,10 @@
 'use client';
 import { useEffect, useState, useRef } from 'react';
-import { FORM_TRACKING_KEYS, validateFormValues, type PublicFormDefinition } from '@leadcrm/shared';
+import { FORM_TRACKING_KEYS, publicSubmissionContent, validateFormValues, type PublicFormDefinition } from '@leadcrm/shared';
 import { FormInput } from './form-input';
 export default function PublicFormPage({ publicId }: { publicId: string }) {
-  const requestId = useRef<string | undefined>(undefined);
+  const receipt = useRef<{ content: string; requestId: string } | undefined>(undefined);
+  const submitting = useRef(false);
   const [form, setForm] = useState<PublicFormDefinition | null>(null), [loading, setLoading] = useState(true);
   const [error, setError] = useState(''), [errors, setErrors] = useState<Record<string, string>>({});
   const [values, setValues] = useState<Record<string, string | boolean | string[]>>({}), [website, setWebsite] = useState('');
@@ -16,19 +17,20 @@ export default function PublicFormPage({ publicId }: { publicId: string }) {
     return () => controller.abort();
   }, [publicId, retry]);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); if (!form || busy) return;
+    e.preventDefault(); if (!form || submitting.current) return;
     const checked = validateFormValues(form.fields, values); setErrors(checked.errors); setError('');
     if (Object.keys(checked.errors).length) { document.getElementById('input-' + Object.keys(checked.errors)[0])?.focus(); return; }
-    setBusy(true);
-    requestId.current ??= crypto.randomUUID();
+    setBusy(true); submitting.current = true;
     try {
       const query = new URLSearchParams(window.location.search), tracking: Record<string, string> = {};
       if (form.trackUrlParams) for (const key of FORM_TRACKING_KEYS) { const v = query.get(key); if (v) tracking[key] = v.slice(0, 200); }
-      const r = await fetch('/api/proxy/public/forms/' + encodeURIComponent(publicId) + '/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: requestId.current, version: form.version, values, tracking, website }) });
+      const content = publicId + publicSubmissionContent(form.version, checked.values, tracking);
+      if (receipt.current?.content !== content) receipt.current = { content, requestId: crypto.randomUUID() };
+      const r = await fetch('/api/proxy/public/forms/' + encodeURIComponent(publicId) + '/submissions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ requestId: receipt.current.requestId, version: form.version, values, tracking, website }) });
       const body = await r.json();
       if (!r.ok) { if (body.fieldErrors) setErrors(body.fieldErrors); throw new Error(typeof body.error === 'string' ? body.error : body.error?.message || 'Submission failed. Please try again.'); }
       setDone(true);
-    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.'); } finally { setBusy(false); }
+    } catch (err) { setError(err instanceof Error ? err.message : 'Unable to submit. Please retry.'); } finally { setBusy(false); submitting.current = false; }
   }
   return <main className="min-h-[var(--app-viewport-height)] bg-slate-100 px-3 py-6 sm:p-8 text-slate-900">
     <div className="w-full max-w-2xl mx-auto min-w-0">

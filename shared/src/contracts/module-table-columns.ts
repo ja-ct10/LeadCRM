@@ -26,7 +26,7 @@ export const CONTACTS_TABLE_COLUMNS: ColumnDefinition[] = [
   { id: 'accountId', label: 'Account', required: false, defaultVisible: false, defaultOrder: 8, group: 'Organization', priority: 'low' },
   { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 9, group: 'System', priority: 'low' },
 ];
-export const CONTACTS_TABLE_SORT_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt'];
+export const CONTACTS_TABLE_SORT_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'lastSalesActivityAt'];
 
 export const DEALS_TABLE_COLUMNS: ColumnDefinition[] = [
   { id: 'title', label: 'Deal Name', required: true, defaultVisible: true, defaultOrder: 0, group: 'Deal Info', priority: 'required' },

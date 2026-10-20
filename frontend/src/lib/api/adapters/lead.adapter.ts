@@ -12,6 +12,7 @@ export function toFrontendLead(lead: LeadRead): Lead {
     account: lead.account ?? undefined,
     productInterestIds: lead.productInterestIds ?? [], productInterests: lead.productInterest ?? [], productInterest: lead.productInterest ?? [],
     status: normalizeCrmStatus(lead.status), createdAt: lead.createdAt, updatedAt: lead.updatedAt,
+    lastSalesActivityAt: lead.lastSalesActivityAt,
     createdById: lead.createdById ?? undefined, updatedById: lead.updatedById ?? undefined,
     createdByUser: lead.createdBy ?? undefined, updatedByUser: lead.updatedBy ?? undefined,
     firstStaffOutreachAt: lead.firstStaffOutreachAt,

@@ -4,7 +4,9 @@ import {
   TASK_STATUSES,
   taskAssociationIds,
   TaskQuerySchema,
-  TaskStatusSchema,
+  StoredTaskStatusSchema,
+  taskDisplayStatus,
+  isTaskManagerRole,
   isTaskOverdue,
   isTaskAssignmentRestrictedRole,
   type TaskListQuery,
@@ -17,7 +19,7 @@ import { tasksApi } from "@/shared/services/tasks.api";
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { matchesSearch } from '@/shared/utils/search';
 
-type TaskQueryActor = { id: string; tenantId: string; role: string };
+type TaskQueryActor = { id: string; tenantId: string; role: string; taskTeamUserIds?: string[] };
 
 export function localTaskQuery(
   tasks: Task[],
@@ -25,13 +27,15 @@ export function localTaskQuery(
   actor?: TaskQueryActor,
 ): { page: TaskPage; summary: TaskSummary } {
   const query = TaskQuerySchema.parse(input);
-  const filtered = tasks
+  const now = Date.now();
+  const eligible = tasks
     .filter((task) => {
-      const status = TaskStatusSchema.parse(task.status);
+      const status = StoredTaskStatusSchema.parse(task.status);
       return (
-        (!actor || task.tenantId === actor.tenantId && (!isTaskAssignmentRestrictedRole(actor.role) || task.assignedUserId === actor.id)) &&
+        (!actor || task.tenantId === actor.tenantId && (isTaskManagerRole(actor.role)
+          ? (actor.taskTeamUserIds ?? [actor.id]).includes(task.assignedUserId)
+          : !isTaskAssignmentRestrictedRole(actor.role) || task.assignedUserId === actor.id)) &&
         Boolean(task.isArchived) === query.archived &&
-        (!query.status || status === query.status) &&
         (!query.priority || task.priority === query.priority) &&
         (!query.assignedUserId ||
           task.assignedUserId === query.assignedUserId) &&
@@ -46,14 +50,14 @@ export function localTaskQuery(
         (query.state !== "active" ||
           !["completed", "cancelled"].includes(status)) &&
         (query.state !== "completed" || status === "completed") &&
-        (!query.overdue || isTaskOverdue(task)) &&
         (!query.dueFrom ||
           Date.parse(task.dueDate) >= Date.parse(query.dueFrom)) &&
         (!query.dueTo || Date.parse(task.dueDate) < Date.parse(query.dueTo)) &&
         matchesSearch(query.search ?? '', task.title, task.description)
       );
     })
-    .map((task) => ({ ...task, status: TaskStatusSchema.parse(task.status) }));
+    .map((task) => ({ ...task, status: StoredTaskStatusSchema.parse(task.status), displayStatus: taskDisplayStatus(task, now) }));
+  const filtered = eligible.filter(task => (!query.status || task.displayStatus === query.status) && (!query.overdue || task.displayStatus === 'overdue'));
   filtered.sort((a, b) => {
     const aValue = a[query.sortBy] ?? "",
       bValue = b[query.sortBy] ?? "";
@@ -65,7 +69,7 @@ export function localTaskQuery(
   const byStatus = Object.fromEntries(
     TASK_STATUSES.map((status) => [
       status,
-      filtered.filter((task) => task.status === status).length,
+      filtered.filter((task) => task.displayStatus === status).length,
     ]),
   ) as TaskSummary["byStatus"];
   const active = filtered.filter(
@@ -81,9 +85,8 @@ export function localTaskQuery(
       return {
         assignedUserId,
         name: person ? `${person.firstName} ${person.lastName}` : "Team member",
-        pending: rows.filter((task) => task.status === "pending").length,
-        inProgress: rows.filter((task) => task.status === "in_progress").length,
-        blocked: rows.filter((task) => task.status === "blocked").length,
+        pending: rows.filter((task) => task.displayStatus === "pending").length,
+        inProgress: rows.filter((task) => task.displayStatus === "in_progress").length,
         overdue: rows.filter((task) => isTaskOverdue(task)).length,
         total: rows.length,
       };
@@ -108,6 +111,9 @@ export function localTaskQuery(
       completed: byStatus.completed,
       overdue: active.filter((task) => isTaskOverdue(task)).length,
       byStatus,
+      evaluatedAt: new Date(now).toISOString(),
+      nextStatusChangeAt: eligible.filter(task => !task.isArchived && !['completed', 'cancelled'].includes(task.status) && Date.parse(task.dueDate) >= now)
+        .map(task => task.dueDate).sort()[0] ?? null,
       workload,
     },
   };

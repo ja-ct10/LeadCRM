@@ -22,6 +22,8 @@ import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
 import { DataGrid, type DataGridColumnDef } from '@/shared/components/data-grid';
 import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { matchesSearch } from '@/shared/utils/search';
+import { Badge } from '@/shared/components/ui/badge';
+import { GroupHeadDialog, GroupMemberIdentity } from './group-head-dialog';
 
 interface GroupsSubTabProps {
   tenantUsers: User[];
@@ -43,10 +45,12 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const [loadError, setLoadError] = useState('');
   const loadingRef = useRef(false);
   const reloadPending = useRef(false);
+  const mutationGeneration = useRef(0);
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [modal, setModal] = useState<'create' | 'rename' | 'members' | null>(null);
+  const [headDialogOpen, setHeadDialogOpen] = useState(false);
   const [name, setName] = useState('');
   const [nameError, setNameError] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -56,44 +60,56 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
   const [saveError, setSaveError] = useState('');
   const { confirm, close, dialogProps } = useConfirmDialog();
   const active = groups.find(group => group.id === activeId);
-  const loadGroups = useCallback(async () => {
-    if (loadingRef.current) { reloadPending.current = true; return; }
+  const loadGroups = useCallback(async (): Promise<void> => {
+    if (loadingRef.current || busyRef.current) { reloadPending.current = true; return; }
     loadingRef.current = true; setLoading(true); setLoadError('');
+    let generation = mutationGeneration.current;
     try {
       do {
         reloadPending.current = false;
+        generation = mutationGeneration.current;
         const result = await groupsApi.getAll();
         if (!mounted.current) return;
-        setGroups(result.data); setLoaded(true);
-      } while (reloadPending.current && mounted.current);
+        if (generation === mutationGeneration.current && !busyRef.current) {
+          setGroups(result.data); setLoaded(true);
+        } else reloadPending.current = true;
+      } while (reloadPending.current && mounted.current && !busyRef.current);
     }
-    catch (error) { if (mounted.current) { setLoadError(errorMessage(error)); if ([401, 403].includes((error as { status?: number }).status ?? 0)) { setGroups([]); setLoaded(false); } } }
-    finally { loadingRef.current = false; if (mounted.current) setLoading(false); }
+    catch (error) { if (mounted.current) {
+      if ([401, 403].includes((error as { status?: number }).status ?? 0)) { reloadPending.current = false; setGroups([]); setLoaded(false); setLoadError(errorMessage(error)); }
+      else if (generation === mutationGeneration.current && !busyRef.current) setLoadError(errorMessage(error));
+      else reloadPending.current = true;
+    } }
+    finally {
+      loadingRef.current = false;
+      if (mounted.current) {
+        setLoading(false);
+        if (reloadPending.current && !busyRef.current) void loadGroups();
+      }
+    }
   }, []);
   useEffect(() => { if (!USE_MOCK_DATA) void loadGroups(); }, [loadGroups]);
   useEffect(() => { const changed = () => { if (!USE_MOCK_DATA) void loadGroups(); }; window.addEventListener('leadcrm:groups-changed', changed); return () => window.removeEventListener('leadcrm:groups-changed', changed); }, [loadGroups]);
 
   const mutate = async (action: () => Promise<void>, propagateError = false) => {
     if (busyRef.current) return;
+    mutationGeneration.current++;
     busyRef.current = true; setBusy(true); setSaveError('');
     try { await action(); }
     catch (error) { const message = errorMessage(error); setSaveError(message); if (propagateError) throw new Error(message); toast.error(message); }
-    finally { busyRef.current = false; setBusy(false); }
+    finally {
+      busyRef.current = false; setBusy(false);
+      if (reloadPending.current && !USE_MOCK_DATA) void loadGroups();
+    }
   };
   const openModal = (value: typeof modal) => {
     setModal(value); setName(value === 'rename' ? active?.name ?? '' : '');
     setNameError(''); setSaveError(''); setSelectedIds([]); setUserSearch('');
   };
   const addMembers = async (groupId: string, ids: string[]) => {
-    const results = await Promise.allSettled([...new Set(ids)].map(id => groupsApi.addMember(groupId, id)));
-    const added = ids.filter((_, index) => results[index]?.status === 'fulfilled');
-    if (added.length) toast.success('Member added successfully.');
-    await loadGroups();
-    const failed = results.find(result => result.status === 'rejected');
-    if (failed?.status === 'rejected') {
-      setSelectedIds(ids.filter(id => !added.includes(id)));
-      throw new Error(errorMessage(failed.reason));
-    }
+    const updated = (await groupsApi.addMembers(groupId, [...new Set(ids)])).data;
+    setGroups(previous => previous.map(group => group.id === groupId ? updated : group));
+    setLoaded(true); setSelectedIds([]);
   };
   const save = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -103,16 +119,17 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
       if (modal === 'create' && canCreate && parsed.success) {
         const created = (await groupsApi.create(parsed.data)).data;
         setGroups(previous => [...previous, created]); setLoaded(true); setActiveId(created.id); setMemberSearch('');
-        toast.success('Group created successfully.');
         // Creation is committed even if an optional member operation fails.
         setModal('members');
         if (canManageMembers && selectedIds.length) await addMembers(created.id, selectedIds);
+        toast.success('Group created successfully.');
       } else if (modal === 'rename' && active && canManage && parsed.success) {
         const updated = (await groupsApi.update(active.id, parsed.data)).data;
         setGroups(previous => previous.map(group => group.id === active.id ? updated : group));
         toast.success('Group name updated');
       } else if (modal === 'members' && active && canManageMembers) {
-        await addMembers(active.id, selectedIds.filter(id => !active.members.some(member => member.userId === id)));
+        await addMembers(active.id, selectedIds);
+        toast.success('Member added successfully.');
       }
       setModal(null);
     });
@@ -145,14 +162,28 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
     if (canManageMembers && group.members.length) await addMembers(created.id, group.members.map(member => member.userId));
     toast.success('Group duplicated');
   });
+  const saveHead = (userId: string | null, propagateError = false) => {
+    if (!active || !canManageMembers) return Promise.resolve();
+    const groupId = active.id;
+    return mutate(async () => {
+      const updated = (await groupsApi.setHead(groupId, userId)).data;
+      setGroups(previous => previous.map(group => group.id === groupId ? updated : group));
+      setHeadDialogOpen(false); close();
+      toast.success(userId === null ? 'Group Head cleared.' : 'Group Head saved.');
+    }, propagateError);
+  };
+  const requestClearHead = () => confirm({ title: 'Clear Group Head?', description: 'The group will have no assigned head. Group memberships and permissions will stay the same.',
+    confirmLabel: 'Clear Head', variant: 'destructive', onConfirm: () => saveHead(null, true) });
   const visibleGroups = groups.filter(group => matchesSearch(search, group.name));
   const members = active?.members ?? [];
+  const head = members.find(member => member.isHead);
+  const canReadAvatars = userCan('users', 'canView');
   const visibleMembers = members.filter(member => matchesSearch(memberSearch, memberName(member.user), member.user.email, member.user.role));
   const availableUsers = tenantUsers.filter(user => (modal === 'create' || !members.some(member => member.userId === user.id)) &&
     matchesSearch(userSearch, user.firstName, user.lastName, user.email, user.role));
   const columns: DataGridColumnDef<TenantGroupMember>[] = [
     { id: 'name', header: `${members.length} Member${members.length === 1 ? '' : 's'}`, accessor: member => memberName(member.user), width: 250,
-      cell: (_, member) => <AvatarCell name={memberName(member.user)} initials={initials(member.user)} /> },
+      cell: (_, member) => <div className="flex min-w-0 items-center gap-2"><div className="min-w-0"><AvatarCell name={memberName(member.user)} initials={initials(member.user)} /></div>{member.isHead && <Badge variant="secondary" className="shrink-0 border-primary/20 bg-primary/10 text-primary">Head</Badge>}</div> },
     { id: 'role', header: 'Role', accessor: member => member.user.role, width: 180 },
     { id: 'email', header: 'Email', accessor: member => member.user.email, width: 260 },
     ...(canManageMembers ? [{ id: 'actions', header: 'Actions', accessor: () => '', width: 80,
@@ -175,9 +206,14 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
           </DropdownMenuContent></DropdownMenu>}
         </div>
       </div>
+      <div className="flex min-w-0 flex-wrap items-center gap-3 text-sm" aria-label="Group Head">
+        <span className="font-medium text-muted-foreground">Group Head:</span>
+        {head ? <GroupMemberIdentity user={head.user} canReadAvatars={canReadAvatars} /> : <span className="text-muted-foreground">Not assigned</span>}
+        {canManageMembers && <Button variant="outline" size="sm" disabled={busy} onClick={() => { setSaveError(''); setHeadDialogOpen(true); }}>{head && <Edit2 size={12} />}{head ? 'Change Head' : 'Assign Head'}</Button>}
+      </div>
       <div className="flex flex-wrap items-center gap-2">
         <ModuleSearchInput value={memberSearch} onChange={setMemberSearch} placeholder="Search members..." />
-        {canManageMembers && <Button variant="outline" size="sm" className="ml-auto" disabled={busy} onClick={() => openModal('members')}><Plus size={14} />Add Members</Button>}
+        {canManageMembers && <Button size="sm" className="ml-auto" disabled={busy} onClick={() => openModal('members')}><Plus size={14} />Add Members</Button>}
       </div>
       <DataGrid ariaLabel="Group members" columns={columns} data={visibleMembers} getRowId={member => member.id} height="auto" emptyMessage={members.length ? 'No members match your search.' : canManageMembers ? 'No members yet. Use Add Members to add users to this group.' : 'No members yet.'} />
     </> : <>
@@ -189,7 +225,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
             <span className="rounded-lg bg-blue-50 dark:bg-blue-950/30 p-2 text-blue-500"><Users size={16} /></span>
             <span className="min-w-0"><span className="block break-words text-sm font-semibold text-slate-900 dark:text-white">{group.name}{group.isDefault && <span className="ml-2 text-xs font-normal text-muted-foreground">Default</span>}</span><span className="text-xs text-slate-500">{group.members.length} member{group.members.length === 1 ? '' : 's'}</span></span>
           </button>
-          {canDelete && <Button variant="ghost" size="icon" className="shrink-0" aria-label={`Delete ${group.name}`} title={group.isDefault ? 'The default Sales group cannot be deleted.' : group.members.length ? 'Remove all members from this group before deleting it.' : 'Delete group'} disabled={busy || group.isDefault} onClick={() => requestDelete(group)}><Trash2 size={14} /></Button>}
+          {canDelete && <Button variant="ghost" size="icon" className="shrink-0 text-destructive dark:text-destructive hover:bg-destructive/10 hover:text-destructive dark:hover:text-destructive focus-visible:bg-destructive/10" aria-label={`Delete ${group.name}`} title={group.isDefault ? 'The default Sales group cannot be deleted.' : group.members.length ? 'Remove all members from this group before deleting it.' : 'Delete group'} disabled={busy || group.isDefault} onClick={() => requestDelete(group)}><Trash2 size={14} /></Button>}
         </div>)}
         {!visibleGroups.length && <div className="p-8 text-center text-sm text-slate-500"><Users size={28} className="mx-auto mb-3" /><p>{groups.length ? 'No groups match your search.' : 'No groups yet.'}</p>{!groups.length && canCreate && <Button size="sm" className="mt-3" onClick={() => openModal('create')}><Plus size={14} />Create Group</Button>}</div>}
       </Card>}
@@ -222,6 +258,7 @@ export function GroupsSubTab({ tenantUsers, renderHeader }: GroupsSubTabProps): 
         </form>
       </DialogContent>
     </Dialog>
+    {active && headDialogOpen && canManageMembers && <GroupHeadDialog key={active.id} group={active} busy={busy} error={saveError} canReadAvatars={canReadAvatars} onClose={() => setHeadDialogOpen(false)} onSave={userId => { void saveHead(userId); }} onClear={requestClearHead} />}
     <ConfirmActionDialog {...dialogProps} />
   </div>;
 }

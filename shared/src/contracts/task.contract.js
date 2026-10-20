@@ -1,27 +1,32 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TASK_COLUMN_DEFINITIONS = exports.TaskOptionsQuerySchema = exports.TaskBulkSchema = exports.TaskQuerySchema = exports.UpdateTaskSchema = exports.CreateTaskSchema = exports.TASK_LINK_KINDS = exports.TaskStatusSchema = exports.TASK_STATUS_LABELS = exports.TASK_STATUSES = void 0;
+exports.TASK_COLUMN_DEFINITIONS = exports.TaskOptionsQuerySchema = exports.TaskBulkSchema = exports.TaskQuerySchema = exports.UpdateTaskSchema = exports.CreateTaskSchema = exports.TASK_LINK_KINDS = exports.TaskDisplayStatusSchema = exports.StoredTaskStatusSchema = exports.TaskStatusSchema = exports.TASK_STATUS_LABELS = exports.TASK_STATUSES = exports.TASK_MANUAL_STATUSES = void 0;
 exports.taskAssociationIds = taskAssociationIds;
 exports.isTaskAssignmentRestrictedRole = isTaskAssignmentRestrictedRole;
+exports.isTaskManagerRole = isTaskManagerRole;
 exports.isTaskOverdue = isTaskOverdue;
+exports.taskDisplayStatus = taskDisplayStatus;
 exports.taskDateRange = taskDateRange;
 exports.taskAssociationPatch = taskAssociationPatch;
 const zod_1 = require("zod");
-exports.TASK_STATUSES = [
+exports.TASK_MANUAL_STATUSES = [
     "pending",
     "in_progress",
-    "blocked",
     "completed",
     "cancelled",
 ];
+exports.TASK_STATUSES = ["pending", "in_progress", "completed", "overdue", "cancelled"];
 exports.TASK_STATUS_LABELS = {
     pending: "To do",
     in_progress: "In progress",
-    blocked: "Blocked",
     completed: "Completed",
+    overdue: "Overdue",
     cancelled: "Cancelled",
 };
-exports.TaskStatusSchema = zod_1.z.preprocess((value) => (value === "in-progress" ? "in_progress" : value), zod_1.z.enum(exports.TASK_STATUSES));
+exports.TaskStatusSchema = zod_1.z.preprocess((value) => (value === "in-progress" ? "in_progress" : value), zod_1.z.enum(exports.TASK_MANUAL_STATUSES));
+/** Legacy storage is readable without rewriting history or accepting retired writes. */
+exports.StoredTaskStatusSchema = zod_1.z.preprocess(value => value === "blocked" ? "pending" : value, exports.TaskStatusSchema);
+exports.TaskDisplayStatusSchema = zod_1.z.preprocess(value => value === "in-progress" ? "in_progress" : value, zod_1.z.enum(exports.TASK_STATUSES));
 const recordId = zod_1.z.string().trim().min(1).max(128);
 exports.TASK_LINK_KINDS = ["lead", "contact", "deal", "account"];
 const linkIds = zod_1.z
@@ -70,7 +75,11 @@ const taskFields = zod_1.z.object({
     accountIds: linkIds.optional(),
 });
 exports.CreateTaskSchema = taskFields
-    .extend({ requestId: zod_1.z.string().uuid().optional() })
+    .extend({
+    requestId: zod_1.z.string().uuid().optional(),
+    status: zod_1.z.literal("pending").default("pending"),
+    assignedUserId: recordId.optional(),
+})
     .strict()
     .superRefine((data, ctx) => {
     validateDealWrites(data, ctx);
@@ -97,7 +106,7 @@ exports.TaskQuerySchema = zod_1.z
     .object({
     page: zod_1.z.coerce.number().int().min(1).max(1000000).default(1),
     limit: zod_1.z.coerce.number().int().min(1).max(100).default(25),
-    status: exports.TaskStatusSchema.optional(),
+    status: exports.TaskDisplayStatusSchema.optional(),
     priority: zod_1.z.enum(["Low", "Medium", "High"]).optional(),
     state: zod_1.z.enum(["all", "active", "completed"]).default("all"),
     assignedUserId: recordId.optional(),
@@ -161,11 +170,17 @@ exports.TaskOptionsQuerySchema = zod_1.z
 function isTaskAssignmentRestrictedRole(role) {
     return ['salesagent', 'salesrepresentative'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
 }
+function isTaskManagerRole(role) {
+    return ['salesmanager', 'headofsales'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
+}
 function isTaskOverdue(task, now = Date.now()) {
     return (!task.isArchived &&
         !["completed", "cancelled"].includes(task.status) &&
         !!task.dueDate &&
         Date.parse(task.dueDate) < now);
+}
+function taskDisplayStatus(task, now = Date.now()) {
+    return isTaskOverdue(task, now) ? "overdue" : exports.StoredTaskStatusSchema.parse(task.status);
 }
 /** Task pickers and calendar filters share the workspace's Manila timezone. */
 function taskDateRange(period, now = new Date()) {

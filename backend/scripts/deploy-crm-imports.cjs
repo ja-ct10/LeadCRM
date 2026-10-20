@@ -159,6 +159,8 @@ function deploymentPlan(records, localNames) {
     '20261220000000_deal_engagement',
     // Additive CRM tab flags with compatibility backfill; no deferred columns are read or retired.
     '20261221000000_crm_tab_permissions',
+    // Additive designation on existing membership rows; no membership or RBAC changes.
+    '20261222000000_group_head_assignment',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

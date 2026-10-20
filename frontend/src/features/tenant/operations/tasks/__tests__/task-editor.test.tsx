@@ -70,7 +70,7 @@ const task = {
   priority: "High" as const,
   createdById: "owner",
   assignedUserId: "owner",
-  dueDate: "2026-09-27T13:30:00.000Z",
+  dueDate: "2030-09-27T13:30:00.000Z",
   createdAt: "2026-09-01T00:00:00.000Z",
   updatedAt: '2026-09-01T00:00:00.000Z',
 };
@@ -93,6 +93,27 @@ function enableEditing() {
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit task' }));
 }
 function editField(label: string) { enableEditing(); fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` })); }
+
+it.each(['Sales Agent', 'Sales Representative'])('creates a personal %s Task with a read-only To do field and no assignment dropdown', async role => {
+  user.role = role;
+  render(<TaskEditor links={{ dealIds: ['deal'] }} onClose={vi.fn()} />);
+  const status = screen.getByRole('textbox', { name: 'Status' });
+  expect(status).toHaveProperty('readOnly', true);
+  expect(status).toHaveProperty('value', 'To do');
+  expect(status).toHaveProperty('tabIndex', -1);
+  expect(screen.queryByRole('combobox', { name: 'Status' })).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Assigned Agent *' })).toBeNull();
+  fireEvent.change(screen.getByLabelText('Title *'), { target: { value: 'My personal task' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Create task' }));
+  await waitFor(() => expect(mocks.addTask).toHaveBeenCalledWith(expect.objectContaining({ status: 'pending', assignedUserId: user.id })));
+});
+
+it.each(['Sales Agent', 'Sales Manager', 'Head of Sales'])('lets a permitted %s manage an assigned Task created by another user', role => {
+  user.role = role; mocks.detail.data = { ...task, createdById: 'someone-else' };
+  render(<TaskEditor task={task} onClose={vi.fn()} />);
+  expect(screen.getByRole('button', { name: 'Task actions' })).toBeTruthy();
+  if (role === 'Sales Agent') { enableEditing(); expect(screen.queryByRole('button', { name: 'Edit Assigned Agent' })).toBeNull(); }
+});
 
 it.each(['Sales Agent', 'Sales Representative'])('removes an open %s detail and its controls after reassignment', async role => {
   user.role = role;
@@ -139,7 +160,7 @@ it('renders saved fields, metadata, permission-filtered ID links and collapsible
   expect(screen.queryByRole('link', { name: 'Related Contact' })).toBeNull();
   for (const text of [task.description, 'Original Creator', 'Sep 1, 2026 08:00 AM', 'Sep 28, 2026 09:00 AM by Completing Agent', 'Assigning Admin']) expect(screen.getByText(text)).toBeTruthy();
   expect(screen.getByText('Assigned Agent: Test Owner')).toBeTruthy();
-  expect(screen.getByText('Due: Sep 27, 2026 09:30 PM')).toBeTruthy();
+  expect(screen.getByText('Due: Sep 27, 2030 09:30 PM')).toBeTruthy();
   for (const name of ['Task Information', 'Schedule & Assignment', 'Additional Information', /^Associated Deals\s*1$/, 'Task History']) {
     const toggle = screen.getByRole('button', { name });
     expect(toggle.getAttribute('aria-expanded')).toBe('true');
@@ -215,7 +236,7 @@ it('validates a required title and keeps the draft after a failed save', async (
 it('uses only current Task statuses, saves completion through the Task pipeline and retains saved status on failure', async () => {
   render(<TaskEditor task={task} onClose={vi.fn()} />);
   fireEvent.click(screen.getByRole('button', { name: 'Task status: To do' }));
-  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['To do', 'In progress', 'Blocked', 'Completed', 'Cancelled']);
+  expect(screen.getAllByRole('menuitem').map(item => item.textContent)).toEqual(['To do', 'In progress', 'Completed', 'Cancelled']);
   fireEvent.click(screen.getByRole('menuitem', { name: 'Completed' }));
   await screen.findByRole('button', { name: 'Task status: Completed' });
   expect(mocks.updateTask).toHaveBeenCalledWith(task.id, { status: 'completed', expectedUpdatedAt: task.updatedAt });

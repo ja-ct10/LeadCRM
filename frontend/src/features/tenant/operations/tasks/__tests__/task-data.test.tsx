@@ -7,11 +7,15 @@ import {
   TaskBulkSchema,
   TaskQuerySchema,
   TaskStatusSchema,
+  StoredTaskStatusSchema,
+  taskDisplayStatus,
   isTaskOverdue,
   taskDateRange,
 } from "@leadcrm/shared";
 import type { Task } from "@/store/types";
 import { invalidatePageCache } from '@/shared/cache/page-cache';
+import { subscribePageCacheInvalidation } from '@/shared/cache/page-cache';
+import { useTaskDueTransition } from '../use-task-due-transition';
 const api = vi.hoisted(() => ({ list: vi.fn(), summary: vi.fn() }));
 vi.mock("@/shared/services/tasks.api", () => ({ tasksApi: api }));
 import {
@@ -27,7 +31,24 @@ import {
 } from "../task-data";
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
   vi.resetAllMocks();
+});
+it('refreshes mounted views at the next due boundary with one timeout and replaces it after rescheduling', () => {
+  vi.useFakeTimers(); vi.setSystemTime(new Date('2026-10-20T00:00:00Z'));
+  const invalidated = vi.fn(); const unsubscribe = subscribePageCacheInvalidation(invalidated);
+  const now = new Date().toISOString(), soon = new Date(Date.now() + 1000).toISOString(), later = new Date(Date.now() + 2000).toISOString();
+  const { rerender, unmount } = renderHook(({ next }) => { useTaskDueTransition(next, now); useTaskDueTransition(next, now); }, { initialProps: { next: soon } });
+  expect(vi.getTimerCount()).toBe(1);
+  act(() => vi.advanceTimersByTime(1000));
+  expect(invalidated).not.toHaveBeenCalled();
+  rerender({ next: later });
+  act(() => vi.advanceTimersByTime(1000));
+  expect(invalidated).not.toHaveBeenCalled();
+  act(() => vi.advanceTimersByTime(1));
+  expect(invalidated).toHaveBeenCalledTimes(1);
+  expect(invalidated).toHaveBeenCalledWith('tasks', undefined);
+  unmount(); unsubscribe();
 });
 const task: Task = {
   id: "task",
@@ -40,6 +61,19 @@ const task: Task = {
   assignedUserId: "owner",
 };
 describe("Task contract and calendar rules", () => {
+  it('accepts only To do at manual creation and preserves the four status edits', () => {
+    const draft = { title: 'Personal task', dueDate: task.dueDate, dealIds: ['deal'] };
+    expect(CreateTaskSchema.parse(draft).status).toBe('pending');
+    for (const status of ['blocked', 'overdue', 'completed', 'cancelled', 'in_progress']) expect(CreateTaskSchema.safeParse({ ...draft, status }).success).toBe(false);
+    for (const status of ['pending', 'in_progress', 'completed', 'cancelled']) expect(UpdateTaskSchema.safeParse({ status }).success).toBe(true);
+    expect(UpdateTaskSchema.safeParse({ status: 'blocked' }).success).toBe(false);
+    expect(UpdateTaskSchema.safeParse({ status: 'overdue' }).success).toBe(false);
+    expect(StoredTaskStatusSchema.parse('blocked')).toBe('pending');
+    const at = Date.parse(task.dueDate);
+    expect(taskDisplayStatus({ ...task, status: 'blocked' }, at)).toBe('pending');
+    expect(taskDisplayStatus({ ...task, status: 'blocked' }, at + 1)).toBe('overdue');
+    expect(taskDisplayStatus({ ...task, dueDate: new Date(at + 2).toISOString() }, at + 1)).toBe('pending');
+  });
   it("normalizes only the intentional status alias and rejects blank titles and unsupported fields", () => {
     expect(TaskStatusSchema.parse("in-progress")).toBe("in_progress");
     expect(
@@ -100,7 +134,9 @@ describe("Task query owner", () => {
     expect(result.summary).toMatchObject({ total: 2, completed: 1, overdue: 1 });
     expect(localTaskQuery(rows, { assignedUserId: 'other' }, actor).page.data).toEqual([]);
     expect(localTaskQuery(rows, { search: 'Follow', overdue: true }, actor).page.data.map(row => row.id)).toEqual(['task']);
-    for (const role of ['Sales Manager', 'Top Management', 'Client Admin', 'Viewer']) {
+    expect(localTaskQuery(rows, {}, { ...actor, role: 'Sales Manager' }).page.meta.total).toBe(2);
+    expect(localTaskQuery(rows, {}, { ...actor, role: 'Sales Manager', taskTeamUserIds: ['owner', 'other'] }).page.meta.total).toBe(3);
+    for (const role of ['Top Management', 'Client Admin', 'Viewer']) {
       expect(localTaskQuery(rows, {}, { ...actor, role }).page.meta.total).toBe(3);
     }
   });

@@ -399,7 +399,7 @@ describe.skipIf(!disposable)('Sales automation database and HTTP', () => {
       { productInterest: [randomUUID()] }, { productInterest: ['Smart Lock'] },
       { productInterest: [productIds['Smart Lock']], dealValue: '1' },
     ]) {
-      await expect(submitPublicForm(form.publicId, { version: 1, values: { firstName: 'Bad', lastName: 'Input', email, ...values } })).rejects.toThrow();
+      await expect(submitPublicForm(form.publicId, { requestId: randomUUID(), version: 1, values: { firstName: 'Bad', lastName: 'Input', email, ...values } })).rejects.toThrow();
     }
     expect(await prisma.lead.count({ where: { tenantId, email } })).toBe(0);
     expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);

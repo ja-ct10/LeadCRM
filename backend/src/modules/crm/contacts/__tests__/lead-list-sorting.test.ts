@@ -1,9 +1,11 @@
 import { beforeEach, expect, it, vi } from 'vitest';
-const db = vi.hoisted(() => ({ lead: { fields: { createdAt: 'createdAt' }, findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() } }));
+const db = vi.hoisted(() => ({ $transaction: vi.fn(), deal: { findMany: vi.fn() }, lead: { fields: { createdAt: 'createdAt' }, findMany: vi.fn(), count: vi.fn(), groupBy: vi.fn() } }));
 vi.mock('../../../../config/database.config', () => ({ default: db }));
 import { findAllContacts } from '../contacts.repository';
 beforeEach(() => {
   vi.clearAllMocks();
+  db.$transaction.mockImplementation(work => work(db));
+  db.deal.findMany.mockResolvedValue([]);
   db.lead.findMany.mockResolvedValue([]); db.lead.count.mockResolvedValue(100); db.lead.groupBy.mockResolvedValue([]);
 });
 

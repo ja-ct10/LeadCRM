@@ -19,7 +19,7 @@ function ScheduleFields({ value, onChange, label, className }: { value: Workflow
 export function WorkflowAssignmentSettings({ target, members, entity, task, className, onChange }: {
   target: Pool; members: Array<{ id: string; name: string }>; entity?: string; task: boolean; className: string; onChange: (target: Pool) => void;
 }) {
-  const workload = task ? 'open tasks (pending, in progress or blocked)' : entity === 'deal' ? 'open deals' : entity === 'lead' ? 'active, unconverted leads' : `active ${entity === 'account' ? 'accounts' : 'contacts'}`;
+  const workload = task ? 'open tasks (To do, In progress or Overdue)' : entity === 'deal' ? 'open deals' : entity === 'lead' ? 'active, unconverted leads' : `active ${entity === 'account' ? 'accounts' : 'contacts'}`;
   const changeAvailability = (availability: WorkflowAvailability) => onChange({ ...target, availability });
   const configuredIds = new Set([...(target.availability?.members ?? []), ...(target.capacity?.members ?? [])].map(row => row.userId));
   const unavailable = [...configuredIds].filter(id => !members.some(member => member.id === id));

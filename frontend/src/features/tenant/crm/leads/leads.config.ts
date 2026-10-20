@@ -11,7 +11,7 @@ export const LEADS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'leads',
   columnRegistry: LEADS_COLUMN_REGISTRY,
   availableViews: ['table'],
-  sortableFields: LEADS_TABLE_SORT_FIELDS.map(id => ({ id, label: LEADS_COLUMN_REGISTRY.find(column => column.id === id)!.label })),
+  sortableFields: LEADS_TABLE_SORT_FIELDS.map(id => ({ id, label: LEADS_COLUMN_REGISTRY.find(column => column.id === id)?.label ?? (id === 'lastSalesActivityAt' ? 'Most Recent Activity' : id) })),
   filterGroups: [
     {
       id: 'status',

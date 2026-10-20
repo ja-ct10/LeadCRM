@@ -45,6 +45,34 @@ const form = { ...defaultContactForm(), fields: withProductOptions(defaultContac
 beforeEach(() => { vi.resetAllMocks(); productCatalog.products = []; productCatalog.categories = []; permissions.edit = true; permissions.publish = true; vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} }); });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('Forms UI', () => {
+  it('keeps the request ID for unchanged retries and changes it for a distinct inquiry', async () => {
+    const definition = defaultContactForm();
+    const payloads: Array<{ requestId: string; values: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn().mockImplementation(async (_url, options) => {
+      if (!options?.body) return { ok: true, json: async () => ({ data: { ...definition, fields: definition.fields.filter(field => field.mapToField !== 'productInterest'), version: 1, trackUrlParams: false } }) };
+      payloads.push(JSON.parse(options.body));
+      return { ok: payloads.length === 3, json: async () => payloads.length === 3 ? { success: true } : { error: 'Please retry this inquiry.' } };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    render(<PublicFormPage publicId="public" />);
+    await screen.findByText('Contact Us');
+    fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: 'Anne' } });
+    fireEvent.change(screen.getByLabelText(/Last Name/), { target: { value: 'Visitor' } });
+    fireEvent.change(screen.getByLabelText(/Email Address/), { target: { value: 'anne@example.com' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await screen.findByText('Please retry this inquiry.');
+    fireEvent.change(screen.getByLabelText(/First Name/), { target: { value: ' Anne ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await waitFor(() => expect(payloads).toHaveLength(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Submit' })).toHaveProperty('disabled', false));
+    expect(payloads[0].requestId).toMatch(/^[\da-f-]{36}$/);
+    expect(payloads[1].requestId).toBe(payloads[0].requestId);
+    fireEvent.change(screen.getByLabelText(/Full Address/), { target: { value: 'Distinct inquiry' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Submit' }));
+    await screen.findByText('Thank you!');
+    expect(payloads[2].requestId).not.toBe(payloads[0].requestId);
+  });
+
   const unloadPrevented = () => { const event = new Event('beforeunload', { cancelable: true }); window.dispatchEvent(event); return event.defaultPrevented; };
 
   it('filters builder preview selections without changing saved fields or dirty state', async () => {
