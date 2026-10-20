@@ -1,0 +1,25 @@
+import React from 'react';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { MergeRecordsDialog } from '../merge-records-dialog';
+const mocks = vi.hoisted(() => ({ post: vi.fn(), refreshContacts: vi.fn(), refreshOrganizations: vi.fn() }));
+vi.mock('@/lib/api/client', () => ({ apiClient: { post: mocks.post } }));
+vi.mock('@/store/DataContext', () => ({ useData: () => mocks }));
+vi.mock('@/shared/components/sliding-drawer', () => ({ SlidingDrawer: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
+beforeEach(() => { vi.clearAllMocks(); mocks.refreshContacts.mockResolvedValue(undefined); mocks.post.mockResolvedValue({ success: true, data: { primary: { firstName: 'Primary' }, secondary: { firstName: 'Secondary' }, fieldComparisons: [{ field: 'phone', primaryValue: null, secondaryValue: '+639171234567', isDifferent: true }], relationshipCounts: { primary: { deals: 1 }, secondary: { deals: 2 } } } }); });
+afterEach(cleanup);
+it('keeps comparison choices across parent renders and submits a merge only once', async () => {
+  const props = { isOpen: true, entityType: 'lead' as const, primaryId: 'primary', secondaryId: 'secondary', onClose: vi.fn(), onSuccess: vi.fn() };
+  const view = render(<MergeRecordsDialog {...props} />);
+  await screen.findByText('+639171234567');
+  view.rerender(<MergeRecordsDialog {...props} onClose={() => {}} />);
+  expect(mocks.post).toHaveBeenCalledTimes(1);
+  let finish!: (value: unknown) => void;
+  mocks.post.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  fireEvent.click(screen.getByRole('button', { name: 'Merge Records' }));
+  fireEvent.click(screen.getByRole('button', { name: 'Merge Records' }));
+  expect(mocks.post).toHaveBeenCalledTimes(2);
+  expect(mocks.post.mock.calls[1]).toEqual(['/crm/merge', { entityType: 'lead', primaryId: 'primary', secondaryId: 'secondary', fieldResolutions: { phone: 'secondary' } }]);
+  finish({ success: true });
+  await waitFor(() => expect(props.onSuccess).toHaveBeenCalledOnce());
+});

@@ -405,7 +405,7 @@ export default function CampaignsPage() {
       {activeTab === 'email' && (
         <div>
           {emailTemplates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-6">
               {emailTemplates.map(template => (
                 <div key={template.id} className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">
@@ -450,7 +450,7 @@ export default function CampaignsPage() {
       {activeTab === 'sms' && (
         <div>
           {smsTemplates.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-6">
               {smsTemplates.map(template => (
                 <div key={template.id} className="bg-white dark:bg-white/2 rounded-xl border border-gray-200 dark:border-white/5 p-5 shadow-lg backdrop-blur-xl flex flex-col h-full">
                   <div className="flex justify-between items-start mb-3">

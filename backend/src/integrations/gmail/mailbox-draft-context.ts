@@ -1,11 +1,11 @@
-import { MailboxComposeContextSchema, type MailboxEmail, type MailboxComposeMode } from '@leadcrm/shared';
+import { MailboxComposeContextSchema, type MailboxEmail, type MailboxComposeMode, type MailboxRecordContext } from '@leadcrm/shared';
 import type { EmailAccount, MailboxMessage, Prisma } from '@prisma/client';
 import prisma from '../../config/database.config';
 import { AppError } from '../../shared/errors/app-error';
 import { assertStoredMessages, type MailboxScope } from './mailbox-scope';
 
-type DraftContext = { dealId?: string; composeMode: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string };
-type RestoredDraftContext = Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired'>;
+type DraftContext = { composeMode: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string; recordContext?: MailboxRecordContext; dealId?: string };
+type RestoredDraftContext = Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired' | 'recordContext' | 'dealId'>;
 export function receiptComposeContext(value: Prisma.JsonValue | null): DraftContext | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value) || !('composeMode' in value)) return;
   const parsed = MailboxComposeContextSchema.safeParse(value);
@@ -13,7 +13,7 @@ export function receiptComposeContext(value: Prisma.JsonValue | null): DraftCont
 }
 
 /** Only an exact acknowledged provider draft/message pair supplies restoration intent. */
-export async function draftComposeContext(account: Pick<EmailAccount, 'id' | 'tenantId'>, row: MailboxMessage): Promise<Pick<MailboxEmail, 'composeMode' | 'replyToMessageId' | 'forwardSourceMessageId' | 'draftContextRequired'>> {
+export async function draftComposeContext(account: Pick<EmailAccount, 'id' | 'tenantId'>, row: MailboxMessage): Promise<RestoredDraftContext> {
   const receipt = row.draftId ? await prisma.mailboxSendReceipt.findFirst({ where: { tenantId: account.tenantId, accountId: account.id,
     providerDraftId: row.draftId, providerMessageId: row.providerMessageId, operation: { in: ['draft', 'schedule'] }, status: { in: ['saved', 'queued', 'cancelled'] } },
     orderBy: { createdAt: 'desc' }, select: { authorizationContext: true } }) : null;
@@ -38,7 +38,8 @@ export async function draftComposeContexts(account: Pick<EmailAccount, 'id' | 't
 
 /** Missing action/source can inherit this operation or an exact saved draft, never the latest message in its thread. */
 export async function resolveDraftOperationContext(account: Pick<EmailAccount, 'id' | 'tenantId'>, input: {
-  requestId: string; draftId?: string; dealId?: string; composeMode?: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string;
+  requestId: string; draftId?: string; composeMode?: MailboxComposeMode; replyToMessageId?: string; forwardSourceMessageId?: string;
+  recordContext?: MailboxRecordContext; dealId?: string;
 }, scope?: { account: EmailAccount; scope: MailboxScope }): Promise<DraftContext> {
   if (input.replyToMessageId || input.forwardSourceMessageId || !input.draftId) return MailboxComposeContextSchema.parse(input);
   const previous = await prisma.mailboxSendReceipt.findUnique({ where: { accountId_requestId: { accountId: account.id, requestId: input.requestId } }, select: { authorizationContext: true } });

@@ -39,7 +39,7 @@ export async function getLeadRelationships(id: string, tenantId: string, limit =
       orderBy: [{ addedAt: 'desc' }, { dealId: 'desc' }],
       include: {
         deal: {
-          select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
+          select: { id: true, title: true, value: true, priority: true, assignedUserId: true, stage: { select: { id: true, name: true } } },
         },
       },
     }),
@@ -103,7 +103,7 @@ export async function getContactRelationships(id: string, tenantId: string, limi
       ] },
       skip: (page - 1) * limit, take: limit + 1,
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      select: { id: true, title: true, value: true, priority: true, stage: { select: { id: true, name: true } } },
+      select: { id: true, title: true, value: true, priority: true, assignedUserId: true, stage: { select: { id: true, name: true } } },
     }),
     // Recent activities
     prisma.activity.findMany({

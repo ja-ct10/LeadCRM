@@ -145,3 +145,13 @@ it('blocks concurrent conflicting mutations across mounted views', async () => {
   await act(async () => { expect(await second.result.current.markAsRead('n1')).toBe(false); });
   await act(async () => { finish({ success: true, totalCount: 29, unreadCount: 29 }); await deletion; });
 });
+
+it('updates module dots for counts-only consumers immediately after a successful read', async () => {
+  mocks.counts.mockResolvedValue({ success: true, unreadCount: 1, totalCount: 1, unreadByModule: { leads: 1 } });
+  mocks.markRead.mockResolvedValue({ success: true, unreadCount: 0, totalCount: 1, unreadByModule: {} });
+  const sidebar = renderHook(() => useNotifications('all', { countsOnly: true }));
+  await waitFor(() => expect(sidebar.result.current.unreadByModule).toEqual({ leads: 1 }));
+  await act(async () => { await sidebar.result.current.markAsRead('one'); });
+  expect(sidebar.result.current.unreadByModule).toEqual({});
+  expect(mocks.list).not.toHaveBeenCalled();
+});

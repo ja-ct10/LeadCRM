@@ -7,7 +7,7 @@ import prisma from '../../../../config/database.config';
 import { tenantContext } from '../../../../core/tenant/tenant-context';
 import { issueAuthSession } from '../../../../core/auth/auth-session';
 import { fireWorkflowTrigger } from '../workflow.engine';
-import { dispatchQueuedWorkflows, enqueueWorkflowTrigger } from '../workflow-queue';
+import { dispatchQueuedWorkflows, enqueueWorkflowTrigger, startWorkflowScheduler } from '../workflow-queue';
 import { workflowLease } from '../workflow-dispatch-context';
 import { salesTransaction } from '../../../crm/leads/lead-automation.service';
 import { withTaskTransaction } from '../../../operations/tasks/tasks.repository';
@@ -593,6 +593,18 @@ describe.skipIf(!disposable)('workflow acceptance on disposable PostgreSQL and a
     const updated = await prisma.contact.findUniqueOrThrow({ where: { id: contact.id } });
     expect(updated.status).toBe(contact.status); expect(updated.address).toBe('Client follow-up'); expect(updated.assignedUserId).toBe(owner.id);
     expect(await prisma.task.count({ where: { ...taskContextWhere('contact', contact.id!, tenantId) } })).toBe(beforeTasks);
+  });
+  it('dispatches a field-triggered stage change after commit without waiting for the recovery interval', async () => {
+    const workflow = await create([{ type: 'move_deal_stage', config: { stageId: contacted.id } }], { trigger: 'deal.updated' });
+    const stop = startWorkflowScheduler();
+    try {
+      // Bypass the fixture helper that explicitly flushes queued work.
+      const response = await fetch(`${base}/crm/deals/${deal.id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json', Cookie: `leadcrm_token=${token}` }, body: JSON.stringify({ priority: 'HIGH' }) });
+      expect(response.status).toBe(200);
+      await vi.waitFor(async () => expect((await prisma.deal.findUniqueOrThrow({ where: { id: deal.id } })).stageId).toBe(contacted.id), { timeout: 10000, interval: 50 });
+    } finally { await stop(); }
+    expect((await runs(workflow.id))[0].status).toBe('completed');
+    expect(await prisma.dealStageHistory.count({ where: { tenantId, dealId: deal.id, newStageId: contacted.id } })).toBe(1);
   });
   it('uses the stage domain service, records one history entry, and never changes Lead/Contact Status', async () => {
     const workflow = await create([{ type: 'move_deal_stage', config: { stageId: contacted.id } }], { trigger: 'deal.created' });

@@ -2,7 +2,8 @@ import React from 'react';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Users } from 'lucide-react';
-const mocks = vi.hoisted(() => ({ counts: { leads: 0, contacts: 0, accounts: 0, deals: 0 } }));
+const mocks = vi.hoisted(() => ({ counts: { leads: 0, contacts: 0, accounts: 0, deals: 0 }, unreadByModule: {} as Record<string, number> }));
+vi.mock('@/features/tenant/notifications/hooks/use-notifications', () => ({ useNotifications: () => ({ unreadByModule: mocks.unreadByModule }) }));
 vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { firstName: 'Test', role: 'Client Admin' }, tenant: { name: 'Test' } }) }));
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ contacts: [], deals: [], organizations: [] }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false, USE_MOCK_AUTH: false }));
@@ -10,6 +11,17 @@ vi.mock('@/shared/hooks/use-module-counts', () => ({ useModuleCounts: () => ({ c
 vi.mock('../use-layout', () => ({ useLayout: () => ({ currentPath: 'contacts', filteredNav: ['leads', 'contacts', 'accounts', 'pipeline'].map(path => ({ path, name: path, icon: Users, group: 'CRM' })) }) }));
 import SidebarNav from '../sidebar-nav';
 afterEach(cleanup);
+it.each([false, true])('updates unread module dots independently of record totals, collapsed=%s', isCollapsed => {
+  const props = { sidebarOpen: true, onCloseSidebar: vi.fn(), navigate: vi.fn(), isAccountDropdownOpen: false, onToggleAccountDropdown: vi.fn(), isCollapsed, onToggleCollapse: vi.fn() };
+  mocks.unreadByModule = { leads: 2, deals: 1 };
+  const view = render(<SidebarNav {...props} />);
+  expect(screen.getByRole('status', { name: 'Unread leads notifications' })).toBeTruthy();
+  expect(screen.getByRole('status', { name: 'Unread pipeline notifications' })).toBeTruthy();
+  expect(screen.queryByRole('status', { name: 'Unread contacts notifications' })).toBeNull();
+  mocks.unreadByModule = {};
+  view.rerender(<SidebarNav {...props} />);
+  expect(screen.queryByRole('status')).toBeNull();
+});
 it.each([[1, 0], [0, 5], [3, 5]])('renders independent leads=%s and contacts=%s totals, hiding zero', (leads, contacts) => {
   mocks.counts = { leads, contacts, accounts: 7, deals: 9 };
   render(<SidebarNav sidebarOpen onCloseSidebar={() => {}} navigate={() => {}} isAccountDropdownOpen={false} onToggleAccountDropdown={() => {}} isCollapsed={false} onToggleCollapse={() => {}} />);

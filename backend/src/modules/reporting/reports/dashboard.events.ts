@@ -7,6 +7,7 @@ import { dashboardAccess } from './dashboard.service';
 import { AppError } from '../../../shared/errors/app-error';
 import { assertPermissions } from '../../../core/permissions/permission.service';
 import { createHash } from 'node:crypto';
+import { subscribeRecordChanges } from '../../crm/record-change-events';
 
 /** Same persisted-revision SSE mechanism as Inbox, through the same proxy.
  * Counters become visible only after commit and survive process/replica restarts.
@@ -35,11 +36,12 @@ async function observeEvents(req: Request, res: Response, next: NextFunction, pr
     res.setHeader('X-Accel-Buffering', 'no');
     res.flushHeaders();
     res.write('retry: 3000\n\n');
-    let busy = false, stopped = false, previous = '';
+    let busy = false, stopped = false, previous = '', queued = false;
     const tenantId = req.user!.tenantId;
     const send = (event: string, data: unknown) => res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     const tick = async () => {
-      if (busy || stopped) return;
+      if (stopped) return;
+      if (busy) { queued = true; return; }
       busy = true;
       try {
         await new Promise<void>((resolve, reject) => {
@@ -72,12 +74,13 @@ async function observeEvents(req: Request, res: Response, next: NextFunction, pr
         if (error instanceof AppError && [401,403].includes(error.statusCode)) {
           send(`${prefix}-access-changed`, error.code === 'PASSWORD_CHANGE_REQUIRED' ? { code: error.code } : {}); res.end();
         } else send(`${prefix}-unavailable`, {});
-      } finally { busy = false; }
+      } finally { busy = false; if (queued && !stopped) { queued = false; void tick(); } }
     };
     const timer = setInterval(() => void tick(), 3000);
+    const unsubscribe = prefix === 'crm' ? subscribeRecordChanges(tenantId, () => { void tick(); }) : undefined;
     const expiry = setTimeout(() => res.end(), 45000);
     timer.unref(); expiry.unref();
-    res.on('close', () => { stopped = true; clearInterval(timer); clearTimeout(expiry); });
+    res.on('close', () => { stopped = true; unsubscribe?.(); clearInterval(timer); clearTimeout(expiry); });
     void tick();
   } catch (error) { next(error); }
 }

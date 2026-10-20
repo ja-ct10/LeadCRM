@@ -42,7 +42,7 @@ export function ProductInterestSelect({ id, values, onChange, products, categori
         <input type="checkbox" disabled={disabled} className="shrink-0" checked={selected.includes(option.value)} onChange={event => onChange(event.target.checked ? [...new Set([...selected, option.value])] : selected.filter(value => value !== option.value))} />
         <span className="min-w-0 [overflow-wrap:anywhere]">{option.label}</span>
       </label>) : <p className="text-sm text-muted-foreground">{emptyMessage}</p>}
-    </div> : <CheckboxDropdownSelect id={id} values={values} options={options} onChange={onChange} disabled={disabled} single={single} searchable={searchable} ariaLabel={ariaLabel} contentAriaLabel="Product interests" placeholder="Select product interests…" emptyMessage={emptyMessage} />}
+    </div> : <CheckboxDropdownSelect id={id} values={values} options={options} onChange={onChange} disabled={disabled} single={single} searchable={searchable} ariaLabel={ariaLabel} ariaInvalid={ariaInvalid} ariaDescribedBy={ariaDescribedBy} contentAriaLabel="Product interests" placeholder="Select product interests…" emptyMessage={emptyMessage} />}
   </div>;
 }
 

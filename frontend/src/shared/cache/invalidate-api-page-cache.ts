@@ -3,6 +3,7 @@ import { clearPageCache, invalidatePageCache } from './page-cache';
 /** Successful writes invalidate every cached view of the affected data, including imports and drawers. */
 export function invalidateApiPageCache(path: string): void {
   const [area, resource] = path.split('?')[0].split('/').filter(Boolean);
+  if (area === 'crm' && resource === 'merge' && path.split('?')[0].endsWith('/preview')) return;
   if (area === 'auth') {
     if (resource === 'activity') return;
     clearPageCache();
@@ -23,6 +24,7 @@ export function invalidateApiPageCache(path: string): void {
     if (type === 'Campaign' || type === 'Template') { modules.add('campaigns'); modules.add('templates'); }
   }
   if (area === 'crm') {
+    if (resource === 'merge') ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'campaigns', 'counts-leads', 'counts-contacts', 'counts-accounts', 'counts-deals'].forEach(module => modules.add(module));
     if (['leads', 'contacts', 'accounts', 'companies'].includes(resource)) modules.add('archived-crm');
     if (resource === 'leads' || resource === 'contacts') modules.add(`counts-${resource}`);
     if (resource === 'accounts' || resource === 'organizations') modules.add('counts-accounts');

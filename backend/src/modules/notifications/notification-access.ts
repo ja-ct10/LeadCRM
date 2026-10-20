@@ -42,8 +42,8 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
           const message = await db.mailboxMessage.findFirst({ where: { ...scope, account: { tenantId, userId, isActive: true }, direction: 'inbound',
             NOT: { labels: { hasSome: ['SPAM', 'TRASH', 'DELETED', 'DRAFT'] } } }, include: { account: true } });
           if (!message) return null;
-          const mailbox = await mailboxPermissions(tenantId, userId);
-          const mailboxScope = await resolveMailboxScope(message.account, mailbox);
+          const mailbox = await mailboxPermissions(tenantId, userId, true, db);
+          const mailboxScope = await resolveMailboxScope(message.account, mailbox, db);
           if (!await db.mailboxMessage.findFirst({ where: { AND: [scopedMessagesWhere(message.account, mailboxScope), { id: entityId }] }, select: { id: true } })) return null;
           // Customer-reply events also require current CRM association, not just an approved sender.
           const linked = message.contactId
@@ -57,7 +57,7 @@ export async function notificationAccess(tenantId: string, userId: string, db: P
         const account = await db.emailAccount.findFirst({ where: scope, select: { userId: true } });
         if (!account || !admin && account.userId !== userId) return null;
         if (!admin) {
-          try { await mailboxPermissions(tenantId, userId); }
+          try { await mailboxPermissions(tenantId, userId, true, db); }
           catch (error) { if (error instanceof AppError && [403, 404].includes(error.statusCode)) return null; throw error; }
         }
         return { entityType, entityId, destination: account.userId === userId ? '/inbox' : '/settings?tab=users' };

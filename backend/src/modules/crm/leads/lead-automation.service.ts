@@ -14,6 +14,8 @@ import { findSalesGroup } from '../../administration/groups/sales-group';
 import { eligibleAssignedAgents, crmAssignmentRequirements } from '../access/assigned-agent-eligibility';
 import type { CrmModule } from '../access/crm-record-access.service';
 import { salesContext, discardWorkflowWake, workflowTransactionCommitted } from './sales-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
+import { notifyRecordChanges } from '../record-change-events';
 import { fenceWorkflowLease } from '../../automation/workflows/workflow-lease';
 
 type Tx = Prisma.TransactionClient;
@@ -42,6 +44,8 @@ export async function salesTransaction<T>(work: (tx: Tx) => Promise<T>): Promise
       throw error;
     }
     if (transaction) workflowTransactionCommitted(transaction);
+    const tenantId = tenantContext.getStore()?.tenantId;
+    if (tenantId) notifyRecordChanges(tenantId);
     return result;
   }
 }

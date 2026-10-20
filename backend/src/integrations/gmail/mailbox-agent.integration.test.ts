@@ -34,7 +34,7 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
       ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: response.status, body: await response.json() };
   }
-  const send = (agent: Agent, requestId = randomUUID()) => call(agent, '/integrations/gmail/send', { requestId, to: agent.email, subject: 'Agent history', body: '<p>Persisted agent send</p>' });
+  const send = (agent: Agent, requestId = randomUUID()) => call(agent, '/integrations/gmail/send', { requestId, to: agent.email, dealId: agent.dealId, subject: 'Agent history', body: '<p>Persisted agent send</p>' });
   beforeAll(async () => {
     server = app.listen(0, '127.0.0.1'); await new Promise<void>(done => server.once('listening', done));
     base = `http://127.0.0.1:${(server.address() as { port: number }).port}/api/v1`;
@@ -112,7 +112,9 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
       expect(lead.body.data[0].metadata.email.body).toContain('Persisted agent');
       expect(lead.body.data.every((row: { metadata: { mailboxOwnerId: string; email: { accountId: string } } }) => row.metadata.mailboxOwnerId === agent.id && row.metadata.email.accountId === agent.account.id)).toBe(true);
       expect((await call(agent, '/crm/activities?type=email&contactId=' + agent.contactId)).body.total).toBe(1);
-      expect((await call(agent, '/crm/activities?type=email&dealId=' + agent.dealId)).body.total).toBe(3);
+      // New unrelated inbound threads have no Deal proof; only the explicitly linked send belongs here.
+      expect((await call(agent, '/crm/activities?type=email&dealId=' + agent.dealId)).body.total).toBe(1);
+      expect(await prisma.mailboxMessage.count({ where: { accountId: agent.account.id, dealId: null } })).toBe(2);
       expect(await prisma.mailboxMessage.count({ where: { accountId: agent.account.id } })).toBe(3);
       expect((await prisma.emailAccount.findUniqueOrThrow({ where: { id: agent.account.id } })).syncCursor).toBe('history-' + agent.id);
     }
@@ -121,6 +123,25 @@ describe.skipIf(!disposable)('independent Sales-agent Gmail history', () => {
     const before = await prisma.activity.findMany({ where: { tenantId, type: 'email' }, orderBy: { id: 'asc' } });
     await scope(() => syncMailbox(tenantId, b.id));
     expect((await prisma.activity.findMany({ where: { tenantId, type: 'email' }, orderBy: { id: 'asc' } })).map(row => row.id)).toEqual(before.map(row => row.id));
+  });
+
+  it.each(['leads', 'contacts'] as const)('keeps an explicitly selected %s Deal when the subject changes and History recovers later', async recordModule => {
+    const [agent, other] = agents;
+    const recordId = recordModule === 'leads' ? agent.leadId : agent.contactId;
+    const payload = { requestId: randomUUID(), to: recordModule === 'leads' ? agent.email : agent.contactEmail, subject: 'Manually edited subject', body: '<p>Details for the selected Deal</p>', composeMode: 'compose', recordContext: { recordModule, recordId }, dealId: agent.dealId };
+    expect((await call(agent, '/integrations/gmail/send', { ...payload, dealId: other.dealId })).status).toBe(400);
+    expect(writes).toBe(0);
+    failReads = true;
+    expect((await call(agent, '/integrations/gmail/send', payload)).status).toBe(200);
+    failReads = false;
+    await scope(() => syncMailbox(tenantId, agent.id, 'worker'));
+    const stored = await prisma.mailboxMessage.findFirstOrThrow({ where: { tenantId, accountId: agent.account.id, direction: 'outbound' } });
+    expect(stored.dealId).toBe(agent.dealId);
+    expect(recordModule === 'leads' ? stored.leadId : stored.contactId).toBe(recordId);
+    expect(await prisma.activity.count({ where: { tenantId, mailboxMessageId: stored.id, dealId: agent.dealId, type: 'email' } })).toBe(1);
+    expect((await call(agent, '/integrations/gmail/send', payload)).status).toBe(200);
+    expect(writes).toBe(1);
+    expect((await call(other, '/integrations/gmail/send', { ...payload, requestId: randomUUID() })).status).toBe(403);
   });
 
   it('immediately ingests a recovered confirmed send and repairs a completed receipt without another write', async () => {

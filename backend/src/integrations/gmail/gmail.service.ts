@@ -18,8 +18,9 @@ import { countUnreadConversations } from './mailbox-conversations';
 import { authorizeMailboxOperation, type MailboxOperationContext } from './mailbox-operations';
 import { createHash } from 'node:crypto';
 import type { MailboxQuotationContext } from './mailbox-operations';
+import { validateOutgoingAttachments } from './mailbox-upload-attachments';
 
-export interface GeneratedMailboxAttachment { filename: string; mimeType: 'application/pdf'; data: Buffer }
+export type GeneratedMailboxAttachment = import('./mailbox-upload-attachments').OutgoingMailboxAttachment;
 
 
 
@@ -246,7 +247,7 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
       throw new AppError('Sent message access changed during ingestion.', 409, 'MAILBOX_SCOPE_CHANGED');
     }
     await ingestMailboxMessages(current.account, [await fetchMessageDetail(token, messageId)], current.permissions,
-      { sourceMessageId: context.replyToMessageId, dealId: context.dealId ?? context.quotation?.draft.dealId });
+      { sourceMessageId: context.replyToMessageId, dealId: context.dealId ?? context.quotation?.draft.dealId, recordContext: context.recordContext });
     await mailboxChanged(account.id);
   } catch (error) {
     const where = { id: account.id, tenantId: account.tenantId, userId: account.userId, isActive: true };
@@ -257,7 +258,7 @@ export async function ingestConfirmedMailboxSend(account: EmailAccount, messageI
     console.warn('[mailbox-send-ingestion]', { accountId: account.id, category: error instanceof AppError ? error.code ?? 'INGESTION_FAILED' : 'INGESTION_FAILED' });
   }
 }
-export async function sendEmail(tenantId: string, userId: string, to: string | string[], subject: string, body: string, replyToMessageId?: string, draftId?: string, forwardSourceMessageId?: string, operation: { messageId?: string; receiptId?: string; attachments?: GeneratedMailboxAttachment[]; quotation?: MailboxQuotationContext; dealId?: string; beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ messageId: string; threadId: string }> {
+export async function sendEmail(tenantId: string, userId: string, to: string | string[], subject: string, body: string, replyToMessageId?: string, draftId?: string, forwardSourceMessageId?: string, operation: { messageId?: string; receiptId?: string; attachments?: GeneratedMailboxAttachment[]; recordContext?: MailboxOperationContext['recordContext']; dealId?: string; quotation?: MailboxQuotationContext; beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ messageId: string; threadId: string }> {
   const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
   if (replyToMessageId) await assertStoredMessages(account, scope, [replyToMessageId], true);
   if (forwardSourceMessageId) await assertStoredMessages(account, scope, [forwardSourceMessageId], true);
@@ -267,11 +268,11 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   if (!draftId && reply) assertReplySubject(subject, reply.subject);
   let marked = false;
   const beforeProviderWrite = async () => { if (!marked) { await operation.beforeProviderWrite?.(); marked = true; } };
-  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId, forwardSourceMessageId, messageId: operation.messageId, operationReceiptId: operation.receiptId, beforeProviderWrite }) : null;
+  const savedDraft = draftId ? await saveDraft(tenantId, userId, recipients.join(', '), subject, body, draftId, { replyToMessageId, forwardSourceMessageId, messageId: operation.messageId, operationReceiptId: operation.receiptId, attachments: operation.attachments, recordContext: operation.recordContext, dealId: operation.dealId, beforeProviderWrite }) : null;
   const accessToken = await getValidAccessToken(tenantId, userId);
   const headers = reply && !savedDraft ? await verifiedReplyHeaders(accessToken, reply) : undefined;
   const raw = createRawMessage(recipients.join(', '), subject, body, account.email, headers?.rfcMessageId, operation.messageId, headers?.rfcReferences, operation.attachments);
-  await authorizeMailboxOperation(account, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation, ...(operation.dealId ? { dealId: operation.dealId } : {}) });
+  await authorizeMailboxOperation(account, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation, recordContext: operation.recordContext, dealId: operation.dealId });
   if (savedDraft) await assertDraftAccess(tenantId, userId, savedDraft.draftId, operation.receiptId);
   await beforeProviderWrite();
   const result = await writeGmailJson<{ id: string; threadId: string }>(accessToken, savedDraft ? 'drafts/send' : 'messages/send', 'POST', savedDraft ? { id: savedDraft.draftId } : { raw, ...(reply ? { threadId: reply.threadId } : {}) });
@@ -281,7 +282,7 @@ export async function sendEmail(tenantId: string, userId: string, to: string | s
   } catch {
     await prisma.emailAccount.updateMany({ where: { id: account.id, tenantId, userId, isActive: true }, data: { syncRequestedAt: new Date() } }).catch(() => undefined);
   }
-  await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation, ...(operation.dealId ? { dealId: operation.dealId } : {}) });
+  await ingestConfirmedMailboxSend(account, result.id, { recipients, replyToMessageId, forwardSourceMessageId, draftId, threadId: reply?.threadId, quotation: operation.quotation, recordContext: operation.recordContext, dealId: operation.dealId });
   return { messageId: result.id, threadId: result.threadId };
 }
 export async function getConnectionStatus(
@@ -321,7 +322,7 @@ export async function disconnectAccount(tenantId: string, userId: string): Promi
   });
 }
 
-export async function saveDraft(tenantId: string, userId: string, to: string, subject: string, body: string, draftId?: string, options: { replyToMessageId?: string; forwardSourceMessageId?: string; messageId?: string; operationReceiptId?: string; scheduledId?: string; beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ draftId: string; messageId: string }> {
+export async function saveDraft(tenantId: string, userId: string, to: string, subject: string, body: string, draftId?: string, options: { replyToMessageId?: string; forwardSourceMessageId?: string; messageId?: string; operationReceiptId?: string; scheduledId?: string; attachments?: GeneratedMailboxAttachment[]; recordContext?: MailboxOperationContext['recordContext']; dealId?: string; beforeProviderWrite?: () => Promise<void> } = {}): Promise<{ draftId: string; messageId: string }> {
   const { account, scope, permissions } = await authorizedMailbox(tenantId, userId);
   const recipients = to.split(',').map(value => mailboxAddress(value)).filter((value): value is string => !!value);
   if (to.trim() && recipients.length !== to.split(',').length) throw new AppError('Enter valid recipient addresses.', 400);
@@ -341,8 +342,9 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
   if (reply) assertReplySubject(subject, reply.subject);
   const accessToken = await getValidAccessToken(tenantId, userId);
   const headers = reply ? await verifiedReplyHeaders(accessToken, reply) : undefined;
-  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, headers?.rfcMessageId, options.messageId, headers?.rfcReferences);
-  await authorizeMailboxOperation(account, { recipients, replyToMessageId: options.replyToMessageId, forwardSourceMessageId: options.forwardSourceMessageId, draftId, threadId: reply?.threadId });
+  const attachments = options.attachments ?? (draftId ? await existingDraftAttachments(tenantId, userId, draftId, options.operationReceiptId, options.scheduledId) : []);
+  const raw = createRawMessage(recipients.join(', '), subject, body, account.email, headers?.rfcMessageId, options.messageId, headers?.rfcReferences, attachments);
+  await authorizeMailboxOperation(account, { recipients, replyToMessageId: options.replyToMessageId, forwardSourceMessageId: options.forwardSourceMessageId, draftId, threadId: reply?.threadId, recordContext: options.recordContext, dealId: options.dealId });
   if (draftId) await assertDraftAccess(tenantId, userId, draftId, options.operationReceiptId, options.scheduledId);
   await options.beforeProviderWrite?.();
   const result = await writeGmailJson<{ id: string; message: { id: string; threadId: string } }>(accessToken, draftId ? 'drafts/' + encodeURIComponent(draftId) : 'drafts', draftId ? 'PUT' : 'POST', { message: { raw, ...(reply ? { threadId: reply.threadId } : {}) } });
@@ -357,6 +359,21 @@ export async function saveDraft(tenantId: string, userId: string, to: string, su
   await mailboxChanged(account.id);
   return { draftId: result.id, messageId: result.message.id };
 }
+async function existingDraftAttachments(tenantId: string, userId: string, draftId: string, operationReceiptId?: string, scheduledId?: string): Promise<GeneratedMailboxAttachment[]> {
+  const account = await assertDraftAccess(tenantId, userId, draftId, operationReceiptId, scheduledId);
+  const token = await getValidAccessToken(tenantId, userId);
+  const draft = await readGmailJson<{ message: GmailApiMessage }>(token, `drafts/${encodeURIComponent(draftId)}?format=full`);
+  if (!draft.message?.payload || typeof draft.message.id !== 'string') throw new AppError('Gmail returned an incomplete draft. Reload it before editing.', 502);
+  const files: GeneratedMailboxAttachment[] = [];
+  for (const part of gmailParts(draft.message.payload)) {
+    if (!part.filename || !part.body) continue;
+    const content = part.body.attachmentId ? await readGmailJson<{ data: string; size: number }>(token, `messages/${encodeURIComponent(draft.message.id)}/attachments/${encodeURIComponent(part.body.attachmentId)}`) : part.body;
+    files.push({ filename: part.filename, mimeType: part.mimeType ?? 'application/octet-stream', data: decodeGmailBody(content) });
+  }
+  await assertDraftAccess(account.tenantId, userId, draftId, operationReceiptId, scheduledId);
+  return validateOutgoingAttachments(files);
+}
+
 export async function assertDraftAccess(tenantId: string, userId: string, draftId: string, operationReceiptId?: string, scheduledId?: string) {
   const { account, scope } = await authorizedMailbox(tenantId, userId);
   const row = await prisma.mailboxMessage.findFirst({ where: { accountId: account.id, tenantId, draftId, labels: { has: 'DRAFT' } } });
@@ -532,7 +549,7 @@ export function createRawMessage(to: string, subject: string, body: string, from
   if ([to, subject, fromAddress, inReplyTo ?? '', messageId ?? ''].some(value => /[\r\n]/.test(value))) throw new AppError('Invalid email header.', 400);
   if (!mailboxAddress(fromAddress)) throw new AppError('Invalid Gmail sender address.', 400);
 
-  if (attachments.length > 1 || attachments.some(file => !/^[A-Za-z0-9_-]+\.pdf$/.test(file.filename) || file.mimeType !== 'application/pdf' || file.data.length > 5 * 1024 * 1024 || file.data.subarray(0, 5).toString() !== '%PDF-')) throw new AppError('Invalid generated PDF attachment.', 400);
+  validateOutgoingAttachments(attachments);
   const boundary = `leadcrm-${createHash('sha256').update(messageId ?? '').update(attachments[0]?.data ?? '').digest('hex').slice(0, 32)}`;
   const base64 = (data: Buffer) => data.toString('base64').match(/.{1,76}/g)?.join('\r\n') ?? '';
   const message = [
@@ -543,7 +560,7 @@ export function createRawMessage(to: string, subject: string, body: string, from
     ...(messageId ? ['Message-ID: ' + messageId] : []),
     'MIME-Version: 1.0',
     ...(attachments.length ? [`Content-Type: multipart/mixed; boundary="${boundary}"`, '', `--${boundary}`, 'Content-Type: text/html; charset=utf-8', 'Content-Transfer-Encoding: base64', '', base64(Buffer.from(body)),
-      ...attachments.flatMap(file => [`--${boundary}`, 'Content-Type: application/pdf', `Content-Disposition: attachment; filename="${file.filename}"`, 'Content-Transfer-Encoding: base64', '', base64(file.data)]), `--${boundary}--`]
+      ...attachments.flatMap(file => [`--${boundary}`, `Content-Type: ${file.mimeType}`, `Content-Disposition: attachment; filename="${file.filename.replace(/[^\x20-\x7e]|["\\]/g, '_')}"; filename*=UTF-8''${encodeURIComponent(file.filename).replace(/['()*]/g, c => '%' + c.charCodeAt(0).toString(16))}`, 'Content-Transfer-Encoding: base64', '', base64(file.data)]), `--${boundary}--`]
       : ['Content-Type: text/html; charset=utf-8', '', body]),
   ].join('\r\n');
 

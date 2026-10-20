@@ -12,15 +12,15 @@ import { salesTransaction } from '../../modules/crm/leads/lead-automation.servic
 /** Read only a currently authorized message; repairing display fields never replays CRM effects. */
 export async function readMailboxContent(tenantId: string, userId: string, messageId: string): Promise<MailboxMessageContent> {
   const { account, scope } = await authorizedMailbox(tenantId, userId);
-  await assertStoredMessages(account, scope, [messageId], true);
+  await assertStoredMessages(account, scope, [messageId]);
   const stored = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { id: true, threadId: true } });
   const email = await fetchMessageDetail(await getValidAccessToken(tenantId, userId), messageId);
-  if (email.threadId !== stored.threadId || !messageInScope(email, account.email, scope) || email.labels.some(label => ['DRAFT', 'SPAM', 'TRASH', 'DELETED'].includes(label))) throw new AppError('Message access changed. Refresh your Inbox.', 404, 'MAILBOX_SCOPE_CHANGED');
+  if (email.threadId !== stored.threadId || !messageInScope(email, account.email, scope) || email.labels.some(label => ['SPAM', 'TRASH', 'DELETED'].includes(label))) throw new AppError('Message access changed. Refresh your Inbox.', 404, 'MAILBOX_SCOPE_CHANGED');
   const content = { body: email.body, attachments: email.attachments ?? [] };
   await salesTransaction(async tx => {
     const permissions = await mailboxPermissions(tenantId, userId, true, tx);
     const currentScope = await resolveMailboxScope(account, permissions, tx);
-    await assertStoredMessages(account, currentScope, [messageId], true, tx);
+    await assertStoredMessages(account, currentScope, [messageId], false, tx);
     if (!messageInScope(email, account.email, currentScope)) throw new AppError('Message access changed.', 404, 'MAILBOX_SCOPE_CHANGED');
     await tx.mailboxMessage.update({ where: { id: stored.id }, data: { body: content.body, attachments: JSON.parse(JSON.stringify(content.attachments)) } });
   });
@@ -41,7 +41,7 @@ function previewContentType(data: Buffer, mimeType: string) {
 export async function readMailboxAttachment(tenantId: string, userId: string, messageId: string, attachmentId: string, recordContext?: RecordEmailAttachmentContext) {
   if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
   const { account, scope } = await authorizedMailbox(tenantId, userId);
-  await assertStoredMessages(account, scope, [messageId], true);
+  await assertStoredMessages(account, scope, [messageId]);
   const row = await prisma.mailboxMessage.findUniqueOrThrow({ where: { accountId_providerMessageId: { accountId: account.id, providerMessageId: messageId } }, select: { attachments: true, threadId: true } });
   const attachment = (Array.isArray(row.attachments) ? row.attachments as unknown as MailboxAttachment[] : []).find(file => file.id === attachmentId);
   if (!attachment) throw new AppError('Attachment is not available for this message.', 404);
@@ -61,7 +61,7 @@ export async function readMailboxAttachment(tenantId: string, userId: string, me
   // Recheck after the network request so a reassignment during download revokes it.
   const current = await authorizedMailbox(tenantId, userId);
   if (current.account.id !== account.id) throw new AppError('Mailbox changed during download.', 409);
-  await assertStoredMessages(current.account, current.scope, [messageId], true);
+  await assertStoredMessages(current.account, current.scope, [messageId]);
   if (recordContext) await assertRecordMailboxMessage(tenantId, userId, messageId, recordContext);
   return { data, filename: attachment.filename, mimeType: previewContentType(data, attachment.mimeType) };
 }

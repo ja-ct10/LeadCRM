@@ -12,6 +12,7 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); clearPageCache(); });
 
 it.each([
+  ['/crm/merge', ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'campaigns', 'counts-leads', 'activities']],
   ['/administration/closing-requirements/123', ['settings', 'leads', 'contacts', 'accounts', 'deals']],
   ['/administration/organization-settings', ['settings']],
   ['/crm/contacts/123/archive', ['contacts', 'leads', 'accounts', 'reports', 'activities']],

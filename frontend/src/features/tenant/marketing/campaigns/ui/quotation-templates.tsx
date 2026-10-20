@@ -95,7 +95,7 @@ export function QuotationTemplates() {
       <div className="min-w-0 flex-1 space-y-4">
     {result.error && <p role="alert" className="text-sm text-destructive">{result.error}</p>}
     {result.isInitialLoad ? <p role="status">Loading quotation templates…</p> : !templates.length ? <div className="rounded-xl border border-border p-8 text-center text-sm text-muted-foreground">No quotation templates found.</div> :
-      <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">{templates.map(template => {
+      <div className="grid min-w-0 grid-cols-[repeat(auto-fit,minmax(min(100%,260px),1fr))] gap-4">{templates.map(template => {
         let description = 'Reusable quotation template';
         try { description = parseQuotationTemplate(template.content).introduction.replace(/^Dear[^\n]*\n*/i, '').trim(); } catch { /* Existing malformed records remain visible for a clear API error. */ }
         return <article key={template.id} className="flex h-full min-w-0 flex-col rounded-xl border border-gray-200 bg-white p-5 shadow-lg backdrop-blur-xl dark:border-white/5 dark:bg-white/2">

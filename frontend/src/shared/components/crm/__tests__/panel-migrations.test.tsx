@@ -52,7 +52,7 @@ it.each(personSurfaces.flatMap(entry => ['Client Admin', 'Sales Agent'].map(role
   for (const name of [`Compose email to ${email}`, 'Open messages']) {
     mocks.push.mockClear();
     fireEvent.click(await screen.findByRole('button', { name }));
-    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email));
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email, undefined, undefined, { recordModule: module, recordId: 'one' }));
     expect(toast.error).not.toHaveBeenCalled();
   }
   const url = new URL(mocks.push.mock.calls[0][0], 'https://example.test');
@@ -139,7 +139,7 @@ it.each(personSurfaces)('does not require general mutation access to email an ow
   for (const name of [`Compose email to ${email}`, 'Open messages']) {
     mocks.push.mockClear();
     fireEvent.click(await screen.findByRole('button', { name }));
-    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email));
+    expect(mocks.push).toHaveBeenCalledExactlyOnceWith(recordEmailComposeHref(email, undefined, undefined, { recordModule: module, recordId: 'one' }));
     expect(toast.error).not.toHaveBeenCalled();
   }
 });
@@ -369,7 +369,7 @@ it.each(['leads', 'contacts'] as const)('%s drawer navigates to existing Inbox a
   const error = vi.spyOn(toast, 'error');
   render(<CrmRecordPanel module={module} id="one" open onOpenChange={() => {}} />);
   fireEvent.click(await screen.findByRole('button', { name: 'Compose email to Lina+sales@Example.test' }));
-  expect(mocks.push).toHaveBeenCalledWith('/inbox?compose=record-email&to=Lina%2Bsales%40Example.test');
+  expect(mocks.push).toHaveBeenCalledWith(`/inbox?compose=record-email&to=Lina%2Bsales%40Example.test&recordModule=${module}&recordId=one`);
   mocks.push.mockClear();
   fireEvent.click(screen.getByRole('button', { name: 'Copy phone number +63 935 454 1321' }));
   await waitFor(() => expect(success).toHaveBeenCalledWith('Phone number copied'));

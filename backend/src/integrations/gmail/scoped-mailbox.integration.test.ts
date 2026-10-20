@@ -59,6 +59,45 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
   }
   afterAll(async () => { if (server) await new Promise<void>(resolve => server.close(() => resolve())); await prisma.$disconnect(); });
 
+  it('uploads, reloads and preserves draft attachments while sending an edited subject linked to its Deal', async () => {
+    const pipeline = await scope(() => salesTransaction(tx => salesPipeline(tx, tenantId)));
+    const deal = await prisma.deal.create({ data: { tenantId, title: 'Attachment Deal', pipelineId: pipeline.pipeline.id, stageId: pipeline.initial.id, assignedUserId: userId, leadDeals: { create: { leadId } } } });
+    const bytes = Buffer.from('%PDF-1.4\nOriginal uploaded attachment');
+    let draftMessage: ReturnType<typeof apiMail>, sentMessage: ReturnType<typeof apiMail>, writes = 0, sequence = 0;
+    const rawMessages: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: string, init?: RequestInit) => {
+      const path = new URL(input).pathname.split('/me/')[1];
+      if ((path === 'drafts' || path === 'drafts/upload-draft') && ['POST', 'PUT'].includes(init?.method ?? '')) {
+        writes++;
+        const raw = Buffer.from(JSON.parse(String(init?.body)).message.raw, 'base64url').toString(); rawMessages.push(raw);
+        const subject = Buffer.from(raw.match(/Subject: =\?UTF-8\?B\?([^?]+)\?=/)![1], 'base64').toString();
+        draftMessage = apiMail({ ...mail(account.email, `upload-${++sequence}`, ['DRAFT']), to: [leadEmail], subject, body: '<p>Details</p>' }, [{ name: 'Message-ID', value: raw.match(/Message-ID: ([^\r\n]+)/)![1] }]);
+        Object.assign(draftMessage.payload, { mimeType: 'multipart/mixed', parts: [{ mimeType: 'text/html', body: { data: Buffer.from('<p>Details</p>').toString('base64url') } }, { partId: '1', filename: 'Proposal.pdf', mimeType: 'application/pdf', body: { attachmentId: 'upload-file', size: bytes.length } }] });
+        return Response.json({ id: 'upload-draft', message: draftMessage });
+      }
+      if (path === 'drafts/upload-draft') return Response.json({ id: 'upload-draft', message: draftMessage });
+      if (path.endsWith('/attachments/upload-file')) return Response.json({ data: bytes.toString('base64url'), size: bytes.length });
+      if (path === 'drafts/send') { writes++; sentMessage = { ...draftMessage!, id: 'upload-sent', labelIds: ['SENT'] }; return Response.json({ id: sentMessage.id, threadId: sentMessage.threadId }); }
+      if (path === 'messages/upload-sent') return Response.json(sentMessage!);
+      if (path.startsWith('messages/upload-')) return Response.json(draftMessage!);
+      return Response.json({ messages: [] });
+    }));
+    const context = { composeMode: 'compose', recordContext: { recordModule: 'leads', recordId: leadId }, dealId: deal.id };
+    const saved = await call('/drafts', 'POST', { to: leadEmail, subject: 'Initial subject', body: '<p>Details</p>', ...context, attachments: [{ filename: 'Proposal.pdf', mimeType: 'application/pdf', content: bytes.toString('base64') }] });
+    expect(saved.status, JSON.stringify(saved.body)).toBe(200);
+    expect((await call(`/messages/${saved.body.messageId}/content`)).body.attachments).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'upload-file', filename: 'Proposal.pdf' })]));
+    const downloaded = await realFetch(`${base}/messages/${saved.body.messageId}/attachments/upload-file`, { headers: { Authorization: `Bearer ${token}` } });
+    expect(Buffer.from(await downloaded.arrayBuffer())).toEqual(bytes);
+    const payload = { requestId: randomUUID(), to: leadEmail, subject: 'Edited subject', body: '<p>Details</p>', draftId: saved.body.draftId, ...context };
+    const sent = await call('/send', 'POST', payload);
+    expect(sent.status, JSON.stringify(sent.body)).toBe(200);
+    expect(rawMessages).toHaveLength(2);
+    expect(rawMessages.every(raw => raw.includes(bytes.toString('base64')))).toBe(true);
+    expect(await prisma.mailboxMessage.findFirstOrThrow({ where: { tenantId, accountId: account.id, providerMessageId: sent.body.messageId } })).toMatchObject({ subject: 'Edited subject', dealId: deal.id, leadId });
+    expect(await prisma.activity.count({ where: { tenantId, dealId: deal.id, leadId, type: 'email' } })).toBe(1);
+    expect((await call('/send', 'POST', payload)).status).toBe(200); expect(writes).toBe(3);
+  });
+
   it.each(['/send', '/drafts'])('rejects missing or malformed operation IDs on %s before contacting Gmail', async path => {
     const provider = vi.fn(); vi.stubGlobal('fetch', provider);
     const payload = { to: leadEmail, subject: 'Keyed operation', body: '<p>Hello</p>' };
@@ -156,6 +195,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     let writes = 0;
     vi.stubGlobal('fetch', vi.fn(async (_target: string, init?: RequestInit) => {
       if (init?.method === 'PUT') { writes++; return Response.json({ id: draft.draftId, message: { id: draft.id, threadId: draft.threadId } }); }
+      if (String(_target).includes('/drafts/' + draft.draftId)) return Response.json({ id: draft.draftId, message: apiMail(draft) });
       throw new Error('Unexpected provider call');
     }));
     const payload = { requestId, to: leadEmail, subject: 'Schedule target', body: '<p>Body</p>', draftId: draft.draftId, scheduledAt: new Date(Date.now() + 3600000).toISOString() };
@@ -976,6 +1016,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
         if (path.endsWith('/drafts/send')) return Response.json({ id: 'sent-draft', threadId: incoming.threadId });
         return Response.json({ id: 'saved-draft', message: { id: 'draft-message', threadId: incoming.threadId } });
       }
+      if (path.endsWith('/drafts/saved-draft')) return Response.json({ id: 'saved-draft', message: apiMail({ ...mail(account.email, 'draft-message', ['DRAFT']), threadId: incoming.threadId, to: [leadEmail] }) });
       return Response.json(apiMail({ ...mail(account.email, 'sent-draft', ['SENT']), threadId: incoming.threadId, to: [leadEmail] }));
     }));
     const draft = { to: leadEmail, subject: 'Re: ' + incoming.subject, body: '<p>Original</p>', replyToMessageId: incoming.id };
@@ -996,6 +1037,7 @@ describe.skipIf(!disposable)('scoped persisted mailbox, incremental sync and sch
     const source = composeMode === 'forward' ? { forwardSourceMessageId: original.id } : composeMode === 'compose' ? {} : { replyToMessageId: original.id };
     const writes: any[] = [];
     vi.stubGlobal('fetch', vi.fn(async (_path: string | URL, init?: RequestInit) => {
+      if (!init?.method && String(_path).includes('/drafts/mode-draft')) return Response.json({ id: 'mode-draft', message: apiMail({ ...mail(account.email, 'mode-message', ['DRAFT']), to: [leadEmail] }) });
       writes.push(JSON.parse(String(init?.body)));
       return Response.json({ id: 'mode-draft', message: { id: 'mode-message', threadId: composeMode === 'reply' || composeMode === 'replyAll' ? original.threadId : 'new-topic' } });
     }));

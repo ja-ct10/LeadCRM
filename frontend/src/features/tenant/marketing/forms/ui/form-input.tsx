@@ -14,7 +14,7 @@ export function FormInput({ field: f, value = '', onChange, error, design, produ
   const string = typeof value === 'string' ? value : '';
   return <div className="min-w-0">
     <label htmlFor={id} className="block text-sm font-medium mb-1 break-words">{f.label}{f.required && <span className="text-red-600" aria-hidden="true"> *</span>}</label>
-    {f.mapToField === 'productInterest' ? <ProductInterestSelect id={id} presentation="checkbox-list" showUncategorized={false} ariaLabel={f.label} ariaInvalid={!!error} ariaDescribedBy={props['aria-describedby']} categories={productCatalog?.categories} products={(f.options ?? []).map(option => {
+    {f.mapToField === 'productInterest' ? <ProductInterestSelect id={id} searchable showUncategorized={false} ariaLabel={f.label} ariaInvalid={!!error} ariaDescribedBy={props['aria-describedby']} categories={productCatalog?.categories} products={(f.options ?? []).map(option => {
       const product = productCatalog?.products.find(product => product.id === option);
       return { id: option, name: f.optionLabels?.[option] ?? product?.name ?? option, category: product?.category };
     })} values={Array.isArray(value) ? value : string ? [string] : []} onChange={onChange} /> : f.type === 'multi-line' ? <textarea {...props} rows={3} maxLength={f.customFieldId ? 10000 : 4000} placeholder={f.placeholder} value={string} onChange={e => onChange(e.target.value)} />

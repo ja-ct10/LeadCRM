@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 import { salesTransaction } from './lead-automation.service';
 import { salesContext, markWorkflowQueued, registerWorkflowWake } from './sales-context';
+import { tenantContext } from '../../../core/tenant/tenant-context';
+import { subscribeRecordChanges } from '../record-change-events';
 
 const mocks = vi.hoisted(() => ({ transaction: vi.fn(), fence: vi.fn(), actor: vi.fn() }));
 vi.mock('../../../config/database.config', () => ({ default: { $transaction: mocks.transaction } }));
@@ -22,6 +24,8 @@ describe('serializable sales transactions', () => {
   it('wakes once after the outer commit, including nested enqueues', async () => {
     const wake = vi.fn(() => expect(salesContext.getStore()).toBeUndefined());
     const unregister = registerWorkflowWake(wake);
+    const notify = vi.fn(() => expect(salesContext.getStore()).toBeUndefined());
+    const unsubscribe = subscribeRecordChanges('tenant', notify);
     let commit!: () => void;
     mocks.transaction.mockImplementation(async work => {
       const result = await work(tx);
@@ -29,34 +33,41 @@ describe('serializable sales transactions', () => {
       return result;
     });
     try {
-      const pending = salesTransaction(async current => {
+      const pending = tenantContext.run({ tenantId: 'tenant' }, () => salesTransaction(async current => {
         markWorkflowQueued(current);
         await salesTransaction(async nested => { markWorkflowQueued(nested); });
-      });
+      }));
       await vi.waitFor(() => expect(commit).toBeTypeOf('function'));
       expect(wake).not.toHaveBeenCalled();
+      expect(notify).not.toHaveBeenCalled();
       commit(); await pending;
       expect(wake).toHaveBeenCalledOnce();
-    } finally { unregister(); }
+      expect(notify).toHaveBeenCalledOnce();
+    } finally { unregister(); unsubscribe(); }
   });
 
   it('discards rolled-back wake markers even if a transaction object is reused', async () => {
     const wake = vi.fn(); const unregister = registerWorkflowWake(wake);
+    const notify = vi.fn(); const unsubscribe = subscribeRecordChanges('tenant', notify);
     try {
-      await expect(salesTransaction(async current => { markWorkflowQueued(current); throw new Error('rollback'); })).rejects.toThrow('rollback');
+      await expect(tenantContext.run({ tenantId: 'tenant' }, () => salesTransaction(async current => { markWorkflowQueued(current); throw new Error('rollback'); }))).rejects.toThrow('rollback');
+      expect(notify).not.toHaveBeenCalled();
       await salesTransaction(async () => {});
       expect(wake).not.toHaveBeenCalled();
-    } finally { unregister(); }
+      expect(notify).not.toHaveBeenCalled();
+    } finally { unregister(); unsubscribe(); }
   });
 
   it('wakes only for the committed retry after a commit conflict', async () => {
     const wake = vi.fn(); const unregister = registerWorkflowWake(wake);
+    const notify = vi.fn(); const unsubscribe = subscribeRecordChanges('tenant', notify);
     mocks.transaction.mockImplementationOnce(async work => { await work(tx); throw conflict(); });
     try {
-      const pending = salesTransaction(async current => { markWorkflowQueued(current); expect(wake).not.toHaveBeenCalled(); });
+      const pending = tenantContext.run({ tenantId: 'tenant' }, () => salesTransaction(async current => { markWorkflowQueued(current); expect(wake).not.toHaveBeenCalled(); expect(notify).not.toHaveBeenCalled(); }));
       await vi.runAllTimersAsync(); await pending;
       expect(wake).toHaveBeenCalledOnce();
-    } finally { unregister(); }
+      expect(notify).toHaveBeenCalledOnce();
+    } finally { unregister(); unsubscribe(); }
   });
 
   it.each([

@@ -83,7 +83,7 @@ function InboxMailbox(): React.ReactElement {
     // Keep Next's canonical URL in sync so a later render cannot restore the consumed query.
     router.replace(`${request.url.pathname}${request.url.search}${request.url.hash}`, { scroll: false });
     if (!request.to) { toast.error('Please enter a valid email address'); return; }
-    setComposeDraft({ to: request.to, subject: request.subject, sourceDealId: request.sourceDealId, body: '' });
+    setComposeDraft({ to: request.to, subject: request.subject, sourceDealId: request.sourceDealId, recordContext: request.recordContext, body: '' });
     setIsComposeOpen(true);
   }, [searchParams, router]);
 
@@ -121,7 +121,7 @@ function InboxMailbox(): React.ReactElement {
     readOperations.current.clear(); setReadBusy(false);
     setNextPageToken(undefined); setPage(1); pageRef.current = 1; tokenRef.current = undefined; pageTokens.current = [undefined];
     loaded.current = false; setRefreshing(false); setInitialLoading(false); setRevision(value => value + 1);
-    if (composeDraftRef.current?.draftId || composeDraftRef.current?.sourceDealId) { setComposeDraft(null); setIsComposeOpen(false); }
+    if (composeDraftRef.current?.draftId || composeDraftRef.current?.sourceDealId || composeDraftRef.current?.recordContext) { setComposeDraft(null); setIsComposeOpen(false); }
     window.dispatchEvent(new CustomEvent('mailbox-unread-change', { detail: 0 }));
   }, []);
   const applyApiCooldown = useCallback((error: ApiRequestError) => {
@@ -365,7 +365,7 @@ function InboxMailbox(): React.ReactElement {
     if (email.scheduledStatus) { setSelectedSchedule(email.id); return; }
     if (filter === 'drafts') { setComposeDraft({ to: [...email.to, ...(email.cc ?? [])].join(', '), subject: email.subject, body: email.body, draftId: email.draftId,
       composeMode: email.composeMode, replyToMessageId: email.replyToMessageId, forwardSourceMessageId: email.forwardSourceMessageId,
-      sourceDealId: email.dealId ?? undefined, draftContextRequired: email.draftContextRequired, draftThreadId: email.threadId }); setIsComposeOpen(true); }
+        sourceDealId: email.recordContext ? undefined : email.dealId ?? undefined, recordContext: email.recordContext, dealId: email.dealId ?? undefined, attachmentSourceMessageId: email.id, draftContextRequired: email.draftContextRequired, draftThreadId: email.threadId }); setIsComposeOpen(true); }
     else setSelectedEmail(email);
   };
   const animation = shouldReduceMotion ? {} : { initial: { opacity: 0 }, animate: { opacity: 1 }, transition: { duration: 0.2 } };
