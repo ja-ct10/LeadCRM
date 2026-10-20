@@ -34,7 +34,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     tenantId = (await prisma.tenant.create({ data: { name: 'Delivery', slug: randomUUID() } })).id;
     const agentRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Agent' } }); roleId = agentRole.id;
     const adminRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
-    for (const module of ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'campaigns']) await prisma.rolePermission.create({ data: { tenantId, roleId, module, canView: true, canEdit: true, canCreate: true } });
+    for (const module of ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'campaigns']) await prisma.rolePermission.create({ data: { tenantId, roleId, module, canView: true, canEdit: true, canCreate: true,
+      ...(['leads', 'contacts', 'accounts', 'deals'].includes(module) ? { canViewAll: true, canViewMy: true } : {}) } });
     const user = async (role: string, rid?: string, tid = tenantId) => {
       const row = await prisma.user.create({ data: { tenantId: tid, role, email: randomUUID() + '@camxian.com', firstName: 'Staff', lastName: 'Member', mustChangePassword: false, onboardingCompletedAt: new Date() } });
       if (rid) await prisma.userRole.create({ data: { tenantId: tid, userId: row.id, roleId: rid } });
@@ -218,7 +219,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await notifications(campaign.id)).toHaveLength(1);
     await prisma.campaign.update({ where: { id: campaign.id }, data: { failedCount: 0, status: 'SENDING', submissionStartedAt: new Date(Date.now() + 1000) } });
     await prisma.campaign.update({ where: { id: campaign.id }, data: { failedCount: 1, status: 'FAILED' } }); await processEvents();
-    expect(await notifications(campaign.id)).toHaveLength(2); expect(await notifications(campaign.id, adminId)).toHaveLength(2);
+    expect(await notifications(campaign.id)).toHaveLength(2); expect(await notifications(campaign.id, adminId)).toHaveLength(0);
   });
 
   it('collapses pre-submission scheduling failures and permits a later distinct retry', async () => {
@@ -316,8 +317,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     const form = await prisma.marketingForm.create({ data: { tenantId, name: 'Failed form', createdById: adminId } });
     await prisma.auditLog.create({ data: { tenantId, userId: adminId, action: 'form.processing_failed', entityType: 'Form', entityId: form.id } });
     await processEvents();
-    expect((await notifications(workflow.id, adminId)).map(n => n.type)).toEqual(['workflow_failed']);
-    expect((await notifications(form.id, adminId)).map(n => n.type)).toEqual(['form_processing_failed']);
+    expect(await notifications(workflow.id, adminId)).toEqual([]);
+    expect(await notifications(form.id, adminId)).toEqual([]);
     expect(await notifications(workflow.id, otherId)).toHaveLength(0);
     expect((await request('/notifications/operations')).status).toBe(403);
     expect((await request('/notifications/operations','GET',undefined,adminToken)).status).toBe(200);

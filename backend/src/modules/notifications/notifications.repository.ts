@@ -20,11 +20,15 @@ export async function findNotifications(tenantId: string, userId: string, input:
   const after: Prisma.NotificationWhereInput = cursor ? { OR: [
     { createdAt: { lt: new Date(cursor.createdAt) } }, { createdAt: new Date(cursor.createdAt), id: { gt: cursor.id } },
   ] } : {};
-  const [rows, total, totals] = await prisma.$transaction(async tx => Promise.all([
-    tx.notification.findMany({ where: { AND: [where, after] }, take: query.limit + 1,
-      ...(cursor ? {} : { skip: (query.page - 1) * query.limit }), orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
-    tx.notification.count({ where }), counts(tx, tenantId, userId),
-  ]), { isolationLevel: 'RepeatableRead' });
+  const [rows, total, totals] = await prisma.$transaction(async tx => {
+    const access = await notificationAccess(tenantId, userId, tx);
+    const visibleWhere = { ...where, AND: [access.visibilityWhere] };
+    return Promise.all([
+      tx.notification.findMany({ where: { AND: [visibleWhere, after] }, take: query.limit + 1,
+        ...(cursor ? {} : { skip: (query.page - 1) * query.limit }), orderBy: [{ createdAt: 'desc' }, { id: 'asc' }] }),
+      tx.notification.count({ where: visibleWhere }), counts(tx, tenantId, userId, access),
+    ]);
+  }, { isolationLevel: 'RepeatableRead' });
   const hasMore = rows.length > query.limit;
   const records = rows.slice(0, query.limit), last = records[records.length - 1];
   const nextCursor = hasMore && last ? Buffer.from(JSON.stringify({ createdAt: last.createdAt.toISOString(), id: last.id, snapshot })).toString('base64url') : null;
@@ -32,11 +36,13 @@ export async function findNotifications(tenantId: string, userId: string, input:
     meta: { total, page: query.page, limit: query.limit, hasMore, nextCursor, snapshot }, ...totals };
 }
 
-async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: string) {
+async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: string,
+  access?: Awaited<ReturnType<typeof notificationAccess>>) {
+  access ??= await notificationAccess(tenantId, userId, tx);
+  const where = { tenantId, userId, AND: [access.visibilityWhere] };
   // Both values come from one SQL snapshot, including inside mutation transactions.
-  const groups = await tx.notification.groupBy({ by: ['isRead'], where: { tenantId, userId }, _count: { _all: true } });
-  const unread = await tx.notification.groupBy({ by: ['entityType', 'entityId'], where: { tenantId, userId, isRead: false }, _count: { _all: true } });
-  const access = await notificationAccess(tenantId, userId, tx);
+  const groups = await tx.notification.groupBy({ by: ['isRead'], where, _count: { _all: true } });
+  const unread = await tx.notification.groupBy({ by: ['entityType', 'entityId'], where: { ...where, isRead: false }, _count: { _all: true } });
   const unreadByModule: Record<string, number> = {};
   const records = new Map<string, UnreadNotificationRecord>();
   for (const group of unread) {
@@ -73,17 +79,19 @@ export async function notificationCounts(tenantId: string, userId: string, input
   }
   const since = new Date(cursor.since);
   const result = await prisma.$transaction(async tx => {
-    const totals = await counts(tx, tenantId, userId);
+    const access = await notificationAccess(tenantId, userId, tx);
+    const totals = await counts(tx, tenantId, userId, access);
     const preferences = await getNotificationPreferences(tenantId, userId, tx);
+    const smsEnabled = !access.admin && preferences.data.inAppGeneral;
     const after: Prisma.NotificationWhereInput = cursor.page ? { OR: [
       { createdAt: { gt: new Date(cursor.at) } }, { createdAt: new Date(cursor.at), id: { gt: cursor.id } },
     ] } : { createdAt: { gte: new Date(Math.max(+since, Date.parse(cursor.at) - 30000)) } };
     // A small overlap catches transactions committed out of timestamp order.
     // The shared watcher deduplicates immutable notification IDs.
-    const rows = preferences.data.inAppGeneral ? await tx.notification.findMany({ where: {
-      tenantId, userId, type: { in: [...SmsCampaignNotificationTypes] }, occurredAt: { gte: since }, AND: [after],
+    const rows = smsEnabled ? await tx.notification.findMany({ where: {
+      tenantId, userId, type: { in: [...SmsCampaignNotificationTypes] }, occurredAt: { gte: since }, AND: [after, access.visibilityWhere],
     }, orderBy: [{ createdAt: 'asc' }, { id: 'asc' }], take: 101 }) : [];
-    const active = preferences.data.inAppGeneral ? await tx.campaign.findFirst({ where: {
+    const active = smsEnabled ? await tx.campaign.findFirst({ where: {
       tenantId, type: 'SMS', isArchived: false, submissionStartedAt: { gt: new Date(+now - 300000) },
       status: { in: ['SENDING', 'SENT', 'INTERRUPTED'] }, OR: [{ createdById: userId }, { submittedById: userId }],
     }, orderBy: { submissionStartedAt: 'desc' }, select: { id: true, submissionStartedAt: true } }) : null;
@@ -102,17 +110,19 @@ export async function notificationCounts(tenantId: string, userId: string, input
 }
 export async function markNotificationRead(id: string, tenantId: string, userId: string) {
   return prisma.$transaction(async tx => {
-    if (!await tx.notification.findFirst({ where: { id, tenantId, userId }, select: { id: true } })) throw new NotFoundError('Notification');
-    await tx.notification.updateMany({ where: { id, tenantId, userId, isRead: false }, data: { isRead: true, readAt: new Date() } });
-    return counts(tx, tenantId, userId);
+    const access = await notificationAccess(tenantId, userId, tx);
+    const where = { id, tenantId, userId, AND: [access.visibilityWhere] };
+    if (!await tx.notification.findFirst({ where, select: { id: true } })) throw new NotFoundError('Notification');
+    await tx.notification.updateMany({ where: { ...where, isRead: false }, data: { isRead: true, readAt: new Date() } });
+    return counts(tx, tenantId, userId, access);
   });
 }
 export async function markAllNotificationsRead(tenantId: string, userId: string, before = new Date(), record?: NotificationRecordTarget) {
   return prisma.$transaction(async tx => {
-    const where: Prisma.NotificationWhereInput = { tenantId, userId, isRead: false, createdAt: { lte: before } };
+    const access = await notificationAccess(tenantId, userId, tx);
+    const where: Prisma.NotificationWhereInput = { tenantId, userId, isRead: false, createdAt: { lte: before }, AND: [access.visibilityWhere] };
     let readRecord: NotificationRecordTarget | undefined;
     if (record) {
-      const access = await notificationAccess(tenantId, userId, tx);
       const target = await access.resolve(record.entityType, record.entityId);
       if (!target) throw new NotFoundError('Record');
       readRecord = NotificationRecordTargetSchema.parse({ entityType: target.entityType, entityId: target.entityId });
@@ -127,14 +137,15 @@ export async function markAllNotificationsRead(tenantId: string, userId: string,
     } else {
       await tx.notification.updateMany({ where, data: { isRead: true, readAt: new Date() } });
     }
-    return { ...await counts(tx, tenantId, userId), readBefore: before.toISOString(), ...(readRecord ? { readRecord } : {}) };
+    return { ...await counts(tx, tenantId, userId, access), readBefore: before.toISOString(), ...(readRecord ? { readRecord } : {}) };
   });
 }
 export async function deleteNotifications(ids: string[], tenantId: string, userId: string) {
   return prisma.$transaction(async tx => {
+    const access = await notificationAccess(tenantId, userId, tx);
     const unique = [...new Set(ids)];
-    const result = await tx.notification.deleteMany({ where: { id: { in: unique }, tenantId, userId } });
+    const result = await tx.notification.deleteMany({ where: { id: { in: unique }, tenantId, userId, AND: [access.visibilityWhere] } });
     if (result.count !== unique.length) throw new NotFoundError('Notification');
-    return counts(tx, tenantId, userId);
+    return counts(tx, tenantId, userId, access);
   });
 }

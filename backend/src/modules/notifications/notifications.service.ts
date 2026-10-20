@@ -15,6 +15,7 @@ export interface CreateNotificationParams {
   taskVersion?: number; eligibilityAt?: Date;
   actorId?: string | null;
   incidentId?: string;
+  securityLockedAt?: string;
 }
 
 /** Internal compatibility entrypoint. Business producers use the transactional outbox. */
@@ -54,6 +55,12 @@ export async function deliverNotification(params: CreateNotificationParams): Pro
     if (!access.active) return;
     let authorized = !(assignmentNotifications.has(params.type) && params.actorId === params.userId)
       && await access.eligible(params.type, params.entityType, params.entityId);
+    if (params.securityLockedAt !== undefined) {
+      authorized = authorized && params.type === 'user_status_changed' && params.entityType === 'User'
+        && Number.isFinite(Date.parse(params.securityLockedAt)) && !!await tx.user.findFirst({ where: {
+          tenantId: params.tenantId, id: params.entityId, securityLockedAt: new Date(params.securityLockedAt),
+        }, select: { id: true } });
+    }
     if (params.type === 'mailbox_disconnected' || params.type === 'mailbox_sync_failed') {
       authorized = authorized && !!params.incidentId && !!await tx.emailAccount.findFirst({ where: {
         tenantId: params.tenantId, id: params.entityId, notificationIncidentId: params.incidentId,
@@ -93,7 +100,7 @@ export async function deliverNotification(params: CreateNotificationParams): Pro
       tenantId: params.tenantId, userId: params.userId, eventKey: params.eventKey,
       outcome: !authorized || !currentTask ? 'ineligible' : !enabled ? 'disabled' : 'delivered',
     }], skipDuplicates: true });
-    const { taskVersion: _version, eligibilityAt: _at, actorId: _actor, incidentId: _incident, ...data } = params;
+    const { taskVersion: _version, eligibilityAt: _at, actorId: _actor, incidentId: _incident, securityLockedAt: _lock, ...data } = params;
     if (claim.count && authorized && currentTask && enabled) await tx.notification.create({ data });
   });
 }

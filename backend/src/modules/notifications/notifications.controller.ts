@@ -73,9 +73,9 @@ export async function savePreferences(req: Request, res: Response, next: NextFun
 export async function getDestination(req: Request, res: Response, next: NextFunction) {
   try {
     const id = z.string().uuid().parse(req.params.id);
-    const row = await prisma.notification.findFirst({ where: { id, tenantId: req.user!.tenantId, userId: req.user!.userId } });
-    if (!row) throw new NotFoundError('Notification');
     const access = await notificationAccess(req.user!.tenantId, req.user!.userId);
+    const row = await prisma.notification.findFirst({ where: { id, tenantId: req.user!.tenantId, userId: req.user!.userId, AND: [access.visibilityWhere] } });
+    if (!row) throw new NotFoundError('Notification');
     const target = await access.resolve(row.entityType, row.entityId);
     res.json({ success: true, destination: target?.destination ?? null });
   } catch (err) { next(err); }

@@ -42,9 +42,13 @@ export async function loginUser(dto: LoginDto, ctx: LoginContext = {}) {
         await tx.loginAttemptState.update({ where: { identityKey }, data: { lockoutCycles, lockedUntil: null, lockedRejectionLoggedAt: null, updatedAt: now } });
         const users = await tx.user.findMany({ where: { email: { equals: normalisedEmail, mode: 'insensitive' } }, select: { id: true, tenantId: true } });
         for (const user of users) {
-          await tx.user.updateMany({ where: { id: user.id, tenantId: user.tenantId, securityLockedAt: null }, data: { securityLockedAt: now } });
+          const locked = await tx.user.updateMany({ where: { id: user.id, tenantId: user.tenantId, securityLockedAt: null }, data: { securityLockedAt: now } });
           await tx.session.updateMany({ where: { userId: user.id, tenantId: user.tenantId, revokedAt: null }, data: { revokedAt: now } });
-          await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: 'ACCOUNT_SECURITY_LOCKED', category: 'auth', entityType: 'User', entityId: user.id, metadata: { lockoutCycles } } });
+          const audit = await tx.auditLog.create({ data: { tenantId: user.tenantId, userId: user.id, action: 'ACCOUNT_SECURITY_LOCKED', category: 'auth', entityType: 'User', entityId: user.id, metadata: { lockoutCycles } } });
+          if (locked.count) await tx.notificationEvent.createMany({ data: [{ tenantId: user.tenantId,
+            eventKey: `account-security-locked:${audit.id}`, type: 'user_status_changed', entityType: 'User', entityId: user.id,
+            admins: true, occurredAt: now, payload: { securityEvent: 'account_locked', securityLockedAt: now.toISOString() },
+          }], skipDuplicates: true });
         }
         events.push({ event: 'account_security_locked', count: lockoutCycles });
         return { error: accountLockedError(), events };

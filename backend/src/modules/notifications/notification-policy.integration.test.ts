@@ -6,7 +6,7 @@ import { DEFAULT_CLOSING_FIELDS, DEFAULT_NOTIFICATION_PREFERENCES, type Notifica
 import prisma from '../../config/database.config';
 import app from '../../app';
 import { issueAuthSession } from '../../core/auth/auth-session';
-import { dispatchTenantNotifications } from './notification-events.service';
+import { deliverEvent, dispatchTenantNotifications } from './notification-events.service';
 import { deliverNotification } from './notifications.service';
 import { notificationAccess } from './notification-access';
 import { saveNotificationPreferences } from './notification-preferences.service';
@@ -21,6 +21,7 @@ import { createRole, updateRoleAndPermissions, replaceUserRole } from '../admini
 import { EMPTY_PERMISSION_FLAGS } from '@leadcrm/shared';
 import { MAILBOX_PARTICIPANT_POLICY_VERSION } from '../../integrations/gmail/mailbox-scope';
 import { tenantContext } from '../../core/tenant/tenant-context';
+import { adminNotifications } from './notification-policy';
 
 vi.mock('../../shared/services/email.service', () => ({ sendMail: vi.fn().mockRejectedValue(Error('test-no-provider')) }));
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
@@ -76,6 +77,56 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   });
   afterAll(async () => { if (server) await new Promise<void>(done => server.close(() => done())); await prisma.$disconnect(); });
 
+  it('limits administrators to the seven administrative/security types and verifies current same-tenant admin membership', async () => {
+    expect([...adminNotifications].sort()).toEqual(['password_expiring_soon', 'role_archived', 'role_created',
+      'role_permissions_changed', 'user_created', 'user_role_changed', 'user_status_changed'].sort());
+    const inactive = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'Inactive', lastName: 'Admin',
+      role: 'Client Admin', status: 'INACTIVE', userRoles: { create: { roleId: adminRoleId } } } });
+    const former = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'Former', lastName: 'Admin', role: 'Client Admin' } });
+    const foreign = await prisma.tenant.create({ data: { name: 'Foreign admin', slug: randomUUID() } });
+    const foreignRole = await prisma.roleDefinition.create({ data: { tenantId: foreign.id, name: 'Client Admin', isSystemRole: true } });
+    const foreignAdmin = await prisma.user.create({ data: { tenantId: foreign.id, email: randomUUID() + '@camxian.com', firstName: 'Foreign', lastName: 'Admin',
+      role: 'Client Admin', userRoles: { create: { roleId: foreignRole.id } } } });
+    const role = await createRole(tenantId, { name: 'Isolated custom role' }, []); await processEvents();
+    expect(await recipients(role.id, 'role_created')).toEqual([adminId]);
+    expect(await prisma.notification.count({ where: { entityId: role.id, userId: { in: [inactive.id, former.id, foreignAdmin.id] } } })).toBe(0);
+    const count = await prisma.notificationEvent.count({ where: { tenantId } });
+    await expect(prisma.$transaction(async tx => {
+      await tx.roleDefinition.create({ data: { tenantId, name: 'Rolled back role' } }); throw Error('rollback');
+    })).rejects.toThrow('rollback');
+    expect(await prisma.notificationEvent.count({ where: { tenantId } })).toBe(count);
+  });
+
+  it.each(['Sales Representative', 'Sales Manager'])('preserves assigned operational notifications for %s', async name => {
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name, permissions: { create: { module: 'contacts', canView: true } } } });
+    const user = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'Sales', lastName: name,
+      role: name, userRoles: { create: { roleId: role.id } } } });
+    const record = await contact(user.id); await prisma.contact.update({ where: { id: record.id }, data: { status: 'HOT' } }); await processEvents();
+    expect(await recipients(record.id, 'contact_assigned')).toEqual([user.id]);
+    expect(await recipients(record.id, 'customer_hot')).toEqual([user.id]);
+  });
+
+  it('excludes admin-owned SMS campaigns and mailboxes during resolution and final delivery', async () => {
+    const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Admin SMS', type: 'SMS', createdById: adminId, submittedById: adminId } });
+    const event = { tenantId, type: 'sms_campaign_sent' as const, title: 'SMS Campaign Sent', entityType: 'Campaign', entityId: campaign.id,
+      eventKey: `admin-sms:${campaign.id}`, ownerId: adminId, actorId: adminId, admins: true };
+    await deliverEvent(event);
+    expect(await rows(campaign.id)).toEqual([]);
+    expect(await prisma.notificationDelivery.count({ where: { tenantId, eventKey: event.eventKey } })).toBe(0);
+    await deliverNotification({ tenantId, userId: adminId, type: event.type, title: event.title, entityType: event.entityType,
+      entityId: event.entityId, eventKey: event.eventKey });
+    expect(await rows(campaign.id)).toEqual([]);
+    expect(await prisma.notificationDelivery.findFirst({ where: { tenantId, eventKey: event.eventKey } })).toMatchObject({ outcome: 'ineligible' });
+    const owner = await prisma.user.findUniqueOrThrow({ where: { id: adminId } });
+    const account = await prisma.emailAccount.create({ data: { tenantId, userId: adminId, email: owner.email, scopes: [], accessToken: 'fixture' } });
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false, syncError: 'fixture disconnect' } }); await processEvents();
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: true, syncError: null } });
+    await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: 'fixture sync failure' } });
+    const failing = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
+    await processEvents(new Date(+failing.notificationFailedAt! + 16 * 60000));
+    expect(await rows(account.id)).toEqual([]);
+  });
+
   it('routes supported assignments solely to the current assignee and emits no Account assignment', async () => {
     const account = await prisma.account.create({ data: { tenantId, name: 'Camxian' } });
     const records = [await lead(), await contact(), await deal(),
@@ -106,7 +157,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await prisma.contact.update({ where: { id: row.id }, data: { assignedUserId: otherId, firstName: 'Edited' } });
     await processEvents(); expect(await recipients(row.id)).toEqual([otherId]);
   });
-  it('creates one accurate website admin notice and independent agent assignment after a published submission', async () => {
+  it('retains the agent assignment without a website admin broadcast after a published submission', async () => {
     const product = await prisma.productInterest.create({ data: { tenantId, name: 'Website Product', dealValue: 100 } });
     const form = await createForm(tenantId, adminId, { name: 'Website Inquiry' });
     const published = await publishForm(form.id, tenantId, adminId);
@@ -115,14 +166,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await submitPublicForm(form.publicId, body); await submitPublicForm(form.publicId, body);
     await processEvents(); await processEvents();
     const captured = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: body.values.email } });
-    expect(await rows(captured.id)).toHaveLength(2);
-    expect(await recipients(captured.id, 'website_lead')).toEqual([adminId]);
+    expect(await rows(captured.id)).toHaveLength(1);
+    expect(await recipients(captured.id, 'website_lead')).toEqual([]);
     expect(await recipients(captured.id, 'lead_assigned')).toEqual([agentId]);
-    const notice = (await rows(captured.id)).find(n => n.userId === adminId)!;
-    expect(notice).toMatchObject({ title: 'New Website Lead', body: 'Josh Tiron submitted a new inquiry. Assigned to Agent A Tester.' });
     expect(await (await notificationAccess(tenantId, adminId)).resolve('Lead', captured.id)).toMatchObject({ destination: '/crm/leads/' + captured.id });
     await submitPublicForm(form.publicId, { ...body, requestId: randomUUID() }); await processEvents();
-    expect(await rows(captured.id)).toHaveLength(2);
+    expect(await rows(captured.id)).toHaveLength(1);
     await expect(submitPublicForm(form.publicId, { ...body, requestId: randomUUID(), values: { ...body.values, email: 'invalid' } })).rejects.toThrow();
   });
   it('does not treat manually entered Website/Form source labels as approved inbound provenance', async () => {
@@ -140,7 +189,7 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
       await processEvents(); expect(await rows(row.id)).toHaveLength(count);
     }
   });
-  it('coalesces Qualified action and delivers the successful Won snapshot once to admin and owner', () => tenantContext.run({ tenantId }, async () => {
+  it('coalesces Qualified action and delivers the successful Won snapshot once only to the owner', () => tenantContext.run({ tenantId }, async () => {
     // These requirements are optional by default; this scenario explicitly
     // configures required evidence before expecting a closing action notice.
     for (const field of DEFAULT_CLOSING_FIELDS.filter(field => ['confirmation-type', 'confirmation-date'].includes(field.id))) {
@@ -159,11 +208,11 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await saveValues(tenantId, adminId, row.id, { values: { 'confirmation-type': 'Approved Quotation', 'confirmation-date': '2026-10-12' } });
     await prisma.deal.update({ where: { id: row.id }, data: { value: 1 } });
     await processEvents(); await processEvents();
-    expect(await recipients(row.id, 'deal_won')).toEqual([adminId, agentId].sort());
+    expect(await recipients(row.id, 'deal_won')).toEqual([agentId]);
     expect((await rows(row.id)).filter(n => n.type === 'deal_won').every(n => n.body === 'CCTV Installation was marked Closed Won. Value: ₱45,000. Responsible agent: Agent A Tester.')).toBe(true);
     expect(await recipients(row.id, 'closing_requirements_completed')).toEqual([]);
     await moveDealStage(row.id, tenantId, stages['Closed Deal'], adminId); await processEvents();
-    expect(await recipients(row.id, 'deal_won')).toHaveLength(2);
+    expect(await recipients(row.id, 'deal_won')).toHaveLength(1);
     for (const field of DEFAULT_CLOSING_FIELDS.filter(field => ['confirmation-type', 'confirmation-date'].includes(field.id))) {
       await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: field.id } }, data: { definition: { ...field } } });
     }
@@ -173,19 +222,19 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await expect(moveDealStage(row.id, tenantId, stages['Cancelled'], agentId)).rejects.toThrow('reason');
     await moveDealStage(row.id, tenantId, stages['Cancelled'], agentId, undefined, undefined, 'Customer declined');
     await moveDealStage(row.id, tenantId, stages['Cancelled'], agentId, undefined, undefined, 'Customer declined');
-    await processEvents(); expect(await recipients(row.id, 'deal_lost')).toEqual([adminId, agentId].sort());
+    await processEvents(); expect(await recipients(row.id, 'deal_lost')).toEqual([agentId]);
   }));
   it('suppresses obsolete closing action when the Deal closes before delivery', () => tenantContext.run({ tenantId }, async () => {
     const row = await deal(); await moveDealStage(row.id, tenantId, stages.Qualified, adminId);
     await moveDealStage(row.id, tenantId, stages['Cancelled'], adminId, undefined, undefined, 'Declined');
     await processEvents(); expect(await recipients(row.id, 'closing_requirements_needed')).toEqual([]);
   }));
-  it('routes Campaign incidents to admin and eligible creator, never unrelated marketing or sales viewers', async () => {
-    for (const owner of [agentId, supportId, marketingId, deniedId]) {
+  it('routes Campaign incidents solely to eligible staff creators, including no delivery for an admin creator', async () => {
+    for (const owner of [agentId, supportId, marketingId, deniedId, adminId]) {
       const campaign = await prisma.campaign.create({ data: { tenantId, name: 'October Promotion', type: 'EMAIL', createdById: owner, status: 'SENDING' } });
       await prisma.campaign.update({ where: { id: campaign.id }, data: { failedCount: 1 } });
       await prisma.campaign.update({ where: { id: campaign.id }, data: { failedCount: 4, status: 'FAILED' } });
-      await processEvents(); expect(await recipients(campaign.id)).toEqual((owner === deniedId ? [adminId] : [adminId, owner]).sort());
+      await processEvents(); expect(await recipients(campaign.id)).toEqual([deniedId, adminId].includes(owner) ? [] : [owner]);
       expect((await rows(campaign.id)).every(n => n.body === 'October Promotion encountered a delivery failure. Review the Campaign.')).toBe(true);
     }
   });
@@ -208,7 +257,12 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     await prisma.roleDefinition.update({ where: { id: role.id }, data: { isArchived: true } }); await processEvents();
     expect(await recipients(role.id, 'role_archived')).toEqual([adminId]);
     expect(await (await notificationAccess(tenantId, adminId)).resolve('RoleDefinition', role.id)).toMatchObject({ destination: '/settings?tab=roles' });
-    const inert = await createRole(tenantId, { name: 'No Grants' }, []); await processEvents(); expect(await rows(inert.id)).toHaveLength(0);
+    const inert = await createRole(tenantId, { name: 'No Grants' }, []); await processEvents();
+    expect(await recipients(inert.id, 'role_created')).toEqual([adminId]);
+    expect((await rows(inert.id))[0].body).toBe('No Grants was created.');
+    await prisma.roleDefinition.update({ where: { id: inert.id }, data: { isArchived: true } }); await processEvents();
+    expect(await recipients(inert.id, 'role_archived')).toEqual([adminId]);
+    expect(await recipients(adminRoleId, 'role_created')).toEqual([]);
     const optional = await prisma.campaign.create({ data: { tenantId, name: 'Muted business alert', type: 'EMAIL', status: 'FAILED' } });
     await processEvents(); expect(await rows(optional.id)).toHaveLength(0);
     await saveNotificationPreferences(tenantId, adminId, DEFAULT_NOTIFICATION_PREFERENCES);
@@ -222,12 +276,30 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await recipients(user.id, 'user_role_changed')).toEqual([adminId]);
     for (const status of ['INACTIVE', 'ACTIVE'] as const) { await prisma.user.update({ where: { id: user.id }, data: { status } }); await processEvents(); }
     expect(await recipients(user.id, 'user_status_changed')).toHaveLength(2);
+    await prisma.user.update({ where: { id: user.id }, data: { status: 'PENDING' } }); await processEvents();
+    expect((await rows(user.id)).find(n => n.title === 'User Status Changed')).toMatchObject({ body: "New Employee's account status changed to Pending." });
+    await prisma.user.update({ where: { id: user.id }, data: { status: 'ACTIVE' } }); await processEvents();
     const count = (await rows(user.id)).length;
     await prisma.user.update({ where: { id: user.id }, data: { status: 'ACTIVE' } }); await processEvents(); expect(await rows(user.id)).toHaveLength(count);
     const events = await prisma.notificationEvent.count({ where: { tenantId } });
     await expect(prisma.$transaction(async tx => { await replaceUserRole(tx, user.id, tenantId, 'Support'); throw Error('rollback'); })).rejects.toThrow('rollback');
     expect(await prisma.notificationEvent.count({ where: { tenantId } })).toBe(events);
   });
+  it('notifies creation of approved external staff while excluding unapproved external accounts', async () => {
+    const user = await prisma.$transaction(async tx => {
+      const created = await tx.user.create({ data: { tenantId, firstName: 'Approved', lastName: 'External',
+        email: randomUUID() + '@example.test', role: 'Support', userRoles: { create: { roleId: supportRoleId } } } });
+      await tx.auditLog.create({ data: { tenantId, userId: adminId, action: 'user.staff_approved', category: 'auth', entityType: 'User', entityId: created.id,
+        metadata: { email: created.email, approvedByRole: 'Client Admin' } } });
+      return created;
+    });
+    const unapproved = await prisma.user.create({ data: { tenantId, firstName: 'Unapproved', lastName: 'External',
+      email: randomUUID() + '@example.test', role: 'Support', userRoles: { create: { roleId: supportRoleId } } } });
+    await processEvents();
+    expect(await recipients(user.id, 'user_created')).toEqual([adminId]);
+    expect(await recipients(unapproved.id, 'user_created')).toEqual([]);
+  });
+
   it('keeps historical CRM links after reassignment while Sales edits remain restricted and new delivery stays owner-only', async () => {
     const row = await contact(); await processEvents(); const notice = (await rows(row.id))[0];
     await prisma.contact.update({ where: { id: row.id }, data: { assignedUserId: otherId } });
@@ -278,22 +350,22 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     expect(await prisma.notification.count({ where: { tenantId, type: 'customer_reply' } })).toBe(1);
     expect((await findNotifications(tenantId, agentId, { limit: '100' })).data.find(n => n.id === replies[0].id)).toMatchObject({ available: false, entityId: null });
   });
-  it('routes own mailbox incidents to admin and owner with threshold, recovery and incident deduplication', async () => {
+  it('routes mailbox incidents only to the staff owner with threshold, recovery and incident deduplication', async () => {
     const account = await prisma.emailAccount.findFirstOrThrow({ where: { tenantId, userId: agentId } });
     await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false, syncError: 'SECRET PROVIDER DETAILS' } });
-    await processEvents(); expect(await recipients(account.id, 'mailbox_disconnected')).toEqual([adminId, agentId].sort());
+    await processEvents(); expect(await recipients(account.id, 'mailbox_disconnected')).toEqual([agentId]);
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: 'ANOTHER SECRET' } }); await processEvents();
-    expect(await recipients(account.id, 'mailbox_disconnected')).toHaveLength(2);
+    expect(await recipients(account.id, 'mailbox_disconnected')).toHaveLength(1);
     await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: true, syncError: null } });
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: 'SECRET PERSISTENT' } });
     const failing = await prisma.emailAccount.findUniqueOrThrow({ where: { id: account.id } });
     await processEvents(new Date(+failing.notificationFailedAt! + 14 * 60000)); expect(await recipients(account.id, 'mailbox_sync_failed')).toEqual([]);
     await processEvents(new Date(+failing.notificationFailedAt! + 16 * 60000)); await processEvents(new Date(+failing.notificationFailedAt! + 17 * 60000));
-    expect(await recipients(account.id, 'mailbox_sync_failed')).toEqual([adminId, agentId].sort());
+    expect(await recipients(account.id, 'mailbox_sync_failed')).toEqual([agentId]);
     expect(JSON.stringify(await rows(account.id))).not.toContain('SECRET');
     await prisma.emailAccount.update({ where: { id: account.id }, data: { syncError: null } });
     await prisma.emailAccount.update({ where: { id: account.id }, data: { isActive: false } }); await processEvents();
-    expect(await recipients(account.id, 'mailbox_disconnected')).toHaveLength(4);
+    expect(await recipients(account.id, 'mailbox_disconnected')).toHaveLength(2);
   });
   it('counts all accessible unread module targets and removes dots after reads, archive or permission loss', async () => {
     const record = await lead();
@@ -317,26 +389,66 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
     }
   });
 
-  it('summarizes every supported record once while retaining notification counts', async () => {
+  it('filters admin history before pagination/counts and preserves hidden records across every notification operation', async () => {
+    const viewer = await prisma.user.create({ data: { tenantId, email: randomUUID() + '@camxian.com', firstName: 'History', lastName: 'Admin',
+      role: 'Client Admin', mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: adminRoleId } } } });
+    const auth = (await issueAuthSession(viewer)).token;
     const account = await prisma.account.create({ data: { tenantId, name: 'Unread Account' } });
     const task = await prisma.task.create({ data: { tenantId, title: 'Unread Task', assignedUserId: adminId, dueDate: new Date() } });
-    const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Unread Campaign', type: 'EMAIL', createdById: adminId } });
+    const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Unread Campaign', type: 'SMS', createdById: viewer.id,
+      submittedById: viewer.id, status: 'SENDING', submissionStartedAt: new Date() } });
     const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Unread Workflow', trigger: 'lead_created', actions: [] } });
     const form = await prisma.marketingForm.create({ data: { tenantId, name: 'Unread Form', createdById: adminId } });
-    const records: NotificationRecordTarget[] = [
+    const records = [
       { entityType: 'Lead', entityId: (await lead()).id }, { entityType: 'Contact', entityId: (await contact()).id },
       { entityType: 'Account', entityId: account.id }, { entityType: 'Deal', entityId: (await deal()).id },
       { entityType: 'Task', entityId: task.id }, { entityType: 'Campaign', entityId: campaign.id },
       { entityType: 'Workflow', entityId: workflow.id }, { entityType: 'Form', entityId: form.id },
-    ];
-    for (const record of records) await prisma.notification.createMany({ data: [1, 2].map(() => ({ tenantId, userId: adminId, type: 'historical', title: 'Unread record', ...record })) });
-    const summary = await notificationCounts(tenantId, adminId);
-    for (const record of records) expect(summary.unreadRecords.filter(row => row.entityId === record.entityId)).toEqual([{ ...record, count: 2 }]);
-    for (const record of records) {
-      const result = await markAllNotificationsRead(tenantId, adminId, new Date(), record);
-      expect(result.unreadRecords.some(row => row.entityId === record.entityId)).toBe(false);
-      expect(result.unreadCount).toBe((await prisma.notification.count({ where: { tenantId, userId: adminId, isRead: false } })));
+    ] as const;
+    const types = ['lead_assigned', 'contact_assigned', 'account_assigned', 'deal_won', 'task_overdue', 'sms_campaign_sent', 'workflow_failed', 'form_processing_failed'];
+    const now = new Date();
+    await prisma.notification.createMany({ data: records.flatMap((record, i) => [false, true].map(isRead => ({ tenantId, userId: viewer.id,
+      type: types[i], title: 'Hidden history', ...record, eventKey: randomUUID(), isRead, readAt: isRead ? new Date('2025-01-01') : null,
+      createdAt: now, occurredAt: now }))) });
+    const mailbox = await prisma.emailAccount.create({ data: { tenantId, userId: viewer.id, email: viewer.email, accessToken: 'fixture', scopes: [] } });
+    await prisma.notification.createMany({ data: [
+      ...['mailbox_disconnected', 'mailbox_sync_failed'].map(type => ({ tenantId, userId: viewer.id, type, title: 'Hidden Gmail history',
+        entityType: 'Mailbox', entityId: mailbox.id, eventKey: randomUUID() })),
+      { tenantId, userId: viewer.id, type: 'password_expiring_soon', title: 'Another account security history',
+        entityType: 'PasswordSecurity', entityId: agentId, eventKey: randomUUID() },
+    ] });
+    const hidden = await prisma.notification.findMany({ where: { tenantId, userId: viewer.id }, orderBy: { id: 'asc' } });
+    const ledger = await prisma.notificationDelivery.findMany({ where: { tenantId, userId: viewer.id }, orderBy: { eventKey: 'asc' } });
+    const visible = await Promise.all(['user_created', 'role_created', 'user_status_changed'].map((type, i) => prisma.notification.create({ data: {
+      tenantId, userId: viewer.id, type, title: 'Administrative history', entityType: i === 1 ? 'RoleDefinition' : 'User',
+      entityId: i === 1 ? adminRoleId : agentId, createdAt: new Date(+now - 1000 * (i + 1)), isRead: i === 2,
+    } })));
+    const first = await findNotifications(tenantId, viewer.id, { limit: '2' });
+    expect(first).toMatchObject({ totalCount: 3, unreadCount: 2, meta: { total: 3, hasMore: true } });
+    expect(first.data.map(n => n.id)).toEqual(visible.slice(0, 2).map(n => n.id));
+    const second = await findNotifications(tenantId, viewer.id, { limit: '2', cursor: first.meta.nextCursor });
+    expect(second.data.map(n => n.id)).toEqual([visible[2].id]); expect(second.meta.hasMore).toBe(false);
+    expect((await request('/notifications?isRead=false', 'GET', undefined, auth)).body.meta.total).toBe(2);
+    expect((await request('/notifications?isRead=true', 'GET', undefined, auth)).body.meta.total).toBe(1);
+    const summary = await notificationCounts(tenantId, viewer.id, { since: new Date(+now - 1000).toISOString() });
+    expect(summary).toMatchObject({ totalCount: 3, unreadCount: 2, unreadRecords: [], unreadByModule: { settings: 2 }, updates: [], activeSmsUntil: null });
+    expect((await request('/notifications/' + visible[1].id + '/destination', 'GET', undefined, auth)).body.destination).toBe('/settings?tab=roles');
+    expect((await request('/notifications/' + visible[0].id + '/destination', 'GET', undefined, auth)).body.destination).toBe('/settings?tab=users');
+    for (const item of hidden) {
+      expect((await request('/notifications/' + item.id + '/destination', 'GET', undefined, auth)).status).toBe(404);
+      expect((await request('/notifications/' + item.id + '/read', 'PATCH', undefined, auth)).status).toBe(404);
     }
+    expect((await request('/notifications', 'DELETE', { ids: [visible[0].id, hidden[0].id] }, auth)).status).toBe(404);
+    expect(await prisma.notification.findUnique({ where: { id: visible[0].id } })).not.toBeNull();
+    for (const record of records) {
+      expect((await markAllNotificationsRead(tenantId, viewer.id, new Date(), record)).unreadCount).toBe(2);
+    }
+    expect((await request('/crm/contacts/' + records[1].entityId, 'GET', undefined, auth)).status).toBe(200);
+    expect((await request('/notifications/' + visible[0].id + '/read', 'PATCH', undefined, auth)).body.unreadCount).toBe(1);
+    expect((await request('/notifications/read-all', 'PATCH', {}, auth)).body).toMatchObject({ unreadCount: 0, totalCount: 3 });
+    expect((await request('/notifications/counts', 'GET', undefined, auth)).body).toMatchObject({ unreadCount: 0, unreadRecords: [] });
+    expect(await prisma.notification.findMany({ where: { id: { in: hidden.map(n => n.id) } }, orderBy: { id: 'asc' } })).toEqual(hidden);
+    expect(await prisma.notificationDelivery.findMany({ where: { tenantId, userId: viewer.id }, orderBy: { eventKey: 'asc' } })).toEqual(ledger);
   });
 
   it('reads one record across feed pages, honors the open cutoff and isolates recipients and tenants', async () => {

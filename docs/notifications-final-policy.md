@@ -1,4 +1,83 @@
-# Final notification policy implementation
+# Notification policy
+
+## Client Administrator policy — 20 October 2026
+
+Client Administrator delivery and feed visibility are limited to User Management,
+Roles & Permissions, and account security. The former administrator allow-list
+included operational events, and historical queries counted every stored row.
+The same administrative visibility predicate now filters history before pagination
+and counting, including unread/module indicators, notification destinations,
+read/read-all and deletion. Hidden notifications and their read state, timestamps,
+event keys and delivery identities remain stored unchanged. Hidden IDs return 404
+through notification destination/mutation endpoints; normal CRM View access is
+independent. Mark-all-read affects only the visible feed.
+
+| Supported event | Existing type | Destination |
+| --- | --- | --- |
+| User created | `user_created` | Settings → Users |
+| User activated, deactivated or pending | `user_status_changed` | Settings → Users |
+| Custom role created or deleted, including roles without grants | `role_created`, `role_archived` | Settings → Roles |
+| Role permissions or user role assignment changed | `role_permissions_changed`, `user_role_changed` | Settings → Roles / Users |
+| Personal password expiring soon | `password_expiring_soon` | Own Change Password |
+| Permanent account lock after repeated failed login attempts | `user_status_changed` | Settings → Users |
+
+Lock alerts use internal `securityEvent: account_locked` and `securityLockedAt`
+facts in the existing outbox. Their event identity comes from the existing audit
+record, in the same transaction as the actual lock transition. Projection and
+final delivery recheck the lock timestamp; an unlocked or superseded incident is
+not delivered. Login thresholds, sessions, account status and unlock behavior are
+unchanged. Invitation acceptance has no supported active producer and is omitted.
+New-user projection supplies the existing employee-approval check with the user
+and tenant IDs, so approved external staff produce their administrative alert
+while unapproved external accounts remain excluded.
+
+All Gmail, campaign/SMS, Workflow, Form and routine CRM notifications are excluded
+for administrators, including their own campaigns and mailboxes. Existing staff
+recipients and mailbox-owner alerts remain governed by their existing policy.
+Gmail synchronization is unchanged. The administrator counts response returns no
+SMS updates and no active-SMS polling hint. Administrative/security delivery still
+uses current active same-tenant administrator membership, mandatory preferences,
+transactional authorization and the deletion-safe ledger. No public contract,
+database migration, worker, endpoint, dependency or UI component is added.
+
+### Verification of the 20 October update
+
+The inspected GitHub `main` at `84130ca1` has the same source tree as local
+`a3d80a03`. Verification used fresh disposable native PostgreSQL databases and
+the existing QA environment/provider guards; no production credentials or live
+Gmail/SMS provider were used.
+
+- **121 distinct focused backend cases passed across completed runs:** policy and
+  historical visibility (28), notification HTTP persistence/isolation (5), durable
+  delivery (17), assignment history (13), SMS tracking/recipient rules (24), login
+  security and personal password notifications (30), and password expiration (4).
+  The final login-security selection intentionally excludes the two unrelated
+  CSV/Product cases. Tests cover active same-tenant admin membership, empty custom
+  roles, pending status, no-op/rollback behavior, lockout identity/stale incidents,
+  admin-owned campaigns/mailboxes, hidden-history preservation and read/count
+  consistency. Notification delivery/assignment fixtures now grant their intended
+  existing CRM View tabs; application permission behavior is unchanged.
+- **59 frontend notification cases passed in seven files**, covering the existing
+  page, bell/dropdown, shared watcher, record dots/reads, preferences and SMS results.
+- `npm run lint` passed for all three workspaces, including backend source/test
+  TypeScript checks. Shared/frontend checks reused unchanged cached results.
+  `git diff --check` passed.
+- The broader Gmail suite had **149 passing and eight failing cases**. All eight
+  failure names reproduce on the unchanged source snapshot. The unfiltered mixed
+  security/export/Product suite had **31 passing and one failing Product case**;
+  the same Product failure reproduces on the unchanged snapshot (28/29 there,
+  before the three new security cases). These are not claimed as green suites.
+  Their existing Activity/attachment/read-scope and Product failures remain
+  outside this notification-policy change.
+
+Ignored local evidence is under `data/outputs/system-audit/`: final policy/HTTP,
+fixture-regression, SMS/Gmail, frontend and security logs use the `admin-` prefix;
+`admin-policy-baseline-results.log` records the unchanged-source comparison.
+No production data changes, publication, migration or deployment was performed.
+
+The sections below record the **12 October release**. Its recipient matrix and
+history visibility are superseded above; deployment and verification evidence
+below are historical, not verification of this update.
 
 Date: 12 October 2026 (Asia/Manila). This report supersedes the recipient-policy portions of [notification hardening](notifications-production-hardening.md). The existing queue, delivery ledger, worker, preferences, routes and responsive interface remain the implementation.
 

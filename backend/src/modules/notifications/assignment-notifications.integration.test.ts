@@ -42,7 +42,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
 
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Assignment context', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
-    roleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales', permissions: { create: ['leads', 'contacts', 'accounts', 'deals', 'tasks'].map(module => ({ module, canView: true, canEdit: true, canCreate: true })) } } })).id;
+    roleId = (await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales', permissions: { create: ['leads', 'contacts', 'accounts', 'deals', 'tasks'].map(module => ({ module, canView: true, canEdit: true, canCreate: true,
+      ...(['leads', 'contacts', 'accounts', 'deals'].includes(module) ? { canViewAll: true, canViewMy: true } : {}) })) } } })).id;
     const admin = await newUser('Actual', 'Client Admin'); adminId = admin.id; adminToken = (await issueAuthSession(admin)).token;
     const adminRole = await prisma.roleDefinition.create({ data: { tenantId, name: 'Client Admin', isSystemRole: true } });
     await prisma.userRole.create({ data: { tenantId, userId: adminId, roleId: adminRole.id } });

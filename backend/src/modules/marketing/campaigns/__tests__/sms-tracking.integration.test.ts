@@ -58,7 +58,7 @@ describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () 
   const outbox = (id: string) => scope(() => prisma.notificationEvent.findMany({ where: { entityId: id, type: { startsWith: 'sms_campaign_' } }, orderBy: { createdAt: 'asc' } }));
   const deliver = () => scope(async () => { for (let n = 0; n < 10; n++) if (!(await dispatchTenantNotifications(tenantId)).claimed) break; });
 
-  it('persists separate ordered Sent/Delivered results once for sender and creator, including worker restart and deleted notifications', async () => {
+  it('persists ordered Sent/Delivered results once for the staff sender, excludes the admin creator, and preserves deletion identity', async () => {
     const { campaign, rows: [row] } = await submitted();
     await processTextBeeEvent(event(row, 'sent'));
     await processTextBeeEvent(event(row, 'sent'));
@@ -68,8 +68,10 @@ describe.skipIf(!disposable)('SMS tracking on native disposable PostgreSQL', () 
     expect(await scope(() => prisma.notification.count({ where: { entityId: campaign.id, type: 'sms_campaign_delivered' } }))).toBe(0);
     await deliver();
     const notifications = await scope(() => prisma.notification.findMany({ where: { entityId: campaign.id } }));
-    expect(notifications).toHaveLength(4);
-    expect(new Set(notifications.map(n => n.userId))).toEqual(new Set([creator, sender]));
+    expect(notifications).toHaveLength(2);
+    expect(new Set(notifications.map(n => n.userId))).toEqual(new Set([sender]));
+    const adminDelta = await scope(() => notificationCounts(tenantId, creator));
+    expect(adminDelta).toMatchObject({ updates: [], activeSmsUntil: null });
     const mine = notifications.filter(n => n.userId === sender);
     const delta = await scope(() => notificationCounts(tenantId, sender, { since: new Date(Date.now() - 60000).toISOString() }));
     expect(delta.updates.filter(n => n.entityId === campaign.id).map(n => n.type)).toEqual(['sms_campaign_sent', 'sms_campaign_delivered']);
