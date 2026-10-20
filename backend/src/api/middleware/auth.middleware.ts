@@ -70,7 +70,9 @@ export async function authMiddleware(req: Request, _res: Response, next: NextFun
     req.authUser = user;
     req.authSession = session;
     req.user = { ...payload, role: user.role, email: user.email };
-    tenantContext.run({ tenantId: user.tenantId }, () => crmActor.run({ userId: user.id, tenantId: user.tenantId }, () => notificationActor.run(user.id, next)));
+    tenantContext.run({ tenantId: user.tenantId }, () => crmActor.run({ userId: user.id, tenantId: user.tenantId,
+      readRecords: ['GET', 'HEAD'].includes(req.method) || /\/(duplicate-check|merge\/preview)$/.test(req.path),
+    }, () => notificationActor.run(user.id, next)));
   } catch (err) {
     if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.NotBeforeError) {
       return next(new AppError('Invalid or expired token', 401));

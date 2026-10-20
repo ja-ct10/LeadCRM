@@ -10,6 +10,8 @@ import * as deals from '../deals/deals.service';
 import { DealsQuerySchema } from '../deals/deals.dto';
 import { presentDealResponse } from '../deals/deal-presentation';
 import { AppError } from '../../../shared/errors/app-error';
+import { parseFilterParams } from '../../../shared/helpers/filter-parser';
+import { requestedCrmScope } from '../access/crm-record-access.service';
 
 type Module = 'leads' | 'contacts' | 'accounts' | 'deals';
 type Row = Record<string, any>;
@@ -40,7 +42,7 @@ export function exportCrm(module: Module) {
           const result = module === 'leads' ? await leads.getContacts(req.user!.tenantId, params)
             : module === 'contacts' ? await contacts.getContacts(req.user!.tenantId, params)
             : module === 'accounts' ? await accounts.getCompanies(req.user!.tenantId, params)
-            : await presentDealResponse(req.user!.tenantId, await deals.getDeals(req.user!.tenantId, DealsQuerySchema.parse(params)));
+            : await presentDealResponse(req.user!.tenantId, await deals.getDeals(req.user!.tenantId, DealsQuerySchema.parse({ ...params, scope: requestedCrmScope(parseFilterParams(params), query.scope) })));
           for (const row of result.data as Row[]) {
             if (view && !matchesDealView({ ...row, title: row.title, stageId: row.stageId, priority: row.priority,
               companyName: row.organization?.name, contactPerson: name(row.contactDeals?.[0]?.contact) || name(row.leadDeals?.[0]?.lead), createdAt: row.createdAt,

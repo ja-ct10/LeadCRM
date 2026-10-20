@@ -50,8 +50,8 @@ export async function getDeals(tenantId: string, query: DealsQueryParams) {
   return paginate(result.data, result.total, { page: result.page, limit: result.limit });
 }
 
-export async function getDealsGroupedByStage(tenantId: string, pipelineId: string, stagePageMap?: Record<string, number>) {
-  return repo.findDealsGroupedByStage(tenantId, pipelineId, stagePageMap);
+export async function getDealsGroupedByStage(tenantId: string, pipelineId: string, stagePageMap?: Record<string, number>, scope?: DealsQueryParams['scope']) {
+  return repo.findDealsGroupedByStage(tenantId, pipelineId, stagePageMap, scope);
 }
 
 export async function getDealById(id: string, tenantId: string) {

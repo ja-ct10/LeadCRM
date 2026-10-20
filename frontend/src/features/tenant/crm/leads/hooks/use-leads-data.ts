@@ -16,6 +16,7 @@ export interface UseLeadsDataParams {
   filter?: FilterCondition[];
   search?: string;
   recordId?: string;
+  disabled?: boolean;
 }
 
 export interface UseLeadsDataMeta {

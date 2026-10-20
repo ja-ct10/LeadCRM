@@ -2,7 +2,7 @@ import { refreshDealClassification } from '../customer-classification.service';
 import { mayReadContactAccount } from '../contacts-v2/contact-account-access';
 import { salesContext } from '../leads/sales-context';
 import { participantOrder, withDealParticipants } from './deal-participants';
-import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
+import { assertCrmRecordMutation, assertCrmCreateAssignment, assertCrmRecordRead, crmReadWhere } from '../access/crm-record-access.service';
 import { resolveProducts } from '../leads/lead-automation.service';
 import { normalizeProductOther } from '../leads/product-snapshots';
 import { salesTransaction, crmScope } from '../leads/lead-automation.service';
@@ -41,10 +41,10 @@ export async function findAllDeals(tenantId: string, params: DealsQueryParams) {
     ...(accountId             ? { accountId }                           : {}),
     ...(params.contactId      ? { contactDeals: { some: { contactId: params.contactId } } } : {}),
     ...(params.leadId         ? { leadDeals: { some: { leadId: params.leadId } } }          : {}),
-    AND: buildSearchClauses(params.search, ['title', 'leadSource'], contains => [
+    AND: [await crmReadWhere(salesContext.getStore() ?? prisma, tenantId, 'deals', params.scope), ...buildSearchClauses(params.search, ['title', 'leadSource'], contains => [
       ...(canReadAccount ? [{ organization: { name: contains } }] : []), { stage: { name: contains } },
       ...(['LOW', 'MEDIUM', 'HIGH'].includes(contains.contains.toUpperCase()) ? [{ priority: contains.contains.toUpperCase() }] : []),
-    ]),
+    ])],
     ...(params.dateFrom || params.dateTo ? {
       createdAt: {
         ...(params.dateFrom ? { gte: new Date(params.dateFrom) } : {}),
@@ -377,8 +377,10 @@ export async function findDealsGroupedByStage(
   tenantId: string,
   pipelineId: string,
   stagePageMap?: Record<string, number>,
+  scope?: DealsQueryParams['scope'],
 ): Promise<StageGroupResult[]> {
   const PAGE_SIZE = 20;
+  const access = await crmReadWhere(salesContext.getStore() ?? prisma, tenantId, 'deals', scope);
 
   // Get all stages for this pipeline, scoped to tenant
   const stages = await (salesContext.getStore() ?? prisma).stage.findMany({
@@ -395,7 +397,7 @@ export async function findDealsGroupedByStage(
 
     const [deals, total] = await Promise.all([
       (salesContext.getStore() ?? prisma).deal.findMany({
-        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false, deletedAt: null },
+        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false, deletedAt: null, AND: [access] },
         skip,
         take: PAGE_SIZE,
         orderBy: { createdAt: 'desc' },
@@ -411,7 +413,7 @@ export async function findDealsGroupedByStage(
         },
       }),
       (salesContext.getStore() ?? prisma).deal.count({
-        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false, deletedAt: null },
+        where: { tenantId, stageId: stage.id, pipelineId, isArchived: false, deletedAt: null, AND: [access] },
       }),
     ]);
 
@@ -457,6 +459,7 @@ export async function syncContactAssociations(
     const toAdd = [...targetIds].filter(id => !currentIds.has(id));
     if (toAdd.length > 0) {
       // Verify all new contacts belong to the tenant
+      for (const id of toAdd) await assertCrmRecordRead(tx, 'contacts', id);
       const validContacts = await tx.contact.findMany({
         where: { id: { in: toAdd }, tenantId },
         select: { id: true },
@@ -512,6 +515,7 @@ export async function syncLeadAssociations(
     const toAdd = [...targetIds].filter(id => !currentIds.has(id));
     if (toAdd.length > 0) {
       // Verify all new leads belong to the tenant
+      for (const id of toAdd) await assertCrmRecordRead(tx, 'leads', id);
       const validLeads = await tx.lead.findMany({
         where: { id: { in: toAdd }, tenantId },
         select: { id: true },

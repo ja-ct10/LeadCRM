@@ -5,10 +5,12 @@ import * as service from './deals.service';
 import * as forecastService from './forecast.service';
 import { DealsQuerySchema } from './deals.dto';
 import { z } from 'zod';
+import { parseFilterParams } from '../../../shared/helpers/filter-parser';
+import { requestedCrmScope } from '../access/crm-record-access.service';
 
 export async function getDeals(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const validation = DealsQuerySchema.safeParse(req.query);
+    const validation = DealsQuerySchema.safeParse({ ...req.query, scope: requestedCrmScope(parseFilterParams(req.query), req.query.scope) });
     if (!validation.success) {
       res.status(400).json({
         success: false,
@@ -24,7 +26,7 @@ export async function getDeals(req: Request, res: Response, next: NextFunction):
       const stagePageMap = req.query.stagePages
         ? JSON.parse(String(req.query.stagePages)) as Record<string, number>
         : undefined;
-      const result = await service.getDealsGroupedByStage(req.user!.tenantId, params.pipelineId, stagePageMap);
+      const result = await service.getDealsGroupedByStage(req.user!.tenantId, params.pipelineId, stagePageMap, params.scope);
       res.json({ success: true, data: { stages: await presentDealResponse(req.user!.tenantId, result) } });
       return;
     }

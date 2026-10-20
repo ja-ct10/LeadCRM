@@ -4,7 +4,7 @@ import type { Lead as LeadRecord } from '@prisma/client';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
 import { formatAssignmentChange } from '@leadcrm/shared';
-import { assertCrmRecordMutation, assertCrmCreateAssignment } from '../access/crm-record-access.service';
+import { assertCrmRecordMutation, assertCrmCreateAssignment, crmReadWhere, requestedCrmScope } from '../access/crm-record-access.service';
 import { isDeepStrictEqual } from 'node:util';
 import { recordChanges } from '../record-updates';
 import { normalizeCrmStatus, formatLeadName, LEADS_TABLE_SORT_FIELDS } from '@leadcrm/shared';
@@ -66,7 +66,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     ...(['Inquiry', 'Hot', 'Warm', 'Cold', 'Cancelled', 'Closed Deal'].filter(status => status.toLowerCase() === contains.contains.toLowerCase())
       .map(status => ({ status: { in: [status, status.toUpperCase()] } }))),
   ]));
-  const scope = parsedFilters.find(filter => filter.field === 'scope')?.value;
+  const scope = requestedCrmScope(parsedFilters, query.scope);
+  filterClauses.push(await crmReadWhere(db, tenantId, 'leads', scope));
   if (scope === 'my') filterClauses.push({ assignedUserId: String(query.currentUserId ?? '') });
   if (scope === 'active') filterClauses.push({ status: { in: ['Inquiry','Hot','Warm','INQUIRY','HOT','WARM'] } });
 

@@ -392,6 +392,43 @@ describe('first-login permission initialization with the real AuthProvider and m
     expect(loginApiMock).not.toHaveBeenCalled();
     expect(logoutApiMock).not.toHaveBeenCalled();
   });
+
+  it('updates CRM tabs and clears protected caches on tab-only authorization changes without reloading', async () => {
+    class AccessEvents {
+      static current: AccessEvents;
+      listeners = new Map<string, (event: MessageEvent) => void>();
+      constructor() { AccessEvents.current = this; }
+      addEventListener(type: string, listener: (event: MessageEvent) => void) { this.listeners.set(type, listener); }
+      close() {}
+      emit(revision: string) { this.listeners.get('authorization-change')?.(new MessageEvent('authorization-change', { data: revision })); }
+    }
+    vi.stubGlobal('EventSource', AccessEvents);
+    currentPathname = '/crm/leads';
+    meApiMock.mockResolvedValue(authResponse({ ...VERIFIED_ONBOARDED_USER, role: 'Sales' }));
+    permissionsApiMock.mockResolvedValue({ data: { leads: { canView: true, canViewAll: true, canViewMy: true } } });
+    const { auth } = await loadRealApiModules();
+    const { useCrmTabs } = await import('@/shared/hooks/use-crm-tabs');
+    const { ModuleAccessGuard } = await import('../module-access-guard');
+    const cache = await import('@/shared/cache/page-cache');
+    function Tabs() {
+      const access = useCrmTabs('leads', [{ id: 'all', label: 'All Leads' }, { id: 'my', label: 'My Leads' }, { id: 'active', label: 'Active Leads' }]);
+      return <ModuleAccessGuard>{access.tabs.map(tab => <span key={tab.id}>{tab.label}</span>)}</ModuleAccessGuard>;
+    }
+    render(<auth.AuthProvider><Tabs /></auth.AuthProvider>);
+    await screen.findByText('All Leads');
+    cache.setPageCache('leads', 'tenant-1', {}, ['previously visible record']);
+    permissionsApiMock.mockResolvedValue({ data: { leads: { canView: true, canViewMy: true } } });
+    await act(async () => AccessEvents.current.emit('my-only'));
+    expect(screen.queryByText('All Leads')).toBeNull(); expect(screen.getByText('My Leads')).toBeTruthy();
+    expect(cache.getPageCacheSize()).toBe(0);
+    permissionsApiMock.mockResolvedValue({ data: { leads: { canView: true, canViewActive: true } } });
+    await act(async () => AccessEvents.current.emit('active-only'));
+    expect(screen.queryByText('My Leads')).toBeNull(); expect(screen.getByText('Active Leads')).toBeTruthy();
+    permissionsApiMock.mockResolvedValue({ data: { leads: { canView: true } } });
+    await act(async () => AccessEvents.current.emit('no-tabs'));
+    expect(screen.queryByText('Active Leads')).toBeNull(); expect(screen.getByRole('alert')).toBeTruthy();
+    expect(loginApiMock).not.toHaveBeenCalled(); expect(logoutApiMock).not.toHaveBeenCalled();
+  });
 });
 
 // ─────────────────────────────────────────────────────

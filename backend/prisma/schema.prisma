@@ -258,6 +258,9 @@ model RolePermission {
   roleId    String
   module    String // e.g. "contacts", "deals", "campaigns"
   canView   Boolean @default(false)
+  canViewAll Boolean @default(false)
+  canViewMy Boolean @default(false)
+  canViewActive Boolean @default(false)
   canCreate Boolean @default(false)
   canEdit   Boolean @default(false)
   canDelete Boolean @default(false)

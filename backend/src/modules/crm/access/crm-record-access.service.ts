@@ -1,11 +1,13 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { EMPTY_PERMISSION_FLAGS, hasModulePermission, isWorkspaceAccessible, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
+import { hasModulePermission, isWorkspaceAccessible, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
+import { resolveEffectivePermissions } from '../../administration/roles/roles.repository';
 import { AppError } from '../../../shared/errors/app-error';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements } from './assigned-agent-eligibility';
 
 export type CrmModule = 'leads' | 'contacts' | 'accounts' | 'deals';
-type Actor = { userId: string; tenantId: string };
+type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions };
+type Actor = { userId: string; tenantId: string; readRecords?: boolean; readPolicy?: Promise<ReadPolicy> };
 type Tx = Prisma.TransactionClient;
 type Args = Record<string, any>;
 const modules: Record<string, CrmModule> = { Lead: 'leads', Contact: 'contacts', Account: 'accounts', Deal: 'deals' };
@@ -48,11 +50,7 @@ export async function resolveCrmActor(db: Tx, actor: Actor): Promise<CrmRecordAc
   // User.role is the protected administrative identity. Ordinary role grants do
   // not promote an employee to Client Admin, including an extra admin-named role.
   const clientAdmin = user.role === 'Client Admin';
-  const permissions: ResolvedPermissions = {};
-  for (const link of user.userRoles) for (const row of link.role.permissions) {
-    const flags = permissions[row.module] ??= { ...EMPTY_PERMISSION_FLAGS };
-    for (const key of Object.keys(EMPTY_PERMISSION_FLAGS) as Array<keyof typeof flags>) flags[key] ||= row[key];
-  }
+  const permissions = resolveEffectivePermissions(user);
   return { userId: user.id, tenantId: user.tenantId, clientAdmin, permissions,
     assignmentRestricted: !clientAdmin && (isSalesRoleName(user.role) || user.userRoles.some(link => link.role.crmAssignmentRestricted || isSalesRoleName(link.role.name))) };
 }
@@ -64,14 +62,54 @@ export async function mayReadCrmModule(db: Tx, tenantId: string, module: CrmModu
   if (actor.tenantId !== tenantId) throw new AppError('Access denied', 403);
   if (authorizedWorkflowScope(tenantId)) return true;
   const policy = await resolveCrmActor(db, actor);
-  return policy.clientAdmin || hasModulePermission(policy.permissions, module, 'canView');
+  return policy.clientAdmin || permittedCrmScopes(policy.permissions, module).length > 0;
+}
+
+function readWhere(policy: ReadPolicy, module: CrmModule, requested?: CrmReadScope): Args {
+  const scopes = permittedCrmScopes(policy.permissions, module);
+  const scope = requested ?? scopes[0];
+  if (!policy.clientAdmin && (!scope || !hasModulePermission(policy.permissions, module, CRM_SCOPE_ACTIONS[scope]))) return { id: { in: [] } };
+  return { tenantId: policy.tenantId,
+    ...(scope === 'my' || scope === 'active' && !policy.clientAdmin && !scopes.includes('all') ? { assignedUserId: policy.userId } : {}),
+    ...(scope === 'active' ? { isArchived: false, deletedAt: null, status: { in: module === 'leads' ? ['Inquiry', 'Hot', 'Warm', 'INQUIRY', 'HOT', 'WARM'] : ['INQUIRY', 'HOT', 'WARM'] } } : {}),
+  };
+}
+
+/** A tab narrows the authorized record scope; browser owner filters never establish it. */
+export async function crmReadWhere(db: Tx, tenantId: string, module: CrmModule, requested?: CrmReadScope): Promise<Args> {
+  const actor = crmActor.getStore();
+  if (!actor || authorizedWorkflowScope(tenantId)) return { tenantId };
+  if (actor.tenantId !== tenantId) throw new AppError('Access denied', 403);
+  const policy = actor.readRecords ? await (actor.readPolicy ??= resolveCrmActor(db, actor)) : await resolveCrmActor(db, actor);
+  if (!policy.clientAdmin && !(requested ? permittedCrmScopes(policy.permissions, module).includes(requested) : permittedCrmScopes(policy.permissions, module).length)) {
+    throw new AppError('You do not have permission to access this CRM view.', 403);
+  }
+  return readWhere(policy, module, requested);
+}
+
+export function requestedCrmScope(filters: Array<{ field: string; operator: string; value: unknown }>, direct?: unknown): CrmReadScope | undefined {
+  const scopes = filters.filter(filter => filter.field === 'scope');
+  if (scopes.length > 1 || direct !== undefined && scopes.length || scopes.some(filter => filter.operator !== 'equals')) throw new AppError('Supply one CRM scope.', 400);
+  const value = direct ?? scopes[0]?.value;
+  if (value !== undefined && (typeof value !== 'string' || !Object.prototype.hasOwnProperty.call(CRM_SCOPE_ACTIONS, value))) throw new AppError('Invalid CRM scope.', 400);
+  return value as CrmReadScope | undefined;
+}
+
+export async function assertCrmRecordRead(db: Tx, module: CrmModule, id: string): Promise<void> {
+  const actor = crmActor.getStore();
+  if (!actor || authorizedWorkflowScope(actor.tenantId)) return;
+  const policy = await resolveCrmActor(db, actor);
+  const model = tables[module][0].toLowerCase() + tables[module].slice(1);
+  if (!await (db as any)[model].findFirst({ where: { AND: [{ id, tenantId: actor.tenantId }, readWhere(policy, module)] }, select: { id: true } })) {
+    throw new AppError('Record not found.', 404);
+  }
 }
 
 function deny(module: CrmModule): never {
   throw new AppError(`You can only edit ${labels[module]} assigned to you.`, 403, 'CRM_ASSIGNMENT_REQUIRED');
 }
 
-/** Locks and rechecks the canonical row in the mutation's transaction. Reads use no ownership predicate. */
+/** Locks and rechecks the canonical row and current read/action grants in the mutation's transaction. */
 export async function assertCrmRecordMutation(tx: Tx, module: CrmModule, id: string,
   operation: 'edit' | 'archive' | 'restore' = 'edit', data: Args = {}): Promise<void> {
   const actor = crmActor.getStore();
@@ -89,6 +127,7 @@ export async function assertCrmRecordMutation(tx: Tx, module: CrmModule, id: str
   const policy = await resolveCrmActor(tx, actor);
   const initializing = transaction.getStore()?.created.has(`${module}:${id}`);
   if (initializing) return; // creation's validated initialization, including automatic Deal creation
+  await assertCrmRecordRead(tx, module, id);
   if (!policy.clientAdmin && !hasModulePermission(policy.permissions, operation === 'restore' ? 'archived_data' : module,
     operation === 'restore' ? 'canRestore' : operation === 'archive' ? 'canArchive' : initializing ? 'canCreate' : 'canEdit')) {
     throw new AppError('Access denied', 403);
@@ -124,6 +163,72 @@ const childParents: Record<string, Array<[string, CrmModule]>> = {
 };
 const writes = new Set(['create', 'createMany', 'update', 'updateMany', 'upsert', 'delete', 'deleteMany']);
 const dmmf = new Map(Prisma.dmmf.datamodel.models.map(model => [model.name, model]));
+const reads = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirstOrThrow', 'findMany', 'count', 'aggregate', 'groupBy']);
+const and = (where: Args | undefined, scope: Args): Args => Object.keys(scope).length ? { ...where, AND: [...(Array.isArray(where?.AND) ? where.AND : where?.AND ? [where.AND] : []), scope] } : { ...where };
+
+function readParents(model: string) {
+  return (dmmf.get(model)?.fields ?? []).filter(field => field.kind === 'object' && modules[field.type] && !modules[model] &&
+    (field.isRequired && !field.isList || model === 'Activity' || childParents[model]?.some(([key]) => field.relationFromFields?.includes(key))));
+}
+
+function modelReadWhere(model: string, policy: ReadPolicy): Args {
+  if (modules[model]) return readWhere(policy, modules[model]);
+  const clauses = readParents(model).map(field => field.isRequired
+    ? { [field.name]: { is: readWhere(policy, modules[field.type]) } }
+    : { OR: [{ [field.name]: { is: null } }, { [field.name]: { is: readWhere(policy, modules[field.type]) } }] });
+  return clauses.length ? { AND: clauses } : {};
+}
+
+function hasReadTarget(model: string, args: Args): boolean {
+  if (modules[model] || readParents(model).length) return true;
+  return (dmmf.get(model)?.fields ?? []).some(field => field.kind === 'object' &&
+    [args.include?.[field.name], args.select?.[field.name], args.where?.[field.name]].some(nested => nested &&
+      (modules[field.type] || hasReadTarget(field.type, nested === true ? {} : nested))));
+}
+
+/** Scope relation filters too: hidden linked records must not become search/count oracles. */
+function scopeReadWhere(model: string, where: Args = {}, policy: ReadPolicy): Args {
+  const result = { ...where };
+  for (const key of ['AND', 'OR', 'NOT']) if (result[key]) result[key] = Array.isArray(result[key])
+    ? result[key].map((entry: Args) => scopeReadWhere(model, entry, policy)) : scopeReadWhere(model, result[key], policy);
+  for (const field of dmmf.get(model)?.fields ?? []) {
+    if (field.kind !== 'object' || !result[field.name] || typeof result[field.name] !== 'object') continue;
+    const condition = { ...result[field.name] };
+    if (field.isList) {
+      for (const key of ['some', 'none']) if (condition[key]) condition[key] = scopeReadWhere(field.type, condition[key], policy);
+      if (condition.every) condition.every = { OR: [{ NOT: modelReadWhere(field.type, policy) }, scopeReadWhere(field.type, condition.every, policy)] };
+    } else if ('is' in condition || 'isNot' in condition) {
+      if (condition.is) condition.is = scopeReadWhere(field.type, condition.is, policy);
+      if (condition.isNot) condition.isNot = scopeReadWhere(field.type, condition.isNot, policy);
+    } else result[field.name] = scopeReadWhere(field.type, condition, policy);
+    if (field.isList || 'is' in condition || 'isNot' in condition) result[field.name] = condition;
+  }
+  return and(result, modelReadWhere(model, policy));
+}
+
+/** Prisma does not run middleware for nested includes; keep projections/counts scoped before pagination. */
+function scopeReadSelection(model: string, args: Args, policy: ReadPolicy): void {
+  for (const selectionKey of ['select', 'include']) {
+    if (!args[selectionKey]) continue;
+    const selection = args[selectionKey] = { ...args[selectionKey] };
+    for (const field of dmmf.get(model)?.fields ?? []) {
+      if (field.kind !== 'object' || !selection[field.name]) continue;
+      const nested = selection[field.name] === true ? {} : { ...selection[field.name] };
+      // Optional to-one relations support a where filter; required relations are scoped on their parent.
+      if (field.isList || !field.isRequired) nested.where = scopeReadWhere(field.type, nested.where, policy);
+      scopeReadSelection(field.type, nested, policy);
+      selection[field.name] = nested;
+    }
+    if (selection._count) {
+      const counts = selection._count === true ? Object.fromEntries((dmmf.get(model)?.fields ?? []).filter(field => field.kind === 'object' && field.isList).map(field => [field.name, true])) : { ...selection._count.select };
+      for (const field of dmmf.get(model)?.fields ?? []) if (field.kind === 'object' && counts[field.name]) {
+        const count = counts[field.name] === true ? {} : counts[field.name];
+        counts[field.name] = { ...count, where: scopeReadWhere(field.type, count.where, policy) };
+      }
+      selection._count = { select: counts };
+    }
+  }
+}
 function rejectNestedRecordWrites(model: string, data: Args): void {
   for (const field of dmmf.get(model)?.fields ?? []) {
     const value = data[field.name];
@@ -158,7 +263,16 @@ export function installCrmRecordAccess(prisma: PrismaClient): void {
     return rawTransaction(tx => transaction.run({ tx, created: new Set() }, async () => await work(tx)), options);
   }) as typeof prisma.$transaction;
   prisma.$use(async (params, next) => {
-    if (!crmActor.getStore() || internal.getStore() || !params.model || !writes.has(params.action)) return next(params);
+    const actor = crmActor.getStore();
+    if (!actor || internal.getStore() || !params.model) return next(params);
+    if (actor.readRecords && !authorizedWorkflowScope(actor.tenantId) && reads.has(params.action) && hasReadTarget(params.model, params.args ?? {})) {
+      const policy = await (actor.readPolicy ??= resolveCrmActor(transaction.getStore()?.tx ?? prisma, actor));
+      params.args ??= {};
+      params.args.where = scopeReadWhere(params.model, params.args.where, policy);
+      scopeReadSelection(params.model, params.args, policy);
+      return next(params);
+    }
+    if (!writes.has(params.action)) return next(params);
     const module = modules[params.model], parents = childParents[params.model];
     const args = params.args ?? {};
     for (const data of [args.data, args.create, args.update].filter(Boolean).flat()) rejectNestedRecordWrites(params.model, data);

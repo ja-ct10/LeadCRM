@@ -3,6 +3,9 @@ import type { PermissionModuleDefinition, PermissionAction, PermissionFlags, Res
 /** Canonical actions; there are no implicit edit-to-privileged-action aliases. */
 export const PERMISSION_ACTION_KEYS = {
   "canView": "view",
+  "canViewAll": "view_all",
+  "canViewMy": "view_my",
+  "canViewActive": "view_active",
   "canCreate": "create",
   "canEdit": "edit",
   "canDelete": "delete",
@@ -24,6 +27,9 @@ export const PERMISSION_ACTION_KEYS = {
 } as const;
 export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
   "canView": "View",
+  "canViewAll": "All",
+  "canViewMy": "My",
+  "canViewActive": "Active",
   "canCreate": "Create",
   "canEdit": "Edit",
   "canDelete": "Delete",
@@ -46,6 +52,9 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionAction, string> = {
 export const PERMISSION_ACTIONS = Object.keys(PERMISSION_ACTION_KEYS) as PermissionAction[];
 export const EMPTY_PERMISSION_FLAGS: PermissionFlags = {
   "canView": false,
+  "canViewAll": false,
+  "canViewMy": false,
+  "canViewActive": false,
   "canCreate": false,
   "canEdit": false,
   "canDelete": false,
@@ -82,7 +91,10 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       "canCreate",
       "canEdit",
       "canArchive",
-      "canImport"
+      "canImport",
+      "canViewAll",
+      "canViewMy",
+      "canViewActive"
     ]
   },
   {
@@ -93,7 +105,10 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       "canCreate",
       "canEdit",
       "canArchive",
-      "canImport"
+      "canImport",
+      "canViewAll",
+      "canViewMy",
+      "canViewActive"
     ]
   },
   {
@@ -104,7 +119,8 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       "canCreate",
       "canEdit",
       "canArchive",
-      "canImport"
+      "canImport",
+      "canViewAll"
     ]
   },
   {
@@ -115,6 +131,8 @@ export const PERMISSION_MODULES: PermissionModuleDefinition[] = [
       "canCreate",
       "canEdit",
       "canArchive",
+      "canViewAll",
+      "canViewMy",
       "canManageStages"
     ]
   },
@@ -261,6 +279,9 @@ export const PERMISSION_GROUPS = [
 ];
 
 export function permissionLabel(module: PermissionModuleDefinition, action: PermissionAction): string {
+  if (action === 'canViewAll' || action === 'canViewMy' || action === 'canViewActive') {
+    return PERMISSION_ACTION_LABELS[action] + ' ' + (action === 'canViewActive' && module.key === 'leads' ? 'Lead' : module.label);
+  }
   if (module.key === 'roles' && action === 'canView') return 'View Roles & Permissions';
   if (module.key === 'users' && action === 'canActivate') return 'Activate / Deactivate Users';
   if (['canManageStages','canViewReports','canViewRuns','canViewSubmissions','canViewClosedWon'].includes(action)) return PERMISSION_ACTION_LABELS[action];

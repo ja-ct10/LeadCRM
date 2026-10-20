@@ -36,7 +36,7 @@ import PipelinePage from './pipeline-page';
 
 beforeEach(() => {
   vi.clearAllMocks(); state.role = 'Sales'; state.params = '';
-  state.permissions = ['deals.create', 'deals.edit', 'deals.manage_stages'];
+  state.permissions = ['deals.view_all', 'deals.view_my', 'deals.create', 'deals.edit', 'deals.manage_stages'];
   state.pipelines = [{ id: 'sales', name: 'Sales Pipeline', stages: [{ id: 'lead', name: 'Lead', isDefault: true }, { id: 'qualified', name: 'Qualified' }] }];
   state.rows = [
     { id: 'one', title: 'First Deal', pipelineId: 'sales', stageId: 'lead', priority: 'Low', assignedUserId: 'actor' },
@@ -64,7 +64,7 @@ it('omits My Deals for Client Admin and keeps All Deals selected for personal-vi
   expect(screen.getByRole('button', { name: 'All Deals', pressed: true })).toBeTruthy();
   expect(screen.getByText('First Deal')).toBeTruthy();
   expect(screen.getByText('Second Deal')).toBeTruthy();
-  expect(state.replace).not.toHaveBeenCalled();
+  expect(state.replace).toHaveBeenLastCalledWith('/crm/deals?view=my', { scroll: false });
 });
 
 it.each(['Sales', 'Account Manager'])('preserves personal Deal filtering for %s', role => {
@@ -157,12 +157,12 @@ it('retains pipelineId deep-link compatibility without exposing a selector', () 
 });
 
 it('keeps create and stage-management permissions independent', () => {
-  state.permissions = ['deals.manage_stages'];
+  state.permissions = ['deals.view_all', 'deals.manage_stages'];
   const view = render(<PipelinePage />);
   expect(screen.queryByRole('button', { name: 'New Deal' })).toBeNull();
   fireEvent.click(screen.getByRole('button', { name: 'Manage pipeline stages' }));
   expect(screen.getByRole('dialog', { name: 'Pipeline stages' }).textContent).toBe('sales');
-  cleanup(); state.permissions = ['deals.create']; view.unmount(); render(<PipelinePage />);
+  cleanup(); state.permissions = ['deals.view_all', 'deals.view_my', 'deals.create']; view.unmount(); render(<PipelinePage />);
   expect(screen.getByRole('button', { name: 'New Deal' })).toBeTruthy();
   expect(screen.queryByRole('button', { name: 'Manage pipeline stages' })).toBeNull();
 });
@@ -205,4 +205,15 @@ it('has no dedicated Deal import App Router pages', () => {
     expect(existsSync(resolve(process.cwd(), path))).toBe(false);
   }
   expect(existsSync(resolve(process.cwd(), 'app/(tenant)/crm/deals/page.tsx'))).toBe(true);
+});
+
+it('falls back to My Deals and removes the board when its last tab is revoked', () => {
+  state.permissions = ['deals.view_my']; state.params = 'tab=all';
+  const view = render(<PipelinePage />);
+  expect(screen.queryByRole('button', { name: 'All Deals' })).toBeNull();
+  expect(screen.getByRole('button', { name: 'My Deals', pressed: true })).toBeTruthy();
+  expect(screen.queryByText('Second Deal')).toBeNull();
+  state.permissions = []; view.rerender(<PipelinePage />);
+  expect(screen.getByRole('alert').textContent).toContain('You do not have permission');
+  expect(screen.queryByTestId('board')).toBeNull();
 });

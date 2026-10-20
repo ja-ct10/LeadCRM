@@ -5,6 +5,9 @@
 
 export interface PermissionFlags {
   canView:   boolean;
+  canViewAll?: boolean;
+  canViewMy?: boolean;
+  canViewActive?: boolean;
   canCreate: boolean;
   canEdit:   boolean;
   canDelete: boolean;

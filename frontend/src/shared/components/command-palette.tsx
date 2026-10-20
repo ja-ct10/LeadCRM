@@ -1,5 +1,6 @@
 'use client';
 
+import { subscribePageCacheInvalidation } from '@/shared/cache/page-cache';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Search, Users, Briefcase, LayoutDashboard, Workflow, Mail, Settings } from 'lucide-react';
 import { useAuth } from '../../store/AuthContext';
@@ -21,7 +22,7 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
   const { user, userCan } = useAuth();
   const inputRef = useRef<HTMLInputElement>(null);
   const searchVersion = useRef(0);
-  const canLeads = userCan('leads', 'canView'), canDeals = userCan('deals', 'canView');
+  const canLeads = (['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan('leads', action)), canDeals = (['canViewAll', 'canViewMy', 'canViewActive'] as const).some(action => userCan('deals', action));
 
   // ── Server-side search results ───────────────────────────────────────────
   const [searchedLeads,  setSearchedLeads]  = useState<Contact[]>([]);
@@ -29,6 +30,13 @@ export default function CommandPalette({ navigate, isOpen, setIsOpen }: CommandP
   const [isSearching,    setIsSearching]    = useState(false);
   const [searchError, setSearchError] = useState('');
   const debouncedQuery = useDebounce(query, 300);
+
+  useEffect(() => subscribePageCacheInvalidation(module => {
+    if (module !== '*') return;
+    searchVersion.current++;
+    setSearchedLeads([]); setSearchedDeals([]); setIsSearching(false);
+    setQuery('');
+  }), []);
 
   const searchRecords = useCallback(async (term: string): Promise<void> => {
     const version = ++searchVersion.current;

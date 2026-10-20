@@ -157,6 +157,8 @@ function deploymentPlan(records, localNames) {
     '20261219000000_remove_deal_industry',
     // Coordinated customer enum/stage rename and additive Deal evidence; no deferred columns are used.
     '20261220000000_deal_engagement',
+    // Additive CRM tab flags with compatibility backfill; no deferred columns are read or retired.
+    '20261221000000_crm_tab_permissions',
   ];
   const later = localNames.filter(name => /^\d+_/.test(name) && name > relationshipExpansion && name !== relationshipRetirement);
   if (later.some(name => !independent.includes(name))) fail('REVIEW_MIGRATIONS_AFTER_DEFERRED_RELATIONSHIP_RETIREMENT');

@@ -29,6 +29,7 @@ export interface UseAccountsParams {
   sort?: SortPreference | null;
   search?: string;
   recordId?: string;
+  disabled?: boolean;
   filter?: FilterCondition[];
 }
 
@@ -46,6 +47,7 @@ export function useAccounts(params?: UseAccountsParams) {
 
   const { data, meta, facets, isInitialLoad, isRefreshing, error, refetch } = useModuleData({
     moduleId: 'accounts',
+    disabled: params?.disabled,
     page: params?.page ?? 1,
     pageSize: params?.pageSize ?? 100,
     sort: params?.sort ?? null,

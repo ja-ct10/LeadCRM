@@ -15,7 +15,7 @@ export async function findAllRoles(tenantId: string) {
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
-        select: { id: true, roleId: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
+        select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
       },
     },
   });
@@ -28,7 +28,7 @@ export async function findRoleById(id: string, tenantId: string) {
     include: {
       _count: { select: { userRoles: true } },
       permissions: {
-        select: { id: true, roleId: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
+        select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true },
       },
       userRoles: {
         where: { tenantId },
@@ -75,7 +75,7 @@ export async function createRole(
     }
     return tx.roleDefinition.findUniqueOrThrow({
       where: { id: role.id },
-      include: { permissions: { select: { id: true, roleId: true, module: true, canView: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true } }, _count: { select: { userRoles: true } } },
+      include: { permissions: { select: { id: true, roleId: true, module: true, canView: true, canViewAll: true, canViewMy: true, canViewActive: true, canCreate: true, canEdit: true, canDelete: true, canArchive: true, canImport: true, canManageStages: true, canComplete: true, canAssign: true, canSend: true, canDuplicate: true, canViewReports: true, canActivate: true, canViewRuns: true, canPublish: true, canViewSubmissions: true, canViewClosedWon: true, canDisable: true, canRestore: true } }, _count: { select: { userRoles: true } } },
     });
   });
 }
@@ -129,10 +129,14 @@ async function replacePermissions(tx: Prisma.TransactionClient, roleId: string, 
   const incomingModules = permissions.map(p => p.module);
   await tx.rolePermission.deleteMany({ where: { roleId, tenantId, module: { notIn: incomingModules } } });
   for (const p of permissions) {
+    // Legacy clients omit tab flags. Preserve stored grants, except when View is removed.
+    const { canViewAll: _all, canViewMy: _my, canViewActive: _active, ...legacyDefaults } = EMPTY_PERMISSION_FLAGS;
+    const tabs = Object.fromEntries(['canViewAll', 'canViewMy', 'canViewActive'].flatMap(key =>
+      !p.canView ? [[key, false]] : p[key as keyof PermissionFlags] === undefined ? [] : [[key, p[key as keyof PermissionFlags]] ]));
     await tx.rolePermission.upsert({
       where: { roleId_module: { roleId, module: p.module } },
       create: { tenantId, roleId, ...EMPTY_PERMISSION_FLAGS, ...p },
-      update: { ...EMPTY_PERMISSION_FLAGS, ...p },
+      update: { ...legacyDefaults, ...p, ...tabs },
     });
   }
 }
@@ -199,6 +203,13 @@ export async function findUserEffectivePermissions(
     },
   });
   if (!user) throw new NotFoundError('User');
+  return resolveEffectivePermissions(user);
+}
+
+/** Shared resolver for request authorization and CRM record scope. */
+export function resolveEffectivePermissions(user: {
+  role: string; status: string; userRoles: Array<{ role: { name: string; isSystemRole: boolean; permissions: Array<PermissionFlags & { module: string }> } }>;
+}): ResolvedPermissions {
   if (user.status !== 'ACTIVE') return {};
   if (user.role === 'Client Admin') {
     return Object.fromEntries(PERMISSION_MODULES.map(module => [module.key, {
@@ -216,7 +227,7 @@ export async function findUserEffectivePermissions(
       const module = PERMISSION_MODULES.find(m => m.key === perm.module);
       if (!module) continue;
       const flags = resolved[module.key] ??= { ...EMPTY_PERMISSION_FLAGS };
-      for (const action of module.actions) flags[action] = flags[action] || perm[action];
+      for (const action of module.actions) flags[action] = flags[action] === true || perm[action] === true;
     }
   }
 
