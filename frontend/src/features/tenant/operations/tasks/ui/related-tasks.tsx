@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import type { TaskListQuery, TaskRecord } from "@leadcrm/shared";
-import { TASK_STATUS_LABELS, isTaskOverdue } from "@leadcrm/shared";
+import { TaskStatusBadge } from './task-status';
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { Button } from "@/shared/components/ui/button";
 import { RefreshButton } from "@/shared/components/crm/refresh-button";
@@ -81,12 +81,9 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
           >
             <span className="flex min-w-0 items-center gap-2"><span className={onCountChange ? "block text-[13px] font-medium [overflow-wrap:anywhere] sm:text-sm" : "block text-sm font-medium"}>{task.title}</span><UnreadRecordDot entityType="Task" entityId={task.id} /></span>
             <span className={onCountChange ? "block text-[11px] text-muted-foreground sm:text-xs" : "block text-xs text-muted-foreground"}>
-              {TASK_STATUS_LABELS[task.status]} ·{" "}
+              <TaskStatusBadge task={task} /> ·{" "}
               {formatDateTime(task.dueDate)}
             </span>
-            {isTaskOverdue(task) && (
-              <span className="text-xs text-destructive">Overdue</span>
-            )}
           </button>
         ))}
       </div>

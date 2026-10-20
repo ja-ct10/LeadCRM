@@ -31,8 +31,8 @@ export async function remove(req: Request, res: Response, next: NextFunction): P
 
 export async function addMember(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    await service.addMember(String(req.params.id), req.body.userId, req.user!.tenantId, req.user!.userId);
-    res.json({ success: true });
+    const group = await service.addMember(String(req.params.id), req.body.userIds ?? req.body.userId, req.user!.tenantId, req.user!.userId);
+    res.json({ success: true, data: group });
   } catch (err) { next(err); }
 }
 
@@ -40,5 +40,12 @@ export async function removeMember(req: Request, res: Response, next: NextFuncti
   try {
     await service.removeMember(String(req.params.id), String(req.params.userId), req.user!.tenantId, req.user!.userId);
     res.json({ success: true });
+  } catch (err) { next(err); }
+}
+
+export async function setHead(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const group = await service.setHead(String(req.params.id), req.user!.tenantId, req.user!.userId, req.body);
+    res.json({ success: true, data: group });
   } catch (err) { next(err); }
 }

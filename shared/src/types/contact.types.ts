@@ -30,6 +30,8 @@ export interface Contact {
   accountId?: string | null;
   status: string;
   createdAt: string;
+  /** Read-only list projection from authorized associated Deals. */
+  readonly lastSalesActivityAt?: string;
   updatedAt?: string;
   createdById?: string;
   updatedById?: string;

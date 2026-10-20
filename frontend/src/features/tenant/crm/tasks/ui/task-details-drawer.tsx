@@ -3,6 +3,7 @@
 import React from 'react';
 import { Calendar, User as UserIcon, CheckCircle2, Clock, AlertCircle, Briefcase, FileText, Tag } from 'lucide-react';
 import { Task, Deal, User } from '@/store/types';
+import { TaskStatusBadge } from '@/features/tenant/operations/tasks/ui/task-status';
 import { ModalCloseButton } from '@/shared/components/ui/modal-close-button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
 
@@ -40,13 +41,7 @@ export const TaskDetailsDrawer: React.FC<TaskDetailsDrawerProps> = ({
                 <Tag size={12} />
                 {task.priority} Priority
               </span>
-              <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                isCompleted ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
-                'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-              }`}>
-                {isCompleted ? <CheckCircle2 size={12} /> : <Clock size={12} />}
-                {task.status}
-              </span>
+              <TaskStatusBadge task={task} />
             </div>
             <h3 className="text-lg font-bold text-slate-900 dark:text-white leading-snug [overflow-wrap:anywhere]">
               {task.title}

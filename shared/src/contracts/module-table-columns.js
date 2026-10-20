@@ -27,7 +27,7 @@ exports.CONTACTS_TABLE_COLUMNS = [
     { id: 'accountId', label: 'Account', required: false, defaultVisible: false, defaultOrder: 8, group: 'Organization', priority: 'low' },
     { id: 'createdAt', label: 'Created Date', required: false, defaultVisible: true, defaultOrder: 9, group: 'System', priority: 'low' },
 ];
-exports.CONTACTS_TABLE_SORT_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt'];
+exports.CONTACTS_TABLE_SORT_FIELDS = ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'lastSalesActivityAt'];
 exports.DEALS_TABLE_COLUMNS = [
     { id: 'title', label: 'Deal Name', required: true, defaultVisible: true, defaultOrder: 0, group: 'Deal Info', priority: 'required' },
     { id: 'value', label: 'Value', required: false, defaultVisible: true, defaultOrder: 1, group: 'Deal Info', priority: 'medium' },

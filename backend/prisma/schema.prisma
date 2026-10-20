@@ -357,6 +357,8 @@ model TenantGroupMember {
   groupId  String
   userId   String
   tenantId String
+  // The forward migration enforces one head per Group with a partial unique index.
+  isHead   Boolean @default(false)
 
   group  TenantGroup @relation(fields: [groupId, tenantId], references: [id, tenantId], onDelete: Cascade)
   user   User        @relation(fields: [userId, tenantId], references: [id, tenantId], onDelete: Cascade)

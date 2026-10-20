@@ -46,7 +46,7 @@ export function useTablePreferences(module: string): UseTablePreferencesReturn {
   const { user, tenant } = useAuth();
   const identity = [module, tenant?.id, user?.id].join(':');
   const identityRef = useRef(identity); identityRef.current = identity;
-  const defaultSort = (): SortPreference | null => ['leads', 'contacts', 'accounts', 'campaigns', 'workflows', 'users', 'tasks', 'deals'].includes(module) ? { field: 'createdAt', direction: 'desc' } : null;
+  const defaultSort = (): SortPreference | null => ['leads', 'contacts'].includes(module) ? { field: 'lastSalesActivityAt', direction: 'desc' } : [ 'accounts', 'campaigns', 'workflows', 'users', 'tasks', 'deals'].includes(module) ? { field: 'createdAt', direction: 'desc' } : null;
   const [pageSize, setPageSizeState] = useState<number>(25);
   const [viewMode, setViewModeState] = useState<ViewMode>('wrap');
   const [displayMode, setDisplayModeState] = useState<DisplayMode>('wrap');

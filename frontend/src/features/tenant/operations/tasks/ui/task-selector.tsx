@@ -4,6 +4,8 @@ import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { ChevronDown, Search, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 import type { TaskOption, TaskOptionKind } from "@leadcrm/shared";
+import { isTaskAssignmentRestrictedRole, isTaskManagerRole } from '@leadcrm/shared';
+import { taskTeamUserIds } from '../task-relations';
 import { useData } from "@/store/DataContext";
 import { getAssignableAgents } from "@/shared/utils/assigned-agents";
 import { matchesSearch } from "@/shared/utils/search";
@@ -104,12 +106,14 @@ export function TaskSelector(props: TaskSelectorProps) {
             kind === "user"
               ? getAssignableAgents(users, ['tasks'])
                   .filter((u) => u.tenantId === tenant?.id && u.status.toLowerCase() === "active")
+                  .filter(u => !user || (isTaskAssignmentRestrictedRole(user.role) ? u.id === user.id : !isTaskManagerRole(user.role) || taskTeamUserIds(user, users).includes(u.id)))
                   .map((u) => ({
                     id: u.id,
                     label: u.firstName + " " + u.lastName,
                   }))
               : kind === "deal"
                 ? deals
+                    .filter(d => !user || (isTaskManagerRole(user.role) ? !!d.assignedUserId && taskTeamUserIds(user, users).includes(d.assignedUserId) : !isTaskAssignmentRestrictedRole(user.role) || d.assignedUserId === user.id))
                     .filter(
                       (d) =>
                         !leadIds.length ||

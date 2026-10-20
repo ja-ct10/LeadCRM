@@ -50,7 +50,7 @@ export async function dispatchAction(action: WorkflowAction, context: Record<str
     }) : undefined;
     if (action.type === 'create_task') {
       const previous = savedTaskStep?.output as Record<string, unknown> | null;
-      if (savedTaskInput && previous?.resolvedUserId === savedTaskInput.assignedUserId) {
+      if (savedTaskInput && previous && previous.resolvedUserId === savedTaskInput.assignedUserId) {
         restoredAssignment = Object.fromEntries(['assignmentTargetType', 'assignmentTargetId', 'assignmentTargetName', 'candidateCount', 'strategy', 'reason', 'workload', 'capacityLimit']
           .flatMap(key => previous[key] !== undefined ? [[key, previous[key]]] : []));
       }

@@ -11,7 +11,7 @@ import {
 import { NotFoundError } from "../../../shared/errors/http-error";
 import prisma from "../../../config/database.config";
 import { ConflictError } from "../../../shared/errors/http-error";
-import { crmActor, resolveCrmActor } from '../../crm/access/crm-record-access.service';
+import { crmActor, resolveCrmActor, taskReadWhere, taskAssigneeInScope, authorizedWorkflowScope, crmReadWhere } from '../../crm/access/crm-record-access.service';
 import { eligibleAssignedAgents, TASK_ASSIGNEE_REQUIREMENTS } from '../../crm/access/assigned-agent-eligibility';
 import { buildSearchClauses } from '../../../shared/helpers/search';
 import { sortedPageIds, orderPage } from '../../../shared/helpers/sorted-page';
@@ -115,13 +115,19 @@ export function taskWhere(
   now = new Date(),
 ): Prisma.TaskWhereInput {
   const AND: Prisma.TaskWhereInput[] = [];
-  if (query.status)
+  const overdue: Prisma.TaskWhereInput = {
+    isArchived: false, dueDate: { lt: now }, status: { notIn: ["completed", "cancelled"] },
+  };
+  if (query.status === "overdue") AND.push(overdue);
+  else if (query.status) {
     AND.push({
       status:
         query.status === "in_progress"
           ? { in: ["in_progress", "in-progress"] }
-          : query.status,
+          : query.status === "pending" ? { in: ["pending", "blocked"] } : query.status,
     });
+    if (["pending", "in_progress"].includes(query.status)) AND.push({ NOT: overdue });
+  }
   if (query.state === "active")
     AND.push({ status: { notIn: ["completed", "cancelled"] } });
   if (query.state === "completed") AND.push({ status: "completed" });
@@ -179,13 +185,15 @@ export async function findAllTasks(tenantId: string, query: TaskQuery) {
   );
   return { data, total, page: query.page, limit: query.limit };
 }
-export function findTaskById(
+export async function findTaskById(
   id: string,
   tenantId: string,
   client: TaskClient = prisma,
 ) {
+  const actor = crmActor.getStore();
+  const scope = actor && !authorizedWorkflowScope(tenantId) ? taskReadWhere(await resolveCrmActor(client, actor)) : {};
   return client.task.findFirst({
-    where: { id, tenantId },
+    where: { id, tenantId, AND: [scope] },
     include: taskInclude,
   });
 }
@@ -241,7 +249,8 @@ export function updateTask(
   });
 }
 export async function findTaskSummary(tenantId: string, query: TaskQuery) {
-  const where = taskWhere(tenantId, query);
+  const now = new Date();
+  const where = taskWhere(tenantId, query, now);
   const active = {
     AND: [
       where,
@@ -249,11 +258,11 @@ export async function findTaskSummary(tenantId: string, query: TaskQuery) {
     ],
   };
   const overdue = {
-    AND: [active, { dueDate: { lt: new Date() }, isArchived: false }],
+    AND: [active, { dueDate: { lt: now }, isArchived: false }],
   };
   return prisma.$transaction(
     async (tx) => {
-      const [statuses, workload, late, users] = await Promise.all([
+      const [statuses, workload, late, users, next] = await Promise.all([
         tx.task.groupBy({ by: ["status"], where, _count: { _all: true } }),
         tx.task.groupBy({
           by: ["assignedUserId", "status"],
@@ -261,13 +270,18 @@ export async function findTaskSummary(tenantId: string, query: TaskQuery) {
           _count: { _all: true },
         }),
         tx.task.groupBy({
-          by: ["assignedUserId"],
+          by: ["assignedUserId", "status"],
           where: overdue,
           _count: { _all: true },
         }),
         tx.user.findMany({ where: { tenantId }, select: person }),
+        tx.task.findFirst({
+          where: { AND: [taskWhere(tenantId, { ...query, status: undefined, overdue: false }, now),
+            { isArchived: false, status: { notIn: ["completed", "cancelled"] }, dueDate: { gte: now } }] },
+          orderBy: { dueDate: "asc" }, select: { dueDate: true },
+        }),
       ]);
-      return { statuses, workload, late, users };
+      return { statuses, workload, late, users, evaluatedAt: now.toISOString(), nextStatusChangeAt: next?.dueDate?.toISOString() ?? null };
     },
     { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
   );
@@ -287,6 +301,7 @@ export async function findTaskOptions(
     const terms = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
     const rows = (await eligibleAssignedAgents(prisma, tenantId, TASK_ASSIGNEE_REQUIREMENTS))
       .filter(user => !policy || policy.clientAdmin || hasModulePermission(policy.permissions, 'tasks', 'canAssign') || user.id === policy.userId)
+      .filter(user => !policy || taskAssigneeInScope(policy, user.id))
       .filter(user => terms.every(term => `${user.firstName} ${user.lastName} ${user.email}`.toLocaleLowerCase().includes(term)))
       .sort((a, b) => a.firstName.localeCompare(b.firstName) || a.id.localeCompare(b.id)).slice(0, 50);
     return rows.map((row) => ({
@@ -321,8 +336,8 @@ export async function findTaskOptions(
     const actor = crmActor.getStore();
     const policy = actor ? await resolveCrmActor(prisma, actor) : undefined;
     const rows = await prisma.deal.findMany({
-      where: { ...where, deletedAt: null, AND: [...buildSearchClauses(search, ['title']), related.deal],
-        ...(policy?.assignmentRestricted ? { assignedUserId: policy.userId } : {}) },
+      where: { ...where, deletedAt: null, AND: [...buildSearchClauses(search, ['title']), related.deal, await crmReadWhere(prisma, tenantId, 'deals')],
+        ...(policy?.taskManager ? { assignedUserId: { in: policy.taskTeamUserIds } } : policy?.assignmentRestricted ? { assignedUserId: policy.userId } : {}) },
       take: 50,
       orderBy: [{ title: "asc" }, { id: "asc" }],
       select: { id: true, title: true },
@@ -346,8 +361,8 @@ export async function findFilteredDealOptions(tenantId: string, query: import('z
   if ((query.productInterestId || query.category) && !policy.clientAdmin && !hasModulePermission(policy.permissions, 'products', 'canView')) throw new AppError('Product access required.', 403);
   const related = await relatedOptionFilters(tenantId, query.leadIds);
   const where: Prisma.DealWhereInput = { tenantId, isArchived: false, deletedAt: null,
-    AND: [...buildSearchClauses(query.search, ['title']), related.deal],
-    ...(policy.assignmentRestricted ? { assignedUserId: policy.userId } : {}),
+    AND: [...buildSearchClauses(query.search, ['title']), related.deal, await crmReadWhere(prisma, tenantId, 'deals')],
+    ...(policy.taskManager ? { assignedUserId: { in: policy.taskTeamUserIds } } : policy.assignmentRestricted ? { assignedUserId: policy.userId } : {}),
     ...(query.accountId ? { accountId: query.accountId } : {}),
     ...(query.productInterestId ? { productInterestId: query.productInterestId } : {}),
     ...(query.category ? { productInterestRecord: { tenantId, category: query.category === '__uncategorized' ? '' : { equals: query.category, mode: 'insensitive' } } } : {}),

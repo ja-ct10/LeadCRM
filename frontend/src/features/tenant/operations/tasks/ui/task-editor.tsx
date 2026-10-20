@@ -1,6 +1,6 @@
 "use client";
 import { useId, useRef, useState, type ReactNode } from 'react';
-import { taskAssociationIds, TASK_STATUSES, TASK_STATUS_LABELS, type TaskLinkInput, type TaskOption, type TaskRecord } from '@leadcrm/shared';
+import { taskAssociationIds, isTaskAssignmentRestrictedRole, isTaskManagerRole, type TaskLinkInput, type TaskOption, type TaskRecord } from '@leadcrm/shared';
 import { useData } from '@/store/DataContext';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
@@ -25,21 +25,24 @@ export function TaskEditor(props: TaskEditorProps) {
 function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = false, onClose }: TaskEditorProps) {
   const { user } = useAuth();
   const { addTask } = useData();
-  const canCreate = useHasPermission('tasks.create'), canAssign = useHasPermission('tasks.assign'), canComplete = useHasPermission('tasks.complete'), canCreateDeals = useHasPermission('deals.create');
+  const canCreate = useHasPermission('tasks.create'), assignGrant = useHasPermission('tasks.assign'), canCreateDeals = useHasPermission('deals.create');
+  const selfOnly = isTaskAssignmentRestrictedRole(user?.role ?? '');
+  const canAssign = assignGrant && !selfOnly;
+  const initialAssignee = selfOnly || isTaskManagerRole(user?.role ?? '') ? user?.id ?? '' : '';
   const editable = !readOnly && canCreate;
   const requestId = useRef<string>(crypto.randomUUID());
   const [title, setTitle] = useState(''), [description, setDescription] = useState('');
-  const [status, setStatus] = useState<TaskRecord['status']>('pending'), [priority, setPriority] = useState<TaskRecord['priority']>('Medium');
+  const [priority, setPriority] = useState<TaskRecord['priority']>('Medium');
   const [dueDate, setDueDate] = useState(manilaLocalDateTime(new Date(Date.now() + 86400000).toISOString()));
   const initialDueDate = useRef(dueDate), dueTrigger = useRef<HTMLButtonElement>(null);
   const [dueDraft, setDueDraft] = useState<string | null>(null);
   const closeDuePicker = () => { setDueDraft(null); dueTrigger.current?.focus({ preventScroll: true }); };
-  const [assignedUserId, setOwner] = useState('');
+  const [assignedUserId, setOwner] = useState(initialAssignee);
   const [dealIds, setDealIds] = useState(() => taskAssociationIds(links, 'deal'));
   const changeDeals = (ids: string[]) => setDealIds([...new Set([...ids, ...(preserveContextLinks ? taskAssociationIds(links, 'deal') : [])])]);
   const [createdLabels, setCreatedLabels] = useState<TaskOption[]>([]), [creating, setCreating] = useState<'deal' | null>(null);
   const [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const dirty = !!(title || description || assignedUserId || status !== 'pending' || priority !== 'Medium' || dueDate !== initialDueDate.current || JSON.stringify(dealIds) !== JSON.stringify(taskAssociationIds(links, 'deal')));
+  const dirty = !!(title || description || assignedUserId !== initialAssignee || priority !== 'Medium' || dueDate !== initialDueDate.current || JSON.stringify(dealIds) !== JSON.stringify(taskAssociationIds(links, 'deal')));
   const closeGuard = usePanelCloseGuard(onClose, { dirty: editable && dirty, busy });
   const heading = useId();
   const person = assignedUserId === user?.id ? user : undefined;
@@ -54,7 +57,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
       if (resolvedDueDate.slice(0, 10) < manilaCurrentDate()) throw new Error('Choose today or a future due date.');
       if (isPastManilaTaskDueDateTime(resolvedDueDate)) throw new Error('Choose a due date and time in the future.');
       if (resolvedDueDate !== dueDate) setDueDate(resolvedDueDate);
-      await addTask({ title: title.trim(), description, status, priority, dueDate: manilaTaskDueInstant(resolvedDueDate), assignedUserId,
+      await addTask({ title: title.trim(), description, status: 'pending', priority, dueDate: manilaTaskDueInstant(resolvedDueDate), assignedUserId,
         dealIds: [...new Set([...dealIds, ...(preserveContextLinks ? taskAssociationIds(links, 'deal') : [])])], requestId: requestId.current });
       onClose();
     } catch (reason) { setError(reason instanceof Error ? reason.message : 'Unable to save task.'); }
@@ -83,19 +86,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                   <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     <label className="min-w-0 space-y-1.5">
                       <span className={panelLabelClass}>Status</span>
-                      <select
-                        className={panelInputClass}
-                        value={status}
-                        onChange={(e) =>
-                          setStatus(e.target.value as typeof status)
-                        }
-                      >
-                        {TASK_STATUSES.filter(value => value !== "completed" || canComplete).map((s) => (
-                          <option key={s} value={s}>
-                            {TASK_STATUS_LABELS[s]}
-                          </option>
-                        ))}
-                      </select>
+                      <input className={panelInputClass} value="To do" readOnly tabIndex={-1} />
                     </label>
                     <label className="min-w-0 space-y-1.5">
                       <span className={panelLabelClass}>Priority</span>
@@ -119,7 +110,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                     <button id={`${heading}-due`} ref={dueTrigger} type="button" className={panelInputClass + " text-left"} aria-expanded={dueDraft !== null} aria-controls={`${heading}-due-picker`} onClick={() => { if (dueDraft === null) setDueDraft(dueDate); else closeDuePicker(); }}>{dueDate.replace('T', ' ')}</button>
                     {dueDraft !== null && <ManilaDateTimePicker id={`${heading}-due-picker`} value={dueDraft} prefix="Due" label="Choose due date and time" rollPastToday onCancel={closeDuePicker} onDone={value => { setDueDate(value); closeDuePicker(); }} />}
                   </div>
-                  <TaskSelector
+                  {selfOnly ? <label className="block space-y-1.5"><span className={panelLabelClass}>Assigned Agent</span><input className={panelInputClass} value={`${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim()} readOnly tabIndex={-1} /></label> : <TaskSelector
                     appearance="panel"
                     kind="user"
                     disabled={false}
@@ -133,7 +124,7 @@ function TaskCreateForm({ links = {}, readOnly = false, preserveContextLinks = f
                         : undefined
                     }
                     onChange={setOwner}
-                  />
+                  />}
               </>)}
               {renderSection('Additional Information', 3, <>
                   <label className="block space-y-1.5">

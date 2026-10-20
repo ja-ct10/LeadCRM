@@ -7,16 +7,17 @@ interface TaskPreparation {
   action: WorkflowAction; entity: WorkflowEntity; tenantId: string; context: Record<string, unknown>;
   assignedUserId: string; requestId?: string; now?: Date;
 }
+type WorkflowTaskInput = CreateTaskDto & { assignedUserId: string };
 /** A recovery uses the original payload so dates, assignees and receipt fingerprints stay stable. */
-export function restoredWorkflowTaskInput(value: unknown, requestId: string): CreateTaskDto | undefined {
+export function restoredWorkflowTaskInput(value: unknown, requestId: string): WorkflowTaskInput | undefined {
   const parsed = CreateTaskSchema.safeParse(value);
-  if (!parsed.success) return undefined;
+  if (!parsed.success || !parsed.data.assignedUserId) return undefined;
   if (parsed.data.requestId !== requestId) throw new ValidationError('The saved task request is unavailable. Review this execution before trying again.');
-  return parsed.data;
+  return { ...parsed.data, assignedUserId: parsed.data.assignedUserId };
 }
 
 /** Preview and execution render and validate the same canonical Task payload. */
-export async function prepareWorkflowTaskInput(input: TaskPreparation): Promise<CreateTaskDto> {
+export async function prepareWorkflowTaskInput(input: TaskPreparation): Promise<WorkflowTaskInput> {
   const { action, entity, tenantId, context, assignedUserId, requestId, now = new Date() } = input;
   const config = action.config;
   const values = await resolveMessageValues(`${config.title} ${config.description ?? ''}`, tenantId, entity, context);
@@ -28,5 +29,5 @@ export async function prepareWorkflowTaskInput(input: TaskPreparation): Promise<
     dealIds: await resolveTaskDealIds(action, entity, tenantId, context),
   });
   if (!parsed.success) throw new ValidationError(`Rendered Task ${parsed.error.issues[0]?.path.join('.') || 'input'}: ${parsed.error.issues[0]?.message ?? 'Review this action.'}`);
-  return parsed.data;
+  return { ...parsed.data, assignedUserId };
 }

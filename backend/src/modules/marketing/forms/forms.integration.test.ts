@@ -15,12 +15,13 @@ const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/lead
 describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   let tenantId: string, otherTenant: string, userId: string, token: string, denied: string, base: string, server: Server;
   let rejectSubmissionEmail = '';
+  let rejectInquiryDealTitle = '';
   const scoped = <T>(work: () => T) => tenantContext.run({ tenantId }, work);
   const draft = () => scoped(() => service.createForm(tenantId, userId, { name: 'Contact Us' }));
   const publish = (id: string) => scoped(() => service.publishForm(id, tenantId, userId));
   const productIds: Record<string, string> = {};
   const values = (email = `${randomUUID()}@example.com`) => ({ firstName: 'Test', lastName: 'Visitor', email, productInterest: productIds['Smart Lock'], address: 'Makati' });
-  const submit = (publicId: string, data = values(), version = 1) => submitPublicForm(publicId, { version, values: data });
+  const submit = (publicId: string, data: Record<string, string | boolean | string[]> = values(), version = 1) => submitPublicForm(publicId, { requestId: randomUUID(), version, values: data });
   async function request(path: string, method = 'GET', body?: unknown, auth = token) {
     const r = await fetch(base + path, { method, headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: 'Bearer ' + auth } : {}) }, ...(body ? { body: JSON.stringify(body) } : {}) });
     return { status: r.status, body: await r.json() };
@@ -28,6 +29,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   beforeAll(async () => {
     prisma.$use(async (params, next) => {
       if (params.model === 'FormSubmission' && params.action === 'create' && params.args.data.email === rejectSubmissionEmail) throw new Error('Simulated submission persistence failure');
+      if (rejectInquiryDealTitle && params.model === 'Deal' && params.action === 'create' && params.args.data.automationKey?.startsWith('form:') && params.args.data.title === rejectInquiryDealTitle) throw new Error('Simulated inquiry Deal failure');
       return next(params);
     });
     tenantId = (await prisma.tenant.create({ data: { name: 'Forms test', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } })).id;
@@ -228,8 +230,8 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const form = await publish((await draft()).id);
     const ids = [productIds['Smart Lock'], productIds.Biometrics];
     const answers = { ...values(), productInterest: ids };
-    await expect(submitPublicForm(form.publicId, { version: 1, values: { ...answers, productInterest: [] } })).rejects.toMatchObject({ fieldErrors: { productInterest: 'Select approved product interests.' } });
-    await submitPublicForm(form.publicId, { version: 1, values: answers });
+    await expect(submitPublicForm(form.publicId, { requestId: randomUUID(), version: 1, values: { ...answers, productInterest: [] } })).rejects.toMatchObject({ fieldErrors: { productInterest: 'Select approved product interests.' } });
+    await submitPublicForm(form.publicId, { requestId: randomUUID(), version: 1, values: answers });
     const inquiry = await prisma.formSubmission.findFirstOrThrow({ where: { formId: form.id } });
     expect(inquiry.values).toMatchObject({ productInterest: ids });
     expect(inquiry.values).not.toHaveProperty('productCategory');
@@ -261,7 +263,84 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } });
     expect(deals).toHaveLength(2);
     await submit(form.publicId, v);
-    expect(await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).toEqual(deals);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: lead.id } } } })).toBe(3);
+  });
+
+  it('sorts persisted repeat Lead activity before pagination and preserves explicit sorting, filters, and creation dates', async () => {
+    const marker = `Activity${randomUUID()}`, form = await publish((await draft()).id), v = { ...values(), lastName: marker };
+    const old = await prisma.lead.create({ data: { tenantId, firstName: 'Returning', lastName: marker, email: v.email, status: 'Hot', source: 'Website', createdAt: new Date('2020-01-01') } });
+    const newer = await prisma.lead.create({ data: { tenantId, firstName: 'Newer', lastName: marker, status: 'Hot', source: 'Website', createdAt: new Date('2024-01-01') } });
+    const page = async (sort = '', page = 1) => request(`/crm/leads?search=${marker}&limit=1&page=${page}${sort ? '&sort=' + sort : ''}`);
+    expect((await page()).body.data[0].id).toBe(newer.id);
+    await prisma.lead.update({ where: { id: old.id }, data: { address: 'Ordinary profile edit' } });
+    expect((await page()).body.data[0].id).toBe(newer.id);
+    await submit(form.publicId, { ...v, productInterest: [productIds['Smart Lock'], productIds.Biometrics] });
+    const firstPage = await page();
+    expect(firstPage.status, JSON.stringify(firstPage.body)).toBe(200);
+    expect(firstPage.body.data[0]).toMatchObject({ id: old.id, createdAt: old.createdAt.toISOString() });
+    const deals = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: old.id } } } });
+    expect(deals).toHaveLength(2);
+    expect(firstPage.body.data[0].lastSalesActivityAt).toBe(new Date(Math.max(...deals.map(deal => +deal.createdAt))).toISOString());
+    expect((await page('', 2)).body.data[0].id).toBe(newer.id);
+    expect((await page('createdAt:desc')).body.data[0].id).toBe(newer.id);
+    expect((await request(`/crm/leads?search=${marker}&filter[source]=equals:Website&sort=lastSalesActivityAt:desc&limit=1`)).body.data[0].id).toBe(old.id);
+    await prisma.lead.update({ where: { id: newer.id }, data: { address: 'Later ordinary edit' } });
+    expect((await page()).body.data[0].id).toBe(old.id);
+    await prisma.deal.updateMany({ where: { id: { in: deals.map(deal => deal.id) } }, data: { createdAt: newer.createdAt } });
+    expect((await page()).body.data[0].id).toBe([old.id, newer.id].sort()[0]);
+  });
+
+  it('creates one receipt and one Deal per Product for concurrent retries, rejects changed content, and rolls back a failed repeat Deal', async () => {
+    const form = await publish((await draft()).id), v = values(), requestId = randomUUID();
+    await submit(form.publicId, v);
+    const person = await prisma.lead.findFirstOrThrow({ where: { tenantId, email: v.email } });
+    const retry = { requestId, version: 1, values: { ...v, productInterest: [productIds['Smart Lock'], productIds.Biometrics] } };
+    await Promise.all([submitPublicForm(form.publicId, retry), submitPublicForm(form.publicId, retry)]);
+    expect(await prisma.formSubmission.count({ where: { tenantId, formId: form.id, requestKey: requestId } })).toBe(1);
+    expect(await prisma.deal.count({ where: { tenantId, leadDeals: { some: { leadId: person.id } } } })).toBe(3);
+    await expect(submitPublicForm(form.publicId, { ...retry, values: { ...retry.values, address: 'Different intent' } })).rejects.toMatchObject({ statusCode: 409 });
+    const before = await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: person.id } } }, orderBy: { id: 'asc' } });
+    rejectInquiryDealTitle = `${person.firstName} ${person.lastName} – Smart Lock`;
+    try { await expect(submit(form.publicId, v)).rejects.toThrow('Simulated inquiry Deal failure'); }
+    finally { rejectInquiryDealTitle = ''; }
+    expect(await prisma.deal.findMany({ where: { tenantId, leadDeals: { some: { leadId: person.id } } }, orderBy: { id: 'asc' } })).toEqual(before);
+    expect(await prisma.formSubmission.count({ where: { tenantId, leadId: person.id } })).toBe(2);
+    expect((await prisma.lead.findUniqueOrThrow({ where: { id: person.id } })).createdAt).toEqual(person.createdAt);
+  });
+
+  it('promotes returning Contacts and derives canonical converted-Lead Deal activity', async () => {
+    const marker = `ContactActivity${randomUUID()}`, form = await publish((await draft()).id), v = { ...values(), lastName: marker };
+    const contact = await prisma.contact.create({ data: { tenantId, firstName: 'Returning', lastName: marker, email: v.email, createdAt: new Date('2020-01-01') } });
+    const newer = await prisma.contact.create({ data: { tenantId, firstName: 'Newer', lastName: marker, createdAt: new Date('2024-01-01') } });
+    const page = () => request(`/crm/contacts?search=${marker}&limit=1`);
+    expect((await page()).body.data[0].id).toBe(newer.id);
+    await submit(form.publicId, v);
+    expect((await page()).body.data[0].id).toBe(contact.id);
+    const linked = await prisma.deal.findFirstOrThrow({ where: { tenantId, contactDeals: { some: { contactId: contact.id } } } });
+    const source = await prisma.lead.create({ data: { tenantId, firstName: 'Canonical', lastName: marker, contactId: newer.id, convertedAt: new Date() } });
+    const deal = await prisma.deal.create({ data: { tenantId, title: 'Converted source Deal', pipelineId: linked.pipelineId, stageId: linked.stageId, createdAt: new Date('2099-01-01'), leadDeals: { create: { leadId: source.id } } } });
+    expect((await page()).body.data[0]).toMatchObject({ id: newer.id, lastSalesActivityAt: deal.createdAt.toISOString() });
+    expect((await request(`/crm/contacts?search=${marker}&sort=createdAt:asc&limit=1`)).body.data[0].id).toBe(contact.id);
+  });
+
+  it('uses only authorized Deal dates and includes converted sources without disclosing the Lead profile', async () => {
+    const marker = `ScopedActivity${randomUUID()}`;
+    const role = await prisma.roleDefinition.create({ data: { tenantId, name: marker, permissions: { create: [
+      { module: 'contacts', canView: true, canViewAll: true }, { module: 'deals', canView: true, canViewMy: true },
+    ] } } });
+    const observer = await prisma.user.create({ data: { tenantId, role: marker, firstName: 'Observer', lastName: marker, email: `${marker}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date(), userRoles: { create: { roleId: role.id } } } });
+    const auth = (await issueAuthSession(observer)).token;
+    const old = await prisma.contact.create({ data: { tenantId, firstName: 'Old', lastName: marker, createdAt: new Date('2020-01-01') } });
+    const newer = await prisma.contact.create({ data: { tenantId, firstName: 'New', lastName: marker, createdAt: new Date('2024-01-01') } });
+    const source = await prisma.lead.create({ data: { tenantId, firstName: 'Hidden', lastName: marker, contactId: old.id, convertedAt: new Date() } });
+    const pipeline = await prisma.pipeline.findFirstOrThrow({ where: { tenantId, isArchived: false } });
+    const stage = await prisma.stage.findFirstOrThrow({ where: { tenantId, pipelineId: pipeline.id } });
+    await prisma.deal.create({ data: { tenantId, title: 'Private Deal', pipelineId: pipeline.id, stageId: stage.id, createdAt: new Date('2099-01-01'), leadDeals: { create: { leadId: source.id } } } });
+    const list = () => request(`/crm/contacts?search=${marker}&limit=1`, 'GET', undefined, auth);
+    expect((await list()).body.data[0].id).toBe(newer.id);
+    await prisma.deal.create({ data: { tenantId, title: 'Authorized Deal', pipelineId: pipeline.id, stageId: stage.id, assignedUserId: observer.id, createdAt: new Date('2025-01-01'), leadDeals: { create: { leadId: source.id } } } });
+    expect((await list()).body.data[0]).toMatchObject({ id: old.id, lastSalesActivityAt: '2025-01-01T00:00:00.000Z' });
+    expect((await request(`/crm/leads/${source.id}`, 'GET', undefined, auth)).status).toBe(403);
   });
 
   it('labels paginated submission Products including archived ones without rewriting values or exposing other tenants', async () => {
@@ -316,7 +395,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     const form = await publish((await draft()).id), v = values();
     await prisma.lead.create({ data: { tenantId, firstName: 'A', lastName: 'A', email: v.email, productInterest: [] } });
     await prisma.contact.create({ data: { tenantId, firstName: 'B', lastName: 'B', phone: '+639123456789', productInterests: [] } });
-    await expect(submitPublicForm(form.publicId, { version: 1, values: { ...v, phone: '9123456789' } })).rejects.toMatchObject({ statusCode: 409 });
+    await expect(submitPublicForm(form.publicId, { requestId: randomUUID(), version: 1, values: { ...v, phone: '9123456789' } })).rejects.toMatchObject({ statusCode: 409 });
     expect(await prisma.formSubmission.count({ where: { formId: form.id } })).toBe(0);
   });
   it('reuses an existing customer linked to a historical won deal', async () => {
@@ -339,7 +418,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   it('matches legacy formatted phones and whitespace-normalized email', async () => {
     const f = await publish((await draft()).id), v = values();
     const c = await prisma.contact.create({ data: { tenantId, firstName: 'Legacy', lastName: 'Person', email: ' ' + v.email.toUpperCase() + ' ', phone: '+63 955 111 2233', productInterests: [] } });
-    await submitPublicForm(f.publicId, { version: 1, values: { ...v, phone: '9551112233' } });
+    await submitPublicForm(f.publicId, { requestId: randomUUID(), version: 1, values: { ...v, phone: '9551112233' } });
     expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ contactId: c.id });
   });
   it('rejects archived people and does not create replacement records', async () => {
@@ -356,7 +435,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   });
   it('rejects oversized payloads and disabled workspaces', async () => {
     const f = await publish((await draft()).id);
-    expect((await request('/public/forms/' + f.publicId + '/submissions', 'POST', { version: 1, values: { junk: 'x'.repeat(66000) } }, '')).status).toBe(413);
+    expect((await request('/public/forms/' + f.publicId + '/submissions', 'POST', { requestId: randomUUID(), version: 1, values: { junk: 'x'.repeat(66000) } }, '')).status).toBe(413);
     await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'SUSPENDED' } });
     try { await expect(submit(f.publicId)).rejects.toMatchObject({ statusCode: 404 }); } finally { await prisma.tenant.update({ where: { id: tenantId }, data: { status: 'ACTIVE' } }); }
   });
@@ -379,7 +458,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   it('records tracking and survives notification failure', async () => {
     const f = await draft(); const { defaultContactForm } = await import('@leadcrm/shared');
     await scoped(() => service.updateForm(f.id, tenantId, userId, { revision: 0, settings: { ...defaultContactForm().settings, notificationEmail: 'alerts@example.com' } })); await publish(f.id);
-    await submitPublicForm(f.publicId, { version: 1, values: values(), tracking: { utm_campaign: 'September' } });
+    await submitPublicForm(f.publicId, { requestId: randomUUID(), version: 1, values: values(), tracking: { utm_campaign: 'September' } });
     expect(await prisma.formSubmission.findFirst({ where: { formId: f.id } })).toMatchObject({ tracking: { utm_campaign: 'September' }, notificationStatus: 'failed' });
   });
   it('enforces auth/RBAC and exposes only published public data', async () => {
@@ -395,10 +474,10 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
     expect((await request('/marketing/forms/' + f.id, 'PUT', { name: 'Cross-tenant edit', revision: f.revision }, outsiderToken)).status).toBe(404);
     expect((await request('/marketing/forms/' + f.id + '/publish', 'PATCH', undefined, outsiderToken)).status).toBe(404);
     expect(r.status).toBe(200); expect(r.body.data).not.toHaveProperty('tenantId'); expect(r.body.data).not.toHaveProperty('settings');
-    const bad = await request('/public/forms/' + f.publicId + '/submissions', 'POST', { version: 1, values: { ...values(), firstName: ' ' } }, '');
+    const bad = await request('/public/forms/' + f.publicId + '/submissions', 'POST', { requestId: randomUUID(), version: 1, values: { ...values(), firstName: ' ' } }, '');
     expect(bad.status).toBe(400); expect(bad.body.fieldErrors.firstName).toBeTruthy();
     const bot = values();
-    await expect(submitPublicForm(f.publicId, { version: 1, values: bot, website: 'bot-filled-honeypot' })).rejects.toMatchObject({ statusCode: 400 });
+    await expect(submitPublicForm(f.publicId, { requestId: randomUUID(), version: 1, values: bot, website: 'bot-filled-honeypot' })).rejects.toMatchObject({ statusCode: 400 });
     expect(await prisma.lead.count({ where: { tenantId, email: bot.email } })).toBe(0);
   });
   it('rotates only eligible Sales members, preserves request idempotency and inquiry/Deal ownership', async () => {
@@ -460,7 +539,7 @@ describe.skipIf(!disposable)('Forms database and HTTP integration', () => {
   });
   it('rate limits anonymous submissions with 429', async () => {
     let status = 0;
-    for (let i = 0; i < 22; i++) { status = (await request('/public/forms/' + randomUUID() + '/submissions', 'POST', { version: 1, values: values() }, '')).status; if (status === 429) break; }
+    for (let i = 0; i < 22; i++) { status = (await request('/public/forms/' + randomUUID() + '/submissions', 'POST', { requestId: randomUUID(), version: 1, values: values() }, '')).status; if (status === 429) break; }
     expect(status).toBe(429);
   });
 });

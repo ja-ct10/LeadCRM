@@ -1,4 +1,5 @@
 import { salesContext } from '../leads/sales-context';
+import { salesActivityDates } from '../sales-activity';
 import { assertCustomerStatusEdit, classifyCustomerRecord } from '../customer-classification.service';
 import { createLinkedAccount } from '../companies/organization-creation';
 import { assignmentSnapshot } from '../../notifications/assignment-presentation';
@@ -46,6 +47,10 @@ const CONTACT_INCLUDE = {
 } as const;
 
 export async function findAllContacts(tenantId: string, query: Record<string, unknown>) {
+  if (salesContext.getStore()) return findContactsPage(tenantId, query);
+  return prisma.$transaction(tx => salesContext.run(tx, () => findContactsPage(tenantId, query)), { isolationLevel: 'RepeatableRead' });
+}
+async function findContactsPage(tenantId: string, query: Record<string, unknown>) {
   const db = salesContext.getStore() ?? prisma;
   const canReadAccount = await mayReadContactAccount(salesContext.getStore() ?? prisma, tenantId);
   const { page, limit } = getPaginationParams(query);
@@ -101,10 +106,14 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
     where['lifecycleStage'] = String(query.lifecycleStage);
   }
 
-  const sort = query.sort;
-  const ids = await sortedPageIds(sort === 'createdAt:desc' ? undefined : sort, ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt'], skip, limit,
-    async () => (await (salesContext.getStore() ?? prisma).contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, companyFromAccount: true, status: true, source: true, createdAt: true } }))
-      .map(row => ({ ...presentContactAccount(row, canReadAccount), status: normalizeCrmStatus(row.status) })),
+  const sort = query.sort ?? 'lastSalesActivityAt:desc';
+  let activity: Map<string, Date> | undefined;
+  const ids = await sortedPageIds(sort === 'createdAt:desc' ? undefined : sort, ['firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'lastSalesActivityAt'], skip, limit,
+    async () => {
+      const keys = await db.contact.findMany({ where, select: { id: true, firstName: true, lastName: true, email: true, phone: true, companyName: true, companyFromAccount: true, status: true, source: true, createdAt: true } });
+      if (String(sort).startsWith('lastSalesActivityAt:')) activity = await salesActivityDates(db, tenantId, 'contacts', keys);
+      return keys.map(row => ({ ...presentContactAccount(row, canReadAccount), lastSalesActivityAt: activity?.get(row.id), status: normalizeCrmStatus(row.status) }));
+    },
     direction => (salesContext.getStore() ?? prisma).contact.findMany({ where, skip, take: limit, orderBy: [{ createdAt: direction }, { id: 'asc' }], select: { id: true } }));
   const [data, total] = await Promise.all([
     (salesContext.getStore() ?? prisma).contact.findMany({
@@ -126,7 +135,8 @@ export async function findAllContacts(tenantId: string, query: Record<string, un
   const facets: Record<string, number> = { touched, untouched: total - touched, has_deals: hasDeals };
   for (const row of statuses) facets['status:' + normalizeCrmStatus(row.status)] = row._count;
   for (const row of agents) if (row.assignedUserId) facets['owner:' + row.assignedUserId] = row._count;
-  return { data: orderPage(data.map(contact => presentContactAccount({ ...contact, account: contact.account ?? null }, canReadAccount)), ids), total, page, limit, facets };
+  activity ??= await salesActivityDates(db, tenantId, 'contacts', data);
+  return { data: orderPage(data.map(contact => presentContactAccount({ ...contact, lastSalesActivityAt: activity!.get(contact.id) ?? contact.createdAt, account: contact.account ?? null }, canReadAccount)), ids), total, page, limit, facets };
 }
 
 export async function findContactById(id: string, tenantId: string) {

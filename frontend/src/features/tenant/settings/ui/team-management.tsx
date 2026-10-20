@@ -34,17 +34,11 @@ export function TeamManagement(): React.ReactElement {
     [loadedUsers, users, tenantId],
   );
 
-  const tabCounts: Record<TeamTab, number | null> = {
-    Users: loadedUsers === null ? null : tenantUsers.length,
-    Groups: null,  // loaded inside GroupsSubTab
-  };
-
   const renderHeader = (action: React.ReactNode) => (
     <>
       <PageHeader title="Team Management" subtitle="Manage users and groups within Camxian Technologies." actions={action} />
       <div className="flex min-w-0 items-center gap-0 border-b border-gray-200 dark:border-white/[0.07]">
         {visibleTabs.map((tab) => {
-          const count = tabCounts[tab];
           return (
             <button
               key={tab}
@@ -57,11 +51,6 @@ export function TeamManagement(): React.ReactElement {
               )}
             >
               {tab}
-              {count !== null && (
-                <span className={cn('text-[10px] font-bold', selectedTab === tab ? 'text-slate-900 dark:text-white' : 'text-slate-400')}>
-                  {count}
-                </span>
-              )}
               {selectedTab === tab && (
                 <motion.div layoutId="team-tab-indicator" className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary" />
               )}

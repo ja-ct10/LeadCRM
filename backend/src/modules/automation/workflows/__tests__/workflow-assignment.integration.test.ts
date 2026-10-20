@@ -7,6 +7,7 @@ import { tenantContext } from '../../../../core/tenant/tenant-context';
 import * as workflows from '../workflows.service';
 import { fireWorkflowTrigger } from '../workflow.engine';
 import { resolveWorkflowAssignee } from '../../assignment/workflow-assignment.service';
+import { addMember, removeMember } from '../../../administration/groups/groups.service';
 
 const url = new URL(process.env.DATABASE_URL ?? 'postgresql://invalid/');
 const disposable = ['localhost', '127.0.0.1'].includes(url.hostname) && /^\/leadcrm_workflow_test_\d+$/.test(url.pathname);
@@ -74,6 +75,20 @@ describe.skipIf(!disposable)('workflow assignment and history on disposable Post
     expect(options.groups.find(group => group.id === groupId)).toMatchObject({ memberCount: 4, eligibleMemberCounts: { task_assignee: 3, crm_owner: 2 } });
     const hidden = await scope(() => workflows.getOptions(tenantId, restrictedId));
     expect([hidden.users, hidden.taskAssignees, hidden.groups, hidden.roles]).toEqual([[], [], [], []]);
+  });
+  it('uses batch-added Group memberships for Task assignment while preserving module permission requirements', async () => {
+    const group = await scope(() => prisma.tenantGroup.create({ data: { tenantId, name: 'Batch Task pool' } }));
+    const staff = await prisma.user.create({ data: { tenantId, role: 'Unprivileged staff', email: `${randomUUID()}@camxian.com`, firstName: 'No', lastName: 'Task grant' } });
+    const saved = await scope(() => addMember(group.id, [taskUserId, salesUserId, staff.id], tenantId, actorId));
+    expect(saved.members).toHaveLength(3);
+    const options = await scope(() => workflows.getOptions(tenantId, actorId));
+    expect(options.groups.find(row => row.id === group.id)).toMatchObject({ memberCount: 3, eligibleMemberCounts: { task_assignee: 2, crm_owner: 1 } });
+    const workflow = await create([task(target('group', group.id))]);
+    const preview = await scope(() => workflows.testWorkflow(workflow.id, tenantId, dealId, actorId));
+    expect(preview.actions[0].assignment?.candidateCount).toBe(2);
+    await scope(() => removeMember(group.id, taskUserId, tenantId, actorId));
+    await scope(() => removeMember(group.id, salesUserId, tenantId, actorId));
+    await expect(scope(() => workflows.validateDraft(tenantId, actorId, { name: 'No implicit grant', trigger: 'deal.created', actions: [task(target('group', group.id))] }))).rejects.toThrow('no active members');
   });
   it.each(['role', 'group'] as const)('rotates %s assignments, preserves one Task owner, deduplicates events, and previews without mutation', async type => {
     const pool = target(type, type === 'role' ? salesRoleId : groupId);

@@ -57,7 +57,8 @@ import { leadsService as contactsService } from "@/features/tenant/crm/leads/ser
 import { accountsService as organizationsService } from "@/features/tenant/crm/accounts/services/accounts.service";
 import { pipelineService } from "@/features/tenant/crm/pipeline/services/pipeline.service";
 import { activitiesService } from "@/features/tenant/crm/activities/services/activities.service";
-import { CreateTaskSchema, UpdateTaskSchema, TaskBulkSchema, TaskStatusSchema, type CreateTaskInput, type UpdateTaskDto, type TaskBulkInput, type TaskBulkResult, type TaskListQuery, type TaskPage, type TaskSummary } from '@leadcrm/shared';
+import { CreateTaskSchema, UpdateTaskSchema, TaskBulkSchema, StoredTaskStatusSchema, type CreateTaskInput, type UpdateTaskDto, type TaskBulkInput, type TaskBulkResult, type TaskListQuery, type TaskPage, type TaskSummary } from '@leadcrm/shared';
+import { taskTeamUserIds } from '@/features/tenant/operations/tasks/task-relations';
 import { useTaskQueries, taskDueInstant } from '@/features/tenant/operations/tasks/task-data';
 import { tasksApi } from "@/shared/services/tasks.api";
 import { workflowsApi } from "@/shared/services/workflows.api";
@@ -315,7 +316,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deal: deals.find(record => record.id === task.dealId) ?? task.deal,
     account: organizations.find(record => record.id === task.accountId) ?? task.account,
   })) : tasks, [tasks, users, contacts, deals, organizations]);
-  const taskQueries = useTaskQueries(`${dataIdentity}:${user?.role}:${userCan('tasks', 'canView')}`, taskRows, USE_MOCK_DATA, user ?? undefined);
+  const taskQueries = useTaskQueries(`${dataIdentity}:${user?.role}:${userCan('tasks', 'canView')}`, taskRows, USE_MOCK_DATA, user ? { ...user, taskTeamUserIds: taskTeamUserIds(user, users) } : undefined);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 
@@ -512,7 +513,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     const c: Campaign[] = []; // Campaign business data is fetched through backend APIs.
     const tpl: Template[] = [];
     const u = safeParse("leadcrm_users", MOCK_USERS);
-    const tsk = safeParse<Task[]>("leadcrm_tasks", MOCK_TASKS ?? []).map(task => ({ ...task, status: TaskStatusSchema.parse(task.status) }));
+    const tsk = safeParse<Task[]>("leadcrm_tasks", MOCK_TASKS ?? []).map(task => ({ ...task, status: StoredTaskStatusSchema.parse(task.status) }));
     const logs = safeParse("leadcrm_audit_logs", [] as AuditLog[]);
     if (!localStorage.getItem("leadcrm_audit_logs")) {
       localStorage.setItem("leadcrm_audit_logs", JSON.stringify([]));
@@ -716,7 +717,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     });
     source.addEventListener('open', () => { previous = ''; });
     source.addEventListener('crm-access-changed', () => {
-      clearTimeout(queued); dealsRequest.current?.controller.abort(); setDeals([]);
+      clearTimeout(queued); dealsRequest.current?.controller.abort(); setDeals([]); setTasks([]);
       clearPageCache(true); source.close();
     });
     window.addEventListener('online', reconcile); window.addEventListener('focus', reconcile); document.addEventListener('visibilitychange', reconcile);
@@ -1425,13 +1426,12 @@ export function DataProvider({ children }: { children: ReactNode }) {
   const addTask = async (taskData: CreateTaskInput): Promise<void> => {
     if (!tenant || !user) throw new Error('Sign in to a workspace first.');
     const identity = dataIdentityRef.current;
-    const dto = CreateTaskSchema.parse({ ...taskData, dueDate: taskDueInstant(taskData.dueDate) });
+    const dto = { ...CreateTaskSchema.parse({ ...taskData, dueDate: taskDueInstant(taskData.dueDate) }), assignedUserId: taskData.assignedUserId ?? user.id };
     const now = new Date().toISOString();
     const created: Task = USE_MOCK_DATA ? {
       ...dto, ...taskAssociationPatch(dto), description: dto.description ?? '', id: uuid(), tenantId: tenant.id, createdAt: now,
       createdById: user.id, createdBy: { id: user.id, firstName: user.firstName, lastName: user.lastName },
-      assignedById: user.id, completedAt: dto.status === 'completed' ? now : null,
-      completedById: dto.status === 'completed' ? user.id : null,
+      assignedById: user.id, completedAt: null, completedById: null,
     } : (await tasksApi.create(dto)).data;
     if (identity !== dataIdentityRef.current) return;
     setTasks(previous => {

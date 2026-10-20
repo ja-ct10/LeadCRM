@@ -6,7 +6,7 @@ exports.formatLeadName = formatLeadName;
 function formatLeadName(lead) {
     return [lead.firstName?.trim(), lead.lastName?.trim()].filter(Boolean).join(' ') || '—';
 }
-exports.LEADS_TABLE_SORT_FIELDS = ['name', 'firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'updatedAt'];
+exports.LEADS_TABLE_SORT_FIELDS = ['name', 'firstName', 'lastName', 'email', 'phone', 'companyName', 'status', 'source', 'createdAt', 'updatedAt', 'lastSalesActivityAt'];
 const entries = [
     ['name', 'Name', true, 'high'],
     ['email', 'Email', true, 'low'], ['phone', 'Phone', true, 'low'],

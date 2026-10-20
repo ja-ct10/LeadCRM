@@ -7,6 +7,7 @@ import { SelectedRowsBar } from '@/shared/components/crm/selected-rows-bar';
 
 import {
   TASK_COLUMN_DEFINITIONS,
+  isTaskAssignmentRestrictedRole,
   TASK_STATUSES,
   TASK_STATUS_LABELS,
   taskDateRange,
@@ -16,7 +17,7 @@ import {
   type TaskOption,
 } from "@leadcrm/shared";
 import { useAuth } from '@/store/AuthContext';
-import { isTaskOwner } from '../task-relations';
+import { canManageTask } from '../task-relations';
 import { useData } from "@/store/DataContext";
 import { useHasPermission } from "@/shared/hooks/use-permissions";
 import { USE_MOCK_DATA } from "@/lib/config";
@@ -33,6 +34,7 @@ import {
   DatePicker,
   TimePicker,
 } from "@/shared/components/ui/date-time-picker";
+import { taskStatusClasses } from './task-status';
 import { TaskTable } from "./task-table";
 import { useTaskColumns } from "../use-task-columns";
 import { useTasks } from "../use-tasks";
@@ -56,7 +58,8 @@ export default function TaskBoard() {
   const canCreate = useHasPermission("tasks.create"),
     canEdit = useHasPermission("tasks.edit"),
     canDelete = useHasPermission("tasks.archive");
-  const canComplete = useHasPermission("tasks.complete"), canAssign = useHasPermission("tasks.assign");
+  const canComplete = useHasPermission("tasks.complete"), assignGrant = useHasPermission("tasks.assign");
+  const canAssign = assignGrant && !isTaskAssignmentRestrictedRole(user?.role ?? '');
   const [period, setPeriod] = useState<Period>("all");
   const [search, setSearch] = useState(""),
     [debounced, setDebounced] = useState("");
@@ -111,7 +114,7 @@ export default function TaskBoard() {
   };
   const queryKey = JSON.stringify(query);
   const data = useTasks(query, true);
-  const ownedSelection = (ids: string[]) => ids.length > 0 && ids.every(id => isTaskOwner(data.tasks.find(task => task.id === id), user?.id));
+  const ownedSelection = (ids: string[]) => ids.length > 0 && ids.every(id => canManageTask(data.tasks.find(task => task.id === id), user));
   const allSelectedOwned = ownedSelection(selected);
   const columnPreferences = useTaskColumns(data.identity, data.canRead);
   const identity = useRef(data.identity);
@@ -192,7 +195,7 @@ export default function TaskBoard() {
   }, [showFilters, data.canRead, data.identity, filterSearch, users]);
 
   const change = async (task: TaskRecord) => {
-    if (!isTaskOwner(task, user?.id) || mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
+    if (!canManageTask(task, user) || mutationPending.current || !(task.status === "completed" ? canEdit : canComplete) || task.isArchived) return;
     const started = identity.current;
     mutationPending.current = true;
     setBusy(true);
@@ -309,6 +312,7 @@ export default function TaskBoard() {
       items: TASK_STATUSES.map((value) => ({
         id: value,
         label: TASK_STATUS_LABELS[value],
+        labelClassName: 'rounded-full px-2 py-0.5 text-xs ' + taskStatusClasses[value],
         isChecked: filters.status === value,
       })),
     },

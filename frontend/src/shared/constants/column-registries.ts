@@ -51,10 +51,10 @@ export const MODULE_COLUMN_REGISTRIES: Record<string, ColumnDefinition[]> = {
 
 export function getTableSortFields(module: string): TableSortOption[] {
   const registry = MODULE_COLUMN_REGISTRIES[module] ?? [];
-  const labels: Record<string, string> = { createdAt: 'Created', updatedAt: 'Updated' };
+  const labels: Record<string, string> = { createdAt: 'Created', updatedAt: 'Updated', lastSalesActivityAt: 'Most Recent Activity' };
   return (MODULE_TABLE_SORT_FIELDS[module] ?? []).map(id => ({ id,
     label: registry.find(column => column.id === id)?.label ?? labels[id] ?? id,
-    kind: ['createdAt', 'updatedAt', 'dueDate', 'expectedCloseDate'].includes(id) ? 'date'
+    kind: ['createdAt', 'updatedAt', 'lastSalesActivityAt', 'dueDate', 'expectedCloseDate'].includes(id) ? 'date'
       : id === 'phone' ? 'phone' : id === 'size' ? 'size' : id === 'value' ? 'number' : 'text',
   }));
 }

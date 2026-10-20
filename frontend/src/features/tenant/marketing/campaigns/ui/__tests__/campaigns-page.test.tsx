@@ -32,6 +32,21 @@ beforeEach(() => {
     return { success: true, data: data.slice((page - 1) * limit, page * limit), meta: { total: data.length, page, limit, hasMore: page * limit < data.length } };
   });
 });
+it('shows only supported Campaign views and switches between them', async () => {
+  render(<CampaignsPage />);
+  const navigation = screen.getByRole('group', { name: 'Campaign views' });
+  expect(within(navigation).getAllByRole('button').map(button => button.textContent)).toEqual(['All Campaigns', 'Email Templates', 'SMS Templates']);
+  expect(within(navigation).getByRole('button', { name: 'All Campaigns' }).getAttribute('aria-pressed')).toBe('true');
+  for (const type of ['Email', 'SMS']) {
+    fireEvent.click(within(navigation).getByRole('button', { name: `${type} Templates` }));
+    expect(await screen.findByRole('heading', { name: `${type} Templates` })).toBeTruthy();
+    expect(within(navigation).getByRole('button', { name: `${type} Templates` }).getAttribute('aria-pressed')).toBe('true');
+  }
+  fireEvent.click(within(navigation).getByRole('button', { name: 'All Campaigns' }));
+  expect(screen.getByRole('grid')).toBeTruthy();
+  expect(mocks.templateList.mock.calls.every(([query]) => ['Email', 'SMS'].includes(query.type))).toBe(true);
+});
+
 it.each(['loaded', 'initial', 'refreshing'] as const)('omits summary KPIs from the %s campaign list', state => {
   if (state !== 'loaded') mocks[state] = true;
   render(<CampaignsPage />);

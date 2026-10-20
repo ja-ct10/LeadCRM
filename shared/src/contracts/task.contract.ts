@@ -1,23 +1,33 @@
 import type { ColumnDefinition } from "../types/preferences";
 import { z } from "zod";
 
-export const TASK_STATUSES = [
+export const TASK_MANUAL_STATUSES = [
   "pending",
   "in_progress",
-  "blocked",
   "completed",
   "cancelled",
 ] as const;
-export type TaskStatus = (typeof TASK_STATUSES)[number];
-export const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
+export type TaskStatus = (typeof TASK_MANUAL_STATUSES)[number];
+export const TASK_STATUSES = ["pending", "in_progress", "completed", "overdue", "cancelled"] as const;
+export type TaskDisplayStatus = (typeof TASK_STATUSES)[number];
+export const TASK_STATUS_LABELS: Record<TaskDisplayStatus, string> = {
   pending: "To do",
   in_progress: "In progress",
-  blocked: "Blocked",
   completed: "Completed",
+  overdue: "Overdue",
   cancelled: "Cancelled",
 };
 export const TaskStatusSchema = z.preprocess(
   (value) => (value === "in-progress" ? "in_progress" : value),
+  z.enum(TASK_MANUAL_STATUSES),
+);
+/** Legacy storage is readable without rewriting history or accepting retired writes. */
+export const StoredTaskStatusSchema = z.preprocess(
+  value => value === "blocked" ? "pending" : value,
+  TaskStatusSchema,
+);
+export const TaskDisplayStatusSchema = z.preprocess(
+  value => value === "in-progress" ? "in_progress" : value,
   z.enum(TASK_STATUSES),
 );
 const recordId = z.string().trim().min(1).max(128);
@@ -77,7 +87,11 @@ const taskFields = z.object({
   accountIds: linkIds.optional(),
 });
 export const CreateTaskSchema = taskFields
-  .extend({ requestId: z.string().uuid().optional() })
+  .extend({
+    requestId: z.string().uuid().optional(),
+    status: z.literal("pending").default("pending"),
+    assignedUserId: recordId.optional(),
+  })
   .strict()
   .superRefine((data, ctx) => {
     validateDealWrites(data, ctx);
@@ -108,7 +122,7 @@ export const TaskQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(1000000).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(25),
-    status: TaskStatusSchema.optional(),
+    status: TaskDisplayStatusSchema.optional(),
     priority: z.enum(["Low", "Medium", "High"]).optional(),
     state: z.enum(["all", "active", "completed"]).default("all"),
     assignedUserId: recordId.optional(),
@@ -182,6 +196,8 @@ export interface TaskRecord extends TaskAssociations {
   title: string;
   description: string;
   status: TaskStatus;
+  /** Calculated from saved status and dueDate; never accepted as a write. */
+  displayStatus?: TaskDisplayStatus;
   priority?: "Low" | "Medium" | "High";
   dueDate: string;
   reminderAt?: string | null;
@@ -220,13 +236,14 @@ export interface TaskSummary {
   active: number;
   completed: number;
   overdue: number;
-  byStatus: Record<TaskStatus, number>;
+  byStatus: Record<TaskDisplayStatus, number>;
+  evaluatedAt?: string;
+  nextStatusChangeAt?: string | null;
   workload: {
     assignedUserId: string;
     name: string;
     pending: number;
     inProgress: number;
-    blocked: number;
     overdue: number;
     total: number;
   }[];
@@ -260,6 +277,10 @@ export function isTaskAssignmentRestrictedRole(role: string): boolean {
   return ['salesagent', 'salesrepresentative'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
 }
 
+export function isTaskManagerRole(role: string): boolean {
+  return ['salesmanager', 'headofsales'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
+}
+
 export function isTaskOverdue(
   task: { status: string; dueDate?: string | null; isArchived?: boolean },
   now = Date.now(),
@@ -270,6 +291,12 @@ export function isTaskOverdue(
     !!task.dueDate &&
     Date.parse(task.dueDate) < now
   );
+}
+export function taskDisplayStatus(
+  task: { status: string; dueDate?: string | null; isArchived?: boolean },
+  now = Date.now(),
+): TaskDisplayStatus {
+  return isTaskOverdue(task, now) ? "overdue" : StoredTaskStatusSchema.parse(task.status);
 }
 /** Task pickers and calendar filters share the workspace's Manila timezone. */
 export function taskDateRange(

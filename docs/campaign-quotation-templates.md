@@ -1,7 +1,10 @@
 # Campaign quotation templates
 
-Quotation Templates is the fourth Campaigns view. The existing Campaigns table,
-reporting, Email Templates and SMS Templates retain their existing flows.
+Campaigns exposes All Campaigns, Email Templates and SMS Templates. The Quotation
+Templates tab and its exclusive list/editor/wizard UI have been removed. Existing
+quotation records, backend APIs and PDF utilities remain available; CRM Files and
+Inbox continue to use the unchanged shared attachment preview. UI implementation
+and verification details below describe the former quotation interface.
 
 ## Implementation and reuse
 

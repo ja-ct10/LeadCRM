@@ -19,6 +19,7 @@ export type LeadRead = {
   productInterests: string[];
   firstStaffOutreachAt?: string | null;
   createdAt: string;
+  readonly lastSalesActivityAt?: string;
   updatedAt: string;
   createdById: string | null;
   updatedById: string | null;

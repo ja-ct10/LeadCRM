@@ -12,7 +12,7 @@ export const CONTACTS_MODULE_CONFIG: ModuleConfig = {
   moduleId: 'contacts',
   columnRegistry: CONTACTS_COLUMN_REGISTRY,
   availableViews: ['table'],
-  sortableFields: CONTACTS_TABLE_SORT_FIELDS.map(id => ({ id, label: CONTACTS_COLUMN_REGISTRY.find(column => column.id === id)!.label })),
+  sortableFields: CONTACTS_TABLE_SORT_FIELDS.map(id => ({ id, label: CONTACTS_COLUMN_REGISTRY.find(column => column.id === id)?.label ?? (id === 'lastSalesActivityAt' ? 'Most Recent Activity' : id) })),
   filterGroups: [
     {
       id: 'status',

@@ -1,6 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.DEFAULT_SETTINGS = exports.DEFAULT_DESIGN = exports.PublicSubmissionSchema = exports.UpdateFormSchema = exports.CreateFormSchema = exports.FormDefinitionSchema = exports.FormSettingsSchema = exports.FormDesignSchema = exports.FormFieldSchema = exports.FORM_MAPPINGS = exports.FormFieldTypeSchema = exports.FORM_TRACKING_KEYS = exports.FORM_PRODUCT_INTERESTS = void 0;
+exports.publicSubmissionContent = publicSubmissionContent;
 exports.leadCatalogFormField = leadCatalogFormField;
 exports.getFormProductValues = getFormProductValues;
 exports.defaultContactForm = defaultContactForm;
@@ -70,12 +71,17 @@ exports.FormDefinitionSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.str
 exports.CreateFormSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.string().min(1)).default('Contact Us') }).strict();
 exports.UpdateFormSchema = zod_1.z.object({ name: text(200).pipe(zod_1.z.string().min(1)).optional(), fields: zod_1.z.array(exports.FormFieldSchema).max(100).optional(), design: exports.FormDesignSchema.optional(), settings: exports.FormSettingsSchema.optional(), revision: zod_1.z.number().int().nonnegative() }).strict();
 exports.PublicSubmissionSchema = zod_1.z.object({
-    requestId: zod_1.z.string().uuid().optional(),
+    requestId: zod_1.z.string().uuid(),
     version: zod_1.z.number().int().positive(),
     values: zod_1.z.record(zod_1.z.string().max(80), zod_1.z.union([zod_1.z.string().max(10000), zod_1.z.boolean(), zod_1.z.array(zod_1.z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
     tracking: zod_1.z.record(zod_1.z.enum(exports.FORM_TRACKING_KEYS), text(200)).default({}),
     website: zod_1.z.string().max(200).default(''), // honeypot; never CRM data
 }).strict();
+/** Normalized request identity, shared by retrying clients and saved submission receipts. */
+function publicSubmissionContent(version, values, tracking) {
+    const sorted = (value) => Object.fromEntries(Object.keys(value).sort().map(key => [key, Array.isArray(value[key]) ? [...value[key]].sort() : value[key]]));
+    return JSON.stringify({ version, values: sorted(values), tracking: sorted(tracking) });
+}
 /** Adapt eligible canonical Lead definitions; labels never determine identity or input type. */
 function leadCatalogFormField(field) {
     if (field.module !== 'leads' || !field.active || !field.visibleInForm || field.unavailableReason)

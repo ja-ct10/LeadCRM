@@ -53,7 +53,9 @@ describe('Forms authoritative validation', () => {
     const g = defaultContactForm(); g.fields.push(g.fields[0]); expect(FormDefinitionSchema.safeParse(g).success).toBe(false);
   });
   it('whitelists envelope and UTM keys with bounded lengths', () => {
-    const body = { version: 1, values: valid };
+    const body = { requestId: 'b2855ea0-ae4f-4e7b-97fa-5d68f2a9c550', version: 1, values: valid };
+    expect(PublicSubmissionSchema.safeParse(body).success).toBe(true);
+    expect(PublicSubmissionSchema.safeParse({ version: 1, values: valid }).success).toBe(false);
     expect(PublicSubmissionSchema.safeParse({ ...body, tenantId: 'evil' }).success).toBe(false);
     expect(PublicSubmissionSchema.safeParse({ ...body, tracking: { arbitrary: 'x' } }).success).toBe(false);
     expect(PublicSubmissionSchema.safeParse({ ...body, tracking: { utm_source: 'x'.repeat(201) } }).success).toBe(false);

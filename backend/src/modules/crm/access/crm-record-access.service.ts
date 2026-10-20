@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { hasModulePermission, isWorkspaceAccessible, isTaskAssignmentRestrictedRole, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
+import { hasModulePermission, isWorkspaceAccessible, isTaskAssignmentRestrictedRole, isTaskManagerRole, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
 import { resolveEffectivePermissions } from '../../administration/roles/roles.repository';
 import { AppError } from '../../../shared/errors/app-error';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements } from './assigned-agent-eligibility';
 
 export type CrmModule = 'leads' | 'contacts' | 'accounts' | 'deals';
-type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions; taskAssignmentRestricted: boolean };
+type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions; taskAssignmentRestricted: boolean; taskManager: boolean; taskTeamUserIds?: string[] };
 type Actor = { userId: string; tenantId: string; readRecords?: boolean; readPolicy?: Promise<ReadPolicy> };
 type Tx = Prisma.TransactionClient;
 type Args = Record<string, any>;
@@ -41,6 +41,7 @@ export const authorizedWorkflowScope = (tenantId: string) => system.getStore()?.
 
 export async function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy> {
   const user = await db.user.findFirst({ where: { id: actor.userId, tenantId: actor.tenantId }, include: {
+    groupMemberships: { where: { tenantId: actor.tenantId }, select: { groupId: true } },
     tenant: { select: { status: true } }, userRoles: { where: { tenantId: actor.tenantId, role: { tenantId: actor.tenantId, isArchived: false } },
       include: { role: { include: { permissions: { where: { tenantId: actor.tenantId } } } } } },
   } });
@@ -51,14 +52,30 @@ export async function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy>
   // not promote an employee to Client Admin, including an extra admin-named role.
   const clientAdmin = user.role === 'Client Admin';
   const permissions = resolveEffectivePermissions(user);
+  const taskManager = !clientAdmin && isTaskManagerRole(user.role);
+  let taskTeamUserIds: string[] | undefined;
+  if (taskManager) {
+    const groupIds = (user.groupMemberships ?? []).map(member => member.groupId);
+    const members = groupIds.length ? await db.user.findMany({
+      where: { tenantId: user.tenantId, groupMemberships: { some: { tenantId: user.tenantId, groupId: { in: groupIds } } } },
+      select: { id: true, role: true },
+    }) : [];
+    // Inactive historical assignees remain manageable; new assignment separately checks eligibility.
+    taskTeamUserIds = [...new Set([user.id, ...members.filter(member => isTaskAssignmentRestrictedRole(member.role)).map(member => member.id)])];
+  }
   return { userId: user.id, tenantId: user.tenantId, clientAdmin, permissions,
-    taskAssignmentRestricted: isTaskAssignmentRestrictedRole(user.role),
+    taskAssignmentRestricted: isTaskAssignmentRestrictedRole(user.role) || taskManager, taskManager, taskTeamUserIds,
     assignmentRestricted: !clientAdmin && (isSalesRoleName(user.role) || user.userRoles.some(link => link.role.crmAssignmentRestricted || isSalesRoleName(link.role.name))) };
 }
 
 /** Shared by scoped Prisma reads and the fixed SQL archive query. */
-export function taskReadWhere(policy: Pick<ReadPolicy, 'tenantId' | 'userId' | 'taskAssignmentRestricted'>): Prisma.TaskWhereInput {
-  return { tenantId: policy.tenantId, ...(policy.taskAssignmentRestricted ? { assignedUserId: policy.userId } : {}) };
+export function taskReadWhere(policy: Pick<ReadPolicy, 'tenantId' | 'userId' | 'taskAssignmentRestricted' | 'taskTeamUserIds'>): Prisma.TaskWhereInput {
+  return { tenantId: policy.tenantId, ...(policy.taskAssignmentRestricted
+    ? { assignedUserId: policy.taskTeamUserIds ? { in: policy.taskTeamUserIds } : policy.userId } : {}) };
+}
+
+export function taskAssigneeInScope(policy: Pick<ReadPolicy, 'userId' | 'taskAssignmentRestricted' | 'taskTeamUserIds'>, assignedUserId: string): boolean {
+  return !policy.taskAssignmentRestricted || (policy.taskTeamUserIds ?? [policy.userId]).includes(assignedUserId);
 }
 
 /** Related metadata must retain the source module's View boundary. */

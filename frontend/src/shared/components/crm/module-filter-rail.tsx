@@ -20,6 +20,7 @@ export interface FilterGroup {
 interface FilterItem {
   id: string;
   label: string;
+  labelClassName?: string;
   count?: number;
   isChecked?: boolean;
 }
@@ -281,7 +282,7 @@ export function FilterGroupSection({ group, filterSearchTerm = '', onToggle }: F
                     aria-label={`Filter by ${item.label}`}
                   />
                   <span className="flex-1 text-[12.5px] text-[#0F172A] dark:text-slate-200 truncate min-w-0">
-                    {item.label}
+                    <span className={item.labelClassName}>{item.label}</span>
                   </span>
                   {item.count !== undefined && (
                     <span className="text-[11px] text-[#5A6B85] dark:text-slate-500 tabular-nums shrink-0">

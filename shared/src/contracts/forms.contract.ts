@@ -49,12 +49,18 @@ export const FormDefinitionSchema = z.object({ name: text(200).pipe(z.string().m
 export const CreateFormSchema = z.object({ name: text(200).pipe(z.string().min(1)).default('Contact Us') }).strict();
 export const UpdateFormSchema = z.object({ name: text(200).pipe(z.string().min(1)).optional(), fields: z.array(FormFieldSchema).max(100).optional(), design: FormDesignSchema.optional(), settings: FormSettingsSchema.optional(), revision: z.number().int().nonnegative() }).strict();
 export const PublicSubmissionSchema = z.object({
-  requestId: z.string().uuid().optional(),
+  requestId: z.string().uuid(),
   version: z.number().int().positive(),
   values: z.record(z.string().max(80), z.union([z.string().max(10000), z.boolean(), z.array(z.string().max(200)).max(100)])).refine(v => Object.keys(v).length <= 100, 'Too many fields.'),
   tracking: z.record(z.enum(FORM_TRACKING_KEYS), text(200)).default({}),
   website: z.string().max(200).default(''), // honeypot; never CRM data
 }).strict();
+/** Normalized request identity, shared by retrying clients and saved submission receipts. */
+export function publicSubmissionContent(version: number, values: Record<string, unknown>, tracking: Record<string, unknown>): string {
+  const sorted = (value: Record<string, unknown>) => Object.fromEntries(Object.keys(value).sort().map(key =>
+    [key, Array.isArray(value[key]) ? [...value[key] as unknown[]].sort() : value[key]]));
+  return JSON.stringify({ version, values: sorted(values), tracking: sorted(tracking) });
+}
 export type FormField = z.infer<typeof FormFieldSchema>;
 export type FormFieldType = FormField['type'];
 export type FormDesign = z.infer<typeof FormDesignSchema>;

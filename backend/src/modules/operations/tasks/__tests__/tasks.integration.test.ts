@@ -498,7 +498,7 @@ describe.skipIf(!disposable)(
 
     it('retains authorized staff self-assignment while enforcing Tasks Assign permission for another agent', async () => {
       const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Self-assigned Task Staff', permissions: { create: [
-        { module: 'tasks', canView: true, canCreate: true }, { module: 'deals', canView: true },
+        { module: 'tasks', canView: true, canCreate: true }, { module: 'deals', canView: true, canViewAll: true },
       ] } } });
       const staff = await prisma.user.create({ data: { tenantId, firstName: 'Self', lastName: 'Staff', email: `task-self-${Date.now()}@camxian.com`, role: role.name, mustChangePassword: false, onboardingCompletedAt: new Date() } });
       await prisma.userRole.create({ data: { tenantId, userId: staff.id, roleId: role.id } });
@@ -520,7 +520,7 @@ describe.skipIf(!disposable)(
       await call(`/operations/tasks/${task.id}/complete`, 'PATCH');
       expect(completed.body.data).toMatchObject({ completedById: actor.id, createdById: actor.id });
       await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'pending' });
-      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'blocked' });
+      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'in_progress' });
       await call(`/operations/tasks/${task.id}/archive`, 'PATCH');
       await call(`/operations/tasks/${task.id}/archive`, 'PATCH');
       await call(`/administration/archived-data/Task/${task.id}/restore`, 'PATCH');
@@ -531,7 +531,7 @@ describe.skipIf(!disposable)(
       const audits = await prisma.auditLog.findMany({ where: { tenantId, entityId: task.id } });
       expect(new Set(audits.map(row => row.id))).toEqual(new Set(rows.map(row => row.id)));
       expect(rows.every(row => row.createdById === actor.id && row.createdAt instanceof Date)).toBe(true);
-      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'blocked', dueDate: '2031-01-01T09:00:00Z' });
+      await call(`/operations/tasks/${task.id}`, 'PUT', { status: 'in_progress', dueDate: '2031-01-01T09:00:00Z' });
       expect(await history(task.id)).toHaveLength(rows.length);
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { createdById: owner.id })).status).toBe(400);
     });
@@ -644,8 +644,8 @@ describe.skipIf(!disposable)(
       const auth = (await issueAuthSession(sales)).token;
       const own = await newDeal('Own Sales Deal', { assignedUserId: sales.id });
       const other = await newDeal('Other Sales Deal', { assignedUserId: owner.id, ownerId: sales.id });
-      expect((await call('/operations/tasks', 'POST', { ...draft('Allowed Sales Task'), dealIds: [own.id] }, auth)).status).toBe(201);
-      expect((await call('/operations/tasks', 'POST', { ...draft('Denied Sales Task'), dealIds: [other.id] }, auth)).status).toBe(403);
+      expect((await call('/operations/tasks', 'POST', { ...draft('Allowed Sales Task'), assignedUserId: sales.id, dealIds: [own.id] }, auth)).status).toBe(201);
+      expect((await call('/operations/tasks', 'POST', { ...draft('Denied Sales Task'), assignedUserId: sales.id, dealIds: [other.id] }, auth)).status).toBe(403);
       const task = await create('Admin task on Other Deal', { dealIds: [other.id] });
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [own.id] }, auth)).status).toBe(404);
       expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(404);
