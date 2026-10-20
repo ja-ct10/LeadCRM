@@ -4,6 +4,7 @@ import { campaignEngagementRate } from '@leadcrm/shared';
 import { insertVariableAtSelection } from '@/shared/utils/insert-variable';
 import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { panelBodyClass, panelFooterClass, panelInputClass, panelLabelClass, panelPrimaryActionClass, panelSecondaryActionClass } from '@/shared/components/side-panel-styles';
 import DOMPurify from 'dompurify';
@@ -232,7 +233,7 @@ export default function CampaignsPage() {
     else if (canViewReports) setSelectedCampaignForReport(campaign);
   };
   const campaignColumns: DataGridColumnDef<Campaign>[] = [
-    { id: 'name', sortable: true, header: 'Campaign', accessor: row => row.name, width: 260 },
+    { id: 'name', sortable: true, header: 'Campaign', accessor: row => row.name, width: 260, cell: (_, row) => <span className="flex min-w-0 items-center gap-2"><span className="truncate">{row.name}</span><UnreadRecordDot entityType="Campaign" entityId={row.id} /></span> },
     { id: 'type', header: 'Type', accessor: row => row.type, width: 140, cell: (_, row) => <span className="flex items-center gap-2">{getTypeIcon(row.type)}{row.type.toUpperCase() === 'SMS' ? 'SMS' : row.type}</span> },
     { id: 'status', header: 'Status', accessor: row => row.status, width: 140, cell: (_, row) => <CampaignStatusBadge status={row.status} reviewRequired={row.reviewRequired} /> },
     { id: 'target', header: 'Target', accessor: row => row.targetAudience, width: 180 },

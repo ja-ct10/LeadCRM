@@ -91,7 +91,9 @@ export function useNotificationCounts(scope: string, tenantId: string, userId: s
             invalidatePageCache('campaigns', tenantId);
             window.dispatchEvent(new CustomEvent('sms-campaign-updated', { detail: { tenantId, userId, campaignIds: [...changedCampaigns] } }));
           }
-          const changed = watcher!.counts && (watcher!.counts.totalCount !== result.totalCount || watcher!.counts.unreadCount !== result.unreadCount);
+          const changed = watcher!.counts && (watcher!.counts.totalCount !== result.totalCount || watcher!.counts.unreadCount !== result.unreadCount
+            || JSON.stringify(watcher!.counts.unreadRecords) !== JSON.stringify(result.unreadRecords)
+            || JSON.stringify(watcher!.counts.unreadByModule) !== JSON.stringify(result.unreadByModule));
           watcher!.counts = { ...result, scope };
           watcher!.listeners.forEach(fn => fn(watcher!.counts!));
           if (changed) window.dispatchEvent(new CustomEvent('notifications-refresh', { detail: { tenantId, userId } }));
@@ -148,9 +150,29 @@ export function useNotificationCounts(scope: string, tenantId: string, userId: s
 }
 
 const locks = new Set<string>();
+const waiting = new Map<string, Set<() => void>>();
+const recordReads = new Map<string, Promise<boolean>>();
+/** Coalesce duplicate opens and wait for an existing bell/feed mutation to finish. */
+export function sharedRecordNotificationRead(scope: string, key: string, read: () => Promise<boolean>) {
+  const identity = scope + ':' + key;
+  const pending = recordReads.get(identity);
+  if (pending) return pending;
+  const request = (async () => {
+    while (locks.has(scope)) await new Promise<void>(resolve => {
+      const listeners = waiting.get(scope) ?? new Set();
+      listeners.add(resolve); waiting.set(scope, listeners);
+    });
+    return read();
+  })().finally(() => { if (recordReads.get(identity) === request) recordReads.delete(identity); });
+  recordReads.set(identity, request);
+  return request;
+}
 export function lockNotificationMutation(scope: string) {
   if (locks.has(scope)) return false;
   clearRequests(scope);
   locks.add(scope); return true;
 }
-export function unlockNotificationMutation(scope: string) { clearRequests(scope); locks.delete(scope); }
+export function unlockNotificationMutation(scope: string) {
+  clearRequests(scope); locks.delete(scope);
+  const listeners = waiting.get(scope); waiting.delete(scope); listeners?.forEach(resolve => resolve());
+}

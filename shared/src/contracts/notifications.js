@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.DEFAULT_NOTIFICATION_PREFERENCES = exports.NotificationPreferencesSchema = exports.NotificationQuerySchema = exports.NotificationTypes = exports.SmsCampaignNotificationTypes = exports.DeleteNotificationsSchema = void 0;
+exports.DEFAULT_NOTIFICATION_PREFERENCES = exports.NotificationPreferencesSchema = exports.NotificationQuerySchema = exports.NotificationTypes = exports.SmsCampaignNotificationTypes = exports.MarkNotificationsReadSchema = exports.NotificationRecordTargetSchema = exports.DeleteNotificationsSchema = void 0;
 exports.assignmentName = assignmentName;
 exports.assignmentUserName = assignmentUserName;
 exports.formatAssignmentChange = formatAssignmentChange;
@@ -29,6 +29,14 @@ function formatAssignmentChange(facts) {
 }
 exports.DeleteNotificationsSchema = zod_1.z.object({
     ids: zod_1.z.array(zod_1.z.string().uuid()).min(1).max(500).transform(ids => [...new Set(ids)]),
+}).strict();
+exports.NotificationRecordTargetSchema = zod_1.z.object({
+    entityType: zod_1.z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form']),
+    entityId: zod_1.z.string().uuid(),
+}).strict();
+exports.MarkNotificationsReadSchema = zod_1.z.object({
+    before: zod_1.z.string().datetime().optional(),
+    record: exports.NotificationRecordTargetSchema.optional(),
 }).strict();
 exports.SmsCampaignNotificationTypes = [
     'sms_campaign_sent', 'sms_campaign_delivered', 'sms_campaign_failed',

@@ -1,7 +1,7 @@
 import prisma from '../../config/database.config';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
-import { NotificationQuerySchema, SmsCampaignNotificationTypes } from '@leadcrm/shared';
+import { NotificationQuerySchema, SmsCampaignNotificationTypes, NotificationRecordTargetSchema, type NotificationRecordTarget, type UnreadNotificationRecord } from '@leadcrm/shared';
 import { NotFoundError, ValidationError } from '../../shared/errors/http-error';
 import { presentNotifications, notificationAccess } from './notification-access';
 import { getNotificationPreferences } from './notification-preferences.service';
@@ -38,6 +38,7 @@ async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: st
   const unread = await tx.notification.groupBy({ by: ['entityType', 'entityId'], where: { tenantId, userId, isRead: false }, _count: { _all: true } });
   const access = await notificationAccess(tenantId, userId, tx);
   const unreadByModule: Record<string, number> = {};
+  const records = new Map<string, UnreadNotificationRecord>();
   for (const group of unread) {
     const target = await access.resolve(group.entityType, group.entityId);
     if (!target) continue;
@@ -47,8 +48,15 @@ async function counts(tx: Prisma.TransactionClient, tenantId: string, userId: st
       : path.startsWith('/automation/') ? 'workflows'
       : path.startsWith('/operations/') ? 'tasks' : path.split('/')[1];
     if (module) unreadByModule[module] = (unreadByModule[module] ?? 0) + group._count._all;
+    const record = NotificationRecordTargetSchema.safeParse({ entityType: target.entityType, entityId: target.entityId });
+    if (record.success) {
+      const key = target.entityType + ':' + target.entityId;
+      const previous = records.get(key);
+      records.set(key, { ...record.data, count: (previous?.count ?? 0) + group._count._all });
+    }
   }
-  return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0, unreadByModule };
+  return { totalCount: groups.reduce((sum, row) => sum + row._count._all, 0), unreadCount: groups.find(row => !row.isRead)?._count._all ?? 0, unreadByModule,
+    unreadRecords: [...records.values()].sort((a, b) => (a.entityType + ':' + a.entityId).localeCompare(b.entityType + ':' + b.entityId)) };
 }
 export async function notificationCounts(tenantId: string, userId: string, input: Record<string, unknown> = {}) {
   const query = z.object({ after: z.string().max(2048).optional(), since: z.string().datetime().optional() }).strict().parse(input);
@@ -87,7 +95,7 @@ export async function notificationCounts(tenantId: string, userId: string, input
   const next = { ...cursor, at: hasMore && last ? last.createdAt.toISOString() : now.toISOString(), id: hasMore && last ? last.id : '', page: hasMore };
   const updates = (await presentNotifications(tenantId, userId, records)).filter(row => row.available);
   const access = result.active ? await notificationAccess(tenantId, userId) : null;
-  return { totalCount: result.totalCount, unreadCount: result.unreadCount, unreadByModule: result.unreadByModule, updates, hasMore,
+  return { totalCount: result.totalCount, unreadCount: result.unreadCount, unreadByModule: result.unreadByModule, unreadRecords: result.unreadRecords, updates, hasMore,
     cursor: Buffer.from(JSON.stringify(next)).toString('base64url'),
     activeSmsUntil: result.active?.submissionStartedAt && await access?.resolve('Campaign', result.active.id)
       ? new Date(+result.active.submissionStartedAt + 300000).toISOString() : null };
@@ -99,10 +107,27 @@ export async function markNotificationRead(id: string, tenantId: string, userId:
     return counts(tx, tenantId, userId);
   });
 }
-export async function markAllNotificationsRead(tenantId: string, userId: string, before = new Date()) {
+export async function markAllNotificationsRead(tenantId: string, userId: string, before = new Date(), record?: NotificationRecordTarget) {
   return prisma.$transaction(async tx => {
-    await tx.notification.updateMany({ where: { tenantId, userId, isRead: false, createdAt: { lte: before } }, data: { isRead: true, readAt: new Date() } });
-    return { ...await counts(tx, tenantId, userId), readBefore: before.toISOString() };
+    const where: Prisma.NotificationWhereInput = { tenantId, userId, isRead: false, createdAt: { lte: before } };
+    let readRecord: NotificationRecordTarget | undefined;
+    if (record) {
+      const access = await notificationAccess(tenantId, userId, tx);
+      const target = await access.resolve(record.entityType, record.entityId);
+      if (!target) throw new NotFoundError('Record');
+      readRecord = NotificationRecordTargetSchema.parse({ entityType: target.entityType, entityId: target.entityId });
+      const groups = await tx.notification.groupBy({ by: ['entityType', 'entityId'], where });
+      const matching: Prisma.NotificationWhereInput[] = [];
+      // Resolve through the same associations as presentation (including converted Leads).
+      for (const group of groups) {
+        const destination = await access.resolve(group.entityType, group.entityId);
+        if (destination?.entityType === target.entityType && destination.entityId === target.entityId) matching.push({ entityType: group.entityType, entityId: group.entityId });
+      }
+      if (matching.length) await tx.notification.updateMany({ where: { ...where, OR: matching }, data: { isRead: true, readAt: new Date() } });
+    } else {
+      await tx.notification.updateMany({ where, data: { isRead: true, readAt: new Date() } });
+    }
+    return { ...await counts(tx, tenantId, userId), readBefore: before.toISOString(), ...(readRecord ? { readRecord } : {}) };
   });
 }
 export async function deleteNotifications(ids: string[], tenantId: string, userId: string) {

@@ -1,5 +1,6 @@
 'use client';
 import { matchesSearch } from '@/shared/utils/search';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Copy, Link2, Mail, Send, Target, Users } from 'lucide-react';
@@ -52,6 +53,7 @@ export function CampaignReportView({ campaign, onBack }: { campaign: Campaign; o
   const [report, setReport] = useState<CampaignReportResponse['data'] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  useReadRecordNotifications('Campaign', campaign.id, !!report && !loading && !error);
   const [search, setSearch] = useState('');
   const [showFilters, setShowFilters] = useState(false);
   const [filterSearch, setFilterSearch] = useState('');

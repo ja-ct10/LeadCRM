@@ -6,6 +6,7 @@ import { notificationCounts } from './notifications.repository';
 import { notificationAccess } from './notification-access';
 import { getNotificationPreferences, saveNotificationPreferences } from './notification-preferences.service';
 import { NotFoundError, ForbiddenError } from '../../shared/errors/http-error';
+import { MarkNotificationsReadSchema } from '@leadcrm/shared';
 
 export async function getNotifications(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
@@ -35,9 +36,9 @@ export async function markRead(req: Request, res: Response, next: NextFunction):
 
 export async function markAllRead(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
-    const input = z.object({ before: z.string().datetime().optional() }).strict().parse(req.body ?? {});
+    const input = MarkNotificationsReadSchema.parse(req.body ?? {});
     const before = input.before ? new Date(Math.min(Date.parse(input.before), Date.now())) : new Date();
-    const counts = await service.markAllRead(req.user!.tenantId, req.user!.userId, before);
+    const counts = await service.markAllRead(req.user!.tenantId, req.user!.userId, before, input.record);
     res.json({ success: true, ...counts });
   } catch (err) {
     next(err);

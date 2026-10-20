@@ -8,6 +8,7 @@ import { RefreshButton } from "@/shared/components/crm/refresh-button";
 import { DataLoadingSkeleton, DataLoadingSpinner } from "@/shared/components/crm/data-view-states";
 import { useTasks } from "../use-tasks";
 import { TaskEditor, type TaskLinks } from "./task-editor";
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 
 export function RelatedTasks({ links, onCountChange, allowCreate = false, readOnly = true }: {
@@ -78,7 +79,7 @@ export function RelatedTasks({ links, onCountChange, allowCreate = false, readOn
             onClick={() => setEditor(task)}
             className="block w-full rounded py-3 text-left hover:bg-secondary/40 focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className={onCountChange ? "block text-[13px] font-medium [overflow-wrap:anywhere] sm:text-sm" : "block text-sm font-medium"}>{task.title}</span>
+            <span className="flex min-w-0 items-center gap-2"><span className={onCountChange ? "block text-[13px] font-medium [overflow-wrap:anywhere] sm:text-sm" : "block text-sm font-medium"}>{task.title}</span><UnreadRecordDot entityType="Task" entityId={task.id} /></span>
             <span className={onCountChange ? "block text-[11px] text-muted-foreground sm:text-xs" : "block text-xs text-muted-foreground"}>
               {TASK_STATUS_LABELS[task.status]} ·{" "}
               {formatDateTime(task.dueDate)}

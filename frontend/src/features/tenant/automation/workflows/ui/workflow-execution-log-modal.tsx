@@ -1,5 +1,6 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { toast } from 'sonner';
@@ -74,6 +75,7 @@ export function WorkflowExecutionLogModal({
   };
   const savedStatus = workflow ? workflow.isArchived ? 'Archived' : workflow.status === 'DRAFT' ? 'Draft' : workflow.isActive ? 'Active' : 'Paused' : status;
   const unavailable = busy || loading || !workflow || workflow.isArchived;
+  useReadRecordNotifications('Workflow', workflowId, !loading && !error && !!workflow && !workflow.isArchived);
   return (
     <Sheet open onOpenChange={open => { if (!open) onClose(); }}>
       <SheetContent showClose={false} aria-label={`Workflow details — ${workflow?.name ?? name}`} className={panelSurfaceClass}>

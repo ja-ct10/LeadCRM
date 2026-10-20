@@ -89,6 +89,43 @@ describe("Task contract and calendar rules", () => {
   });
 });
 describe("Task query owner", () => {
+  it.each(['Sales Agent', 'Sales Representative'])('scopes %s mock rows before filters, pagination and summaries', role => {
+    const actor = { id: 'owner', tenantId: 'tenant', role };
+    const rows = [task, { ...task, id: 'done', status: 'completed' as const, createdById: 'other' },
+      { ...task, id: 'created-by-me', createdById: actor.id, assignedUserId: 'other' },
+      { ...task, id: 'foreign', tenantId: 'foreign' }];
+    const result = localTaskQuery(rows, { limit: 1, page: 2 }, actor);
+    expect(result.page.data).toHaveLength(1);
+    expect(result.page.meta.total).toBe(2);
+    expect(result.summary).toMatchObject({ total: 2, completed: 1, overdue: 1 });
+    expect(localTaskQuery(rows, { assignedUserId: 'other' }, actor).page.data).toEqual([]);
+    expect(localTaskQuery(rows, { search: 'Follow', overdue: true }, actor).page.data.map(row => row.id)).toEqual(['task']);
+    for (const role of ['Sales Manager', 'Top Management', 'Client Admin', 'Viewer']) {
+      expect(localTaskQuery(rows, {}, { ...actor, role }).page.meta.total).toBe(3);
+    }
+  });
+
+  it('refreshes both active session lists and summaries when assignment changes', async () => {
+    let assignedUserId = 'owner';
+    api.list.mockImplementation(async query => ({ data: query.assignedUserId === assignedUserId ? [{ ...task, assignedUserId }] : [], meta: { total: query.assignedUserId === assignedUserId ? 1 : 0 } }));
+    api.summary.mockImplementation(async query => ({ data: { total: query.assignedUserId === assignedUserId ? 1 : 0 } }));
+    const { result } = renderHook(() => ({
+      a: useTaskQueries('tenant:a:Sales Agent:true', [], false),
+      b: useTaskQueries('tenant:b:Sales Agent:true', [], false),
+    }));
+    expect((await result.current.a.queryTasks({ assignedUserId: 'owner' })).data).toHaveLength(1);
+    expect((await result.current.b.queryTasks({ assignedUserId: 'other' })).data).toEqual([]);
+    await result.current.a.queryTaskSummary({ assignedUserId: 'owner' });
+    await result.current.b.queryTaskSummary({ assignedUserId: 'other' });
+    assignedUserId = 'other';
+    act(() => invalidatePageCache('tasks', 'tenant'));
+    await waitFor(() => expect([result.current.a.tasksRevision, result.current.b.tasksRevision]).toEqual([1, 1]));
+    expect((await result.current.a.queryTasks({ assignedUserId: 'owner' })).data).toEqual([]);
+    expect((await result.current.b.queryTasks({ assignedUserId: 'other' })).data).toHaveLength(1);
+    expect((await result.current.a.queryTaskSummary({ assignedUserId: 'owner' })).total).toBe(0);
+    expect((await result.current.b.queryTaskSummary({ assignedUserId: 'other' })).total).toBe(1);
+  });
+
   it("paginates beyond 100 and keeps counts independent of the current page", () => {
     const rows = Array.from({ length: 125 }, (_, index) => ({
       ...task,

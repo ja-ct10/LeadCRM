@@ -3,6 +3,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import type { Deal, Pipeline } from '@/store/types';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ UnreadRecordDot: () => null }));
 
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true }) }));
 vi.mock('@/shared/components/crm/deal-card-menu', () => ({ DealCardMenu: () => <button>Deal actions</button> }));

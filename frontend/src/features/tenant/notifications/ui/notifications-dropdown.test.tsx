@@ -6,14 +6,15 @@ import { NAVIGATION_INTENT_EVENT, type NavigationAction, type NavigationIntentEv
 
 const mocks = vi.hoisted(() => ({
   markAsRead: vi.fn(), markAllAsRead: vi.fn(), destination: vi.fn(), push: vi.fn(), refresh: vi.fn(),
-  mutating: false, assignment: false,
+  mutating: false, assignment: false, record: false,
 }));
 vi.mock('../hooks/use-notifications', () => ({ useNotifications: () => ({
   notifications: Array.from({ length: 6 }, (_, index) => ({ id: String(index), title: `Workflow Failed ${index}`, type: 'workflow_failed', body: 'Follow-up encountered an execution failure.', isRead: index === 1, createdAt: '2026-10-13T10:00:00Z',
+    ...(mocks.record && index === 0 ? { entityType: 'Deal', entityId: '23e0334f-f10b-4cf1-b67c-42984828890a' } : {}),
     ...(mocks.assignment && index === 0 ? { title: 'Assigned Agent changed to Next Agent', type: 'lead_assigned', body: 'Ownership transferred because Previous Agent was deactivated. The record is now assigned to Next Agent.' } : {}) })),
   unreadCount: 5, isLoading: false, hasError: false, isMutating: mocks.mutating, ...mocks,
 }) }));
-vi.mock('../notification-destination', () => ({ resolveNotificationDestination: mocks.destination }));
+vi.mock('../notification-destination', async importOriginal => ({ ...await importOriginal<typeof import('../notification-destination')>(), resolveNotificationDestination: mocks.destination }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ push: mocks.push }) }));
 vi.mock('motion/react', () => ({
   motion: { div: ({ initial, animate, exit, transition, ...props }: any) => <div {...props} /> },
@@ -30,7 +31,7 @@ function App() {
 }
 const open = () => fireEvent.click(screen.getByRole('button', { name: 'Notifications trigger' }));
 beforeEach(() => {
-  vi.clearAllMocks(); mocks.mutating = false; mocks.assignment = false; headerBottom = 104;
+  vi.clearAllMocks(); mocks.mutating = false; mocks.assignment = false; mocks.record = false; headerBottom = 104;
   mocks.markAsRead.mockResolvedValue(true); mocks.destination.mockResolvedValue('/workflows');
   vi.stubGlobal('innerWidth', 320); vi.stubGlobal('innerHeight', 642);
   viewport = Object.assign(new EventTarget(), { width: 320, height: 642, offsetTop: 0, offsetLeft: 0 });
@@ -107,6 +108,19 @@ it('preserves mark-all and unread navigation, and avoids navigation when marking
   mocks.markAsRead.mockClear(); open();
   fireEvent.click(screen.getByRole('button', { name: /Workflow Failed 1/ }));
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull()); expect(mocks.markAsRead).not.toHaveBeenCalled();
+});
+
+it('opens supported record notifications without marking read before the details load', async () => {
+  mocks.record = true;
+  mocks.destination.mockResolvedValueOnce(undefined);
+  render(<App />); open();
+  fireEvent.click(screen.getByRole('button', { name: /Workflow Failed 0/ }));
+  await waitFor(() => expect(mocks.destination).toHaveBeenCalledWith('0'));
+  expect(mocks.markAsRead).not.toHaveBeenCalled(); expect(mocks.push).not.toHaveBeenCalled();
+  mocks.destination.mockResolvedValueOnce('/crm/deals/23e0334f-f10b-4cf1-b67c-42984828890a');
+  fireEvent.click(screen.getByRole('button', { name: /Workflow Failed 0/ }));
+  await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
+  expect(mocks.markAsRead).not.toHaveBeenCalled();
 });
 
 it.each(['notification', 'footer'])('defers %s navigation and read-state actions until discard is confirmed', async target => {

@@ -2,6 +2,7 @@ import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { CampaignReportView } from '../campaign-report-view';
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ useReadRecordNotifications: vi.fn() }));
 import { campaignsApi } from '@/shared/services/campaigns.api';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 vi.mock('@/shared/services/campaigns.api', () => ({ campaignsApi: { report: vi.fn() } }));

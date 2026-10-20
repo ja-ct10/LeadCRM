@@ -32,6 +32,7 @@ import type { CellRendererMap } from '@/shared/components/data-grid';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { formatLeadName, LEADS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
 import { CrmStatusIndicator } from '@/shared/components/crm/crm-status';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import type { Lead } from '@/store/types';
 
 // ─── Helper: Render user with avatar initials ─────────────────────────────────
@@ -152,6 +153,7 @@ export function LeadsDataGrid({
               {formatLeadName(row)}
             </button>
           </div>
+          <UnreadRecordDot entityType="Lead" entityId={row.id} />
         </div>
       );
     },

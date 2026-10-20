@@ -5,7 +5,7 @@ import { ThemedPortal } from '@/shared/components/theme-scope';
 import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { resolveNotificationDestination } from '../notification-destination';
+import { resolveNotificationDestination, opensNotificationRecord } from '../notification-destination';
 import { useNotifications } from '../hooks/use-notifications';
 import { NotificationContent, NotificationEmptyState } from './notification-content';
 import { Button } from '@/shared/components/ui/button';
@@ -101,7 +101,7 @@ export default function NotificationsDropdown({ isOpen, onClose, triggerRef }: N
           : <div className="divide-y divide-border">{notifications.slice(0, 5).map(notification => (
             <button key={notification.id} type="button" disabled={isMutating}
               onClick={() => requestNavigation(async () => {
-                if (!notification.isRead && !await markAsRead(notification.id)) return;
+                if (!opensNotificationRecord(notification) && !notification.isRead && !await markAsRead(notification.id)) return;
                 const destination = await resolveNotificationDestination(notification.id);
                 if (destination) { onClose(); router.push(destination); }
               })}

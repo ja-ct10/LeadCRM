@@ -106,7 +106,7 @@ describe.skipIf(!disposable)(
           data: {
             tenantId,
             name,
-            permissions: { create: { module, canView: true } },
+            permissions: { create: { module, canView: true, ...(module === 'contacts' ? { canViewAll: true } : {}) } },
           },
         });
         await prisma.userRole.create({
@@ -639,7 +639,7 @@ describe.skipIf(!disposable)(
       const sales = await prisma.user.create({ data: { tenantId, firstName: 'Sales', lastName: 'Agent', role: 'Sales Agent',
         email: `sales-${Date.now()}@camxian.com`, mustChangePassword: false, onboardingCompletedAt: new Date() } });
       const role = await prisma.roleDefinition.create({ data: { tenantId, name: 'Sales Agent', crmAssignmentRestricted: true,
-        permissions: { create: [{ module: 'tasks', canView: true, canCreate: true, canEdit: true, canAssign: true, canComplete: true }, { module: 'deals', canView: true }] } } });
+        permissions: { create: [{ module: 'tasks', canView: true, canCreate: true, canEdit: true, canAssign: true, canComplete: true }, { module: 'deals', canView: true, canViewAll: true }] } } });
       await prisma.userRole.create({ data: { tenantId, userId: sales.id, roleId: role.id } });
       const auth = (await issueAuthSession(sales)).token;
       const own = await newDeal('Own Sales Deal', { assignedUserId: sales.id });
@@ -647,9 +647,9 @@ describe.skipIf(!disposable)(
       expect((await call('/operations/tasks', 'POST', { ...draft('Allowed Sales Task'), dealIds: [own.id] }, auth)).status).toBe(201);
       expect((await call('/operations/tasks', 'POST', { ...draft('Denied Sales Task'), dealIds: [other.id] }, auth)).status).toBe(403);
       const task = await create('Admin task on Other Deal', { dealIds: [other.id] });
-      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [own.id] }, auth)).status).toBe(403);
-      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(403);
-      const owned = (await call('/operations/tasks', 'POST', { ...draft('Sales-owned editable'), dealIds: [own.id] }, auth)).body.data;
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { dealIds: [own.id] }, auth)).status).toBe(404);
+      expect((await call(`/operations/tasks/${task.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(404);
+      const owned = (await call('/operations/tasks', 'POST', { ...draft('Sales-owned editable'), assignedUserId: sales.id, dealIds: [own.id] }, auth)).body.data;
       expect((await call(`/operations/tasks/${owned.id}`, 'PUT', { description: 'Task rights only' }, auth)).status).toBe(200);
       expect((await call(`/crm/deals/${own.id}`, 'PUT', { title: 'No CRM edit grant' }, auth)).status).toBe(403);
       const options = await call('/operations/tasks/options?kind=deal', 'GET', undefined, auth);

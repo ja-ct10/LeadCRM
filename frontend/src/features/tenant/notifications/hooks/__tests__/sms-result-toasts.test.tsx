@@ -34,6 +34,19 @@ it('uses one watcher for multiple consumers and separate exactly-once Sent/Deliv
   window.removeEventListener('sms-campaign-updated', changed);
 });
 
+it('refreshes record identities when unread totals remain equal without adding another timer', async () => {
+  const refreshed = vi.fn();
+  window.addEventListener('notifications-refresh', refreshed);
+  try {
+    mocks.counts.mockResolvedValue({ ...response([], false), unreadCount: 1, unreadByModule: { deals: 1 }, unreadRecords: [{ entityType: 'Deal', entityId: 'a', count: 1 }] });
+    const hook = mount(); await flush();
+    mocks.counts.mockResolvedValue({ ...response([], false), unreadCount: 1, unreadByModule: { deals: 1 }, unreadRecords: [{ entityType: 'Deal', entityId: 'b', count: 1 }] });
+    await tick(30000);
+    expect(hook.result.current?.unreadRecords).toEqual([{ entityType: 'Deal', entityId: 'b', count: 1 }]);
+    expect(refreshed).toHaveBeenCalledOnce(); expect(mocks.counts).toHaveBeenCalledTimes(2);
+  } finally { window.removeEventListener('notifications-refresh', refreshed); }
+});
+
 it('keeps completion delivery active across navigation without replaying duplicate poll results', async () => {
   const first = mount(); await flush(); first.unmount();
   mocks.counts.mockResolvedValue(response([outcome('sms_campaign_sent')]));

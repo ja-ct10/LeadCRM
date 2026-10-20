@@ -54,8 +54,21 @@ export interface NotificationMutationResponse {
   totalCount: number;
   unreadCount: number;
   unreadByModule?: Record<string, number>;
+  unreadRecords?: UnreadNotificationRecord[];
   readBefore?: string;
+  readRecord?: NotificationRecordTarget;
 }
+
+export const NotificationRecordTargetSchema = z.object({
+  entityType: z.enum(['Lead', 'Contact', 'Account', 'Deal', 'Task', 'Campaign', 'Workflow', 'Form']),
+  entityId: z.string().uuid(),
+}).strict();
+export type NotificationRecordTarget = z.infer<typeof NotificationRecordTargetSchema>;
+export interface UnreadNotificationRecord extends NotificationRecordTarget { count: number }
+export const MarkNotificationsReadSchema = z.object({
+  before: z.string().datetime().optional(),
+  record: NotificationRecordTargetSchema.optional(),
+}).strict();
 
 export interface SmsCampaignSummary {
   total: number; pending: number; submitting: number; submitted: number;

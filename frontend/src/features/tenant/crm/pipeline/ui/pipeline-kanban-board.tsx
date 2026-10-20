@@ -1,5 +1,6 @@
 'use client';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 
 
 import React from 'react';
@@ -145,13 +146,13 @@ function DealCardContent({
             </div>
           ) : null}
           <div className="flex min-w-0 flex-1 flex-col">
-            <h4
+            <div className="flex min-w-0 items-center gap-2"><h4
               className={`font-medium text-[#1a73e8] dark:text-blue-400 text-[13px] leading-5 [overflow-wrap:anywhere] group-hover:underline transition-colors ${
                 (!canDrag && !isDragOverlay) || isAutomatedOnly ? 'ml-1' : ''
               }`}
             >
               {deal.title}
-            </h4>
+            </h4>{!isDragOverlay && <UnreadRecordDot entityType="Deal" entityId={deal.id} />}</div>
             {(deal.contactPerson || deal.companyName) && <div className="flex min-w-0 items-start text-xs text-slate-500 dark:text-slate-400 mt-1">
               <User size={12} className="mr-1.5 shrink-0" />
               <span className="min-w-0 [overflow-wrap:anywhere]">

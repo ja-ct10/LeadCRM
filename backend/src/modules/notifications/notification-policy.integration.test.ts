@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { randomUUID } from 'node:crypto';
 import type { Server } from 'node:http';
 import type { ContactStatus } from '@prisma/client';
-import { DEFAULT_CLOSING_FIELDS, DEFAULT_NOTIFICATION_PREFERENCES } from '@leadcrm/shared';
+import { DEFAULT_CLOSING_FIELDS, DEFAULT_NOTIFICATION_PREFERENCES, type NotificationRecordTarget } from '@leadcrm/shared';
 import prisma from '../../config/database.config';
 import app from '../../app';
 import { issueAuthSession } from '../../core/auth/auth-session';
@@ -10,7 +10,7 @@ import { dispatchTenantNotifications } from './notification-events.service';
 import { deliverNotification } from './notifications.service';
 import { notificationAccess } from './notification-access';
 import { saveNotificationPreferences } from './notification-preferences.service';
-import { findNotifications, deleteNotifications, notificationCounts, markNotificationRead } from './notifications.repository';
+import { findNotifications, deleteNotifications, notificationCounts, markNotificationRead, markAllNotificationsRead } from './notifications.repository';
 import { salesPipeline, salesTransaction } from '../crm/leads/lead-automation.service';
 import { moveDealStage } from '../crm/deals/deals.repository';
 import { listFields, saveField, saveValues } from '../crm/closing-requirements/closing-requirements.service';
@@ -43,7 +43,8 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
   beforeAll(async () => {
     tenantId = (await prisma.tenant.create({ data: { name: 'Final notification matrix', slug: randomUUID(), onboardingCompletedAt: new Date(), onboardingStep: 3 } })).id;
     const role = async (name: string, modules: string[]) => prisma.roleDefinition.create({ data: { tenantId, name, crmAssignmentRestricted: name === 'Sales Agent',
-      isSystemRole: name === 'Client Admin', permissions: { create: modules.map(module => ({ module, canView: true, canEdit: true, canCreate: true })) } } });
+      isSystemRole: name === 'Client Admin', permissions: { create: modules.map(module => ({ module, canView: true, canEdit: true, canCreate: true,
+        ...(['leads', 'contacts', 'accounts', 'deals'].includes(module) ? { canViewAll: true, canViewMy: true } : {}) })) } } });
     adminRoleId = (await role('Client Admin', [])).id;
     agentRoleId = (await role('Sales Agent', ['leads', 'contacts', 'accounts', 'deals', 'tasks', 'campaigns'])).id;
     supportRoleId = (await role('Support', ['contacts', 'tasks', 'campaigns'])).id;
@@ -167,18 +168,18 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
       await prisma.closingFieldDefinition.update({ where: { tenantId_id: { tenantId, id: field.id } }, data: { definition: { ...field } } });
     }
   }));
-  it('notifies successful Lost once, including an owner who acted, and suppresses failed or unchanged transitions', async () => {
+  it('notifies successful Lost once, including an owner who acted, and suppresses failed or unchanged transitions', () => tenantContext.run({ tenantId }, async () => {
     const row = await deal(); await processEvents();
     await expect(moveDealStage(row.id, tenantId, stages['Cancelled'], agentId)).rejects.toThrow('reason');
     await moveDealStage(row.id, tenantId, stages['Cancelled'], agentId, undefined, undefined, 'Customer declined');
     await moveDealStage(row.id, tenantId, stages['Cancelled'], agentId, undefined, undefined, 'Customer declined');
     await processEvents(); expect(await recipients(row.id, 'deal_lost')).toEqual([adminId, agentId].sort());
-  });
-  it('suppresses obsolete closing action when the Deal closes before delivery', async () => {
+  }));
+  it('suppresses obsolete closing action when the Deal closes before delivery', () => tenantContext.run({ tenantId }, async () => {
     const row = await deal(); await moveDealStage(row.id, tenantId, stages.Qualified, adminId);
     await moveDealStage(row.id, tenantId, stages['Cancelled'], adminId, undefined, undefined, 'Declined');
     await processEvents(); expect(await recipients(row.id, 'closing_requirements_needed')).toEqual([]);
-  });
+  }));
   it('routes Campaign incidents to admin and eligible creator, never unrelated marketing or sales viewers', async () => {
     for (const owner of [agentId, supportId, marketingId, deniedId]) {
       const campaign = await prisma.campaign.create({ data: { tenantId, name: 'October Promotion', type: 'EMAIL', createdById: owner, status: 'SENDING' } });
@@ -314,5 +315,76 @@ describe.skipIf(url.hostname !== '127.0.0.1' || url.pathname !== '/leadcrm_forms
       expect(await prisma.notification.findUnique({ where: { id: original.id } })).toEqual(original);
       expect(await prisma.notification.count({ where: { tenantId, entityId: row.id, type } })).toBe(1);
     }
+  });
+
+  it('summarizes every supported record once while retaining notification counts', async () => {
+    const account = await prisma.account.create({ data: { tenantId, name: 'Unread Account' } });
+    const task = await prisma.task.create({ data: { tenantId, title: 'Unread Task', assignedUserId: adminId, dueDate: new Date() } });
+    const campaign = await prisma.campaign.create({ data: { tenantId, name: 'Unread Campaign', type: 'EMAIL', createdById: adminId } });
+    const workflow = await prisma.workflow.create({ data: { tenantId, name: 'Unread Workflow', trigger: 'lead_created', actions: [] } });
+    const form = await prisma.marketingForm.create({ data: { tenantId, name: 'Unread Form', createdById: adminId } });
+    const records: NotificationRecordTarget[] = [
+      { entityType: 'Lead', entityId: (await lead()).id }, { entityType: 'Contact', entityId: (await contact()).id },
+      { entityType: 'Account', entityId: account.id }, { entityType: 'Deal', entityId: (await deal()).id },
+      { entityType: 'Task', entityId: task.id }, { entityType: 'Campaign', entityId: campaign.id },
+      { entityType: 'Workflow', entityId: workflow.id }, { entityType: 'Form', entityId: form.id },
+    ];
+    for (const record of records) await prisma.notification.createMany({ data: [1, 2].map(() => ({ tenantId, userId: adminId, type: 'historical', title: 'Unread record', ...record })) });
+    const summary = await notificationCounts(tenantId, adminId);
+    for (const record of records) expect(summary.unreadRecords.filter(row => row.entityId === record.entityId)).toEqual([{ ...record, count: 2 }]);
+    for (const record of records) {
+      const result = await markAllNotificationsRead(tenantId, adminId, new Date(), record);
+      expect(result.unreadRecords.some(row => row.entityId === record.entityId)).toBe(false);
+      expect(result.unreadCount).toBe((await prisma.notification.count({ where: { tenantId, userId: adminId, isRead: false } })));
+    }
+  });
+
+  it('reads one record across feed pages, honors the open cutoff and isolates recipients and tenants', async () => {
+    const first = await deal(), second = await deal();
+    const record = { entityType: 'Deal', entityId: first.id } as const;
+    const before = new Date(Date.now() - 1000);
+    const earlier = new Date(+before - 1000);
+    await prisma.notification.createMany({ data: Array.from({ length: 105 }, () => ({ tenantId, userId: agentId, type: 'deal_assigned', title: 'Same record', ...record, createdAt: earlier })) });
+    const recent = await prisma.notification.create({ data: { tenantId, userId: agentId, type: 'deal_assigned', title: 'After open snapshot', ...record, createdAt: new Date(+before + 500) } });
+    const otherRecord = await prisma.notification.create({ data: { tenantId, userId: agentId, type: 'deal_assigned', title: 'Other record', entityType: 'Deal', entityId: second.id } });
+    const otherRecipient = await prisma.notification.create({ data: { tenantId, userId: otherId, type: 'deal_assigned', title: 'Other recipient', ...record } });
+    const foreignTenant = await prisma.tenant.create({ data: { name: 'Unread isolation', slug: randomUUID() } });
+    const foreignUser = await prisma.user.create({ data: { tenantId: foreignTenant.id, email: randomUUID() + '@camxian.com', firstName: 'Foreign', lastName: 'User', role: 'Viewer' } });
+    const foreignRecord = await prisma.notification.create({ data: { tenantId: foreignTenant.id, userId: foreignUser.id, type: 'deal_assigned', title: 'Foreign recipient', ...record } });
+    const previous = await notificationCounts(tenantId, agentId);
+    const result = await request('/notifications/read-all', 'PATCH', { before: before.toISOString(), record });
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ unreadCount: previous.unreadCount - 105, readRecord: record, readBefore: before.toISOString() });
+    expect(result.body.unreadRecords).toContainEqual({ ...record, count: 1 });
+    expect(result.body.unreadByModule.deals).toBeGreaterThan(0);
+    const readRows = await prisma.notification.findMany({ where: { tenantId, userId: agentId, entityId: first.id, isRead: true } });
+    expect(readRows).toHaveLength(105); expect(readRows.every(row => row.readAt)).toBe(true);
+    for (const item of [recent, otherRecord, otherRecipient, foreignRecord]) expect((await prisma.notification.findUniqueOrThrow({ where: { id: item.id } })).isRead).toBe(false);
+    await request('/notifications/read-all', 'PATCH', { before: before.toISOString(), record });
+    expect((await prisma.notification.findUniqueOrThrow({ where: { id: readRows[0].id } })).readAt).toEqual(readRows[0].readAt);
+    const final = await request('/notifications/read-all', 'PATCH', { record });
+    expect(final.body.unreadRecords.some((row: { entityId: string }) => row.entityId === first.id)).toBe(false);
+    expect(final.body.unreadRecords).toContainEqual({ entityType: 'Deal', entityId: second.id, count: 1 });
+    for (const body of [{ record: { entityType: 'Deal' } }, { record: { entityType: 'User', entityId: agentId } }, { record, userId: otherId }, { record, tenantId: foreignTenant.id }]) {
+      expect((await request('/notifications/read-all', 'PATCH', body)).status).toBe(400);
+    }
+    expect((await request('/notifications/read-all', 'PATCH', { record: { entityType: 'Deal', entityId: randomUUID() } })).status).toBe(404);
+    const deniedToken = (await issueAuthSession(await prisma.user.findUniqueOrThrow({ where: { id: deniedId } }))).token;
+    expect((await request('/notifications/read-all', 'PATCH', { record }, deniedToken)).status).toBe(404);
+    expect((await prisma.notification.findUniqueOrThrow({ where: { id: otherRecord.id } })).isRead).toBe(false);
+    expect((await request('/notifications/counts')).body.unreadCount).toBe(final.body.unreadCount);
+  });
+
+  it('uses the existing converted-Lead destination for both indicators and record reads', async () => {
+    const original = await lead(), destination = await contact();
+    await prisma.lead.update({ where: { id: original.id }, data: { convertedAt: new Date(), contactId: destination.id } });
+    await prisma.notification.createMany({ data: ['Lead', 'Contact'].map(entityType => ({ tenantId, userId: agentId, type: 'lead_assigned', title: 'Converted record', entityType,
+      entityId: entityType === 'Lead' ? original.id : destination.id })) });
+    const target = { entityType: 'Contact', entityId: destination.id } as const;
+    const summary = await notificationCounts(tenantId, agentId);
+    expect(summary.unreadRecords.filter(row => [original.id, destination.id].includes(row.entityId))).toEqual([{ ...target, count: 2 }]);
+    const result = await markAllNotificationsRead(tenantId, agentId, new Date(), target);
+    expect(result.unreadRecords.some(row => row.entityId === destination.id)).toBe(false);
+    expect(await prisma.notification.count({ where: { tenantId, userId: agentId, entityId: { in: [original.id, destination.id] }, isRead: false } })).toBe(0);
   });
 });

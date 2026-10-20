@@ -315,7 +315,7 @@ export function DataProvider({ children }: { children: ReactNode }) {
     deal: deals.find(record => record.id === task.dealId) ?? task.deal,
     account: organizations.find(record => record.id === task.accountId) ?? task.account,
   })) : tasks, [tasks, users, contacts, deals, organizations]);
-  const taskQueries = useTaskQueries(dataIdentity, taskRows, USE_MOCK_DATA);
+  const taskQueries = useTaskQueries(`${dataIdentity}:${user?.role}:${userCan('tasks', 'canView')}`, taskRows, USE_MOCK_DATA, user ?? undefined);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
 

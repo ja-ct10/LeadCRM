@@ -5,6 +5,7 @@ import type { Deal, Pipeline } from '@/store/types';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { PipelineDealCard } from './pipeline-deal-card';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ UnreadRecordDot: () => null }));
 
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true }) }));
 vi.mock('@/shared/components/crm/deal-card-menu', () => ({ DealCardMenu: () => null }));

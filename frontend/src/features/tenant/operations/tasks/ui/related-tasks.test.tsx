@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 const state = vi.hoisted(() => ({ loading: true, tasks: [] as any[], refresh: vi.fn() }));
 vi.mock('../use-tasks', () => ({ useTasks: () => ({ ...state, canRead: true, identity: 'tenant', summary: { total: state.tasks.length, active: state.tasks.length } }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ UnreadRecordDot: () => null }));
 vi.mock('./task-editor', () => ({ TaskEditor: (props: any) => <div data-testid="editor" data-readonly={String(props.readOnly)} data-preserve={String(props.preserveContextLinks)} /> }));
 import { RelatedTasks } from './related-tasks';
 afterEach(cleanup);

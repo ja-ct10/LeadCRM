@@ -2,6 +2,7 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.TASK_COLUMN_DEFINITIONS = exports.TaskOptionsQuerySchema = exports.TaskBulkSchema = exports.TaskQuerySchema = exports.UpdateTaskSchema = exports.CreateTaskSchema = exports.TASK_LINK_KINDS = exports.TaskStatusSchema = exports.TASK_STATUS_LABELS = exports.TASK_STATUSES = void 0;
 exports.taskAssociationIds = taskAssociationIds;
+exports.isTaskAssignmentRestrictedRole = isTaskAssignmentRestrictedRole;
 exports.isTaskOverdue = isTaskOverdue;
 exports.taskDateRange = taskDateRange;
 exports.taskAssociationPatch = taskAssociationPatch;
@@ -156,6 +157,10 @@ exports.TaskOptionsQuerySchema = zod_1.z
     selectAll: queryBoolean.default(false),
 })
     .strict();
+/** Task visibility uses the current primary role, independently of CRM edit restrictions. */
+function isTaskAssignmentRestrictedRole(role) {
+    return ['salesagent', 'salesrepresentative'].includes(role.trim().toLowerCase().replace(/[\s_-]/g, ''));
+}
 function isTaskOverdue(task, now = Date.now()) {
     return (!task.isArchived &&
         !["completed", "cancelled"].includes(task.status) &&

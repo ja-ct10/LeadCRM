@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => ({
 }));
 const user = {
   id: "owner",
+  role: 'Task staff',
   firstName: "Test",
   lastName: "Owner",
   };
@@ -75,6 +76,7 @@ const task = {
 };
 afterEach(cleanup);
 beforeEach(() => {
+  user.role = 'Task staff';
   vi.resetAllMocks(); mocks.canEdit = true; mocks.canEditLeads = true; mocks.canAssign = true; mocks.deniedPermissions = []; mocks.captureLayout = undefined;
   mocks.detail = { data: task, error: null, isInitialLoad: false, isRefreshing: false, refetch: vi.fn(), setData: vi.fn(saved => { mocks.detail.data = saved; }) };
   mocks.updateTask.mockImplementation(async (_id, patch) => { const { expectedUpdatedAt, ...changes } = patch; return { ...mocks.detail.data, ...changes, updatedAt: '2026-10-18T00:00:00.000Z' }; });
@@ -91,6 +93,18 @@ function enableEditing() {
   fireEvent.click(screen.getByRole('menuitem', { name: 'Edit task' }));
 }
 function editField(label: string) { enableEditing(); fireEvent.click(screen.getByRole('button', { name: `Edit ${label}` })); }
+
+it.each(['Sales Agent', 'Sales Representative'])('removes an open %s detail and its controls after reassignment', async role => {
+  user.role = role;
+  const { rerender } = render(<TaskEditor task={task} onClose={vi.fn()} />);
+  expect(screen.getByRole('heading', { name: task.title })).toBeTruthy();
+  mocks.detail.data = { ...task, assignedUserId: 'other-agent' };
+  rerender(<TaskEditor task={task} onClose={vi.fn()} />);
+  expect(screen.queryByRole('heading', { name: task.title })).toBeNull();
+  expect(screen.queryByText(task.description)).toBeNull();
+  expect(screen.queryByRole('button', { name: 'Task actions' })).toBeNull();
+  expect(mocks.updateTask).not.toHaveBeenCalled();
+});
 
 it('uses the shared header action area in menu, status, close order above the title and pills', () => {
   render(<TaskEditor task={task} onClose={vi.fn()} />);

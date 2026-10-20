@@ -3,6 +3,7 @@ import { useTablePreferences } from '@/shared/hooks/use-table-preferences';
 import { StatusBadge } from '@/shared/components/crm/record-drawer';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { PageHeader } from '@/shared/components/ui/page-header';
 
 import { useEffect, useRef, useState } from 'react';
@@ -79,7 +80,7 @@ export default function WorkflowsPage() {
   const triggerLabel = (type: string) => (metadata?.triggers.find(trigger => trigger.type === type)?.label ?? type).replace(/Client Profile/gi, 'Contact');
   const clearFilters = () => { setSearch(''); setStatuses([]); setTriggers([]); setPage(1); };
   const columns: DataGridColumnDef<Workflow>[] = [
-    { id: 'name', sortable: true, header: 'Name', accessor: row => row.name, width: 240 },
+    { id: 'name', sortable: true, header: 'Name', accessor: row => row.name, width: 240, cell: (_, row) => <span className="flex min-w-0 items-center gap-2"><span className="truncate">{row.name}</span><UnreadRecordDot entityType="Workflow" entityId={row.id} /></span> },
     { id: 'trigger', header: 'Trigger', accessor: row => triggerLabel(row.trigger), width: 210 },
     { id: 'status', sortable: true, header: 'Status', accessor: workflowStatusLabel, width: 110,
       cell: (_, row) => <StatusBadge label={workflowStatusLabel(row)} variant={row.status === 'DRAFT' ? 'neutral' : row.isActive ? 'success' : 'warn'} /> },

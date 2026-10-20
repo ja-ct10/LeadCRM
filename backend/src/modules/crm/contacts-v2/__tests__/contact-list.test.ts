@@ -31,7 +31,9 @@ it.each([{ tenantId: 'equals:other' }, { status: 'gte:Hot' }, { assignedUserId: 
 
 it('keeps active tab status scope and handles both update choices as all records', async () => {
   await findAllContacts('tenant', { filter: { scope: 'equals:active', system: 'in:touched,untouched' } });
-  expect(db.contact.findMany.mock.calls[0][0].where.AND).toEqual([{ status: { in: ['INQUIRY', 'HOT', 'WARM'] } }]);
+  expect(db.contact.findMany.mock.calls[0][0].where.AND).toEqual([
+    { tenantId: 'tenant' }, { status: { in: ['INQUIRY', 'HOT', 'WARM'] } },
+  ]);
 });
 
 it('sorts date pages in the database without reading the full collection', async () => {

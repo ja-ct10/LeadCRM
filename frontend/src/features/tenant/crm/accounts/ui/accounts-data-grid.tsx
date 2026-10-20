@@ -34,6 +34,7 @@ import type { CellRendererMap } from '@/shared/components/data-grid';
 import { ACCOUNTS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';
 import { ACCOUNTS_TABLE_SORT_FIELDS, type ColumnConfigItem } from '@leadcrm/shared';
 import type { Account } from '../types/account.types';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 
 // ─── Props Interface ─────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ export function AccountsDataGrid({
               </p>
             )}
           </div>
+          <UnreadRecordDot entityType="Account" entityId={row.id} />
         </div>
       );
     },
