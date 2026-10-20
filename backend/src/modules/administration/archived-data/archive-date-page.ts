@@ -3,6 +3,7 @@ import type { ArchiveType } from '@leadcrm/shared';
 import prisma from '../../../config/database.config';
 import { tenantContext } from '../../../core/tenant/tenant-context';
 import { AppError } from '../../../shared/errors/app-error';
+import { crmActor, resolveCrmActor, taskReadWhere } from '../../crm/access/crm-record-access.service';
 
 // Only fixed server-owned table/column expressions enter the SQL. Search, tenant,
 // type and pagination values are parameters; clients cannot select a delegate.
@@ -24,6 +25,8 @@ export type ArchiveDateRow = { type: ArchiveType; id: string; name: string; deta
 export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[], query: { search?: string; page: number; limit: number; sortOrder?: 'asc' | 'desc' }): Promise<ArchiveDateRow[]> {
   if (tenantContext.getStore()?.tenantId !== tenantId) throw new AppError('Workspace context required', 403);
   if (!types.length) return [];
+  const actor = crmActor.getStore();
+  const taskScope = actor && types.includes('Task') ? taskReadWhere(await (actor.readPolicy ??= resolveCrmActor(prisma, actor))) : undefined;
   const terms = query.search?.trim().split(/\s+/).filter(Boolean) ?? [];
   const sources = types.map(type => {
     const definition = definitions[type];
@@ -43,6 +46,7 @@ export async function loadArchiveDatePage(tenantId: string, types: ArchiveType[]
           ${definition.deletedAt ? Prisma.sql`AND r."deletedAt" IS NULL` : Prisma.empty}
         ORDER BY a."createdAt" DESC, a."id" ASC LIMIT 1) history ON true`}
       WHERE r."tenantId" = ${tenantId} AND ${archiveCondition}
+        ${type === 'Task' && taskScope?.assignedUserId ? Prisma.sql`AND r."assignedUserId" = ${taskScope.assignedUserId as string}` : Prisma.empty}
         ${search.length ? Prisma.sql`AND ${Prisma.join(search, ' AND ')}` : Prisma.empty}`;
   });
   const direction = query.sortOrder === 'asc' ? Prisma.sql`ASC` : Prisma.sql`DESC`;

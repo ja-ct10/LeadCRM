@@ -1,6 +1,11 @@
 import type { NotificationRecord } from '@leadcrm/shared';
+import { NotificationRecordTargetSchema } from '@leadcrm/shared';
 import { notificationsApi } from '@/shared/services/notifications.api';
 import { toast } from 'sonner';
+
+export function opensNotificationRecord(notification: Pick<NotificationRecord, 'entityType' | 'entityId'>): boolean {
+  return NotificationRecordTargetSchema.safeParse({ entityType: notification.entityType, entityId: notification.entityId }).success;
+}
 
 /** Only application-owned destinations; notification data cannot supply arbitrary URLs. */
 export function notificationDestination(notification: Pick<NotificationRecord, 'entityType' | 'entityId'>): string | undefined {

@@ -72,6 +72,7 @@ beforeEach(() => {
       status: "ACTIVE",
       role: [actorId, 'new-actor'].includes(where.id) ? "Client Admin" : "Task staff",
       tenant: { status: "ACTIVE" }, userRoles: [{ tenantId, role: { tenantId, isArchived: false,
+        name: 'Task staff',
         permissions: [{ tenantId, module: 'tasks', canView: true }] } }],
     }),
   );
@@ -88,6 +89,17 @@ beforeEach(() => {
 });
 
 describe("Task service authority", () => {
+  it.each(['Sales Agent', 'Sales Representative'])('rejects a %s creator after assignment moves to another user, including direct service calls', async role => {
+    db.user.findFirst.mockImplementation(({ where }) => Promise.resolve({ id: where.id, tenantId, role, status: 'ACTIVE', tenant: { status: 'ACTIVE' },
+      userRoles: [{ tenantId, role: { name: role, tenantId, isArchived: false, permissions: [{ tenantId, module: 'tasks', canView: true, canEdit: true, canComplete: true, canArchive: true }] } }] }));
+    for (const mutate of [() => service.updateTask(original.id, tenantId, actorId, { title: 'Hidden' }),
+      () => service.completeTask(original.id, tenantId, actorId), () => service.archiveTask(original.id, tenantId, actorId)]) {
+      await expect(scoped(mutate)).rejects.toMatchObject({ statusCode: 404 });
+    }
+    expect(db.task.update).not.toHaveBeenCalled();
+    expect(recordTaskHistory).not.toHaveBeenCalled();
+  });
+
   it('rejects a stale edit before Task, association, or history writes', async () => {
     await expect(scoped(() => service.updateTask(original.id, tenantId, actorId, {
       title: 'Stale title', expectedUpdatedAt: new Date(original.updatedAt.getTime() - 1).toISOString(),

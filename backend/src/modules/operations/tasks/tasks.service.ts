@@ -414,10 +414,12 @@ export async function getTaskOptions(
 /** Task grants and association eligibility are enforced in the mutation transaction. */
 async function authorizeTask(client: repo.TaskClient, tenantId: string, userId: string,
   action: 'canCreate' | 'canEdit' | 'canArchive', dto: TaskLinkInput & { status?: string; assignedUserId?: string }, before?: repo.TaskRow) {
-  if (action !== 'canCreate' && (!before?.createdById || before.createdById !== userId))
-    throw new AppError(action === 'canArchive' ? 'Only the task owner can archive this task.' : 'Only the task owner can edit this task.', 403);
   const policy = await resolveCrmActor(client, { tenantId, userId });
   const system = authorizedWorkflowScope(tenantId);
+  if (!system && before && policy.taskAssignmentRestricted && before.assignedUserId !== userId)
+    throw new NotFoundError('Task');
+  if (action !== 'canCreate' && (!before?.createdById || before.createdById !== userId))
+    throw new AppError(action === 'canArchive' ? 'Only the task owner can archive this task.' : 'Only the task owner can edit this task.', 403);
   const permitted = (flag: 'canCreate' | 'canEdit' | 'canArchive' | 'canAssign' | 'canComplete') => {
     if (!policy.clientAdmin && !hasModulePermission(policy.permissions, 'tasks', flag)) throw new AppError('Access denied', 403);
   };
@@ -446,6 +448,7 @@ export async function restoreTask(id: string, tenantId: string, userId: string) 
     const before = await repo.findTaskById(id, tenantId, client);
     if (!before || !before.isArchived) throw new NotFoundError('Archived task');
     const policy = await resolveCrmActor(client, { tenantId, userId });
+    if (policy.taskAssignmentRestricted && before.assignedUserId !== userId) throw new NotFoundError('Archived task');
     if (!policy.clientAdmin && (!hasModulePermission(policy.permissions, 'archived_data', 'canRestore') || !hasModulePermission(policy.permissions, 'tasks', 'canView'))) throw new AppError('Access denied', 403);
     const task = await repo.updateTask(id, tenantId, { isArchived: false }, client);
     await recordTaskHistory(client, userId, task, before);

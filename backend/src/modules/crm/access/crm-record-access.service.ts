@@ -1,12 +1,12 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { Prisma, type PrismaClient } from '@prisma/client';
-import { hasModulePermission, isWorkspaceAccessible, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
+import { hasModulePermission, isWorkspaceAccessible, isTaskAssignmentRestrictedRole, permittedCrmScopes, CRM_SCOPE_ACTIONS, type CrmReadScope, type CrmRecordAccessPolicy, type ResolvedPermissions } from '@leadcrm/shared';
 import { resolveEffectivePermissions } from '../../administration/roles/roles.repository';
 import { AppError } from '../../../shared/errors/app-error';
 import { assertEligibleAssignedAgent, crmAssignmentRequirements } from './assigned-agent-eligibility';
 
 export type CrmModule = 'leads' | 'contacts' | 'accounts' | 'deals';
-type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions };
+type ReadPolicy = CrmRecordAccessPolicy & { permissions: ResolvedPermissions; taskAssignmentRestricted: boolean };
 type Actor = { userId: string; tenantId: string; readRecords?: boolean; readPolicy?: Promise<ReadPolicy> };
 type Tx = Prisma.TransactionClient;
 type Args = Record<string, any>;
@@ -39,7 +39,7 @@ export function runAuthorizedWorkflow<T>(tenantId: string, executionId: string, 
 }
 export const authorizedWorkflowScope = (tenantId: string) => system.getStore()?.tenantId === tenantId ? system.getStore() : undefined;
 
-export async function resolveCrmActor(db: Tx, actor: Actor): Promise<CrmRecordAccessPolicy & { permissions: ResolvedPermissions }> {
+export async function resolveCrmActor(db: Tx, actor: Actor): Promise<ReadPolicy> {
   const user = await db.user.findFirst({ where: { id: actor.userId, tenantId: actor.tenantId }, include: {
     tenant: { select: { status: true } }, userRoles: { where: { tenantId: actor.tenantId, role: { tenantId: actor.tenantId, isArchived: false } },
       include: { role: { include: { permissions: { where: { tenantId: actor.tenantId } } } } } },
@@ -52,7 +52,13 @@ export async function resolveCrmActor(db: Tx, actor: Actor): Promise<CrmRecordAc
   const clientAdmin = user.role === 'Client Admin';
   const permissions = resolveEffectivePermissions(user);
   return { userId: user.id, tenantId: user.tenantId, clientAdmin, permissions,
+    taskAssignmentRestricted: isTaskAssignmentRestrictedRole(user.role),
     assignmentRestricted: !clientAdmin && (isSalesRoleName(user.role) || user.userRoles.some(link => link.role.crmAssignmentRestricted || isSalesRoleName(link.role.name))) };
+}
+
+/** Shared by scoped Prisma reads and the fixed SQL archive query. */
+export function taskReadWhere(policy: Pick<ReadPolicy, 'tenantId' | 'userId' | 'taskAssignmentRestricted'>): Prisma.TaskWhereInput {
+  return { tenantId: policy.tenantId, ...(policy.taskAssignmentRestricted ? { assignedUserId: policy.userId } : {}) };
 }
 
 /** Related metadata must retain the source module's View boundary. */
@@ -167,20 +173,21 @@ const reads = new Set(['findUnique', 'findUniqueOrThrow', 'findFirst', 'findFirs
 const and = (where: Args | undefined, scope: Args): Args => Object.keys(scope).length ? { ...where, AND: [...(Array.isArray(where?.AND) ? where.AND : where?.AND ? [where.AND] : []), scope] } : { ...where };
 
 function readParents(model: string) {
-  return (dmmf.get(model)?.fields ?? []).filter(field => field.kind === 'object' && modules[field.type] && !modules[model] &&
+  return (dmmf.get(model)?.fields ?? []).filter(field => field.kind === 'object' && (modules[field.type] || field.type === 'Task') && !modules[model] && model !== 'Task' &&
     (field.isRequired && !field.isList || model === 'Activity' || childParents[model]?.some(([key]) => field.relationFromFields?.includes(key))));
 }
 
 function modelReadWhere(model: string, policy: ReadPolicy): Args {
+  if (model === 'Task') return policy.taskAssignmentRestricted ? taskReadWhere(policy) : {};
   if (modules[model]) return readWhere(policy, modules[model]);
-  const clauses = readParents(model).map(field => field.isRequired
-    ? { [field.name]: { is: readWhere(policy, modules[field.type]) } }
-    : { OR: [{ [field.name]: { is: null } }, { [field.name]: { is: readWhere(policy, modules[field.type]) } }] });
+  const clauses = readParents(model).filter(field => field.type !== 'Task' || policy.taskAssignmentRestricted).map(field => field.isRequired
+    ? { [field.name]: { is: modelReadWhere(field.type, policy) } }
+    : { OR: [{ [field.name]: { is: null } }, { [field.name]: { is: modelReadWhere(field.type, policy) } }] });
   return clauses.length ? { AND: clauses } : {};
 }
 
 function hasReadTarget(model: string, args: Args): boolean {
-  if (modules[model] || readParents(model).length) return true;
+  if (model === 'Task' || modules[model] || readParents(model).length) return true;
   return (dmmf.get(model)?.fields ?? []).some(field => field.kind === 'object' &&
     [args.include?.[field.name], args.select?.[field.name], args.where?.[field.name]].some(nested => nested &&
       (modules[field.type] || hasReadTarget(field.type, nested === true ? {} : nested))));

@@ -1,14 +1,11 @@
 'use client';
 
 import { UserAvatar } from '@/shared/components/user-avatar';
-import React, { useId, useMemo, useRef } from 'react';
+import React, { useId, useRef } from 'react';
 import { useModalInteraction } from '@/shared/hooks/use-modal-interaction';
 import type { NavigationMode } from './use-responsive-navigation';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useAuth } from '@/store/AuthContext';
-import { useData } from '@/store/DataContext';
-import { useModuleCounts } from '@/shared/hooks/use-module-counts';
-import { USE_MOCK_DATA } from '@/lib/config';
 import { useLayout } from './use-layout';
 import { cn } from '@/lib/utils';
 import { requestNavigation } from '@/shared/lib/navigation-intent';
@@ -48,44 +45,6 @@ export default function SidebarNav({
   const swipe = useRef<{ x: number; y: number; time: number } | null>(null);
   const inaccessible = hidden || (mode === 'mobile' && !sidebarOpen);
   useModalInteraction({ open: sidebarOpen && !hidden, panelRef, owner, onClose: onCloseSidebar, kind: 'navigation' });
-
-  // ── Badge counts ────────────────────────────────────────────────────────
-  // Real-API mode: fetch lightweight counts (page=1&pageSize=1) independently.
-  //   Counts are cached 5 min, refreshed on focus. Sidebar never receives full
-  //   contact/deal/org arrays — those belong to their own route hooks now.
-  // Mock mode: fall back to DataContext arrays (full dataset in memory).
-  const { contacts: mockContacts, deals: mockDeals, organizations: mockOrgs } = useData();
-
-  const { counts: apiCounts } = useModuleCounts(
-    USE_MOCK_DATA ? [] : ['leads', 'contacts', 'accounts', 'deals'],
-  );
-
-  const recordCounts = useMemo(() => {
-    if (USE_MOCK_DATA) {
-      return {
-        leads:    mockContacts.filter((c) => !c.isArchived).length,
-        contacts: 0, // The Contacts page has no mock Contact dataset; mockContacts contains Leads.
-        accounts: mockOrgs.filter((o) => !o.isArchived).length,
-        pipeline: mockDeals.filter((d) => !d.isArchived).length,
-      };
-    }
-    return {
-      leads:    apiCounts['leads']    ?? 0,
-      contacts: apiCounts['contacts'] ?? 0,
-      accounts: apiCounts['accounts'] ?? 0,
-      pipeline: apiCounts['deals']    ?? 0,
-    };
-  }, [apiCounts, mockContacts, mockDeals, mockOrgs]);
-
-  const getBadgeCount = (path: string): number | undefined => {
-    const map: Record<string, number | undefined> = {
-      leads:    recordCounts.leads    || undefined, // hide 0 — badge renders nothing
-      contacts: recordCounts.contacts    || undefined,
-      accounts: recordCounts.accounts || undefined,
-      pipeline: recordCounts.pipeline || undefined,
-    };
-    return map[path];
-  };
 
   return (
     <aside
@@ -200,7 +159,6 @@ export default function SidebarNav({
                   item={item as any}
                   isActive={currentPath === item.path}
                   isCollapsed={isCollapsed}
-                  badgeCount={getBadgeCount(item.path)}
                   hasUnread={hasUnread(item.path)}
                   onClick={() => requestNavigation(() => { navigate(item.path); onCloseSidebar(); })}
                 />
@@ -224,7 +182,6 @@ export default function SidebarNav({
                         item={item as any}
                         isActive={currentPath === item.path}
                         isCollapsed={isCollapsed}
-                        badgeCount={getBadgeCount(item.path)}
                         hasUnread={hasUnread(item.path)}
                         onClick={() => requestNavigation(() => { navigate(item.path); onCloseSidebar(); })}
                       />
@@ -283,12 +240,11 @@ interface NavButtonProps {
   item: { name: string; path: string; icon: React.ComponentType<{ className?: string }> };
   isActive: boolean;
   isCollapsed: boolean;
-  badgeCount?: number;
   hasUnread?: boolean;
   onClick: () => void;
 }
 
-function NavButton({ item, isActive, isCollapsed, badgeCount, hasUnread, onClick }: NavButtonProps): React.ReactElement {
+function NavButton({ item, isActive, isCollapsed, hasUnread, onClick }: NavButtonProps): React.ReactElement {
   const Icon = item.icon;
 
   return (
@@ -312,15 +268,15 @@ function NavButton({ item, isActive, isCollapsed, badgeCount, hasUnread, onClick
       )}
 
       <span className="relative shrink-0"><Icon className="h-[16px] w-[16px]" />
-        {hasUnread && <span role="status" aria-label={`Unread ${item.name} notifications`} className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-[var(--sidebar-bg)]" />}
+        {isCollapsed && hasUnread && <span role="status" aria-label={`Unread ${item.name} notifications`} className="absolute -right-1 -top-1 h-2 w-2 rounded-full bg-blue-500 ring-2 ring-[var(--sidebar-bg)]" />}
       </span>
 
       {!isCollapsed && (
         <>
           <span className="truncate flex-1 text-left">{item.name}</span>
-          {badgeCount !== undefined && badgeCount > 0 && (
-            <span className="shrink-0 min-w-[20px] h-[18px] px-1 rounded-md bg-[var(--sidebar-badge-bg)] text-[var(--sidebar-badge-text)] text-[10px] font-bold flex items-center justify-center tabular-nums">
-              {badgeCount}
+          {hasUnread && (
+            <span className="shrink-0 min-w-[20px] h-[18px] flex items-center justify-center">
+              <span role="status" aria-label={`Unread ${item.name} notifications`} className="h-2 w-2 rounded-full bg-blue-500" />
             </span>
           )}
         </>

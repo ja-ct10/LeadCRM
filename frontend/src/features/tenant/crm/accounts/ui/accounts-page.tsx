@@ -1,5 +1,6 @@
 ﻿'use client';
 import { useCrmTabs } from '@/shared/hooks/use-crm-tabs';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 
 import { useConfirmDialog } from '@/shared/hooks/use-confirm-dialog';
@@ -468,9 +469,9 @@ export default function AccountsPage(): React.ReactElement {
                     {getInitials(account.name)}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
+                    <div className="flex items-center gap-2"><p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
                       {account.name}
-                    </p>
+                    </p><UnreadRecordDot entityType="Account" entityId={account.id} /></div>
                     <p className="text-[11.5px] text-[#5A6B85] dark:text-slate-400 truncate">
                       {account.industry ?? '—'} · {account.address ?? ''}
                     </p>
@@ -502,9 +503,9 @@ export default function AccountsPage(): React.ReactElement {
                   {getInitials(account.name)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
+                  <div className="flex items-center gap-2"><p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
                     {account.name}
-                  </p>
+                  </p><UnreadRecordDot entityType="Account" entityId={account.id} /></div>
                   <p className="text-[10.5px] text-[#5A6B85] dark:text-slate-400 truncate">
                     {account.industry ?? '—'}
                   </p>

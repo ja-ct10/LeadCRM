@@ -1,5 +1,6 @@
 ﻿'use client';
 import { useCrmTabs } from '@/shared/hooks/use-crm-tabs';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
 import { assignedAgentName } from '@/shared/utils/assigned-agents';
 
@@ -440,9 +441,9 @@ export default function ContactsPage(): React.ReactElement {
                   {getInitials(contact)}
                 </div>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
+                  <div className="flex items-center gap-2"><p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
                     {getName(contact)}
-                  </p>
+                  </p><UnreadRecordDot entityType="Contact" entityId={contact.id} /></div>
                   <p className="text-[11.5px] text-[#2563EB] dark:text-blue-400 truncate font-medium">
                     {getAccountName(contact)}
                   </p>
@@ -478,9 +479,9 @@ export default function ContactsPage(): React.ReactElement {
                 {getInitials(contact)}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
+                <div className="flex items-center gap-2"><p className="text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 truncate hover:underline">
                   {getName(contact)}
-                </p>
+                </p><UnreadRecordDot entityType="Contact" entityId={contact.id} /></div>
                 <p className="text-[10.5px] text-[#5A6B85] dark:text-slate-400 truncate">
                   {getAccountName(contact)}
                 </p>

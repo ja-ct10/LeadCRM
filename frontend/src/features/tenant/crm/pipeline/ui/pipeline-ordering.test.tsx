@@ -5,6 +5,7 @@ import type { DndContext, DragCancelEvent, DragEndEvent, DragOverEvent, DragStar
 import type { Deal, Pipeline } from '@/store/types';
 import { toFrontendDeal } from '@/lib/api/adapters/deal.adapter';
 import { PipelineKanbanBoard } from './pipeline-kanban-board';
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ UnreadRecordDot: () => null }));
 
 const dnd = vi.hoisted(() => ({ props: {} as React.ComponentProps<typeof DndContext> }));
 vi.mock('@dnd-kit/core', async importOriginal => {

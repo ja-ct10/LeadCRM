@@ -25,6 +25,7 @@ import { useRecordRelationships } from '@/shared/hooks/use-record-relationships'
 import { useRecordActivities, type RecordActivityFilters, type TimelineActivity } from '@/shared/hooks/use-record-activities';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
 import { useCrmRecordAccess } from '@/shared/hooks/use-crm-record-access';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { showCrmMutationError } from '@/shared/utils/crm-mutation-error';
 import { Button } from '@/shared/components/ui/button';
 import { Sheet, SheetContent } from '@/shared/components/ui/sheet';
@@ -65,7 +66,7 @@ interface Relationships {
   deals?: RecordData[];
   activities?: TimelineActivity[];
 }
-const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account', deals: 'Deal' };
+const labels = { leads: 'Lead', contacts: 'Contact', accounts: 'Account', deals: 'Deal' } as const;
 const text = (value: unknown): string => typeof value === 'string' ? value : '';
 const personName = (record?: RecordData | null) => record ? [text(record.firstName), text(record.lastName)].filter(Boolean).join(' ') : '';
 const object = (value: unknown): RecordData | undefined => value && typeof value === 'object' && !Array.isArray(value) ? value as RecordData : undefined;
@@ -112,6 +113,8 @@ export function CrmRecordView({ module, id, onClose, onEdit, focusClosing = fals
   const mockRecords = module === 'deals' ? data.deals : module === 'accounts' ? data.organizations : data.contacts;
   const mockRecord = USE_MOCK_DATA ? mockRecords.find(item => item.id === id && item.tenantId === tenant?.id) : undefined;
   const record = USE_MOCK_DATA ? mockRecord as unknown as RecordData : recordQuery.data;
+  useReadRecordNotifications(labels[module], id,
+    !USE_MOCK_DATA && !!record && !recordQuery.isInitialLoad && !recordQuery.isRefreshing && !recordQuery.error);
   const canEdit = hasEditPermission && recordAccess.canMutate(record);
   const canArchive = hasArchivePermission && recordAccess.canMutate(record) && !USE_MOCK_DATA;
   useEffect(() => {

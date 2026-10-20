@@ -1,17 +1,17 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import type { NotificationMutationResponse } from '@leadcrm/shared';
+import type { NotificationMutationResponse, NotificationRecordTarget } from '@leadcrm/shared';
 import { notificationsApi, type NotificationsResponse } from '@/shared/services/notifications.api';
 import { buildCacheKey, createPageCacheGuard, getPageCache, setPageCache, invalidatePageCache } from '@/shared/cache/page-cache';
 import { useAuth } from '@/store/AuthContext';
 import { USE_MOCK_DATA } from '@/lib/config';
 import { toast } from 'sonner';
-import { sharedNotificationList, useNotificationCounts, lockNotificationMutation, unlockNotificationMutation } from './notification-requests';
+import { sharedNotificationList, useNotificationCounts, lockNotificationMutation, unlockNotificationMutation, sharedRecordNotificationRead } from './notification-requests';
 
 export type NotificationFilter = 'all' | 'unread' | 'read';
 type NotificationChange = NotificationMutationResponse & {
-  tenantId: string; userId: string; action: 'read' | 'read-all' | 'delete'; ids: string[];
+  tenantId: string; userId: string; action: 'read' | 'read-all' | 'read-record' | 'delete'; ids: string[];
 };
 
 export function useNotifications(filter: NotificationFilter = 'all', options: { enabled?: boolean; countsOnly?: boolean; limit?: number } = {}) {
@@ -87,6 +87,8 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
 
   useEffect(() => {
     active.current.mounted = true;
+    const stop = () => { active.current.mounted = false; active.current.version++; };
+    if (!feedEnabled) return stop;
     void loadNotifications();
     const refresh = () => { if (document.visibilityState !== 'hidden') void loadNotifications(stateRef.current.page); };
     const changed = (event: Event) => {
@@ -98,13 +100,14 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
           if (prev.scope !== scope) return prev;
           const notifications = prev.notifications
             .filter(n => change.action !== 'delete' || !change.ids.includes(n.id))
-            .map(n => (change.action === 'read-all' && (!change.readBefore || n.createdAt <= change.readBefore)) || (change.action === 'read' && change.ids.includes(n.id))
+            .map(n => ((change.action === 'read-all' || change.action === 'read-record' && n.entityType === change.readRecord?.entityType && n.entityId === change.readRecord?.entityId)
+                && (!change.readBefore || n.createdAt <= change.readBefore)) || (change.action === 'read' && change.ids.includes(n.id))
               ? { ...n, isRead: true, readAt: n.readAt ?? new Date().toISOString() } : n)
             .filter(n => isRead === undefined || n.isRead === isRead);
           return { ...prev, notifications, unreadCount: change.unreadCount, totalCount: change.totalCount, isLoading: false };
         });
       }
-      refresh();
+      if (!change || change.action === 'delete' || isRead !== undefined) refresh();
     };
     const refreshEvent = (event: Event) => {
       const detail = (event as CustomEvent<{ tenantId: string; userId: string }>).detail;
@@ -117,19 +120,19 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
       window.removeEventListener('notifications-refresh', refreshEvent);
       window.removeEventListener('notifications-changed', changed);
       window.removeEventListener('focus', refresh);
-      active.current.mounted = false;
-      active.current.version++;
+      stop();
     };
-  }, [loadNotifications, tenantId, userId, scope, isRead]);
+  }, [loadNotifications, tenantId, userId, scope, isRead, feedEnabled]);
 
-  const mutate = useCallback(async (action: NotificationChange['action'], ids: string[] = []) => {
+  const mutate = useCallback(async (action: NotificationChange['action'], ids: string[] = [], record?: NotificationRecordTarget) => {
+    if (active.current.scope !== scope || !active.current.mounted) return false;
     if (!enabled || mutationPending.current || !lockNotificationMutation(identity)) return false;
     mutationPending.current = true;
     active.current.version++;
     setState(prev => ({ ...prev, isMutating: true }));
     try {
       const response = action === 'delete' ? await notificationsApi.delete(ids)
-        : action === 'read-all' ? await notificationsApi.markAllRead(stateRef.current.snapshot) : await notificationsApi.markRead(ids[0]);
+        : action === 'read-all' || action === 'read-record' ? await notificationsApi.markAllRead(action === 'read-record' ? undefined : stateRef.current.snapshot, record) : await notificationsApi.markRead(ids[0]);
       invalidatePageCache('notifications', tenantId);
       // Broadcast only after backend success, including to the bell and other filtered views.
       window.dispatchEvent(new CustomEvent<NotificationChange>('notifications-changed', {
@@ -147,14 +150,16 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
       mutationPending.current = false;
       unlockNotificationMutation(identity);
       if (active.current.mounted && active.current.scope === scope) setState(prev => ({ ...prev, isMutating: false }));
-      if (active.current.mounted && active.current.scope === scope) void loadNotifications(stateRef.current.page);
+      if ((action === 'delete' || isRead !== undefined) && active.current.mounted && active.current.scope === scope) void loadNotifications(stateRef.current.page);
     }
-  }, [enabled, scope, tenantId, userId, identity, loadNotifications]);
+  }, [enabled, scope, tenantId, userId, identity, loadNotifications, isRead]);
 
   return {
     notifications: enabled ? currentState.notifications : [],
     unreadCount: enabled ? liveCounts?.unreadCount ?? currentState.unreadCount : 0,
     unreadByModule: enabled ? liveCounts?.unreadByModule ?? {} : {},
+    unreadRecords: enabled ? liveCounts?.unreadRecords ?? [] : [],
+    hasCounts: enabled && liveCounts?.success === true,
     totalCount: enabled ? liveCounts?.totalCount ?? currentState.totalCount : 0,
     isLoading: enabled && currentState.isLoading,
     isMutating: currentState.isMutating,
@@ -164,6 +169,8 @@ export function useNotifications(filter: NotificationFilter = 'all', options: { 
     scope,
     markAsRead: (id: string) => mutate('read', [id]),
     markAllAsRead: () => mutate('read-all'),
+    markRecordAsRead: (record: NotificationRecordTarget) => sharedRecordNotificationRead(identity, record.entityType + ':' + record.entityId,
+      () => mutate('read-record', [], record)),
     deleteNotifications: (ids: string[]) => mutate('delete', [...new Set(ids)]),
     loadMore: () => { if (!currentState.isLoading && currentState.hasMore) void loadNotifications(currentState.page + 1); },
     refresh: () => loadNotifications(currentState.page),

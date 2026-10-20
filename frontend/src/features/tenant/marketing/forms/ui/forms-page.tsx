@@ -1,5 +1,6 @@
 'use client';
 import { useNotificationRecordLink } from '@/features/tenant/notifications/hooks/use-notification-record-link';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { PageHeader } from '@/shared/components/ui/page-header';
 import { CreateButton } from '@/shared/components/ui/button';
 
@@ -73,7 +74,7 @@ export default function FormsPage({ onBuilderActiveChange }: { onBuilderActiveCh
           <div aria-hidden="true" className="w-24 bg-white border rounded-md p-3 shadow-sm space-y-2"><div className="h-2 w-2/3 bg-slate-800 rounded" /><div className="h-2 bg-slate-100 rounded" /><div className="h-2 bg-slate-100 rounded" /><div className="h-3 bg-blue-600 rounded" /></div>
         </button>
         <div className="flex justify-between items-center gap-2 p-4">
-          <div className="min-w-0"><button className="text-sm font-semibold truncate max-w-full block" onClick={() => setActive(form)}>{form.name}</button><div className="text-xs text-slate-500 mt-1 flex gap-2"><Badge variant={form.status.toLowerCase() === 'published' ? 'default' : 'secondary'} className="uppercase px-1 py-0 text-[10px]">{form.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</Badge><span>{form.fields.length} fields</span></div></div>
+          <div className="min-w-0"><div className="flex items-center gap-2"><button className="text-sm font-semibold truncate max-w-full block" onClick={() => setActive(form)}>{form.name}</button><UnreadRecordDot entityType="Form" entityId={form.id} /></div><div className="text-xs text-slate-500 mt-1 flex gap-2"><Badge variant={form.status.toLowerCase() === 'published' ? 'default' : 'secondary'} className="uppercase px-1 py-0 text-[10px]">{form.status.toLowerCase() === 'published' ? 'Published' : 'Draft'}</Badge><span>{form.fields.length} fields</span></div></div>
           <RowActionsMenu label="More actions" position="right" actions={[
             { id: 'edit', label: canEdit ? 'Edit' : 'View', icon: <Edit size={14} />, onClick: () => setActive(form) },
             { id: 'duplicate', label: 'Duplicate', icon: <Copy size={14} />, disabled: busy || !canDuplicate, onClick: () => void mutate(async () => { const copy = await duplicateForm(form.id); setForms(items => [copy, ...items]); }) },

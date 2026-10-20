@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { Archive, Calendar, ChevronDown, ListTodo, MoreHorizontal, Pencil, User, X } from 'lucide-react';
-import { TASK_STATUSES, TASK_STATUS_LABELS, taskAssociationIds, type TaskOption, type TaskRecord, type UpdateTaskDto } from '@leadcrm/shared';
+import { TASK_STATUSES, TASK_STATUS_LABELS, taskAssociationIds, isTaskAssignmentRestrictedRole, type TaskOption, type TaskRecord, type UpdateTaskDto } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
 import { USE_MOCK_DATA } from '@/lib/config';
@@ -24,6 +24,7 @@ import { DataLoadingSpinner } from '@/shared/components/crm/data-view-states';
 import { formatDateTime } from '@/shared/components/data-grid/cell-renderers';
 import { panelBodyClass, panelCloseClass, panelHeaderClass, panelInputClass, panelSurfaceClass, panelTitleClass } from '@/shared/components/side-panel-styles';
 import { isTaskOwner, taskRecordHref, taskRecordOptions } from '../task-relations';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { isPastManilaTaskDueDateTime, manilaCurrentDate, manilaLocalDateTime, manilaTaskDueInstant, resolveManilaTaskDueDateTime } from '../task-data';
 import { TaskSelector } from './task-selector';
 import { TaskRecordCreator } from './task-record-creator';
@@ -52,9 +53,11 @@ export function TaskDetails({ task: initialTask, taskId, readOnly = false, links
   const [newDeal, setNewDeal] = useState<TaskOption>();
   const mutationPending = useRef(false), body = useRef<HTMLDivElement>(null);
   const heading = useId();
-  const unavailable = !canRead || [401, 403, 404].includes(detail.errorStatus ?? 0);
-  const ready = !!saved && !unavailable && (USE_MOCK_DATA || !!detail.data);
   const latest = USE_MOCK_DATA ? saved : detail.data;
+  const unavailable = !canRead || [401, 403, 404].includes(detail.errorStatus ?? 0) ||
+    !!latest && isTaskAssignmentRestrictedRole(user?.role ?? '') && latest.assignedUserId !== user?.id;
+  const ready = !!saved && !unavailable && (USE_MOCK_DATA || !!detail.data);
+  useReadRecordNotifications('Task', recordId, !USE_MOCK_DATA && ready && !detail.isInitialLoad && !detail.isRefreshing && !detail.error);
   const owned = ready && isTaskOwner(latest, user?.id);
   const mutable = owned && !readOnly && !latest?.isArchived;
   const pending = busy || inline.busy;

@@ -28,6 +28,7 @@ import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { toast } from 'sonner';
 import { useAuth } from '@/store/AuthContext';
 import { trackSmsCampaignSubmission } from '@/features/tenant/notifications/hooks/notification-requests';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import {
   ArrowLeft, Send, Mail, MessageSquare, Plus,
   Wand2, Monitor, Smartphone, Zap, Tags,
@@ -68,6 +69,7 @@ export function CampaignBuilder({
 
 }: CampaignBuilderProps) {
   const { tenant, user } = useAuth();
+  useReadRecordNotifications('Campaign', initialCampaign?.id, !!initialCampaign && !initialCampaign.isArchived);
   const router = useRouter();
 
   const maySend = useHasPermission('campaigns.send') && canSend;

@@ -183,6 +183,19 @@ describe('real cached request lifecycle', () => {
     expect(second.result.current.isInitialLoad).toBe(false);
   });
 
+  it('evicts open Task details after a reassignment invalidation returns 404', async () => {
+    const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'assigned-task' });
+    const hook = renderHook(() => useCachedPage({ module: 'tasks', params: { recordId: 'assigned-task' }, revalidateOnInvalidation: true, fetchFn }));
+    await waitFor(() => expect(hook.result.current.data).toEqual({ id: 'assigned-task' }));
+    fetchFn.mockRejectedValueOnce(Object.assign(new Error('Task not found'), { status: 404 }));
+    act(() => invalidatePageCache('tasks', 'tenant-a'));
+    await waitFor(() => expect(hook.result.current.errorStatus).toBe(404));
+    expect(hook.result.current.data).toBeUndefined();
+    hook.unmount(); fetchFn.mockReturnValue(new Promise(() => {}));
+    const remounted = renderHook(() => useCachedPage({ module: 'tasks', params: { recordId: 'assigned-task' }, fetchFn }));
+    expect(remounted.result.current.data).toBeUndefined();
+  });
+
   it('evicts a record after authoritative 404 so remount cannot hydrate deleted data', async () => {
     const fetchFn = vi.fn().mockResolvedValueOnce({ id: 'deleted-record' });
     const hook = renderHook(() => useCachedPage({ module: 'contacts', params: { recordId: 'deleted-record' }, fetchFn }));

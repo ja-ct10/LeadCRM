@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { CheckCheck, ChevronRight, Trash2 } from 'lucide-react';
-import { notificationDestination, resolveNotificationDestination } from '../notification-destination';
+import { notificationDestination, resolveNotificationDestination, opensNotificationRecord } from '../notification-destination';
 import { useNotifications, type NotificationFilter } from '../hooks/use-notifications';
 import { NotificationContent, NotificationEmptyState } from './notification-content';
 import { Button } from '@/shared/components/ui/button';
@@ -78,7 +78,7 @@ export default function NotificationsPage() {
                   onCheckedChange={checked => setSelected(prev => checked ? [...new Set([...prev, notification.id])] : prev.filter(id => id !== notification.id))} /></div>
                 <button type="button" disabled={isMutating} className="flex min-w-0 flex-1 items-start gap-2 rounded-lg text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring sm:gap-4"
                   onClick={async () => {
-                    if (!notification.isRead && !await markAsRead(notification.id)) return;
+                    if (!opensNotificationRecord(notification) && !notification.isRead && !await markAsRead(notification.id)) return;
                     const destination = await resolveNotificationDestination(notification.id);
                     if (destination) router.push(destination);
                   }}>

@@ -6,6 +6,7 @@ import {
   TaskQuerySchema,
   TaskStatusSchema,
   isTaskOverdue,
+  isTaskAssignmentRestrictedRole,
   type TaskListQuery,
   type TaskPage,
   type TaskSummary,
@@ -16,15 +17,19 @@ import { tasksApi } from "@/shared/services/tasks.api";
 import { manilaLocalDateTime, manilaTaskDueInstant } from '@/lib/manila-time';
 import { matchesSearch } from '@/shared/utils/search';
 
+type TaskQueryActor = { id: string; tenantId: string; role: string };
+
 export function localTaskQuery(
   tasks: Task[],
   input: TaskListQuery,
+  actor?: TaskQueryActor,
 ): { page: TaskPage; summary: TaskSummary } {
   const query = TaskQuerySchema.parse(input);
   const filtered = tasks
     .filter((task) => {
       const status = TaskStatusSchema.parse(task.status);
       return (
+        (!actor || task.tenantId === actor.tenantId && (!isTaskAssignmentRestrictedRole(actor.role) || task.assignedUserId === actor.id)) &&
         Boolean(task.isArchived) === query.archived &&
         (!query.status || status === query.status) &&
         (!query.priority || task.priority === query.priority) &&
@@ -109,7 +114,7 @@ export function localTaskQuery(
 }
 
 /** One query owner, mounted inside the existing DataProvider. No additional Task store. */
-export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
+export function useTaskQueries(identity: string, tasks: Task[], mock: boolean, actor?: TaskQueryActor) {
   const [tasksRevision, setRevision] = useState(0);
   const owner = useRef({
     identity,
@@ -120,6 +125,8 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
     owner.current = { identity, pages: new Map(), summaries: new Map() };
   const taskRef = useRef(tasks);
   taskRef.current = tasks;
+  const actorRef = useRef(actor);
+  actorRef.current = actor;
   const refreshTasks = useCallback(() => {
     owner.current.pages.clear();
     owner.current.summaries.clear();
@@ -137,7 +144,7 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
   const queryTasks = useCallback(
     (query: TaskListQuery = {}) => {
       if (mock)
-        return Promise.resolve(localTaskQuery(taskRef.current, query).page);
+        return Promise.resolve(localTaskQuery(taskRef.current, query, actorRef.current).page);
       const key = JSON.stringify(TaskQuerySchema.parse(query));
       const cache = owner.current.pages;
       let promise = cache.get(key);
@@ -156,7 +163,7 @@ export function useTaskQueries(identity: string, tasks: Task[], mock: boolean) {
   const queryTaskSummary = useCallback(
     (query: TaskListQuery = {}) => {
       if (mock)
-        return Promise.resolve(localTaskQuery(taskRef.current, query).summary);
+        return Promise.resolve(localTaskQuery(taskRef.current, query, actorRef.current).summary);
       const key = JSON.stringify(
         TaskQuerySchema.parse({ ...query, page: 1, limit: 25 }),
       );

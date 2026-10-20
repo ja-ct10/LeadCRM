@@ -21,6 +21,7 @@ import { isTaskOwner, taskRecordHref, taskRecordOptions } from '../task-relation
 import Link from 'next/link';
 import { useAuth } from '@/store/AuthContext';
 import { useHasPermission } from '@/shared/hooks/use-permissions';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 interface Props {
   tasks: TaskRecord[];
   columns: ColumnConfigItem[];
@@ -122,13 +123,13 @@ export function TaskTable({
         );
       case "title":
         return (
-          <button
+          <span className="flex min-w-0 items-center gap-2"><button
             onClick={() => onOpen(task)}
             className="max-w-72 truncate text-left text-[13px] font-medium text-[#1a73e8] dark:text-blue-400 hover:underline"
             title={task.title}
           >
             {task.title}
-          </button>
+          </button><UnreadRecordDot entityType="Task" entityId={task.id} /></span>
         );
       case "status":
         return (

@@ -12,6 +12,7 @@ import type {
 } from '@leadcrm/shared';
 import { useAuth } from '@/store/AuthContext';
 import { useData } from '@/store/DataContext';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import {
   getWorkflowMetadata,
   withWorkflowTimeout,
@@ -56,6 +57,7 @@ export default function WorkflowBuilderPage() {
   const currentScope = useRef(scope);
   currentScope.current = scope;
   const optionsLoaded = loaded !== null;
+  useReadRecordNotifications('Workflow', id, canView && !!loaded && loaded.scope === scope && !isLoading && !authError && !error);
   useEffect(() => {
     if (!tenant?.id || !canView || !optionsLoaded) return;
     let cancelled = false, pending = false, queued = false;

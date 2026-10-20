@@ -3,7 +3,6 @@ import { PGLiteSocketServer } from '@electric-sql/pglite-socket';
 import { randomUUID } from 'node:crypto';
 import { replayCrmMigrations } from '../../../../tests/replay-crm-migrations';
 import { installProductProjections } from '../../../../core/tenant/product-projections';
-import { installTenantScoping } from '../../../../core/tenant/tenant-prisma';
 import { DEFAULT_CLOSING_FIELDS } from '@leadcrm/shared';
 
 export async function conversionFixture() {
@@ -11,6 +10,9 @@ export async function conversionFixture() {
   const socket = new PGLiteSocketServer({ db: pg, host: '127.0.0.1', port: 0 }); await socket.start();
   process.env.CONVERSION_TEST_DATABASE_URL = `postgresql://postgres:postgres@${socket.getServerConn()}/postgres?connection_limit=1`;
   const db = (await import('../../../../config/database.config')).default;
+  // Tenant scoping imports CRM access policy, which uses the mocked client.
+  // Load it only after the disposable database URL has been allocated.
+  const { installTenantScoping } = await import('../../../../core/tenant/tenant-prisma');
   installProductProjections(db); installTenantScoping(db);
   const { convertContact, getContacts } = await import('../contacts.service');
   await db.tenant.createMany({ data: [{ id: 'conversion', name: 'Conversion', slug: 'conversion' }, { id: 'foreign', name: 'Foreign', slug: 'foreign' }] });

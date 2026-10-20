@@ -5,6 +5,7 @@ import { panelThemeClass, panelHeaderClass, panelTitleClass, panelCloseClass } f
 import { withProductOptions } from '@leadcrm/shared';
 import { useProductInterests } from '@/shared/hooks/use-product-interests';
 import { useEffect, useRef, useState } from 'react';
+import { useReadRecordNotifications } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import { useRouter } from 'next/navigation';
 import { NAVIGATION_INTENT_EVENT, requestNavigation, type NavigationAction, type NavigationIntentEvent } from '@/shared/lib/navigation-intent';
 import { ArrowLeft, EyeOff, Plus, RotateCcw } from 'lucide-react';
@@ -28,6 +29,7 @@ function makeField(field: PaletteField): FormField {
   return { id: 'field_' + crypto.randomUUID(), type: field.type, label: field.label, required: field.required ?? false, ...(field.mapToField ? { mapToField: field.mapToField } : {}), ...(field.customFieldId ? { customFieldId: field.customFieldId } : {}), ...(field.options ? { options: [...field.options] } : {}) };
 }
 export function FormBuilderPage({ form, onBack, onFormUpdate }: { form: FormRecord; onBack: () => void; onFormUpdate: (form: FormRecord) => void }) {
+  useReadRecordNotifications('Form', form.id, true);
   const { products, categories } = useProductInterests();
   const { userCan } = useAuth();
   const router = useRouter();

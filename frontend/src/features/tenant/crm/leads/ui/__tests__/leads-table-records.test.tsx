@@ -2,6 +2,7 @@ import React from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { LeadsDataGrid } from '../leads-data-grid';
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ UnreadRecordDot: () => null }));
 import { toFrontendContact } from '@/lib/api/adapters/contact.adapter';
 import type { Lead } from '@/store/types';
 import { LEADS_COLUMN_REGISTRY } from '@/shared/constants/column-registries';

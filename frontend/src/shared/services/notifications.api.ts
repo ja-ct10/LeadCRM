@@ -2,7 +2,7 @@
 
 import { apiClient } from '@/lib/api/client';
 
-import type { NotificationsResponse, NotificationMutationResponse, NotificationCountsResponse, NotificationPreferences, NotificationPreferencesResponse } from '@leadcrm/shared';
+import type { NotificationsResponse, NotificationMutationResponse, NotificationCountsResponse, NotificationPreferences, NotificationPreferencesResponse, NotificationRecordTarget } from '@leadcrm/shared';
 export type { NotificationRecord as Notification, NotificationsResponse } from '@leadcrm/shared';
 
 export const notificationsApi = {
@@ -20,8 +20,8 @@ export const notificationsApi = {
   markRead: (id: string) =>
     apiClient.patch<NotificationMutationResponse>(`/notifications/${encodeURIComponent(id)}/read`),
 
-  markAllRead: (before?: string) =>
-    apiClient.patch<NotificationMutationResponse>('/notifications/read-all', before ? { before } : {}),
+  markAllRead: (before?: string, record?: NotificationRecordTarget) =>
+    apiClient.patch<NotificationMutationResponse>('/notifications/read-all', { ...(before ? { before } : {}), ...(record ? { record } : {}) }),
 
   counts: (query: { after?: string; since?: string } = {}) => {
     const params = new URLSearchParams(query);

@@ -16,6 +16,7 @@ vi.mock('@/store/AuthContext', () => ({ useAuth: () => ({ user: { id: state.user
 vi.mock('@/store/DataContext', () => ({ useData: () => ({ pipelines: state.pipelines, deals: [], users: [],
   addDeals: vi.fn(), moveDealStage: vi.fn(), refreshPipelines: vi.fn() }) }));
 vi.mock('@/shared/hooks/use-permissions', () => ({ useHasPermission: () => true }));
+vi.mock('@/features/tenant/notifications/hooks/use-record-notifications', () => ({ UnreadRecordDot: () => null }));
 vi.mock('@/shared/hooks/use-crm-record-access', () => ({ useCrmRecordAccess: () => ({ canMutate: () => true }) }));
 vi.mock('@/lib/config', () => ({ USE_MOCK_DATA: false }));
 vi.mock('@/lib/api/client', () => ({ apiClient: { get: state.get } }));

@@ -16,7 +16,7 @@ vi.mock('motion/react', () => ({ motion: {
   span: ({ initial, animate, exit, transition, ...props }: any) => <span {...props} />,
 }, useReducedMotion: () => true }));
 
-let records: { id: string; type: string; title: string; body: string; isRead: boolean; createdAt: string }[];
+let records: { id: string; type: string; title: string; body: string; isRead: boolean; createdAt: string; entityType?: string; entityId?: string }[];
 const counts = () => ({ success: true, totalCount: records.length, unreadCount: records.filter(n => !n.isRead).length });
 beforeEach(() => {
   vi.clearAllMocks(); clearPageCache();
@@ -32,6 +32,19 @@ beforeEach(() => {
   mocks.markAllRead.mockImplementation(async () => { records = records.map(n => ({ ...n, isRead: true })); return counts(); });
 });
 afterEach(() => { cleanup(); clearPageCache(); });
+
+it('defers record reads until the authorized destination has successfully opened', async () => {
+  records[0] = { ...records[0], entityType: 'Task', entityId: '23e0334f-f10b-4cf1-b67c-42984828890a' };
+  render(<NotificationsPage />);
+  const button = await screen.findByRole('button', { name: /Notice 0/ });
+  fireEvent.click(button);
+  await waitFor(() => expect(mocks.destination).toHaveBeenCalledWith('0'));
+  expect(mocks.markRead).not.toHaveBeenCalled(); expect(records[0].isRead).toBe(false);
+  mocks.destination.mockResolvedValueOnce({ success: true, destination: '/operations/taskboard?taskId=' + records[0].entityId });
+  fireEvent.click(button);
+  await waitFor(() => expect(mocks.push).toHaveBeenCalledOnce());
+  expect(mocks.markRead).not.toHaveBeenCalled();
+});
 
 it('renders the complete server assignment message in the Notifications feed', async () => {
   records[0] = { ...records[0], type: 'contact_assigned', title: 'Assigned Agent changed to Next Agent',

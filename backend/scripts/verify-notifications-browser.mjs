@@ -23,14 +23,15 @@ const prisma = require('../dist/backend/src/config/database.config.js').default;
 const app = require('../dist/backend/src/app.js').default;
 const { dispatchTenantNotifications } = require('../dist/backend/src/modules/notifications/notification-events.service.js');
 const { issueAuthSession } = require('../dist/backend/src/core/auth/auth-session.js');
-let api, frontend, browser, page, closing = false, rejectDelete = false, rejectFeed = false;
+let api, frontend, browser, page, closing = false, rejectDelete = false, rejectFeed = false, rejectRecordRead = false;
 const checks = [], pageErrors = [], transportErrors = [], requests = [];
 const record = label => { checks.push(label); console.log('PASS', label); };
 const eventually = async predicate => { for(let n=0;n<80;n++){if(await predicate())return; await new Promise(done=>setTimeout(done,100));}throw Error('Condition did not settle'); };
 try {
   const tenant = await prisma.tenant.create({ data: { name: 'Notification Acceptance', slug: randomUUID(), onboardingStep: 3, onboardingCompletedAt: new Date() } });
   const role = await prisma.roleDefinition.create({ data: { tenantId: tenant.id, name: 'Sales Agent' } });
-  await prisma.rolePermission.createMany({ data: ['leads','contacts','accounts','deals','tasks'].map(module => ({ tenantId: tenant.id, roleId: role.id, module, canView: true, canEdit: true, canCreate: true })) });
+  await prisma.rolePermission.createMany({ data: ['leads','contacts','accounts','deals','tasks'].map(module => ({ tenantId: tenant.id, roleId: role.id, module, canView: true, canEdit: true, canCreate: true,
+    ...(['leads','contacts','accounts','deals'].includes(module) ? { canViewAll: true, canViewMy: true } : {}) })) });
   const agent = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Notification', lastName: 'Tester', email: 'notification-preview@camxian.com', role: role.name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
   await prisma.userRole.create({ data: { tenantId: tenant.id, roleId: role.id, userId: agent.id } });
   const other = await prisma.user.create({ data: { tenantId: tenant.id, firstName: 'Other', lastName: 'Tester', email: 'other-preview@camxian.com', role: role.name, status: 'ACTIVE', mustChangePassword: false, onboardingCompletedAt: new Date() } });
@@ -54,7 +55,8 @@ try {
   // Redirect only transport; all authentication, authorization and persistence use local API/SQL.
   await page.route('**/api/proxy/**', async route => {
     const request = route.request(), url = new URL(request.url()); requests.push({ method: request.method(), path: url.pathname, query: url.search });
-    if ((rejectDelete && request.method()==='DELETE' && url.pathname.endsWith('/notifications')) || (rejectFeed && url.pathname.endsWith('/notifications') && request.method()==='GET')) {
+    if ((rejectDelete && request.method()==='DELETE' && url.pathname.endsWith('/notifications')) || (rejectFeed && url.pathname.endsWith('/notifications') && request.method()==='GET')
+      || (rejectRecordRead && request.method()==='PATCH' && url.pathname.endsWith('/notifications/read-all') && request.postDataJSON()?.record)) {
       await route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({success:false,error:{message:'Acceptance failure'}})});return;
     }
     try {
@@ -112,7 +114,7 @@ try {
   const id=await rows().first().getAttribute('data-notification-id'); const source=await prisma.notification.findUniqueOrThrow({where:{id}});
   await rows().first().getByRole('button',{name:/Contact Assigned to You/}).click();
   await page.waitForURL('**/crm/contacts/'+source.entityId);
-  assert.equal((await prisma.notification.findUniqueOrThrow({where:{id}})).isRead,true);record('Notification read persists and opens its actual Contact');
+  await eventually(async()=> (await prisma.notification.findUniqueOrThrow({where:{id}})).isRead);record('Notification read persists after its actual Contact details load');
   await navigate('/notifications'); await eventually(async()=>await rows().count()===20);
   await page.getByRole('tab',{name:/^Read/}).click(); await eventually(async()=>await rows().count()===1);
   await page.getByRole('tab',{name:/^All/}).focus(); await page.keyboard.press('ArrowRight'); assert.equal(await page.getByRole('tab',{name:/^Unread/}).getAttribute('aria-selected'),'true');record('Read/Unread tabs and arrow-key operation');
@@ -143,7 +145,8 @@ try {
   await toggle.click(); await page.getByRole('button',{name:'Save Channels',exact:true}).click(); await page.getByText('Notification preferences saved.',{exact:true}).waitFor();
   const task=await prisma.task.create({data:{tenantId:tenant.id,title:'Notification task destination',assignedUserId:agent.id,dueDate:new Date(Date.now()+3*86400000)}});
   await dispatchTenantNotifications(tenant.id,new Date(),100); await navigate('/notifications'); await rows().first().getByRole('button',{name:/New Task Assigned/}).click();
-  await page.getByRole('dialog',{name:'Task details',exact:true}).waitFor(); await page.getByText(task.title,{exact:true}).first().waitFor();record('Task notification opens the existing task drawer');
+  await page.getByRole('dialog',{name:task.title,exact:true}).waitFor(); await page.getByText(task.title,{exact:true}).first().waitFor();
+  await eventually(async()=>await prisma.notification.count({where:{...where,entityType:'Task',entityId:task.id,isRead:false}})===0);record('Task notification opens the existing task drawer and reads its associated notifications');
   const adminRole=await prisma.roleDefinition.create({data:{tenantId:tenant.id,name:'Client Admin',isSystemRole:true}});
   const admin=await prisma.user.create({data:{tenantId:tenant.id,firstName:'Policy',lastName:'Admin',email:'policy-admin@camxian.com',role:'Client Admin',mustChangePassword:false,onboardingCompletedAt:new Date(),userRoles:{create:{roleId:adminRole.id}}}});
   const group=await prisma.tenantGroup.upsert({where:{tenantId_systemKey:{tenantId:tenant.id,systemKey:'SALES'}},create:{tenantId:tenant.id,name:'Sales',systemKey:'SALES'},update:{}});
@@ -166,6 +169,69 @@ try {
   await page.waitForURL('**/settings?tab=roles');record('Registered role permission security notice opens existing Roles & Permissions');
   token=(await issueAuthSession(other)).token; await context.clearCookies(); await context.addCookies([{name:'leadcrm_token',value:token,url:base,httpOnly:true,sameSite:'Lax'}]);
   await navigate('/notifications'); await page.getByText('No notifications yet',{exact:true}).waitFor(); assert.equal(await rows().count(),0); await bell().filter({hasText:'99+'}).waitFor({state:'hidden'});record('New authenticated user sees an isolated empty feed');
+
+  // The earlier public-form scenario creates an unrelated Deal assignment.
+  // Start this scenario with only its two fixture Deals unread.
+  await prisma.notification.updateMany({where:{...where,entityType:'Deal',isRead:false},data:{isRead:true,readAt:new Date()}});
+  const pipeline=await prisma.pipeline.findFirstOrThrow({where:{tenantId:tenant.id,isArchived:false},include:{stages:{orderBy:{order:'asc'}}}});
+  const unreadDeals=[];
+  for(const title of ['Unread notification Deal One','Unread notification Deal Two']) unreadDeals.push(await prisma.deal.create({data:{tenantId:tenant.id,title,pipelineId:pipeline.id,stageId:pipeline.stages[0].id,assignedUserId:agent.id}}));
+  await prisma.notification.createMany({data:[unreadDeals[0],unreadDeals[0],unreadDeals[1]].map(deal=>({tenantId:tenant.id,userId:agent.id,type:'deal_assigned',title:'Deal requires attention',entityType:'Deal',entityId:deal.id}))});
+  const privateNotice=await prisma.notification.create({data:{tenantId:tenant.id,userId:other.id,type:'deal_assigned',title:'Private other-user alert',entityType:'Deal',entityId:unreadDeals[0].id}});
+  token=(await issueAuthSession(agent)).token; await context.clearCookies(); await context.addCookies([{name:'leadcrm_token',value:token,url:base,httpOnly:true,sameSite:'Lax'}]);
+  const recordReads=()=>requests.filter(request=>request.method==='PATCH'&&request.path.endsWith('/notifications/read-all')).length;
+  const beforeOpen=recordReads();
+  const beforeUnread=await prisma.notification.count({where:{...where,isRead:false}});
+  await navigate('/crm/deals');
+  const navigation=page.getByRole('navigation',{name:'Workspace',exact:true});
+  const dealNav=navigation.getByRole('button',{name:'Deals',exact:true});
+  const moduleDot=()=>dealNav.getByRole('status',{name:'Unread Deals notifications',exact:true});
+  const card=deal=>page.locator('div.select-none').filter({has:page.getByText(deal.title,{exact:true})});
+  const cardDot=deal=>card(deal).getByRole('status',{name:'Unread Deal notifications',exact:true});
+  await cardDot(unreadDeals[0]).waitFor(); await cardDot(unreadDeals[1]).waitFor();
+  assert.equal(await cardDot(unreadDeals[0]).count(),1); assert.equal(recordReads(),beforeOpen);
+  if(await page.getByRole('button',{name:'Expand sidebar',exact:true}).count()) await page.getByRole('button',{name:'Expand sidebar',exact:true}).click();
+  await moduleDot().waitFor();
+  assert.equal(await moduleDot().evaluate(dot=>dot.classList.contains('absolute')),false);
+  assert.equal(await dealNav.locator('svg').evaluate(icon=>icon.parentElement.querySelector('[role="status"]')===null),true);
+  const expandedDot=await moduleDot().boundingBox(), expandedNav=await dealNav.boundingBox();
+  assert.ok(expandedDot.x>expandedNav.x+expandedNav.width/2);
+  await page.screenshot({path:resolve(output,'unread-records-expanded.png')});
+  await page.getByRole('button',{name:'Collapse sidebar',exact:true}).click();
+  assert.equal(await moduleDot().evaluate(dot=>dot.classList.contains('absolute')),true);
+  await page.screenshot({path:resolve(output,'unread-records-collapsed.png')});
+  await page.getByRole('button',{name:'Expand sidebar',exact:true}).click();
+  record('Expanded sidebar has one far-right dot; collapsed sidebar has one icon dot; module load never reads records');
+  rejectRecordRead=true;
+  await card(unreadDeals[0]).getByText(unreadDeals[0].title,{exact:true}).click();
+  const dealPanel=page.getByRole('dialog',{name:'Deal details',exact:true});
+  await dealPanel.waitFor(); await page.getByText('Failed to update notifications',{exact:true}).waitFor();
+  assert.equal(await prisma.notification.count({where:{...where,entityId:unreadDeals[0].id,isRead:false}}),2);
+  await dealPanel.getByRole('button',{name:'Close record',exact:true}).click();
+  await cardDot(unreadDeals[0]).waitFor(); rejectRecordRead=false;
+  record('Failed record-read request preserves the Deal dot and unread notifications');
+  await card(unreadDeals[0]).getByText(unreadDeals[0].title,{exact:true}).click();
+  await eventually(async()=>await prisma.notification.count({where:{...where,entityId:unreadDeals[0].id,isRead:false}})===0);
+  await dealPanel.getByRole('button',{name:'Close record',exact:true}).click();
+  await cardDot(unreadDeals[0]).waitFor({state:'hidden'}); await moduleDot().waitFor(); await cardDot(unreadDeals[1]).waitFor();
+  await page.getByRole('button',{name:`Notifications, ${beforeUnread-2} unread`,exact:true}).waitFor();
+  assert.equal((await prisma.notification.findUniqueOrThrow({where:{id:privateNotice.id}})).isRead,false);
+  record('Successful Deal details read clears its duplicate notifications, keeps the other Deal/module dots and updates the bell');
+  await card(unreadDeals[1]).getByText(unreadDeals[1].title,{exact:true}).click();
+  await eventually(async()=>await prisma.notification.count({where:{...where,entityId:unreadDeals[1].id,isRead:false}})===0);
+  await dealPanel.getByRole('button',{name:'Close record',exact:true}).click();
+  await moduleDot().waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Collapse sidebar',exact:true}).click(); await moduleDot().waitFor({state:'hidden'});
+  await page.getByRole('button',{name:'Expand sidebar',exact:true}).click();
+  record('Last unread Deal clears its card dot and both sidebar states');
+  await prisma.notification.create({data:{tenantId:tenant.id,userId:agent.id,type:'deal_assigned',title:'Fresh record alert',entityType:'Deal',entityId:unreadDeals[0].id}});
+  await page.evaluate(()=>window.dispatchEvent(new Event('focus')));
+  await moduleDot().waitFor(); await cardDot(unreadDeals[0]).waitFor();
+  record('Existing shared focus synchronization reflects new record notifications without a page refresh');
+  token=(await issueAuthSession(other)).token; await context.clearCookies(); await context.addCookies([{name:'leadcrm_token',value:token,url:base,httpOnly:true,sameSite:'Lax'}]);
+  await navigate('/notifications'); await rows().getByText('Private other-user alert',{exact:true}).waitFor();
+  assert.equal(await rows().count(),1); assert.equal((await prisma.notification.findUniqueOrThrow({where:{id:privateNotice.id}})).isRead,false);
+  record('Reading the same Deal as another user leaves the original recipient notification unread');
   assert.deepEqual(pageErrors,[]);assert.deepEqual(transportErrors,[]);
   writeFileSync(resolve(output,'results.json'),JSON.stringify({checks,pageErrors,transportErrors,requestCount:requests.length},null,2));
   console.log(`Browser acceptance passed: ${checks.length} checks.`);

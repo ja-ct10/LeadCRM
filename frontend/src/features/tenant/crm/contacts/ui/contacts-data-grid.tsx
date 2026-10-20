@@ -22,6 +22,7 @@ import { useConfiguredCrmColumns } from '@/shared/hooks/use-field-layout';
 
 import React, { useMemo, useCallback } from 'react';
 import { CrmStatusIndicator } from '@/shared/components/crm/crm-status';
+import { UnreadRecordDot } from '@/features/tenant/notifications/hooks/use-record-notifications';
 import {
   DataGrid,
   useDataGridColumns,
@@ -128,6 +129,7 @@ export function ContactsDataGrid({
               {row.firstName ?? name.split(' ')[0] ?? '—'}
             </p>
           </div>
+          <UnreadRecordDot entityType="Contact" entityId={row.id} />
         </div>
       );
     },

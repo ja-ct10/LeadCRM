@@ -693,6 +693,8 @@ Scheduled detail/cancel require the same tenant, owned account, and original cre
 
 `/notifications` includes list/counts/operations, destination validation, read/read-all, deletion, and personal preferences. Access is session-scoped; destinations retain module checks. Saved columns/table preferences use `/preferences/columns` and `/preferences/table`. These are existing authenticated services, not tenant IDs supplied by clients.
 
+Notification counts and mutation responses include `unreadRecords` entries (`entityType`, `entityId`, `count`) for accessible Lead, Contact, Account, Deal, Task, Campaign, Workflow and Form destinations. Each entry represents one record; the bell's `unreadCount` still counts individual notifications, including retained history. `PATCH /notifications/read-all` accepts an optional `record: { entityType, entityId }` alongside the existing `before` cutoff to read only that record's notifications for the current recipient. Omit `record` for the existing mark-all behavior. Converted Leads follow their authorized Contact destination. Record reads return `readRecord` and `readBefore`; the shared notification watcher updates dots and bell state after success, using its existing background interval for other sessions' changes.
+
 Notification worker due/lease checks and new outbox timestamps use explicit UTC, including when the database session uses Asia/Manila. The forward migration preserves historical timestamps rather than guessing their original timezone.
 
 ---
